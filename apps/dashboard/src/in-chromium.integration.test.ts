@@ -5,8 +5,9 @@
  * shown: the headers that promise this are held offline in `server.test.ts`,
  * and a change of React Router's data addresses could break it with every
  * header still in place. A press answered on its own page leaves the merchant
- * where they were on it, and the sections stay in reach however far a page is
- * scrolled, which only a page that really scrolls can show.
+ * where they were on it, the sections stay in reach however far a page is
+ * scrolled, which only a page that really scrolls can show, and a copy button
+ * writes to a real clipboard.
  *
  * It needs the build (`pnpm --filter @agentify/dashboard build`) and
  * Playwright's Chromium, and counts what reaches the dashboard rather than what
@@ -61,7 +62,8 @@ beforeAll(async () => {
   });
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
-  // code publishes them.
+  // code publishes them, and one price asked for and never paid, so the orders
+  // have a list to search and narrow.
   for (const room of [101, 102, 103, 104]) {
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
       merchant_item_id: `room-${room}`,
@@ -72,6 +74,7 @@ beforeAll(async () => {
       fulfillment: "sync",
     });
     if (!published.ok) throw new Error("the test's card was not published");
+    if (room === 101) await harnessed.gateway.beginPurchase(published.id, {});
   }
   await identity.requestLink(PERSON, "default");
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
@@ -105,9 +108,14 @@ beforeAll(async () => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
     // The receipts' data and the open orders' arrive late, as from a slow
     // gateway, so what a page shows before its data is there can be seen.
+    // So do the searched cards a press leads back to, so what the page marks
+    // before they arrive can be seen too.
     if (
       request.path === `${BASE}/receipts.data` ||
-      (request.path === `${BASE}/orders.data` && request.query.open === "true")
+      (request.path === `${BASE}/orders.data` && request.query.show === "open") ||
+      (request.method === "GET" &&
+        request.path === `${BASE}/cards.data` &&
+        request.query.q === "suite")
     ) {
       setTimeout(next, SLOW_MS);
       return;
@@ -230,7 +238,7 @@ describe("a press answered on its own page", () => {
     }
     // The last card's row in the middle of a short window, with the page
     // scrolled to reach it.
-    const row = page.locator("tbody tr").last();
+    const row = page.locator(".list-row").last();
     await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
     const scrolled = await page.evaluate(() => window.scrollY);
     const before = await row.evaluate((element) => element.getBoundingClientRect().top);
@@ -241,6 +249,122 @@ describe("a press answered on its own page", () => {
 
     expect(scrolled).toBeGreaterThan(0);
     expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
+    await page.context().close();
+  });
+
+  it("keeps the segment marked while the cards arrive, and the search and the page once they have", async () => {
+    // Suites enough to fill more than one page of the cards on sale.
+    for (let suite = 1; suite <= 55; suite += 1) {
+      const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        merchant_item_id: `suite-${suite}`,
+        title: "A suite for the night",
+        description: `One night in suite ${suite}`,
+        price: { amount: "180.00", currency: "USD" },
+        result: { access_code: { type: "string" } },
+        fulfillment: "sync",
+      });
+      if (!published.ok) throw new Error("the test's card was not published");
+    }
+    const listing = `${origin}${BASE}/cards?q=suite&show=on-sale&page=2`;
+    const page = await onTheCards();
+    await page.goto(listing);
+    await page.waitForLoadState("networkidle");
+    const marked = () => page.locator(".segments .here").textContent();
+
+    const arrived = page.waitForResponse(
+      (answer) =>
+        answer.request().method() === "GET" &&
+        new URL(answer.url()).pathname === `${BASE}/cards.data`,
+    );
+    await page.locator(".list-row form[action*='pause='] button").first().click();
+    await page.waitForTimeout(400);
+    const meanwhile = await marked();
+    await arrived;
+    // The pressed button is busy until the cards answering it are drawn.
+    await page.waitForFunction(() => document.querySelector("[aria-busy='true']") === null);
+
+    expect(meanwhile).toContain("On sale");
+    expect(page.url()).toBe(listing);
+    expect(await marked()).toContain("On sale");
+    expect(await page.getByRole("searchbox", { name: "Search cards" }).inputValue()).toBe("suite");
+    expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
+    await page.context().close();
+  });
+});
+
+describe("a switch pressed from the keyboard", () => {
+  /** The cards called rooms, listed as `show` asks, with selling on so every card has its switch. */
+  const onTheRooms = async (show: string): Promise<Page> => {
+    const page = await onTheCards();
+    const resume = page.locator("form[action*='selling=resume'] button");
+    if ((await resume.count()) > 0) {
+      await resume.click();
+      await page.locator("form[action*='selling=pause']").waitFor();
+    }
+    await page.goto(`${origin}${BASE}/cards?q=room${show}`);
+    await page.waitForLoadState("networkidle");
+    return page;
+  };
+
+  /** What has the focus once the press is answered: its words, and the row it is in. */
+  const focusedAfter = async (page: Page) => {
+    await page.waitForFunction(() => document.querySelector("[aria-busy='true']") === null);
+    await page
+      .waitForFunction(() => document.activeElement !== document.body, null, { timeout: 2_000 })
+      .catch(() => {});
+    return await page.evaluate(() => ({
+      button: document.activeElement?.textContent,
+      row: document.activeElement?.closest(".list-row")?.textContent,
+    }));
+  };
+
+  it("keeps the focus on the switch where its row stays", async () => {
+    const page = await onTheRooms("");
+    const row = page.locator(".list-row").first();
+    const switched =
+      (await row.locator("form button").textContent()) === "Pause" ? "Resume" : "Pause";
+
+    await row.locator("form button").focus();
+    await page.keyboard.press("Enter");
+    await row.locator("form button", { hasText: switched }).waitFor();
+
+    expect((await focusedAfter(page)).button).toBe(switched);
+    await page.context().close();
+  });
+
+  it("hands the focus to the row that takes the place of one the press took out of the list", async () => {
+    const page = await onTheRooms("&show=on-sale");
+    const rows = page.locator(".list-row");
+    const pressed = await rows.first().textContent();
+    const after = await rows.nth(1).textContent();
+
+    await rows.first().locator("form[action*='pause='] button").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      (gone) =>
+        ![...document.querySelectorAll(".list-row")].some((row) => row.textContent === gone),
+      pressed,
+    );
+
+    expect(await focusedAfter(page)).toStrictEqual({ button: "Pause", row: after });
+    await page.context().close();
+  });
+});
+
+describe("a copy button once the page's script runs", () => {
+  it("puts the whole purchase address on the clipboard and shows it did", async () => {
+    const page = await onTheCards();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    const button = page.getByRole("button", { name: "Copy the purchase address" }).first();
+    const title = (await button.getAttribute("title")) ?? "";
+
+    await button.click();
+    await page.locator("button.copy.copied").first().waitFor();
+
+    expect(title).toMatch(/^Copy the purchase address: http\S+\/purchase$/);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      title.replace("Copy the purchase address: ", ""),
+    );
     await page.context().close();
   });
 });
@@ -262,10 +386,10 @@ describe("a click under the dashboard's prefix", () => {
 
     await page.goto(`${origin}${BASE}/orders`);
     await page.waitForLoadState("networkidle");
-    await page.locator(".filter a", { hasText: "Open" }).click();
+    await page.locator(".segments a", { hasText: "Open" }).click();
     await page.waitForTimeout(400);
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.context().close();
   });
 });
@@ -367,14 +491,14 @@ describe("the sections on a long page", () => {
 
     await page.locator(".site-menu > summary").click();
     await panel.waitFor({ state: "visible" });
-    // The orders' filter leads to the same page, which is drawn again in
+    // The orders' segment leads to the same page, which is drawn again in
     // place rather than anew; the menu is open over it.
-    await page.locator(".filter a", { hasText: "Open" }).focus();
+    await page.locator(".segments a", { hasText: "Open" }).focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.waitForLoadState("networkidle");
 
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
     expect(await panel.isVisible()).toBe(false);
     await page.context().close();
   });

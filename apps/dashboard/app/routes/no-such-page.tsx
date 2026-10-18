@@ -17,7 +17,7 @@ export const action = loader;
 export default function NoSuchPage() {
   const { base } = useChrome();
   return (
-    <Frame title="There is no such page" frame={{ unnamed: false }}>
+    <Frame title="There is no such page">
       <div className="lede">
         <div>
           <p>

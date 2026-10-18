@@ -1,27 +1,10 @@
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
-  padding: 20px clamp(20px, 4vw, 28px);
-  background: var(--surface);
-  box-shadow: var(--shadow-soft);
-}
-
-/* Five buttons. */
-.rows {
-  --one-line-from: 48rem;
-}
-
 .verified {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin: 0;
+  margin-bottom: var(--space-control);
   color: var(--accent);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .verified a {
@@ -35,10 +18,4 @@
   align-self: center;
   border-radius: var(--radius-pill);
   background: var(--pass);
-}
-
-.caption {
-  margin: 0;
-  color: var(--muted);
-  font: 0.75rem / 1.5 var(--font-mono);
 }

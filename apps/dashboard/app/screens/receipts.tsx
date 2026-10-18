@@ -1,22 +1,43 @@
-import { Table } from "@agentify/ui";
+import { Fragment } from "react";
 import type { ReceiptsView, TransferView } from "../../src/views.js";
+import { Ident, shortened } from "../components/copy.js";
+import { Cell, DayHeading, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
 import { SharesOf, TestMark } from "./orders.js";
+import styles from "./orders.module.css";
 
-const transferCell = (transfer: TransferView) =>
-  transfer.kind === "none"
-    ? { className: "quiet", content: "Not on this receipt" }
-    : transfer.kind === "link"
-      ? {
-          className: "ident",
-          content: (
-            <a href={transfer.href} rel="noreferrer">
-              {transfer.text}
-            </a>
-          ),
-        }
-      : { className: "ident", content: transfer.text };
+/** An arrow out of a box, for a page on another site. */
+const Out = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </svg>
+);
+
+/**
+ * The transfer behind a receipt, short with its copy button, and where this
+ * deployment has the chain's page for it, a way there; a receipt without one
+ * says only that this receipt does not carry it.
+ */
+const Transfer = ({ transfer }: Readonly<{ transfer: TransferView }>) =>
+  transfer.kind === "none" ? (
+    <span className="quiet">Not on this receipt</span>
+  ) : (
+    <span className="transfer">
+      <Ident value={transfer.text} what="transfer" />
+      {transfer.kind === "link" ? (
+        <a
+          className="copy"
+          href={transfer.href}
+          rel="noreferrer"
+          aria-label={`See the transfer ${shortened(transfer.text)} on the chain's explorer`}
+          title="See it on the chain's explorer"
+        >
+          <Out />
+        </a>
+      ) : null}
+    </span>
+  );
 
 export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
   return (
@@ -53,7 +74,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
           when the card was published with it. When the price is checked at the purchase, these
           times can be minutes apart.{" "}
           <a href="/docs/money#what-proves-a-sale-happened">
-            What a receipt records, and which moment each column is
+            What a receipt records, and what each of its times is
           </a>
           .
         </p>
@@ -63,44 +84,62 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
           receipt appears while it is unknown whether the buyer was charged.
         </p>
       </div>
-      <Table
-        columns={[
-          "Receipt",
-          "Order",
-          "Product",
-          "Amount",
-          "Outcome",
-          "Paid",
-          "Price set",
-          "Price as of",
-          "Transfer",
-        ]}
-        empty="No receipts yet. One appears when a product is released to the buyer."
-        rows={view.rows.map((row) => ({
-          key: row.id,
-          ...(row.needsYou ? { className: "needs-you" } : {}),
-          cells: [
-            { className: "ident", content: row.id },
-            { className: "ident", content: row.orderId },
-            { content: row.product },
-            {
-              className: "amount",
-              content: (
-                <>
-                  {row.amount}
-                  <TestMark test={row.test} />
+      {view.rows.length === 0 ? (
+        <ListEmpty>No receipts yet. One appears when a product is released to the buyer.</ListEmpty>
+      ) : (
+        <List
+          label="Receipts"
+          columns="6rem minmax(11.5rem, 1fr) 9.5rem 9rem 11rem"
+          head={["Paid", "Product", { text: "Amount", end: true }, "Outcome", "Transfer"]}
+        >
+          {view.rows.map((row, at) => (
+            <Fragment key={row.id}>
+              {row.day === view.rows[at - 1]?.day ? null : (
+                <DayHeading level={2}>{row.day}</DayHeading>
+              )}
+              <Row needsYou={row.needsYou}>
+                <Cell at="fact">{"time" in row.paid ? row.paid.time : row.paid.text}</Cell>
+                <Cell at="title">{row.product}</Cell>
+                <Cell at="amount">
+                  <span className={styles.sum}>
+                    {row.amount}
+                    <TestMark test={row.test} />
+                  </span>
+                  {row.shares === null ? null : (
+                    <Cell at="aside">
+                      <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
+                    </Cell>
+                  )}
+                </Cell>
+                <Cell at="state">
+                  <Word word={row.outcome} />
+                </Cell>
+                <Cell at="ident">
+                  <Transfer transfer={row.transfer} />
+                </Cell>
+                <RowMore summary="Receipt, order and price times" of={row.product} wide>
+                  <div>
+                    Receipt <Ident value={row.id} what="receipt ID" whole />
+                  </div>
+                  <div>
+                    Order <Ident value={row.orderId} what="order ID" whole />
+                  </div>
                   <SharesOf shares={row.shares} />
-                </>
-              ),
-            },
-            { content: <Word word={row.outcome} /> },
-            { className: "quiet moment", content: <Moment at={row.paid} /> },
-            { className: "quiet moment", content: <Moment at={row.priceSet} /> },
-            { className: "quiet moment", content: <Moment at={row.priceAsOf} /> },
-            transferCell(row.transfer),
-          ],
-        }))}
-      />
+                  <div className="under">
+                    Paid <Moment at={row.paid} />
+                  </div>
+                  <div className="under">
+                    Price set <Moment at={row.priceSet} />
+                  </div>
+                  <div className="under">
+                    Price as of <Moment at={row.priceAsOf} />
+                  </div>
+                </RowMore>
+              </Row>
+            </Fragment>
+          ))}
+        </List>
+      )}
     </>
   );
 }

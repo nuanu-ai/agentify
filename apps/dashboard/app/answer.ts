@@ -56,12 +56,13 @@ const headersOf = (
 };
 
 /**
- * Sends the browser to a path of this site. Back to the page the request was
- * answered at, it stays inside the application, and a browser running the
- * pages' script reads the page afresh; anywhere else it loads the page whole,
- * since the path may be the scanner's, and a press that leads to another page,
- * a sign-out among them, starts it with nothing of the page before it in
- * memory. React Router reads a redirect from a loader or an
+ * Sends the browser to a path of this site. A redirect back to the page the
+ * request was answered at stays inside the application whatever its query,
+ * and a browser running the pages' script reads that page afresh, a list at
+ * the search and the page the query names. Anywhere else the page loads
+ * whole, since the path may be the scanner's, and a press that leads to
+ * another page, a sign-out among them, starts it with nothing of the page
+ * before it in memory. React Router reads a redirect from a loader or an
  * action as a path under its own prefix, so a path under the dashboard's is
  * handed over without it, and one outside it is written as a whole address on
  * the origin the request came to.
@@ -81,7 +82,8 @@ export function sendTo(location: string, url: URL, base: string, headers?: Heade
         ? location.slice(base.length) || "/"
         : null;
   const init = { status: 303, ...(headers === undefined ? {} : { headers }) };
-  return within !== null && location === url.pathname
+  const [path] = location.split(/[?#]/);
+  return within !== null && path === url.pathname
     ? redirect(within, init)
     : redirectDocument(within ?? `//${url.host}${location}`, init);
 }

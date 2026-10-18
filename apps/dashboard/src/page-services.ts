@@ -15,6 +15,7 @@ import {
   IssueKeyRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
+import { accountOf } from "./account-banner.js";
 import { ADS_CONSENT } from "./ads-consent.js";
 import type { DashboardConfig } from "./config.js";
 import {
@@ -52,7 +53,9 @@ import { type SettingsPress, type SettingsView, settingsView } from "./settings-
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
+  cardsPlace,
   cardsView,
+  type FrameView,
   type OrdersView,
   ordersView,
   type ReceiptsView,
@@ -201,16 +204,20 @@ export interface PageServices {
   };
   /**
    * A switch pressed on the cards, named in the address the press is posted
-   * to: `pause` or `resume` with a card, or `selling` with either way.
+   * to: `pause` or `resume` with a card, or `selling` with either way. The
+   * form carries the list it was drawn on, which the press leads back to.
    */
   readonly selling: {
-    press(person: Person, query: URLSearchParams): Promise<Outcome<never>>;
+    press(person: Person, query: URLSearchParams, form: FormData): Promise<Outcome<never>>;
   };
   /** The screens about a merchant's selling, for a person the gates let through. */
   readonly screens: {
-    cards(person: Person): Promise<Outcome<CardsView>>;
+    /** As the address asks: the words searched for, the segment and the page. */
+    cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+    /** The banner the frame draws over every page about the merchant's selling. */
+    frame(person: Person): Promise<FrameView>;
   };
   /** The ways a merchant's catalogue reaches Agentify. */
   readonly integrations: {
@@ -411,6 +418,12 @@ const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boo
 
 const NO_SUCH_SWITCH = "There is no such switch on the cards.";
 
+/** A form's text fields as an address's query; a file a program posted is no field here. */
+const fieldsIn = (form: FormData): URLSearchParams =>
+  new URLSearchParams(
+    [...form].flatMap(([name, value]) => (typeof value === "string" ? [[name, value]] : [])),
+  );
+
 /**
  * What was typed into a box, trimmed: a space at either end is a typing
  * accident, and a wallet often hands an address over with a trailing newline.
@@ -481,6 +494,25 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (unfit.success) return null;
   const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
   return `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`;
+};
+
+/**
+ * How long the frame's read may take: a page is answered whole, so a slow one
+ * would hold every page the frame is drawn on.
+ */
+const FRAME_WITHIN_MS = 2_000;
+
+/** A gateway answer as the frame takes it: the document, or that it failed. */
+type Read<T> = Readonly<{ read: true; value: T }> | Readonly<{ read: false }>;
+
+const readOf = async <T>(ask: () => Promise<Answer<T>>): Promise<Read<T>> => {
+  try {
+    const answered = await ask();
+    return answered.ok ? { read: true, value: answered.document } : { read: false };
+  } catch {
+    console.error("[dashboard] a read for the frame failed");
+    return { read: false };
+  }
 };
 
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
@@ -950,7 +982,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     },
 
     selling: {
-      async press(person, query) {
+      async press(person, query, form) {
         const pressed = switchIn(query);
         if (pressed === null) {
           return { kind: "problem", problem: { status: 404, said: NO_SUCH_SWITCH } };
@@ -970,69 +1002,52 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             : `${pressed.paused ? "paused" : "resumed"} the card ${pressed.card}`,
         );
         // A redirect, so a reload does not press the switch again.
-        return { kind: "redirect", location: `${base}/cards` };
+        return { kind: "redirect", location: `${base}${cardsPlace(fieldsIn(form))}` };
       },
     },
 
     screens: {
-      async cards(person) {
+      async cards(person, query) {
         const gateway = gatewayAs(person);
-        // A card can read paused for want of any of these, and the control
-        // beside it says which. The operator's approval is read only on live,
-        // the one place publishing needs it.
-        const [cards, name, wallet, approval, integration] = await Promise.all([
-          gateway.cards(),
-          gateway.sellerName(),
-          gateway.payoutWallet(),
-          config.surfaceMode === "live"
-            ? gateway.liveApproval()
-            : Promise.resolve({ ok: true as const, document: undefined }),
-          gateway.integration(),
-        ]);
+        const [cards, integration] = await Promise.all([gateway.cards(), gateway.integration()]);
         if (!cards.ok) return problemOf(cards);
         if (!integration.ok) return problemOf(integration);
-        if (!name.ok) return problemOf(name);
-        if (!wallet.ok) return problemOf(wallet);
-        if (!approval.ok) return problemOf(approval);
         return {
           kind: "view",
           view: cardsView(
-            {
-              ...viewing(person, name.document),
-              payout: { wallet: wallet.document.payout_wallet },
-              ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
-            },
             cards.document,
             config.publicBaseUrl,
             parts.woo !== null,
             integration.document,
+            query,
           ),
         };
       },
 
       async orders(person, query) {
-        // Only the exact word narrows the list, as the contract says.
-        const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, name, owed, paidInto] = await Promise.all([
+        // The open list is read beside the whole one, never after it, since
+        // which orders are open is the gateway's to say.
+        const [cards, orders, open, owed, paidInto] = await Promise.all([
           gateway.cards(),
-          gateway.orders(open),
-          gateway.sellerName(),
+          gateway.orders(false),
+          gateway.orders(true),
           gateway.refundsOwed(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
-        if (!name.ok) return problemOf(name);
+        if (!open.ok) return problemOf(open);
         if (!owed.ok) return problemOf(owed);
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: ordersView(
-            viewing(person, name.document),
+            viewing(person).mode,
             cards.document,
             orders.document,
-            open,
+            open.document,
+            query,
             owed.document,
             paidInto.document,
           ),
@@ -1041,25 +1056,42 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async receipts(person) {
         const gateway = gatewayAs(person);
-        const [cards, receipts, name, paidInto] = await Promise.all([
+        const [cards, receipts, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.receipts(),
-          gateway.sellerName(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!receipts.ok) return problemOf(receipts);
-        if (!name.ok) return problemOf(name);
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: receiptsView(
-            viewing(person, name.document),
+            viewing(person),
             cards.document,
             receipts.document,
             config.transactionPage,
             paidInto.document,
           ),
+        };
+      },
+
+      // Asked beside the page's own reads and cut short at the frame's
+      // deadline: a read that fails or is slow does not take the page down or
+      // hold it long, and the banner says it could not check.
+      async frame(person) {
+        const standing = await readOf(() => gatewayAs(person, FRAME_WITHIN_MS).standing());
+        return {
+          account: standing.read
+            ? accountOf(
+                {
+                  ...viewing(person, standing.value.sellerName),
+                  payout: { wallet: standing.value.payoutWallet },
+                  liveApproval: standing.value.liveApproved,
+                },
+                { selling: standing.value.selling, through: standing.value.through },
+              )
+            : accountOf(viewing(person), { unread: true }),
         };
       },
     },

@@ -11,12 +11,11 @@
  */
 
 import type { Integration } from "@agentify/gateway";
-import { refusedForNoName, type Viewer } from "./viewer.js";
-import { type FrameView, type MomentView, momentView } from "./views.js";
-import type { SkippedProduct } from "./woo-catalog.js";
+import { type MomentView, momentView } from "./views.js";
+import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
-import { UNSET_WORDS, type Unset } from "./words.js";
+import { SITE_IN_SETTINGS, UNSET_WORDS, type Unset, type Way } from "./words.js";
 
 /**
  * A shape of its own rather than the stored row, which also holds the shop's
@@ -100,17 +99,44 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
 /**
  * The gateway refuses every card of a merchant who has not set these, in a
  * sentence naming an API route, which means nothing to a merchant with no code.
- * So the line names the setting as Settings does and links there, before the
- * press as well as after. After a refused press it says nothing was imported
- * and names what was unset at that moment, and only that answer is an alert: a
- * standing notice announced on every visit would drown it. The connector is not
- * offered on live, so the operator's approval never stands in the way here.
+ * So the answer to a refused press names what was unset at that moment as
+ * Settings does. Before a press the banner over the page says what is missing,
+ * and the button does not say it again. The connector is not offered on live,
+ * so the operator's approval never stands in the way here.
  */
 interface BeforeImporting {
-  readonly refused: boolean;
   /** The settings, in the words Settings uses for them. */
   readonly what: string;
 }
+
+/** How many of the orders a refusal names are drawn before the rest are counted. */
+const ORDERS_DRAWN = 5;
+
+/**
+ * Why a press was refused, as the screen draws it: the sentence, then the
+ * orders it names, which the merchant carries into their own system, each
+ * drawn short with a button that copies it whole. A long list is cut, and how
+ * many were left out is said.
+ */
+export interface Refusal {
+  readonly says: string;
+  readonly orders: readonly string[];
+  readonly more: number;
+}
+
+/** A refusal as a press's answer hands it over: a sentence, or a refusal naming its orders. */
+type Said = string | Readonly<{ why: string; orders?: readonly string[] }>;
+
+const refusalOf = (said: Said | undefined): Refusal | null => {
+  if (said === undefined) return null;
+  if (typeof said === "string") return { says: said, orders: [], more: 0 };
+  const orders = said.orders ?? [];
+  return {
+    says: said.why,
+    orders: orders.slice(0, ORDERS_DRAWN),
+    more: Math.max(0, orders.length - ORDERS_DRAWN),
+  };
+};
 
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
@@ -129,16 +155,13 @@ export interface ConnectionView {
    */
   readonly offerSwitch: boolean;
   /** Why selling through this shop, or Import, was just refused. */
-  readonly switching: string | null;
-  /** The merchant's selling is stopped, so nothing imported sells. */
-  readonly stopped: boolean;
+  readonly switching: Refusal | null;
   readonly productsAtMost: number;
   readonly beforeImporting: BeforeImporting | null;
 }
 
 export interface WooShopView {
   readonly screen: "shop";
-  readonly frame: FrameView;
   /**
    * Said on coming back from the shop to a connected one, and drawn off the
    * row, never off the redirect: what a merchant reads on coming back is what
@@ -166,37 +189,33 @@ export interface WooShopView {
    * Why the press was refused: drawn under Connect, or, with a shop connected,
    * under the shop, since it is then about what the shop answered.
    */
-  readonly problem: string | null;
+  readonly problem: Refusal | null;
   /** Why going back to the merchant's own code was refused, beside the control that asked. */
-  readonly leaving: string | null;
+  readonly leaving: Refusal | null;
 }
 
 /** What our rows and the gateway said when the screen was drawn. */
 export interface ShopRead {
   readonly state: ShopState;
-  readonly unset: readonly Unset[];
   readonly through: Integration;
-  readonly stopped: boolean;
 }
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
 export interface ShopAnswer {
-  readonly problem?: string;
-  readonly leaving?: string;
-  readonly switching?: string;
+  readonly problem?: Said;
+  readonly leaving?: Said;
+  readonly switching?: Said;
   readonly typed?: string;
   readonly cameBack?: boolean;
   /** Where the screen answers a press of Import: what was unset at that moment. */
   readonly refused?: readonly Unset[];
 }
 
-export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer): WooShopView => {
+export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => {
   const { state } = read;
   const refused = answer.refused ?? [];
-  const unset = refused.length > 0 ? refused : read.unset;
   return {
     screen: "shop",
-    frame: { unnamed: refusedForNoName(viewer) },
     keysArrived: answer.cameBack === true && state.kind === "connected",
     connection:
       state.kind === "connected"
@@ -205,16 +224,12 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
             connectedAt: momentView(state.shop.connectedAt.toISOString()),
             granted: state.shop.permissions === "read_write" ? null : state.shop.permissions,
             offerSwitch: read.through === "api",
-            switching: answer.switching ?? null,
-            stopped: read.stopped,
+            switching: refusalOf(answer.switching),
             productsAtMost: PRODUCTS_AT_MOST,
             beforeImporting:
-              unset.length === 0
+              refused.length === 0
                 ? null
-                : {
-                    refused: refused.length > 0,
-                    what: unset.map((one) => UNSET_WORDS[one]).join(" and "),
-                  },
+                : { what: refused.map((one) => UNSET_WORDS[one]).join(" and ") },
           }
         : null,
     wayBack: state.kind !== "connected" && read.through === "woocommerce",
@@ -223,8 +238,8 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
       answer.typed ??
       (state.kind === "waiting" || state.kind === "unanswered" ? state.shopUrl : ""),
     connectSwitches: read.through === "api",
-    problem: answer.problem ?? null,
-    leaving: answer.leaving ?? null,
+    problem: refusalOf(answer.problem),
+    leaving: refusalOf(answer.leaving),
   };
 };
 
@@ -259,6 +274,20 @@ interface NotAttempted extends Sent {
  */
 export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
 
+/** A published product with the product code its card is found by on Cards. */
+interface PublishedRow extends Published {
+  readonly code: string;
+}
+
+/**
+ * A refused product, and the page that puts it right where that is the
+ * dashboard rather than the shop: the shop's site, which the person here sets
+ * in Settings.
+ */
+interface RefusedRow extends Refused {
+  readonly fix: Way | null;
+}
+
 /**
  * A page rather than a redirect, because it carries a list: each refusal is
  * the publish step's own sentence about one field of one card, the only thing
@@ -266,33 +295,22 @@ export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
  */
 export interface WooImportView {
   readonly screen: "import";
-  readonly frame: FrameView;
   readonly shopUrl: string;
-  readonly summary: string;
-  readonly published: readonly Published[];
-  readonly refused: readonly Refused[];
+  /** Every product the shop listed, whatever became of it. */
+  readonly read: number;
+  /**
+   * False once a product got no verdict: the import stops there, and every
+   * product after it is not attempted.
+   */
+  readonly finished: boolean;
+  readonly published: readonly PublishedRow[];
+  readonly refused: readonly RefusedRow[];
   readonly unanswered: readonly Unanswered[];
   readonly notAttempted: readonly NotAttempted[];
   readonly skipped: readonly SkippedProduct[];
 }
 
-/** Published is always said; each other outcome is said whenever it is not zero. */
-const summaryOf = (
-  published: number,
-  refused: number,
-  unanswered: number,
-  notAttempted: number,
-  skipped: number,
-): string => {
-  const parts = [
-    `${published} ${published === 1 ? "product" : "products"} published`,
-    ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
-    ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
-    ...(notAttempted === 0 ? [] : [`${notAttempted} not attempted`]),
-    ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
-  ];
-  return `${parts.join(", ")}.`;
-};
+const TO_SETTINGS: Way = { to: "/settings", words: "Open Settings" };
 
 export const wooImportView = (
   shopUrl: string,
@@ -305,19 +323,14 @@ export const wooImportView = (
   const notAttempted = outcomes.filter((one): one is NotAttempted => "notAttempted" in one);
   return {
     screen: "import",
-    // Drawn only once the import found the seller name set, so the line about
-    // choosing one never applies.
-    frame: { unnamed: false },
     shopUrl,
-    summary: summaryOf(
-      published.length,
-      refused.length,
-      unanswered.length,
-      notAttempted.length,
-      skipped.length,
-    ),
-    published,
-    refused,
+    read: outcomes.length + skipped.length,
+    finished: unanswered.length === 0,
+    published: published.map((one) => ({ ...one, code: merchantItemIdFor(shopUrl, one.id) })),
+    refused: refused.map((one) => ({
+      ...one,
+      fix: one.problems.includes(SITE_IN_SETTINGS) ? TO_SETTINGS : null,
+    })),
     unanswered,
     notAttempted,
     skipped,

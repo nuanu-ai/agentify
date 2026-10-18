@@ -18,7 +18,7 @@ import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
-import { unsetIn, type Viewer } from "./viewer.js";
+import { unsetIn } from "./viewer.js";
 import {
   cardsFromTheShop,
   decimalOfMinorUnits,
@@ -202,24 +202,13 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     return parts.clientFor({ merchantId: person.merchant.id, email: person.email });
   };
 
-  /** The name is passed only by a screen that asked the gateway for it. */
-  const viewing = (person: Person, sellerName?: string | null): Viewer => ({
-    base,
-    mode: config.surfaceMode,
-    who: person.email,
-    confirmed: person.confirmed,
-    sellerName,
-  });
-
   /**
    * The rule is the gateway's own (`readinessOf` in the core). This dashboard
    * has its gateway's chain and facilitator, so its surface mode is the
    * gateway's. The operator's approval goes in as unknown: the connector is not
    * offered on live, the only place it is asked for.
    */
-  const standingOf = async (
-    gateway: GatewayClient,
-  ): Promise<Answer<{ readonly sellerName: string | null; readonly unset: readonly Unset[] }>> => {
+  const unsetOf = async (gateway: GatewayClient): Promise<Answer<readonly Unset[]>> => {
     const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
     if (!name.ok) {
       return name;
@@ -235,15 +224,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       },
       config.surfaceMode,
     );
-    return { ok: true, document: { sellerName: name.document, unset: unsetIn(door) } };
+    return { ok: true, document: unsetIn(door) };
   };
 
   /**
    * In one place because the screen is reached five ways (opened, and redrawn
    * after any of the four presses is refused), and a forgotten answer in one of
-   * them would look like a merchant who has set nothing. Either gateway call
-   * failing fails the page: drawn without an answer, it would claim something
-   * about a field nobody asked about.
+   * them would look like a merchant who has set nothing. The integration
+   * failing to read fails the page: drawn without it, the page would offer or
+   * hide the switch on a guess.
    */
   const drawTheShop = async (
     person: Person,
@@ -251,26 +240,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     status = 200,
   ): Promise<Outcome<WooShopView>> => {
     const gateway = gatewayAs(person);
-    const [state, standing, integration] = await Promise.all([
+    const [state, integration] = await Promise.all([
       shopStateOf(shops, person.id),
-      standingOf(gateway),
       gateway.integration(),
     ]);
-    if (!standing.ok) return problemOf(standing);
     if (!integration.ok) return problemOf(integration);
     return {
       kind: "view",
       status,
-      view: wooShopView(
-        viewing(person, standing.document.sellerName),
-        {
-          state,
-          unset: standing.document.unset,
-          through: integration.document.through,
-          stopped: integration.document.selling !== "open",
-        },
-        answer,
-      ),
+      view: wooShopView({ state, through: integration.document.through }, answer),
     };
   };
 
@@ -340,7 +318,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // through a shop with none connected, and the page offers the way back.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { problem: switched.why, typed }, 409);
+        return await drawTheShop(person, { problem: switched, typed }, 409);
       }
 
       // Written only now: a Connect nobody could complete is a row nobody comes
@@ -384,15 +362,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // missing any of these, so importing would inspect every product for
       // nothing and repeat the refusal per product in words naming an API
       // route. A gateway that cannot answer this would not take a card either.
-      const standing = await standingOf(gatewayAs(person));
-      if (!standing.ok) return problemOf(standing);
-      if (standing.document.unset.length > 0) {
+      const unset = await unsetOf(gatewayAs(person));
+      if (!unset.ok) return problemOf(unset);
+      if (unset.document.length > 0) {
         noted(
           person,
-          `pressed Import while the publish door would refuse every card with ${standing.document.unset.join(" and ")}, so the shop at` +
+          `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
             ` ${connection.shopUrl} was not read and nothing was published`,
         );
-        return await drawTheShop(person, { refused: standing.document.unset }, 409);
+        return await drawTheShop(person, { refused: unset.document }, 409);
       }
 
       // The ceiling goes in, so a catalogue too large is refused after three
@@ -497,7 +475,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // shop is already here.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { switching: switched.why }, 409);
+        return await drawTheShop(person, { switching: switched }, 409);
       }
       noted(person, "switched to selling through their connected WooCommerce shop");
       return { kind: "redirect", location: `${base}/woocommerce` };
@@ -510,7 +488,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // off the shop, and only while it is connected.
       const switched = await gatewayAs(person).sellThrough("api");
       if (!switched.ok) {
-        return await drawTheShop(person, { leaving: switched.why }, 409);
+        return await drawTheShop(person, { leaving: switched }, 409);
       }
       const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");

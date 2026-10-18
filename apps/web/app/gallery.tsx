@@ -233,11 +233,14 @@ const visitor = (signedIn: boolean) => ({
   "GET /api/v2/session": signedIn ? SIGNED_IN : SIGNED_OUT,
 });
 
+/** When the shop's scan last changed: for a finished one, the moment it finished. */
+const SCANNED_AT = "2026-10-13T07:59:10.000Z";
+
 /** The status the scan page's own example of this name carries, read about the shop. */
 const fixtureStatus = (name: ScanFixtureName): ScanStatusResponse => {
   const fixture = scanFixture(name);
   if (fixture === null) throw new Error(`the scan page has no example named ${name}`);
-  return { ...fixture.status, target_host: SHOP };
+  return { ...fixture.status, target_host: SHOP, updated_at: SCANNED_AT };
 };
 
 /** A finished scan's teaser at another score, its level the scanner's own for that score. */
@@ -299,7 +302,7 @@ const sharePreview = (score: number | null, level: string) =>
             score,
             level,
             rubric_version: "gtm-v1.0.0",
-            generated_at: "2026-10-13T07:59:10.000Z",
+            generated_at: SCANNED_AT,
             existing_share: null,
           },
         },
@@ -935,7 +938,35 @@ const SCANNING: GalleryState[] = [
       when: "A finished scan's browser observation has come in.",
       cause: "A real browser looked at the site beside the scan, outside the score.",
     },
-    { status: ended("teaser"), observation: OBSERVATION, shows: "Browser observations" },
+    { status: ended("teaser"), observation: OBSERVATION, shows: "Browser check" },
+  ),
+  scan(
+    {
+      id: "scanner-scan-browser-running",
+      screen: "Scan",
+      when: "A scan has finished while a real browser is still looking at the site.",
+      cause:
+        "The browser observation runs after the eighteen checks, so its part of the result says it is on its way.",
+    },
+    {
+      status: ended("teaser"),
+      observation: { ...OBSERVATION, status: "running", pages_assessed: 0, findings: [] },
+      shows: "This step runs after the report.",
+    },
+  ),
+  scan(
+    {
+      id: "scanner-scan-browser-unreadable",
+      screen: "Scan",
+      when: "A scan has finished while its browser observation cannot be read.",
+      cause:
+        "The site answered the page's ask for the observation with an error; the eighteen checks stand without it.",
+    },
+    {
+      status: ended("teaser"),
+      more: { [`GET /api/v1/scans/${SCAN}/browser-observation`]: { status: 503 } },
+      shows: "Browser observations are temporarily unavailable",
+    },
   ),
   scan(
     {
@@ -996,13 +1027,13 @@ const SCANNING: GalleryState[] = [
       screen: "Scan",
       when: "A visitor presses Copy AI fix prompt before confirming their email.",
       cause:
-        "The prompt is given only to a confirmed address, so the page points at the form below.",
+        "The prompt is given only to a confirmed address, so the page points at the form for the full report.",
     },
     {
       status: ended("teaser"),
       more: { [`GET /api/v2/scans/${SCAN}/contact-access`]: { status: 401 } },
       steps: [{ shows: "Copy AI fix prompt", does: (page) => press(page, "Copy AI fix prompt") }],
-      shows: "Confirm your email in the highlighted form below",
+      shows: "Confirm your email in the highlighted form",
     },
   ),
   scan(
@@ -1180,7 +1211,7 @@ const REPORTS: GalleryState[] = [
             score: 46,
             level: "readable",
             rubric_version: "gtm-v1.0.0",
-            generated_at: "2026-10-12T15:40:00Z",
+            generated_at: SCANNED_AT,
           },
           false,
         ),

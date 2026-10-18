@@ -388,15 +388,16 @@ describe("the search", () => {
     await input.fill("tracking number");
     const first = page.locator(".search-results a").first();
     await first.waitFor();
+    const href = (await first.getAttribute("href")) ?? "";
 
-    expect(await first.getAttribute("href")).toMatch(/^\/docs\/orders#/);
+    expect(href).toMatch(/^\/docs\/[a-z-]+#/);
     expect(await page.locator(".search-results mark").count()).toBeGreaterThan(0);
     expect(
       (await page.locator(".search-results mark").first().textContent())?.toLowerCase(),
     ).toMatch(/^(tracking|number)$/);
 
     await page.keyboard.press("Enter");
-    await page.waitForURL(/\/docs\/orders#/);
+    await page.waitForURL((url) => `${url.pathname}${url.hash}` === href);
     await page.locator(".docs-aside .docs-search-button").click();
     expect(await input.inputValue()).toBe("tracking number");
 
@@ -505,11 +506,17 @@ describe("the search", () => {
     const { page } = await visit("/docs/orders");
     await page.keyboard.press("/");
     await page.getByRole("combobox").fill("tracking number");
-    const first = page.locator(".search-results a").first();
-    await first.waitFor();
-    const anchor = ((await first.getAttribute("href")) ?? "").split("#")[1] ?? "";
+    await page.locator(".search-results a").first().waitFor();
+    const hrefs = await page
+      .locator(".search-results a")
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""));
+    // Other pages may rank above this one; the promise is about a result here.
+    const here = hrefs.findIndex((href) => href.startsWith("/docs/orders#"));
+    expect(here).toBeGreaterThanOrEqual(0);
+    const anchor = hrefs[here]?.split("#")[1] ?? "";
     expect(anchor).not.toBe("");
 
+    for (let step = 0; step < here; step += 1) await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await page.waitForFunction((id) => document.activeElement?.id === id, anchor);
     await page.context().close();

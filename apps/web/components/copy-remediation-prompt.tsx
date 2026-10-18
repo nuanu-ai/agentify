@@ -8,8 +8,8 @@ type CopyState = "idle" | "loading" | "copied" | "fallback" | "error" | "gated";
 
 function gateStatusMessage(intent: GateIntent) {
   return intent === "download-md"
-    ? "Confirm your email in the highlighted form below — the download starts right after verification."
-    : "Confirm your email in the highlighted form below — the prompt will be ready on your report.";
+    ? "Confirm your email in the highlighted form — the download starts right after verification."
+    : "Confirm your email in the highlighted form — the prompt will be ready on your report.";
 }
 
 function revealRegistrationGate(targetId: string) {
@@ -166,7 +166,19 @@ export function CopyRemediationPrompt({
 
   return (
     <>
+      {/* The download comes first, so where two buttons share a line it
+          pairs with the share image: the two files on one line. */}
       <div className={`${styles.actions} ${row.group}`}>
+        {allowDownload ? (
+          <button
+            className={`${styles.button} ${styles.download}`}
+            disabled={state === "loading"}
+            onClick={() => void download()}
+            type="button"
+          >
+            Download .md
+          </button>
+        ) : null}
         <button
           className={`${styles.button} ${secondary ? styles.secondary : styles.primary}`}
           disabled={state === "loading"}
@@ -183,16 +195,6 @@ export function CopyRemediationPrompt({
             label
           )}
         </button>
-        {allowDownload ? (
-          <button
-            className={`${styles.button} ${styles.download}`}
-            disabled={state === "loading"}
-            onClick={() => void download()}
-            type="button"
-          >
-            Download .md
-          </button>
-        ) : null}
       </div>
       <span aria-live="polite" className={messageShown ? styles.status : "sr-only"}>
         {state === "copied"

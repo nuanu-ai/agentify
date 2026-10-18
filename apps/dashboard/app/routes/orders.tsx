@@ -15,7 +15,7 @@ export async function loader(asked: LoaderFunctionArgs) {
 export default function Orders() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="orders" title="Orders" frame={view.frame}>
+    <Frame tab="orders" title="Orders">
       <OrdersScreen view={view} />
     </Frame>
   );

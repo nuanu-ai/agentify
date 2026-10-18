@@ -3,9 +3,8 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding-left: 6px;
   color: var(--muted);
-  font: 0.75rem / 1.5 var(--font-mono);
+  font-size: var(--text-label);
 }
 
 .live {
@@ -48,7 +47,7 @@
   display: block;
   margin-top: 8px;
   color: var(--muted);
-  font: 0.75rem / 1.5 var(--font-mono);
+  font-size: var(--text-label);
 }
 
 .status:empty {

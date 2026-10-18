@@ -1,6 +1,6 @@
 /*
  * The dashboard's own layout on top of the shared visual language: its frame,
- * tables and controls. Colours, families, radii and base element rules come
+ * lists and controls. Colours, families, radii and base element rules come
  * only from `packages/visual/tokens.css`, which `styles.css` imports ahead of
  * this file; nothing here declares them.
  */
@@ -17,7 +17,7 @@ p {
 /*
  * The base is the shared one, 16px at 1.6; only dense rows shrink: 0.75rem in the
  * monospaced face for a column head or a caption, 0.8125rem for an identifier or
- * an account line, 0.875rem for a table or an aside, 0.9375rem for something read
+ * an account line, 0.875rem for a list's row or an aside, 0.9375rem for something read
  * character by character. No type on these screens is sized in pixels.
  */
 
@@ -53,8 +53,8 @@ textarea {
   align-self: stretch;
 }
 
-.tabs a,
-.tabs span {
+.tabs > a,
+.tabs > span {
   display: flex;
   align-items: center;
   padding: 0 14px;
@@ -63,29 +63,15 @@ textarea {
   white-space: nowrap;
 }
 
-.tabs a:hover {
+.tabs > a:hover {
   color: var(--fg);
   text-decoration: none;
 }
 
-.tabs [aria-current="page"] {
+.tabs > [aria-current="page"] {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-/*
- * Text rather than a link: asking for this address without paying is answered
- * with a payment demand in a header, so a browser shows a blank page and the
- * card looks broken. Set to be read and copied whole, wrapping wherever it has to
- * rather than widening the table.
- */
-.buy {
-  margin-top: 3px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--muted);
-  overflow-wrap: anywhere;
 }
 
 .lede {
@@ -121,123 +107,16 @@ textarea {
   align-items: center;
 }
 
-/* --- tables ------------------------------------------------------------- */
+/* --- the key's box ------------------------------------------------------ */
 
-/*
- * A real table, so a browser can read the columns out and find-in-page works.
- * Every column and every row's control is on screen at every width: where the
- * frame is too narrow for the columns, a row is drawn as a block with every value
- * beside its column's head, the first included, so an identifier is never read
- * out without its name. The scroller is the last resort for a value nothing can
- * break, not the layout. The width that decides is the frame's (a container
- * query), so the rule holds wherever a table is put.
- */
+/* The box a new key's secret is shown in, scrolling sideways rather than
+   breaking a value read character by character. */
 .scroller {
   margin: 24px 0 32px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
-  container-type: inline-size;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 0.875rem;
-}
-
-/* A long head wraps rather than holding its column wider than its values. */
-thead th {
-  background: var(--raised);
-  color: var(--muted);
-  font: 600 0.75rem / 1.5 var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 12px 16px;
-  border-bottom: var(--hairline) solid var(--line);
-}
-
-/* The quiet hairline between rows: one strong enough to edge a card is too strong
-   repeated down a list. The frame's inset is at the outer edges only; between
-   columns the gap is narrower, or eight columns would spend a third of a laptop's
-   frame on padding. */
-tbody td {
-  height: 56px;
-  padding: 12px 16px;
-  vertical-align: middle;
-}
-
-:is(th, td):first-child {
-  padding-left: 24px;
-}
-
-:is(th, td):last-child {
-  padding-right: 24px;
-}
-
-/* The inset of a row drawn as a block; padding does nothing to a table row. */
-tbody tr {
-  padding: 14px 16px;
-}
-
-tbody tr + tr {
-  border-top: var(--hairline) solid var(--divider);
-}
-
-tbody tr.off {
-  background: var(--raised);
-}
-
-tbody tr.needs-you {
-  background: color-mix(in oklab, var(--fail) 7%, transparent);
-}
-
-td.amount,
-td.key,
-td.ident {
-  font-family: var(--font-mono);
-}
-
-td.amount {
-  white-space: nowrap;
-}
-
-td.key,
-td.ident {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-/*
- * An identifier breaks only where its column ends and nothing is inserted, so a
- * double-click still selects all of it. Its column has a width of its own,
- * because a wrapping column is the one a table takes room from first: a
- * thirty-six-character order or receipt identifier takes two lines at eighteen;
- * twenty characters hold a key name like `rented-number-us-30d` on one line.
- */
-td.key,
-td.ident,
-.under.mono {
-  overflow-wrap: anywhere;
-}
-
-td.key,
-td.ident {
-  box-sizing: content-box;
-  width: 18ch;
-}
-
-td.key {
-  width: 20ch;
-}
-
-.title {
-  font-weight: 500;
-  /* A name typed as one long word (a key's label, a product's title) breaks
-     where it has to rather than pushing the table wider than the page. */
-  overflow-wrap: anywhere;
 }
 
 .under {
@@ -246,97 +125,9 @@ td.key {
   margin-top: 3px;
 }
 
-.under.mono {
-  font-size: 0.8125rem;
-}
-
-td.quiet {
-  color: var(--muted);
-}
-
-/* As narrow as the moment on two lines, date over time, so the room goes to the
-   product's name. Neither half breaks inside itself. */
-td.moment {
-  width: 1px;
-}
-
+/* A moment breaks between its date and its time and nowhere else. */
 .when > span {
   white-space: nowrap;
-}
-
-/*
- * The block a row becomes where its columns do not fit. Label and value are two
- * cells of a fixed-layout table of their own, so a wrapping value stays in its
- * column and the labels keep one width down the block. Anything in the value
- * column may wrap. A label is drawn only where a rule below gives it words.
- */
-
-/* Wide enough for "Price true as of" on one line and narrow enough to leave a
-   whole moment beside it on a phone. */
-tbody td::before {
-  display: table-cell;
-  width: 8.75rem;
-  padding-right: 12px;
-  color: var(--muted);
-  font: 500 0.75rem / 1.5 var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-@container (max-width: 860px) {
-  .scroller :is(table, tbody, tr) {
-    display: block;
-  }
-
-  .scroller thead {
-    display: none;
-  }
-
-  .scroller tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    overflow-wrap: anywhere;
-    height: auto;
-    padding: 3px 0;
-  }
-
-  .scroller tbody td::before {
-    content: attr(data-label);
-  }
-
-  .scroller tbody .amount {
-    white-space: normal;
-  }
-}
-
-/* The receipts' columns need a laptop's whole frame, so a table with a seventh
-   column becomes blocks sooner. */
-@container (max-width: 1140px) {
-  .scroller:has(th:nth-child(7)) :is(table, tbody, tr) {
-    display: block;
-  }
-
-  .scroller:has(th:nth-child(7)) thead {
-    display: none;
-  }
-
-  .scroller:has(th:nth-child(7)) tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    overflow-wrap: anywhere;
-    height: auto;
-    padding: 3px 0;
-  }
-
-  .scroller:has(th:nth-child(7)) tbody td::before {
-    content: attr(data-label);
-  }
-
-  .scroller:has(th:nth-child(7)) tbody .amount {
-    white-space: normal;
-  }
 }
 
 /* Beside the amount rather than in its own column, so it cannot scroll out of
@@ -374,56 +165,13 @@ input:where(:not([type="checkbox"])) {
 }
 
 /* The label over a box, at the weight the scanner gives one. */
-label,
-.issue-title {
+label {
   font-size: 0.8125rem;
   font-weight: 600;
 }
 
 form.inline {
   display: inline;
-}
-
-td.control {
-  text-align: right;
-}
-
-/* On a phone and a tablet, where the frame has no sidebar, the orders' filter
-   is the list's own control, on a row of its own right above the list, rather
-   than beside the words. */
-@media (max-width: 910px) {
-  .lede:has(> .filter) {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .lede:has(> .filter) > div {
-    flex: none;
-  }
-  .lede > .filter {
-    align-self: flex-end;
-  }
-}
-
-.filter {
-  display: flex;
-  gap: 6px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 3px;
-}
-
-.filter a,
-.filter span {
-  padding: 6px 14px;
-  font-size: 0.875rem;
-  border-radius: 2px;
-  color: var(--muted);
-}
-
-.filter .here {
-  background: var(--raised);
-  color: var(--fg);
-  font-weight: 500;
 }
 
 /* --- notes and summaries ------------------------------------------------ */
@@ -453,15 +201,6 @@ td.control {
   line-height: 1.55;
 }
 
-/* Stands clear of the bar above; the heading block under it brings its own 32px. */
-.app-content > .callout:first-child {
-  margin: 32px 0 0;
-}
-
-.callout.done {
-  border-color: color-mix(in srgb, var(--pass) 32%, var(--line));
-}
-
 .callout .what {
   font-weight: 500;
   /* This box has no scroller, and an unbroken identifier would otherwise scroll
@@ -483,7 +222,7 @@ td.control {
 }
 
 /* Under the figures, so the numbers are seen first and what they leave out is
-   read before the table. */
+   read before the list. */
 .summary-text {
   margin: 20px 0 0;
 }
@@ -525,6 +264,612 @@ td.control {
   color: var(--muted);
   font-size: 0.875rem;
   margin-top: 4px;
+}
+
+/* --- lists -------------------------------------------------------------- */
+
+/*
+ * One bordered surface of rows separated by hairlines. Where the list's own box
+ * is wide a row is a grid on the columns the list names in `--columns`, under a
+ * light row of heads; where it is narrow a row's cells stack in lines by the
+ * place each names, and the head gives way. The box decides, a container
+ * query, so the rule holds wherever a list is put.
+ */
+.list-box {
+  margin: 20px 0 14px;
+  container-type: inline-size;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.list-empty {
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.list-empty a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.list > li + li {
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.list-head,
+.list-row {
+  display: grid;
+  grid-template-columns: var(--columns);
+  gap: 16px;
+  align-items: center;
+  padding-inline: 20px;
+}
+
+.list-head {
+  padding-block: 12px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list > .list-head + li {
+  border-top: 0;
+}
+
+.list-head .end,
+.cell-amount {
+  text-align: right;
+}
+
+.list-row {
+  padding-block: 14px;
+  font-size: 0.875rem;
+}
+
+.list-row.off {
+  background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
+}
+
+.list-row.needs-you {
+  background: color-mix(in oklab, var(--fail) 7%, var(--surface));
+}
+
+.list-day {
+  padding: 10px 20px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list-day :is(h2, h3) {
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
+}
+
+.list > li.list-day + li {
+  border-top: 0;
+}
+
+.list > li + li.list-day {
+  border-top-color: var(--line);
+}
+
+.cell {
+  min-width: 0;
+}
+
+.cell-main {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.cell-title {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cell-aside {
+  color: var(--muted);
+}
+
+.cell-amount {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.list-row.off .cell-amount {
+  color: var(--muted);
+}
+
+.cell-fact {
+  color: var(--muted);
+}
+
+.cell-action {
+  display: flex;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.cell-note {
+  color: var(--muted);
+  text-align: right;
+}
+
+.cell-more {
+  display: none;
+}
+
+.cell-more.wide {
+  display: block;
+  grid-column: 1 / -1;
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.cell-more > summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.more-body {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+}
+
+/* A cell's own label where no head is over it: read out beside a wide row's
+   column, drawn on a narrow row's line. */
+.said-on-narrow {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@container (max-width: 860px) {
+  .list-head {
+    display: none;
+  }
+
+  /*
+   * The lines of a narrow row, in this order whatever the order of the
+   * columns: the title and the amount; the state and one fact; the identifier
+   * and the action; a note; the opened row. A row of boxes that wrap, so a
+   * fact too long to sit beside the state moves whole to a line of its own
+   * rather than wrapping beside it, and a line no cell names takes no room.
+   * The two breaks between the first three lines are the row's own.
+   */
+  .list-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 12px;
+    padding: 14px 16px;
+  }
+
+  .list-row::before,
+  .list-row::after {
+    content: "";
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .list-row::before {
+    order: 3;
+  }
+
+  .list-row::after {
+    order: 6;
+  }
+
+  .list-row > .cell-main {
+    display: contents;
+  }
+
+  .cell-title {
+    order: 1;
+    flex: 1 1 0;
+    align-self: flex-start;
+  }
+
+  .cell-amount {
+    order: 2;
+    flex: none;
+    align-self: flex-start;
+  }
+
+  .cell-aside {
+    display: none;
+  }
+
+  .said-on-narrow {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .cell-state {
+    order: 4;
+    flex: none;
+    margin-top: 6px;
+  }
+
+  .cell-fact {
+    order: 5;
+    flex: 0 1 auto;
+    margin-top: 6px;
+  }
+
+  .cell-ident {
+    order: 7;
+    flex: 1 1 auto;
+    margin-top: 6px;
+  }
+
+  .cell-action {
+    order: 8;
+    flex: none;
+    margin-top: 6px;
+    margin-left: auto;
+  }
+
+  .cell-note {
+    order: 9;
+    flex-basis: 100%;
+    margin-top: 6px;
+    text-align: left;
+  }
+
+  .cell-more {
+    order: 10;
+    flex-basis: 100%;
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+}
+
+/* Over a long list: the search and the segments with their counts. */
+.list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.account-banner + .list-tools {
+  margin-top: 20px;
+}
+
+.list-tools + .list-box {
+  margin-top: 16px;
+}
+
+.list-tools .search {
+  position: relative;
+  flex: 1 1 260px;
+  max-width: 340px;
+}
+
+.search > svg {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.list-tools .search input {
+  min-height: 44px;
+  padding: 0 14px 0 40px;
+  border-width: var(--hairline);
+  font-size: 0.9375rem;
+}
+
+.segments {
+  display: inline-flex;
+  padding: 3px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.segments > a,
+.segments > span {
+  padding: 7px 12px;
+  border-radius: 9px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.segments > a:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.segments b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.segments > .here {
+  background: var(--raised);
+  color: var(--fg);
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .list-tools .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+/* Under the search box, on a line of its own, where the search was cut. */
+.search-cut {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* Under a list cut short: which rows of how many, then the ways to the rest. */
+.cut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.cut a {
+  font-weight: 500;
+}
+
+/* A heading over a group of rows, with its count in a pill. */
+.group {
+  margin-top: 28px;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.group-aside {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.count.warn {
+  background: var(--fail);
+  color: var(--on-accent);
+}
+
+/* --- identifiers and their copy buttons -------------------------------- */
+
+/* An identifier shown short in the monospaced face, and a product code, each
+   with a small button beside it. A press turns the button's icon into a tick
+   in the colour of what went through; the words are for a screen reader, and
+   where the browser will not copy the whole value is shown instead. */
+.ident,
+.code {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.ident {
+  color: var(--fg-2);
+}
+
+.code {
+  color: var(--faint);
+}
+
+.copy {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: var(--hairline) solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.copy.copied {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+
+.copy svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A receipt's transfer: its short form and copy button, then the way to the
+   chain's page for it. */
+.transfer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cell-ident > .quiet {
+  color: var(--muted);
+}
+
+/* A fixed price, which opens to the moment it holds from, under it. The words
+   keep to a narrow column, so an opened price on a phone leaves the title its
+   room. */
+.price-since > summary {
+  list-style: none;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.price-since > summary::-webkit-details-marker {
+  display: none;
+}
+
+.since-said {
+  display: block;
+  max-width: 9rem;
+  margin: 2px 0 0 auto;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  white-space: normal;
+}
+
+/* The short form of an identifier, which opens to the whole value under it. */
+.ident-whole > summary {
+  list-style: none;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.ident-whole > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ident-all {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.copy-whole {
+  flex-basis: 100%;
+  color: var(--fg-2);
+  user-select: all;
+}
+
+/* --- the account banner ------------------------------------------------- */
+
+/* One banner over the screen, in the notice's colours, each reason a bold
+   title over its sentence; several reasons stack inside the one banner. */
+.account-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 28px 0 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.account-banner svg {
+  flex: none;
+  margin-top: 2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.account-banner p + p {
+  margin-top: 10px;
+}
+
+.account-banner b {
+  display: block;
+  margin-bottom: 2px;
+  color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
+  font-weight: 600;
+}
+
+.account-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.account-banner + .lede {
+  padding-top: 20px;
 }
 
 /* --- signing in --------------------------------------------------------- */
@@ -657,7 +1002,6 @@ p.problem {
   font-size: 0.875rem;
 }
 
-/* `td.quiet` above is a table cell and does not apply here. */
 p.quiet {
   margin-top: 16px;
   font-size: 0.875rem;
@@ -674,7 +1018,7 @@ h2 {
 
 /* One box and one button side by side, the row every form in the dashboard
    uses. The button is the full-height one so it stands level with the 48px box;
-   the compact button belongs to table rows. */
+   the compact button belongs to a list's rows. */
 .issue {
   display: flex;
   align-items: flex-end;
@@ -683,8 +1027,7 @@ h2 {
   padding: 20px 0 32px;
 }
 
-.issue label,
-.issue .issue-title {
+.issue label {
   display: block;
   margin: 0 0 8px;
 }
@@ -780,12 +1123,12 @@ h2 {
  * between groups, because this block has no scroller and an unbroken run would
  * scroll the page sideways on a phone.
  */
+/* A saved address and its contract, a part of the panel set apart by a
+   hairline over it rather than a box inside the box. */
 .saved {
   margin: 0 0 24px;
-  padding: 16px 20px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface);
+  padding: 16px 0 0;
+  border-top: var(--hairline) solid var(--line);
 }
 
 .saved .label {
@@ -913,8 +1256,7 @@ h2 {
   padding: 24px 0 40px;
 }
 
-.settings-panel,
-.integration-shell {
+.settings-panel {
   min-width: 0;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
@@ -922,13 +1264,11 @@ h2 {
   box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
-.settings-panel > .lede,
-.integration-shell > .lede {
+.settings-panel > .lede {
   padding: 24px 24px 0;
 }
 
-.settings-panel > .issue,
-.integration-shell > .issue {
+.settings-panel > .issue {
   padding: 20px 24px 24px;
 }
 
@@ -957,23 +1297,6 @@ h2 {
   padding-bottom: 24px;
 }
 
-.integration-shell {
-  margin-top: 32px;
-  margin-bottom: 40px;
-  padding-bottom: 8px;
-}
-
-.integration-shell > .callout,
-.integration-shell > .scroller,
-.integration-shell > .summary {
-  margin-left: 24px;
-  margin-right: 24px;
-}
-/* A callout under the shop screen's opening paragraphs stands clear of them. */
-.integration-shell > .lede + .callout {
-  margin-top: 20px;
-}
-
 @media (max-width: 980px) {
   .settings-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -981,9 +1304,9 @@ h2 {
 }
 
 /*
- * The working area under the site header: the numbered sections in a sidebar
- * beside the workspace, and a bar at the top of the workspace with the
- * screen's title and the selling light. On a laptop the sections and the bar
+ * The working area under the site header: the sections in a sidebar beside
+ * the workspace, and a bar at the top of the workspace with the screen's
+ * title. On a laptop the sections and the bar
  * stay in view under the site header, 68px tall there with its hairline under
  * it; they stop at the hairline, never over it or under it. Only the
  * sidebar's own words stay in view, at their own height, so on a window
@@ -1027,8 +1350,8 @@ h2 {
   overflow: visible;
 }
 
-.app-sidebar .tabs a,
-.app-sidebar .tabs span {
+.app-sidebar .tabs > a,
+.app-sidebar .tabs > span {
   min-height: 42px;
   padding: 0 12px;
   border-radius: 10px;
@@ -1039,26 +1362,9 @@ h2 {
   box-shadow: none;
 }
 
-.app-sidebar .tabs i {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: var(--hairline) solid var(--line);
-  border-radius: 7px;
-  color: var(--faint);
-  font: normal 600 0.625rem var(--font-mono);
-}
-
-.app-sidebar .tabs [aria-current="page"] {
+.app-sidebar .tabs > [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
-}
-
-.app-sidebar .tabs [aria-current="page"] i {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-  background: var(--surface);
 }
 
 .sidebar-help {
@@ -1124,9 +1430,7 @@ h2 {
   letter-spacing: -0.035em;
 }
 .app-content .scroller,
-.app-content .table-frame,
-.app-content .settings-panel,
-.app-content .integration-shell {
+.app-content .settings-panel {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
 }
 
@@ -1197,10 +1501,12 @@ h2 {
 .settings-wide {
   grid-column: 1 / -1;
 }
+/* The ways in, side by side in the one panel with a hairline between them,
+   not a box each inside it. */
 .connect-ways {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 24px;
   padding: 16px 24px 24px;
 }
 /* No heading above the ways to carry the top inset. */
@@ -1211,12 +1517,20 @@ h2 {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 20px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 14px;
-  background: var(--bg);
 }
-.connect-way h3 {
+.connect-way + .connect-way {
+  padding-left: 24px;
+  border-left: var(--hairline) solid var(--line);
+}
+/* A way's notice, in the notice's colours without a frame of its own. */
+.connect-way .callout {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.875rem;
+}
+.connect-way h2 {
   margin: 0;
   font-size: 1rem;
 }
@@ -1245,13 +1559,15 @@ h2 {
   .connect-ways {
     grid-template-columns: minmax(0, 1fr);
   }
+  .connect-way + .connect-way {
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: var(--hairline) solid var(--line);
+  }
 }
 @media (max-width: 560px) {
   .connect-ways,
   .settings-connect > .connect-ways:first-child {
-    padding: 16px;
-  }
-  .connect-way {
     padding: 16px;
   }
   .connect-way .connect-actions .button {
@@ -1263,48 +1579,10 @@ h2 {
   .settings-connect > .connect-ways:first-child {
     padding: 12px;
   }
-  .connect-way {
-    padding: 14px;
-  }
   .connect-way .connect-actions .button {
     padding-inline: 12px;
     font-size: 0.9375rem;
   }
-}
-
-/* The card counts as pills, and the empty catalogue as a panel with its ways in
-   as buttons. */
-.stat-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-}
-.stat-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-.stat-pills .stat-pill b {
-  color: var(--fg);
-  font-family: var(--font-mono);
-}
-.empty-start {
-  margin: 24px 0;
-  padding: 28px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  text-align: center;
-}
-.empty-start .connect-actions {
-  justify-content: center;
 }
 
 /* The heading in the top bar starts on the same line as the content under it. */
@@ -1355,16 +1633,8 @@ h2 {
   }
 }
 
-/* On a phone the ways into an empty catalogue stand one under another. */
-@media (max-width: 560px) {
-  .empty-start .connect-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-}
-
 /* Revoking a key is two presses: the first opens the question inside the row,
-   the second answers it. Inside the row rather than over it, because the table's
+   the second answers it. Inside the row rather than over it, because the list's
    rounded frame clips anything hanging out of its last row. */
 .confirm-open {
   list-style: none;
@@ -1383,26 +1653,11 @@ h2 {
 }
 
 /* The menu at the end of the header's row holds, where there is no room for
-   the sidebar, the sections as the sidebar numbers them and the way to the
+   the sidebar, the sections as the sidebar lists them and the way to the
    documentation, over who is signed in. */
-.site-menu .app-menu-sections i {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: var(--hairline) solid var(--line);
-  border-radius: 7px;
-  color: var(--faint);
-  font: normal 600 0.625rem var(--font-mono);
-}
 .site-menu .app-menu-sections [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
-}
-.site-menu .app-menu-sections [aria-current="page"] i {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-  background: var(--surface);
 }
 .site-menu .app-menu-docs {
   display: flex;

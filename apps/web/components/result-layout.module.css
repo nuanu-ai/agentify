@@ -1,0 +1,260 @@
+/*
+ * The page a scan's result, its report and their siblings are drawn on. On a
+ * desktop the result is one sheet, its sections divided by hairlines, with what
+ * goes beside it in a column of panels to the right; a section that belongs to
+ * the result but follows the column's content in the page (`.after`) is drawn
+ * as the foot of the sheet. Narrower, every section and panel is a band of the
+ * page's whole width, a gap between one and the next, and none is framed
+ * inside another; a band's words keep to a readable column in its middle.
+ */
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.body {
+  width: min(100%, 74rem);
+  margin-inline: auto;
+  padding: 32px 28px 0;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  column-gap: var(--space-card);
+}
+
+.single {
+  max-width: 45rem;
+  margin-inline: auto;
+}
+
+.sheet,
+.after,
+.panel {
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.after {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.aside {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  padding: 28px;
+}
+
+.columns > .sheet {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.columns > .aside {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+
+.columns > .after {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.sheet > section,
+.after > section {
+  padding: 28px 32px;
+}
+
+.sheet > section + section {
+  border-top: var(--hairline) solid var(--line);
+}
+
+.after:empty {
+  display: none;
+}
+
+.sheet:has(~ .after:not(:empty)) {
+  border-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.panel h2,
+.sectionHead h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+}
+
+.panel > :global(.button) {
+  width: 100%;
+}
+
+/* The sentence under a panel's heading. */
+.lead {
+  margin: 6px 0 18px;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: var(--space-tight);
+}
+
+.quiet {
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+/* What the section's heading qualifies, at the end of its line. */
+.sectionHead > .quiet {
+  margin-left: auto;
+}
+
+/* A note on what was not assessed, or why: the notice's colours, one box. */
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: var(--space-block);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: var(--text-small);
+}
+
+.note > svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.note > div {
+  display: grid;
+  gap: var(--space-snug);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  padding: 24px 16px 32px;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.foot a,
+.foot button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.foot a:hover,
+.foot button:hover {
+  color: var(--fg);
+}
+
+/* A short page in a sheet of its own: a heading, a sentence, a way on. */
+.message {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+
+.message h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.message p {
+  max-width: 56ch;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.message .note {
+  margin-top: 0;
+}
+
+.message .note p {
+  color: inherit;
+}
+
+@media (max-width: 1079px) {
+  .body {
+    width: 100%;
+    padding: 0;
+  }
+
+  .columns {
+    display: block;
+  }
+
+  .single {
+    max-width: none;
+  }
+
+  .sheet,
+  .after,
+  .panel {
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .after,
+  .aside {
+    margin-top: 8px;
+  }
+
+  .aside {
+    gap: 8px;
+  }
+
+  .sheet > section,
+  .after > section,
+  .aside > .panel {
+    border-block: var(--hairline) solid var(--line);
+    padding: 24px max(16px, calc((100% - 42.5rem) / 2));
+    background: var(--surface);
+  }
+
+  .sheet > section:first-child {
+    border-top: 0;
+  }
+
+  .sheet > section + section {
+    margin-top: 8px;
+  }
+
+  .aside > .tinted {
+    background: var(--accent-soft);
+  }
+
+  /* Under its heading rather than pushed to the far end of a line of its own. */
+  .sectionHead > .quiet {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}

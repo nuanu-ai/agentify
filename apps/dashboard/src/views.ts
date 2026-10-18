@@ -7,31 +7,40 @@
  * thing; `words.ts` carries those cases.
  */
 
-import { type Readiness, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
   expandPath,
-  MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type OrderList,
+  type OrderStatus,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
+import type { AccountNote } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
-import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
-import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
-  APPROVAL_PENDING,
+  askedIn,
+  type Listing,
+  listingOf,
+  PAGE_ROWS,
+  placeOf,
+  type SegmentRule,
+} from "./listing.js";
+import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
+import type { Viewer } from "./viewer.js";
+import {
+  CARD_WORDS,
+  dayOf,
   FULFILLMENT_WORDS,
   moment,
   money,
-  needsAttention,
+  needsYou,
   ORDER_WORDS,
-  SELLING_WORDS,
-  UNSET_WORDS,
   type Word,
+  waitsOnTheBuyer,
 } from "./words.js";
 
 /**
@@ -47,15 +56,14 @@ export const momentView = (iso: string): MomentView => {
   return time.length === 0 ? { text } : { date: date ?? "", time: time.join(" ") };
 };
 
-/** The words at the head of every screen inside the frame. */
+/**
+ * What the frame draws over every page about a merchant's selling, read once
+ * by their pages' layout rather than by each screen, so the banner says the
+ * same on every section.
+ */
 export interface FrameView {
-  /** Absent where the screen did not read the merchant's selling. */
-  readonly selling?: Word;
-  /**
-   * True draws the line saying nothing can go on sale until a seller name is
-   * chosen; only a screen that asked the gateway for the name can say so.
-   */
-  readonly unnamed: boolean;
+  /** The banner's reasons, empty where the account sells as usual and everything was read. */
+  readonly account: readonly AccountNote[];
 }
 
 /** A link to the part of the documentation that carries the mechanism. */
@@ -64,59 +72,77 @@ export interface Rest {
   readonly words: string;
 }
 
-const frameOf = (viewer: Viewer, selling: MerchantCardList["selling"]): FrameView => ({
-  selling: SELLING_WORDS[selling],
-  unnamed: refusedForNoName(viewer),
-});
-
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
 
 // --- cards -------------------------------------------------------------------
 
 /**
- * Every fact that applies is listed, not the first one found: a card can both
- * have its price asked at purchase and owe a delivery inside a window, and
- * dropping the deadline because the price check came first would hide a promise
- * the merchant is answerable for. With none, the screen says since when the
- * price on the card holds, the one place `as_of` is shown: a merchant working
- * out why a sale went through at an old price has nowhere else to look.
+ * What the price beside a card means. A price asked at purchase may not be the
+ * one paid, so that is said wherever the price is; a price that stands on the
+ * card holds from `as_of`, the one place that moment is shown: a merchant
+ * working out why a sale went through at an old price has nowhere else to look.
  */
-export type CardAside = Readonly<{ facts: string }> | Readonly<{ since: MomentView }>;
+export type CardPrice = Readonly<{ asked: true }> | Readonly<{ since: MomentView }>;
 
-const cardAside = (entry: MerchantCard): CardAside => {
-  const facts: string[] = [];
+const cardPrice = (entry: MerchantCard): CardPrice =>
+  entry.card.price_check === undefined ? { since: momentView(entry.as_of) } : { asked: true };
 
-  if (entry.card.price_check !== undefined) {
-    facts.push("Price asked at purchase");
-  }
-
-  const seconds = entry.card.fulfill_deadline_seconds;
-  if (seconds !== undefined) {
-    const hours = seconds / 3600;
-    facts.push(
-      hours >= 1 && Number.isInteger(hours)
-        ? `delivery within ${hours} ${hours === 1 ? "hour" : "hours"}`
-        : `delivery within ${seconds} seconds`,
-    );
-  }
-
-  if (facts.length === 0) {
-    return { since: momentView(entry.as_of) };
-  }
-
-  const line = facts.join(", ");
-  return { facts: `${line.charAt(0).toUpperCase()}${line.slice(1)}` };
+/** A span of seconds in the largest whole unit that says it exactly. */
+const spanOf = (seconds: number): string => {
+  const [count, unit] =
+    seconds % 86_400 === 0
+      ? [seconds / 86_400, "day"]
+      : seconds % 3600 === 0
+        ? [seconds / 3600, "hour"]
+        : seconds % 60 === 0
+          ? [seconds / 60, "minute"]
+          : [seconds, "second"];
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
 };
 
 /**
- * What stands in a card's last column. A switch where the card can be switched;
- * otherwise words saying what holds it, and where the merchant lacks something
- * set in Settings, which things, with the way there.
+ * How the goods come and the window they are owed within: a promise the
+ * merchant answers for, since an order still without goods at its end owes
+ * the buyer their money back. A card whose goods come later and that names no
+ * window is held to Agentify's own, which the merchant's list of cards does
+ * not carry, so the words say whose window it is and the link where it is
+ * written, rather than reading as no window at all. A parcel's window is the
+ * time to hand it to a carrier, not the time it arrives.
+ */
+type Delivery = Readonly<{ says: string; byDefault: Rest | null }>;
+
+const DEFAULT_WINDOW: Rest = {
+  href: "/docs/cards#goods-that-leave-later-than-the-answer",
+  words: "Agentify's default window",
+};
+
+const deliveryOf = (card: MerchantCard["card"]): Delivery => {
+  const word = FULFILLMENT_WORDS[card.fulfillment];
+  if (card.ship_within_seconds !== undefined) {
+    return {
+      says: `${word}, to a carrier within ${spanOf(card.ship_within_seconds)}`,
+      byDefault: null,
+    };
+  }
+  if (card.fulfill_deadline_seconds !== undefined) {
+    return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
+  }
+  return card.fulfillment === "async" || card.fulfillment === "confirm"
+    ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
+    : { says: word, byDefault: null };
+};
+
+/**
+ * What stands in a card's last column: the card's own switch, or nothing where
+ * pressing it now would mean nothing the merchant could act on. A card the
+ * shop published while the merchant's code sells is the one with words of its
+ * own: the banner names no reason for it, and only its row can say which of
+ * the cards came from the shop.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "words"; text: string }>
-  | Readonly<{ kind: "unset"; what: string; waiting: string }>;
+  | Readonly<{ kind: "reason"; text: string }>
+  | Readonly<{ kind: "none" }>;
 
 /**
  * The integration the merchant sells through, and their cards that are off
@@ -128,119 +154,119 @@ export interface CardsIntegration {
 }
 
 /**
- * With all selling stopped every card reads paused, and resuming one changes
- * nothing visible, so this says which switch holds it. A third reason, which
- * the document does not name: the merchant lacks something the gateway asks of
- * every merchant, which it folds into every card's word. Then the control names
- * what is missing, with the words and link the other screens use, and never
- * says selling was stopped. A missing live approval is said as such; a card
- * paused where the rule finds nothing missing (only a change between two reads
- * can do that) is said to be off sale and no more.
- *
- * A card published by the integration not in use is off sale for that reason
- * whatever else holds it, and that is said first: neither resuming it nor
- * anything set in Settings would put it on sale.
+ * A merchant who has left sells through nothing, so their cards are offered
+ * no switch and no reason. Every other card keeps its own switch whatever
+ * holds the whole account, because those holds lift at once, the moment the
+ * approval lands or a name or a wallet is set: a card paused before then stays
+ * paused, and a Resume pressed meanwhile can be taken back. A card published
+ * by the integration not in use is offered none, and its word does not say
+ * its own pause either: the move between integrations is made on the
+ * WooCommerce page, coming back to the code puts none of its cards on sale at
+ * once (all sales come back paused here if any would sell), and going to the
+ * shop puts the shop's cards on sale as they stand.
  */
 const cardControl = (
   entry: MerchantCard,
-  merchant: MerchantCardList["selling"],
-  door: Readiness,
+  selling: MerchantCardList["selling"],
   integration: CardsIntegration,
 ): CardControl => {
+  if (selling === "departed") return { kind: "none" };
   if (integration.offSale.includes(entry.id)) {
-    return {
-      kind: "words",
-      text:
-        integration.through === "woocommerce"
-          ? "Off sale while you sell through your WooCommerce shop"
-          : "Off sale while you sell through your own code",
-    };
+    return integration.through === "woocommerce"
+      ? { kind: "none" }
+      : { kind: "reason", text: "Off sale while you sell through your own code" };
   }
-  if (entry.paused) {
-    return { kind: "switch", verb: "resume" };
-  }
-  if (entry.selling === "open") {
-    return { kind: "switch", verb: "pause" };
-  }
-  if (merchant !== "open") {
-    return { kind: "words", text: "All selling is stopped" };
-  }
-  const unset = unsetIn(door);
-  const waiting = door.missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-    ? ` ${APPROVAL_PENDING}`
-    : "";
-  if (unset.length > 0) {
-    return { kind: "unset", what: unset.map((one) => UNSET_WORDS[one]).join(" and "), waiting };
-  }
-  return { kind: "words", text: `Not on sale.${waiting}` };
+  return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
 };
+
+/**
+ * A card published by the integration not in use is off sale whatever its own
+ * switch says, so it never reads paused by the merchant: resuming it would not
+ * put it on sale.
+ */
+const cardWord = (entry: MerchantCard, integration: CardsIntegration): Word =>
+  integration.offSale.includes(entry.id)
+    ? CARD_WORDS.offSale
+    : entry.paused
+      ? CARD_WORDS.pausedByYou
+      : entry.selling === "open"
+        ? CARD_WORDS.onSale
+        : CARD_WORDS.offSale;
 
 /**
  * Built from the route table, not written out, so the two cannot drift. The
  * origin is the one the deployment is reached at, not the internal gateway
  * address. The identifier is our catalog one, not the merchant's own: a
  * merchant who pasted their `merchant_item_id` into it would get a 404 from a
- * working gateway. Cut at each separator, so a wrapped address breaks between
- * its parts rather than mid-word, and the parts joined back are the address.
+ * working gateway.
  */
-const buyingAddress = (origin: string, entry: MerchantCard): readonly string[] => {
-  const [first, ...segments] = `${origin}${expandPath(API_ROUTES.purchase_item.path, {
-    item_id: entry.id,
-  })}`.split(/(?<!\/)\/(?!\/)/);
-  return [first ?? "", ...segments.map((segment) => `/${segment}`)];
-};
+const buyingAddress = (origin: string, entry: MerchantCard): string =>
+  `${origin}${expandPath(API_ROUTES.purchase_item.path, { item_id: entry.id })}`;
 
 interface CardRow {
   readonly id: string;
   /** Off sale for whatever reason, which the screen draws as a quieter row. */
   readonly off: boolean;
   readonly title: string;
-  readonly aside: CardAside;
-  readonly buy: readonly string[];
+  readonly priced: CardPrice;
+  /** The address an agent buys the card at. */
+  readonly buy: string;
   readonly itemId: string;
   readonly price: string;
-  readonly delivery: string;
+  readonly delivery: Delivery;
   readonly state: Word;
   readonly control: CardControl;
 }
 
 export interface CardsView {
-  readonly frame: FrameView;
-  readonly published: number;
-  readonly pausedByYou: number;
   /**
    * The control that stops or restarts all selling; absent for a merchant who
    * has left, who is offered no way back on sale here.
    */
   readonly allSelling: null | Readonly<{ verb: "pause" | "resume"; label: string }>;
-  readonly rows: readonly CardRow[];
-  /** Present only when there are no cards: why, and the two ways to the first. */
-  readonly empty: null | Readonly<{ why: string; woo: boolean }>;
-  readonly sellingNote: string;
-  readonly sellingRest: Rest;
+  /**
+   * The cards the address asked for, at most a page of them: what was searched
+   * for, the segments with their counts, how much was cut, and why none is
+   * drawn where the merchant has some.
+   */
+  readonly listing: Listing<CardRow>;
+  /**
+   * Present only when there are no cards: the sentence, and the ways to a
+   * first card, the shop beside the SDK where this dashboard offers it; none
+   * for a merchant who has left, whom nothing here puts back on sale. What
+   * the account lacks to publish is the banner's to say.
+   */
+  readonly empty: null | Readonly<{ says: string; ways: null | Readonly<{ woo: boolean }> }>;
+  /** The line under the cards about what their switches do, and where the rest is. */
+  readonly note: Readonly<{ says: string; rest: Rest }>;
+  /** Over the rows, where the search was read as a whole product code, which it says. */
+  readonly byCode: string | null;
 }
 
 const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
 
 /**
- * The SDK comes first and the WooCommerce connector after it, only where this
- * dashboard has one. While no name is set, everything published is refused, so
- * the line says so rather than leaving a merchant to work out why their card
- * never arrived.
+ * A card on sale is one an agent can buy now; every other card is off sale,
+ * paused by the merchant or held by something the banner names.
  */
-const emptyCatalogue = (viewer: Viewer): string =>
-  refusedForNoName(viewer)
-    ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
-    : readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-      ? `You haven't published any cards yet. ${APPROVAL_PENDING}`
-      : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
+const CARD_SEGMENTS: readonly SegmentRule<CardRow>[] = [
+  { key: "all", label: "All", holds: () => true, none: "" },
+  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No card is on sale." },
+  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No card is off sale." },
+];
+
+const CARD_SEGMENT_KEYS = CARD_SEGMENTS.map((one) => one.key);
+
+/** Where a press on the cards leads back to: the list its form's fields name. */
+export const cardsPlace = (fields: URLSearchParams): string =>
+  placeOf("/cards", fields, CARD_SEGMENT_KEYS);
 
 export const cardsView = (
-  viewer: Viewer,
   cards: MerchantCardList,
   origin: string,
   wooAvailable = false,
   integration: CardsIntegration = ALL_THROUGH_THE_CODE,
+  query: URLSearchParams = new URLSearchParams(),
 ): CardsView => {
   // "Departed" is not folded into "stopped": that would offer a merchant who
   // has left a button back on sale and a note saying accepted orders are
@@ -248,57 +274,95 @@ export const cardsView = (
   // (`selling.ts` explains).
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
-  const door = readinessSeenBy(viewer);
+  const rows = cards.cards.map((entry): CardRow => {
+    const state = cardWord(entry, integration);
+    return {
+      id: entry.id,
+      off: state !== CARD_WORDS.onSale,
+      title: entry.card.title,
+      priced: cardPrice(entry),
+      buy: buyingAddress(origin, entry),
+      itemId: entry.card.merchant_item_id,
+      price: money(entry.card.price),
+      delivery: deliveryOf(entry.card),
+      state,
+      control: cardControl(entry, cards.selling, integration),
+    };
+  });
+  const asked = askedIn(query, CARD_SEGMENT_KEYS);
+  // A card is found by its title or by a part of its product code, the two a
+  // merchant knows it by, except that a search that is some card's whole
+  // product code, as a link to one card writes it, finds that code alone:
+  // the card coded 1 is not the card coded 11.
+  const code = asked.q.toLocaleLowerCase();
+  const coded = rows.filter((row) => row.itemId.toLocaleLowerCase() === code).length;
+  const byCode = code !== "" && coded > 0;
 
   return {
-    frame: frameOf(viewer, cards.selling),
-    published: cards.cards.length,
-    pausedByYou: cards.cards.filter((entry) => entry.paused).length,
     allSelling: gone
       ? null
       : stopped
         ? { verb: "resume", label: RESUME_ALL_SELLING }
         : { verb: "pause", label: STOP_ALL_SELLING },
-    rows: cards.cards.map((entry) => ({
-      id: entry.id,
-      off: entry.selling !== "open",
-      title: entry.card.title,
-      aside: cardAside(entry),
-      buy: buyingAddress(origin, entry),
-      itemId: entry.card.merchant_item_id,
-      price: money(entry.card.price),
-      delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
-      state: SELLING_WORDS[entry.selling],
-      control: cardControl(entry, cards.selling, door, integration),
-    })),
-    empty: cards.cards.length === 0 ? { why: emptyCatalogue(viewer), woo: wooAvailable } : null,
-    sellingNote: sellingNote(cards.selling),
-    sellingRest:
-      cards.selling === "departed"
-        ? {
-            href: "/docs/faq#can-i-leave-altogether",
-            words: "What leaving settles and what it does not",
-          }
-        : {
-            href: "/docs/faq#can-i-pause-the-selling",
-            words: "What a pause does to the orders you have",
-          },
+    listing: listingOf({
+      rows,
+      asked,
+      path: "/cards",
+      segments: CARD_SEGMENTS,
+      matches: (row, words) =>
+        byCode
+          ? row.itemId.toLocaleLowerCase() === words
+          : row.title.toLocaleLowerCase().includes(words) ||
+            row.itemId.toLocaleLowerCase().includes(words),
+      noMatch: (q, within) => {
+        const which = within === null ? "No card" : `No card ${within.toLocaleLowerCase()}`;
+        return byCode ? `${which} has the product code “${q}”.` : `${which} matches “${q}”.`;
+      },
+      showAll: "Show all cards",
+    }),
+    empty:
+      cards.cards.length > 0
+        ? null
+        : gone
+          ? { says: "You have no cards.", ways: null }
+          : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
+    note: switchesNote(cards.selling),
+    byCode: byCode
+      ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
+      : null,
   };
 };
 
+const WHAT_A_PAUSE_DOES: Rest = {
+  href: "/docs/faq#can-i-pause-the-selling",
+  words: "What a pause does",
+};
+
 /**
- * A pause leaves accepted orders to play out; leaving closed them and owes back
- * the money for anything paid for and not delivered. One sentence cannot be
- * true of both.
+ * A pause leaves accepted orders to play out, which the banner says while all
+ * sales are paused, so then the line says what resuming leaves alone; leaving
+ * closed the open orders, and nothing on this page starts selling again.
  */
-const sellingNote = (selling: MerchantCardList["selling"]): string => {
+const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] => {
   switch (selling) {
     case "departed":
-      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
+      return {
+        says: "Selling does not start again from this page.",
+        rest: {
+          href: "/docs/faq#can-i-leave-altogether",
+          words: "What leaving settles and what it does not",
+        },
+      };
     case "paused":
-      return "All sales are paused: no new orders are accepted, and the orders you have already accepted play out as usual. Cards you paused yourself stay paused when you resume.";
+      return {
+        says: `Cards you paused yourself stay paused when you press ${RESUME_ALL_SELLING}.`,
+        rest: WHAT_A_PAUSE_DOES,
+      };
     case "open":
-      return "A pause takes the card off sale without abandoning orders: the ones you have already accepted play out as usual.";
+      return {
+        says: "A pause takes a card off sale; orders you have already accepted play out as usual.",
+        rest: WHAT_A_PAUSE_DOES,
+      };
   }
 };
 
@@ -306,9 +370,9 @@ const sellingNote = (selling: MerchantCardList["selling"]): string => {
 
 interface OrderRow {
   readonly id: string;
-  readonly needsYou: boolean;
   /** The card's title where the merchant still has the card, its code otherwise. */
   readonly product: string;
+  /** The product's code: the row does not print it, and a search finds the order by it. */
   readonly itemId: string;
   readonly amount: string;
   /**
@@ -320,94 +384,200 @@ interface OrderRow {
   readonly shares: Shares | null;
   readonly state: Word;
   readonly priceSet: MomentView;
+  /** The day of `priceSet`, for the heading over that day's orders. */
+  readonly day: string;
 }
 
-/** One order that needs the merchant, said in full under the table. */
-interface OrderCallout {
-  readonly id: string;
-  readonly state: string;
+/** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
+interface OrderNeed extends OrderRow {
   readonly why: string;
   readonly rest: Rest | null;
 }
 
+/** Orders told in full, the newest first and at most a page of them, and how many there are. */
+export interface ToldOrders {
+  readonly rows: readonly OrderNeed[];
+  readonly of: number;
+}
+
 export interface OrdersView {
-  readonly frame: FrameView;
-  readonly open: boolean;
-  /** Null when there is no order to count. */
-  readonly lede: string | null;
-  /** Null when no order is a test purchase. */
+  /** The gateway lists no order at all, so there is nothing to search or narrow. */
+  readonly none: boolean;
+  /**
+   * Said once over the orders where some are test purchases and no band over
+   * the page says the channel's payments are tests; null otherwise.
+   */
   readonly testNote: string | null;
-  readonly rows: readonly OrderRow[];
-  readonly empty: string;
-  readonly callouts: readonly OrderCallout[];
+  /**
+   * The orders the address asked for, newest first and at most a page of
+   * them: what was searched for, the segments with their counts, how much was
+   * cut, and why none is drawn where the merchant has some.
+   */
+  readonly listing: Listing<OrderRow>;
+  /** The refunds due the search finds: the orders the merchant has to act on. */
+  readonly needsYou: ToldOrders;
+  /**
+   * Goods delivered and held until the buyer pays: nothing owed by the
+   * merchant, who decides whether to revoke what they delivered or to wait.
+   */
+  readonly waitsOnTheBuyer: ToldOrders;
 }
 
 /** The terms of the payout split each order's charge went into, by order. */
 export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
 
+/**
+ * Open is the gateway's own narrowing, read beside the whole list rather than
+ * worked out from it: a status does not say whether an order is open, since
+ * "In progress" reads the same for an order the merchant was handed and for a
+ * price nobody paid.
+ */
+const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
+  const ids = new Set(open.orders.map((order) => order.id));
+  return [
+    { key: "all", label: "All", holds: () => true, none: "" },
+    {
+      key: "open",
+      label: "Open",
+      holds: (row) => ids.has(row.id),
+      none: "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not counted as open.",
+    },
+  ];
+};
+
+/** What stands between the two halves of an identifier shown short: its ellipsis, or dots typed for it. */
+const ELLIPSIS = /…|\.{2,}/;
+
+/** A character no order ID holds. */
+const NOT_OF_AN_ID = /[^a-z0-9_]/;
+
+/** How many characters of an ID the page shows on each side of the ellipsis. */
+const HALF = 4;
+
+/** A run of an ID's characters this long does not turn up in another order's ID by chance. */
+const RUN = 8;
+
+/**
+ * Which orders a search finds, worked out once from the words searched for,
+ * since a pasted search can be long. An order is found by its product's title
+ * or code; by its ID where the words hold the whole of it, begin it (its
+ * prefix may be left off) or end it, at least as many characters as the page
+ * shows of each side, or are a run of it too long to turn up by chance; and by
+ * the short form the page shows it in, `ord_17ff…7de3`, which finds an ID that
+ * begins with what stands before the ellipsis and ends with what stands after.
+ * A few characters from the middle of an ID, which the page never shows, find
+ * nothing: they would list orders whose rows show nothing of what was searched
+ * for.
+ */
+const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
+  const parts = words.split(ELLIPSIS).map((part) => part.trim());
+  // The short form's halves are the run of an ID's characters on each side,
+  // so the words or marks a paste brings around it are left out.
+  const head = (parts[0] ?? "").split(NOT_OF_AN_ID).at(-1) ?? "";
+  const tail = (parts[1] ?? "").split(NOT_OF_AN_ID)[0] ?? "";
+  const short = parts.length === 2 && head + tail !== "";
+  return (row) => {
+    if (
+      row.product.toLocaleLowerCase().includes(words) ||
+      row.itemId.toLocaleLowerCase().includes(words)
+    ) {
+      return true;
+    }
+    const id = row.id.toLocaleLowerCase();
+    if (words.includes(id)) {
+      return true;
+    }
+    const rest = id.slice(id.indexOf("_") + 1);
+    const begins = (part: string) => id.startsWith(part) || rest.startsWith(part);
+    if (short) {
+      return begins(head) && id.endsWith(tail);
+    }
+    return (
+      (words.length >= HALF && (begins(words) || id.endsWith(words))) ||
+      (words.length >= RUN && id.includes(words))
+    );
+  };
+};
+
+/** When an order's price was set, to sort by; a moment that cannot be read goes last. */
+const setAt = (order: OrderList["orders"][number]): number => {
+  const at = Date.parse(order.price.at);
+  return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
+};
+
 export const ordersView = (
-  viewer: Viewer,
+  mode: SurfaceMode,
   cards: MerchantCardList,
   orders: OrderList,
-  open: boolean,
+  open: OrderList,
+  query: URLSearchParams = new URLSearchParams(),
   owed: Readonly<Record<string, RefundCause>> = {},
   paidInto: PaidIntoSplits = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
-  return {
-    frame: frameOf(viewer, cards.selling),
-    open,
-    lede: orders.orders.length === 0 ? null : ordersLede(orders, open),
-    testNote: testOrders(orders, viewer.mode),
-    rows: orders.orders.map((order) => ({
-      id: order.id,
-      needsYou: needsAttention(order.status),
-      product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
-      itemId: order.merchant_item_id,
-      amount: money(order.price),
-      test: order.test,
-      shares: sharesIn(order.price, paidInto[order.id]),
-      state: ORDER_WORDS[order.status],
-      priceSet: momentView(order.price.at),
-    })),
-    empty: open
-      ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."
-      : "No orders yet.",
-    callouts: orders.orders
-      .filter((order) => needsAttention(order.status))
-      .map((order) => ({
+  // Newest first, whatever order the gateway lists them in, so the page a long
+  // list opens on holds what just happened and a day's orders sit together.
+  const listed = [...orders.orders]
+    .sort((one, other) => setAt(other) - setAt(one) || 0)
+    .map((order) => ({
+      order,
+      row: {
         id: order.id,
-        state: ORDER_WORDS[order.status].text,
-        why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
+        product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
+        itemId: order.merchant_item_id,
+        amount: money(order.price),
+        test: order.test,
+        shares: sharesIn(order.price, paidInto[order.id]),
+        state: ORDER_WORDS[order.status],
+        priceSet: momentView(order.price.at),
+        day: dayOf(order.price.at),
+      } satisfies OrderRow,
+    }));
+  const segments = orderSegments(open);
+  const asked = askedIn(
+    query,
+    segments.map((one) => one.key),
+  );
+  const finds = orderSearch(asked.q.toLocaleLowerCase());
+  const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
+  const told = (which: (status: OrderStatus) => boolean): ToldOrders => {
+    const all = found.filter(({ order }) => which(order.status));
+    return {
+      rows: all.slice(0, PAGE_ROWS).map(({ order, row }) => ({
+        ...row,
+        why: whatHappened(order, owed[order.id], paidInto[order.id] !== undefined),
         rest: whereTheRestIs(order.status),
       })),
+      of: all.length,
+    };
+  };
+  return {
+    none: orders.orders.length === 0,
+    testNote: testOrders(orders, mode),
+    listing: listingOf({
+      rows: listed.map(({ row }) => row),
+      asked,
+      path: "/orders",
+      segments,
+      matches: finds,
+      noMatch: (q, within) =>
+        within === null
+          ? `No order matches “${q}”.`
+          : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
+      showAll: "Show all orders",
+    }),
+    needsYou: told(needsYou),
+    waitsOnTheBuyer: told(waitsOnTheBuyer),
   };
 };
 
 /**
- * Counts only what it can stand behind. "Open" is the gateway's filter; "needs
- * you" is `NEEDS_ATTENTION`, and the sentence is scoped to those two endings
- * rather than to owing in general: an order merely under way may already be
- * money taken against goods not sent. What each order needs is said per order
- * in the callouts.
- */
-const ordersLede = (orders: OrderList, open: boolean): string => {
-  const wanting = orders.orders.filter((order) => needsAttention(order.status)).length;
-  const scope = open ? "open" : "";
-  const listed = `${countOf(orders.orders.length, `${scope} order`.trim())} listed.`;
-
-  if (wanting === 0) {
-    return `${listed} No refunds are due, and nothing was delivered without payment.`;
-  }
-  return `${listed} ${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you, and each one is set out below.`;
-};
-
-/**
  * Orders carry the test flag too, and their sums would otherwise be taken for
- * money that moved. Where the band over every page of the channel already says
- * its payments are tests, the page does not say it a second time.
+ * money that moved: each sum carries the mark, and the page says it once too.
+ * Where the band over every page of the channel already says its payments are
+ * tests, the page does not say it a second time.
  */
 const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
   const tests = orders.orders.filter((order) => order.test).length;
@@ -425,29 +595,29 @@ const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
  * guessing the commonest cause.
  */
 const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
-  refused:
-    "The payment was received, then your integration refused the order, so the product was not delivered.",
-  deadline_passed:
-    "The payment was received, the delivery window ran out, and the product was not delivered.",
-  merchant_left:
-    "The payment was received, and the order closed undelivered when you left Agentify.",
+  refused: "Paid, then your integration refused the order, so nothing was delivered.",
+  deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
+  merchant_left: "Paid, and the order closed undelivered when you left Agentify.",
   charge_confirmed_late:
-    "The payment network confirmed the payment only after we had stopped waiting for it and closed the order, so the product was not delivered.",
+    "Paid, but the payment network confirmed the payment only after we had stopped waiting for it and closed the order, so nothing was delivered.",
 };
 
 /**
  * A refund owes the buyer the whole price, though a payout split paid the
  * merchant only their share of it: the split gives Agentify's commission back
- * to nobody.
+ * to nobody. The sum is a test purchase's where it is one, since an unmarked
+ * sum reads as money that moved. Held goods are released by the buyer's own
+ * second payment for the same order, never by a new purchase, which would
+ * deliver twice.
  */
-const whyItNeedsYou = (
+const whatHappened = (
   order: OrderList["orders"][number],
   cause: RefundCause | undefined,
   intoASplit: boolean,
 ): string =>
   order.status === "refund_due"
-    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return the full price, ${money(order.price)}, from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
-    : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price${order.test ? " of this test purchase" : ""}, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
+    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
 
 const sharesIn = (
   price: { readonly amount: string; readonly currency: string },
@@ -455,16 +625,16 @@ const sharesIn = (
 ): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
 
 /**
- * A refund is a thing to go and do, and the sentence before says all of it.
- * Held goods are not: what can still happen is a payment somebody else makes,
- * and the portal says what settles it.
+ * How a refund is made is linked once, over the refunds. Held goods owe
+ * nobody anything: what can still happen is a payment the buyer makes, and the
+ * documentation says what settles it and what the merchant's choice is.
  */
-const whereTheRestIs = (status: OrderList["orders"][number]["status"]): Rest | null =>
+const whereTheRestIs = (status: OrderStatus): Rest | null =>
   status === "refund_due"
     ? null
     : {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
-        words: "What can still happen to it",
+        words: "What can still happen",
       };
 
 // --- receipts ----------------------------------------------------------------
@@ -472,8 +642,9 @@ const whereTheRestIs = (status: OrderList["orders"][number]["status"]): Rest | n
 /**
  * The transfer behind a receipt, as the payment layer named it: a link to the
  * chain's page for it where this deployment has one and the name is a
- * transaction hash, the name as written otherwise. Written out whole, because a
- * shortened hash is a different string to whoever pastes it. A receipt without
+ * transaction hash, the name as written otherwise. The view holds it whole, for
+ * the copy button and the link: a shortened hash is a different string to
+ * whoever pastes it. A receipt without
  * one says only that this receipt does not carry it, not that there was no
  * transfer: older receipts and payments an operator recorded by hand had one
  * all the same.
@@ -505,11 +676,12 @@ interface ReceiptRow {
   readonly paid: MomentView;
   readonly priceSet: MomentView;
   readonly priceAsOf: MomentView;
+  /** The day of `paid`, for the heading over that day's receipts. */
+  readonly day: string;
   readonly transfer: TransferView;
 }
 
 export interface ReceiptsView {
-  readonly frame: FrameView;
   /** Null when no receipt is a test purchase. */
   readonly testWarning: string | null;
   readonly count: number;
@@ -528,7 +700,6 @@ export const receiptsView = (
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   return {
-    frame: frameOf(viewer, cards.selling),
     testWarning: testWarning(receipts, viewer.mode),
     count: receipts.receipts.length,
     sums: sumsOf(receipts),
@@ -539,20 +710,24 @@ export const receiptsView = (
       (receipt) => receipt.outcome === "delivered" || receipt.outcome === "shipped",
     ).length,
     ofCount: `of ${countOf(receipts.receipts.length, "receipt")}`,
-    rows: receipts.receipts.map((receipt) => ({
-      id: receipt.id,
-      orderId: receipt.order_id,
-      needsYou: receipt.outcome === "refund_due",
-      product: titles.get(receipt.item_id) ?? receipt.item_id,
-      amount: money(receipt.price),
-      test: receipt.test,
-      shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
-      outcome: ORDER_WORDS[receipt.outcome],
-      paid: momentView(receipt.paid_at),
-      priceSet: momentView(receipt.price.at),
-      priceAsOf: momentView(receipt.price.as_of),
-      transfer: transferOf(receipt.transaction, transactionPage),
-    })),
+    // The latest payment first, whatever order the gateway lists them in.
+    rows: [...receipts.receipts]
+      .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
+      .map((receipt) => ({
+        id: receipt.id,
+        orderId: receipt.order_id,
+        needsYou: needsYou(receipt.outcome),
+        product: titles.get(receipt.item_id) ?? receipt.item_id,
+        amount: money(receipt.price),
+        test: receipt.test,
+        shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
+        outcome: ORDER_WORDS[receipt.outcome],
+        paid: momentView(receipt.paid_at),
+        priceSet: momentView(receipt.price.at),
+        priceAsOf: momentView(receipt.price.as_of),
+        day: dayOf(receipt.paid_at),
+        transfer: transferOf(receipt.transaction, transactionPage),
+      })),
   };
 };
 

@@ -1,7 +1,7 @@
 /*
  * The visual language shared by every surface on the origin: the tokens, the
  * base element rules, and the primitives every surface draws (page width,
- * button, field, badge, table, brand lockup, footer band, the channel's
+ * button, field, badge, brand lockup, footer band, the channel's
  * notice, small typographic classes). The layout of one page does not belong
  * here; it lives with that page, and the layout reading pages share lives in
  * editorial.css.
@@ -88,9 +88,9 @@
 
   /* Type sizes, named for what they set; body text is the base, 1rem at 1.6.
      Use one of these rather than a literal, and never a size in pixels. */
-  --text-caption: 0.75rem; /* a column head, a badge, a caption: the monospaced face */
+  --text-caption: 0.75rem; /* a column head or a caption: the monospaced face */
   --text-label: 0.8125rem; /* a field's label, an identifier, the signed-in address */
-  --text-small: 0.875rem; /* a table, a note, a hint under a box */
+  --text-small: 0.875rem; /* a note, a hint under a box, a state beside its dot */
   --text-code: 0.9375rem; /* a value read character by character: a secret, an address */
   --text-section: 1.5rem; /* the heading of a section inside a page */
   --text-title: clamp(2rem, 5vw, 2.5rem); /* the heading of a page that stands alone */
@@ -341,17 +341,18 @@ p {
   color: var(--fail);
 }
 
-/* A state in one word with a dot before it. The monospaced word tells a state
-   from the sentence beside it without relying on colour; the dot is hollow for
-   a state that is not settled yet. No pulse: a page that does not update itself
-   must not look as if it were watching something. Without a tone it is muted. */
+/* A state in a few words of plain sentence case with a dot before it, the dot
+   telling the state from the sentence beside it; it is hollow for a state that
+   is not settled yet, so the two read apart without relying on colour. No
+   pulse: a page that does not update itself must not look as if it were
+   watching something. Without a tone it is muted. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   white-space: nowrap;
   color: var(--muted);
-  font: 500 var(--text-caption) / 1.4 var(--font-mono);
+  font: 500 var(--text-small) / 1.4 var(--font-sans);
 }
 
 .badge::before {
@@ -392,144 +393,6 @@ p {
    not draw the eye. */
 .badge-quiet::before {
   color: var(--faint);
-}
-
-/*
- * A table of records on a card. Every value stays on screen at every width:
- * where the frame is too narrow for the columns, each row becomes a block with
- * every value beside its column's head, so each cell carries its head in
- * `data-label`. The width that decides is the frame's, a container query, so
- * the rule holds wherever the table is put; a table of seven columns or more
- * becomes blocks sooner. The frame's own scroll is the last resort for a value
- * nothing can break.
- */
-.table-frame {
-  margin: var(--space-card) 0 var(--space-section);
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  overflow-x: auto;
-  container-type: inline-size;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: var(--text-small);
-}
-
-.table thead th {
-  padding: var(--space-control) var(--space-block);
-  border-bottom: var(--hairline) solid var(--line);
-  background: var(--raised);
-  color: var(--muted);
-  font: 600 var(--text-caption) / 1.5 var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* Between columns the inset is narrower than at the frame's edges, or eight
-   columns would spend a third of a laptop's frame on padding. */
-.table tbody td {
-  height: 56px;
-  padding: var(--space-control) var(--space-block);
-  vertical-align: middle;
-}
-
-.table :is(th, td):first-child {
-  padding-left: var(--space-card);
-}
-
-.table :is(th, td):last-child {
-  padding-right: var(--space-card);
-}
-
-/* The inset of a row drawn as a block; padding does nothing to a table row. */
-.table tbody tr {
-  padding: 14px var(--space-block);
-}
-
-.table tbody tr + tr {
-  border-top: var(--hairline) solid var(--divider);
-}
-
-/* Wide enough for a four-word head on one line, narrow enough to leave a whole
-   moment beside it on a phone. Drawn only where the block layout gives it words. */
-.table tbody td::before {
-  display: table-cell;
-  width: 8.75rem;
-  padding-right: var(--space-control);
-  color: var(--muted);
-  font: 500 var(--text-caption) / 1.5 var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.table-empty {
-  padding: 40px var(--space-card);
-  color: var(--muted);
-  text-align: center;
-}
-
-@container (max-width: 860px) {
-  .table,
-  .table tbody,
-  .table tr {
-    display: block;
-  }
-
-  .table thead {
-    display: none;
-  }
-
-  .table tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    height: auto;
-    padding: 3px 0;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  .table tbody td::before {
-    content: attr(data-label);
-  }
-
-  .table tbody .badge {
-    white-space: normal;
-  }
-}
-
-@container (max-width: 1140px) {
-  .table:has(th:nth-child(7)),
-  .table:has(th:nth-child(7)) tbody,
-  .table:has(th:nth-child(7)) tr {
-    display: block;
-  }
-
-  .table:has(th:nth-child(7)) thead {
-    display: none;
-  }
-
-  .table:has(th:nth-child(7)) tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    height: auto;
-    padding: 3px 0;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  .table:has(th:nth-child(7)) tbody td::before {
-    content: attr(data-label);
-  }
-
-  .table:has(th:nth-child(7)) tbody .badge {
-    white-space: normal;
-  }
 }
 
 /* The bar that says the next page is on its way. Fixed to the window, so it

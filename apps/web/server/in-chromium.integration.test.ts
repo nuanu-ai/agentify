@@ -576,7 +576,7 @@ const watchCardFrames = (page: Page) =>
           stepsDone:
             card.querySelector("ol") !== null &&
             [...card.querySelectorAll("ol > li")].every(
-              (step) => step.lastElementChild?.textContent === "done",
+              (step) => step.lastElementChild?.textContent === "Done",
             ),
         };
         if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
@@ -616,12 +616,12 @@ describe("a scan in Chromium", () => {
 
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     await teaser;
-    expect(await page.locator("main section header").textContent()).not.toContain("complete");
+    expect(await page.locator("main section header").textContent()).not.toMatch(/complete/i);
     await page.getByLabel("Email").waitFor();
 
     const frames = await cardFrames(page);
     expect(
-      frames.filter((frame) => frame.badge === "complete" && frame.heading !== "Readable"),
+      frames.filter((frame) => frame.badge === "Complete" && frame.heading !== "Readable"),
     ).toEqual([]);
     expect(complaints).toEqual([]);
     await page.context().close();
@@ -639,11 +639,11 @@ describe("a scan in Chromium", () => {
     await page.getByLabel("Email").waitFor();
 
     const waiting = (await cardFrames(page)).filter(
-      (frame) => frame.badge === "complete" && frame.heading !== "Readable",
+      (frame) => frame.badge === "Complete" && frame.heading !== "Readable",
     );
     expect(waiting.length).toBeGreaterThan(0);
     for (const frame of waiting) {
-      expect(frame).toEqual({ badge: "complete", heading: null, reading: false, stepsDone: true });
+      expect(frame).toEqual({ badge: "Complete", heading: null, reading: false, stepsDone: true });
     }
     await page.context().close();
   });
@@ -685,7 +685,9 @@ describe("a scan in Chromium", () => {
     await page.getByText("No reliable diagnostic was produced").waitFor();
 
     const frames = await cardFrames(page);
-    expect(frames.filter((frame) => frame.badge === "fail" && frame.heading === null)).toEqual([]);
+    expect(frames.filter((frame) => frame.badge === "No result" && frame.heading === null)).toEqual(
+      [],
+    );
     await page.context().close();
   });
 

@@ -76,6 +76,11 @@ export type Answer<T> =
        * `why`.
        */
       readonly code?: string;
+      /**
+       * The orders a refusal is about, oldest first, for a screen that shows
+       * each one to be copied.
+       */
+      readonly orders?: readonly string[];
     };
 
 /**
@@ -127,8 +132,8 @@ export interface GatewayClient {
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   orders(open: boolean): Promise<Answer<OrderList>>;
   /**
-   * Why each order owing a refund owes it, by order, for the callout that says
-   * so. The order document carries the debt and not its cause.
+   * Why each order owing a refund owes it, by order, for the row that says so
+   * under Needs you. The order document carries the debt and not its cause.
    */
   refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
@@ -182,6 +187,20 @@ export interface GatewayClient {
       readonly through: Integration;
       readonly offSale: readonly string[];
       readonly selling: "open" | "paused" | "departed";
+    }>
+  >;
+  /**
+   * What the frame says over every page, from one read of the merchant's row
+   * and none of their cards: the selling state, the integration, the seller
+   * name, the wallet paid now and the operator's approval for live sales.
+   */
+  standing(): Promise<
+    Answer<{
+      readonly selling: "open" | "paused" | "departed";
+      readonly through: Integration;
+      readonly sellerName: string | null;
+      readonly payoutWallet: string | null;
+      readonly liveApproved: boolean;
     }>
   >;
   /**
@@ -398,28 +417,25 @@ const splitAt = (
 ): RecordedPayoutSplit | null =>
   splits.toPayOut.find((split) => split.address.toLowerCase() === address.toLowerCase()) ?? null;
 
-/** How many of the orders holding a switch the refusal names before counting the rest. */
-const ORDERS_NAMED = 5;
-
 /**
  * Why a switch of integration was refused, in the words of the shop screen it
- * is drawn on: which orders still wait on the integration being left, and what
- * lets them finish.
+ * is drawn on: how many orders still wait on the integration being left, and
+ * what lets them finish. The orders themselves travel beside the sentence, for
+ * the screen to show each one.
  */
 export const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
-  const named = waiting.slice(0, ORDERS_NAMED).join(", ");
-  const rest = waiting.length - ORDERS_NAMED;
-  const which = rest > 0 ? `${named} and ${rest} more` : named;
   const one = waiting.length === 1;
   const counted = one ? "1 order still waits" : `${waiting.length} orders still wait`;
+  const each = one ? "it has" : "each has";
   return {
     ok: false,
     status: CONFLICT,
     code: "orders_waiting",
+    orders: waiting,
     why:
       to === "woocommerce"
-        ? `${counted} on your own code: ${which}. ${one ? "It has" : "Each has"} to end before your shop takes over, because from then on your code receives nothing: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, stop all selling on Cards.`
-        : `${counted} on your shop: ${which}. ${one ? "It has" : "Each has"} to end before the shop is disconnected, because from then on nothing reads the shop: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
+        ? `${counted} on your own code, and ${each} to end before your shop takes over: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, pause all sales on Cards.`
+        : `${counted} on your shop, and ${each} to end before the shop is disconnected, because nothing reads the shop after that: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
   };
 };
 
@@ -641,6 +657,10 @@ export const gatewayFor = (
     integration: () =>
       call("reading the integration", async () =>
         done(await application.integrationOf(merchantId)),
+      ),
+    standing: () =>
+      call("reading the merchant's standing", async () =>
+        done(await application.standingOf(merchantId)),
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {

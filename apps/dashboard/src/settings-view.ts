@@ -13,8 +13,8 @@ import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
 import { type CommissionRate, percentagesOf } from "./shares.js";
-import { type FrameView, type MomentView, momentView } from "./views.js";
-import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
+import { type MomentView, momentView } from "./views.js";
+import { APPROVAL_GIVEN } from "./words.js";
 
 /**
  * What the page is drawn from: the gateway's answers, all read together, and
@@ -96,9 +96,10 @@ export interface WalletView {
 }
 
 export interface SettingsView {
-  readonly frame: FrameView;
   readonly who: string;
-  readonly lede: string;
+  /** The name buyers read; null where none is set, which the banner says. */
+  readonly lede: string | null;
+  /** That Agentify approved the merchant for live sales; null otherwise. */
   readonly approval: string | null;
   readonly name: Readonly<{
     rule: string;
@@ -235,18 +236,12 @@ export const settingsView = (
   const pending = payoutWallet.pending;
 
   return {
-    frame: { unnamed: false },
     who,
-    lede:
-      sellerName === null
-        ? `You have not set a seller name yet.${door.missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME) ? " Until you do, cards cannot be published." : ""}`
-        : `Your products are sold under ${sellerName}.`,
-    approval:
-      mode === "live" && liveApproval !== undefined
-        ? liveApproval
-          ? APPROVAL_GIVEN
-          : APPROVAL_PENDING
-        : null,
+    // A missing name is the banner's to say, with what it holds back.
+    lede: sellerName === null ? null : `Your products are sold under ${sellerName}.`,
+    // A missing approval is the banner's to say, over every page; Settings
+    // says only that it was given.
+    approval: mode === "live" && liveApproval === true ? APPROVAL_GIVEN : null,
     name: {
       rule: NAME_RULE,
       standing: name?.problem === NAME_CANNOT_BE_TAKEN_AWAY ? null : NAME_CANNOT_BE_TAKEN_AWAY,
@@ -261,11 +256,11 @@ export const settingsView = (
       problem: site?.problem ?? null,
     },
     wallet: {
+      // Where publishing asks for an address and none is set, the banner over
+      // the page says what that holds back.
       purpose: !door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
         ? `${SETTLES[mode]} Publishing does not ask for this address here, so it is optional.`
-        : door.missing.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
-          ? `${SETTLES[mode]} Until you set one, publishing a card is refused.`
-          : SETTLES[mode],
+        : SETTLES[mode],
       commission: commissionOf(mode, payoutSplits.rate),
       saved,
       split: saved === null ? null : splitBeside(saved, payoutSplits.inForce, addressPage),

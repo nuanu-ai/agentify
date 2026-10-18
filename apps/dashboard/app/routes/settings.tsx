@@ -37,7 +37,7 @@ export async function action(asked: ActionFunctionArgs) {
 export default function Settings() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="settings" title="Settings" frame={view.frame}>
+    <Frame tab="settings" title="Settings">
       <SettingsScreen view={view} />
     </Frame>
   );

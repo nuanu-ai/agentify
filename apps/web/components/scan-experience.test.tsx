@@ -12,15 +12,22 @@ import { ScanExperience } from "./scan-experience";
 
 const scanId = "018f3f56-2ec8-7b16-8f66-5b8f93f3251f";
 
+/** The example of this name, its status last changed at the moment given. */
+const fixtureAt = (name: string, updatedAt: string) => {
+  const fixture = scanFixture(name);
+  if (fixture === null) throw new Error(`no example named ${name}`);
+  return { ...fixture, status: { ...fixture.status, updated_at: updatedAt } };
+};
+
 async function drawn(
-  fixture: string,
+  fixture: string | ReturnType<typeof fixtureAt>,
   switches: Partial<{ registrationEnabled: boolean; publicShareEnabled: boolean }> = {},
 ): Promise<string> {
   const { prelude } = await prerender(
     onSite(
       <ScanExperience
         browserObservationsEnabled={false}
-        fixture={scanFixture(fixture)}
+        fixture={typeof fixture === "string" ? scanFixture(fixture) : fixture}
         publicShareEnabled
         registrationEnabled
         remediationPromptEnabled
@@ -72,6 +79,22 @@ describe("ScanExperience teaser actions", () => {
     expect(markup).toContain("example.com");
     expect(markup).toContain("usually under 60 s");
     expect(markup).not.toContain("Scan 018f3f56");
+  });
+
+  it("names the day a finished scan was made, in UTC as its public link names it, and no day while it runs", async () => {
+    // Late on the 13th in UTC is already the 14th east of it.
+    const finished = await drawn(fixtureAt("teaser", "2026-10-13T23:30:00.000Z"));
+    const running = await drawn(fixtureAt("running", "2026-10-13T23:30:00.000Z"));
+
+    expect(finished).toContain("Oct 13, 2026");
+    expect(running).not.toContain("2026");
+  });
+
+  it("says a scan that ended without a result has none, not that it failed a check", async () => {
+    const markup = await drawn("failed");
+
+    expect(markup).toContain("No result");
+    expect(markup).not.toMatch(/>Fail</);
   });
 
   it("keeps privacy choices reachable from the scan help links", async () => {

@@ -1,13 +1,24 @@
 import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
-import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Badge } from "@agentify/ui";
+import {
+  type CSSProperties,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
-import { Brand } from "./brand";
+import { SCAN_STATUS_LINES } from "../lib/scan-status";
+import { CheckRow } from "./check-row";
 import { lazyPart, useHere } from "./lazy-part";
+import layout from "./result-layout.module.css";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
-import { SiteDoors } from "./site-chrome";
+import { SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -42,6 +53,8 @@ const CHECK_LABELS = {
   hreflang_locales: "Language alternatives",
 } as const;
 
+type AccessState = "loading" | "ready" | "missing" | "invalid";
+
 /** The token that reads a scan, kept for the tab's life under the scan's own key. */
 const tokenKey = (scanId: string) => `agentify:scan-token:${scanId}`;
 
@@ -70,9 +83,7 @@ export function ScanExperience({
 }>) {
   const fixtureName = fixture?.name;
   const [data, setData] = useState<ScanStatusResponse | null>(fixture?.status ?? null);
-  const [accessState, setAccessState] = useState<"loading" | "ready" | "missing" | "invalid">(
-    fixtureName ? "ready" : "loading",
-  );
+  const [accessState, setAccessState] = useState<AccessState>(fixtureName ? "ready" : "loading");
   const [requestError, setRequestError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
@@ -158,81 +169,102 @@ export function ScanExperience({
   const resultHere = useHere(ScanTeaser, scored && watchedItRun);
   const holding = scored && watchedItRun && !resultHere;
 
+  const fixtureBanner = fixtureName ? (
+    <div className={styles.fixtureBanner}>
+      Development fixture: {fixtureName}. This is not live scan evidence.
+    </div>
+  ) : null;
+
   return (
-    <main className={styles.page}>
-      <div className={styles.brandWrap}>
-        <Brand />
-        <SiteDoors />
-      </div>
-      <section className={styles.card}>
-        <header className={styles.scanHeader}>
-          <div>
-            <span className={styles.scanId}>
-              {data?.target_host ?? "Private website diagnostic"}
-            </span>
-            <span>{scanStatusLine(data?.status, accessState)}</span>
-          </div>
-          <ScanStateBadge accessState={accessState} status={data?.status} />
-        </header>
-
-        {fixtureName ? (
-          <div className={styles.fixtureBanner}>
-            Development fixture: {fixtureName}. This is not live scan evidence.
-          </div>
-        ) : null}
-
-        {accessState === "loading" ? <LoadingState /> : null}
-        {accessState === "missing" || accessState === "invalid" ? (
-          <AccessError invalid={accessState === "invalid"} />
-        ) : null}
-        {accessState === "ready" && !data ? <LoadingState /> : null}
-        {data && (!terminal || holding) ? (
-          <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
-        ) : null}
-        {data?.status === "failed" ? (
-          <ScanFailed
-            blocked={data.blocked === true}
-            checks={data.checks}
-            onRetry={() => window.location.assign("/")}
-          />
-        ) : null}
-        {finished && !data.teaser ? (
-          <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
-        ) : null}
+    <div className={layout.page}>
+      <SiteTop />
+      <main className={layout.body}>
         {scored && !holding ? (
           <Suspense
-            fallback={<ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />}
+            fallback={
+              <ScanCard accessState={accessState} data={data}>
+                <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
+              </ScanCard>
+            }
           >
             <ScanTeaser
+              browser={
+                browserObservationsEnabled ? (
+                  <Suspense fallback={null}>
+                    <BrowserObservations scanId={scanId} surface="scan" />
+                  </Suspense>
+                ) : null
+              }
               data={data}
+              notice={fixtureBanner}
               publicShareEnabled={publicShareEnabled}
               remediationPromptEnabled={remediationPromptEnabled}
               registrationEnabled={registrationEnabled}
               scanId={scanId}
             />
           </Suspense>
-        ) : null}
-
-        {requestError ? (
-          <div aria-live="polite" className={styles.pollNotice}>
-            {requestError}
-          </div>
-        ) : null}
-      </section>
-      {browserObservationsEnabled && finished && data.teaser ? (
-        <div className={styles.browserWrap}>
-          <Suspense fallback={null}>
-            <BrowserObservations scanId={scanId} surface="scan" />
-          </Suspense>
-        </div>
-      ) : null}
-      <nav aria-label="Scan help" className={styles.helpLinks}>
+        ) : (
+          <ScanCard accessState={accessState} data={data}>
+            {fixtureBanner}
+            {accessState === "loading" ? <LoadingState /> : null}
+            {accessState === "missing" || accessState === "invalid" ? (
+              <AccessError invalid={accessState === "invalid"} />
+            ) : null}
+            {accessState === "ready" && !data ? <LoadingState /> : null}
+            {data && (!terminal || holding) ? (
+              <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
+            ) : null}
+            {data?.status === "failed" ? (
+              <ScanFailed
+                blocked={data.blocked === true}
+                checks={data.checks}
+                onRetry={() => window.location.assign("/")}
+              />
+            ) : null}
+            {finished && !data.teaser ? (
+              <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
+            ) : null}
+            {requestError ? (
+              <div aria-live="polite" className={styles.pollNotice}>
+                {requestError}
+              </div>
+            ) : null}
+          </ScanCard>
+        )}
+      </main>
+      <nav aria-label="Scan help" className={layout.foot}>
         <a href="/docs/scanner">Scanner identity</a>
         <a href="/docs/scanner/methodology">Methodology</a>
         <SiteLink to="/privacy">Privacy</SiteLink>
-        <PrivacyChoicesButton className={styles.helpAction} />
+        <PrivacyChoicesButton />
       </nav>
-    </main>
+    </div>
+  );
+}
+
+/** A scan without a result to show yet, or without one at all, in a sheet of its own. */
+function ScanCard({
+  accessState,
+  children,
+  data,
+}: Readonly<{
+  accessState: AccessState;
+  children: ReactNode;
+  data: ScanStatusResponse | null;
+}>) {
+  return (
+    <div className={`${layout.sheet} ${layout.single}`}>
+      <section>
+        <header className={styles.scanHeader}>
+          <p>
+            <b>{data?.target_host ?? "Private website diagnostic"}</b>
+            <span>{scanStatusLine(data?.status, accessState)}</span>
+          </p>
+          <ScanStateBadge accessState={accessState} status={data?.status} />
+        </header>
+        {children}
+      </section>
+    </div>
   );
 }
 
@@ -290,6 +322,13 @@ function buildPhases(data: ScanStatusResponse | null, segment: Segment): readonl
   }));
 }
 
+const PHASE_WORDS: Record<Phase["status"], string> = {
+  done: "Done",
+  active: "Reading…",
+  pending: "Pending",
+  unavailable: "Unavailable",
+};
+
 function ProgressState({
   data,
   elapsedSeconds,
@@ -316,7 +355,7 @@ function ProgressState({
               {phase.status === "done" ? "✓" : index + 1}
             </span>
             <span>{phase.label}</span>
-            <span className="mono">{phase.status === "active" ? "reading…" : phase.status}</span>
+            <span>{PHASE_WORDS[phase.status]}</span>
           </li>
         ))}
       </ol>
@@ -326,17 +365,18 @@ function ProgressState({
             ? "Waiting for scanner capacity"
             : `${data.progress.completed} of ${data.progress.total} checks reported`}
         </span>
-        <span className="mono">{elapsedSeconds}s · usually under 60 s</span>
+        <span>{elapsedSeconds}s · usually under 60 s</span>
       </p>
       {data.checks.length > 0 ? (
         <details className={styles.checkDetails}>
           <summary>Live check details</summary>
           <div>
             {data.checks.map((check) => (
-              <div key={check.id}>
-                <span>{labelFor(check.label_code)}</span>
-                <StatusBadge status={check.status} />
-              </div>
+              <CheckRow
+                key={check.id}
+                state={<StatusBadge status={check.status} />}
+                title={labelFor(check.label_code)}
+              />
             ))}
           </div>
         </details>
@@ -347,7 +387,7 @@ function ProgressState({
 
 function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
   return (
-    <div className={styles.failed}>
+    <div className={`${layout.message} ${styles.state}`}>
       <h1>
         {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
       </h1>
@@ -371,12 +411,14 @@ function ScanStateBadge({
   accessState,
   status,
 }: Readonly<{
-  accessState: "loading" | "ready" | "missing" | "invalid";
+  accessState: AccessState;
   status?: ScanStatusResponse["status"];
 }>) {
   if (accessState === "missing" || accessState === "invalid")
     return <StatusBadge status="unavailable" />;
-  if (status === "failed") return <StatusBadge status="fail" />;
+  // A scan that ended without a result found no fault: "Fail" is a check's
+  // verdict on something it could read.
+  if (status === "failed") return <Badge tone="quiet">No result</Badge>;
   if (status === "completed") return <StatusBadge status="complete" />;
   if (status === "partial") return <StatusBadge status="partial" />;
   return <StatusBadge status="running" />;
@@ -384,19 +426,11 @@ function ScanStateBadge({
 
 function scanStatusLine(
   status: ScanStatusResponse["status"] | undefined,
-  accessState: "loading" | "ready" | "missing" | "invalid",
+  accessState: AccessState,
 ) {
   if (accessState === "missing" || accessState === "invalid") return "Private access required";
   if (!status) return "Reading scan state…";
-  const lines: Record<ScanStatusResponse["status"], string> = {
-    accepted: "Scan accepted",
-    queued: "Waiting for scanner capacity",
-    running: "Reading public signals…",
-    completed: "Scan complete",
-    partial: "Scan complete with unavailable checks",
-    failed: "Scan ended without a reliable result",
-  };
-  return lines[status];
+  return SCAN_STATUS_LINES[status];
 }
 
 function captureFragmentToken(scanId: string) {

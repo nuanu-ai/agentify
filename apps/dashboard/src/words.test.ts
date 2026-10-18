@@ -7,16 +7,16 @@ import {
   FulfillmentSchema,
   ORDER_STATUSES,
   ReceiptOutcomeSchema,
-  SELLING_STATES,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import {
+  dayOf,
   FULFILLMENT_WORDS,
   moment,
   money,
-  needsAttention,
+  needsYou,
   ORDER_WORDS,
-  SELLING_WORDS,
+  waitsOnTheBuyer,
 } from "./words.js";
 
 describe("the words a merchant reads", () => {
@@ -36,24 +36,30 @@ describe("the words a merchant reads", () => {
     }
   });
 
-  it("has one for every fulfillment mode and every selling state", () => {
+  it("has one for every fulfillment mode", () => {
     for (const mode of FulfillmentSchema.options) {
       expect(FULFILLMENT_WORDS[mode], mode).toBeTruthy();
     }
-    for (const selling of SELLING_STATES) {
-      expect(SELLING_WORDS[selling]?.text, selling).toBeTruthy();
-    }
   });
 
-  it("calls out the two endings that stay open owing something, and nothing else", () => {
-    // An order merely under way may be the merchant's to deliver, but this API
-    // cannot tell it from one created a second ago, so demanding attention for
-    // it would be a claim beyond the evidence.
-    expect(needsAttention("refund_due")).toBe(true);
-    expect(needsAttention("delivered_unpaid")).toBe(true);
-    expect(needsAttention("in_progress")).toBe(false);
-    expect(needsAttention("delivered")).toBe(false);
-    expect(needsAttention("payment_unresolved")).toBe(false);
+  it("holds as waiting on the buyer only goods delivered against a failed payment", () => {
+    // A payment nobody heard back about is refused a repeat, so its buyer
+    // cannot pay again, and it must not be listed as waiting for them to.
+    const waiting = ORDER_STATUSES.filter((status) => waitsOnTheBuyer(status));
+
+    expect(waiting).toStrictEqual(["delivered_unpaid"]);
+    expect(waitsOnTheBuyer("payment_unresolved")).toBe(false);
+  });
+
+  it("counts an order as needing the merchant only while a refund is due", () => {
+    // Goods delivered against a payment that failed wait on the buyer, who can
+    // pay again; the merchant has nothing to do there. An order merely under
+    // way may be the merchant's to deliver, but this API cannot tell it from
+    // one created a second ago, so demanding attention for it would be a claim
+    // beyond the evidence.
+    const needing = ORDER_STATUSES.filter((status) => needsYou(status));
+
+    expect(needing).toStrictEqual(["refund_due"]);
   });
 
   it("does not name a duty for an order that may be nobody's yet", () => {
@@ -68,7 +74,7 @@ describe("the words a merchant reads", () => {
   it("does not turn a payment we never heard about into a refusal", () => {
     // A purchase whose charge went unanswered may still have been charged; a
     // merchant told otherwise would reconcile it wrongly.
-    expect(ORDER_WORDS.payment_unresolved.text).toContain("unknown");
+    expect(ORDER_WORDS.payment_unresolved.text).toMatch(/unknown/i);
     expect(ORDER_WORDS.payment_unresolved.text).not.toContain("refus");
     expect(ORDER_WORDS.payment_unresolved.tone).toBe("warn");
   });
@@ -93,5 +99,12 @@ describe("money and moments on a screen", () => {
 
   it("shows a moment it cannot read rather than inventing one", () => {
     expect(moment("not a moment")).toBe("not a moment");
+    expect(dayOf("not a moment")).toBe("not a moment");
+  });
+
+  it("names the day a moment falls on in UTC, as the moments under it are given", () => {
+    expect(dayOf("2026-10-12T16:40:00Z")).toBe("12 October 2026");
+    // Late evening west of Greenwich is already the next day in UTC.
+    expect(dayOf("2026-10-12T23:30:00-02:00")).toBe("13 October 2026");
   });
 });

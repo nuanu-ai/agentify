@@ -1,13 +1,16 @@
-import { Button, Table } from "@agentify/ui";
+import { Button } from "@agentify/ui";
 import { useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import type { KeysView, NewKeyView } from "../../src/keys.js";
+import { Ident } from "../components/copy.js";
+import { Cell, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { Word } from "../components/word.js";
 
 /**
- * Named once because the note under the table quotes it, and that note is the
+ * Named once because the note under the list quotes it, and that note is the
  * only thing explaining what the blank covers.
  */
 const NO_CALLS_RECORDED = "No calls recorded";
@@ -43,40 +46,56 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
           <p>{view.lede}</p>
         </div>
       </div>
-      <Table
-        columns={["Name", "Created", "Last call", "State", ""]}
-        empty="No keys yet."
-        rows={view.rows.map((row) => ({
-          key: row.id,
-          ...(row.revoked === null ? {} : { className: "off" }),
-          cells: [
-            {
-              content: (
-                <>
-                  <div className="title">{row.label}</div>
-                  <div className="under mono">{row.id}</div>
-                </>
-              ),
-            },
-            { className: "quiet moment", content: <Moment at={row.created} /> },
-            row.lastCall === null
-              ? { className: "quiet", content: NO_CALLS_RECORDED }
-              : { className: "quiet moment", content: <Moment at={row.lastCall} /> },
-            {
-              className: "quiet",
-              content:
-                row.revoked === null ? (
-                  "Works"
+      {view.rows.length === 0 ? (
+        <ListEmpty>No keys yet.</ListEmpty>
+      ) : (
+        <List
+          label="API keys"
+          columns="minmax(12rem, 1fr) 8.5rem 8.5rem minmax(8rem, 11rem) 7rem"
+          head={["Name", "Created", "Last call", "State", ""]}
+        >
+          {view.rows.map((row) => (
+            <Row key={row.id} off={row.revoked !== null}>
+              <Cell at="main">
+                <Cell at="title">{row.label}</Cell>
+                <Cell at="ident">
+                  <Ident value={row.id} what="key ID" />
+                </Cell>
+              </Cell>
+              <Cell at="aside">
+                <Moment at={row.created} />
+              </Cell>
+              <Cell at="fact">
+                {row.lastCall === null ? (
+                  NO_CALLS_RECORDED
                 ) : (
                   <>
-                    Revoked <Moment at={row.revoked} />
+                    <span className="said-on-narrow">Last call </span>
+                    <Moment at={row.lastCall} />
                   </>
-                ),
-            },
-            { className: "control", content: row.revoked === null ? <Revoke id={row.id} /> : null },
-          ],
-        }))}
-      />
+                )}
+              </Cell>
+              <Cell at="state">
+                <Word word={row.state} />
+                {row.revoked === null ? null : (
+                  <>
+                    {" "}
+                    <Moment at={row.revoked} />
+                  </>
+                )}
+              </Cell>
+              {row.revoked === null ? (
+                <Cell at="action">
+                  <Revoke id={row.id} />
+                </Cell>
+              ) : null}
+              <RowMore summary="Created" of={row.label}>
+                Created <Moment at={row.created} />
+              </RowMore>
+            </Row>
+          ))}
+        </List>
+      )}
       {view.rows.length === 0 ? null : (
         <>
           {/* Beside the Revoke buttons, where the decision is made. */}

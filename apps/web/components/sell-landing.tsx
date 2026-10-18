@@ -482,7 +482,6 @@ function DashboardWindow({ view: shown }: Readonly<{ view: SellLanding["dashboar
         <ol className="mini-app__nav">
           {shown.sections.map((section, index) => (
             <li className={index === 0 ? "active" : undefined} key={section}>
-              <i>{index + 1}</i>
               {section}
             </li>
           ))}
@@ -502,16 +501,15 @@ function DashboardWindow({ view: shown }: Readonly<{ view: SellLanding["dashboar
       <div className="mini-app__main">
         <div className="mini-app__top">
           <b>{shown.heading}</b>
-          <span className="mini-app__state">{shown.state}</span>
+          <span className="mini-app__stop">{shown.stop}</span>
         </div>
         <div className="mini-app__body">
-          <div className="mini-app__bar">
-            {shown.counts.map(([label, count]) => (
-              <span className="mini-app__count" key={label}>
+          <div className="mini-app__segments">
+            {shown.segments.map(([label, count], index) => (
+              <span className={index === 0 ? "here" : undefined} key={label}>
                 {label} <b>{count}</b>
               </span>
             ))}
-            <span className="mini-app__stop">{shown.stop}</span>
           </div>
           <table className="mini-app__table">
             <thead>
@@ -532,7 +530,7 @@ function DashboardWindow({ view: shown }: Readonly<{ view: SellLanding["dashboar
                   <td>{price}</td>
                   <td className="mini-app__when">{when}</td>
                   <td>
-                    <span className={state === "sales paused" ? "mini-app__off" : "mini-app__on"}>
+                    <span className={state === "On sale" ? "mini-app__on" : "mini-app__off"}>
                       {state}
                     </span>
                   </td>

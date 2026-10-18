@@ -14,4 +14,3 @@ export { BrandMark } from "./mark.js";
 export { HeaderMenu } from "./menu.js";
 export { OnItsWay } from "./on-its-way.js";
 export { SITE_PICTURE, siteSchema } from "./site.js";
-export { Table } from "./table.js";

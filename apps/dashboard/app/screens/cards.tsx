@@ -1,161 +1,178 @@
-import { Button, Table } from "@agentify/ui";
-import { Fragment } from "react";
-import type { CardAside, CardControl, CardsView } from "../../src/views.js";
+import { Button } from "@agentify/ui";
+import type { CardControl, CardPrice, CardsView } from "../../src/views.js";
+import { CodeCopy } from "../components/copy.js";
+import { Cell, List, ListEmpty, Row } from "../components/list.js";
+import { CutNote, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
+import styles from "./cards.module.css";
 
-const Aside = ({ aside }: Readonly<{ aside: CardAside }>) =>
-  "facts" in aside ? (
-    aside.facts
-  ) : (
-    <>
-      Price on the card since <Moment at={aside.since} />
-    </>
-  );
+type Place = CardsView["listing"]["place"];
 
 /**
- * A break before each separator, so a wrapped address breaks between its parts
- * rather than mid-word; zero-width rather than a soft hyphen, so a copied
- * address is the address.
+ * The list a switch is pressed on, carried in its form, so the press leads
+ * back to the search, the segment and the page the merchant was reading.
  */
-const Wrappable = ({ parts }: Readonly<{ parts: readonly string[] }>) => (
-  <>
-    {parts.map((part, at) =>
-      at === 0 ? (
-        part
-      ) : (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one address never reorder
-        <Fragment key={at}>
-          <wbr />
-          {part}
-        </Fragment>
-      ),
-    )}
-  </>
-);
+const Kept = ({ place }: Readonly<{ place: Place }>) =>
+  Object.entries(place).map(([name, value]) => (
+    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
+  ));
+
+/**
+ * A fixed price opens to the moment it holds from, which the browser does at
+ * a press, a tap or a key with no script on the page; on every such row the
+ * line would be the same one, so the row does not print it.
+ */
+const Price = ({ price, priced }: Readonly<{ price: string; priced: CardPrice }>) =>
+  "asked" in priced ? (
+    price
+  ) : (
+    <details className="price-since">
+      <summary>{price}</summary>
+      <span className="since-said">
+        On the card since <Moment at={priced.since} />
+      </span>
+    </details>
+  );
 
 const Control = ({
   id,
   control,
-  base,
-}: Readonly<{ id: string; control: CardControl; base: string }>) => {
-  if (control.kind === "switch") {
-    return (
+  place,
+}: Readonly<{ id: string; control: CardControl; place: Place }>) => {
+  if (control.kind === "none") return null;
+  if (control.kind === "reason") return <Cell at="note">{control.text}</Cell>;
+  return (
+    <Cell at="action">
       <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
         {(pending) => (
-          <Button
-            compact
-            variant={control.verb === "resume" ? "primary" : "secondary"}
-            pending={pending}
-          >
-            {control.verb === "resume" ? "Resume" : "Pause"}
-          </Button>
+          <>
+            <Kept place={place} />
+            <Button
+              compact
+              variant={control.verb === "resume" ? "primary" : "secondary"}
+              pending={pending}
+            >
+              {control.verb === "resume" ? "Resume" : "Pause"}
+            </Button>
+          </>
         )}
       </PostForm>
-    );
-  }
-  if (control.kind === "unset") {
-    return (
-      <span className="quiet">
-        Not on sale until you set {control.what} in <a href={`${base}/settings`}>Settings</a>.
-        {control.waiting}
-      </span>
-    );
-  }
-  return <span className="quiet">{control.text}</span>;
+    </Cell>
+  );
 };
 
-export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: string }>) {
-  const { allSelling } = view;
+/**
+ * The control that stops or restarts all selling, where the merchant has one,
+ * for the end of the page's title bar.
+ */
+export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
+  const { allSelling, listing } = view;
+  if (allSelling === null) return null;
   return (
-    <>
-      <div className="lede">
-        <div>
-          <div className="stat-pills">
-            <span className="stat-pill">
-              Published <b>{view.published}</b>
-            </span>
-            <span className="stat-pill">
-              Paused by you <b>{view.pausedByYou}</b>
-            </span>
-          </div>
-        </div>
-        <div className="actions">
-          {allSelling === null ? null : (
-            <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
-              {(pending) => (
-                <Button
-                  variant={allSelling.verb === "resume" ? "primary" : "secondary"}
-                  pending={pending}
-                >
-                  {allSelling.label}
-                </Button>
-              )}
-            </PostForm>
-          )}
-        </div>
-      </div>
-      {view.empty === null ? (
-        <Table
-          columns={["Product", "Product code", "Price", "Delivery", "State", ""]}
-          empty=""
-          rows={view.rows.map((row) => ({
-            key: row.id,
-            ...(row.off ? { className: "off" } : {}),
-            cells: [
-              {
-                content: (
-                  <>
-                    <div className="title">{row.title}</div>
-                    <div className="under">
-                      <Aside aside={row.aside} />
-                    </div>
-                    <div className="buy">
-                      <Wrappable parts={row.buy} />
-                    </div>
-                  </>
-                ),
-              },
-              { className: "key", content: row.itemId },
-              { className: "amount", content: row.price },
-              { className: "quiet", content: row.delivery },
-              { content: <Word word={row.state} /> },
-              {
-                className: "control",
-                content: <Control id={row.id} control={row.control} base={base} />,
-              },
-            ],
-          }))}
-        />
-      ) : (
-        <div className="empty-start">
-          <p>{view.empty.why}</p>
-          <div className="connect-actions">
+    <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
+      {(pending) => (
+        <>
+          <Kept place={listing.place} />
+          <Button
+            compact
+            variant={allSelling.verb === "resume" ? "primary" : "secondary"}
+            pending={pending}
+          >
+            {allSelling.label}
+          </Button>
+        </>
+      )}
+    </PostForm>
+  );
+}
+
+export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: string }>) {
+  const { listing, empty, note } = view;
+  if (empty !== null) {
+    return (
+      <ListEmpty>
+        <p>{empty.says}</p>
+        {empty.ways === null ? null : (
+          <div className={styles.ways}>
             <a className="button button-primary" href="/docs/quickstart">
-              Publish your first card through the SDK
+              Publish a card through the SDK
             </a>
-            {view.empty.woo ? (
+            {empty.ways.woo ? (
               <a className="button button-secondary" href={`${base}/woocommerce`}>
                 Connect a WooCommerce shop
               </a>
             ) : null}
           </div>
-        </div>
+        )}
+      </ListEmpty>
+    );
+  }
+  // The last column holds a button, unless a card has a reason of its own to say there.
+  const reasoned = listing.rows.some((row) => row.control.kind === "reason");
+  return (
+    <>
+      <ListTools
+        listing={listing}
+        path="/cards"
+        label="Search cards"
+        placeholder="Search by name or product code"
+      />
+      {view.byCode === null || listing.rows.length === 0 ? null : (
+        <p className={styles.byCode}>{view.byCode}</p>
       )}
-      <p className="note">
-        {view.sellingNote}
-        <Rest rest={view.sellingRest} />
-      </p>
-      <p className="note">
-        {
-          // Text, not a link: asking for this address without paying is
-          // answered with a payment demand in a header, so a browser shows a
-          // blank page and the card looks broken.
-          "The line under each product is the address an agent buys it at. It is meant for an agent or a test from a terminal: without payment it returns a payment request, not a web page. A card that is off sale cannot be bought there."
-        }
-      </p>
+      {listing.rows.length === 0 ? (
+        <NothingHere listing={listing} />
+      ) : (
+        <List
+          label="Product cards"
+          columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
+          head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
+        >
+          {listing.rows.map((row) => (
+            <Row key={row.id} off={row.off}>
+              <Cell at="main">
+                <Cell at="title">{row.title}</Cell>
+                {"asked" in row.priced ? <Cell at="aside">Price asked at purchase</Cell> : null}
+                <Cell at="ident">
+                  <CodeCopy code={row.itemId} address={row.buy} />
+                </Cell>
+              </Cell>
+              <Cell at="amount">
+                <Price price={row.price} priced={row.priced} />
+              </Cell>
+              <Cell at="fact">
+                {row.delivery.says}
+                {row.delivery.byDefault === null ? null : (
+                  <>
+                    {" "}
+                    <a href={row.delivery.byDefault.href}>{row.delivery.byDefault.words}</a>
+                  </>
+                )}
+                {"asked" in row.priced ? (
+                  <span className={styles.narrowOnly}> · price asked at purchase</span>
+                ) : null}
+              </Cell>
+              <Cell at="state">
+                <Word word={row.state} />
+              </Cell>
+              <Control id={row.id} control={row.control} place={listing.place} />
+            </Row>
+          ))}
+        </List>
+      )}
+      <CutNote cut={listing.cut} />
+      <div className={styles.notes}>
+        <p>
+          {note.says}
+          <Rest rest={note.rest} />
+        </p>
+        {listing.rows.length === 0 ? null : (
+          <p>The link icon beside a product code copies the address an agent buys the card at.</p>
+        )}
+      </div>
     </>
   );
 }

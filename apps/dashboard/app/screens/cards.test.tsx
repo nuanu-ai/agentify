@@ -66,7 +66,7 @@ const pressable = () => {
               id: "routes/cards",
               path: "cards",
               Component: () => (
-                <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
+                <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
               ),
               loader: async () => {
                 if (state.pressed > 0) {

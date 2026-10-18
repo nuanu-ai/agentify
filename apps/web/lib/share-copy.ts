@@ -1,4 +1,14 @@
-import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
+import type { DiagnosticLevel, PublicShareSnapshot } from "@agentify/scanner-contracts";
+
+import { scanDay } from "./levels";
+
+/** What a published result shows: the domain, the level, the score and the day it was scanned. */
+export type PublicResultPreview = Readonly<{
+  hostLabel: string;
+  level: DiagnosticLevel;
+  score: number;
+  scannedLabel?: string;
+}>;
 
 export type ShareTone = "critical" | "warning" | "neutral" | "positive";
 
@@ -61,8 +71,6 @@ export function shareCopy(snapshot: PublicShareSnapshot): ShareCopy {
   }
 }
 
-const SCAN_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
-
 /** What a published result's page says, from its public snapshot alone. */
 export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean) {
   const copy = shareCopy(snapshot);
@@ -74,7 +82,7 @@ export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean)
       hostLabel: snapshot.host,
       level: snapshot.level,
       score: snapshot.score,
-      scannedLabel: `Scanned ${SCAN_DATE.format(new Date(snapshot.generated_at))}`,
+      scannedLabel: `Scanned ${scanDay(snapshot.generated_at) ?? "on an unknown day"}`,
     },
   };
 }
