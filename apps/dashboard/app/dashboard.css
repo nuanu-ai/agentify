@@ -610,6 +610,17 @@ td.control {
   display: none;
 }
 
+/* A cell's own label where no head is over it: read out beside a wide row's
+   column, drawn on a narrow row's line. */
+.said-on-narrow {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 @container (max-width: 860px) {
   .list-head {
     display: none;
@@ -664,6 +675,14 @@ td.control {
 
   .cell-aside {
     display: none;
+  }
+
+  .said-on-narrow {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
 
   .cell-state {

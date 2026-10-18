@@ -4386,23 +4386,21 @@ describe("the keys screen", () => {
   });
 
   /**
-   * Read through the header rather than by counting cells, so an added column
-   * does not move what is read.
+   * What a key's row says in the place its column's head names: the moment
+   * it was created, or when it was last called. Found by the place the row
+   * gives each, so a change of the columns' order does not move what is read.
    */
   const inColumn = (html: string, keyId: string, header: RegExp): string => {
-    const heading = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
-    const headers = [...heading.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((cell) =>
-      readable(cell[1] ?? ""),
+    const place = header.test("Last call") ? "fact" : header.test("Created") ? "aside" : null;
+    if (place === null) throw new Error(`no column of the keys is headed ${header}`);
+    const row = (html.match(/<li class="list-row[^"]*">[\s\S]*?<\/li>/g) ?? []).find((one) =>
+      one.includes(keyId),
     );
-    const at = headers.findIndex((word) => header.test(word));
-    if (at < 0) {
-      throw new Error(`no column of this table is headed ${header}: ${headers.join(", ")}`);
-    }
-    const row = (html.match(/<tr[\s\S]*?<\/tr>/g) ?? []).find((one) => one.includes(keyId));
     if (row === undefined) {
-      throw new Error(`no row of this table is the key ${keyId}`);
+      throw new Error(`no row of this list is the key ${keyId}`);
     }
-    return readable([...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][at]?.[1] ?? "");
+    const cell = new RegExp(`<div class="cell cell-${place}">([\\s\\S]*?)</div>`).exec(row)?.[1];
+    return readable(cell ?? "").replace(/^Last call /, "");
   };
 
   it("says when each key was last called, and stops there when it cannot", async () => {

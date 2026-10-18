@@ -58,6 +58,12 @@ export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.f
   ship: "By parcel",
 });
 
+/** Whether a key still opens the gateway; a revoked one never does again. */
+export const KEY_WORDS = Object.freeze({
+  works: { text: "Works", tone: "ok" },
+  revoked: { text: "Revoked", tone: "quiet" },
+} as const satisfies Readonly<Record<string, Word>>);
+
 /**
  * Where a card stands, said from the card's own switch: a card the merchant
  * paused waits on them to resume it; one off sale for anything else is held by
