@@ -400,6 +400,25 @@ const PENDING: PendingScanRequest = {
   landingSearch: "",
 };
 
+/**
+ * Cloudflare's script draws the challenge's widget into its box, and the
+ * gallery's frames run no script: the gallery draws a labelled box of the
+ * widget's size there instead, which the site never shows.
+ */
+const withChallengeStandIn = (state: GalleryState): GalleryState => ({
+  ...state,
+  draw: () => (
+    <>
+      {state.draw()}
+      <style>
+        {
+          '[data-sitekey]::before{content:"Cloudflare Turnstile widget: drawn here by Cloudflare on the site, a stand-in in the gallery";display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:300px;max-width:100%;min-height:65px;padding:8px 12px;border:1px dashed var(--line-strong);border-radius:4px;color:var(--muted);font:0.75rem/1.4 var(--font-mono);text-align:center}'
+        }
+      </style>
+    </>
+  ),
+});
+
 /** The scan request the landing's form left in the tab, answered as the API answers it. */
 const pending = (told: Told, answer: SiteAnswerOf<unknown> | null, shows: string) =>
   at(told, {
@@ -703,19 +722,21 @@ const SCANNING: GalleryState[] = [
       loaded: { "routes/scan.pending": { turnstileSiteKey: TURNSTILE_SITE_KEY } },
     },
   ),
-  pending(
-    {
-      id: "scanner-pending-challenge",
-      screen: "Starting a scan",
-      when: "Somebody asks for a fourth scan within an hour from one network.",
-      cause:
-        "The scanner asks for a challenge before it takes more scans from that network; Cloudflare's widget draws in the box.",
-    },
-    {
-      status: 429,
-      body: refusal("challenge_required", "Complete the challenge to continue.", true, 60),
-    },
-    "Complete the challenge to continue.",
+  withChallengeStandIn(
+    pending(
+      {
+        id: "scanner-pending-challenge",
+        screen: "Starting a scan",
+        when: "Somebody asks for a fourth scan within an hour from one network.",
+        cause:
+          "The scanner asks for a challenge before it takes more scans from that network; Cloudflare's widget draws in the box.",
+      },
+      {
+        status: 429,
+        body: refusal("challenge_required", "Complete the challenge to continue.", true, 60),
+      },
+      "Complete the challenge to continue.",
+    ),
   ),
   pending(
     {
