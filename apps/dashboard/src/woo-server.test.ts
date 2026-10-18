@@ -1026,6 +1026,44 @@ describe("importing the catalogue", () => {
     expect(text).toContain("Access code");
   });
 
+  it("leads from each product it published to that card alone on Cards", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code", sku: "agentify-code" })],
+      }),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const ways = [...imported.html.matchAll(/href="(\/cards\?[^"]+)"/g)].map(([, to = ""]) =>
+      to.replaceAll("&amp;", "&"),
+    );
+    const found = await Promise.all(ways.map(async (to) => readable((await running.get(to)).html)));
+
+    expect(ways).toHaveLength(2);
+    expect(found[0]).toContain("Canvas tote bag");
+    expect(found[0]).not.toContain("Access code");
+    expect(found[1]).toContain("Access code");
+    expect(found[1]).not.toContain("Canvas tote bag");
+  });
+
+  it("does not call an import finished when it stopped before the last product", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
+      }),
+      silent: "publishing",
+    });
+    await connected(running);
+
+    const stopped = readable((await running.post("/woocommerce/import")).html);
+
+    expect(stopped).not.toMatch(/finished/i);
+    expect(stopped).toMatch(/stopped/i);
+  });
+
   it("names the products it could not turn into a card at all", async () => {
     const running = await started({
       catalogue: async () => ({

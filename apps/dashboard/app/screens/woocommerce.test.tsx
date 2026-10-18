@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type ShopAnswer, type ShopRead, wooImportView, wooShopView } from "../../src/woo-views.js";
+import { SITE_IN_SETTINGS } from "../../src/words.js";
 import type { Chrome } from "../answer.js";
 import { WooImportScreen, WooPage, WooShopScreen } from "./woocommerce.js";
 
@@ -147,6 +148,34 @@ describe("what the import screen says about a product the door never answered ab
     expect(text).toContain(finding);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("what the import screen offers beside a product it could not publish", () => {
+  it("offers Settings beside a parcel held for want of the shop's site, and nothing beside one the shop must change", () => {
+    const html = served(() => (
+      <WooImportScreen
+        view={wooImportView(
+          SHOP,
+          [
+            { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
+            {
+              id: "13",
+              title: "Canvas tote bag",
+              problems: [
+                "description: this description is 856 characters and a listing carries at most 500",
+              ],
+            },
+          ],
+          [],
+        )}
+        base=""
+      />
+    ));
+
+    expect([...html.matchAll(/href="\/settings"/g)]).toHaveLength(1);
+    expect(html.indexOf('href="/settings"')).toBeGreaterThan(html.indexOf("Coffee beans"));
+    expect(html.indexOf('href="/settings"')).toBeLessThan(html.indexOf("Canvas tote bag"));
   });
 });
 
