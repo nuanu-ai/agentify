@@ -93,12 +93,8 @@
   margin-top: calc((1.4em - 8px) / 2);
 }
 
-/* A sum too long for its column breaks before its test mark and between the
-   words of its share, never inside the price. */
+/* A sum too long for its column breaks at a space, before its currency, its
+   test mark or a word of its share, and never inside a number. */
 .sum {
   white-space: normal;
-}
-
-.price {
-  white-space: nowrap;
 }

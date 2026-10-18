@@ -122,7 +122,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         ) : (
           <List
             label={here?.key === "open" ? "Open orders" : "All orders"}
-            columns="6.5rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9.5rem"
+            columns="6rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9rem"
             // "Price set", not "Bought": the moment is when the price was
             // fixed, and where the price is checked at purchase the buyer may
             // pay well after it.
@@ -138,7 +138,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                   <Cell at="title">{row.product}</Cell>
                   <Cell at="amount">
                     <span className={styles.sum}>
-                      <span className={styles.price}>{row.amount}</span>
+                      {row.amount}
                       <TestMark test={row.test} />
                     </span>
                     {row.shares === null ? null : (
