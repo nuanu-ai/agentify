@@ -66,12 +66,14 @@ export const shortened = (value: string): string => {
 
 /**
  * An identifier shown short, with the button beside it that copies the whole
- * of it. The whole value is its title and what a screen reader reads, so it is
- * reachable before the page's script runs and without the clipboard; where
- * copying fails, the whole value takes the short one's place to be selected.
- * `what` names it in the button's words, "order ID", and the short value
- * follows, so a list of buttons read out tells its rows apart. `whole` prints
- * all of it, for the place a narrow row opens to show what it shortened.
+ * of it. The short form opens to the whole value at a press, which the
+ * browser does with no script on the page and on a touch screen, where a
+ * title is never shown; the whole value is held only there, so a selection
+ * across the row copies the identifier once. Where copying fails, the whole
+ * value is shown beside it to be selected. `what` names it in the button's
+ * words, "order ID", and the short value follows, so a list of buttons read
+ * out tells its rows apart. `whole` prints all of it, for the place a narrow
+ * row opens to show what it shortened.
  */
 export function Ident({
   value,
@@ -82,16 +84,14 @@ export function Ident({
   const short = whole ? value : shortened(value);
   return (
     <span className="ident">
-      <span title={value}>
-        {short === value || copied === "failed" ? (
-          value
-        ) : (
-          <>
-            <span aria-hidden="true">{short}</span>
-            <span className="sr-only">{value}</span>
-          </>
-        )}
-      </span>
+      {short === value ? (
+        <span>{value}</span>
+      ) : (
+        <details className="ident-whole">
+          <summary title={value}>{short}</summary>
+          <span className="ident-all">{value}</span>
+        </details>
+      )}
       <button
         type="button"
         className={copied === "copied" ? "copy copied" : "copy"}
@@ -104,6 +104,7 @@ export function Ident({
       <span className="sr-only" role="status">
         {SAID[copied]}
       </span>
+      {copied === "failed" && short !== value ? <span className="copy-whole">{value}</span> : null}
     </span>
   );
 }

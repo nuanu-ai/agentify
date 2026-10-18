@@ -20,6 +20,14 @@ const Kept = ({ place }: Readonly<{ place: Place }>) =>
     <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
   ));
 
+/**
+ * Said on the price itself, where a pointer resting on it finds it: on every
+ * fixed-price row the line would be the same one, so the row does not print
+ * it, and a narrow row's opened part says it in full.
+ */
+const sinceIn = (priced: Extract<CardPrice, { since: unknown }>): string =>
+  `Price on the card since ${"text" in priced.since ? priced.since.text : `${priced.since.date} ${priced.since.time}`}`;
+
 const Since = ({ priced }: Readonly<{ priced: Extract<CardPrice, { since: unknown }> }>) => (
   <>
     Price on the card since <Moment at={priced.since} />
@@ -84,16 +92,18 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
     return (
       <ListEmpty>
         <p>{empty.says}</p>
-        <div className={styles.ways}>
-          <a className="button button-primary" href="/docs/quickstart">
-            Publish a card through the SDK
-          </a>
-          {empty.woo ? (
-            <a className="button button-secondary" href={`${base}/woocommerce`}>
-              Connect a WooCommerce shop
+        {empty.ways === null ? null : (
+          <div className={styles.ways}>
+            <a className="button button-primary" href="/docs/quickstart">
+              Publish a card through the SDK
             </a>
-          ) : null}
-        </div>
+            {empty.ways.woo ? (
+              <a className="button button-secondary" href={`${base}/woocommerce`}>
+                Connect a WooCommerce shop
+              </a>
+            ) : null}
+          </div>
+        )}
       </ListEmpty>
     );
   }
@@ -122,18 +132,16 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
             <Row key={row.id} off={row.off}>
               <Cell at="main">
                 <Cell at="title">{row.title}</Cell>
-                <Cell at="aside">
-                  {"asked" in row.priced ? (
-                    "Price asked at purchase"
-                  ) : (
-                    <Since priced={row.priced} />
-                  )}
-                </Cell>
+                {"asked" in row.priced ? <Cell at="aside">Price asked at purchase</Cell> : null}
                 <Cell at="ident">
                   <CodeCopy code={row.itemId} address={row.buy} />
                 </Cell>
               </Cell>
-              <Cell at="amount">{row.price}</Cell>
+              <Cell at="amount">
+                <span title={"since" in row.priced ? sinceIn(row.priced) : undefined}>
+                  {row.price}
+                </span>
+              </Cell>
               <Cell at="fact">
                 {row.delivery.says}
                 {row.delivery.byDefault === null ? null : (
@@ -151,7 +159,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               </Cell>
               <Control id={row.id} control={row.control} place={listing.place} />
               {"since" in row.priced ? (
-                <RowMore summary="Price date">
+                <RowMore summary="Price date" of={row.title}>
                   <Since priced={row.priced} />
                 </RowMore>
               ) : null}

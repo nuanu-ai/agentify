@@ -40,18 +40,28 @@ describe("an identifier with its copy button", () => {
     expect(screen.getByText("ord_17ff…7de3")).toBeTruthy();
   });
 
-  it("puts the whole value in its title and in what a screen reader reads", () => {
-    render(<Ident value={ORDER} what="order ID" />);
+  it("opens to the whole value at a tap, with no script on the page", () => {
+    // A touch screen never shows a title, so the short form is a disclosure
+    // the browser opens by itself; the whole value is what it holds.
+    const html = renderToString(<Ident value={ORDER} what="order ID" />);
+    const holder = document.createElement("div");
+    holder.innerHTML = html;
+    const disclosure = holder.querySelector("details");
 
-    expect(screen.getByTitle(ORDER).textContent).toContain(ORDER);
-    expect(screen.getByText(ORDER).className).toBe("sr-only");
+    expect(disclosure?.querySelector("summary")?.textContent).toBe("ord_17ff…7de3");
+    expect(disclosure?.textContent).toBe(`ord_17ff…7de3${ORDER}`);
+    expect(disclosure?.querySelector("summary")?.getAttribute("title")).toBe(ORDER);
   });
 
-  it("carries the whole value in the page before its script runs", () => {
-    const html = renderToString(<Ident value={ORDER} what="order ID" />);
+  it("holds the whole value only where it is opened to, so a selection copies it once", () => {
+    // Text hidden for a screen reader is still selected and copied with the
+    // row, which would put the identifier on the clipboard twice.
+    const { container } = render(<Ident value={ORDER} what="order ID" />);
+    const holding = [...container.querySelectorAll("*")].filter(
+      (element) => element.children.length === 0 && element.textContent === ORDER,
+    );
 
-    expect(html).toContain(`title="${ORDER}"`);
-    expect(html).toContain(`>${ORDER}<`);
+    expect(holding.map((element) => element.closest("details") !== null)).toStrictEqual([true]);
   });
 
   it("copies the whole value, not the short one, and says so", async () => {
@@ -79,13 +89,14 @@ describe("an identifier with its copy button", () => {
     });
 
     expect(screen.getByRole("status").textContent).toBe("Could not copy; select it");
-    expect(screen.getByTitle(ORDER).textContent).toBe(ORDER);
+    expect(document.querySelector(".copy-whole")?.textContent).toBe(ORDER);
   });
 
-  it("leaves an identifier too short to gain from it whole", () => {
-    render(<Ident value="ord_1" what="order ID" />);
+  it("leaves an identifier too short to gain from it whole, with nothing to open", () => {
+    const { container } = render(<Ident value="ord_1" what="order ID" />);
 
-    expect(screen.getByTitle("ord_1").textContent).toBe("ord_1");
+    expect(container.querySelector("details")).toBeNull();
+    expect(container.textContent).toBe("ord_1");
   });
 
   it("shows the whole value where asked to, with the same button", async () => {

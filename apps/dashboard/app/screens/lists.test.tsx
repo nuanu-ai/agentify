@@ -167,19 +167,22 @@ describe("the receipts of sales that went out", () => {
     expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
   });
 
-  it("shows a long receipt ID and its order's ID short, each with a button that copies it whole", () => {
+  it("keeps a receipt's ID and its order's out of the row's lines, whole in its opened part, each with its copy button", () => {
     const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
+    const order = "ord_d59f0110946cfebd26bbf9ae7de0134e";
     const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [{ ...receipt(id, false), order_id: "ord_d59f0110946cfebd26bbf9ae7de0134e" }],
+      receipts: [{ ...receipt(id, false), order_id: order }],
     });
 
     const html = receiptsPage(receipts);
+    const lines = html.replace(/<details class="cell-more[\s\S]*?<\/details>/g, "");
+    const [opened] = openedIn(html);
 
-    expect(html).toContain(">rcp_d59f…134e<");
-    expect(html).toContain(">ord_d59f…134e<");
-    expect(html).toContain(`aria-label="Copy the whole receipt ID rcp_d59f…134e"`);
-    expect(html).toContain(`aria-label="Copy the whole order ID ord_d59f…134e"`);
-    expect(html).toContain(`title="${id}"`);
+    expect(readable(lines)).not.toMatch(/rcp_|ord_/);
+    expect(opened).toContain(`Receipt ${id}`);
+    expect(opened).toContain(`Order ${order}`);
+    expect(html).toContain(`aria-label="Copy the whole receipt ID ${id}"`);
+    expect(html).toContain(`aria-label="Copy the whole order ID ${order}"`);
   });
 });
 
@@ -218,7 +221,7 @@ describe("a list where some of the money was real and some was not", () => {
     });
 
     const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+    const rows = html.split('<li class="list-row').slice(1);
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
     // One row carries the mark and the other does not; a page that marked both
@@ -264,7 +267,7 @@ describe("a list where some of the money was real and some was not", () => {
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
 
     const html = receiptsPage(receipts, onTest);
-    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+    const rows = html.split('<li class="list-row').slice(1);
 
     expect(readable(html)).not.toContain("test purchase");
     expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
@@ -320,18 +323,19 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
     const paidInto = Object.fromEntries(receipts.receipts.map((one) => [one.order_id, SPLIT]));
 
-    const cells = amountsIn(
-      served(() => (
-        <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
-      )),
-    );
+    const html = served(() => (
+      <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
+    ));
 
-    expect(cells).toStrictEqual(
-      SHARES.map(
-        ([price, merchant, commission]) =>
-          `${price} USD ${merchant} to you ${commission} to Agentify`,
-      ),
+    // A row says the merchant's share under the price; the row's opened part
+    // says both.
+    expect(amountsIn(html)).toStrictEqual(
+      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
     );
+    for (const [at, opened] of openedIn(html).entries()) {
+      const [, merchant, commission] = SHARES[at] ?? [];
+      expect(opened).toContain(`${merchant} to you ${commission} to Agentify`);
+    }
   });
 
   it("divides by the terms of the split the order was paid into, not by a rate of its own", () => {
@@ -616,9 +620,24 @@ describe("a card's row on a phone", () => {
     expect(readable(fact)).toContain("price asked at purchase");
   });
 
+  it("does not repeat under every title the moment a fixed price holds from", () => {
+    // On a real catalogue every fixed-price row would carry the same line; the
+    // moment stays reachable on the price itself and in the opened row.
+    const html = served(() => (
+      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
+    ));
+    const main =
+      /<div class="cell cell-main">([\s\S]*?)<div class="cell cell-amount"/.exec(html)?.[1] ?? "";
+    const price = /<div class="cell cell-amount"><span title="([^"]*)"/.exec(html)?.[1] ?? "";
+
+    expect(readable(main)).toContain("A room for the night");
+    expect(readable(main)).not.toContain("Price on the card since");
+    expect(price).toBe("Price on the card since 2026-08-26 09:00:00 UTC");
+  });
+
   it("keeps what the narrow row leaves out in the row's opened part", () => {
-    // The moment the price holds from is drawn under the title on a wide box
-    // only; on a phone it is one press away, never gone.
+    // The moment the price holds from is not in the row's lines; on a phone it
+    // is one press away, never gone.
     const html = served(() => (
       <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
@@ -740,5 +759,36 @@ describe("a search over the cards", () => {
     expect(text).toContain("Showing 1–50 of 214");
     expect(text).toContain("Room 49");
     expect(text).not.toContain("Room 50 ");
+  });
+});
+
+describe("an empty catalogue", () => {
+  const none = (selling: "open" | "departed") =>
+    readable(
+      served(() => (
+        <CardsScreen
+          view={cardsView(
+            MerchantCardListSchema.parse({ selling, cards: [] }),
+            "https://agentify.ad",
+            true,
+          )}
+          base=""
+        />
+      )),
+    );
+
+  it("offers the ways to a first card to a merchant who sells", () => {
+    expect(none("open")).toContain("Publish a card through the SDK");
+    expect(none("open")).toContain("Connect a WooCommerce shop");
+  });
+
+  it("offers no way to sell to a merchant who has left", () => {
+    // Nothing on this page puts a merchant who left back on sale, so a way to
+    // publish would lead to a refusal.
+    const text = none("departed");
+
+    expect(text).not.toContain("Publish a card through the SDK");
+    expect(text).not.toContain("Connect a WooCommerce shop");
+    expect(text).toContain("You have no cards.");
   });
 });

@@ -11,12 +11,7 @@
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
 import { type MomentView, momentView } from "./views.js";
-
-/**
- * No selling state and no line about a missing seller name: each would be a
- * gateway call, for a coloured dot or a line, on the screen a merchant reads
- * when something about their keys has gone wrong.
- */
+import { KEY_WORDS, type Word } from "./words.js";
 
 interface KeyRow {
   readonly id: string;
@@ -30,6 +25,7 @@ interface KeyRow {
   readonly lastCall: MomentView | null;
   /** Null while the key works. */
   readonly revoked: MomentView | null;
+  readonly state: Word;
 }
 
 export interface KeysView {
@@ -76,6 +72,7 @@ export const keysView = (
       created: momentView(entry.created_at),
       lastCall: entry.last_used_at === null ? null : momentView(entry.last_used_at),
       revoked: entry.disabled_at === null ? null : momentView(entry.disabled_at),
+      state: entry.disabled_at === null ? KEY_WORDS.works : KEY_WORDS.revoked,
     })),
     problem,
     startNew,

@@ -97,7 +97,8 @@ export interface WalletView {
 
 export interface SettingsView {
   readonly who: string;
-  readonly lede: string;
+  /** The name buyers read; null where none is set, which the banner says. */
+  readonly lede: string | null;
   /** That Agentify approved the merchant for live sales; null otherwise. */
   readonly approval: string | null;
   readonly name: Readonly<{
@@ -236,10 +237,8 @@ export const settingsView = (
 
   return {
     who,
-    lede:
-      sellerName === null
-        ? `You have not set a seller name yet.${door.missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME) ? " Until you do, cards cannot be published." : ""}`
-        : `Your products are sold under ${sellerName}.`,
+    // A missing name is the banner's to say, with what it holds back.
+    lede: sellerName === null ? null : `Your products are sold under ${sellerName}.`,
     // A missing approval is the banner's to say, over every page; Settings
     // says only that it was given.
     approval: mode === "live" && liveApproval === true ? APPROVAL_GIVEN : null,
@@ -257,11 +256,11 @@ export const settingsView = (
       problem: site?.problem ?? null,
     },
     wallet: {
+      // Where publishing asks for an address and none is set, the banner over
+      // the page says what that holds back.
       purpose: !door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
         ? `${SETTLES[mode]} Publishing does not ask for this address here, so it is optional.`
-        : door.missing.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
-          ? `${SETTLES[mode]} Until you set one, publishing a card is refused.`
-          : SETTLES[mode],
+        : SETTLES[mode],
       commission: commissionOf(mode, payoutSplits.rate),
       saved,
       split: saved === null ? null : splitBeside(saved, payoutSplits.inForce, addressPage),

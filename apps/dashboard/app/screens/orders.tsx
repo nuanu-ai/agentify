@@ -156,7 +156,10 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                   <Cell at="aside">
                     <Ident value={row.id} what="order ID" />
                   </Cell>
-                  <RowMore summary={row.shares === null ? "Order ID" : "Order ID and shares"}>
+                  <RowMore
+                    summary={row.shares === null ? "Order ID" : "Order ID and shares"}
+                    of={row.product}
+                  >
                     <Ident value={row.id} what="order ID" whole />
                     <SharesOf shares={row.shares} />
                     <div className="under">

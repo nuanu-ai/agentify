@@ -3273,7 +3273,7 @@ describe("the cards screen", () => {
 
     expect(title).toBeGreaterThan(-1);
     expect(control).toBeGreaterThan(title);
-    expect(control).toBeLessThan(html.indexOf("<main"));
+    expect(control).toBeLessThan(html.indexOf('class="app-content"'));
   });
 
   it("answers a search in the address with the cards it finds, and says what found none", async () => {
@@ -4129,7 +4129,12 @@ describe("the receipts screen", () => {
 
     const receipts = (await browser.get("/receipts")).html;
     const orders = (await browser.get("/orders")).html;
-    const receipt = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(receipts)?.[1] ?? "";
+    const receipt =
+      /<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
+        receipts,
+      )?.[1] ?? "";
+    const receiptOpened =
+      /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(receipts)?.[1] ?? "";
     // An order's wide row says the merchant's share; the row a phone opens
     // says both.
     const order =
@@ -4138,7 +4143,8 @@ describe("the receipts screen", () => {
       )?.[1] ?? "";
     const opened = /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(orders)?.[1] ?? "";
 
-    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you");
+    expect(readable(receiptOpened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
     expect(readable(order)).toBe("80.00 USD test ≈ 79.92 USD to you");
     expect(readable(opened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
   });
@@ -4386,23 +4392,21 @@ describe("the keys screen", () => {
   });
 
   /**
-   * Read through the header rather than by counting cells, so an added column
-   * does not move what is read.
+   * What a key's row says in the place its column's head names: the moment
+   * it was created, or when it was last called. Found by the place the row
+   * gives each, so a change of the columns' order does not move what is read.
    */
   const inColumn = (html: string, keyId: string, header: RegExp): string => {
-    const heading = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
-    const headers = [...heading.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((cell) =>
-      readable(cell[1] ?? ""),
+    const place = header.test("Last call") ? "fact" : header.test("Created") ? "aside" : null;
+    if (place === null) throw new Error(`no column of the keys is headed ${header}`);
+    const row = (html.match(/<li class="list-row[^"]*">[\s\S]*?<\/li>/g) ?? []).find((one) =>
+      one.includes(keyId),
     );
-    const at = headers.findIndex((word) => header.test(word));
-    if (at < 0) {
-      throw new Error(`no column of this table is headed ${header}: ${headers.join(", ")}`);
-    }
-    const row = (html.match(/<tr[\s\S]*?<\/tr>/g) ?? []).find((one) => one.includes(keyId));
     if (row === undefined) {
-      throw new Error(`no row of this table is the key ${keyId}`);
+      throw new Error(`no row of this list is the key ${keyId}`);
     }
-    return readable([...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][at]?.[1] ?? "");
+    const cell = new RegExp(`<div class="cell cell-${place}">([\\s\\S]*?)</div>`).exec(row)?.[1];
+    return readable(cell ?? "").replace(/^Last call /, "");
   };
 
   it("says when each key was last called, and stops there when it cannot", async () => {

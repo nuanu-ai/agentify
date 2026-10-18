@@ -127,15 +127,19 @@ export function Frame({
           {/* The stack's band heads the workspace rather than the window, so
               the sidebar's sections start right under the site header. */}
           <SurfaceNote surface={chrome.surface} />
-          <div className="top">
-            <div className="top-inner">
-              <h1 className="top-title">{heading}</h1>
-              {action}
+          {/* The bar is inside the page's main part, so the way past the site
+              header leads to its title and the control at its end. */}
+          <main id="main">
+            <div className="top">
+              <div className="top-inner">
+                <h1 className="top-title">{heading}</h1>
+                {action}
+              </div>
             </div>
-          </div>
-          <main className="app-content" id="main">
-            <AccountBanner notes={framed?.account ?? []} />
-            {children}
+            <div className="app-content">
+              <AccountBanner notes={framed?.account ?? []} />
+              {children}
+            </div>
           </main>
         </div>
       </div>
