@@ -35,6 +35,12 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
     description:
       "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and refunds for merchant orders.",
   },
+  "/woocommerce": {
+    file: "woocommerce.md",
+    title: "WooCommerce connector: importing, parcels and disconnecting",
+    description:
+      "Connect a WooCommerce shop to Agentify without code: what can be imported, how parcels are shipped and paid for, and what disconnecting does.",
+  },
   "/faq": {
     file: "faq.md",
     title: "Questions about selling to AI agents",

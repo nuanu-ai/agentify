@@ -19,6 +19,7 @@ export const DOCS_GROUPS: readonly DocsGroup[] = [
     entries: [
       { label: "Connecting to Agentify", path: "/" },
       { label: "Money", path: "/money" },
+      { label: "Selling through WooCommerce", path: "/woocommerce" },
       { label: "Common questions", path: "/faq" },
     ],
   },
