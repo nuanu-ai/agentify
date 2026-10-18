@@ -393,7 +393,7 @@ describe("closing an order the merchant took on", () => {
     // merchant never wraps a retry loop around a case no repeat changes.
     const error = {
       code: "refund_already_settled",
-      message: "the debt was paid back",
+      message: "a refund is recorded for this order",
       retryable: false,
     };
     const agentify = await gatewayServing({

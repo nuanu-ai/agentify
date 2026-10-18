@@ -1197,7 +1197,7 @@ function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
       // The money for the goods has been paid, and to the buyer late goods are
-      // better than a refund, as long as the refund has not gone through yet.
+      // better than a refund, as long as no refund has been recorded.
       // The reason the order was marked for a refund goes with it: an order
       // that ended in success may not carry "the merchant refused" as the
       // record of how it ended.
@@ -1245,8 +1245,8 @@ function fromRefunded(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
     case "handler_delivered":
-      // The buyer has his money back, so there is nothing left to deliver
-      // against. Repeating the call would change nothing.
+      // A refund is recorded, so there is nothing left to deliver against.
+      // Repeating the call would change nothing.
       return answer(order, { ok: false, error: "refund_already_settled", retryable: false });
     case "refuse_called":
       return closedToMerchant(order);

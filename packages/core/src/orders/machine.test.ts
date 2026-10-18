@@ -1135,7 +1135,7 @@ describe("delivering twice, and delivering late", () => {
     ]);
   });
 
-  it("has nothing left to deliver once the refund has gone through", () => {
+  it("has nothing left to deliver once a refund is recorded", () => {
     const { order, effects } = must(reach("refunded"), { kind: "deliver_called", at: T0 + 999 });
 
     expect(order.state).toBe("refunded");
