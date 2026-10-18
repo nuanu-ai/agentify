@@ -1059,6 +1059,39 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-no-name",
+      screen: "Cards",
+      when: "A merchant whose code published cards before they chose a seller name opens Cards.",
+      cause:
+        "Without a seller name the gateway keeps every card off sale, so the banner over the page says so and leads to Settings.",
+    },
+    cardsView(
+      seenBy("live", { sellerName: null }),
+      cardsOf(
+        "open",
+        ON_SALE.map((product) => ({ product, selling: "paused" })),
+      ),
+      ORIGIN.live,
+    ),
+    "live",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-several-reasons",
+      screen: "Cards",
+      when: "A new merchant on the live site pressed Pause all sales before Agentify approved them or they set a payout wallet.",
+      cause:
+        "Three things hold the whole account at once, so the one banner names each of them, broadest first.",
+    },
+    cardsView(
+      seenBy("live", { liveApproval: false, payout: { wallet: null } }),
+      cardsOf("paused", ON_SALE),
+      ORIGIN.live,
+    ),
+    "live",
+  ),
+  cards(
+    {
       id: "dashboard-cards-all-paused",
       screen: "Cards",
       when: "A merchant has pressed Pause all sales.",
@@ -1185,6 +1218,30 @@ const ORDERS: GalleryState[] = [
         ["esimWeek", "delivered"],
       ]),
       false,
+    ),
+    "live",
+  ),
+  orders(
+    {
+      id: "dashboard-orders-sales-paused",
+      screen: "Orders",
+      when: "A merchant who pressed Pause all sales on Cards opens Orders.",
+      cause:
+        "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Cards to resume them.",
+    },
+    ((listed) =>
+      ordersView(
+        seenBy("live"),
+        cardsOf("paused", ON_SALE),
+        listed,
+        false,
+        {},
+        paidIntoSplit("live", listed.orders),
+      ))(
+      ordersOf([
+        ["vpn", "delivered"],
+        ["esimEurope", "in_progress"],
+      ]),
     ),
     "live",
   ),

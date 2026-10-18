@@ -2,7 +2,8 @@
  * The frame every screen about a merchant's selling is drawn in: the site
  * header with who is signed in and the way out, and under it the dashboard's
  * working area, its numbered sections in a sidebar beside a bar with the
- * screen's title and the merchant's selling state. Where there is no room for
+ * screen's title, and over the screen the banner about the account where
+ * something about it is not as usual. Where there is no room for
  * the sidebar, a menu at the end of the header's row holds the sections, the
  * documentation and who is signed in with the way out.
  */
@@ -21,9 +22,9 @@ import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
+import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
 import { SurfaceNote } from "./surface-note.js";
-import { Word } from "./word.js";
 
 /**
  * Each section is also a destination the sign-in returns to, so a section
@@ -45,25 +46,6 @@ const FOOT = [
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
 ] as const;
-
-/**
- * Says the consequence (a card the merchant's code publishes is refused) and
- * points at the page that fixes it, because the API's refusal names a route,
- * which is the wrong sentence for somebody looking at a page.
- */
-function Unnamed({ base }: Readonly<{ base: string }>) {
-  return (
-    <div className="callout">
-      <div className="what">
-        You cannot publish products until you choose the seller name buyers will see.
-      </div>
-      <p className="why">
-        A card without a seller name is refused.{" "}
-        <a href={`${base}/settings`}>Choose a seller name in Settings</a>.
-      </p>
-    </div>
-  );
-}
 
 /** `heading` is the bar's words where they are not the window's title. */
 export function Frame({
@@ -146,11 +128,10 @@ export function Frame({
           <div className="top">
             <div className="top-inner">
               <h1 className="top-title">{heading}</h1>
-              {frame.selling === undefined ? null : <Word word={frame.selling} />}
             </div>
           </div>
           <main className="app-content" id="main">
-            {frame.unnamed ? <Unnamed base={chrome.base} /> : null}
+            <AccountBanner notes={frame.account} here={tab === undefined ? undefined : `/${tab}`} />
             {children}
           </main>
         </div>

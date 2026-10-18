@@ -13,12 +13,7 @@
  * network and heard nothing, which is not the same as nothing being charged.
  */
 
-import type {
-  Fulfillment,
-  MerchantFinding,
-  OrderStatus,
-  SellingState,
-} from "@nuanu-ai/agentify-contracts";
+import type { Fulfillment, MerchantFinding, OrderStatus } from "@nuanu-ai/agentify-contracts";
 
 /**
  * `waiting` is a state held until somebody acts, the merchant or the buyer, and
@@ -61,12 +56,6 @@ export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.f
   async: "Later",
   confirm: "After you confirm",
   ship: "By parcel",
-});
-
-export const SELLING_WORDS: Readonly<Record<SellingState, Word>> = Object.freeze({
-  open: { text: "Sales enabled", tone: "ok" },
-  paused: { text: "Sales paused", tone: "warn" },
-  departed: { text: "Left", tone: "quiet" },
 });
 
 /**
@@ -123,6 +112,65 @@ export const APPROVAL_PENDING =
   "Agentify has not approved your merchant for live sales yet, so your cards are refused on the live channel. If an Agentify operator is coordinating your pilot, ask them for the approval.";
 
 export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
+
+/**
+ * Why the account as a whole is not selling as usual: the merchant left, all
+ * sales are paused, something publishing needs is missing, or the cards their
+ * own code published are off sale while a WooCommerce shop sells.
+ */
+export type AccountReason =
+  | "left"
+  | "paused"
+  | "not_approved"
+  | "no_seller_name"
+  | "no_payout_wallet"
+  | "through_shop";
+
+/** A page of the dashboard, named without its prefix, and the words that lead there. */
+export interface Way {
+  readonly to: string;
+  readonly words: string;
+}
+
+/**
+ * One title and one sentence each, and the page that puts it right where one
+ * does. The approval says what is known, that there is none, and not that a
+ * review is under way, since nothing records one; nobody sets it on a page.
+ */
+export const ACCOUNT_WORDS: Readonly<
+  Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
+> = Object.freeze({
+  left: {
+    title: "You have left Agentify",
+    says: "The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return.",
+    fix: null,
+  },
+  paused: {
+    title: "All sales are paused",
+    says: "No new orders are accepted; the orders you have already accepted play out as usual.",
+    fix: { to: "/cards", words: "Resume on Cards" },
+  },
+  not_approved: {
+    title: "Not approved for live sales yet",
+    says: "Agents cannot buy your cards on the live site until Agentify approves your merchant; if an Agentify operator is coordinating your pilot, ask them for the approval.",
+    fix: null,
+  },
+  no_seller_name: {
+    title: "No seller name yet",
+    says: "Your cards are off sale, and every card you publish is refused, until you choose the name buyers see.",
+    fix: { to: "/settings", words: "Choose it in Settings" },
+  },
+  no_payout_wallet: {
+    title: "No payout wallet yet",
+    says: "Your cards are off sale, and every card you publish is refused, until you set the wallet your share of every sale is paid out to.",
+    fix: { to: "/settings", words: "Set it in Settings" },
+  },
+  through_shop: {
+    title: "Selling through your WooCommerce shop",
+    says: "The cards your own code published are off sale while your shop sells.",
+    fix: { to: "/woocommerce", words: "Open WooCommerce" },
+  },
+});
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on

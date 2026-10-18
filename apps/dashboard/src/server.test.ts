@@ -2435,7 +2435,9 @@ describe("choosing the name buyers read", () => {
     const text = readable(cards.html);
 
     expect(cards.status).toBe(200);
-    expect(text).toMatch(/cannot publish products until you choose the seller name/i);
+    expect(text).toMatch(
+      /every card you publish is refused, until you choose the name buyers see/i,
+    );
     expect(cards.html).toContain('href="/settings"');
     expect(await listedAs(running)).toBeNull();
   });
@@ -3127,7 +3129,9 @@ describe("a merchant who has chosen no name", () => {
       const screen = await running.browser.get(path);
       const text = readable(screen.html);
       expect(screen.status, path).toBe(200);
-      expect(text, path).toMatch(/cannot publish products until you choose the seller name/i);
+      expect(text, path).toMatch(
+        /every card you publish is refused, until you choose the name buyers see/i,
+      );
     }
     // The page it points to is the one that fixes it.
     const settings = await running.browser.get("/settings");
@@ -3143,7 +3147,9 @@ describe("a merchant who has chosen no name", () => {
 
     for (const path of ["/cards", "/orders", "/receipts"]) {
       const text = readable((await running.browser.get(path)).html);
-      expect(text, path).not.toMatch(/cannot publish products until you choose the seller name/i);
+      expect(text, path).not.toMatch(
+        /every card you publish is refused, until you choose the name buyers see/i,
+      );
     }
   });
 
@@ -3169,7 +3175,9 @@ describe("a merchant who has chosen no name", () => {
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
     // The dashboard says the same without sending anybody to a route.
-    expect(text).toMatch(/cannot publish products until you choose the seller name/i);
+    expect(text).toMatch(
+      /every card you publish is refused, until you choose the name buyers see/i,
+    );
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
   });

@@ -18,6 +18,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
+import { type AccountNote, type AccountRead, accountOf } from "./account.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
@@ -30,7 +31,6 @@ import {
   money,
   needsYou,
   ORDER_WORDS,
-  SELLING_WORDS,
   UNSET_WORDS,
   type Word,
   waitsOnTheBuyer,
@@ -49,15 +49,13 @@ export const momentView = (iso: string): MomentView => {
   return time.length === 0 ? { text } : { date: date ?? "", time: time.join(" ") };
 };
 
-/** The words at the head of every screen inside the frame. */
+/** What the frame draws over every screen inside it. */
 export interface FrameView {
-  /** Absent where the screen did not read the merchant's selling. */
-  readonly selling?: Word;
   /**
-   * True draws the line saying nothing can go on sale until a seller name is
-   * chosen; only a screen that asked the gateway for the name can say so.
+   * The banner's reasons, empty where the account sells as usual or where the
+   * screen read nothing they rest on.
    */
-  readonly unnamed: boolean;
+  readonly account: readonly AccountNote[];
 }
 
 /** A link to the part of the documentation that carries the mechanism. */
@@ -66,9 +64,8 @@ export interface Rest {
   readonly words: string;
 }
 
-const frameOf = (viewer: Viewer, selling: MerchantCardList["selling"]): FrameView => ({
-  selling: SELLING_WORDS[selling],
-  unnamed: refusedForNoName(viewer),
+const frameOf = (viewer: Viewer, read: AccountRead): FrameView => ({
+  account: accountOf(viewer, read),
 });
 
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
@@ -267,7 +264,7 @@ export const cardsView = (
   const door = readinessSeenBy(viewer);
 
   return {
-    frame: frameOf(viewer, cards.selling),
+    frame: frameOf(viewer, { selling: cards.selling, through: integration.through }),
     published: cards.cards.length,
     pausedByYou: cards.cards.filter((entry) => entry.paused).length,
     allSelling: gone
@@ -379,7 +376,7 @@ export const ordersView = (
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
   return {
-    frame: frameOf(viewer, cards.selling),
+    frame: frameOf(viewer, { selling: cards.selling }),
     open,
     lede: orders.orders.length === 0 ? null : ordersLede(orders, open),
     testNote: testOrders(orders),
@@ -568,7 +565,7 @@ export const receiptsView = (
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   return {
-    frame: frameOf(viewer, cards.selling),
+    frame: frameOf(viewer, { selling: cards.selling }),
     testWarning: testWarning(receipts, viewer.mode),
     count: receipts.receipts.length,
     sums: sumsOf(receipts),

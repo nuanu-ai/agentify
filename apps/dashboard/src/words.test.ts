@@ -7,18 +7,9 @@ import {
   FulfillmentSchema,
   ORDER_STATUSES,
   ReceiptOutcomeSchema,
-  SELLING_STATES,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import {
-  CARD_WORDS,
-  FULFILLMENT_WORDS,
-  moment,
-  money,
-  needsYou,
-  ORDER_WORDS,
-  SELLING_WORDS,
-} from "./words.js";
+import { CARD_WORDS, FULFILLMENT_WORDS, moment, money, needsYou, ORDER_WORDS } from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -51,12 +42,9 @@ describe("the words a merchant reads", () => {
     }
   });
 
-  it("has one for every fulfillment mode and every selling state", () => {
+  it("has one for every fulfillment mode", () => {
     for (const mode of FulfillmentSchema.options) {
       expect(FULFILLMENT_WORDS[mode], mode).toBeTruthy();
-    }
-    for (const selling of SELLING_STATES) {
-      expect(SELLING_WORDS[selling]?.text, selling).toBeTruthy();
     }
   });
 

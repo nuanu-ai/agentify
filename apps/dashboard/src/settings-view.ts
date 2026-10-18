@@ -235,7 +235,7 @@ export const settingsView = (
   const pending = payoutWallet.pending;
 
   return {
-    frame: { unnamed: false },
+    frame: { account: [] },
     who,
     lede:
       sellerName === null

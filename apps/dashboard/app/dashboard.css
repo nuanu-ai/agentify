@@ -527,6 +527,54 @@ td.control {
   margin-top: 4px;
 }
 
+/* --- the account banner ------------------------------------------------- */
+
+/* One banner over the screen, in the notice's colours, each reason a bold
+   title over its sentence; several reasons stack inside the one banner. */
+.account-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 28px 0 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.account-banner svg {
+  flex: none;
+  margin-top: 2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.account-banner p + p {
+  margin-top: 10px;
+}
+
+.account-banner b {
+  display: block;
+  margin-bottom: 2px;
+  color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
+  font-weight: 600;
+}
+
+.account-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.account-banner + .lede {
+  padding-top: 20px;
+}
+
 /* --- signing in --------------------------------------------------------- */
 
 /*

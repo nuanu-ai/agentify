@@ -17,7 +17,7 @@ import { type FrameView, type MomentView, momentView } from "./views.js";
  * gateway call, for a coloured dot or a line, on the screen a merchant reads
  * when something about their keys has gone wrong.
  */
-const FRAME: FrameView = { unnamed: false };
+const FRAME: FrameView = { account: [] };
 
 interface KeyRow {
   readonly id: string;

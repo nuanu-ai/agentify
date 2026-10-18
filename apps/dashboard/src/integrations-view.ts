@@ -56,7 +56,7 @@ const tileOf = (shop: ShopTile): ShopTileView => {
 };
 
 export const integrationsView = (shop: ShopTile | undefined): IntegrationsView => ({
-  frame: { unnamed: false },
+  frame: { account: [] },
   lede:
     shop === undefined
       ? "Your products reach Agentify from your own code through the SDK."

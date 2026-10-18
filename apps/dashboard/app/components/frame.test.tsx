@@ -14,6 +14,7 @@ import { MerchantCardListSchema, OrderListSchema } from "@nuanu-ai/agentify-cont
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import {
   createMemoryRouter,
+  createRoutesStub,
   UNSAFE_FrameworkContext as FrameworkContext,
   type LoaderFunctionArgs,
   Outlet,
@@ -21,10 +22,11 @@ import {
   useLoaderData,
 } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
+import { accountOf } from "../../src/account.js";
 import type { Viewer } from "../../src/viewer.js";
-import { type OrdersView, ordersView } from "../../src/views.js";
+import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
 import { OrdersScreen } from "../screens/orders.js";
-import { Frame } from "./frame.js";
+import { Frame, type Tab } from "./frame.js";
 
 const PERSON = "owner@example.com";
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: PERSON, confirmed: true };
@@ -84,7 +86,7 @@ const dashboardAt = (base: string, path: string) => {
             {
               path: "cards",
               Component: () => (
-                <Frame tab="cards" title="Product cards" frame={{ unnamed: false }}>
+                <Frame tab="cards" title="Product cards" frame={{ account: [] }}>
                   <p>The cards</p>
                 </Frame>
               ),
@@ -175,5 +177,112 @@ describe.each([
     expect(screen.getByText("All", { selector: "a" })).toBeTruthy();
 
     act(() => dashboard.releaseAll());
+  });
+});
+
+/**
+ * One screen drawn in the frame, behind the gate and the merchant's own pages
+ * as every section is.
+ */
+const framed = (tab: Tab, frame: FrameView) => {
+  const Stub = createRoutesStub([
+    {
+      id: "root",
+      path: "/",
+      Component: Outlet,
+      children: [
+        {
+          id: "routes/gate",
+          Component: Outlet,
+          children: [
+            {
+              id: "routes/merchant-only",
+              Component: Outlet,
+              children: [
+                {
+                  path: tab,
+                  Component: () => (
+                    <Frame tab={tab} title="A screen" frame={frame}>
+                      <p>The screen</p>
+                    </Frame>
+                  ),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={[`/${tab}`]}
+      hydrationData={{
+        loaderData: {
+          root: {
+            base: "",
+            surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
+          },
+          "routes/gate": { who: PERSON },
+        },
+      }}
+    />,
+  );
+};
+
+const banner = () => screen.queryByRole("region", { name: "About your account" });
+
+describe("the banner about the account", () => {
+  const LIVE: Viewer = {
+    base: "",
+    mode: "live",
+    who: PERSON,
+    confirmed: true,
+    sellerName: "Freeland",
+    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
+    liveApproval: true,
+  };
+
+  it("is not drawn while the account sells as usual", async () => {
+    framed("cards", { account: accountOf(LIVE, { selling: "open", through: "api" }) });
+    await screen.findByText("The screen");
+
+    expect(banner()).toBeNull();
+  });
+
+  it("says each reason with its title and sentence, and leads to the page that puts it right", async () => {
+    framed("orders", { account: accountOf({ ...LIVE, sellerName: null, liveApproval: false }) });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(within(drawn).getByText("Not approved for live sales yet")).toBeTruthy();
+    expect(within(drawn).getByText("No seller name yet")).toBeTruthy();
+    expect(drawn.textContent).toContain("until you choose the name buyers see");
+    // The approval is nobody's to set on a page, so it leads nowhere.
+    expect(
+      within(drawn)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+    ).toStrictEqual([["Choose it in Settings", "/settings"]]);
+  });
+
+  it("leaves out the way to the page it is drawn on", async () => {
+    // On the cards the control that resumes the sales is already on screen.
+    framed("cards", { account: accountOf(LIVE, { selling: "paused" }) });
+    await screen.findByText("The screen");
+    const onCards = banner();
+    if (onCards === null) throw new Error("no banner was drawn");
+
+    expect(within(onCards).getByText("All sales are paused")).toBeTruthy();
+    expect(within(onCards).queryByRole("link")).toBeNull();
+
+    cleanup();
+    framed("orders", { account: accountOf(LIVE, { selling: "paused" }) });
+    await screen.findByText("The screen");
+
+    expect(screen.getByRole("link", { name: "Resume on Cards" }).getAttribute("href")).toBe(
+      "/cards",
+    );
   });
 });

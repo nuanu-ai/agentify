@@ -11,7 +11,8 @@
  */
 
 import type { Integration } from "@agentify/gateway";
-import { refusedForNoName, type Viewer } from "./viewer.js";
+import { accountOf } from "./account.js";
+import type { Viewer } from "./viewer.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
@@ -196,7 +197,7 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
   const unset = refused.length > 0 ? refused : read.unset;
   return {
     screen: "shop",
-    frame: { unnamed: refusedForNoName(viewer) },
+    frame: { account: accountOf(viewer) },
     keysArrived: answer.cameBack === true && state.kind === "connected",
     connection:
       state.kind === "connected"
@@ -305,9 +306,9 @@ export const wooImportView = (
   const notAttempted = outcomes.filter((one): one is NotAttempted => "notAttempted" in one);
   return {
     screen: "import",
-    // Drawn only once the import found the seller name set, so the line about
-    // choosing one never applies.
-    frame: { unnamed: false },
+    // Drawn only once the import found the seller name set, so the banner's
+    // reason about choosing one never applies.
+    frame: { account: [] },
     shopUrl,
     summary: summaryOf(
       published.length,
