@@ -611,10 +611,6 @@ td.control {
   accent-color: var(--accent);
 }
 
-.gate .consent + .button {
-  margin-top: 0;
-}
-
 @media (max-width: 760px) {
   .gate-card {
     padding: 28px 22px;
@@ -635,6 +631,11 @@ td.control {
 .gate .button {
   margin-top: 12px;
   width: 100%;
+}
+
+/* The consent block keeps a field's distance below itself. */
+.gate .consent + .button {
+  margin-top: 0;
 }
 
 /* The fail colour on a sentence, for two things a merchant must not read past:
