@@ -498,22 +498,15 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 const FRAME_WITHIN_MS = 2_000;
 
 /** A gateway answer as the frame takes it: the document, or that it failed. */
-type Read<T> =
-  | Readonly<{ read: true; value: T; failed: false }>
-  | Readonly<{ read: false; failed: boolean }>;
+type Read<T> = Readonly<{ read: true; value: T }> | Readonly<{ read: false }>;
 
-/** For a fact this channel does not ask for, which is not a failure. */
-const NOT_ASKED: Read<never> = { read: false, failed: false };
-
-const readOf = async <T>(asked: Promise<Answer<T>>): Promise<Read<T>> => {
+const readOf = async <T>(ask: () => Promise<Answer<T>>): Promise<Read<T>> => {
   try {
-    const answered = await asked;
-    return answered.ok
-      ? { read: true, value: answered.document, failed: false }
-      : { read: false, failed: true };
+    const answered = await ask();
+    return answered.ok ? { read: true, value: answered.document } : { read: false };
   } catch {
     console.error("[dashboard] a read for the frame failed");
-    return { read: false, failed: true };
+    return { read: false };
   }
 };
 
@@ -1093,28 +1086,24 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       // could not check.
       async frame(person) {
         const gateway = gatewayAs(person, FRAME_WITHIN_MS);
-        const [open, integration, name, wallet, approval] = await Promise.all([
-          readOf(gateway.orders(true)),
-          readOf(gateway.integration()),
-          readOf(gateway.sellerName()),
-          readOf(gateway.payoutWallet()),
-          config.surfaceMode === "live" ? readOf(gateway.liveApproval()) : NOT_ASKED,
+        const [open, standing] = await Promise.all([
+          readOf(() => gateway.orders(true)),
+          readOf(() => gateway.standing()),
         ]);
-        const viewer: Viewer = {
-          ...viewing(person, name.read ? name.value : undefined),
-          ...(wallet.read ? { payout: { wallet: wallet.value.payout_wallet } } : {}),
-          ...(approval.read ? { liveApproval: approval.value } : {}),
-        };
         return {
           needYou: open.read
             ? open.value.orders.filter((order) => needsYou(order.status)).length
             : null,
-          account: accountOf(viewer, {
-            ...(integration.read
-              ? { selling: integration.value.selling, through: integration.value.through }
-              : {}),
-            unread: [integration, name, wallet, approval].some((one) => one.failed),
-          }),
+          account: standing.read
+            ? accountOf(
+                {
+                  ...viewing(person, standing.value.sellerName),
+                  payout: { wallet: standing.value.payoutWallet },
+                  liveApproval: standing.value.liveApproved,
+                },
+                { selling: standing.value.selling, through: standing.value.through },
+              )
+            : accountOf(viewing(person), { unread: true }),
         };
       },
     },

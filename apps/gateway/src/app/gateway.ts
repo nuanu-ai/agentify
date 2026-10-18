@@ -661,6 +661,33 @@ export class Gateway {
     };
   }
 
+  /**
+   * What the dashboard says over every page about a merchant, from one read of
+   * their row and none of their cards: whether they are selling and through
+   * which integration, the name they sell under, the wallet paid now, and
+   * whether the operator has approved them for live sales. Each answer is the
+   * one the call that reads it alone gives.
+   */
+  async standingOf(merchantId: string): Promise<{
+    readonly selling: MerchantSelling;
+    readonly through: Integration;
+    readonly sellerName: string | null;
+    readonly payoutWallet: string | null;
+    readonly liveApproved: boolean;
+  }> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    return {
+      selling: merchant.selling,
+      through: merchant.integration,
+      sellerName: merchant.serviceName,
+      payoutWallet: payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
+      liveApproved: merchant.liveApprovedAt !== null,
+    };
+  }
+
   /** The integration this merchant sells through now. */
   async sellsThrough(merchantId: string): Promise<Integration> {
     const merchant = await this.runtime.store.merchantById(merchantId);

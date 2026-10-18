@@ -185,6 +185,20 @@ export interface GatewayClient {
     }>
   >;
   /**
+   * What the frame says over every page, from one read of the merchant's row
+   * and none of their cards: the selling state, the integration, the seller
+   * name, the wallet paid now and the operator's approval for live sales.
+   */
+  standing(): Promise<
+    Answer<{
+      readonly selling: "open" | "paused" | "departed";
+      readonly through: Integration;
+      readonly sellerName: string | null;
+      readonly payoutWallet: string | null;
+      readonly liveApproved: boolean;
+    }>
+  >;
+  /**
    * Moves this merchant to an integration: Connect moves them to the shop
    * before they are sent to it, and Disconnect back to their code. Refused,
    * in words that name the orders, while one still waits on the integration
@@ -641,6 +655,10 @@ export const gatewayFor = (
     integration: () =>
       call("reading the integration", async () =>
         done(await application.integrationOf(merchantId)),
+      ),
+    standing: () =>
+      call("reading the merchant's standing", async () =>
+        done(await application.standingOf(merchantId)),
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {

@@ -2672,6 +2672,54 @@ describe("a poll on a key revoked before it was held", () => {
   });
 });
 
+describe("a merchant's standing in one read", () => {
+  /** What the separate reads say about the harness's merchant now. */
+  const separately = async (harnessed: Harness) => {
+    const id = harnessed.merchant.id;
+    const integration = await harnessed.gateway.integrationOf(id);
+    return {
+      selling: integration.selling,
+      through: integration.through,
+      sellerName: (await harnessed.gateway.sellerName(id)).seller_name,
+      payoutWallet: (await harnessed.gateway.payoutWallet(id)).payout_wallet,
+      liveApproved: await harnessed.gateway.liveApproved(id),
+    };
+  };
+
+  it("says what each separate read says, before and after every one of them changes", async () => {
+    const harnessed = await started();
+    const id = harnessed.merchant.id;
+    expect(await harnessed.gateway.standingOf(id)).toStrictEqual(await separately(harnessed));
+
+    await harnessed.gateway.setSelling(id, "paused");
+    await harnessed.gateway.sellThrough(id, "woocommerce");
+    await harnessed.store.grantLiveApproval(id, harnessed.now());
+
+    const changed = await harnessed.gateway.standingOf(id);
+    expect(changed).toStrictEqual(await separately(harnessed));
+    expect(changed).toMatchObject({
+      selling: "paused",
+      through: "woocommerce",
+      liveApproved: true,
+    });
+  });
+
+  it("reads none of the merchant's cards", async () => {
+    const harnessed = await started();
+    await published(harnessed, syncCard);
+    let cardsRead = 0;
+    const cards = harnessed.store.cards.bind(harnessed.store);
+    harnessed.store.cards = async (...asked) => {
+      cardsRead += 1;
+      return await cards(...asked);
+    };
+
+    await harnessed.gateway.standingOf(harnessed.merchant.id);
+
+    expect(cardsRead).toBe(0);
+  });
+});
+
 describe("one integration at a time", () => {
   // A merchant sells through their own code or through a WooCommerce shop the
   // dashboard connected, and a card of the other one is off sale. Selling both

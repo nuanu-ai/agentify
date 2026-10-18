@@ -3858,12 +3858,13 @@ describe("the banner about the account", () => {
 
   it("says it could not check the account where a read does not answer, and still draws the page", async () => {
     const { browser, gateway } = await started({
-      client: (real) => ({ ...real, payoutWallet: async () => lateAnswer(10) }),
+      client: (real) => ({ ...real, standing: async () => lateAnswer(10) }),
     });
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    // The keys read nothing of the wallet themselves, so only the banner's read fails.
+    // The keys read nothing of the merchant's standing themselves, so only the
+    // banner's read fails.
     const keys = await browser.get("/keys");
 
     expect(keys.status).toBe(200);
@@ -4789,6 +4790,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           setSellerSite: answer,
           payoutWallet: answer,
           integration: answer,
+          standing: answer,
           refundsOwed: answer,
         }) as never,
     });
