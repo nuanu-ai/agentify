@@ -78,7 +78,7 @@ export type Answer<T> =
       readonly code?: string;
       /**
        * The orders a refusal is about, oldest first, for a screen that shows
-       * each one to be copied rather than leaving them inside the sentence.
+       * each one to be copied.
        */
       readonly orders?: readonly string[];
     };
