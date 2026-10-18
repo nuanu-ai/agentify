@@ -128,7 +128,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           open here without a message.
         </p>
       ) : (
-        <p className={styles.lead}>We email you a secure link to open it. Phone is optional.</p>
+        <p className={styles.lead}>We email you a secure link to open it.</p>
       )}
       {state === "sent" ? (
         <div className={styles.sent} aria-live="polite">

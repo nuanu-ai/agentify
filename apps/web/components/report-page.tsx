@@ -120,7 +120,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
               <p className={layout.lead}>
                 If what you sell can be delivered again without loss — an access, a key, a link, a
                 subscription — the same email opens a seller dashboard. Selling live also needs our
-                approval.
+                approval. If not, this report is the whole result.
               </p>
               <ReportDashboardControl />
             </section>
