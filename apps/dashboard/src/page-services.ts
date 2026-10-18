@@ -52,6 +52,7 @@ import { type SettingsPress, type SettingsView, settingsView } from "./settings-
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
+  cardsPlace,
   cardsView,
   type OrdersView,
   ordersView,
@@ -201,10 +202,11 @@ export interface PageServices {
   };
   /**
    * A switch pressed on the cards, named in the address the press is posted
-   * to: `pause` or `resume` with a card, or `selling` with either way.
+   * to: `pause` or `resume` with a card, or `selling` with either way. The
+   * form carries the list it was drawn on, which the press leads back to.
    */
   readonly selling: {
-    press(person: Person, query: URLSearchParams): Promise<Outcome<never>>;
+    press(person: Person, query: URLSearchParams, form: FormData): Promise<Outcome<never>>;
   };
   /** The screens about a merchant's selling, for a person the gates let through. */
   readonly screens: {
@@ -416,6 +418,12 @@ const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boo
 };
 
 const NO_SUCH_SWITCH = "There is no such switch on the cards.";
+
+/** A form's text fields as an address's query; a file a program posted is no field here. */
+const fieldsIn = (form: FormData): URLSearchParams =>
+  new URLSearchParams(
+    [...form].flatMap(([name, value]) => (typeof value === "string" ? [[name, value]] : [])),
+  );
 
 /**
  * What was typed into a box, trimmed: a space at either end is a typing
@@ -962,7 +970,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     },
 
     selling: {
-      async press(person, query) {
+      async press(person, query, form) {
         const pressed = switchIn(query);
         if (pressed === null) {
           return { kind: "problem", problem: { status: 404, said: NO_SUCH_SWITCH } };
@@ -982,7 +990,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             : `${pressed.paused ? "paused" : "resumed"} the card ${pressed.card}`,
         );
         // A redirect, so a reload does not press the switch again.
-        return { kind: "redirect", location: `${base}/cards` };
+        return { kind: "redirect", location: `${base}${cardsPlace(fieldsIn(form))}` };
       },
     },
 

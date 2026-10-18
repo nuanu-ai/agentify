@@ -284,7 +284,7 @@ describe("a press answered on its own page", () => {
     expect(meanwhile).toContain("On sale");
     expect(page.url()).toBe(listing);
     expect(await marked()).toContain("On sale");
-    expect(await page.locator("input[name=q]").inputValue()).toBe("suite");
+    expect(await page.getByRole("searchbox", { name: "Search cards" }).inputValue()).toBe("suite");
     expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
     await page.context().close();
   });

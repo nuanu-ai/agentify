@@ -17,22 +17,37 @@ const Aside = ({ aside }: Readonly<{ aside: CardAside }>) =>
     </>
   );
 
+type Place = CardsView["listing"]["place"];
+
+/**
+ * The list a switch is pressed on, carried in its form, so the press leads
+ * back to the search, the segment and the page the merchant was reading.
+ */
+const Kept = ({ place }: Readonly<{ place: Place }>) =>
+  Object.entries(place).map(([name, value]) => (
+    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
+  ));
+
 const Control = ({
   id,
   control,
   base,
-}: Readonly<{ id: string; control: CardControl; base: string }>) => {
+  place,
+}: Readonly<{ id: string; control: CardControl; base: string; place: Place }>) => {
   if (control.kind === "switch") {
     return (
       <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
         {(pending) => (
-          <Button
-            compact
-            variant={control.verb === "resume" ? "primary" : "secondary"}
-            pending={pending}
-          >
-            {control.verb === "resume" ? "Resume" : "Pause"}
-          </Button>
+          <>
+            <Kept place={place} />
+            <Button
+              compact
+              variant={control.verb === "resume" ? "primary" : "secondary"}
+              pending={pending}
+            >
+              {control.verb === "resume" ? "Resume" : "Pause"}
+            </Button>
+          </>
         )}
       </PostForm>
     );
@@ -49,13 +64,22 @@ const Control = ({
 };
 
 /** The control that stops or restarts all selling, where the merchant has one. */
-const AllSelling = ({ allSelling }: Readonly<{ allSelling: CardsView["allSelling"] }>) =>
+const AllSelling = ({
+  allSelling,
+  place,
+}: Readonly<{ allSelling: CardsView["allSelling"]; place: Place }>) =>
   allSelling === null ? null : (
     <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
       {(pending) => (
-        <Button variant={allSelling.verb === "resume" ? "primary" : "secondary"} pending={pending}>
-          {allSelling.label}
-        </Button>
+        <>
+          <Kept place={place} />
+          <Button
+            variant={allSelling.verb === "resume" ? "primary" : "secondary"}
+            pending={pending}
+          >
+            {allSelling.label}
+          </Button>
+        </>
       )}
     </PostForm>
   );
@@ -81,7 +105,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <div className="lede">
           <div />
           <div className="actions">
-            <AllSelling allSelling={allSelling} />
+            <AllSelling allSelling={allSelling} place={listing.place} />
           </div>
         </div>
         <div className="empty-start">
@@ -109,7 +133,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         label="Search cards"
         placeholder="Search by name or product code"
       >
-        <AllSelling allSelling={allSelling} />
+        <AllSelling allSelling={allSelling} place={listing.place} />
       </ListTools>
       {listing.rows.length === 0 ? (
         <NothingHere listing={listing} />
@@ -136,7 +160,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                 <Word word={row.state} />
               </Cell>
               <Cell at={row.control.kind === "switch" ? "action" : "note"}>
-                <Control id={row.id} control={row.control} base={base} />
+                <Control id={row.id} control={row.control} base={base} place={listing.place} />
               </Cell>
               <RowMore summary="Price and delivery">
                 <Aside aside={row.aside} />

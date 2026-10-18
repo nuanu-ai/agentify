@@ -21,7 +21,7 @@ import {
 import { type AccountNote, type AccountRead, accountOf } from "./account.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
-import { askedIn, type Listing, listingOf, type SegmentRule } from "./listing.js";
+import { askedIn, type Listing, listingOf, placeOf, type SegmentRule } from "./listing.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
@@ -259,6 +259,12 @@ const CARD_SEGMENTS: readonly SegmentRule<CardRow>[] = [
   { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No card is off sale." },
 ];
 
+const CARD_SEGMENT_KEYS = CARD_SEGMENTS.map((one) => one.key);
+
+/** Where a press on the cards leads back to: the list its form's fields name. */
+export const cardsPlace = (fields: URLSearchParams): string =>
+  placeOf("/cards", fields, CARD_SEGMENT_KEYS);
+
 export const cardsView = (
   viewer: Viewer,
   cards: MerchantCardList,
@@ -298,10 +304,7 @@ export const cardsView = (
           control: cardControl(entry, cards.selling, door, integration),
         };
       }),
-      asked: askedIn(
-        query,
-        CARD_SEGMENTS.map((one) => one.key),
-      ),
+      asked: askedIn(query, CARD_SEGMENT_KEYS),
       path: "/cards",
       segments: CARD_SEGMENTS,
       // Found by its title or its product code, the two a merchant knows it by.
