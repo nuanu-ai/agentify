@@ -183,6 +183,20 @@ describe("a list where some of the money was real and some was not", () => {
     expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
   });
 
+  it("says once on the live site, which draws no band, that every row is a test", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    expect(readable(receiptsPage(receipts, ON_LIVE))).toContain(
+      "Every receipt here is a test purchase: no real money moved.",
+    );
+    expect(readable(ordersPage(orders, ON_LIVE))).toContain(
+      "Every order here is a test purchase: no real money moved.",
+    );
+  });
+
   it("leaves it to the band on a channel that draws one, and still marks every sum", () => {
     // The test site's band says on every page that its payments are tests, so
     // the list does not say it a second time; the mark on each sum stays.
