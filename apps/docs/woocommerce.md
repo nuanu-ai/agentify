@@ -2,7 +2,7 @@
 
 *The public contract is versioned; changes arrive in a new package version.*
 
-You run a WooCommerce shop and want agents — programs buying on a person's
+You run a WooCommerce shop and want buyers — programs buying on a person's
 behalf — to buy from it without anybody writing code. The WooCommerce page of
 your dashboard connects the shop, imports its products as cards, and from then
 on the shop takes the paid orders. This page is what each of those steps does
@@ -19,14 +19,14 @@ anything other than Plain.
 
 Such a product becomes one of two kinds of card:
 
-| The product in your shop | What the agent gets | What your shop gets |
+| The product in your shop | What the buyer gets | What your shop gets |
 | --- | --- | --- |
 | A virtual download with exactly one protected file, unlimited downloads and no expiry | the download, once it is paid for | a paid order |
 | A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place | a paid order carrying the buyer's shipping address |
 
 Every other product stays in your shop untouched, and the import names it with
 the reason. A product also needs a name and a description in plain text,
-because the description is what an agent reads before it decides to buy.
+because the description is what a buyer reads before it decides to buy.
 
 ## Connecting your shop
 
@@ -52,10 +52,11 @@ both. Pressing Connect switches you to the shop at once, before you approve:
 the cards your code published go off sale and your code receives no orders
 until you disconnect the shop.
 
-The switch waits for the orders your code is still working on. Each has to
-end first: delivered or refused by your code, paid or left unpaid by its
-buyer, or closed when its time runs out. The dashboard names those orders, and
-pausing all sales on Cards keeps new ones from arriving meanwhile.
+The switch is refused while your code is still working on an order. Each such
+order has to end first: delivered or refused by your code, paid or left unpaid
+by its buyer, or closed when its time runs out. The dashboard names those
+orders, pausing all sales on Cards keeps new ones from arriving meanwhile, and
+you press Connect again once they have ended.
 
 If you pressed Connect and never approved, you sell through a shop that is not
 connected, and nothing sells. The WooCommerce page offers the way back to your
@@ -86,8 +87,8 @@ The result lists every product it read under one of these headings:
 ## When a product changes in the shop
 
 A product deleted from the shop, sold out, or no longer supported keeps its
-card, but the price check refuses its purchase before payment, so no money
-moves. Pause the cards you no longer want agents to see.
+card, but the price check refuses its purchase before payment. Pause the cards
+you no longer want buyers to see.
 
 ## Parcels
 
@@ -135,8 +136,8 @@ WooCommerce → Settings → Advanced → REST API.
 ## What is not settled yet
 
 - Parcels on the live channel. A parcel sells on the test channel only until
-  the refund of a lost parcel can be recorded, and selling it live will need
-  the time to ship from you rather than Agentify's seven days.
+  the refund of a lost parcel can be recorded, and how a live parcel's time to
+  ship is set is not decided.
 - How a refund you owe goes back to the buyer. Agentify records the debt on
   your Orders screen; how the money travels back is open
   ([Money](/money#if-the-buyer-did-not-get-the-goods)).
