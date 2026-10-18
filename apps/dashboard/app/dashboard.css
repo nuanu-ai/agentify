@@ -1737,19 +1737,6 @@ h2 {
   }
 }
 
-/* The empty catalogue as a panel with its ways in as buttons. */
-.empty-start {
-  margin: 24px 0;
-  padding: 28px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  text-align: center;
-}
-.empty-start .connect-actions {
-  justify-content: center;
-}
-
 /* The heading in the top bar starts on the same line as the content under it. */
 .app-workspace .top-inner {
   width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
@@ -1795,14 +1782,6 @@ h2 {
   .app-shell + .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;
-  }
-}
-
-/* On a phone the ways into an empty catalogue stand one under another. */
-@media (max-width: 560px) {
-  .empty-start .connect-actions {
-    flex-direction: column;
-    align-items: stretch;
   }
 }
 
