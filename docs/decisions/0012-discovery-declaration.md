@@ -37,8 +37,9 @@ the publish to the catalog's limits, by the catalog's own code where that code
 can be run, because the catalog drops what breaks them without telling anybody.
 The declaration rides in one header, so the publish refuses a card whose
 challenge, encoded with every other part at its widest, would pass 8 KiB. Node's
-HTTP client and fetch read 16 KiB of response headers in all; taking half is a
-judgment, a margin for the response's other headers and for intermediaries.
+HTTP client and fetch read 16 KiB of response headers in all
+(`docs/research/50-commerce-correctness-test.md`); taking half is a judgment, a
+margin for the response's other headers and for intermediaries.
 
 Every card is declared, with no opt-in, and only while it is for sale: a card
 off sale for any reason answers no challenge, so the catalog never carries a
