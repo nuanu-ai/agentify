@@ -396,9 +396,10 @@ describe("the state of each card", () => {
       cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
     });
   const wordsOf = (list: ReturnType<typeof listOf>, offSale: readonly string[] = []) =>
-    cardsView(SEEN_BY, list, "https://agentify.ad", false, { through: "api", offSale }).rows.map(
-      (row) => row.state.text,
-    );
+    cardsView(SEEN_BY, list, "https://agentify.ad", false, {
+      through: "api",
+      offSale,
+    }).listing.rows.map((row) => row.state.text);
 
   it("tells a card on sale from one the merchant paused and one held by the account", () => {
     const list = listOf(
@@ -430,5 +431,58 @@ describe("a card's row on a phone", () => {
     const opened = /<details class="cell-more">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "";
 
     expect(readable(opened)).toContain("Price on the card since 2026-08-26 09:00:00 UTC");
+  });
+});
+
+describe("a search over the cards", () => {
+  const entry = cards.cards[0];
+  if (entry === undefined) throw new Error("the example catalogue has no card");
+  const many = (count: number) =>
+    MerchantCardListSchema.parse({
+      selling: "open",
+      cards: Array.from({ length: count }, (_, at) => ({
+        ...entry,
+        id: `itm_${at}`,
+        card: { ...entry.card, merchant_item_id: `room-${at}`, title: `Room ${at}` },
+      })),
+    });
+  const page = (list: ReturnType<typeof many>, address: string) =>
+    readable(
+      served(() => (
+        <CardsScreen
+          view={cardsView(
+            SEEN_BY,
+            list,
+            "https://agentify.ad",
+            false,
+            undefined,
+            new URLSearchParams(address),
+          )}
+          base=""
+        />
+      )),
+    );
+
+  it("says what was searched for where no card matches, which is not an empty catalogue", () => {
+    const text = page(many(3), "q=suite");
+
+    expect(text).toContain("No card matches “suite”. Clear the search");
+    expect(text).not.toContain("haven't published any cards");
+    expect(page(many(0), "q=suite")).toContain("You haven't published any cards yet.");
+  });
+
+  it("finds a card by its product code as well as its title", () => {
+    const text = page(many(12), "q=room-11");
+
+    expect(text).toContain("Room 11");
+    expect(text).not.toContain("Room 10");
+  });
+
+  it("draws fifty cards of a longer catalogue and says how many there are", () => {
+    const text = page(many(214), "");
+
+    expect(text).toContain("Showing 1–50 of 214");
+    expect(text).toContain("Room 49");
+    expect(text).not.toContain("Room 50 ");
   });
 });

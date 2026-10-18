@@ -3246,6 +3246,22 @@ describe("the cards screen", () => {
     expect(text).toContain("On sale");
   });
 
+  it("answers a search in the address with the cards it finds, and says what found none", async () => {
+    // A GET the loader answers, so the search works with no script on the page.
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+    await publish(gateway, esimCard);
+    await browser.signIn();
+
+    const found = readable((await browser.get("/cards?q=esim")).html);
+    const none = readable((await browser.get("/cards?q=sofa")).html);
+
+    expect(found).toContain("eSIM Europe, 5 GB for 30 days");
+    expect(found).not.toContain("A room for the night");
+    expect(none).toContain("No card matches “sofa”.");
+    expect(none).not.toContain("haven't published any cards");
+  });
+
   it("shows every promise a card makes, not the first one it finds", async () => {
     // Showing only the price check would leave a row that never mentions the
     // deadline the merchant answers for.

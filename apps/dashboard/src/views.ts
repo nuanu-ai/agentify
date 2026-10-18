@@ -21,6 +21,7 @@ import {
 import { type AccountNote, type AccountRead, accountOf } from "./account.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
+import { askedIn, type Listing, listingOf, type SegmentRule } from "./listing.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
@@ -216,14 +217,17 @@ interface CardRow {
 
 export interface CardsView {
   readonly frame: FrameView;
-  readonly published: number;
-  readonly pausedByYou: number;
   /**
    * The control that stops or restarts all selling; absent for a merchant who
    * has left, who is offered no way back on sale here.
    */
   readonly allSelling: null | Readonly<{ verb: "pause" | "resume"; label: string }>;
-  readonly rows: readonly CardRow[];
+  /**
+   * The cards the address asked for, at most a page of them: what was searched
+   * for, the segments with their counts, how much was cut, and why none is
+   * drawn where the merchant has some.
+   */
+  readonly listing: Listing<CardRow>;
   /** Present only when there are no cards: why, and the two ways to the first. */
   readonly empty: null | Readonly<{ why: string; woo: boolean }>;
   readonly sellingNote: string;
@@ -245,12 +249,23 @@ const emptyCatalogue = (viewer: Viewer): string =>
       ? `You haven't published any cards yet. ${APPROVAL_PENDING}`
       : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
 
+/**
+ * A card on sale is one an agent can buy now; every other card is off sale,
+ * paused by the merchant or held by something the banner names.
+ */
+const CARD_SEGMENTS: readonly SegmentRule<CardRow>[] = [
+  { key: "all", label: "All", holds: () => true, none: "" },
+  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No card is on sale." },
+  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No card is off sale." },
+];
+
 export const cardsView = (
   viewer: Viewer,
   cards: MerchantCardList,
   origin: string,
   wooAvailable = false,
   integration: CardsIntegration = ALL_THROUGH_THE_CODE,
+  query: URLSearchParams = new URLSearchParams(),
 ): CardsView => {
   // "Departed" is not folded into "stopped": that would offer a merchant who
   // has left a button back on sale and a note saying accepted orders are
@@ -262,27 +277,42 @@ export const cardsView = (
 
   return {
     frame: frameOf(viewer, { selling: cards.selling, through: integration.through }),
-    published: cards.cards.length,
-    pausedByYou: cards.cards.filter((entry) => entry.paused).length,
     allSelling: gone
       ? null
       : stopped
         ? { verb: "resume", label: RESUME_ALL_SELLING }
         : { verb: "pause", label: STOP_ALL_SELLING },
-    rows: cards.cards.map((entry) => {
-      const state = cardWord(entry, integration);
-      return {
-        id: entry.id,
-        off: state !== CARD_WORDS.onSale,
-        title: entry.card.title,
-        aside: cardAside(entry),
-        buy: buyingAddress(origin, entry),
-        itemId: entry.card.merchant_item_id,
-        price: money(entry.card.price),
-        delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
-        state,
-        control: cardControl(entry, cards.selling, door, integration),
-      };
+    listing: listingOf({
+      rows: cards.cards.map((entry): CardRow => {
+        const state = cardWord(entry, integration);
+        return {
+          id: entry.id,
+          off: state !== CARD_WORDS.onSale,
+          title: entry.card.title,
+          aside: cardAside(entry),
+          buy: buyingAddress(origin, entry),
+          itemId: entry.card.merchant_item_id,
+          price: money(entry.card.price),
+          delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
+          state,
+          control: cardControl(entry, cards.selling, door, integration),
+        };
+      }),
+      asked: askedIn(
+        query,
+        CARD_SEGMENTS.map((one) => one.key),
+      ),
+      path: "/cards",
+      segments: CARD_SEGMENTS,
+      // Found by its title or its product code, the two a merchant knows it by.
+      matches: (row, words) =>
+        row.title.toLocaleLowerCase().includes(words) ||
+        row.itemId.toLocaleLowerCase().includes(words),
+      noMatch: (q, within) =>
+        within === null
+          ? `No card matches “${q}”.`
+          : `No card ${within.toLocaleLowerCase()} matches “${q}”.`,
+      showAll: "Show all cards",
     }),
     empty: cards.cards.length === 0 ? { why: emptyCatalogue(viewer), woo: wooAvailable } : null,
     sellingNote: sellingNote(cards.selling),

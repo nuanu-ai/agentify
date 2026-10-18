@@ -969,7 +969,117 @@ const cards = (
   view: ReturnType<typeof cardsView>,
   mode: SurfaceMode,
   needYou: number | null = 0,
-): GalleryState => at(told, { path: "/cards", mode, needYou, loaded: { "routes/cards": view } });
+  path = "/cards",
+): GalleryState => at(told, { path, mode, needYou, loaded: { "routes/cards": view } });
+
+/** The cards at an address that asks for a search, a segment or a page. */
+const cardsAt = (path: string, list: ReturnType<typeof cardsOf>, mode: SurfaceMode = "live") =>
+  cardsView(
+    seenBy(mode),
+    list,
+    ORIGIN[mode],
+    false,
+    undefined,
+    new URL(path, ORIGIN[mode]).searchParams,
+  );
+
+/**
+ * A data plan per country and size, as an eSIM seller lists them: a catalogue
+ * longer than one page.
+ */
+const WHOLE_CATALOGUE = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    "Albania",
+    "Argentina",
+    "Australia",
+    "Austria",
+    "Bahrain",
+    "Belgium",
+    "Brazil",
+    "Bulgaria",
+    "Cambodia",
+    "Canada",
+    "Chile",
+    "China",
+    "Colombia",
+    "Croatia",
+    "Cyprus",
+    "Czechia",
+    "Denmark",
+    "Egypt",
+    "Estonia",
+    "Finland",
+    "France",
+    "Georgia",
+    "Germany",
+    "Greece",
+    "Hong Kong",
+    "Hungary",
+    "Iceland",
+    "India",
+    "Indonesia",
+    "Ireland",
+    "Israel",
+    "Italy",
+    "Japan",
+    "Jordan",
+    "Kazakhstan",
+    "Kenya",
+    "Latvia",
+    "Lithuania",
+    "Malaysia",
+    "Malta",
+    "Mexico",
+    "Morocco",
+    "Netherlands",
+    "New Zealand",
+    "Norway",
+    "Oman",
+    "Peru",
+    "Philippines",
+    "Poland",
+    "Portugal",
+    "Qatar",
+    "Romania",
+    "Saudi Arabia",
+    "Serbia",
+    "Singapore",
+    "Slovakia",
+    "Slovenia",
+    "South Africa",
+    "South Korea",
+    "Spain",
+    "Sri Lanka",
+    "Sweden",
+    "Switzerland",
+    "Taiwan",
+    "Tanzania",
+    "Thailand",
+    "Turkey",
+    "Ukraine",
+    "United Arab Emirates",
+    "United Kingdom",
+    "Uruguay",
+    "Vietnam",
+  ].flatMap((country) =>
+    [1, 3, 5].map((gigabytes) => {
+      const code = `esim-${country.toLowerCase().replaceAll(" ", "-")}-${gigabytes}gb`;
+      return {
+        id: idOf("itm", code),
+        as_of: "2026-10-01T09:00:00Z",
+        card: {
+          ...PRODUCTS.esimEurope,
+          merchant_item_id: code,
+          title: `eSIM ${country}, ${gigabytes} GB for 30 days`,
+          price: { amount: `${(gigabytes * 1.5 + 2).toFixed(2)}`, currency: "USD" },
+        },
+        selling: "open",
+        paused: false,
+      };
+    }),
+  ),
+});
 
 const CARDS: GalleryState[] = [
   cards(
@@ -1028,6 +1138,58 @@ const CARDS: GalleryState[] = [
       ORIGIN.live,
     ),
     "live",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-cut-short",
+      screen: "Cards",
+      when: "A merchant selling a data plan per country and size opens Cards.",
+      cause:
+        "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many and leads to the next page.",
+    },
+    cardsAt("/cards", WHOLE_CATALOGUE),
+    "live",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-search",
+      screen: "Cards",
+      when: "A merchant searches a long catalogue for one country's plans.",
+      cause:
+        "The address carries the search, which the loader answers with the three cards whose title or product code holds it; each segment counts its share of them.",
+    },
+    cardsAt("/cards?q=japan", WHOLE_CATALOGUE),
+    "live",
+    0,
+    "/cards?q=japan",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-search-no-match",
+      screen: "Cards",
+      when: "A merchant searches their cards for a word none of them holds.",
+      cause:
+        "No title or product code holds the search, so the list says what was searched for and offers to clear it, which is not what an empty catalogue says.",
+    },
+    cardsAt(
+      "/cards?q=router",
+      cardsOf("open", ["esimEurope", "esimAsia", { product: "vpn", paused: true }, "number"]),
+    ),
+    "live",
+    0,
+    "/cards?q=router",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-segment-empty",
+      screen: "Cards",
+      when: "A merchant whose every card is on sale picks Off sale.",
+      cause: "The segment holds no card, so the list says so and leads back to all of them.",
+    },
+    cardsAt("/cards?show=off-sale", CATALOGUE),
+    "live",
+    0,
+    "/cards?show=off-sale",
   ),
   cards(
     {

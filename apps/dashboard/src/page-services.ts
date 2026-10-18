@@ -208,7 +208,8 @@ export interface PageServices {
   };
   /** The screens about a merchant's selling, for a person the gates let through. */
   readonly screens: {
-    cards(person: Person): Promise<Outcome<CardsView>>;
+    /** As the address asks: the words searched for, the segment and the page. */
+    cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
     /**
@@ -986,7 +987,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     },
 
     screens: {
-      async cards(person) {
+      async cards(person, query) {
         const gateway = gatewayAs(person);
         // A card can read paused for want of any of these, and the control
         // beside it says which. The operator's approval is read only on live,
@@ -1017,6 +1018,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             config.publicBaseUrl,
             parts.woo !== null,
             integration.document,
+            query,
           ),
         };
       },

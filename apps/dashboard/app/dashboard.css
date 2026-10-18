@@ -543,6 +543,11 @@ td.control {
   text-align: center;
 }
 
+.list-empty a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .list > li + li {
   border-top: var(--hairline) solid var(--line-soft);
 }
@@ -740,6 +745,109 @@ td.control {
     color: var(--fg-2);
     font-size: 0.875rem;
   }
+}
+
+/* Over a long list: the search, the segments with their counts, and the
+   controls about the whole list at the end of the row. */
+.list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.account-banner + .list-tools {
+  margin-top: 20px;
+}
+
+.list-tools + .list-box {
+  margin-top: 16px;
+}
+
+.list-tools .search {
+  position: relative;
+  flex: 1 1 260px;
+  max-width: 340px;
+}
+
+.search > svg {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.list-tools .search input {
+  min-height: 44px;
+  padding: 0 14px 0 40px;
+  border-width: var(--hairline);
+  font-size: 0.9375rem;
+}
+
+.segments {
+  display: inline-flex;
+  padding: 3px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.segments > a,
+.segments > span {
+  padding: 7px 12px;
+  border-radius: 9px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.segments > a:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.segments b {
+  margin-left: 4px;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.segments > .here {
+  background: var(--raised);
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.list-tools-end {
+  margin-left: auto;
+}
+
+@media (max-width: 560px) {
+  .list-tools .search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+/* Under a list cut short: which rows of how many, then the ways to the rest. */
+.cut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.cut a {
+  font-weight: 500;
 }
 
 /* A heading over a group of rows, with its count in a pill. */
