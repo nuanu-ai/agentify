@@ -8,7 +8,6 @@ import { unexplainedUnavailable } from "../lib/robots-notice";
 import { SCAN_STATUS_LINES } from "../lib/scan-status";
 import { CheckRow } from "./check-row";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
-import { NoteIcon } from "./note-icon";
 import { PublicShareActions } from "./public-share-actions";
 import { RegistrationForm } from "./registration-form";
 import { columnsFor } from "./report-actions";
@@ -64,16 +63,14 @@ export function ScanTeaser({
               .join(" · ")}
             score={teaser.score}
           />
-          <RobotsNotice checks={data.checks} className={layout.note} />
-          {unexplainedUnavailable(data.checks).length ? (
-            <div className={layout.note} data-unavailable-notice>
-              <NoteIcon />
-              <p>
+          <RobotsNotice checks={data.checks} className={layout.note}>
+            {unexplainedUnavailable(data.checks).length ? (
+              <p data-unavailable-notice>
                 Some checks were unavailable. They reduce coverage and are not treated as confirmed
                 failures.
               </p>
-            </div>
-          ) : null}
+            ) : null}
+          </RobotsNotice>
           {shareShown || promptShown ? (
             <div className={row.share}>
               <div

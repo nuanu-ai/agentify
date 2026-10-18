@@ -1,4 +1,5 @@
 import type { RobotsReason } from "@agentify/scanner-contracts";
+import type { ReactNode } from "react";
 
 import { robotsNotices } from "../lib/robots-notice";
 import { NoteIcon } from "./note-icon";
@@ -16,16 +17,19 @@ const COPY: Record<RobotsReason, (count: number) => string> = {
 
 // Tells the owner which checks their robots.txt kept the scanner from, and
 // why, so a scan it stopped does not read as a scanner fault: one note, a
-// sentence for each reason.
+// sentence for each reason, then whatever else `children` says of the
+// coverage.
 export function RobotsNotice({
   checks,
+  children,
   className,
 }: Readonly<{
   checks: readonly Readonly<{ id: number; robots: RobotsReason | null }>[];
+  children?: ReactNode;
   className?: string;
 }>) {
   const notices = robotsNotices(checks);
-  if (!notices.length) return null;
+  if (!notices.length && !children) return null;
   return (
     <div className={className}>
       <NoteIcon />
@@ -35,6 +39,7 @@ export function RobotsNotice({
             {COPY[reason](checkIds.length)}
           </p>
         ))}
+        {children}
       </div>
     </div>
   );
