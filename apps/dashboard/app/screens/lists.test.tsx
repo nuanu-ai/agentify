@@ -147,6 +147,37 @@ describe("the receipts of sales that went out", () => {
     expect(text).toContain("Delivered or shipped 2 of 2 receipts");
     expect(text).toContain("shipped");
   });
+
+  it("lists the latest payment first, whatever order the gateway gave them in", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [
+        { ...receipt("rcp_old", false), paid_at: "2026-08-26T09:00:03Z" },
+        { ...receipt("rcp_new", false), paid_at: "2026-08-26T11:00:03Z" },
+        { ...receipt("rcp_mid", false), paid_at: "2026-08-26T10:00:03Z" },
+      ],
+    });
+
+    const text = readable(receiptsPage(receipts));
+    const at = (id: string) => text.indexOf(id);
+
+    expect(at("rcp_new")).toBeLessThan(at("rcp_mid"));
+    expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
+  });
+
+  it("shows a long receipt ID and its order's ID short, each with a button that copies it whole", () => {
+    const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [{ ...receipt(id, false), order_id: "ord_d59f0110946cfebd26bbf9ae7de0134e" }],
+    });
+
+    const html = receiptsPage(receipts);
+
+    expect(html).toContain(">rcp_d59f…134e<");
+    expect(html).toContain(">ord_d59f…134e<");
+    expect(html).toContain(`aria-label="Copy the whole receipt ID rcp_d59f…134e"`);
+    expect(html).toContain(`aria-label="Copy the whole order ID ord_d59f…134e"`);
+    expect(html).toContain(`title="${id}"`);
+  });
 });
 
 describe("a list where some of the money was real and some was not", () => {
