@@ -69,11 +69,16 @@ function NeedYou({ count: coming }: Readonly<{ count: Promise<number | null> | n
   );
 }
 
-/** `heading` is the bar's words where they are not the window's title. */
+/**
+ * `heading` is the bar's words where they are not the window's title, and
+ * `action` a control about the whole page, drawn at the bar's end at every
+ * width, so a phone reaches it without scrolling past the page.
+ */
 export function Frame({
   tab,
   title,
   heading = title,
+  action,
   frame,
   children,
 }: Readonly<{
@@ -81,6 +86,7 @@ export function Frame({
   tab?: Tab;
   title: string;
   heading?: string;
+  action?: ReactNode;
   frame: FrameView;
   children: ReactNode;
 }>) {
@@ -158,6 +164,7 @@ export function Frame({
           <div className="top">
             <div className="top-inner">
               <h1 className="top-title">{heading}</h1>
+              {action}
             </div>
           </div>
           <main className="app-content" id="main">
