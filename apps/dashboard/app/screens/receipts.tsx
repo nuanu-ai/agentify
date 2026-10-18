@@ -89,7 +89,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
       ) : (
         <List
           label="Receipts"
-          columns="6rem minmax(12rem, 1fr) 9.5rem 9rem 11rem"
+          columns="6rem minmax(11.5rem, 1fr) 9.5rem 9rem 11rem"
           head={["Paid", "Product", { text: "Amount", end: true }, "Outcome", "Transfer"]}
         >
           {view.rows.map((row, at) => (
