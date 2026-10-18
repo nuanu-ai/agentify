@@ -635,6 +635,30 @@ describe("the protected product check", () => {
     expect(read).toMatchObject({ ok: false, again: false });
   });
 
+  it("refuses a product document that names another product, as a parcel or a download", async () => {
+    for (const [document, requested] of [
+      [() => productDocument({ id: 12 }), "11"],
+      [() => parcelDocument({ id: 29 }), "28"],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+        }
+        return { status: 200, body: document() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, requested),
+      );
+
+      expect(read, requested).toMatchObject({ ok: false, again: false });
+      await stand.close();
+      stand = null;
+    }
+  });
+
   it("says a shop that would not answer the product check is worth asking again", async () => {
     // The order this check guards is still live while the shop is down or busy,
     // and a refusal read off a timeout would close it with an untrue reason.
