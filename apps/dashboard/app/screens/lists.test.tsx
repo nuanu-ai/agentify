@@ -616,9 +616,24 @@ describe("a card's row on a phone", () => {
     expect(readable(fact)).toContain("price asked at purchase");
   });
 
+  it("does not repeat under every title the moment a fixed price holds from", () => {
+    // On a real catalogue every fixed-price row would carry the same line; the
+    // moment stays reachable on the price itself and in the opened row.
+    const html = served(() => (
+      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
+    ));
+    const main =
+      /<div class="cell cell-main">([\s\S]*?)<div class="cell cell-amount"/.exec(html)?.[1] ?? "";
+    const price = /<div class="cell cell-amount"><span title="([^"]*)"/.exec(html)?.[1] ?? "";
+
+    expect(readable(main)).toContain("A room for the night");
+    expect(readable(main)).not.toContain("Price on the card since");
+    expect(price).toBe("Price on the card since 2026-08-26 09:00:00 UTC");
+  });
+
   it("keeps what the narrow row leaves out in the row's opened part", () => {
-    // The moment the price holds from is drawn under the title on a wide box
-    // only; on a phone it is one press away, never gone.
+    // The moment the price holds from is not in the row's lines; on a phone it
+    // is one press away, never gone.
     const html = served(() => (
       <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
