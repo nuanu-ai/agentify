@@ -98,7 +98,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         product was out of stock, or you did not answer a price request. No money was charged for
         them.
       </p>
-      {view.callouts.map((callout) => (
+      {[...view.needsYou, ...view.waitsOnTheBuyer].map((callout) => (
         <div className="callout" key={callout.id}>
           <div className="what">
             Order <span className="mono">{callout.id}</span> {callout.state}

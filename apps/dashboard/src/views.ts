@@ -27,11 +27,12 @@ import {
   FULFILLMENT_WORDS,
   moment,
   money,
-  needsAttention,
+  needsYou,
   ORDER_WORDS,
   SELLING_WORDS,
   UNSET_WORDS,
   type Word,
+  waitsOnTheBuyer,
 } from "./words.js";
 
 /**
@@ -322,7 +323,7 @@ interface OrderRow {
   readonly priceSet: MomentView;
 }
 
-/** One order that needs the merchant, said in full under the table. */
+/** One order said in full under the table, with what it needs and of whom. */
 interface OrderCallout {
   readonly id: string;
   readonly state: string;
@@ -339,7 +340,10 @@ export interface OrdersView {
   readonly testNote: string | null;
   readonly rows: readonly OrderRow[];
   readonly empty: string;
-  readonly callouts: readonly OrderCallout[];
+  /** The refunds due: the orders the merchant has to act on. */
+  readonly needsYou: readonly OrderCallout[];
+  /** Goods delivered and held until the buyer pays: nothing for the merchant to do. */
+  readonly waitsOnTheBuyer: readonly OrderCallout[];
 }
 
 /** The terms of the payout split each order's charge went into, by order. */
@@ -363,7 +367,7 @@ export const ordersView = (
     testNote: testOrders(orders),
     rows: orders.orders.map((order) => ({
       id: order.id,
-      needsYou: needsAttention(order.status),
+      needsYou: needsYou(order.status),
       product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
       itemId: order.merchant_item_id,
       amount: money(order.price),
@@ -375,33 +379,52 @@ export const ordersView = (
     empty: open
       ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."
       : "No orders yet.",
-    callouts: orders.orders
-      .filter((order) => needsAttention(order.status))
-      .map((order) => ({
-        id: order.id,
-        state: ORDER_WORDS[order.status].text,
-        why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
-        rest: whereTheRestIs(order.status),
-      })),
+    needsYou: calloutsOf(orders, needsYou, owed, paidInto),
+    waitsOnTheBuyer: calloutsOf(orders, waitsOnTheBuyer, owed, paidInto),
   };
 };
 
+const calloutsOf = (
+  orders: OrderList,
+  which: (status: OrderList["orders"][number]["status"]) => boolean,
+  owed: Readonly<Record<string, RefundCause>>,
+  paidInto: PaidIntoSplits,
+): readonly OrderCallout[] =>
+  orders.orders
+    .filter((order) => which(order.status))
+    .map((order) => ({
+      id: order.id,
+      state: ORDER_WORDS[order.status].text,
+      why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
+      rest: whereTheRestIs(order.status),
+    }));
+
 /**
  * Counts only what it can stand behind. "Open" is the gateway's filter; "needs
- * you" is `NEEDS_ATTENTION`, and the sentence is scoped to those two endings
- * rather than to owing in general: an order merely under way may already be
- * money taken against goods not sent. What each order needs is said per order
- * in the callouts.
+ * you" is `needsYou`, a refund due, and the sentence is scoped to the endings
+ * it counts rather than to owing in general: an order merely under way may
+ * already be money taken against goods not sent. Goods delivered and not paid
+ * are counted apart, as waiting on the buyer, so "nothing was delivered without
+ * payment" is said only where it is true. What each order needs is said per
+ * order in the callouts.
  */
 const ordersLede = (orders: OrderList, open: boolean): string => {
-  const wanting = orders.orders.filter((order) => needsAttention(order.status)).length;
+  const wanting = orders.orders.filter((order) => needsYou(order.status)).length;
+  const held = orders.orders.filter((order) => waitsOnTheBuyer(order.status)).length;
   const scope = open ? "open" : "";
   const listed = `${countOf(orders.orders.length, `${scope} order`.trim())} listed.`;
+  const waits = held === 1 ? "waits" : "wait";
 
-  if (wanting === 0) {
+  if (wanting === 0 && held === 0) {
     return `${listed} No refunds are due, and nothing was delivered without payment.`;
   }
-  return `${listed} ${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you, and each one is set out below.`;
+  if (wanting === 0) {
+    return `${listed} No refunds are due. ${countOf(held, "order")} ${held === 1 ? "was" : "were"} delivered without payment and ${waits} on the buyer, as set out below.`;
+  }
+  const needing = `${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you`;
+  return held === 0
+    ? `${listed} ${needing}, and each one is set out below.`
+    : `${listed} ${needing}, and ${held} delivered without payment ${waits} on the buyer; each one is set out below.`;
 };
 
 /**
@@ -541,7 +564,7 @@ export const receiptsView = (
     rows: receipts.receipts.map((receipt) => ({
       id: receipt.id,
       orderId: receipt.order_id,
-      needsYou: receipt.outcome === "refund_due",
+      needsYou: needsYou(receipt.outcome),
       product: titles.get(receipt.item_id) ?? receipt.item_id,
       amount: money(receipt.price),
       test: receipt.test,

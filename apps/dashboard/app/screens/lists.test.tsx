@@ -355,3 +355,32 @@ describe("a refund owed", () => {
     expect(callout).not.toMatch(/commission/);
   });
 });
+
+describe("an order delivered and not paid", () => {
+  // The buyer can pay again and nothing is the merchant's to do, so it is not
+  // counted among the orders that need them; what can still happen to it is
+  // said all the same.
+  const held: OrderList = OrderListSchema.parse({
+    orders: [{ ...order("ord_held", false), status: "delivered_unpaid" }],
+  });
+
+  it("is not counted as needing the merchant, and says it waits on the buyer", () => {
+    const text = readable(ordersPage(held));
+
+    expect(text).toContain("No refunds are due");
+    expect(text).toContain("1 order was delivered without payment and waits on the buyer");
+    expect(text).not.toMatch(/needs? you/);
+    expect(text).toContain("the payment did not go through");
+  });
+
+  it("is told apart from a refund due listed beside it", () => {
+    const both: OrderList = OrderListSchema.parse({
+      orders: [...held.orders, { ...order("ord_owed", false), status: "refund_due" }],
+    });
+
+    const text = readable(ordersPage(both));
+
+    expect(text).toContain("1 order needs you");
+    expect(text).toContain("1 delivered without payment waits on the buyer");
+  });
+});

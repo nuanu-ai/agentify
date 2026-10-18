@@ -10,14 +10,7 @@ import {
   SELLING_STATES,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import {
-  FULFILLMENT_WORDS,
-  moment,
-  money,
-  needsAttention,
-  ORDER_WORDS,
-  SELLING_WORDS,
-} from "./words.js";
+import { FULFILLMENT_WORDS, moment, money, needsYou, ORDER_WORDS, SELLING_WORDS } from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -45,15 +38,15 @@ describe("the words a merchant reads", () => {
     }
   });
 
-  it("calls out the two endings that stay open owing something, and nothing else", () => {
-    // An order merely under way may be the merchant's to deliver, but this API
-    // cannot tell it from one created a second ago, so demanding attention for
-    // it would be a claim beyond the evidence.
-    expect(needsAttention("refund_due")).toBe(true);
-    expect(needsAttention("delivered_unpaid")).toBe(true);
-    expect(needsAttention("in_progress")).toBe(false);
-    expect(needsAttention("delivered")).toBe(false);
-    expect(needsAttention("payment_unresolved")).toBe(false);
+  it("counts an order as needing the merchant only while a refund is due", () => {
+    // Goods delivered against a payment that failed wait on the buyer, who can
+    // pay again; the merchant has nothing to do there. An order merely under
+    // way may be the merchant's to deliver, but this API cannot tell it from
+    // one created a second ago, so demanding attention for it would be a claim
+    // beyond the evidence.
+    const needing = ORDER_STATUSES.filter((status) => needsYou(status));
+
+    expect(needing).toStrictEqual(["refund_due"]);
   });
 
   it("does not name a duty for an order that may be nobody's yet", () => {

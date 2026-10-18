@@ -64,14 +64,18 @@ export const SELLING_WORDS: Readonly<Record<SellingState, Word>> = Object.freeze
 });
 
 /**
- * Money taken and nothing delivered, and goods delivered against a payment that
- * never executed. An order merely under way is not here: it may be the
- * merchant's to deliver, but this API cannot tell it from one created a second
- * ago, so demanding attention for it would be a claim beyond the evidence.
+ * Money taken and nothing delivered: the one ending a merchant has to act on.
+ * Goods delivered against a payment that never executed are not here: the
+ * buyer can pay again and the order closes when they do, so there is nothing
+ * for the merchant to do. An order merely under way is not here either: it may
+ * be the merchant's to deliver, but this API cannot tell it from one created a
+ * second ago, so demanding attention for it would be a claim beyond the
+ * evidence.
  */
-const NEEDS_ATTENTION: readonly OrderStatus[] = Object.freeze(["refund_due", "delivered_unpaid"]);
+export const needsYou = (status: OrderStatus): boolean => status === "refund_due";
 
-export const needsAttention = (status: OrderStatus): boolean => NEEDS_ATTENTION.includes(status);
+/** Goods delivered and held until the buyer's payment goes through. */
+export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "delivered_unpaid";
 
 /**
  * The gateway's own codes, less the operator's approval, which nobody sets in

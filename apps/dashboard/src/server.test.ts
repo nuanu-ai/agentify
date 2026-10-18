@@ -3806,6 +3806,10 @@ describe("the orders screen", () => {
     // must never suggest the buyer start again, which would deliver twice.
     expect(text).toContain("The order stays open");
     expect(text).not.toContain("repeat purchase");
+    // The buyer can pay again and the merchant has nothing to do, so the
+    // order is not counted among those that need them.
+    expect(text).toContain("waits on the buyer");
+    expect(text).not.toMatch(/needs? you/);
   });
 });
 
