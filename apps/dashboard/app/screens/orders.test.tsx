@@ -1,0 +1,243 @@
+/**
+ * The orders a merchant can find on their Orders page: by the identifier they
+ * were handed or pasted from the page, by the product, within the gateway's
+ * own open list, newest first and a page at a time. The views are pure
+ * functions of the gateway's documents, built here by the contract's own
+ * schemas, and each page is drawn as the server sends it.
+ */
+
+import { MerchantCardListSchema, OrderListSchema } from "@nuanu-ai/agentify-contracts";
+import type { ReactElement } from "react";
+import { renderToString } from "react-dom/server";
+import { createRoutesStub } from "react-router";
+import { describe, expect, it } from "vitest";
+import { readable } from "../../src/testing/html.js";
+import type { Viewer } from "../../src/viewer.js";
+import { ordersView } from "../../src/views.js";
+import { OrdersScreen } from "./orders.js";
+
+const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
+
+const served = (screen: () => ReactElement): string => {
+  const Stub = createRoutesStub([
+    { id: "routes/gate", path: "/", children: [{ path: "orders", Component: screen }] },
+  ]);
+  return renderToString(
+    <Stub
+      initialEntries={["/orders"]}
+      hydrationData={{ loaderData: { "routes/gate": { who: SEEN_BY.who } } }}
+    />,
+  );
+};
+
+const CARDS = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    {
+      id: "itm_1",
+      as_of: "2026-10-01T09:00:00Z",
+      card: {
+        merchant_item_id: "number-sms",
+        title: "A virtual number",
+        description: "Rent a virtual phone number for inbound SMS",
+        price: { amount: "2.00", currency: "USD" },
+        result: { number: { type: "string" } },
+        fulfillment: "sync",
+      },
+      selling: "open",
+      paused: false,
+    },
+    {
+      id: "itm_2",
+      as_of: "2026-10-01T09:00:00Z",
+      card: {
+        merchant_item_id: "vpn-1m",
+        title: "VPN, one month",
+        description: "Thirty days from the moment it is delivered",
+        price: { amount: "5.00", currency: "USD" },
+        result: { access_url: { type: "string" } },
+        fulfillment: "sync",
+      },
+      selling: "open",
+      paused: false,
+    },
+  ],
+});
+
+/** An order identifier of the gateway's own shape: its kind, then 32 hexadecimal characters. */
+const idOf = (head: string, tail: string, middle = "0") => `ord_${head}${middle.repeat(24)}${tail}`;
+
+const FIRST = idOf("17ff", "7de3");
+/** Shares the first half of its short form with FIRST. */
+const SAME_HEAD = idOf("17ff", "11aa", "9");
+/** Shares the second half of its short form with FIRST. */
+const SAME_TAIL = idOf("4727", "7de3", "a");
+
+interface Ordered {
+  readonly id: string;
+  readonly item?: string;
+  readonly status?: string;
+  readonly at?: string;
+  readonly test?: boolean;
+}
+
+const ordersOf = (orders: readonly Ordered[]) =>
+  OrderListSchema.parse({
+    orders: orders.map(({ id, item = "vpn-1m", status = "delivered", at, test = false }) => ({
+      id,
+      merchant_item_id: item,
+      params: {},
+      price: {
+        amount: item === "vpn-1m" ? "5.00" : "2.00",
+        currency: "USD",
+        at: at ?? "2026-10-12T16:40:00Z",
+        as_of: at ?? "2026-10-12T16:40:00Z",
+      },
+      test,
+      status,
+    })),
+  });
+
+const THREE = ordersOf([
+  { id: FIRST },
+  { id: SAME_HEAD, item: "number-sms" },
+  { id: SAME_TAIL, status: "in_progress" },
+]);
+
+/** The ids of the rows the address asks for, among these orders, all of them open. */
+const found = (address: string, orders = THREE, open = orders) =>
+  ordersView(SEEN_BY, CARDS, orders, open, new URLSearchParams(address)).listing.rows.map(
+    (row) => row.id,
+  );
+
+const searched = (q: string) => found(new URLSearchParams({ q }).toString());
+
+describe("searching the orders", () => {
+  it("finds an order by its whole ID, and only that order", () => {
+    expect(searched(FIRST)).toStrictEqual([FIRST]);
+  });
+
+  it("finds an order by the short form the page shows it in", () => {
+    expect(searched("ord_17ff…7de3")).toStrictEqual([FIRST]);
+  });
+
+  it("finds it by the short form typed with three dots, with spaces, or without its prefix", () => {
+    expect(searched("ord_17ff...7de3")).toStrictEqual([FIRST]);
+    expect(searched("ord_17ff … 7de3")).toStrictEqual([FIRST]);
+    expect(searched("17ff…7de3")).toStrictEqual([FIRST]);
+    expect(searched("ORD_17FF…7DE3")).toStrictEqual([FIRST]);
+  });
+
+  it("finds every order either half of a short form belongs to", () => {
+    expect(searched("ord_17ff")).toStrictEqual([FIRST, SAME_HEAD]);
+    expect(searched("7de3")).toStrictEqual([FIRST, SAME_TAIL]);
+    expect(searched("ord_17ff…")).toStrictEqual([FIRST, SAME_HEAD]);
+    expect(searched("…7de3")).toStrictEqual([FIRST, SAME_TAIL]);
+  });
+
+  it("does not take a short form for an order that shares only one of its halves", () => {
+    expect(searched("ord_17ff…11aa")).toStrictEqual([SAME_HEAD]);
+    expect(searched("ord_4727…7de3")).toStrictEqual([SAME_TAIL]);
+    expect(searched("ord_17ff…a18b")).toStrictEqual([]);
+    expect(searched("…")).toStrictEqual([]);
+  });
+
+  it("finds an order by its product's title or its product code", () => {
+    expect(searched("virtual")).toStrictEqual([SAME_HEAD]);
+    expect(searched("number-sms")).toStrictEqual([SAME_HEAD]);
+  });
+
+  it("says what was searched for when nothing matches, which is not what a merchant without orders reads", () => {
+    const missed = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(SEEN_BY, CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
+        />
+      )),
+    );
+    const none = readable(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY, CARDS, ordersOf([]), ordersOf([]))} />),
+    );
+
+    expect(missed).toContain("No order matches “router”.");
+    expect(missed).toContain("Clear the search");
+    expect(missed).not.toContain("No orders yet");
+    expect(none).toContain("No orders yet");
+    expect(none).not.toContain("matches");
+  });
+
+  it("narrows the orders that need the merchant by the same search", () => {
+    const owing = ordersOf([
+      { id: FIRST, status: "refund_due" },
+      { id: SAME_TAIL, status: "refund_due" },
+    ]);
+
+    const view = ordersView(SEEN_BY, CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
+
+    expect(view.needsYou.map((one) => one.id)).toStrictEqual([FIRST]);
+  });
+});
+
+describe("the open orders", () => {
+  it("are the orders the gateway's open list holds, whatever their state says", () => {
+    // Both read "In progress"; only the one the merchant was handed is open.
+    const all = ordersOf([
+      { id: FIRST, status: "in_progress" },
+      { id: SAME_TAIL, status: "in_progress" },
+      { id: SAME_HEAD },
+    ]);
+    const open = ordersOf([{ id: FIRST, status: "in_progress" }]);
+
+    const view = ordersView(SEEN_BY, CARDS, all, open, new URLSearchParams("show=open"));
+
+    expect(view.listing.rows.map((row) => row.id)).toStrictEqual([FIRST]);
+    expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
+      ["All", 3],
+      ["Open", 1],
+    ]);
+  });
+
+  it("say in words of their own that none is open, and lead back to all of them", () => {
+    const text = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(SEEN_BY, CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
+        />
+      )),
+    );
+
+    expect(text).toContain("Nothing is open");
+    expect(text).toContain("Show all orders");
+    expect(text).not.toContain("No orders yet");
+  });
+});
+
+describe("a long list of orders", () => {
+  // As the gateway lists them: oldest first, a minute apart.
+  const many = ordersOf(
+    Array.from({ length: 120 }, (_, at) => ({
+      id: idOf(at.toString(16).padStart(4, "0"), "0000"),
+      at: new Date(Date.parse("2026-10-11T23:00:00Z") + at * 60_000).toISOString(),
+    })),
+  );
+
+  it("draws the newest fifty first and says which of how many", () => {
+    const view = ordersView(SEEN_BY, CARDS, many, many);
+
+    expect(view.listing.rows[0]?.id).toBe(many.orders[119]?.id);
+    expect(view.listing.rows).toHaveLength(50);
+    expect(readable(served(() => <OrdersScreen view={view} />))).toContain("Showing 1–50 of 120");
+  });
+
+  it("puts each day's orders under one heading, the newest day first", () => {
+    // The oldest sixty fall on the eleventh of October and the newest sixty on
+    // the twelfth, so the second page holds the turn of the day.
+    const html = served(() => (
+      <OrdersScreen view={ordersView(SEEN_BY, CARDS, many, many, new URLSearchParams("page=2"))} />
+    ));
+
+    const days = [...html.matchAll(/<li class="list-day">([^<]*)<\/li>/g)].map((day) => day[1]);
+
+    expect(days).toStrictEqual(["12 October 2026", "11 October 2026"]);
+  });
+});
