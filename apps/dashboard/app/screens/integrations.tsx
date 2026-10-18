@@ -12,7 +12,7 @@ function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>
     case "unread":
       return (
         <>
-          <h3>WooCommerce</h3>
+          <h2>WooCommerce</h2>
           <p>Whether a shop is connected to this account could not be read just now.</p>
           <p className="quiet">
             The fault is on our side, not in your shop, and nothing was disconnected by it. Reload
@@ -23,7 +23,7 @@ function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>
     case "connected":
       return (
         <>
-          <h3>WooCommerce</h3>
+          <h2>WooCommerce</h2>
           <p>
             {tile.shopUrl}, connected <Moment at={tile.connectedAt} />.
           </p>
@@ -44,7 +44,7 @@ function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>
     case "none":
       return (
         <>
-          <h3>WooCommerce</h3>
+          <h2>WooCommerce</h2>
           <p>
             The connector imports two narrow WooCommerce configurations, a download and a parcel,
             which the shop screen describes. You sell through it or through your own code, one at a
@@ -60,7 +60,7 @@ function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>
     case "not-arrived":
       return (
         <>
-          <h3>WooCommerce</h3>
+          <h2>WooCommerce</h2>
           <div className="callout">
             <div className="what">{tile.what}</div>
             <p className="why">{tile.why}</p>
@@ -90,7 +90,7 @@ export function IntegrationsScreen({
         <section className="settings-panel settings-wide settings-connect">
           <div className="connect-ways">
             <div className="connect-way">
-              <h3>The SDK</h3>
+              <h2>The SDK</h2>
               <p className="quiet">
                 Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js
                 service, publishes cards with an API key, and handles paid orders in your own code.
