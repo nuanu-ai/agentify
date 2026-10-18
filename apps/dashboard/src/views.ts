@@ -7,7 +7,7 @@
  * thing; `words.ts` carries those cases.
  */
 
-import type { Readiness, SurfaceMode } from "@agentify/core";
+import { type Readiness, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
@@ -360,7 +360,7 @@ export const ordersView = (
     frame: frameOf(viewer, cards.selling),
     open,
     lede: orders.orders.length === 0 ? null : ordersLede(orders, open),
-    testNote: testOrders(orders),
+    testNote: testOrders(orders, viewer.mode),
     rows: orders.orders.map((order) => ({
       id: order.id,
       needsYou: needsAttention(order.status),
@@ -406,11 +406,12 @@ const ordersLede = (orders: OrderList, open: boolean): string => {
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
- * money that moved.
+ * money that moved. Where the band over every page of the channel already says
+ * its payments are tests, the page does not say it a second time.
  */
-const testOrders = (orders: OrderList): string | null => {
+const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
   const tests = orders.orders.filter((order) => order.test).length;
-  if (tests === 0) {
+  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
     return null;
   }
   return tests === orders.orders.length
@@ -570,22 +571,17 @@ const sumsOf = (receipts: ReceiptList): string => {
 
 /**
  * A mark per row tells two rows apart but does not stop a merchant reading a
- * page of them as takings, so when every row is a test the page says so once.
+ * page of them as takings, so where a row is a test the page says so once: in
+ * the band over every page of a channel that has one, or else in a sentence.
  */
 const testWarning = (receipts: ReceiptList, mode: SurfaceMode): string | null => {
   const tests = receipts.receipts.filter((receipt) => receipt.test).length;
-  if (tests === 0) {
+  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
     return null;
   }
   const subject =
     tests === receipts.receipts.length
       ? "Every receipt here is a test purchase"
       : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}`;
-  const consequence =
-    mode === "test"
-      ? "test funds settled on Base Sepolia, but no real money moved."
-      : mode === "sandbox"
-        ? "no payment settled and no real money moved."
-        : "no real money moved.";
-  return `${subject}: ${consequence}`;
+  return `${subject}: no real money moved.`;
 };

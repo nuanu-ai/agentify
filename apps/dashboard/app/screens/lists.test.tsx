@@ -90,11 +90,14 @@ const receipt = (id: string, test: boolean) => ({
   test,
 });
 
-const ordersPage = (orders: OrderList): string =>
-  served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false)} />);
+const ordersPage = (orders: OrderList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <OrdersScreen view={ordersView(viewer, cards, orders, false)} />);
 
-const receiptsPage = (receipts: ReceiptList): string =>
-  served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
+const receiptsPage = (receipts: ReceiptList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <ReceiptsScreen view={receiptsView(viewer, cards, receipts)} />);
+
+/** On the live site, which draws no band over its pages to say what is a test. */
+const ON_LIVE: Viewer = { ...SEEN_BY, mode: "live" };
 
 /**
  * The split a merchant's payments go to on the test channel, made by the
@@ -147,7 +150,7 @@ describe("a list where some of the money was real and some was not", () => {
       orders: [order("ord_1", true), order("ord_2", false), order("ord_3", false)],
     });
 
-    const text = readable(ordersPage(orders));
+    const text = readable(ordersPage(orders, ON_LIVE));
 
     expect(text).toContain("1 order here is a test purchase");
     expect(text).not.toContain("Every order here is a test purchase");
@@ -158,7 +161,7 @@ describe("a list where some of the money was real and some was not", () => {
       receipts: [receipt("rcp_1", true), receipt("rcp_2", false)],
     });
 
-    const html = receiptsPage(receipts);
+    const html = receiptsPage(receipts, ON_LIVE);
     const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
@@ -175,9 +178,26 @@ describe("a list where some of the money was real and some was not", () => {
     });
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", false)] });
 
-    expect(readable(receiptsPage(receipts))).not.toContain("test purchase");
-    expect(readable(ordersPage(orders))).not.toContain("test purchase");
-    expect(receiptsPage(receipts)).not.toContain(">test<");
+    expect(readable(receiptsPage(receipts, ON_LIVE))).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, ON_LIVE))).not.toContain("test purchase");
+    expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
+  });
+
+  it("leaves it to the band on a channel that draws one, and still marks every sum", () => {
+    // The test site's band says on every page that its payments are tests, so
+    // the list does not say it a second time; the mark on each sum stays.
+    const onTest: Viewer = { ...SEEN_BY, mode: "test" };
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    const html = receiptsPage(receipts, onTest);
+    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+
+    expect(readable(html)).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
+    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
   });
 });
 
