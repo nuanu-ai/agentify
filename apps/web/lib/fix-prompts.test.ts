@@ -71,9 +71,9 @@ describe("buildFixPrompts", () => {
     );
     expect(aiPrompt).toContain("Prices unreadable");
     expect(aiPrompt).toContain("Structured data");
-    expect(aiPrompt).not.toContain("Robots Ok");
-    expect(aiPrompt).not.toContain("Waf Blocked");
-    expect(aiPrompt).not.toContain("Local Hours");
+    expect(aiPrompt).not.toContain("Robots ok");
+    expect(aiPrompt).not.toContain("Waf blocked");
+    expect(aiPrompt).not.toContain("Local hours");
   });
 
   it("adds an executable safety, workflow and acceptance envelope", () => {
@@ -114,8 +114,8 @@ describe("buildFixPrompts", () => {
     const { aiPrompt } = buildFixPrompts(report(), "Agentify", browserObservation());
     expect(aiPrompt).toContain("Accessibility structure");
     expect(aiPrompt).toContain("non-scoring");
-    expect(aiPrompt).toContain("Name Interactive Controls");
-    expect(aiPrompt).not.toContain("Provider Timeout");
+    expect(aiPrompt).toContain("Name interactive controls");
+    expect(aiPrompt).not.toContain("Provider timeout");
   });
 
   it("removes URLs, private keys and prompt-injection-like evidence", () => {

@@ -192,10 +192,8 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
 export function formatRegistryCode(value: string | undefined): string {
   if (!value || !REGISTRY_CODE.test(value)) return "No public summary available";
   if (REGISTRY_COPY[value]) return REGISTRY_COPY[value];
-  return value
-    .replaceAll(":", " ")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  const words = value.replaceAll(":", " ").replaceAll("_", " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }
 
 export function safeEvidenceEntries(

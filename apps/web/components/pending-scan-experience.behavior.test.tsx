@@ -55,24 +55,24 @@ describe("pending scan acceptance", () => {
     installNetwork(response(errorEnvelope("unused", false), 500));
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
-    await screen.findByText("missing");
+    await screen.findByRole("heading", { name: "No scan request in this tab" });
     expect(screen.queryByRole("button", { name: "Retry scan" })).toBeNull();
   });
 
   it.each([
-    ["challenge_required", "challenge", false],
-    ["hard_rate_limit", "hard limit", false],
-    ["temporarily_busy", "busy", true],
-    ["unclassified_failure", "error", true],
+    ["challenge_required", "Confirm you are a person", false],
+    ["hard_rate_limit", "Too many scans for now", false],
+    ["temporarily_busy", "The scanner is busy", true],
+    ["unclassified_failure", "The scan could not start", true],
   ] as const)(
-    "turns %s into a distinct %s state with the promised retry access",
-    async (code, state, retryable) => {
+    "turns %s into a distinct state headed %s with the promised retry access",
+    async (code, heading, retryable) => {
       savePendingScan(window.sessionStorage, pending(code));
       installNetwork(response(errorEnvelope(code, retryable), 429));
 
       render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
-      await screen.findByText(state);
+      await screen.findByRole("heading", { name: heading });
       const retry = screen.queryByRole("button", { name: "Retry scan" });
       expect(Boolean(retry)).toBe(retryable);
       expect(readPendingScan(window.sessionStorage)).not.toBeNull();
@@ -92,6 +92,21 @@ describe("pending scan acceptance", () => {
     expect(screen.getByRole("link", { name: "Enter another website" }).getAttribute("href")).toBe(
       "/",
     );
+  });
+
+  it("says the scanner did not answer, not that it is busy, when the request cannot reach it", async () => {
+    // Nothing was heard back, so nothing is known about how busy it is.
+    savePendingScan(window.sessionStorage, pending("unreachable"));
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/v1/attribution") return new Response(null, { status: 201 });
+      throw new TypeError("the network is down");
+    };
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner did not answer" });
+    expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
+    expect(readPendingScan(window.sessionStorage)).not.toBeNull();
   });
 
   it("keeps the retry when the answer is not a refusal of ours", async () => {
