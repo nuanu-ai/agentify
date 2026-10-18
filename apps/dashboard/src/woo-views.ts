@@ -99,14 +99,12 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
 /**
  * The gateway refuses every card of a merchant who has not set these, in a
  * sentence naming an API route, which means nothing to a merchant with no code.
- * So the line names the setting as Settings does and links there, before the
- * press as well as after. After a refused press it says nothing was imported
- * and names what was unset at that moment, and only that answer is an alert: a
- * standing notice announced on every visit would drown it. The connector is not
- * offered on live, so the operator's approval never stands in the way here.
+ * So the answer to a refused press names what was unset at that moment as
+ * Settings does. Before a press the banner over the page says what is missing,
+ * and the button does not say it again. The connector is not offered on live,
+ * so the operator's approval never stands in the way here.
  */
 interface BeforeImporting {
-  readonly refused: boolean;
   /** The settings, in the words Settings uses for them. */
   readonly what: string;
 }
@@ -199,7 +197,6 @@ export interface WooShopView {
 /** What our rows and the gateway said when the screen was drawn. */
 export interface ShopRead {
   readonly state: ShopState;
-  readonly unset: readonly Unset[];
   readonly through: Integration;
 }
 
@@ -217,7 +214,6 @@ export interface ShopAnswer {
 export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => {
   const { state } = read;
   const refused = answer.refused ?? [];
-  const unset = refused.length > 0 ? refused : read.unset;
   return {
     screen: "shop",
     keysArrived: answer.cameBack === true && state.kind === "connected",
@@ -231,12 +227,9 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
             switching: refusalOf(answer.switching),
             productsAtMost: PRODUCTS_AT_MOST,
             beforeImporting:
-              unset.length === 0
+              refused.length === 0
                 ? null
-                : {
-                    refused: refused.length > 0,
-                    what: unset.map((one) => UNSET_WORDS[one]).join(" and "),
-                  },
+                : { what: refused.map((one) => UNSET_WORDS[one]).join(" and ") },
           }
         : null,
     wayBack: state.kind !== "connected" && read.through === "woocommerce",

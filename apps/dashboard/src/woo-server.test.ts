@@ -403,6 +403,10 @@ const started = async (standing: Standing = {}): Promise<Running> => {
 const tokenIn = (authorizeUrl: string): string =>
   new URL(authorizeUrl).searchParams.get("user_id") ?? "";
 
+/** The banner over the page, as a merchant reads it. */
+const bannerIn = (html: string): string =>
+  readable(/<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "");
+
 describe("the shop screens are behind the sign-in", () => {
   it("sends a stranger to the sign-in", async () => {
     const running = await started();
@@ -1256,16 +1260,16 @@ describe("importing the catalogue", () => {
     expect(new URL(stranger.to ?? "", "http://dashboard.test").pathname).toBe("/sign-in");
   });
 
-  it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
+  it("says a wallet is needed before Import is pressed in the banner, and not again at the button", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
 
     const screen = await running.get("/woocommerce");
-    const form = importFormOf(screen.html);
 
     expect(screen.status).toBe(200);
-    expect(readable(form)).toMatch(/wallet/i);
-    expect(form).toContain('href="/settings"');
+    expect(bannerIn(screen.html)).toMatch(/no payout wallet/i);
+    expect(screen.html).toContain('href="/settings"');
+    expect(readable(importFormOf(screen.html))).not.toMatch(/wallet/i);
   });
 
   it("answers a refused press with an alert the screen before the press does not carry", async () => {
@@ -1568,11 +1572,14 @@ describe("importing the catalogue", () => {
             // The fixture took: a wallet saved is a wallet the gateway has.
             expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
           }
-          const before = lineIn((await running.get("/woocommerce")).html);
+          const screen = (await running.get("/woocommerce")).html;
           const pressed = await running.post("/woocommerce/import");
           const after = lineIn(pressed.html);
 
-          expect(named(before)).toStrictEqual(door);
+          // Before a press the banner says what is missing, and the button
+          // says nothing of its own; the answer to a press says it again.
+          expect(named(bannerIn(screen))).toStrictEqual(door);
+          expect(lineIn(screen)).toBe("");
           expect(pressed.status).toBe(door.length === 0 ? 200 : 409);
           if (door.length > 0) {
             expect(named(after)).toStrictEqual(door);

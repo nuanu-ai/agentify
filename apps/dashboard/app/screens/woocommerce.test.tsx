@@ -56,7 +56,7 @@ const served = (screen: () => ReactElement): string => {
 const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
   served(() => (
     <WooShopScreen
-      view={wooShopView({ state: { kind: "none" }, unset: [], through: "api", ...read }, answer)}
+      view={wooShopView({ state: { kind: "none" }, through: "api", ...read }, answer)}
       base=""
     />
   ));

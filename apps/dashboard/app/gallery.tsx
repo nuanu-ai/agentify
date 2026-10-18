@@ -520,7 +520,6 @@ const WAITING = PayoutWalletSchema.parse({
 
 const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => ({
   state,
-  unset: [],
   through: "woocommerce",
   ...more,
 });
@@ -1972,7 +1971,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause:
         "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
     },
-    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
+    shopOn(shopRead(CONNECTED)),
     { noWallet: true },
   ),
   shop(
@@ -2086,7 +2085,7 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway would refuse every card, so the shop was not read and nothing was imported.",
     },
     "import",
-    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), { refused: ["no_payout_wallet"] }),
+    shopOn(shopRead(CONNECTED), { refused: ["no_payout_wallet"] }),
     { noWallet: true },
   ),
   shopPress(

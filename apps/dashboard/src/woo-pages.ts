@@ -208,9 +208,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
    * gateway's. The operator's approval goes in as unknown: the connector is not
    * offered on live, the only place it is asked for.
    */
-  const standingOf = async (
-    gateway: GatewayClient,
-  ): Promise<Answer<{ readonly sellerName: string | null; readonly unset: readonly Unset[] }>> => {
+  const unsetOf = async (gateway: GatewayClient): Promise<Answer<readonly Unset[]>> => {
     const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
     if (!name.ok) {
       return name;
@@ -226,15 +224,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       },
       config.surfaceMode,
     );
-    return { ok: true, document: { sellerName: name.document, unset: unsetIn(door) } };
+    return { ok: true, document: unsetIn(door) };
   };
 
   /**
    * In one place because the screen is reached five ways (opened, and redrawn
    * after any of the four presses is refused), and a forgotten answer in one of
-   * them would look like a merchant who has set nothing. Either gateway call
-   * failing fails the page: drawn without an answer, it would claim something
-   * about a field nobody asked about.
+   * them would look like a merchant who has set nothing. The integration
+   * failing to read fails the page: drawn without it, the page would offer or
+   * hide the switch on a guess.
    */
   const drawTheShop = async (
     person: Person,
@@ -242,24 +240,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     status = 200,
   ): Promise<Outcome<WooShopView>> => {
     const gateway = gatewayAs(person);
-    const [state, standing, integration] = await Promise.all([
+    const [state, integration] = await Promise.all([
       shopStateOf(shops, person.id),
-      standingOf(gateway),
       gateway.integration(),
     ]);
-    if (!standing.ok) return problemOf(standing);
     if (!integration.ok) return problemOf(integration);
     return {
       kind: "view",
       status,
-      view: wooShopView(
-        {
-          state,
-          unset: standing.document.unset,
-          through: integration.document.through,
-        },
-        answer,
-      ),
+      view: wooShopView({ state, through: integration.document.through }, answer),
     };
   };
 
@@ -373,15 +362,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // missing any of these, so importing would inspect every product for
       // nothing and repeat the refusal per product in words naming an API
       // route. A gateway that cannot answer this would not take a card either.
-      const standing = await standingOf(gatewayAs(person));
-      if (!standing.ok) return problemOf(standing);
-      if (standing.document.unset.length > 0) {
+      const unset = await unsetOf(gatewayAs(person));
+      if (!unset.ok) return problemOf(unset);
+      if (unset.document.length > 0) {
         noted(
           person,
-          `pressed Import while the publish door would refuse every card with ${standing.document.unset.join(" and ")}, so the shop at` +
+          `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
             ` ${connection.shopUrl} was not read and nothing was published`,
         );
-        return await drawTheShop(person, { refused: standing.document.unset }, 409);
+        return await drawTheShop(person, { refused: unset.document }, 409);
       }
 
       // The ceiling goes in, so a catalogue too large is refused after three

@@ -223,8 +223,8 @@ function NotConnected({ view, base }: Readonly<{ view: WooShopView; base: string
 }
 
 /**
- * Names the setting as Settings does and links there; only the answer to a
- * refused press is an alert.
+ * The answer to a press of Import refused for what Settings sets, naming it
+ * as Settings does and linking there.
  */
 function BeforeImportingNote({
   connection,
@@ -232,14 +232,10 @@ function BeforeImportingNote({
 }: Readonly<{ connection: ConnectionView; base: string }>) {
   const before = connection.beforeImporting;
   if (before === null) return null;
-  const settings = <a href={`${base}/settings`}>Settings</a>;
-  return before.refused ? (
+  return (
     <p className="problem" role="alert">
-      Nothing was imported. Set {before.what} in {settings}, then import again.
-    </p>
-  ) : (
-    <p className="problem">
-      Import publishes nothing until you set {before.what} in {settings}.
+      Nothing was imported. Set {before.what} in <a href={`${base}/settings`}>Settings</a>, then
+      import again.
     </p>
   );
 }
