@@ -513,7 +513,6 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   state,
   unset: [],
   through: "woocommerce",
-  stopped: false,
   ...more,
 });
 
@@ -1768,15 +1767,6 @@ const WOOCOMMERCE: GalleryState[] = [
   ),
   shop(
     {
-      id: "dashboard-woocommerce-selling-paused",
-      screen: "WooCommerce",
-      when: "A merchant with a connected shop has paused all sales.",
-      cause: "The merchant's selling is stopped, so nothing imported sells until it starts again.",
-    },
-    shopOn(shopRead(CONNECTED, { stopped: true })),
-  ),
-  shop(
-    {
       id: "dashboard-woocommerce-read-only",
       screen: "WooCommerce",
       when: "A merchant approved only read access in their shop.",
@@ -1820,7 +1810,7 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-import",
       screen: "WooCommerce import",
-      when: "A merchant presses Import the catalog.",
+      when: "A merchant presses Import products.",
       cause:
         "The shop's catalogue was read, and each product was published, refused or left in the shop.",
     },
@@ -1894,7 +1884,7 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-disconnect-refused",
       screen: "WooCommerce",
-      when: "A merchant presses Forget this shop while orders the shop took are open.",
+      when: "A merchant presses Disconnect shop while orders the shop took are open.",
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",

@@ -267,7 +267,6 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           state,
           unset: standing.document.unset,
           through: integration.document.through,
-          stopped: integration.document.selling !== "open",
         },
         answer,
       ),

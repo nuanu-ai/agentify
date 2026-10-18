@@ -1,132 +1,195 @@
-import { Button } from "@agentify/ui";
+import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
 import type { ConnectionView, NoKeysYet, WooImportView, WooShopView } from "../../src/woo-views.js";
+import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { GatePage } from "../components/gate-page.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { Word } from "../components/word.js";
+import styles from "./woocommerce.module.css";
 
-/**
- * Said once, here, on the page with Connect and Import, which is the only
- * place the connector is described; the integrations block links here.
- */
-function WhatConnectingDoes() {
-  return (
-    <div className="lede">
-      <div>
-        <p>
-          The WooCommerce connector works in test mode only for now. It imports published simple
-          products priced in USD, with no stock management, from a shop whose tax calculation is
-          turned off, in two narrow configurations. A virtual download with one protected file and
-          unlimited downloads is handed to the agent once it is paid for. A physical product,
-          neither virtual nor downloadable, is sold as a parcel: the agent pays its price plus your
-          shop's own cheapest shipping rate to the buyer's place, and your shop gets a paid order
-          carrying the buyer's shipping address.
-        </p>
-        <p className="quiet">
-          Connecting gives Agentify access to your shop, and importing publishes supported products
-          as cards. You approve access in WooCommerce; Agentify never asks for your shop password.
-        </p>
-        <p className="quiet">
-          You sell through your shop or through your own code, one at a time. While you sell through
-          the shop, the cards your code published are off sale and your code receives no orders;
-          disconnecting the shop here brings them back.
-        </p>
-      </div>
-    </div>
-  );
-}
+/** Where the connector's rules are written in full, for what these panels say short. */
+const GUIDE = "/docs/woocommerce";
+
+const CONNECTED: WordView = { text: "Connected", tone: "ok" };
 
 const Problem = ({ said }: Readonly<{ said: string | null }>) =>
   said === null ? null : <p className="problem">{said}</p>;
 
-/** Only the wait has a next step of its own; a Connect that ran out is answered by the form below it. */
-function NoKeysYetNote({ said, base }: Readonly<{ said: NoKeysYet; base: string }>) {
-  return (
-    <div className="callout">
-      <div className="what">{said.what}</div>
-      <p className="why">{said.why}</p>
-      {said.waiting ? (
-        <div className="connect-actions">
-          <a className="button button-secondary" href={`${base}/woocommerce`}>
-            Check again
-          </a>
-        </div>
-      ) : null}
-    </div>
-  );
-}
+const Exclamation = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v5M12 16.5v.5" />
+  </svg>
+);
 
-function WayBack({ leaving }: Readonly<{ leaving: string | null }>) {
+const Tick = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="m5 12 5 5 9-10" />
+  </svg>
+);
+
+/** A panel that is a form: its heading, its sentence, and what is pressed. */
+function FormPanel({
+  action,
+  title,
+  attention = false,
+  children,
+}: Readonly<{
+  action: string;
+  title: string;
+  attention?: boolean;
+  children: (pending: boolean) => ReactNode;
+}>) {
   return (
-    <PostForm action="/woocommerce/disconnect" className="issue">
+    <PostForm
+      action={action}
+      className={attention ? `${styles.panel} ${styles.attention}` : styles.panel}
+    >
       {(pending) => (
         <>
-          <div>
-            <p className="issue-title">
-              You sell through a WooCommerce shop, and none is connected
-            </p>
-            <p className="quiet">
-              Nothing sells until a shop is connected. To sell through your own code instead, switch
-              back: the cards your code published come back, with selling stopped until you start it
-              again on Cards.
-            </p>
-            <Problem said={leaving} />
-          </div>
-          <Button variant="secondary" pending={pending}>
-            Sell through your own code
-          </Button>
+          <h2>{title}</h2>
+          {children(pending)}
         </>
       )}
     </PostForm>
   );
 }
 
-function ConnectForm({ view }: Readonly<{ view: WooShopView }>) {
+/** Only the wait has a next step of its own; a Connect that ran out is answered by the form it is in. */
+function NoKeysYetNote({ said, base }: Readonly<{ said: NoKeysYet; base: string }>) {
+  return (
+    <div className={styles.note}>
+      <Exclamation />
+      <div>
+        <b>{said.what}</b> {said.why}
+        {said.waiting ? (
+          <div>
+            <a className="button button-secondary button-compact" href={`${base}/woocommerce`}>
+              Check again
+            </a>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WayBack({ leaving }: Readonly<{ leaving: string | null }>) {
+  return (
+    <FormPanel
+      action="/woocommerce/disconnect"
+      title="You sell through a WooCommerce shop, and none is connected"
+      attention
+    >
+      {(pending) => (
+        <>
+          <p className={styles.sub}>
+            Nothing sells until one is connected. To sell through your own code instead, switch
+            back: its cards come back with selling stopped until you resume it on Cards.
+          </p>
+          <Button variant="secondary" pending={pending}>
+            Sell through your own code
+          </Button>
+          <Problem said={leaving} />
+        </>
+      )}
+    </FormPanel>
+  );
+}
+
+function ConnectPanel({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
+  return (
+    <FormPanel action="/woocommerce/connect" title="Connect your shop">
+      {(pending) => (
+        <>
+          <p className={styles.sub}>
+            Your browser goes to the shop next, and WooCommerce asks you to approve.
+          </p>
+          {view.noKeysYet === null ? null : <NoKeysYetNote said={view.noKeysYet} base={base} />}
+          <Field
+            label="Shop address"
+            hint="The public https address at the root of the shop."
+            name="shop_url"
+            type="url"
+            inputMode="url"
+            placeholder="https://shop.example.com"
+            defaultValue={view.typed}
+            required
+          />
+          {view.connectSwitches ? (
+            <div className={styles.note}>
+              <Exclamation />
+              <span>
+                Connecting switches you to selling through the shop at once, before you approve: the
+                cards your own code published go off sale, and your code gets no orders, until you
+                disconnect. Orders your code is still working on have to finish first.
+              </span>
+            </div>
+          ) : null}
+          <Button pending={pending}>Connect</Button>
+          <Problem said={view.problem} />
+        </>
+      )}
+    </FormPanel>
+  );
+}
+
+function WhatCanBeImported() {
+  return (
+    <section className={styles.panel}>
+      <h2>What can be imported</h2>
+      <p className={styles.sub}>Everything else stays in your shop untouched.</p>
+      <ul className={styles.ticks}>
+        <li>
+          <Tick />
+          <span>
+            <b>Simple products</b> priced in USD, published, without stock management
+          </span>
+        </li>
+        <li>
+          <Tick />
+          <span>
+            <b>A download</b> with one protected file and unlimited downloads, handed to the agent
+            once paid
+          </span>
+        </li>
+        <li>
+          <Tick />
+          <span>
+            <b>A parcel</b>: a physical product. The agent pays its price plus your cheapest
+            shipping rate, and your shop gets a paid order with the buyer's address
+          </span>
+        </li>
+        <li>
+          <Tick />
+          <span>
+            In the shop, <b>tax calculation is off</b> and permalinks are set to anything but Plain
+          </span>
+        </li>
+      </ul>
+      <a className={styles.more} href={GUIDE}>
+        Connector guide
+      </a>
+    </section>
+  );
+}
+
+function NotConnected({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
   return (
     <>
-      <div className="lede">
-        <div>
-          <h2>Connect your shop</h2>
-          <p>
-            Type the address you open your own shop at. Your browser goes there next, so that
-            WooCommerce can ask you to approve.
-          </p>
-          {view.connectSwitches ? (
-            <p className="quiet">
-              Pressing Connect switches you to selling through the shop at once, before you approve:
-              the cards your code published go off sale and your code receives no orders. Orders
-              your code is still working on have to finish first.
-            </p>
-          ) : null}
-          <p className="quiet">
-            Use the public https address at the root of the shop. WooCommerce permalinks must be set
-            to anything other than Plain.
-          </p>
-        </div>
+      <p className={styles.lead}>
+        Import your shop's products as cards that agents can buy. You approve access in WooCommerce;
+        Agentify never asks for your shop password.
+      </p>
+      {view.wayBack ? <WayBack leaving={view.leaving} /> : null}
+      <div className={styles.cols}>
+        <ConnectPanel view={view} base={base} />
+        <WhatCanBeImported />
       </div>
-      <PostForm action="/woocommerce/connect" className="issue">
-        {(pending) => (
-          <>
-            <div>
-              <label htmlFor="shop_url">The address of your shop</label>
-              <input
-                id="shop_url"
-                name="shop_url"
-                type="url"
-                inputMode="url"
-                placeholder="https://shop.example.com"
-                defaultValue={view.typed}
-                required
-              />
-            </div>
-            <Button pending={pending}>Connect</Button>
-            <Problem said={view.problem} />
-          </>
-        )}
-      </PostForm>
     </>
   );
 }
@@ -153,147 +216,159 @@ function BeforeImportingNote({
   );
 }
 
+function ParcelRules({ base }: Readonly<{ base: string }>) {
+  return (
+    <section className={styles.panel}>
+      <h2>Parcels</h2>
+      <p className={styles.sub}>These decide whether you keep the money for a parcel.</p>
+      <ol className={styles.rules}>
+        <li>
+          <span>
+            Ship within <b>seven days</b> of payment and mark the order <b>Completed</b> in
+            WooCommerce. Not Completed by then, it shows on Orders as a refund you owe; Completed
+            later, within thirty days of the order, still clears it unless a refund is already
+            recorded.
+          </span>
+        </li>
+        <li>
+          <span>
+            <b>Completed cannot be taken back</b>: it tells the buyer the parcel has shipped. With a
+            WooCommerce fulfilment the buyer also gets the carrier and tracking; without one, your
+            shipping method's name and no tracking number.
+          </span>
+        </li>
+        <li>
+          <span>
+            An order you cancel or refund in WooCommerce has not shipped: it becomes a refund you
+            owe when its seven days run out.
+          </span>
+        </li>
+        <li>
+          <span>
+            If Orders shows a refund owed before the seven days are up while your shop holds a paid
+            order for it, <b>do not ship</b>: Agentify could not confirm it, and you owe the buyer a
+            refund instead.
+          </span>
+        </li>
+        <li>
+          <span>
+            Parcel cards are published only once your shop's site is set in{" "}
+            <a href={`${base}/settings`}>Settings</a>: it is where a buyer asks about a parcel that
+            did not arrive.
+          </span>
+        </li>
+      </ol>
+      <a className={styles.more} href={`${GUIDE}#parcels`}>
+        All parcel rules
+      </a>
+    </section>
+  );
+}
+
 /**
- * The refusal is drawn here as well as on the form because it is about
- * something different: what the shop answered when we read it, not what was
- * just typed.
+ * The refusal under the status is drawn there rather than on a form because
+ * it is about something different: what the shop answered when we read it,
+ * not what was just pressed.
  */
-function Connection({
+function Connected({
   connection,
   view,
   base,
 }: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
   return (
     <>
-      <div className="lede">
-        <div>
-          <h2>Your shop</h2>
-          <p>
-            {connection.shopUrl}, connected <Moment at={connection.connectedAt} />.
-          </p>
-          <Problem said={view.problem} />
-          {connection.granted === null ? null : (
-            <p className="problem">
-              Your shop granted {connection.granted} access rather than read and write. A fresh
-              purchase is unavailable before payment because this connection cannot create its
-              WooCommerce order. Connect again and approve read and write access.
-            </p>
-          )}
-        </div>
-      </div>
-      {connection.offerSwitch ? (
-        <PostForm action="/woocommerce/switch" className="issue">
-          {(pending) => (
-            <>
-              <div>
-                <p className="issue-title">You sell through your own code</p>
-                <p className="quiet">
-                  This shop is connected, but its cards are off sale and nothing can be imported
-                  while you sell through your own code. Selling through the shop takes the cards
-                  your code published off sale, and your code receives no orders until you
-                  disconnect the shop here.
-                </p>
-                <Problem said={connection.switching} />
-              </div>
-              <Button pending={pending}>Sell through this shop</Button>
-            </>
-          )}
-        </PostForm>
-      ) : null}
-      {connection.stopped ? (
-        <p className="quiet">
-          Selling is stopped, so nothing imported sells until you start it again on{" "}
-          <a href={`${base}/cards`}>Cards</a>.
+      <p className={styles.status}>
+        <Word word={CONNECTED} />
+        <span className={styles.shop}>{connection.shopUrl}</span>
+        <span className={styles.since}>
+          since <Moment at={connection.connectedAt} />
+        </span>
+      </p>
+      {view.keysArrived ? (
+        <p className={styles.arrived}>
+          Your shop is connected: the keys came directly from its server.
         </p>
       ) : null}
-      <PostForm action="/woocommerce/import" className="issue">
-        {(pending) => (
-          <>
-            <div>
-              <p className="issue-title">Import the catalog</p>
-              <p className="quiet">
-                Reads up to {connection.productsAtMost} products and publishes only the product
-                configuration currently supported by this connector, described above. Other products
-                stay in your shop. If the shop has more than {connection.productsAtMost} products,
-                the whole import is refused. Running it again updates the same cards.
+      <Problem said={view.problem} />
+      {connection.granted === null ? null : (
+        <section className={`${styles.panel} ${styles.attention}`}>
+          <h2>Your shop granted {connection.granted} access, not read and write</h2>
+          <p className={styles.sub}>
+            Every purchase is refused before payment, because Agentify cannot create its order in
+            your shop. Connect again and approve read and write access.
+          </p>
+        </section>
+      )}
+      {connection.offerSwitch ? (
+        <FormPanel action="/woocommerce/switch" title="You sell through your own code" attention>
+          {(pending) => (
+            <>
+              <p className={styles.sub}>
+                This shop's cards are off sale, and nothing can be imported, until you switch.
+                Switching takes the cards your code published off sale, and your code gets no orders
+                until you disconnect the shop.
               </p>
-              <p className="quiet">
-                If a product is later deleted from the shop, runs out, or stops being supported, its
-                card stays listed, but the price check refuses the purchase before payment. Pause
-                cards you no longer want agents to see.
-              </p>
-              <p className="quiet">
-                Every parcel is published with seven days to ship. That number is Agentify's, not
-                yours: WooCommerce has no field for it. A parcel's order that has not shipped seven
-                days after payment reads as a refund owed. A parcel's card is published only once
-                your shop's site is set in <a href={`${base}/settings`}>Settings</a>, because the
-                site is where a buyer asks about a parcel that did not arrive.
-              </p>
-              <p className="quiet">
-                Marking a parcel's order Completed in WooCommerce, in the shop it was sold from and
-                within thirty days of it being placed, tells the buyer it has shipped, and that
-                cannot be taken back. If the order has a fulfilled WooCommerce fulfilment, the buyer
-                gets its carrier and tracking; otherwise the buyer is told your shipping method's
-                name as the carrier, with no tracking number. An order not marked Completed within
-                its seven days reads as a refund owed on your Orders screen, and marking it
-                Completed later, within the thirty days, still clears that debt unless a refund has
-                already been recorded. An order you cancel or refund in WooCommerce has not shipped,
-                and becomes a refund owed when its seven days run out. If a parcel's order reads as
-                a refund owed before its seven days are up while your shop holds a paid order for
-                it, do not ship that order: Agentify could not confirm it, and you owe the buyer a
-                refund instead.
-              </p>
-              <BeforeImportingNote connection={connection} base={base} />
-            </div>
-            <Button pending={pending}>Import the catalog</Button>
-          </>
-        )}
-      </PostForm>
-      <PostForm action="/woocommerce/disconnect" className="issue">
-        {(pending) => (
-          <>
-            <div>
-              <p className="issue-title">Disconnect</p>
-              <p className="quiet">
-                Deletes the keys your shop gave us and switches you back to selling through your own
-                code: the shop's cards go off sale, and the cards your code published come back,
-                with selling stopped until you start it again on Cards. Orders still waiting on the
-                shop have to finish first, a parcel until it is marked Completed in WooCommerce. A
-                parcel already owed a refund is no longer followed once the shop is disconnected, so
-                marking it Completed after that does not clear the debt. To revoke the keys in the
-                shop too, open WooCommerce → Settings → Advanced → REST API.
-              </p>
-              <Problem said={view.leaving} />
-            </div>
-            <Button variant="secondary" pending={pending}>
-              Forget this shop
-            </Button>
-          </>
-        )}
-      </PostForm>
+              <Button pending={pending}>Sell through this shop</Button>
+              <Problem said={connection.switching} />
+            </>
+          )}
+        </FormPanel>
+      ) : null}
+      <div className={styles.cols}>
+        <div className={styles.stack}>
+          <FormPanel action="/woocommerce/import" title="Import products">
+            {(pending) => (
+              <>
+                <p className={styles.sub}>
+                  Reads up to {connection.productsAtMost} products and publishes{" "}
+                  <a href={`${GUIDE}#what-can-be-imported`}>the ones the connector supports</a>; the
+                  rest stay in your shop. Running it again updates the same cards. A shop with more
+                  than {connection.productsAtMost} products is refused whole, not cut short.
+                </p>
+                <Button pending={pending}>Import products</Button>
+                <BeforeImportingNote connection={connection} base={base} />
+              </>
+            )}
+          </FormPanel>
+          <section className={styles.panel}>
+            <h2>When a product changes in the shop</h2>
+            <p className={styles.sub}>
+              A product deleted, sold out or no longer supported keeps its card, but its purchase is
+              refused before payment. Pause the cards you no longer want agents to see on{" "}
+              <a href={`${base}/cards`}>Cards</a>.
+            </p>
+          </section>
+          <FormPanel action="/woocommerce/disconnect" title="Disconnect">
+            {(pending) => (
+              <>
+                <p className={styles.sub}>
+                  Removes the shop's keys and switches you back to your own code: the shop's cards
+                  go off sale, and the cards your code published come back with selling stopped.
+                  Orders still waiting on the shop have to finish first. A parcel already owed a
+                  refund stays owed: once the shop is disconnected, marking it Completed no longer
+                  clears the debt. <a href={`${GUIDE}#disconnecting`}>What disconnecting does</a>.
+                </p>
+                <Button variant="secondary" pending={pending}>
+                  <span className={styles.leave}>Disconnect shop</span>
+                </Button>
+                <Problem said={view.leaving} />
+              </>
+            )}
+          </FormPanel>
+        </div>
+        <ParcelRules base={base} />
+      </div>
     </>
   );
 }
 
 export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
   return (
-    <div className="integration-shell">
-      <WhatConnectingDoes />
-      {view.keysArrived ? (
-        <div className="callout done">
-          <div className="what">
-            Your shop is connected: the keys came directly from its server.
-          </div>
-        </div>
-      ) : null}
+    <div className={styles.page}>
       {view.connection === null ? (
-        <>
-          {view.wayBack ? <WayBack leaving={view.leaving} /> : null}
-          {view.noKeysYet === null ? null : <NoKeysYetNote said={view.noKeysYet} base={base} />}
-          <ConnectForm view={view} />
-        </>
+        <NotConnected view={view} base={base} />
       ) : (
-        <Connection connection={view.connection} view={view} base={base} />
+        <Connected connection={view.connection} view={view} base={base} />
       )}
     </div>
   );

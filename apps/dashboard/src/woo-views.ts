@@ -131,8 +131,6 @@ export interface ConnectionView {
   readonly offerSwitch: boolean;
   /** Why selling through this shop, or Import, was just refused. */
   readonly switching: string | null;
-  /** The merchant's selling is stopped, so nothing imported sells. */
-  readonly stopped: boolean;
   readonly productsAtMost: number;
   readonly beforeImporting: BeforeImporting | null;
 }
@@ -177,7 +175,6 @@ export interface ShopRead {
   readonly state: ShopState;
   readonly unset: readonly Unset[];
   readonly through: Integration;
-  readonly stopped: boolean;
 }
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
@@ -207,7 +204,6 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
             granted: state.shop.permissions === "read_write" ? null : state.shop.permissions,
             offerSwitch: read.through === "api",
             switching: answer.switching ?? null,
-            stopped: read.stopped,
             productsAtMost: PRODUCTS_AT_MOST,
             beforeImporting:
               unset.length === 0

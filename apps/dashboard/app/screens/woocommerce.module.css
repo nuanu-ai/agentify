@@ -1,0 +1,233 @@
+/*
+ * The WooCommerce screens: panels side by side where the workspace has room
+ * for two readable columns and one under another where it has not, each
+ * panel a heading, a sentence or a short list, and its one control. What
+ * needs the merchant before anything else is a tinted panel above the rest.
+ */
+
+.page {
+  container-type: inline-size;
+  margin: 28px 0 40px;
+}
+
+.lead {
+  max-width: 46rem;
+  margin: 0 0 20px;
+  color: var(--fg-2);
+  font-size: 1.0625rem;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.stack {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+@container (min-width: 880px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.panel {
+  min-width: 0;
+  padding: 24px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.panel h2 {
+  margin: 0 0 6px;
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.sub {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* What needs the merchant first: the notice's tint over the whole panel. */
+.attention {
+  margin-bottom: 20px;
+  border-color: color-mix(in srgb, var(--notice-ink) 24%, var(--line));
+  background: var(--notice-bg);
+}
+
+.attention h2 {
+  color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
+}
+
+.attention .sub {
+  color: var(--notice-ink);
+}
+
+.panel > :last-child {
+  margin-bottom: 0;
+}
+
+.panel :global(.field) {
+  margin-bottom: 16px;
+}
+
+.panel :global(p.problem) {
+  margin: 12px 0 0;
+}
+
+/* A sentence about what a press does, in the notice's colours, inside its panel. */
+.note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: 0.875rem;
+}
+
+.note svg {
+  flex: none;
+  margin-top: 2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.note b {
+  display: block;
+  font-weight: 600;
+}
+
+.note :global(.button) {
+  margin-top: 10px;
+}
+
+/* The keys arrived: the pass colour's tint, said once under the status. */
+.arrived {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--pass-soft);
+  color: var(--pass);
+  font-size: 0.875rem;
+}
+
+.ticks,
+.rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticks li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+}
+
+.ticks svg {
+  margin-top: 4px;
+  fill: none;
+  stroke: var(--pass);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ticks b,
+.rules b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.rules {
+  counter-reset: rule;
+}
+
+.rules li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: var(--hairline) solid var(--line-soft);
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  counter-increment: rule;
+}
+
+.rules li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.rules li::before {
+  content: counter(rule);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.more {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+/* Connected, the shop's address, and since when, on one line where it fits. */
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin: 0 0 20px;
+  font-size: 0.9375rem;
+}
+
+.shop {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.since {
+  color: var(--muted);
+}
+
+/* A button that takes the account somewhere it cannot easily come back from. */
+.leave {
+  color: var(--fail);
+}
+
+/* On a phone the panel's one control spans it, as the mockups' thumbs expect. */
+@container (max-width: 560px) {
+  .panel {
+    padding: 20px 16px;
+  }
+
+  .panel :global(.button) {
+    width: 100%;
+  }
+}

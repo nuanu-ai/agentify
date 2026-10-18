@@ -56,7 +56,7 @@ const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
     <WooShopScreen
       view={wooShopView(
         SEEN_BY,
-        { state: { kind: "none" }, unset: [], through: "api", stopped: false, ...read },
+        { state: { kind: "none" }, unset: [], through: "api", ...read },
         answer,
       )}
       base=""

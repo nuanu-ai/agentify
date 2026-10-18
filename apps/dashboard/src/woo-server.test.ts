@@ -1845,7 +1845,7 @@ describe("coming back from the shop with no session on the request", () => {
     const seen = await running.get(came.to ?? "");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(seen.html)).toContain(`${SHOP}, connected`);
+    expect(readable(seen.html)).toContain(`Connected ${SHOP} since`);
   });
 
   it("does not say the shop approved merely because the browser came through the return address", async () => {
