@@ -99,9 +99,16 @@ export function ListEmpty({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
-/** A day pulled out of the moments under it, across every column. */
+/**
+ * A day pulled out of the moments under it, across every column: a heading a
+ * screen reader can move between, one level under the group's.
+ */
 export function DayHeading({ children }: Readonly<{ children: ReactNode }>) {
-  return <li className="list-day">{children}</li>;
+  return (
+    <li className="list-day">
+      <h3>{children}</h3>
+    </li>
+  );
 }
 
 /**

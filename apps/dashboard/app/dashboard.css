@@ -601,6 +601,12 @@ td.control {
   font-weight: 600;
 }
 
+.list-day h3 {
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
+}
+
 .list > li.list-day + li {
   border-top: 0;
 }
@@ -813,7 +819,6 @@ td.control {
 }
 
 .segments b {
-  margin-left: 4px;
   color: var(--fg);
   font-weight: 600;
 }
