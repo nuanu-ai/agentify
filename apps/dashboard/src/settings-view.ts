@@ -14,7 +14,7 @@ import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wall
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
 import { type CommissionRate, percentagesOf } from "./shares.js";
 import { type MomentView, momentView } from "./views.js";
-import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
+import { APPROVAL_GIVEN } from "./words.js";
 
 /**
  * What the page is drawn from: the gateway's answers, all read together, and
@@ -98,6 +98,7 @@ export interface WalletView {
 export interface SettingsView {
   readonly who: string;
   readonly lede: string;
+  /** That Agentify approved the merchant for live sales; null otherwise. */
   readonly approval: string | null;
   readonly name: Readonly<{
     rule: string;
@@ -239,12 +240,9 @@ export const settingsView = (
       sellerName === null
         ? `You have not set a seller name yet.${door.missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME) ? " Until you do, cards cannot be published." : ""}`
         : `Your products are sold under ${sellerName}.`,
-    approval:
-      mode === "live" && liveApproval !== undefined
-        ? liveApproval
-          ? APPROVAL_GIVEN
-          : APPROVAL_PENDING
-        : null,
+    // A missing approval is the banner's to say, over every page; Settings
+    // says only that it was given.
+    approval: mode === "live" && liveApproval === true ? APPROVAL_GIVEN : null,
     name: {
       rule: NAME_RULE,
       standing: name?.problem === NAME_CANNOT_BE_TAKEN_AWAY ? null : NAME_CANNOT_BE_TAKEN_AWAY,

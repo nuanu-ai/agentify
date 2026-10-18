@@ -63,7 +63,7 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment, needsYou } from "./words.js";
+import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -216,10 +216,7 @@ export interface PageServices {
     cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
-    /**
-     * What the frame draws over every page about the merchant's selling: the
-     * count of orders that need them and the banner about their account.
-     */
+    /** The banner the frame draws over every page about the merchant's selling. */
     frame(person: Person): Promise<FrameView>;
   };
   /** The ways a merchant's catalogue reaches Agentify. */
@@ -500,28 +497,21 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 };
 
 /**
- * How long the frame's reads may take: a page is answered whole, so a slow one
+ * How long the frame's read may take: a page is answered whole, so a slow one
  * would hold every page the frame is drawn on.
  */
 const FRAME_WITHIN_MS = 2_000;
 
 /** A gateway answer as the frame takes it: the document, or that it failed. */
-type Read<T> =
-  | Readonly<{ read: true; value: T; failed: false }>
-  | Readonly<{ read: false; failed: boolean }>;
+type Read<T> = Readonly<{ read: true; value: T }> | Readonly<{ read: false }>;
 
-/** For a fact this channel does not ask for, which is not a failure. */
-const NOT_ASKED: Read<never> = { read: false, failed: false };
-
-const readOf = async <T>(asked: Promise<Answer<T>>): Promise<Read<T>> => {
+const readOf = async <T>(ask: () => Promise<Answer<T>>): Promise<Read<T>> => {
   try {
-    const answered = await asked;
-    return answered.ok
-      ? { read: true, value: answered.document, failed: false }
-      : { read: false, failed: true };
+    const answered = await ask();
+    return answered.ok ? { read: true, value: answered.document } : { read: false };
   } catch {
     console.error("[dashboard] a read for the frame failed");
-    return { read: false, failed: true };
+    return { read: false };
   }
 };
 
@@ -1035,22 +1025,32 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
 
       async orders(person, query) {
-        // Only the exact word narrows the list, as the contract says.
-        const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, owed, paidInto] = await Promise.all([
+        // The open list is read beside the whole one, never after it, since
+        // which orders are open is the gateway's to say.
+        const [cards, orders, open, owed, paidInto] = await Promise.all([
           gateway.cards(),
-          gateway.orders(open),
+          gateway.orders(false),
+          gateway.orders(true),
           gateway.refundsOwed(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
+        if (!open.ok) return problemOf(open);
         if (!owed.ok) return problemOf(owed);
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
-          view: ordersView(cards.document, orders.document, open, owed.document, paidInto.document),
+          view: ordersView(
+            viewing(person).mode,
+            cards.document,
+            orders.document,
+            open.document,
+            query,
+            owed.document,
+            paidInto.document,
+          ),
         };
       },
 
@@ -1076,34 +1076,22 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      // Asked beside the page's own reads, each one cut short at the frame's
+      // Asked beside the page's own reads and cut short at the frame's
       // deadline: a read that fails or is slow does not take the page down or
-      // hold it long; the count is said to be unknown and the banner says it
-      // could not check.
+      // hold it long, and the banner says it could not check.
       async frame(person) {
-        const gateway = gatewayAs(person, FRAME_WITHIN_MS);
-        const [open, integration, name, wallet, approval] = await Promise.all([
-          readOf(gateway.orders(true)),
-          readOf(gateway.integration()),
-          readOf(gateway.sellerName()),
-          readOf(gateway.payoutWallet()),
-          config.surfaceMode === "live" ? readOf(gateway.liveApproval()) : NOT_ASKED,
-        ]);
-        const viewer: Viewer = {
-          ...viewing(person, name.read ? name.value : undefined),
-          ...(wallet.read ? { payout: { wallet: wallet.value.payout_wallet } } : {}),
-          ...(approval.read ? { liveApproval: approval.value } : {}),
-        };
+        const standing = await readOf(() => gatewayAs(person, FRAME_WITHIN_MS).standing());
         return {
-          needYou: open.read
-            ? open.value.orders.filter((order) => needsYou(order.status)).length
-            : null,
-          account: accountOf(viewer, {
-            ...(integration.read
-              ? { selling: integration.value.selling, through: integration.value.through }
-              : {}),
-            unread: [integration, name, wallet, approval].some((one) => one.failed),
-          }),
+          account: standing.read
+            ? accountOf(
+                {
+                  ...viewing(person, standing.value.sellerName),
+                  payout: { wallet: standing.value.payoutWallet },
+                  liveApproval: standing.value.liveApproved,
+                },
+                { selling: standing.value.selling, through: standing.value.through },
+              )
+            : accountOf(viewing(person), { unread: true }),
         };
       },
     },

@@ -1,5 +1,6 @@
 import { Table } from "@agentify/ui";
 import type { ReceiptsView, TransferView } from "../../src/views.js";
+import { Ident } from "../components/copy.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
 import { SharesOf, TestMark } from "./orders.js";
@@ -80,8 +81,8 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
           key: row.id,
           ...(row.needsYou ? { className: "needs-you" } : {}),
           cells: [
-            { className: "ident", content: row.id },
-            { className: "ident", content: row.orderId },
+            { className: "ident", content: <Ident value={row.id} what="receipt ID" /> },
+            { className: "ident", content: <Ident value={row.orderId} what="order ID" /> },
             { content: row.product },
             {
               className: "amount",

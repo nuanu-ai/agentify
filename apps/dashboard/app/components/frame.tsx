@@ -3,8 +3,7 @@
  * header with who is signed in and the way out, and under it the dashboard's
  * working area, its sections in a sidebar beside a bar with the screen's
  * title, and over the screen the banner about the account where something
- * about it is not as usual. Orders carries the count of orders that need the
- * merchant. Where there is no room for
+ * about it is not as usual. Where there is no room for
  * the sidebar, a menu at the end of the header's row holds the sections, the
  * documentation and who is signed in with the way out.
  */
@@ -49,31 +48,11 @@ const FOOT = [
 ] as const;
 
 /**
- * Beside Orders, the orders that need the merchant, drawn only above nought.
- * A count that could not be read is marked as such, so it is not taken for
- * none.
- */
-function NeedYou({ count }: Readonly<{ count: number | null }>) {
-  if (count === 0) return null;
-  return count === null ? (
-    <span className="need unknown" title="Could not count the orders that need you">
-      <span aria-hidden="true">?</span>
-      <span className="sr-only">, could not count the orders that need you</span>
-    </span>
-  ) : (
-    <span className="need">
-      <span aria-hidden="true">{count}</span>
-      <span className="sr-only">{`, ${count} ${count === 1 ? "needs" : "need"} you`}</span>
-    </span>
-  );
-}
-
-/**
  * `heading` is the bar's words where they are not the window's title, and
  * `action` a control about the whole page, drawn at the bar's end at every
- * width, so a phone reaches it without scrolling past the page. The count and
- * the banner are the merchant's pages' layout's, read once for every section;
- * a page drawn outside that layout draws neither.
+ * width, so a phone reaches it without scrolling past the page. The banner is
+ * the merchant's pages' layout's, read once for every section; a page drawn
+ * outside that layout draws none.
  */
 export function Frame({
   tab,
@@ -104,15 +83,7 @@ export function Frame({
   const framed = useRouteLoaderData<FrameView>("routes/merchant-only");
   const sections: Section[] = TABS.map(([key, label]) => ({
     key,
-    label:
-      key === "orders" && framed !== undefined ? (
-        <>
-          {label}
-          <NeedYou count={framed.needYou} />
-        </>
-      ) : (
-        label
-      ),
+    label,
     current: key === marked,
     to: `/${key}`,
   }));

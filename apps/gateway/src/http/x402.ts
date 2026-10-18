@@ -16,6 +16,8 @@ import {
   bazaarDeclarationOf,
   expandPath,
   PAYABLE_CURRENCIES,
+  PAYABLE_DECIMALS,
+  ServiceNameSchema,
 } from "@nuanu-ai/agentify-contracts";
 import {
   decodePaymentSignatureHeader,
@@ -30,7 +32,8 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import type { PaymentConfig } from "../config.js";
+import type { GatewayConfig, PaymentConfig } from "../config.js";
+import { randomIds } from "../ports/clock.js";
 
 /** The x402 version this edge speaks. */
 export const X402_VERSION = 2;
@@ -65,6 +68,45 @@ const PARCEL_LISTED =
   "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping included";
 
 const PARCEL_PRICED = "this is a parcel: the amount asked includes shipping to the address named";
+
+/**
+ * Every reason a challenge gives for not returning the resource. A challenge
+ * carries no other, so the widest a card's challenge can be is measured with
+ * each of them.
+ */
+export const CHALLENGE_REASONS = {
+  probe: "payment required",
+  paymentOnAGet: "this GET is not read for payment: the purchase is a POST with a JSON body",
+  unreadablePayment: "the payment could not be read, so here is a fresh price",
+  noHeldOrder:
+    "the payment did not name an order this gateway is holding, so here is a fresh price",
+} as const;
+
+export type ChallengeReason = (typeof CHALLENGE_REASONS)[keyof typeof CHALLENGE_REASONS];
+
+/** The longest listing name there is, in a character JSON writes as two. */
+const widestListingName = (): string => {
+  const longest = ServiceNameSchema.maxLength;
+  if (longest === null) {
+    throw new Error("a listing name with no longest length leaves a challenge with no widest size");
+  }
+  return "\\".repeat(longest);
+};
+
+/**
+ * Each part of a challenge that is not the card, at its widest: an amount with
+ * every whole digit an amount may carry and every place USDC has, identifiers
+ * as the stores issue them, an address, and the longest listing name. Measured
+ * with these, a card's challenge is never wider later, whatever its merchant
+ * is renamed, its orders are priced at or its money is paid to.
+ */
+const WIDEST = {
+  price: { amount: `${"9".repeat(18)}.${"9".repeat(PAYABLE_DECIMALS)}`, currency: "USD" },
+  itemId: randomIds("item"),
+  orderId: randomIds("ord"),
+  payTo: `0x${"f".repeat(40)}`,
+  serviceName: widestListingName(),
+} as const;
 
 export class PaymentEdge {
   readonly #config: PaymentConfig;
@@ -153,7 +195,7 @@ export class PaymentEdge {
       /** Where the card's merchant is paid: their recorded split. */
       readonly payTo: string | null;
     },
-    why?: string,
+    why?: ChallengeReason,
   ): string {
     const declared = bazaarDeclarationOf(listed.card, {
       url: this.resourceUrlFor(listed.itemId),
@@ -189,6 +231,27 @@ export class PaymentEdge {
     return encodePaymentRequiredHeader(challenge);
   }
 
+  /**
+   * The size in bytes of the widest challenge header `card` can be answered
+   * with: for every reason a challenge gives, with an order and without one,
+   * and every other part at its widest.
+   */
+  widestChallengeFor(card: Card): number {
+    let widest = 0;
+    for (const orderId of [null, WIDEST.orderId]) {
+      for (const why of Object.values(CHALLENGE_REASONS)) {
+        const header = this.challengeFor(
+          WIDEST.price,
+          orderId,
+          { itemId: WIDEST.itemId, card, serviceName: WIDEST.serviceName, payTo: WIDEST.payTo },
+          why,
+        );
+        widest = Math.max(widest, Buffer.byteLength(header));
+      }
+    }
+    return widest;
+  }
+
   receiptHeader(settlement: SettleResponse): string {
     return encodePaymentResponseHeader(settlement);
   }
@@ -200,6 +263,12 @@ export class PaymentEdge {
   token(): TokenIdentity {
     return { network: this.#config.network, asset: getDefaultAsset(this.#network()).asset };
   }
+}
+
+/** `widestChallengeFor` on the challenges a gateway with this configuration answers with. */
+export function widestChallengeOn(config: GatewayConfig): (card: Card) => number {
+  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  return (card) => edge.widestChallengeFor(card);
 }
 
 /**

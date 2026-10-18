@@ -1,0 +1,100 @@
+/*
+ * An order said in a row of its own, in a list's one surface. Where the
+ * list's box is wide: its state, product and sum on one line, then what
+ * happened and what to do, then its ID and when its price was set. Where it is
+ * narrow, as the stacked rows below it are: the product and the sum, then the
+ * state on a line of its own.
+ */
+.told {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "state product amount"
+    "why why why"
+    "meta meta meta";
+  gap: 8px 14px;
+  align-items: baseline;
+  padding: 18px 20px;
+}
+
+.state {
+  grid-area: state;
+}
+
+.product {
+  grid-area: product;
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.amount {
+  grid-area: amount;
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.why {
+  grid-area: why;
+  max-width: 48rem;
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+@container (max-width: 860px) {
+  .told {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "product amount"
+      "state state"
+      "why why"
+      "meta meta";
+    gap: 6px 10px;
+    padding: 16px;
+  }
+}
+
+/* The way to how refunds are made stands at the end of its group's heading. */
+:global(.group-aside):has(> .end) {
+  margin-left: auto;
+}
+
+.end {
+  font-weight: 500;
+}
+
+/*
+ * The longest state, "Payment outcome unknown", is wider than its column where
+ * the list is barely wide enough for columns at all, so there it takes a
+ * second line under its first word rather than running into the next column.
+ */
+.wraps :global(.badge) {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.wraps :global(.badge)::before {
+  margin-top: calc((1.4em - 8px) / 2);
+}
+
+/* A sum too long for its column breaks at a space, before its currency, its
+   test mark or a word of its share, and never inside a number. */
+.sum {
+  white-space: normal;
+}

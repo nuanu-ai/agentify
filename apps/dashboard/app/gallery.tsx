@@ -91,6 +91,7 @@ import {
 } from "../src/woo-views.js";
 import { SITE_IN_SETTINGS } from "../src/words.js";
 import type { Chrome, Trouble } from "./answer.js";
+import { shortened } from "./components/copy.js";
 import routes from "./routes.js";
 
 // --- the route tree, drawn ---------------------------------------------------
@@ -161,11 +162,6 @@ interface Drawn {
   /** Under the dashboard's prefix, query and all. */
   readonly path: string;
   readonly mode: SurfaceMode;
-  /**
-   * The orders that need the merchant, on a page about their selling; none
-   * unless the state is about them.
-   */
-  readonly needYou?: number | null;
   /** The banner the layout reads for a page about the merchant's selling; none unless given. */
   readonly account?: readonly AccountNote[];
   readonly loaded?: HydrationState["loaderData"];
@@ -177,8 +173,8 @@ type Told = Omit<GalleryState, "address" | "draw">;
 
 /**
  * The address the gate's loader names, for a page behind the gate, and the
- * count the frame's sidebar reads on a page about a merchant's selling; a page
- * in front of the gate is drawn for nobody, as the server draws it.
+ * banner the merchant's layout reads on a page about their selling; a page in
+ * front of the gate is drawn for nobody, as the server draws it.
  */
 const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] => {
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
@@ -192,7 +188,7 @@ const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] =>
 /** A state at its address, drawn by the route tree as the server answers that address. */
 const at = (
   told: Told,
-  { path, mode, needYou = 0, account = [], loaded, pressed, failed }: Drawn,
+  { path, mode, account = [], loaded, pressed, failed }: Drawn,
 ): GalleryState => ({
   ...told,
   address: `${BASE}${path}`,
@@ -204,7 +200,7 @@ const at = (
         hydrationData={{
           loaderData: {
             root: chromeIn(mode),
-            ...gateAt(path, { needYou, account }),
+            ...gateAt(path, { account }),
             ...loaded,
           },
           ...(pressed === undefined ? {} : { actionData: pressed }),
@@ -434,6 +430,8 @@ const bannerOf = (viewer: Viewer, read: AccountRead = {}) =>
 type Status =
   | "in_progress"
   | "delivered"
+  | "shipped"
+  | "cancelled"
   | "rejected"
   | "payment_unresolved"
   | "declined"
@@ -524,7 +522,6 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   state,
   unset: [],
   through: "woocommerce",
-  stopped: false,
   ...more,
 });
 
@@ -609,17 +606,23 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING)).why;
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING)).why;
+const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
+const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
 
 // --- the states ----------------------------------------------------------------
+
+/**
+ * Whether the sign-in offers Google, as both channels are configured: the live
+ * site and the test site each serve the Google button.
+ */
+const GOOGLE_ON = true;
 
 /** The sign-in page at its address, or, given the answer to a press, as that answer draws it. */
 const signIn = (told: Told, path: string, answered?: SignInView): GalleryState =>
   at(told, {
     path,
     mode: "live",
-    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, false) },
+    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, GOOGLE_ON) },
     ...(answered === undefined ? {} : { pressed: { "routes/sign-in": answered } }),
   });
 
@@ -646,25 +649,6 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody presses the button on a landing page they reached through a paid ad.",
       cause:
-        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the box is offered, unticked.",
-    },
-    {
-      path: "/sign-in?clickid=qa_click_0123456789abcdef",
-      mode: "live",
-      loaded: {
-        "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), false),
-          click: { id: "qa_click_0123456789abcdef", consented: false },
-        },
-      },
-    },
-  ),
-  at(
-    {
-      id: "dashboard-sign-in-from-an-ad-google",
-      screen: "Sign in",
-      when: "Somebody presses the button on a paid ad's landing page, on a channel configured for Google sign-in.",
-      cause:
         "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the one box is offered, unticked, and goes with whichever way in is pressed.",
     },
     {
@@ -672,21 +656,11 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), true),
+          ...askViewOf(new URLSearchParams(), GOOGLE_ON),
           click: { id: "qa_click_0123456789abcdef", consented: false },
         },
       },
     },
-  ),
-  signIn(
-    {
-      id: "dashboard-sign-in-google",
-      screen: "Sign in",
-      when: "Somebody opens the dashboard on a channel configured for Google sign-in.",
-      cause: "Google sign-in is available alongside the email link.",
-    },
-    "/sign-in?destination=settings",
-    { screen: "ask", destination: "settings", googleEnabled: true },
   ),
   at(
     {
@@ -699,7 +673,7 @@ const SIGNING_IN: GalleryState[] = [
       path: "/sign-in/google",
       mode: "live",
       pressed: {
-        "routes/sign-in-google": googleRefusalView(true, "unavailable", "settings"),
+        "routes/sign-in-google": googleRefusalView(GOOGLE_ON, "unavailable", "settings"),
       },
     },
   ),
@@ -715,7 +689,7 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in-google-callback": googleRefusalView(
-          true,
+          GOOGLE_ON,
           "email-unverified",
           "settings",
           WHO,
@@ -760,7 +734,7 @@ const SIGNING_IN: GalleryState[] = [
       cause: "The typed address does not have the shape of an email address, so no link was sent.",
     },
     "/sign-in",
-    { screen: "ask", destination: "default", googleEnabled: false, problem: NOT_AN_ADDRESS },
+    { screen: "ask", destination: "default", googleEnabled: GOOGLE_ON, problem: NOT_AN_ADDRESS },
   ),
   signIn(
     {
@@ -842,7 +816,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in",
       mode: "test",
-      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), false) },
+      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), GOOGLE_ON) },
     },
   ),
   at(
@@ -978,12 +952,11 @@ const cards = (
   told: Told,
   view: ReturnType<typeof cardsView>,
   mode: SurfaceMode,
-  more: Readonly<{ needYou?: number | null; path?: string; account?: readonly AccountNote[] }> = {},
+  more: Readonly<{ path?: string; account?: readonly AccountNote[] }> = {},
 ): GalleryState =>
   at(told, {
     path: more.path ?? "/cards",
     mode,
-    ...(more.needYou === undefined ? {} : { needYou: more.needYou }),
     ...(more.account === undefined ? {} : { account: more.account }),
     loaded: { "routes/cards": view },
   });
@@ -1144,30 +1117,6 @@ const CARDS: GalleryState[] = [
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-refunds-due",
-      screen: "Cards",
-      when: "A merchant with two refunds due opens the dashboard at their cards.",
-      cause:
-        "Two of the merchant's orders are refund due, so Orders in the sidebar carries the count on every page; goods delivered and not paid are not counted.",
-    },
-    cardsView(CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: 2 },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-count-unknown",
-      screen: "Cards",
-      when: "A merchant opens Cards while the orders could not be read in time.",
-      cause:
-        "The count beside Orders could not be read, so the sidebar marks it as unknown rather than drawing none.",
-    },
-    cardsView(CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: null },
   ),
   cards(
     {
@@ -1444,19 +1393,62 @@ const CARDS: GalleryState[] = [
   ),
 ];
 
+/**
+ * The orders the gateway's open list would hold among these: the ones still
+ * owed goods or money, as near as a status can say it.
+ */
+const openAmong = (listed: ReturnType<typeof ordersOf>) =>
+  OrderListSchema.parse({
+    orders: listed.orders.filter((order) =>
+      ["in_progress", "refund_due", "delivered_unpaid", "payment_unresolved"].includes(
+        order.status,
+      ),
+    ),
+  });
+
+/**
+ * Orders as the loader answers them at `path`, whose address carries the
+ * search and the segment, with the refunds' causes where they are known.
+ */
+const ordersAt = (
+  path: string,
+  listed: ReturnType<typeof ordersOf>,
+  {
+    mode = "live",
+    cards = CATALOGUE,
+    open = openAmong(listed),
+    owed = {},
+  }: Readonly<{
+    mode?: SurfaceMode;
+    cards?: ReturnType<typeof cardsOf>;
+    open?: ReturnType<typeof ordersOf>;
+    owed?: Parameters<typeof ordersView>[5];
+  }> = {},
+) =>
+  ordersView(
+    mode,
+    cards,
+    listed,
+    open,
+    new URL(path, ORIGIN[mode]).searchParams,
+    owed,
+    paidIntoSplit(mode, listed.orders),
+  );
+
+/** The layout reads the banner from the same selling state the orders' cards carry. */
 const orders = (
   told: Told,
-  view: ReturnType<typeof ordersView>,
-  mode: SurfaceMode,
-  open = false,
-  account: readonly AccountNote[] = [],
+  listed: ReturnType<typeof ordersOf>,
+  path = "/orders",
+  more: Parameters<typeof ordersAt>[2] = {},
 ): GalleryState =>
   at(told, {
-    path: open ? "/orders?open=true" : "/orders",
-    mode,
-    needYou: view.needsYou.length,
-    account,
-    loaded: { "routes/orders": view },
+    path,
+    mode: more.mode ?? "live",
+    account: bannerOf(seenBy(more.mode ?? "live"), {
+      selling: (more.cards ?? CATALOGUE).selling,
+    }),
+    loaded: { "routes/orders": ordersAt(path, listed, more) },
   });
 
 const OWING = ordersOf([
@@ -1465,6 +1457,21 @@ const OWING = ordersOf([
   ["vpn", "delivered"],
   ["esimWeek", "refund_due"],
 ]);
+
+/** The first refund due ran out of time, the second was refused by the merchant's code. */
+const OWED_BECAUSE = Object.fromEntries(
+  OWING.orders
+    .filter((order) => order.status === "refund_due")
+    .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
+);
+
+/** A season of sales, one every 37 minutes back from the latest. */
+const SEASON = ordersOf(
+  Array.from(
+    { length: 214 },
+    (_, at) => [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+  ),
+);
 
 const ORDERS: GalleryState[] = [
   orders(
@@ -1475,15 +1482,12 @@ const ORDERS: GalleryState[] = [
       cause:
         "The gateway lists orders that went through or are under way, none of them owing anything.",
     },
-    ((listed) => ordersView(CATALOGUE, listed, false, {}, paidIntoSplit("live", listed.orders)))(
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-        ["number", "delivered"],
-        ["esimEurope", "delivered"],
-      ]),
-    ),
-    "live",
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+      ["number", "delivered"],
+      ["esimEurope", "delivered"],
+    ]),
   ),
   orders(
     {
@@ -1491,45 +1495,34 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant has orders that owe a refund or were delivered without payment.",
       cause:
-        "Orders in refund due or delivered, not paid, each set out under the table with what to do.",
+        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened and what to do.",
     },
-    ordersView(
-      CATALOGUE,
-      OWING,
-      false,
-      Object.fromEntries(
-        OWING.orders
-          .filter((order) => order.status === "refund_due")
-          .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"]),
-      ),
-      paidIntoSplit("live", OWING.orders),
-    ),
-    "live",
+    OWING,
+    "/orders",
+    { owed: OWED_BECAUSE },
   ),
   orders(
     {
       id: "dashboard-orders-every-ending",
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
-      cause: "The gateway lists an order in each way an order can stand or end.",
+      cause:
+        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown and Declined at confirmation.",
     },
-    ordersView(
-      CATALOGUE,
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-        ["number", "payment_unresolved"],
-        ["esimEurope", "refund_due"],
-        ["number", "delivered_unpaid"],
-        ["vpn", "rejected"],
-        ["esimEurope", "declined"],
-        ["number", "expired"],
-        ["esimEurope", "refunded"],
-        ["esimWeek", "delivered"],
-      ]),
-      false,
-    ),
-    "live",
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+      ["number", "payment_unresolved"],
+      ["esimEurope", "refund_due"],
+      ["number", "delivered_unpaid"],
+      ["vpn", "rejected"],
+      ["esimEurope", "declined"],
+      ["number", "expired"],
+      ["esimEurope", "refunded"],
+      ["esimWeek", "delivered"],
+      ["vpn", "shipped"],
+      ["number", "cancelled"],
+    ]),
   ),
   {
     ...orders(
@@ -1538,10 +1531,11 @@ const ORDERS: GalleryState[] = [
         screen: "Orders",
         when: "A merchant on a phone taps the first order's line to read what the narrow row leaves out.",
         cause:
-          "A phone's row shows the product, the amount, the state and the time; its ID, product code and shares are in the row's opened part, which a wide screen shows in its columns.",
+          "A phone's row shows the product, the amount, the state and the time; the whole order ID, both shares and the moment the price was set are in the row's opened part.",
       },
-      ordersView(CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
-      "live",
+      OWING,
+      "/orders",
+      { owed: OWED_BECAUSE },
     ),
     scene: {
       steps: [
@@ -1555,69 +1549,106 @@ const ORDERS: GalleryState[] = [
   },
   orders(
     {
+      id: "dashboard-orders-search",
+      screen: "Orders",
+      when: "A merchant pastes the short order ID they copied from a refund due.",
+      cause:
+        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its refund row and in the list.",
+    },
+    OWING,
+    `/orders?q=${encodeURIComponent(shortened(OWING.orders[0]?.id ?? ""))}`,
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-search-no-match",
+      screen: "Orders",
+      when: "A merchant searches their orders for a product none of them is for.",
+      cause:
+        "No order's ID, product or product code holds the search, so the list says what was searched for and offers to clear it, which is not what a merchant without orders reads.",
+    },
+    OWING,
+    "/orders?q=router",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-open",
+      screen: "Orders",
+      when: "A merchant picks Open to see what is still owed goods or money.",
+      cause:
+        "The gateway's open list holds the two refunds due and the goods held for payment, and the list shows those three alone.",
+    },
+    OWING,
+    "/orders?show=open",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-open-none",
+      screen: "Orders",
+      when: "A merchant picks Open while every order is finished.",
+      cause:
+        "The gateway's open list holds no order, so the list says nothing is open and leads back to all of them.",
+    },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["number", "delivered"],
+    ]),
+    "/orders?show=open",
+  ),
+  orders(
+    {
+      id: "dashboard-orders-cut-short",
+      screen: "Orders",
+      when: "A merchant with a season of sales opens Orders.",
+      cause:
+        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many and leads to the next page.",
+    },
+    SEASON,
+  ),
+  orders(
+    {
       id: "dashboard-orders-sales-paused",
       screen: "Orders",
       when: "A merchant who pressed Pause all sales on Cards opens Orders.",
       cause:
         "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Cards to resume them.",
     },
-    ((listed) =>
-      ordersView(
-        cardsOf("paused", ON_SALE),
-        listed,
-        false,
-        {},
-        paidIntoSplit("live", listed.orders),
-      ))(
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-      ]),
-    ),
-    "live",
-    false,
-    bannerOf(seenBy("live"), { selling: "paused" }),
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    "/orders",
+    { cards: cardsOf("paused", ON_SALE) },
   ),
   orders(
     {
       id: "dashboard-orders-none",
       screen: "Orders",
       when: "A merchant opens Orders before anything has been bought.",
-      cause: "The gateway lists no orders.",
+      cause: "The gateway lists no orders, so there is nothing to search or narrow.",
     },
-    ordersView(CATALOGUE, ordersOf([]), false),
-    "live",
-  ),
-  orders(
-    {
-      id: "dashboard-orders-open-none",
-      screen: "Orders",
-      when: "A merchant filters Orders to the open ones and none is open.",
-      cause: "The gateway's open filter lists no order owed goods or money.",
-    },
-    ordersView(CATALOGUE, ordersOf([]), true),
-    "live",
-    true,
+    ordersOf([]),
   ),
   orders(
     {
       id: "dashboard-orders-test",
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
-      cause: "Every order on the test site is marked as a test purchase.",
+      cause:
+        "Every order on the test site is a test purchase, one of them owing a refund, and each sum carries the test mark.",
     },
-    ordersView(
-      CATALOGUE,
-      ordersOf(
-        [
-          ["vpn", "delivered"],
-          ["esimEurope", "delivered"],
-        ],
-        true,
-      ),
-      false,
+    ordersOf(
+      [
+        ["vpn", "delivered"],
+        ["esimEurope", "refund_due"],
+        ["esimEurope", "delivered"],
+      ],
+      true,
     ),
-    "test",
+    "/orders",
+    { mode: "test" },
   ),
 ];
 
@@ -1792,19 +1823,33 @@ const INTEGRATIONS: GalleryState[] = [
 
 /**
  * The banner over a WooCommerce screen: the shop's when the merchant sells
- * through it, and all sales paused where the screen says so.
+ * through it, and all sales paused where the example says so.
  */
-const shopBanner = (view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>) =>
-  bannerOf(seenBy("test"), {
+/** What the merchant's layout reads beside a WooCommerce example, where it is not as usual. */
+interface ShopAccount {
+  readonly selling?: AccountRead["selling"];
+  /** No payout wallet set, which the example's own read says. */
+  readonly noWallet?: true;
+}
+
+const shopBanner = (
+  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  { selling = "open", noWallet }: ShopAccount,
+) =>
+  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), {
     through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
-    selling: view.screen === "shop" && view.connection?.stopped === true ? "paused" : "open",
+    selling,
   });
 
-const shop = (told: Told, view: ReturnType<typeof wooShopView>, path = "/woocommerce") =>
+const shop = (
+  told: Told,
+  view: ReturnType<typeof wooShopView>,
+  { path = "/woocommerce", ...account }: ShopAccount & { readonly path?: string } = {},
+) =>
   at(told, {
     path,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     loaded: { "routes/woocommerce": view },
   });
 
@@ -1813,11 +1858,12 @@ const shopPress = (
   told: Told,
   press: "connect" | "import" | "switch" | "disconnect",
   view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  account: ShopAccount = {},
 ) =>
   at(told, {
     path: `/woocommerce/${press}`,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -1867,7 +1913,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The shop's server posted its keys, and the browser came back from the shop.",
     },
     shopOn(shopRead(CONNECTED), { cameBack: true }),
-    "/woocommerce?from=shop",
+    { path: "/woocommerce?from=shop" },
   ),
   shop(
     {
@@ -1888,6 +1934,7 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
     },
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
+    { noWallet: true },
   ),
   shop(
     {
@@ -1896,7 +1943,8 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant with a connected shop has paused all sales.",
       cause: "The merchant's selling is stopped, so nothing imported sells until it starts again.",
     },
-    shopOn(shopRead(CONNECTED, { stopped: true })),
+    shopOn(shopRead(CONNECTED)),
+    { selling: "paused" },
   ),
   shop(
     {
@@ -1943,7 +1991,7 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-import",
       screen: "WooCommerce import",
-      when: "A merchant presses Import the catalog.",
+      when: "A merchant presses Import products.",
       cause:
         "The shop's catalogue was read, and each product was published, refused or left in the shop.",
     },
@@ -2000,6 +2048,7 @@ const WOOCOMMERCE: GalleryState[] = [
     },
     "import",
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), { refused: ["no_payout_wallet"] }),
+    { noWallet: true },
   ),
   shopPress(
     {
@@ -2017,12 +2066,30 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-disconnect-refused",
       screen: "WooCommerce",
-      when: "A merchant presses Forget this shop while orders the shop took are open.",
+      when: "A merchant presses Disconnect shop while orders the shop took are open.",
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",
     shopOn(shopRead(CONNECTED), {
       leaving: TO_THE_CODE,
+    }),
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-disconnect-refused-many",
+      screen: "WooCommerce",
+      when: "A merchant presses Disconnect shop while seven orders the shop took are open.",
+      cause:
+        "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
+    },
+    "disconnect",
+    shopOn(shopRead(CONNECTED), {
+      leaving: refusalIn(
+        switchRefused(
+          "api",
+          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+        ),
+      ),
     }),
   ),
   at(

@@ -87,6 +87,19 @@ describe("an identifier with its copy button", () => {
 
     expect(screen.getByTitle("ord_1").textContent).toBe("ord_1");
   });
+
+  it("shows the whole value where asked to, with the same button", async () => {
+    const held = clipboard();
+    const { container } = render(<Ident value={ORDER} what="order ID" whole />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: `Copy the whole order ID ${ORDER}` }));
+    });
+
+    expect(container.textContent).toBe(`${ORDER}Copied`);
+    expect(container.textContent).not.toContain("…");
+    expect(held.text).toBe(ORDER);
+  });
 });
 
 describe("a product code with the purchase address's copy button", () => {

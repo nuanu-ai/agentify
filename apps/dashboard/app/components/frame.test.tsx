@@ -30,7 +30,24 @@ import { Frame, type Tab } from "./frame.js";
 
 const PERSON = "owner@example.com";
 const NO_CARDS = MerchantCardListSchema.parse({ selling: "open", cards: [] });
-const NO_ORDERS = OrderListSchema.parse({ orders: [] });
+/** One order, open, so the orders' list has its search and its segments. */
+const ORDERS = OrderListSchema.parse({
+  orders: [
+    {
+      id: "ord_17ff00a1b2c3d4e5f60718293a4b7de3",
+      merchant_item_id: "vpn-1m",
+      params: {},
+      price: {
+        amount: "5.00",
+        currency: "USD",
+        at: "2026-10-12T16:40:00Z",
+        as_of: "2026-10-12T16:40:00Z",
+      },
+      test: false,
+      status: "in_progress",
+    },
+  ],
+});
 
 afterEach(cleanup);
 
@@ -99,8 +116,13 @@ const dashboardAt = (base: string, path: string) => {
                   loads.push(load);
                   await load.done;
                 }
-                const open = new URL(request.url).searchParams.get("open") === "true";
-                return ordersView(NO_CARDS, NO_ORDERS, open);
+                return ordersView(
+                  "live",
+                  NO_CARDS,
+                  ORDERS,
+                  ORDERS,
+                  new URL(request.url).searchParams,
+                );
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;
@@ -165,7 +187,7 @@ describe.each([
     expect(progress().hidden).toBe(true);
   });
 
-  it("marks the orders' filter chosen at once", async () => {
+  it("marks the orders' segment chosen at once", async () => {
     const dashboard = dashboardAt(base, "/orders");
     await screen.findByText("Orders", { selector: "h1" });
 
@@ -183,7 +205,7 @@ describe.each([
  * One screen drawn in the frame, behind the gate and the merchant's own pages
  * as every section is.
  */
-const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}) => {
+const framed = (tab: Tab, { account = [] }: Partial<FrameView> = {}, at: string = tab) => {
   const Stub = createRoutesStub([
     {
       id: "root",
@@ -199,7 +221,7 @@ const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}
               Component: Outlet,
               children: [
                 {
-                  path: tab,
+                  path: at,
                   Component: () => (
                     <Frame tab={tab} title="A screen">
                       <p>The screen</p>
@@ -215,7 +237,7 @@ const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}
   ]);
   render(
     <Stub
-      initialEntries={[`/${tab}`]}
+      initialEntries={[`/${at}`]}
       hydrationData={{
         loaderData: {
           root: {
@@ -223,7 +245,7 @@ const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}
             surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
           },
           "routes/gate": { who: PERSON },
-          "routes/merchant-only": { needYou, account } satisfies FrameView,
+          "routes/merchant-only": { account } satisfies FrameView,
         },
       }}
     />,
@@ -287,6 +309,48 @@ describe("the banner about the account", () => {
   });
 });
 
+describe("the banner on the pages that say a reason themselves", () => {
+  const SHOP: Viewer = {
+    base: "",
+    mode: "test",
+    who: PERSON,
+    confirmed: true,
+    sellerName: "Freeland",
+    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
+  };
+  const selling = accountOf(SHOP, { selling: "paused", through: "woocommerce" });
+
+  it.each(["woocommerce", "woocommerce/import"])(
+    "leaves out selling through the shop on %s, and keeps the other reasons",
+    async (at) => {
+      framed("integrations", { account: selling }, at);
+      await screen.findByText("The screen");
+      const drawn = banner();
+      if (drawn === null) throw new Error("no banner was drawn");
+
+      expect(within(drawn).getByText("All sales are paused")).toBeTruthy();
+      expect(within(drawn).queryByText("Selling through your WooCommerce shop")).toBeNull();
+    },
+  );
+
+  it("says it, with the way to the shop's page, everywhere else", async () => {
+    framed("cards", { account: selling });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(within(drawn).getByText("Selling through your WooCommerce shop")).toBeTruthy();
+    expect(within(drawn).getByRole("link", { name: "Open WooCommerce" })).toBeTruthy();
+  });
+
+  it("draws no banner on the shop's page when selling through the shop is all there is", async () => {
+    framed("integrations", { account: accountOf(SHOP, { through: "woocommerce" }) }, "woocommerce");
+    await screen.findByText("The screen");
+
+    expect(banner()).toBeNull();
+  });
+});
+
 describe("the sidebar", () => {
   const orders = () => within(sections()).getByRole("link", { name: /^Orders/ });
 
@@ -297,30 +361,15 @@ describe("the sidebar", () => {
     expect(within(sections()).getByText("Cards").textContent).toBe("Cards");
     expect(orders().textContent).toBe("Orders");
   });
-
-  it("carries beside Orders the count of orders that need the merchant", async () => {
-    framed("cards", { needYou: 2 });
-    await screen.findByText("The screen");
-
-    expect(orders().textContent).toBe("Orders2, 2 need you");
-    expect(orders().querySelector(".need")).not.toBeNull();
-  });
-
-  it("marks a count it could not read, which is not the same as none", async () => {
-    framed("cards", { needYou: null });
-    await screen.findByText("The screen");
-
-    expect(orders().textContent).toContain("could not count the orders that need you");
-  });
 });
 
-describe("the count beside Orders, read by the merchant's layout", () => {
+describe("the banner, read by the merchant's layout", () => {
   /**
-   * The cards and the orders under a layout whose loader answers the count as
+   * The cards and the orders under a layout whose loader answers the banner as
    * the server does, through a promise; each answer after the first is held
    * until the test lets it go.
    */
-  const counting = (counts: readonly number[]) => {
+  const reading = (banners: readonly FrameView["account"][]) => {
     const loads: ReturnType<typeof held>[] = [];
     let asked = 0;
     const screenAt = (tab: Tab) => ({
@@ -350,14 +399,14 @@ describe("the count beside Orders, read by the merchant's layout", () => {
                 {
                   id: "routes/merchant-only",
                   loader: async () => {
-                    const count = counts[Math.min(asked, counts.length - 1)] ?? 0;
+                    const account = banners[Math.min(asked, banners.length - 1)] ?? [];
                     asked += 1;
                     if (asked > 1) {
                       const load = held();
                       loads.push(load);
                       await load.done;
                     }
-                    return { needYou: count, account: [] } satisfies FrameView;
+                    return { account } satisfies FrameView;
                   },
                   shouldRevalidate: () => true,
                   Component: Outlet,
@@ -383,20 +432,24 @@ describe("the count beside Orders, read by the merchant's layout", () => {
   };
   const orders = () => within(sections()).getByText(/^Orders/);
 
-  it("keeps the count it has on screen while the next page's count is read, then shows that one", async () => {
-    const dashboard = counting([1, 2]);
+  it("keeps the page it has while the next page's banner is read, then draws that one", async () => {
+    const paused = accountOf(
+      { base: "", mode: "sandbox", who: PERSON, confirmed: true },
+      { selling: "paused" },
+    );
+    const dashboard = reading([[], paused]);
     await screen.findByText("The cards");
-    expect(orders().textContent).toBe("Orders1, 1 needs you");
+    expect(banner()).toBeNull();
 
     fireEvent.click(orders());
     await aMoment(50);
 
-    // Still the cards, and the count it was drawn with, not an empty badge.
+    // Still the cards as they were drawn, while the orders' banner is read.
     expect(screen.getByText("The cards")).toBeTruthy();
-    expect(orders().textContent).toBe("Orders1, 1 needs you");
+    expect(banner()).toBeNull();
 
     act(() => dashboard.releaseAll());
     await screen.findByText("The orders");
-    expect(orders().textContent).toBe("Orders2, 2 need you");
+    expect(banner()?.textContent).toContain("All sales are paused");
   });
 });

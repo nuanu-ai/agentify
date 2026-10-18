@@ -115,8 +115,8 @@ describe("the Google sign-in choice", () => {
     expect(formTo(html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
     const document = new DOMParser().parseFromString(html, "text/html");
     expect(
-      document.querySelector('form[action="/sign-in/google"] button img')?.getAttribute("alt"),
-    ).toMatch(/sign in with google/i);
+      document.querySelector('form[action="/sign-in/google"] button')?.textContent?.trim(),
+    ).toBe("Sign in with Google");
   });
 
   it("offers no unavailable Google choice and fills only the address its server view supplied", () => {

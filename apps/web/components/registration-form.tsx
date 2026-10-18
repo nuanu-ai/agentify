@@ -165,18 +165,22 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         </select>
       </div>
       <label className={styles.check}>
-        <input name="site_is_mine" type="checkbox" /> I own or manage this site.
+        <input name="site_is_mine" type="checkbox" />
+        <span>I own or manage this site.</span>
       </label>
       <label className={styles.check}>
-        <input name="dataset_reuse_acknowledged" type="checkbox" required /> I acknowledge the{" "}
-        <a href="/privacy" rel="noopener" target="_blank">
-          scanner data notice
-        </a>
-        .
+        <input name="dataset_reuse_acknowledged" type="checkbox" required />
+        <span>
+          I acknowledge the{" "}
+          <a href="/privacy" rel="noopener" target="_blank">
+            scanner data notice
+          </a>
+          .
+        </span>
       </label>
       <label className={styles.check}>
-        <input name="marketing_email_opt_in" type="checkbox" /> Send optional product research
-        updates.
+        <input name="marketing_email_opt_in" type="checkbox" />
+        <span>Send optional product research updates.</span>
       </label>
       <button
         className="button button-primary"

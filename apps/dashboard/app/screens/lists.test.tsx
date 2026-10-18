@@ -90,11 +90,14 @@ const receipt = (id: string, test: boolean) => ({
   test,
 });
 
-const ordersPage = (orders: OrderList): string =>
-  served(() => <OrdersScreen view={ordersView(cards, orders, false)} />);
+const ordersPage = (orders: OrderList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <OrdersScreen view={ordersView(viewer.mode, cards, orders, orders)} />);
 
-const receiptsPage = (receipts: ReceiptList): string =>
-  served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
+const receiptsPage = (receipts: ReceiptList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <ReceiptsScreen view={receiptsView(viewer, cards, receipts)} />);
+
+/** On the live site, which draws no band over its pages to say what is a test. */
+const ON_LIVE: Viewer = { ...SEEN_BY, mode: "live" };
 
 /**
  * The split a merchant's payments go to on the test channel, made by the
@@ -128,6 +131,12 @@ const amountsIn = (html: string): string[] =>
     ),
   ].map((cell) => readable(cell[1] ?? cell[2] ?? ""));
 
+/** What each order's row opens to on a narrow screen. */
+const openedIn = (html: string): string[] =>
+  [...html.matchAll(/<div class="more-body">([\s\S]*?)<\/div><\/details>/g)].map((opened) =>
+    readable(opened[1] ?? ""),
+  );
+
 describe("the receipts of sales that went out", () => {
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
     // A shipped parcel is counted with the delivered ones, under a label that
@@ -141,6 +150,37 @@ describe("the receipts of sales that went out", () => {
     expect(text).toContain("Delivered or shipped 2 of 2 receipts");
     expect(text).toContain("shipped");
   });
+
+  it("lists the latest payment first, whatever order the gateway gave them in", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [
+        { ...receipt("rcp_old", false), paid_at: "2026-08-26T09:00:03Z" },
+        { ...receipt("rcp_new", false), paid_at: "2026-08-26T11:00:03Z" },
+        { ...receipt("rcp_mid", false), paid_at: "2026-08-26T10:00:03Z" },
+      ],
+    });
+
+    const text = readable(receiptsPage(receipts));
+    const at = (id: string) => text.indexOf(id);
+
+    expect(at("rcp_new")).toBeLessThan(at("rcp_mid"));
+    expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
+  });
+
+  it("shows a long receipt ID and its order's ID short, each with a button that copies it whole", () => {
+    const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [{ ...receipt(id, false), order_id: "ord_d59f0110946cfebd26bbf9ae7de0134e" }],
+    });
+
+    const html = receiptsPage(receipts);
+
+    expect(html).toContain(">rcp_d59f…134e<");
+    expect(html).toContain(">ord_d59f…134e<");
+    expect(html).toContain(`aria-label="Copy the whole receipt ID rcp_d59f…134e"`);
+    expect(html).toContain(`aria-label="Copy the whole order ID ord_d59f…134e"`);
+    expect(html).toContain(`title="${id}"`);
+  });
 });
 
 describe("a list where some of the money was real and some was not", () => {
@@ -149,10 +189,27 @@ describe("a list where some of the money was real and some was not", () => {
       orders: [order("ord_1", true), order("ord_2", false), order("ord_3", false)],
     });
 
-    const text = readable(ordersPage(orders));
+    const text = readable(ordersPage(orders, ON_LIVE));
 
     expect(text).toContain("1 order here is a test purchase");
     expect(text).not.toContain("Every order here is a test purchase");
+  });
+
+  it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
+    const orders: OrderList = OrderListSchema.parse({
+      orders: [
+        { ...order("ord_1", true), status: "refund_due" },
+        order("ord_2", false),
+        order("ord_3", false),
+      ],
+    });
+
+    const html = ordersPage(orders);
+    const rows = html.split("<li").slice(1);
+
+    // The refund's own row and its line in the list beside the two real sales.
+    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
+    expect(rows.filter((row) => row.includes("ord_2") && row.includes(">test<"))).toHaveLength(0);
   });
 
   it("marks the test rows and leaves the real ones alone", () => {
@@ -160,7 +217,7 @@ describe("a list where some of the money was real and some was not", () => {
       receipts: [receipt("rcp_1", true), receipt("rcp_2", false)],
     });
 
-    const html = receiptsPage(receipts);
+    const html = receiptsPage(receipts, ON_LIVE);
     const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
@@ -177,9 +234,41 @@ describe("a list where some of the money was real and some was not", () => {
     });
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", false)] });
 
-    expect(readable(receiptsPage(receipts))).not.toContain("test purchase");
-    expect(readable(ordersPage(orders))).not.toContain("test purchase");
-    expect(receiptsPage(receipts)).not.toContain(">test<");
+    expect(readable(receiptsPage(receipts, ON_LIVE))).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, ON_LIVE))).not.toContain("test purchase");
+    expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
+    expect(ordersPage(orders, ON_LIVE)).not.toContain(">test<");
+  });
+
+  it("says once on the live site, which draws no band, that every row is a test", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    expect(readable(receiptsPage(receipts, ON_LIVE))).toContain(
+      "Every receipt here is a test purchase: no real money moved.",
+    );
+    expect(readable(ordersPage(orders, ON_LIVE))).toContain(
+      "Every order here is a test purchase: no real money moved.",
+    );
+  });
+
+  it("leaves it to the band on a channel that draws one, and still marks every sum", () => {
+    // The test site's band says on every page that its payments are tests, so
+    // the list does not say it a second time; the mark on each sum stays.
+    const onTest: Viewer = { ...SEEN_BY, mode: "test" };
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    const html = receiptsPage(receipts, onTest);
+    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+
+    expect(readable(html)).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
+    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
   });
 });
 
@@ -203,14 +292,21 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
-    const cells = amountsIn(
-      served(() => <OrdersScreen view={ordersView(cards, orders, false, {}, paidInto)} />),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, paidInto)}
+      />
+    ));
 
-    expect(cells).toStrictEqual(
+    // A wide row says the merchant's share under the price; the row a phone
+    // opens says both, beside the whole ID and the moment.
+    expect(amountsIn(html)).toStrictEqual(
+      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
+    );
+    expect(openedIn(html)).toStrictEqual(
       SHARES.map(
         ([price, merchant, commission]) =>
-          `${price} USD ${merchant} to you ${commission} to Agentify`,
+          `ord_${price} ${merchant} to you ${commission} to Agentify Price set 2026-08-26 10:20:00 UTC`,
       ),
     );
   });
@@ -241,15 +337,24 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   it("divides by the terms of the split the order was paid into, not by a rate of its own", () => {
     const orders: OrderList = OrderListSchema.parse({ orders: [pricedAt("80.00")] });
 
-    const [cell] = amountsIn(
-      served(() => (
-        <OrdersScreen
-          view={ordersView(cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
-        />
-      )),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          SEEN_BY.mode,
+          cards,
+          orders,
+          orders,
+          undefined,
+          {},
+          {
+            "ord_80.00": AT_THREE_PERCENT,
+          },
+        )}
+      />
+    ));
 
-    expect(cell).toBe("80.00 USD ≈ 77.60 USD to you ≈ 2.40 USD to Agentify");
+    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 77.60 USD to you"]);
+    expect(openedIn(html)[0]).toContain("≈ 2.40 USD to Agentify");
   });
 
   it("shows no shares for an order paid to a wallet itself, before payments went to splits", () => {
@@ -259,16 +364,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       orders: [pricedAt("80.00", "ord_split"), pricedAt("80.00", "ord_wallet")],
     });
 
-    const cells = amountsIn(
-      served(() => (
-        <OrdersScreen view={ordersView(cards, orders, false, {}, { ord_split: SPLIT })} />
-      )),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, { ord_split: SPLIT })}
+      />
+    ));
 
-    expect(cells).toStrictEqual([
-      "80.00 USD ≈ 79.92 USD to you ≈ 0.08 USD to Agentify",
-      "80.00 USD",
-    ]);
+    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 79.92 USD to you", "80.00 USD"]);
+    expect(openedIn(html)[1]).not.toContain("Agentify");
   });
 });
 
@@ -284,9 +387,11 @@ describe("a refund owed", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
+            SEEN_BY.mode,
             cards,
             owing,
-            false,
+            owing,
+            undefined,
             { ord_owed: "deadline_passed" },
             {
               ord_owed: SPLIT,
@@ -295,7 +400,7 @@ describe("a refund owed", () => {
         />
       )),
     );
-    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
+    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).toMatch(/the commission stays with Agentify/);
@@ -310,10 +415,12 @@ describe("a refund owed", () => {
       orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
     });
 
-    const text = readable(served(() => <OrdersScreen view={ordersView(cards, owing, false)} />));
-    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY.mode, cards, owing, owing)} />),
+    );
+    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
 
-    expect(callout).toMatch(/The payment was received and the product was not delivered/);
+    expect(callout).toMatch(/Paid, and the product was not delivered/);
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).not.toMatch(/commission/);
   });
@@ -330,10 +437,12 @@ describe("an order delivered and not paid", () => {
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("No refunds are due");
-    expect(text).toContain("1 order was delivered without payment and waits on the buyer");
-    expect(text).not.toMatch(/needs? you/);
-    expect(text).toContain("the payment did not go through");
+    expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
+    expect(text).not.toMatch(/needs? you/i);
+    expect(text).toContain("the payment failed, so the goods are held");
+    // Paid again for the same order, never bought again, which would deliver
+    // twice.
+    expect(text).toContain("The buyer can pay again for this same order");
   });
 
   it("is told apart from a refund due listed beside it", () => {
@@ -342,9 +451,13 @@ describe("an order delivered and not paid", () => {
     });
 
     const text = readable(ordersPage(both));
+    const at = (words: string) => text.indexOf(words);
 
-    expect(text).toContain("1 order needs you");
-    expect(text).toContain("1 delivered without payment waits on the buyer");
+    expect(text).toContain("Needs you 1");
+    expect(text).toContain("Waiting on the buyer 1");
+    expect(at("Needs you")).toBeLessThan(at("ord_owed"));
+    expect(at("ord_owed")).toBeLessThan(at("Waiting on the buyer"));
+    expect(at("Waiting on the buyer")).toBeLessThan(at("ord_held"));
   });
 });
 

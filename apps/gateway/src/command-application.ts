@@ -11,6 +11,7 @@ import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { Gateway } from "./app/gateway.js";
 import type { GatewayConfig } from "./config.js";
+import { widestChallengeOn } from "./http/x402.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
@@ -74,6 +75,7 @@ export async function openCommandApplication(config: GatewayConfig): Promise<Com
     clock: systemClock,
     ids: randomIds,
     announcer: nobodyAnnounces,
+    widestChallenge: widestChallengeOn(config),
   });
   return { application, close };
 }
@@ -93,6 +95,7 @@ export function openReadingApplication(config: GatewayConfig): CommandApplicatio
     clock: systemClock,
     ids: randomIds,
     announcer: nobodyAnnounces,
+    widestChallenge: widestChallengeOn(config),
   });
   return { application, close: () => pool.end() };
 }

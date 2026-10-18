@@ -779,6 +779,90 @@ describe("the payment challenge", () => {
   });
 });
 
+describe("a card whose payment challenge would be too large to read", () => {
+  /** The most bytes a card's challenge header may take at publication. */
+  const LIMIT = 8_192;
+
+  const declaring = (count: number): Card => ({
+    ...syncCard,
+    merchant_item_id: `declaring-${count}`,
+    params: Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [`field_${index}`, { type: "string" }]),
+    ),
+  });
+
+  it("is refused at publication, with how large its challenge would be and the limit it passes", async () => {
+    const { served, harnessed } = await started();
+
+    const answered = await served.call("POST", "/v0/catalog/publish", {
+      body: declaring(256),
+      headers: asMerchant,
+    });
+
+    expect(answered.status).toBe(422);
+    const { error } = answered.body as {
+      error: { code: string; problems: { path: string[]; code: string; message: string }[] };
+    };
+    expect(error.code).toBe("card_rejected");
+    expect(error.problems).toEqual([
+      expect.objectContaining({ path: [], code: "challenge_too_large" }),
+    ]);
+    const named = (error.problems[0]?.message.match(/\d+/g) ?? []).map(Number);
+    expect(named).toContain(LIMIT);
+    expect(Math.max(...named)).toBeGreaterThan(LIMIT);
+    expect((await harnessed.gateway.catalog()).items).toEqual([]);
+  });
+
+  it("is published just under the limit, and still answered within it once its merchant takes the widest name", async () => {
+    // The largest card the door takes, found by asking it; the merchant then
+    // renames themselves to the widest listing name the rule admits, which a
+    // card already published must survive. The harness's identifiers are
+    // shorter than the stores', so the measure's own widths are held in the
+    // edge's tests.
+    const { served, harnessed } = await started();
+    let accepted = { count: 1, id: await publish(served, declaring(1)) };
+    let refused = 256;
+    while (refused - accepted.count > 1) {
+      const count = Math.floor((accepted.count + refused) / 2);
+      const answered = await served.call("POST", "/v0/catalog/publish", {
+        body: declaring(count),
+        headers: asMerchant,
+      });
+      if (answered.status === 200) accepted = { count, id: (answered.body as { id: string }).id };
+      else refused = count;
+    }
+    await setServiceName(harnessed.store, harnessed.merchant.id, "\\".repeat(32), Date.now());
+    const namingNoHeldOrder = encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted: {
+        scheme: "exact",
+        network: "eip155:84532",
+        asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        amount: "1",
+        payTo: PAY_TO,
+        maxTimeoutSeconds: 300,
+        extra: { [ORDER_ID_IN_EXTRA]: "ord_from_nowhere" },
+      },
+      payload: {},
+    });
+    const purchase = `/x402/${accepted.id}/purchase`;
+
+    for (const answered of [
+      await served.call("GET", purchase),
+      await served.call("GET", purchase, {
+        headers: { [PAYMENT_SIGNATURE_HEADER]: namingNoHeldOrder },
+      }),
+      await served.call("POST", purchase, {
+        body: { params: {} },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: namingNoHeldOrder },
+      }),
+    ]) {
+      expect(answered.status).toBe(402);
+      expect(answered.headers.get(PAYMENT_REQUIRED_HEADER)?.length).toBeLessThanOrEqual(LIMIT);
+    }
+  });
+});
+
 describe("a purchase over HTTP, from the catalog to the goods", () => {
   it("tells the agent the purchase is over when the merchant refuses", async () => {
     const { served, harnessed } = await started();
