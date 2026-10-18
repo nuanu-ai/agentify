@@ -1210,6 +1210,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-search-by-code",
+      screen: "Cards",
+      when: "A merchant follows the link the WooCommerce import gives a published product, or types a card's whole product code.",
+      cause:
+        "The search is one card's whole product code, so the list shows that card alone and says so, not every card whose code holds it.",
+    },
+    cardsAt("/cards?q=esim-japan-1gb", WHOLE_CATALOGUE),
+    "live",
+    { path: "/cards?q=esim-japan-1gb" },
+  ),
+  cards(
+    {
       id: "dashboard-cards-search-no-match",
       screen: "Cards",
       when: "A merchant searches their cards for a word none of them holds.",
