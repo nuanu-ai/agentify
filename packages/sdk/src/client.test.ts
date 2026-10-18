@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Card, Order } from "@nuanu-ai/agentify-contracts";
+import type { CardInput, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   type AgentifyClient,
@@ -18,7 +18,7 @@ import { REACH, type Reach, reachOf, type TransportFailure, whatIsKnown } from "
 
 const API_KEY = "merchant-key-for-the-tests";
 
-const card: Card = {
+const card: CardInput = {
   merchant_item_id: "access-monthly",
   title: "Доступ к сервису на один месяц",
   description: "Что покупатель получает, для какой задачи это годится и что в это не входит.",

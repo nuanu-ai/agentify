@@ -21,7 +21,7 @@
  */
 
 import type {
-  Card,
+  CardInput,
   HandlerAnswer,
   Order,
   OrderEvent,
@@ -39,7 +39,7 @@ import type { WorkerProblem } from "./worker.js";
 const API_KEY = "freeland-merchant-key";
 const AT = "2026-08-26T11:00:00Z";
 
-const numberCard: Card = {
+const numberCard: CardInput = {
   merchant_item_id: "virtual-number-monthly-nl",
   title: "Virtual phone number, the Netherlands, one month",
   description:
@@ -51,7 +51,7 @@ const numberCard: Card = {
   price_check: "handler",
 };
 
-const esimCard: Card = {
+const esimCard: CardInput = {
   merchant_item_id: "esim-europe-7d",
   title: "eSIM, Europe, seven days",
   description:
@@ -159,7 +159,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     apiKey: API_KEY,
     routes: {
       publish_card: (call) => {
-        const key = (call.body as Card).merchant_item_id;
+        const key = (call.body as CardInput).merchant_item_id;
         published.push(key);
         return { body: { ok: true, id: `cat-${published.length}` } };
       },

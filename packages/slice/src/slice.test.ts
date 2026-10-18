@@ -18,7 +18,7 @@ import { WORKER_PROBLEM_KINDS } from "@nuanu-ai/agentify";
 import {
   AgentOrderStatusSchema,
   API_ROUTES,
-  type Card,
+  type CardInput,
   deliveryCheckFor,
   expandPath,
   ReceiptSchema,
@@ -413,7 +413,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // none. What the gateway sends instead is a refusal with a reason in it,
     // and a merchant told only that we could not parse something would go
     // reading our schemas about an order that is simply over.
-    const unpriceable: Card = {
+    const unpriceable: CardInput = {
       ...EUROPE_ESIM,
       merchant_item_id: "esim-eu-no-desk-prices-it",
       title: "Europe eSIM, from a supplier this desk does not price",
@@ -483,7 +483,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
  * the code, or taken out of the code and left in the catalog — and it is the
  * one the merchant's own handler already calls a defect worth surfacing.
  */
-const UNSTAFFED_NUMBER: Card = {
+const UNSTAFFED_NUMBER: CardInput = {
   merchant_item_id: "rented-number-uk-30d",
   title: "Rented UK phone number, 30 days",
   description:

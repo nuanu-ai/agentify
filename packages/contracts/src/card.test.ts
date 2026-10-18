@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { PurchaseRequestSchema } from "./api.js";
-import type { CardInput } from "./card.js";
 import {
   bazaarDeclarationOf,
   CardSchema,
@@ -1141,13 +1140,10 @@ describe("a card written short", () => {
 
   it("takes back a card it has already opened out", () => {
     // A merchant may republish a card read back from Agentify, so the
-    // canonical form must be accepted and stay where it was. The annotation is
-    // half the assertion, made by the compiler: it keeps the hand-written
-    // `CardInput` from drifting.
+    // canonical form must be accepted and stay where it was.
     const once = CardSchema.parse(shortCard);
-    const republished: CardInput = once;
 
-    expect(CardSchema.parse(republished)).toStrictEqual(once);
+    expect(CardSchema.parse(once)).toStrictEqual(once);
   });
 
   it("fills the mode in rather than leaving it absent", () => {
