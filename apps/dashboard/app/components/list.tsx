@@ -101,29 +101,36 @@ export function ListEmpty({ children }: Readonly<{ children: ReactNode }>) {
 
 /**
  * A day pulled out of the moments under it, across every column: a heading a
- * screen reader can move between, one level under the group's.
+ * screen reader can move between, one level under the group's, or under the
+ * page's own title where the list stands in no group.
  */
-export function DayHeading({ children }: Readonly<{ children: ReactNode }>) {
+export function DayHeading({
+  level = 3,
+  children,
+}: Readonly<{ level?: 2 | 3; children: ReactNode }>) {
+  const Heading = level === 2 ? "h2" : "h3";
   return (
     <li className="list-day">
-      <h3>{children}</h3>
+      <Heading>{children}</Heading>
     </li>
   );
 }
 
 /**
  * What a narrow row leaves out, opened by a press on the row's last line;
- * drawn on a narrow box only, since a wide row shows all of it in its columns.
- * `of` is the row's title, which the control's name carries after the words
- * on screen, so a list of them read out tells its rows apart.
+ * drawn on a narrow box only, since a wide row shows all of it in its columns,
+ * unless `wide` says a wide row has no column for it either and draws it too,
+ * under its columns. `of` is the row's title, which the control's name carries
+ * after the words on screen, so a list of them read out tells its rows apart.
  */
 export function RowMore({
   summary,
   of,
+  wide = false,
   children,
-}: Readonly<{ summary: string; of: string; children: ReactNode }>) {
+}: Readonly<{ summary: string; of: string; wide?: boolean; children: ReactNode }>) {
   return (
-    <details className="cell-more">
+    <details className={wide ? "cell-more wide" : "cell-more"}>
       <summary aria-label={`${summary} for ${of}`}>{summary}</summary>
       <div className="more-body">{children}</div>
     </details>

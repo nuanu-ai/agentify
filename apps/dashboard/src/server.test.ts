@@ -4129,7 +4129,12 @@ describe("the receipts screen", () => {
 
     const receipts = (await browser.get("/receipts")).html;
     const orders = (await browser.get("/orders")).html;
-    const receipt = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(receipts)?.[1] ?? "";
+    const receipt =
+      /<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
+        receipts,
+      )?.[1] ?? "";
+    const receiptOpened =
+      /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(receipts)?.[1] ?? "";
     // An order's wide row says the merchant's share; the row a phone opens
     // says both.
     const order =
@@ -4138,7 +4143,8 @@ describe("the receipts screen", () => {
       )?.[1] ?? "";
     const opened = /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(orders)?.[1] ?? "";
 
-    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you");
+    expect(readable(receiptOpened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
     expect(readable(order)).toBe("80.00 USD test ≈ 79.92 USD to you");
     expect(readable(opened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
   });

@@ -167,19 +167,22 @@ describe("the receipts of sales that went out", () => {
     expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
   });
 
-  it("shows a long receipt ID and its order's ID short, each with a button that copies it whole", () => {
+  it("keeps a receipt's ID and its order's out of the row's lines, whole in its opened part, each with its copy button", () => {
     const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
+    const order = "ord_d59f0110946cfebd26bbf9ae7de0134e";
     const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [{ ...receipt(id, false), order_id: "ord_d59f0110946cfebd26bbf9ae7de0134e" }],
+      receipts: [{ ...receipt(id, false), order_id: order }],
     });
 
     const html = receiptsPage(receipts);
+    const lines = html.replace(/<details class="cell-more[\s\S]*?<\/details>/g, "");
+    const [opened] = openedIn(html);
 
-    expect(html).toContain(">rcp_d59f…134e<");
-    expect(html).toContain(">ord_d59f…134e<");
-    expect(html).toContain(`aria-label="Copy the whole receipt ID rcp_d59f…134e"`);
-    expect(html).toContain(`aria-label="Copy the whole order ID ord_d59f…134e"`);
-    expect(html).toContain(`title="${id}"`);
+    expect(readable(lines)).not.toMatch(/rcp_|ord_/);
+    expect(opened).toContain(`Receipt ${id}`);
+    expect(opened).toContain(`Order ${order}`);
+    expect(html).toContain(`aria-label="Copy the whole receipt ID ${id}"`);
+    expect(html).toContain(`aria-label="Copy the whole order ID ${order}"`);
   });
 });
 
@@ -218,7 +221,7 @@ describe("a list where some of the money was real and some was not", () => {
     });
 
     const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+    const rows = html.split('<li class="list-row').slice(1);
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
     // One row carries the mark and the other does not; a page that marked both
@@ -264,7 +267,7 @@ describe("a list where some of the money was real and some was not", () => {
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
 
     const html = receiptsPage(receipts, onTest);
-    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+    const rows = html.split('<li class="list-row').slice(1);
 
     expect(readable(html)).not.toContain("test purchase");
     expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
@@ -320,18 +323,19 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
     const paidInto = Object.fromEntries(receipts.receipts.map((one) => [one.order_id, SPLIT]));
 
-    const cells = amountsIn(
-      served(() => (
-        <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
-      )),
-    );
+    const html = served(() => (
+      <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
+    ));
 
-    expect(cells).toStrictEqual(
-      SHARES.map(
-        ([price, merchant, commission]) =>
-          `${price} USD ${merchant} to you ${commission} to Agentify`,
-      ),
+    // A row says the merchant's share under the price; the row's opened part
+    // says both.
+    expect(amountsIn(html)).toStrictEqual(
+      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
     );
+    for (const [at, opened] of openedIn(html).entries()) {
+      const [, merchant, commission] = SHARES[at] ?? [];
+      expect(opened).toContain(`${merchant} to you ${commission} to Agentify`);
+    }
   });
 
   it("divides by the terms of the split the order was paid into, not by a rate of its own", () => {

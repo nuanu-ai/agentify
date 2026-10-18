@@ -656,6 +656,8 @@ interface ReceiptRow {
   readonly paid: MomentView;
   readonly priceSet: MomentView;
   readonly priceAsOf: MomentView;
+  /** The day of `paid`, for the heading over that day's receipts. */
+  readonly day: string;
   readonly transfer: TransferView;
 }
 
@@ -703,6 +705,7 @@ export const receiptsView = (
         paid: momentView(receipt.paid_at),
         priceSet: momentView(receipt.price.at),
         priceAsOf: momentView(receipt.price.as_of),
+        day: dayOf(receipt.paid_at),
         transfer: transferOf(receipt.transaction, transactionPage),
       })),
   };

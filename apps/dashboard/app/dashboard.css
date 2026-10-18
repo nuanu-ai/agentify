@@ -1,6 +1,6 @@
 /*
  * The dashboard's own layout on top of the shared visual language: its frame,
- * tables and controls. Colours, families, radii and base element rules come
+ * lists and controls. Colours, families, radii and base element rules come
  * only from `packages/visual/tokens.css`, which `styles.css` imports ahead of
  * this file; nothing here declares them.
  */
@@ -17,7 +17,7 @@ p {
 /*
  * The base is the shared one, 16px at 1.6; only dense rows shrink: 0.75rem in the
  * monospaced face for a column head or a caption, 0.8125rem for an identifier or
- * an account line, 0.875rem for a table or an aside, 0.9375rem for something read
+ * an account line, 0.875rem for a list's row or an aside, 0.9375rem for something read
  * character by character. No type on these screens is sized in pixels.
  */
 
@@ -107,115 +107,16 @@ textarea {
   align-items: center;
 }
 
-/* --- tables ------------------------------------------------------------- */
+/* --- the key's box ------------------------------------------------------ */
 
-/*
- * A real table, so a browser can read the columns out and find-in-page works.
- * Every column and every row's control is on screen at every width: where the
- * frame is too narrow for the columns, a row is drawn as a block with every value
- * beside its column's head, the first included, so an identifier is never read
- * out without its name. The scroller is the last resort for a value nothing can
- * break, not the layout. The width that decides is the frame's (a container
- * query), so the rule holds wherever a table is put.
- */
+/* The box a new key's secret is shown in, scrolling sideways rather than
+   breaking a value read character by character. */
 .scroller {
   margin: 24px 0 32px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
-  container-type: inline-size;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 0.875rem;
-}
-
-/* A long head wraps rather than holding its column wider than its values. */
-thead th {
-  background: var(--raised);
-  color: var(--muted);
-  font: 600 0.75rem / 1.5 var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 12px 16px;
-  border-bottom: var(--hairline) solid var(--line);
-}
-
-/* The quiet hairline between rows: one strong enough to edge a card is too strong
-   repeated down a list. The frame's inset is at the outer edges only; between
-   columns the gap is narrower, or eight columns would spend a third of a laptop's
-   frame on padding. */
-tbody td {
-  height: 56px;
-  padding: 12px 16px;
-  vertical-align: middle;
-}
-
-:is(th, td):first-child {
-  padding-left: 24px;
-}
-
-:is(th, td):last-child {
-  padding-right: 24px;
-}
-
-/* The inset of a row drawn as a block; padding does nothing to a table row. */
-tbody tr {
-  padding: 14px 16px;
-}
-
-tbody tr + tr {
-  border-top: var(--hairline) solid var(--divider);
-}
-
-tbody tr.off {
-  background: var(--raised);
-}
-
-tbody tr.needs-you {
-  background: color-mix(in oklab, var(--fail) 7%, transparent);
-}
-
-td.amount,
-td.ident {
-  font-family: var(--font-mono);
-}
-
-td.amount {
-  white-space: nowrap;
-}
-
-td.ident {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-/*
- * An identifier breaks only where its column ends and nothing is inserted, so a
- * double-click still selects all of it. Its column has a width of its own,
- * because a wrapping column is the one a table takes room from first: a
- * transfer's sixty-six-character hash, written whole, takes four lines at
- * eighteen, and a receipt's ID shown short fits on one beside its button.
- */
-td.ident,
-.under.mono {
-  overflow-wrap: anywhere;
-}
-
-td.ident {
-  box-sizing: content-box;
-  width: 18ch;
-}
-
-.title {
-  font-weight: 500;
-  /* A name typed as one long word (a key's label, a product's title) breaks
-     where it has to rather than pushing the table wider than the page. */
-  overflow-wrap: anywhere;
 }
 
 .under {
@@ -224,97 +125,9 @@ td.ident {
   margin-top: 3px;
 }
 
-.under.mono {
-  font-size: 0.8125rem;
-}
-
-td.quiet {
-  color: var(--muted);
-}
-
-/* As narrow as the moment on two lines, date over time, so the room goes to the
-   product's name. Neither half breaks inside itself. */
-td.moment {
-  width: 1px;
-}
-
+/* A moment breaks between its date and its time and nowhere else. */
 .when > span {
   white-space: nowrap;
-}
-
-/*
- * The block a row becomes where its columns do not fit. Label and value are two
- * cells of a fixed-layout table of their own, so a wrapping value stays in its
- * column and the labels keep one width down the block. Anything in the value
- * column may wrap. A label is drawn only where a rule below gives it words.
- */
-
-/* Wide enough for "Price true as of" on one line and narrow enough to leave a
-   whole moment beside it on a phone. */
-tbody td::before {
-  display: table-cell;
-  width: 8.75rem;
-  padding-right: 12px;
-  color: var(--muted);
-  font: 500 0.75rem / 1.5 var(--font-mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-@container (max-width: 860px) {
-  .scroller :is(table, tbody, tr) {
-    display: block;
-  }
-
-  .scroller thead {
-    display: none;
-  }
-
-  .scroller tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    overflow-wrap: anywhere;
-    height: auto;
-    padding: 3px 0;
-  }
-
-  .scroller tbody td::before {
-    content: attr(data-label);
-  }
-
-  .scroller tbody .amount {
-    white-space: normal;
-  }
-}
-
-/* The receipts' columns need a laptop's whole frame, so a table with a seventh
-   column becomes blocks sooner. */
-@container (max-width: 1140px) {
-  .scroller:has(th:nth-child(7)) :is(table, tbody, tr) {
-    display: block;
-  }
-
-  .scroller:has(th:nth-child(7)) thead {
-    display: none;
-  }
-
-  .scroller:has(th:nth-child(7)) tbody td {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-    overflow-wrap: anywhere;
-    height: auto;
-    padding: 3px 0;
-  }
-
-  .scroller:has(th:nth-child(7)) tbody td::before {
-    content: attr(data-label);
-  }
-
-  .scroller:has(th:nth-child(7)) tbody .amount {
-    white-space: normal;
-  }
 }
 
 /* Beside the amount rather than in its own column, so it cannot scroll out of
@@ -359,10 +172,6 @@ label {
 
 form.inline {
   display: inline;
-}
-
-td.control {
-  text-align: right;
 }
 
 /* --- notes and summaries ------------------------------------------------ */
@@ -413,7 +222,7 @@ td.control {
 }
 
 /* Under the figures, so the numbers are seen first and what they leave out is
-   read before the table. */
+   read before the list. */
 .summary-text {
   margin: 20px 0 0;
 }
@@ -545,7 +354,7 @@ td.control {
   font-weight: 600;
 }
 
-.list-day h3 {
+.list-day :is(h2, h3) {
   margin: 0;
   font: inherit;
   letter-spacing: normal;
@@ -608,6 +417,25 @@ td.control {
 
 .cell-more {
   display: none;
+}
+
+.cell-more.wide {
+  display: block;
+  grid-column: 1 / -1;
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.cell-more > summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.more-body {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
 }
 
 /* A cell's own label where no head is over it: read out beside a wide row's
@@ -724,17 +552,6 @@ td.control {
     margin-top: 4px;
     color: var(--muted);
     font-size: 0.8125rem;
-  }
-
-  .cell-more > summary {
-    width: fit-content;
-    cursor: pointer;
-  }
-
-  .more-body {
-    margin-top: 4px;
-    color: var(--fg-2);
-    font-size: 0.875rem;
   }
 }
 
@@ -945,6 +762,18 @@ td.control {
   stroke-linejoin: round;
 }
 
+/* A receipt's transfer: its short form and copy button, then the way to the
+   chain's page for it. */
+.transfer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cell-ident > .quiet {
+  color: var(--muted);
+}
+
 /* The short form of an identifier, which opens to the whole value under it. */
 .ident-whole > summary {
   list-style: none;
@@ -1148,7 +977,6 @@ p.problem {
   font-size: 0.875rem;
 }
 
-/* `td.quiet` above is a table cell and does not apply here. */
 p.quiet {
   margin-top: 16px;
   font-size: 0.875rem;
@@ -1165,7 +993,7 @@ h2 {
 
 /* One box and one button side by side, the row every form in the dashboard
    uses. The button is the full-height one so it stands level with the 48px box;
-   the compact button belongs to table rows. */
+   the compact button belongs to a list's rows. */
 .issue {
   display: flex;
   align-items: flex-end;
@@ -1577,7 +1405,6 @@ h2 {
   letter-spacing: -0.035em;
 }
 .app-content .scroller,
-.app-content .table-frame,
 .app-content .settings-panel {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
 }
@@ -1782,7 +1609,7 @@ h2 {
 }
 
 /* Revoking a key is two presses: the first opens the question inside the row,
-   the second answers it. Inside the row rather than over it, because the table's
+   the second answers it. Inside the row rather than over it, because the list's
    rounded frame clips anything hanging out of its last row. */
 .confirm-open {
   list-style: none;
