@@ -91,7 +91,7 @@ const receipt = (id: string, test: boolean) => ({
 });
 
 const ordersPage = (orders: OrderList): string =>
-  served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false)} />);
+  served(() => <OrdersScreen view={ordersView(cards, orders, false)} />);
 
 const receiptsPage = (receipts: ReceiptList): string =>
   served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
@@ -183,38 +183,22 @@ describe("a list where some of the money was real and some was not", () => {
   });
 });
 
-describe("whether a live merchant is approved, on the cards", () => {
-  // Without the approval every card is off sale and every live publish is
-  // refused. The banner over the cards says so once, over an empty Cards page
-  // too, where a merchant looks for why nothing appears; no row says it again.
-  const live = (approved: boolean): Viewer => ({
-    ...SEEN_BY,
-    mode: "live",
-    sellerName: "Freeland",
-    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
-    liveApproval: approved,
-  });
+describe("a card held off sale by the account, on the cards", () => {
+  // Without the operator's approval, a seller name or a payout wallet every
+  // card is off sale. The banner over every page says why, once; a row that
+  // said it again would be the same sentence on every card.
   const offSale = MerchantCardListSchema.parse({
     ...cards,
     cards: cards.cards.map((entry) => ({ ...entry, selling: "paused" })),
   });
-  const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
-  const reasonsOver = (viewer: Viewer, list: typeof cards) =>
-    cardsView(viewer, list, "https://agentify.ad").frame.account.map((note) => note.reason);
 
-  it("says over an empty Cards page that publishing waits for the approval", () => {
-    expect(reasonsOver(live(false), none)).toStrictEqual(["not_approved"]);
-    expect(reasonsOver(live(true), none)).toStrictEqual([]);
-  });
+  it("says the card is off sale and nothing about what the account lacks", () => {
+    const rows = readable(
+      served(() => <CardsScreen view={cardsView(offSale, "https://agentify.ad")} base="" />),
+    );
 
-  it("says over the cards that the approval is still to come, and not beside each card", () => {
-    const rows = served(() => (
-      <CardsScreen view={cardsView(live(false), offSale, "https://agentify.ad")} base="" />
-    ));
-
-    expect(reasonsOver(live(false), offSale)).toStrictEqual(["not_approved"]);
-    expect(readable(rows)).toContain("Off sale");
-    expect(readable(rows)).not.toMatch(/approv/i);
+    expect(rows).toContain("Off sale");
+    expect(rows).not.toMatch(/approv|settings|seller name|wallet/i);
   });
 });
 
@@ -239,7 +223,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
     const cells = amountsIn(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, paidInto)} />),
+      served(() => <OrdersScreen view={ordersView(cards, orders, false, {}, paidInto)} />),
     );
 
     expect(cells).toStrictEqual(
@@ -279,7 +263,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const [cell] = amountsIn(
       served(() => (
         <OrdersScreen
-          view={ordersView(SEEN_BY, cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
+          view={ordersView(cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
         />
       )),
     );
@@ -296,7 +280,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
 
     const cells = amountsIn(
       served(() => (
-        <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, { ord_split: SPLIT })} />
+        <OrdersScreen view={ordersView(cards, orders, false, {}, { ord_split: SPLIT })} />
       )),
     );
 
@@ -319,7 +303,6 @@ describe("a refund owed", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            SEEN_BY,
             cards,
             owing,
             false,
@@ -346,9 +329,7 @@ describe("a refund owed", () => {
       orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
     });
 
-    const text = readable(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
-    );
+    const text = readable(served(() => <OrdersScreen view={ordersView(cards, owing, false)} />));
     const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/The payment was received and the product was not delivered/);
@@ -395,7 +376,7 @@ describe("the state of each card", () => {
       cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
     });
   const wordsOf = (list: ReturnType<typeof listOf>, offSale: readonly string[] = []) =>
-    cardsView(SEEN_BY, list, "https://agentify.ad", false, {
+    cardsView(list, "https://agentify.ad", false, {
       through: "api",
       offSale,
     }).listing.rows.map((row) => row.state.text);
@@ -417,7 +398,7 @@ describe("the state of each card", () => {
     const list = listOf("open", { selling: "paused", paused: false });
     const html = served(() => (
       <CardsScreen
-        view={cardsView(SEEN_BY, list, "https://agentify.ad", false, {
+        view={cardsView(list, "https://agentify.ad", false, {
           through: "api",
           offSale: ["itm_0"],
         })}
@@ -444,7 +425,6 @@ describe("how a card is delivered", () => {
   if (entry === undefined) throw new Error("the example catalogue has no card");
   const deliveryOf = (seconds: number) =>
     cardsView(
-      SEEN_BY,
       MerchantCardListSchema.parse({
         selling: "open",
         cards: [
@@ -468,7 +448,7 @@ describe("how a card is delivered", () => {
   });
 
   it("names no window for a card that names none", () => {
-    const [row] = cardsView(SEEN_BY, cards, "https://agentify.ad").listing.rows;
+    const [row] = cardsView(cards, "https://agentify.ad").listing.rows;
 
     expect(row?.delivery).toBe("Immediate");
   });
@@ -485,7 +465,7 @@ describe("a card's row on a phone", () => {
       cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
     });
     const html = served(() => (
-      <CardsScreen view={cardsView(SEEN_BY, asked, "https://agentify.ad")} base="" />
+      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
     ));
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
 
@@ -497,7 +477,7 @@ describe("a card's row on a phone", () => {
     // The moment the price holds from is drawn under the title on a wide box
     // only; on a phone it is one press away, never gone.
     const html = served(() => (
-      <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
+      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
     const opened = /<details class="cell-more">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "";
 
@@ -522,7 +502,6 @@ describe("a search over the cards", () => {
       served(() => (
         <CardsScreen
           view={cardsView(
-            SEEN_BY,
             list,
             "https://agentify.ad",
             false,

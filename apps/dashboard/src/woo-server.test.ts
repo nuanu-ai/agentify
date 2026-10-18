@@ -1553,7 +1553,12 @@ describe("what the integrations screen says about a shop", () => {
     await running.signIn();
     await approve(running);
 
-    const html = (await running.get("/integrations")).html;
+    // The screen's own order, under the banner, which leads to the shop the
+    // merchant now sells through.
+    const html = (await running.get("/integrations")).html.replace(
+      /<section class="account-banner"[\s\S]*?<\/section>/,
+      "",
+    );
 
     expect(html.indexOf('href="/docs/quickstart"')).toBeGreaterThan(-1);
     expect(html.indexOf('href="/woocommerce"')).toBeGreaterThan(

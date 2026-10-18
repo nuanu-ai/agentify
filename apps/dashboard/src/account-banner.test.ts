@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { accountOf } from "./account.js";
+import { accountOf } from "./account-banner.js";
 import type { Viewer } from "./viewer.js";
 
 const WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -61,6 +61,14 @@ describe("the account banner", () => {
     expect(reasonsOf(viewer, { selling: "departed", through: "woocommerce" })).toStrictEqual([
       "left",
     ]);
+  });
+
+  it("says it could not check where a read failed, beside what the other reads found", () => {
+    expect(reasonsOf({ ...READY, sellerName: null }, { unread: true })).toStrictEqual([
+      "no_seller_name",
+      "unread",
+    ]);
+    expect(reasonsOf(READY, { selling: "departed", unread: true })).toStrictEqual(["left"]);
   });
 
   it("names nothing that rests on what the page did not read", () => {

@@ -30,7 +30,7 @@ export async function action(asked: ActionFunctionArgs) {
 export default function Cards() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="cards" title="Product cards" action={<AllSelling view={view} />} frame={view.frame}>
+    <Frame tab="cards" title="Product cards" action={<AllSelling view={view} />}>
       <CardsScreen view={view} base={useChrome().base} />
     </Frame>
   );

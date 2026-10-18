@@ -66,11 +66,11 @@ export default function Keys() {
     throw new Error("the keys page was loaded after a press and drawn without its answer");
   }
   return view.screen === "issued" ? (
-    <Frame tab="keys" title="Your new key" frame={view.frame}>
+    <Frame tab="keys" title="Your new key">
       <NewKeyScreen view={view} />
     </Frame>
   ) : (
-    <Frame tab="keys" title="API keys" frame={view.frame}>
+    <Frame tab="keys" title="API keys">
       <KeysScreen view={view} />
     </Frame>
   );

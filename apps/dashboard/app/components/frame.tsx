@@ -18,7 +18,7 @@ import {
   SignedIn,
   SiteHeader,
 } from "@agentify/ui";
-import { type ReactNode, Suspense, use } from "react";
+import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
@@ -53,8 +53,7 @@ const FOOT = [
  * A count that could not be read is marked as such, so it is not taken for
  * none.
  */
-function NeedYou({ count: coming }: Readonly<{ count: Promise<number | null> | number | null }>) {
-  const count = coming instanceof Promise ? use(coming) : coming;
+function NeedYou({ count }: Readonly<{ count: number | null }>) {
   if (count === 0) return null;
   return count === null ? (
     <span className="need unknown" title="Could not count the orders that need you">
@@ -72,14 +71,15 @@ function NeedYou({ count: coming }: Readonly<{ count: Promise<number | null> | n
 /**
  * `heading` is the bar's words where they are not the window's title, and
  * `action` a control about the whole page, drawn at the bar's end at every
- * width, so a phone reaches it without scrolling past the page.
+ * width, so a phone reaches it without scrolling past the page. The count and
+ * the banner are the merchant's pages' layout's, read once for every section;
+ * a page drawn outside that layout draws neither.
  */
 export function Frame({
   tab,
   title,
   heading = title,
   action,
-  frame,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections. */
@@ -87,7 +87,6 @@ export function Frame({
   title: string;
   heading?: string;
   action?: ReactNode;
-  frame: FrameView;
   children: ReactNode;
 }>) {
   const chrome = useChrome();
@@ -102,18 +101,14 @@ export function Frame({
       : (TABS.find(
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
-  const counted = useRouteLoaderData<{ needYou: Promise<number | null> | number | null }>(
-    "routes/merchant-only",
-  );
+  const framed = useRouteLoaderData<FrameView>("routes/merchant-only");
   const sections: Section[] = TABS.map(([key, label]) => ({
     key,
     label:
-      key === "orders" && counted !== undefined ? (
+      key === "orders" && framed !== undefined ? (
         <>
           {label}
-          <Suspense fallback={null}>
-            <NeedYou count={counted.needYou} />
-          </Suspense>
+          <NeedYou count={framed.needYou} />
         </>
       ) : (
         label
@@ -168,7 +163,7 @@ export function Frame({
             </div>
           </div>
           <main className="app-content" id="main">
-            <AccountBanner notes={frame.account} here={tab === undefined ? undefined : `/${tab}`} />
+            <AccountBanner notes={framed?.account ?? []} />
             {children}
           </main>
         </div>

@@ -59,7 +59,9 @@ describe("an identifier with its copy button", () => {
     render(<Ident value={ORDER} what="order ID" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Copy the whole order ID" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy the whole order ID ord_17ff…7de3" }),
+      );
     });
 
     expect(held.text).toBe(ORDER);
@@ -71,7 +73,9 @@ describe("an identifier with its copy button", () => {
     render(<Ident value={ORDER} what="order ID" />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Copy the whole order ID" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy the whole order ID ord_17ff…7de3" }),
+      );
     });
 
     expect(screen.getByRole("status").textContent).toBe("Could not copy; select it");
@@ -99,7 +103,9 @@ describe("a product code with the purchase address's copy button", () => {
     render(<CodeCopy code="esim-eu-5gb-30d" address={ADDRESS} />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Copy the purchase address" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy the purchase address of esim-eu-5gb-30d" }),
+      );
     });
 
     expect(held.text).toBe(ADDRESS);
@@ -110,9 +116,12 @@ describe("a product code with the purchase address's copy button", () => {
     render(<CodeCopy code="esim-eu-5gb-30d" address={ADDRESS} />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Copy the purchase address" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Copy the purchase address of esim-eu-5gb-30d" }),
+      );
     });
 
     expect(screen.getByText(ADDRESS)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Could not copy; select it");
   });
 });
