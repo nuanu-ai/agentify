@@ -151,7 +151,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               </Cell>
               <Control id={row.id} control={row.control} place={listing.place} />
               {"since" in row.priced ? (
-                <RowMore summary="Price date">
+                <RowMore summary="Price date" of={row.title}>
                   <Since priced={row.priced} />
                 </RowMore>
               ) : null}

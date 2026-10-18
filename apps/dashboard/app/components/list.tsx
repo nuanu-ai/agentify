@@ -114,11 +114,17 @@ export function DayHeading({ children }: Readonly<{ children: ReactNode }>) {
 /**
  * What a narrow row leaves out, opened by a press on the row's last line;
  * drawn on a narrow box only, since a wide row shows all of it in its columns.
+ * `of` is the row's title, which the control's name carries after the words
+ * on screen, so a list of them read out tells its rows apart.
  */
-export function RowMore({ summary, children }: Readonly<{ summary: string; children: ReactNode }>) {
+export function RowMore({
+  summary,
+  of,
+  children,
+}: Readonly<{ summary: string; of: string; children: ReactNode }>) {
   return (
     <details className="cell-more">
-      <summary>{summary}</summary>
+      <summary aria-label={`${summary} for ${of}`}>{summary}</summary>
       <div className="more-body">{children}</div>
     </details>
   );
