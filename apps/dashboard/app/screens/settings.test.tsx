@@ -433,13 +433,14 @@ describe("whether a live merchant is approved", () => {
   const settings = (looking: Looking): string =>
     readable(renderToString(routed(() => <SettingsScreen view={viewOf(looking)} />)));
 
-  it("says on Settings whether Agentify has approved the merchant for live sales", () => {
+  it("says on Settings that Agentify has approved the merchant, and leaves a missing approval to the banner", () => {
+    // The banner over every page says the approval is still to come; said
+    // again here it would be the same sentence twice on one screen.
     const approved = settings({ mode: "live", wallet: SHAPED, liveApproval: true });
     const waiting = settings({ mode: "live", wallet: SHAPED, liveApproval: false });
 
-    expect(approved).toMatch(/approved your merchant/);
-    expect(waiting).toMatch(/not approved your merchant/);
-    expect(approved).not.toMatch(/not approved your merchant/);
+    expect(approved).toMatch(/Agentify has approved your merchant for live sales/);
+    expect(waiting).not.toMatch(/approv/i);
   });
 
   it("says nothing about the approval off the live channel, where nobody needs it", () => {

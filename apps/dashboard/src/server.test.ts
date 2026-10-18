@@ -3602,6 +3602,20 @@ describe("a card held off sale by what its merchant lacks", () => {
     expect(settings).not.toMatch(/approv/i);
   });
 
+  it("on live, before Agentify approves, says so once on Settings, in the banner", async () => {
+    const running = await started({
+      gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
+      dashboard: CHANNELS.live,
+    });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+
+    expect(settings.split("Not approved for live sales yet")).toHaveLength(2);
+    expect(settings).not.toMatch(/has not approved your merchant/);
+  });
+
   it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
     const running = await started({
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
