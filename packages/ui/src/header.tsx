@@ -1,7 +1,9 @@
 /**
- * The site header every surface draws at the top of its pages, and the parts
- * a surface places inside its own layout: the lockup, a surface's sections
- * and who is signed in with the way out.
+ * The two headers the surfaces draw at the top of their pages, the site
+ * header over the public pages and the working header over the pages a
+ * signed-in person works in, and the parts a surface places inside its own
+ * layout: the lockup, a surface's sections and who is signed in with the way
+ * out.
  *
  * The site is served by more than one process on one origin. A link to a page
  * the surface drawing it serves is that surface's own router link, followed
@@ -15,7 +17,7 @@ import { Form, Link } from "react-router";
 import { BrandMark } from "./mark.js";
 import { HeaderMenu } from "./menu.js";
 
-/** The surfaces that draw the site header, each served apart from the others on the origin. */
+/** The surfaces that draw a header, each served apart from the others on the origin. */
 export type Surface = "scanner" | "dashboard" | "docs";
 
 /**
@@ -93,6 +95,14 @@ export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
   );
 }
 
+function DocsDoor(drawn: Drawn) {
+  return (
+    <PlaceLink place={DOCS} current={drawn.surface === "docs"} {...drawn}>
+      Docs
+    </PlaceLink>
+  );
+}
+
 /**
  * The doors out of the surface, the documentation and the dashboard, and who
  * is signed in, which the surface draws in `visitor` since each knows it its
@@ -103,9 +113,7 @@ export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
 export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
   return (
     <nav aria-label="Docs, dashboard and your session" className="site-doors">
-      <PlaceLink place={DOCS} current={drawn.surface === "docs"} {...drawn}>
-        Docs
-      </PlaceLink>
+      <DocsDoor {...drawn} />
       <PlaceLink
         place={DASHBOARD[drawn.surface]}
         current={drawn.surface === "dashboard"}
@@ -119,17 +127,17 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
 }
 
 /**
- * The bar over every page of the site: the lockup, the public site's sections
- * and the doors, then `menu`, a surface's own menu, at the end of the row; a
- * menu that opens a panel places it under the bar, which stays in view.
+ * The row both headers draw: the way past it first, then the lockup, a link
+ * to the front page, at the row's start and `children` at its end. It stays
+ * in view, and a menu at its end opens its panel under it.
  */
-export function SiteHeader({
-  visitor,
-  menu,
+function Bar({
+  className,
+  children,
   ...drawn
-}: Drawn & Readonly<{ visitor?: ReactNode; menu?: ReactNode }>) {
+}: Drawn & Readonly<{ className: string; children: ReactNode }>) {
   return (
-    <header className="site-header">
+    <header className={className}>
       <a className="skip" href="#main">
         Skip to content
       </a>
@@ -138,19 +146,60 @@ export function SiteHeader({
           <BrandMark className="brand-mark" />
           <span>Agentify</span>
         </PlaceLink>
-        <div className="site-header-links">
-          <nav aria-label="Primary" className="site-nav">
-            {SECTIONS.map((section) => (
-              <PlaceLink key={section.path} place={section} {...drawn}>
-                {section.label}
-              </PlaceLink>
-            ))}
-          </nav>
-          <SiteDoors visitor={visitor} {...drawn} />
-          {menu}
-        </div>
+        <div className="site-header-links">{children}</div>
       </div>
     </header>
+  );
+}
+
+/**
+ * The bar over the site's public pages: the lockup, the public site's
+ * sections and the doors, then `menu` at the end of the row. `menu` is the
+ * surface's `SiteMenu`, which lists every section the narrowing bar leaves
+ * out; a bar drawn without one keeps to its row by dropping its section links
+ * instead.
+ */
+export function SiteHeader({
+  visitor,
+  menu,
+  ...drawn
+}: Drawn & Readonly<{ visitor?: ReactNode; menu?: ReactNode }>) {
+  return (
+    <Bar className="site-header" {...drawn}>
+      <nav aria-label="Primary" className="site-nav">
+        {SECTIONS.map((section) => (
+          <PlaceLink key={section.path} place={section} {...drawn}>
+            {section.label}
+          </PlaceLink>
+        ))}
+      </nav>
+      <SiteDoors visitor={visitor} {...drawn} />
+      {menu}
+    </Bar>
+  );
+}
+
+/**
+ * The bar over the pages a signed-in person works in: the lockup, the
+ * documentation and who is signed in with the way out, which the surface
+ * draws in `visitor`, and none of the public site's sections or the door to
+ * the dashboard. Where the bar has no room for them it shows none of them and
+ * keeps the lockup and the menu's button, so `menu`, the surface's own, must
+ * hold the documentation and `visitor` as well as the surface's sections.
+ */
+export function WorkHeader({
+  visitor,
+  menu,
+  ...drawn
+}: Drawn & Readonly<{ visitor: ReactNode; menu: ReactNode }>) {
+  return (
+    <Bar className="site-header work-header" {...drawn}>
+      <nav aria-label="Docs and your session" className="site-doors">
+        <DocsDoor {...drawn} />
+        {visitor}
+      </nav>
+      {menu}
+    </Bar>
   );
 }
 
@@ -220,7 +269,7 @@ export function SectionNav({
 }
 
 /**
- * Who is signed in, for the site header's doors. The whole address is in the
+ * Who is signed in, for a header's doors. The whole address is in the
  * title, since the bar cuts it short where it is narrow and leaves it out on
  * a phone. The way out is a form, because signing out changes something and a
  * link can be followed by anything that reads the page; it loads the next page

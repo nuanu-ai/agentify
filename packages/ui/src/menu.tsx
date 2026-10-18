@@ -1,6 +1,6 @@
 /**
- * The menu at the end of the site header's row where the page is too narrow
- * for the header's links: a button that opens a panel under the bar.
+ * The menu at the end of a header's row where the page is too narrow for the
+ * header's links: a button that opens a panel under the bar.
  */
 
 import { type ReactNode, useEffect, useRef } from "react";
