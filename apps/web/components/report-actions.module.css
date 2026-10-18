@@ -1,0 +1,39 @@
+/*
+ * The report's actions, drawn alike on the scan's result and on the report:
+ * every share and prompt button is one of the row's, equal to the others, on
+ * one line where the row is wide enough for all of them and in a column of
+ * full-width buttons where it is not. The row never wraps partway, which would
+ * rewrap whenever "Copied" replaces a longer label. A row names the width it
+ * needs to hold its buttons on one line in `--one-line-from`.
+ *
+ * The groups the buttons come in draw no box of their own inside a row, and
+ * whatever a group says under its buttons, a message or a field to copy from,
+ * opens on a line of its own under all of them.
+ */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.row .group {
+  display: contents;
+}
+
+/* Wider than `--one-line-from`, the basis is below zero and every button grows
+   from nothing to an equal share of the line; narrower, it is far wider than
+   the row and every button takes a line of its own. */
+.row .group > button {
+  flex: 1 1 calc((var(--one-line-from) - 100%) * 999);
+  min-height: 48px;
+  border-radius: var(--radius-control);
+  padding: 0 12px;
+  font: 600 0.875rem / 1.2 var(--font-sans);
+  white-space: nowrap;
+}
+
+.row > :not(.group),
+.row .group > :not(button, .group) {
+  flex-basis: 100%;
+  order: 1;
+}
