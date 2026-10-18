@@ -12,8 +12,9 @@ standard colour "G" on white at its own size, 10 px from the words.
 [pre-approved branding assets](https://developers.google.com/static/identity/images/signin-assets.zip)
 (Android + Web, light, square, without text), downloaded on 2026-10-18. Only
 the root element is changed: its view box is cut to the 20 × 20 square the
-"G" stands in, so the mark itself is untouched. It is drawn at 20 × 20 CSS
-pixels, its size in Google's 40 px button.
+"G" stands in, and it is named for a reader of the file, so the mark itself
+is untouched. It is drawn at 20 × 20 CSS pixels, its size in Google's 40 px
+button.
 
 `google-sans-500-sign-in.woff2` is Google Sans at weight 500, cut by Google
 Fonts to the letters of "Sign in with Google", downloaded on 2026-10-18. It is
