@@ -4768,21 +4768,65 @@ describe("the keys screen", () => {
   });
 });
 
+/** The bar at the top of a page, its menu included, as the server sends it. */
+const barOf = (html: string): string =>
+  /<header class="site-header[^"]*">([\s\S]*?)<\/header>/.exec(html)?.[1] ?? "";
+
+/** Every link in the markup, as its words and where it leads. */
+const waysIn = (html: string): (readonly [string, string])[] =>
+  [...html.matchAll(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map(
+    ([, href = "", words = ""]) => [readable(words), href] as const,
+  );
+
+/** The public site's sections and the door to the dashboard, as they lead from under its prefix. */
+const PUBLIC_WAYS = [
+  ["Sell to agents", "/agentic-shop"],
+  ["Scanner", "/docs/scanner"],
+  ["Methodology", "/docs/scanner/methodology"],
+  ["Privacy", "/privacy"],
+  ["Dashboard", "/dashboard"],
+] as const;
+
 describe("what every screen says about the address", () => {
-  it("carries the signed-in address and a sign-out in the site header of every working screen", async () => {
-    // The site header carries the signed-in address and a sign-out, as it does
-    // on the scanner, so the site reads as one product with one session.
-    const { browser } = await started();
+  it("carries the documentation, the signed-in address and a sign-out in the working header of every page in the frame, and none of the public site's sections or a door to the dashboard", async () => {
+    // Somebody working in the dashboard is already inside it, and the public
+    // site's pages are the front page's lockup away.
+    const { browser } = await started({ base: "/dashboard", wooShops: memoryWooShops() });
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
-      const answered = await browser.get(path);
+    for (const path of [...ALL_SECTIONS, "/woocommerce", "/nowhere"]) {
+      const answered = await browser.get(`/dashboard${path}`);
       // A page showing a person's address is never stored by a shared cache.
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
-      const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
-      expect(readable(bar), path).toContain(PERSON);
-      expect(formTo(bar, "post", "/sign-out"), path).toBeDefined();
+      const bar = barOf(answered.html);
+      const ways = waysIn(bar);
+
+      expect(
+        ways.filter(([words, href]) =>
+          PUBLIC_WAYS.some(([name, to]) => words === name || href === to),
+        ),
+        path,
+      ).toStrictEqual([]);
+      expect(ways, path).toContainEqual(["Docs", "/docs/"]);
+      expect(ways, path).toContainEqual([PERSON, "/dashboard/settings"]);
+      expect(formTo(bar, "post", "/dashboard/sign-out"), path).toBeDefined();
     }
+  });
+
+  it("keeps the site header, its sections and its door to the dashboard, over a page outside the frame for somebody signed in", async () => {
+    const running = await started({ base: "/dashboard" });
+    await running.browser.signIn();
+    running.forgetMerchant(PERSON);
+
+    const answered = await running.browser.get("/dashboard/merchant");
+    const bar = barOf(answered.html);
+
+    expect(answered.status).toBe(200);
+    expect(waysIn(bar)).toEqual(
+      expect.arrayContaining(PUBLIC_WAYS.map(([name, to]) => [name, to])),
+    );
+    expect(readable(bar)).toContain(PERSON);
+    expect(formTo(bar, "post", "/dashboard/sign-out")).toBeDefined();
   });
 
   it("lets only this browser keep a page's data, for the ten seconds a prefetch needs, and per session", async () => {
@@ -5003,7 +5047,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
-    const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+    const bar = barOf(answered.html);
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
   });

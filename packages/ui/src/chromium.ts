@@ -52,13 +52,22 @@ export const dragUp = async (
 };
 
 /**
- * What the site header's bar shows: how far apart the middles of its items lie
- * (one row where it is a pixel at most), the section links it keeps, how many
- * parts of who is visiting it shows, and whether the menu's button is there.
+ * What a header's bar shows: how far apart the middles of its items lie (one
+ * row where it is a pixel at most), the section links it keeps, the doors it
+ * keeps, how many parts of who is visiting it shows, and whether the menu's
+ * button is there.
  */
 export const theBar = (
   header: Locator,
-): Promise<Readonly<{ spread: number; sections: string[]; visitor: number; button: boolean }>> =>
+): Promise<
+  Readonly<{
+    spread: number;
+    sections: string[];
+    doors: string[];
+    visitor: number;
+    button: boolean;
+  }>
+> =>
   header.evaluate((element) => {
     const items = [
       ...element.querySelectorAll(
@@ -73,6 +82,9 @@ export const theBar = (
       spread: Math.max(...middles) - Math.min(...middles),
       sections: items
         .filter((item) => item.matches(".site-nav > a"))
+        .map((item) => item.textContent ?? ""),
+      doors: items
+        .filter((item) => item.matches(".site-doors > a"))
         .map((item) => item.textContent ?? ""),
       visitor: items.filter((item) => item.matches(".site-visitor > *")).length,
       button: items.some((item) => item.matches("summary")),
