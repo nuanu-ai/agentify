@@ -314,3 +314,90 @@ describe("the sidebar", () => {
     expect(orders().textContent).toContain("could not count the orders that need you");
   });
 });
+
+describe("the count beside Orders, read by the merchant's layout", () => {
+  /**
+   * The cards and the orders under a layout whose loader answers the count as
+   * the server does, through a promise; each answer after the first is held
+   * until the test lets it go.
+   */
+  const counting = (counts: readonly number[]) => {
+    const loads: ReturnType<typeof held>[] = [];
+    let asked = 0;
+    const screenAt = (tab: Tab) => ({
+      path: tab,
+      Component: () => (
+        <Frame tab={tab} title={tab} frame={{ account: [] }}>
+          <p>{`The ${tab}`}</p>
+        </Frame>
+      ),
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          id: "root",
+          path: "/",
+          loader: () => ({
+            base: "",
+            surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
+          }),
+          Component: Outlet,
+          children: [
+            {
+              id: "routes/gate",
+              loader: () => ({ who: PERSON }),
+              Component: Outlet,
+              children: [
+                {
+                  id: "routes/merchant-only",
+                  loader: async () => {
+                    const count = counts[Math.min(asked, counts.length - 1)] ?? 0;
+                    asked += 1;
+                    if (asked > 1) {
+                      const load = held();
+                      loads.push(load);
+                      await load.done;
+                    }
+                    return { needYou: count };
+                  },
+                  shouldRevalidate: () => true,
+                  Component: Outlet,
+                  children: [screenAt("cards"), screenAt("orders")],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      { initialEntries: ["/cards"] },
+    );
+    render(
+      <FrameworkContext.Provider value={FRAMEWORK}>
+        <RouterProvider router={router} />
+      </FrameworkContext.Provider>,
+    );
+    return {
+      releaseAll: () => {
+        for (const load of loads.splice(0)) load.release();
+      },
+    };
+  };
+  const orders = () => within(sections()).getByText(/^Orders/);
+
+  it("keeps the count it has on screen while the next page's count is read, then shows that one", async () => {
+    const dashboard = counting([1, 2]);
+    await screen.findByText("The cards");
+    expect(orders().textContent).toBe("Orders1, 1 needs you");
+
+    fireEvent.click(orders());
+    await aMoment(50);
+
+    // Still the cards, and the count it was drawn with, not an empty badge.
+    expect(screen.getByText("The cards")).toBeTruthy();
+    expect(orders().textContent).toBe("Orders1, 1 needs you");
+
+    act(() => dashboard.releaseAll());
+    await screen.findByText("The orders");
+    expect(orders().textContent).toBe("Orders2, 2 need you");
+  });
+});

@@ -18,7 +18,7 @@ import {
   SignedIn,
   SiteHeader,
 } from "@agentify/ui";
-import { type ReactNode, Suspense, use } from "react";
+import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
@@ -53,8 +53,7 @@ const FOOT = [
  * A count that could not be read is marked as such, so it is not taken for
  * none.
  */
-function NeedYou({ count: coming }: Readonly<{ count: Promise<number | null> | number | null }>) {
-  const count = coming instanceof Promise ? use(coming) : coming;
+function NeedYou({ count }: Readonly<{ count: number | null }>) {
   if (count === 0) return null;
   return count === null ? (
     <span className="need unknown" title="Could not count the orders that need you">
@@ -96,18 +95,14 @@ export function Frame({
       : (TABS.find(
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
-  const counted = useRouteLoaderData<{ needYou: Promise<number | null> | number | null }>(
-    "routes/merchant-only",
-  );
+  const counted = useRouteLoaderData<{ needYou: number | null }>("routes/merchant-only");
   const sections: Section[] = TABS.map(([key, label]) => ({
     key,
     label:
       key === "orders" && counted !== undefined ? (
         <>
           {label}
-          <Suspense fallback={null}>
-            <NeedYou count={counted.needYou} />
-          </Suspense>
+          <NeedYou count={counted.needYou} />
         </>
       ) : (
         label

@@ -5,7 +5,7 @@
  */
 
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
-import { formOf, sendTo } from "../answer.js";
+import { formOf, readsLeadTo, sendTo } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { SettingsScreen } from "../screens/settings.js";
 import { services, signedIn } from "../services.js";
@@ -15,8 +15,14 @@ import { press, pressed } from "../settings-press.js";
 export const handle = { keepsData: false };
 
 /**
- * Opened from history or the address bar after a refusal, the press's address
- * leads to the page its form lives on.
+ * A read of the address is sent on before any loader runs, the merchant's
+ * pages' own layout among them, so it waits on nothing the gateway answers.
+ */
+export const middleware = readsLeadTo("/settings");
+
+/**
+ * Its data asked for with no press behind it leads to the page the press's
+ * form lives on, as a read of the address does.
  */
 export function loader({ url, context }: LoaderFunctionArgs) {
   const view = context.get(pressed);

@@ -24,12 +24,12 @@ export const middleware: MiddlewareFunction<Response>[] = [
 
 /**
  * The count of orders that need the merchant, for the frame's sidebar. Read by
- * this layout, it is asked for beside the page's own data in the same request,
- * never after it; handed over unawaited, so a page that only sends the browser
- * on does not wait for it, and a move between pages draws before it arrives.
+ * this layout, React Router asks for it beside the page's own data in the same
+ * request, never after it; the read has a short deadline of its own, so it
+ * cannot hold a page longer than that.
  */
-export function loader({ context }: LoaderFunctionArgs) {
-  return { needYou: context.get(services).screens.needYou(context.get(signedIn)) };
+export async function loader({ context }: LoaderFunctionArgs) {
+  return { needYou: await context.get(services).screens.needYou(context.get(signedIn)) };
 }
 
 /**
