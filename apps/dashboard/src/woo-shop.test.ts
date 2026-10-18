@@ -553,10 +553,10 @@ describe("the protected product check", () => {
         return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
       }
       if (asked.url.includes("woocommerce_downloads_require_login")) {
-        return { status: 200, body: { value: "yes" } };
+        return { status: 200, body: settingAt(asked.url, "yes") };
       }
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
       }
       return { status: 200, body: parcelDocument() };
     });
@@ -584,9 +584,9 @@ describe("the protected product check", () => {
       ["woocommerce_ship_to_destination", "billing_only", "billing address"],
     ] as const) {
       stand = await shopAnswering((asked) => {
-        if (asked.url.includes(setting)) return { status: 200, body: { value } };
+        if (asked.url.includes(setting)) return { status: 200, body: settingAt(asked.url, value) };
         if (asked.url.includes("/settings/")) {
-          return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
         }
         return { status: 200, body: parcelDocument() };
       });
@@ -615,7 +615,7 @@ describe("the protected product check", () => {
         return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
       }
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -631,7 +631,7 @@ describe("the protected product check", () => {
         return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
       }
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
       }
       return { status: 200, body: parcelDocument() };
     });
@@ -649,7 +649,7 @@ describe("the protected product check", () => {
       stand = await shopAnswering((asked) => {
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("/settings/")) {
-          return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
         }
         return { status: 200, body: document() };
       });
@@ -733,7 +733,7 @@ describe("the protected product check", () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -767,7 +767,7 @@ describe("the protected product check", () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 503, body: {} };
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -787,7 +787,7 @@ describe("the protected product check", () => {
       stand = await shopAnswering((asked) => {
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("/settings/")) {
-          return { status: 200, body: { value: settingFor(asked.url) } };
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
         }
         return { status: 200, body: productDocument(overrides) };
       });
@@ -803,7 +803,7 @@ describe("the protected product check", () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 200, body: "public" };
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -818,10 +818,10 @@ describe("the protected product check", () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
       if (asked.url.includes("woocommerce_calc_taxes")) {
-        return { status: 200, body: { value: "yes" } };
+        return { status: 200, body: settingAt(asked.url, "yes") };
       }
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -842,10 +842,10 @@ describe("the protected product check", () => {
       stand = await shopAnswering((asked) => {
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("woocommerce_price_num_decimals")) {
-          return { status: 200, body: { value: decimals } };
+          return { status: 200, body: settingAt(asked.url, decimals) };
         }
         if (asked.url.includes("/settings/")) {
-          return { status: 200, body: { value: settingFor(asked.url) } };
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
         }
         return { status: 200, body: productDocument() };
       });
@@ -870,7 +870,7 @@ describe("the protected product check", () => {
         return { status: 200, body: {} };
       }
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -886,7 +886,7 @@ describe("the protected product check", () => {
   it("names a product that has no downloadable file instead of listing every rule", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return {
         status: 200,
@@ -910,7 +910,7 @@ describe("the protected product check", () => {
     ]) {
       stand = await shopAnswering((asked) => {
         if (asked.url.includes("/settings/")) {
-          return { status: 200, body: { value: settingFor(asked.url) } };
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
         }
         return { status: 200, body: product };
       });
@@ -926,7 +926,7 @@ describe("the protected product check", () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 404, body: {} };
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument() };
     });
@@ -975,7 +975,7 @@ describe("the protected product check", () => {
       }
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
       if (asked.url.includes("/settings/")) {
-        return { status: 200, body: { value: settingFor(asked.url) } };
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
       }
       return { status: 200, body: productDocument({ price: typed() }) };
     });
@@ -1039,7 +1039,7 @@ describe("the protected product check", () => {
     const inProcess = async (url: string | URL): Promise<Response> => {
       const path = new URL(url).pathname;
       if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
-      if (path.includes("/settings/")) return Response.json({ value: settingFor(path) });
+      if (path.includes("/settings/")) return Response.json(settingAt(path, settingFor(path)));
       return Response.json(
         productDocument({
           price: "0.01",

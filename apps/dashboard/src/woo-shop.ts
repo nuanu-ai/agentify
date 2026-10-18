@@ -131,7 +131,8 @@ const ProductSchema = z.looseObject({
   downloads: z.array(z.looseObject({ id: z.string(), name: z.string(), file: z.string() })),
 });
 
-const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
+/** WooCommerce writes the setting's own id beside its value, matched to the address asked. */
+const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string(), z.boolean()]) });
 
 /**
  * Download and shipping settings are asked for in one batch, one round trip
@@ -257,6 +258,22 @@ export const inspectProductInTheShop = async (
     return {
       ok: false,
       why: "The shop's protected product or settings document is incomplete.",
+      again: false,
+    };
+  }
+  // As with the product, a cache that confused two settings' addresses would
+  // lend one setting's answer to the other.
+  const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
+  const misnamed = BEARING[kind].slice(1).find((index) => {
+    const setting = settings[index];
+    return setting?.success === true && setting.data.id !== settingAsked(index);
+  });
+  if (misnamed !== undefined) {
+    return {
+      ok: false,
+      why:
+        `The shop answered the check of its ${settingAsked(misnamed)} setting with another` +
+        " setting's document, so nothing in it can be taken for this card.",
       again: false,
     };
   }

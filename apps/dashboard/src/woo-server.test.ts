@@ -1285,7 +1285,7 @@ describe("importing the catalogue", () => {
           woocommerce_downloads_redirect_fallback_allowed: "no",
           woocommerce_price_num_decimals: decimals,
         };
-        return Response.json({ value: safe[setting] });
+        return Response.json({ id: setting, value: safe[setting] });
       }
       const id = /\/products\/(\d+)$/.exec(path)?.[1] ?? "";
       return Response.json({
