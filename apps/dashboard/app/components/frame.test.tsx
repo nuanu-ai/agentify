@@ -378,6 +378,15 @@ describe("the sidebar", () => {
     expect(within(sections()).getByText("Cards").textContent).toBe("Cards");
     expect(orders().textContent).toBe("Orders");
   });
+
+  it("holds the sections and nothing else", async () => {
+    framed("cards");
+    await screen.findByText("The screen");
+    const sidebar = document.querySelector<HTMLElement>(".app-sidebar");
+    if (sidebar === null) throw new Error("the frame drew no sidebar");
+
+    expect(sidebar.textContent).toBe(sections().textContent);
+  });
 });
 
 describe("the banner, read by the merchant's layout", () => {

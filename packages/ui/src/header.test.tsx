@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import type { ReactElement } from "react";
 import { createMemoryRouter, createRoutesStub, Link, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SectionNav, SignedIn, SiteHeader, type Surface } from "./header.js";
+import { SectionNav, SignedIn, SiteHeader, type Surface, WorkHeader } from "./header.js";
+import { HeaderMenu } from "./menu.js";
 
 /**
  * A click the router does not take would load another document, which jsdom
@@ -91,6 +92,69 @@ describe("the site header", () => {
     expect(header.afterClicking("Scanner")).toBe("/docs/scanner");
     expect(header.afterClicking("Methodology")).toBe("/docs/scanner/methodology");
     expect(header.afterClicking("Privacy")).toBe("not followed in place");
+  });
+});
+
+describe("the working header", () => {
+  const PERSON = "owner@example.com";
+
+  /** As the dashboard draws it over one of its pages, under the prefix it is deployed at. */
+  const workHeader = () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <WorkHeader
+              surface="dashboard"
+              link={Link}
+              visitor={<SignedIn who={PERSON} account="/dashboard/settings" signOut="/sign-out" />}
+              menu={
+                <HeaderMenu>
+                  <a href="/dashboard/orders">Orders</a>
+                </HeaderMenu>
+              }
+            />
+          ),
+        },
+      ],
+      { basename: "/dashboard", initialEntries: ["/dashboard/cards"] },
+    );
+    render(<RouterProvider router={router} />);
+    const banner = screen.getByRole("banner");
+    return { banner, header: within(banner), router };
+  };
+
+  it("leads to the front page and the documentation, loading them whole, and names who is signed in with the way out", () => {
+    const { header, router } = workHeader();
+
+    for (const [name, href] of [
+      ["Agentify", "/"],
+      ["Docs", "/docs/"],
+      [PERSON, "/dashboard/settings"],
+    ] as const) {
+      expect(header.getByRole("link", { name }).getAttribute("href"), name).toBe(href);
+    }
+    fireEvent.click(header.getByRole("link", { name: "Docs" }));
+    fireEvent.click(header.getByRole("link", { name: "Agentify" }));
+    expect(router.state.location.pathname).toBe("/dashboard/cards");
+    expect(header.getByRole("button", { name: "Sign out" }).closest("form")?.method).toBe("post");
+  });
+
+  it("names none of the public site's sections and no door to the dashboard", () => {
+    const { header } = workHeader();
+
+    for (const name of ["Sell to agents", "Scanner", "Methodology", "Privacy", "Dashboard"]) {
+      expect(header.queryByRole("link", { name }), name).toBeNull();
+    }
+  });
+
+  it("puts the way past it first, to the page's main part", () => {
+    const { banner } = workHeader();
+
+    const first = banner.querySelector("a, button, summary");
+    expect(first?.textContent).toBe("Skip to content");
+    expect(first?.getAttribute("href")).toBe("#main");
   });
 });
 

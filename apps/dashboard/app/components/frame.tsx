@@ -1,11 +1,11 @@
 /**
- * The frame every screen about a merchant's selling is drawn in: the site
- * header with who is signed in and the way out, and under it the dashboard's
- * working area, its sections in a sidebar beside a bar with the screen's
- * title, and over the screen the banner about the account where something
- * about it is not as usual. Where there is no room for
- * the sidebar, a menu at the end of the header's row holds the sections, the
- * documentation and who is signed in with the way out.
+ * The frame every screen about a merchant's selling is drawn in: the working
+ * header with the documentation and who is signed in with the way out, and
+ * under it the dashboard's working area, its sections in a sidebar beside a
+ * bar with the screen's title, and over the screen the banner about the
+ * account where something about it is not as usual. Where there is no room
+ * for the sidebar, a menu at the end of the header's row holds the sections,
+ * the documentation and who is signed in with the way out.
  */
 
 import {
@@ -15,7 +15,7 @@ import {
   type Section,
   SectionNav,
   SignedIn,
-  SiteHeader,
+  WorkHeader,
 } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
@@ -94,7 +94,7 @@ export function Frame({
     <div className="page app-frame">
       <title>{`${title} — Agentify`}</title>
       <OnItsWay />
-      <SiteHeader
+      <WorkHeader
         surface="dashboard"
         link={Link}
         visitor={signedIn}
@@ -115,19 +115,14 @@ export function Frame({
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <div className="app-sidebar-name">Seller dashboard</div>
             <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
-            <div className="sidebar-help">
-              <span>Need help?</span>
-              <a href="/docs/">Open the docs →</a>
-            </div>
           </div>
         </aside>
         <div className="app-workspace">
           {/* The stack's band heads the workspace rather than the window, so
-              the sidebar's sections start right under the site header. */}
+              the sidebar's sections start right under the header. */}
           <SurfaceNote surface={chrome.surface} />
-          {/* The bar is inside the page's main part, so the way past the site
+          {/* The bar is inside the page's main part, so the way past the
               header leads to its title and the control at its end. */}
           <main id="main">
             <div className="top">

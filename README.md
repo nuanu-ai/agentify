@@ -243,7 +243,7 @@ its own.
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
 | `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
-| `packages/ui` | `@agentify/ui`: the React components every surface draws with, the site header among them, thin wrappers over the classes of `packages/visual`. |
+| `packages/ui` | `@agentify/ui`: the React components every surface draws with, among them the site header over the public pages and the working header over the dashboard's frame, thin wrappers over the classes of `packages/visual`. |
 | `apps/docs` | The documentation at `/docs`: the merchant pages and the scanner's, written in Markdown and drawn by React Router into static files at build time (`pnpm --filter @agentify/docs build`), which Caddy serves. Its JSON examples are test fixtures (see below); `WRITING.md` says how it is written and which Markdown it understands. |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |

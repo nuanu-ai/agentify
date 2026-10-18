@@ -462,9 +462,11 @@ p {
 }
 
 /*
- * The site header: the lockup, the public site's sections, and the doors to
- * the documentation, the dashboard and the session. It stays at the top of the
- * window, translucent over what scrolls under it.
+ * The bar of both headers: the lockup, then on the site header the public
+ * site's sections and the doors to the documentation, the dashboard and the
+ * session, and on the working header the doors to the documentation and the
+ * session. It stays at the top of the window, translucent over what scrolls
+ * under it.
  */
 .site-header {
   position: sticky;
@@ -579,12 +581,26 @@ p {
   color: var(--accent);
 }
 
+/* The working header's doors follow the lockup with no sections to set them
+   apart from. Where the menu's button takes the end of the row, the menu
+   holds the doors too, so the row keeps the lockup and the button alone at
+   every width down to 320px, and nothing in it moves. */
+.work-header .site-doors {
+  padding-left: 0;
+  border-left: 0;
+}
+
+@media (max-width: 910px) {
+  .work-header .site-doors {
+    display: none;
+  }
+}
+
 /*
  * Every bar sets its type and its gaps tighter at 640px and again at 480px.
- * A bar whose menu does not hold the site's sections, the dashboard's, whose
- * menu holds its own, and the one over its pages outside the frame, which has
- * none, yields its section links before it yields a door, and its doors wrap
- * onto a second line before the bar grows, so above 900px it keeps to 68px.
+ * A bar without a menu, the dashboard's over its pages outside the frame,
+ * yields its section links before it yields a door, and its doors wrap onto a
+ * second line before the bar grows, so above 900px it keeps to 68px.
  * The steps are measured against the current labels ("Sell to agents" is the
  * widest) and the longest address the doors show: the merchant link goes at
  * 910px where the doors say who is visiting, which would otherwise take a
@@ -596,14 +612,14 @@ p {
  * edge, so a link that did not fit would be cut, not scrolled to.
  */
 @media (max-width: 760px) {
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-nav a:first-child {
+  .site-header-links:not(:has(> .site-menu)) > .site-nav a:first-child {
     display: none;
   }
 }
 
 @media (max-width: 910px) {
   .site-header:has(.site-who, .site-unknown)
-    .site-header-links:not(:has(> .site-menu .site-menu-sections))
+    .site-header-links:not(:has(> .site-menu))
     > .site-nav
     a:first-child {
     display: none;
@@ -620,7 +636,7 @@ p {
     font-size: var(--text-label);
   }
 
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-nav a:nth-child(2) {
+  .site-header-links:not(:has(> .site-menu)) > .site-nav a:nth-child(2) {
     display: none;
   }
 
@@ -647,11 +663,11 @@ p {
     gap: 6px;
   }
 
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-nav {
+  .site-header-links:not(:has(> .site-menu)) > .site-nav {
     display: none;
   }
 
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-doors {
+  .site-header-links:not(:has(> .site-menu)) > .site-doors {
     padding-left: 0;
     border-left: 0;
   }
@@ -814,11 +830,7 @@ p {
  * nothing in it moves when who is visiting is known. 910px is where a
  * signed-in address first takes a section link's place, and the widths below,
  * at each of which one more section link leaves, are measured against the
- * current labels in the site's font with at least 18px to spare. The
- * dashboard's bar, whose menu holds the dashboard's own sections, keeps the
- * steps above without the line before its doors, and gives up its section
- * links under 500px, so that the two it still shows there keep at least 17px
- * to spare beside the doors and the menu's button.
+ * current labels in the site's font with at least 18px to spare.
  */
 @media (max-width: 910px) {
   .site-menu {
@@ -827,11 +839,6 @@ p {
 
   .site-doors:has(~ .site-menu) .site-visitor {
     display: none;
-  }
-
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-doors:has(~ .site-menu) {
-    padding-left: 0;
-    border-left: 0;
   }
 
   /* While the menu is open the window's scroll stands still. The lock is on
@@ -851,12 +858,6 @@ p {
 
 @media (max-width: 767px) {
   .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav a:nth-child(3) {
-    display: none;
-  }
-}
-
-@media (max-width: 499px) {
-  .site-header-links:not(:has(> .site-menu .site-menu-sections)) > .site-nav:has(~ .site-menu) {
     display: none;
   }
 }

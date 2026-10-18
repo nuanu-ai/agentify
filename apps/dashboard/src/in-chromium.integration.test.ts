@@ -21,7 +21,7 @@ import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
-import type { Browser, Page } from "playwright";
+import type { Browser, Locator, Page } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
@@ -503,24 +503,6 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
-  it.each([900, 905, 910, 911])(
-    "are in the sidebar or in the header's menu at %ipx, never both, and who is signed in is in sight",
-    async (width) => {
-      const page = await onTheCards({ width, height: 800 });
-      const burger = page.locator(".site-menu > summary");
-      const inSidebar = await page.locator(".app-sidebar nav.tabs").isVisible();
-      const inMenu = await burger.isVisible();
-
-      expect(inSidebar).not.toBe(inMenu);
-      if (inMenu) await burger.click();
-      expect(await page.getByText(PERSON).filter({ visible: true }).count()).toBe(1);
-      expect(
-        await page.getByRole("button", { name: "Sign out" }).filter({ visible: true }).count(),
-      ).toBe(1);
-      await page.context().close();
-    },
-  );
-
   it("stay whole under the header on a laptop, down to the foot of the page", async () => {
     // A window taller than the sidebar's words and the foot together.
     const page = await onTheCards({ width: 1280, height: 700 });
@@ -534,37 +516,112 @@ describe("the sections on a long page", () => {
   });
 });
 
-describe("the header over the frame", () => {
+/** Once the site's face is drawn, so a bar is measured in the face a visitor sees. */
+const inTheSiteFace = async (page: Page): Promise<boolean> => {
+  await page.evaluate(() => document.fonts.ready);
+  return await page.evaluate(() =>
+    [...document.fonts].some(
+      (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
+    ),
+  );
+};
+
+/** How many of what the locator finds are in sight. */
+const inSight = (found: Locator): Promise<number> => found.filter({ visible: true }).count();
+
+describe("the working header over the frame", () => {
   it.each([
-    [320, []],
-    [481, []],
-    [499, []],
-    [500, ["Methodology", "Privacy"]],
-    [640, ["Methodology", "Privacy"]],
-    [641, ["Scanner", "Methodology", "Privacy"]],
-    [910, ["Scanner", "Methodology", "Privacy"]],
+    [320, "menu"],
+    [390, "menu"],
+    [768, "menu"],
+    [905, "menu"],
+    [910, "menu"],
+    [911, "bar"],
+    [1440, "bar"],
   ] as const)(
-    "keeps one row at %ipx with the site's sections %j, who is signed in only in its menu",
-    async (width, sections) => {
-      const page = await onTheCards({ width, height: 600 });
-      await page.evaluate(() => document.fonts.ready);
-      expect(
-        await page.evaluate(() =>
-          [...document.fonts].some(
-            (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
-          ),
-        ),
-      ).toBe(true);
+    "keeps one row at %ipx with the documentation, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and no public section or door to the dashboard",
+    async (width, where) => {
+      const page = await onTheCards({ width, height: 700 });
+      expect(await inTheSiteFace(page)).toBe(true);
       const header = page.locator("header.site-header");
 
       const bar = await theBar(header);
       expect(bar.spread).toBeLessThanOrEqual(1);
-      expect(bar.sections).toEqual(sections);
-      expect(bar.visitor).toBe(0);
-      expect(bar.button).toBe(true);
-      await header.locator(".site-menu > summary").click();
-      expect(await header.locator(".site-menu-panel").getByText(PERSON).isVisible()).toBe(true);
+      expect(bar.sections).toEqual([]);
+      expect(bar.doors).toEqual(where === "bar" ? ["Docs"] : []);
+      expect(bar.visitor).toBe(where === "bar" ? 2 : 0);
+      expect(bar.button).toBe(where === "menu");
+      expect(await page.locator(".app-sidebar nav.tabs").isVisible()).toBe(where === "bar");
+
+      if (where === "menu") {
+        await header.locator(".site-menu > summary").click();
+        await header.locator(".site-menu-panel").waitFor({ state: "visible" });
+      }
+      expect(await inSight(page.getByRole("link", { name: "Orders", exact: true }))).toBe(1);
+      expect(await inSight(header.locator('a[href="/docs/"]'))).toBe(1);
+      expect(await inSight(page.getByText(PERSON))).toBe(1);
+      expect(await inSight(page.getByRole("button", { name: "Sign out" }))).toBe(1);
+      for (const name of ["Dashboard", "Sell to agents", "Scanner", "Methodology", "Privacy"]) {
+        expect(await inSight(header.getByRole("link", { name, exact: true })), name).toBe(0);
+      }
       await page.context().close();
+    },
+  );
+
+  it.each([911, 1280, 1440])(
+    "starts its lockup on the sidebar's line of words and ends its row on the content's right edge at %ipx",
+    async (width) => {
+      const page = await onTheCards({ width, height: 700 });
+      expect(await inTheSiteFace(page)).toBe(true);
+
+      const edges = await page.evaluate(() => {
+        const box = (selector: string) =>
+          document.querySelector(selector)?.getBoundingClientRect() ?? null;
+        const words = document.createRange();
+        const section = document.querySelector(".app-sidebar nav.tabs > a");
+        if (section !== null) words.selectNodeContents(section);
+        return {
+          lockup: box("header .brand")?.left,
+          sidebarWords: section === null ? undefined : words.getBoundingClientRect().left,
+          rowEnd: box("header .site-sign-out button")?.right,
+          contentEnd: box(".app-content")?.right,
+        };
+      });
+
+      expect(
+        Math.abs((edges.lockup ?? 0) - (edges.sidebarWords ?? Number.NaN)),
+      ).toBeLessThanOrEqual(1);
+      expect(Math.abs((edges.rowEnd ?? 0) - (edges.contentEnd ?? Number.NaN))).toBeLessThanOrEqual(
+        1,
+      );
+      await page.context().close();
+    },
+  );
+});
+
+describe("the site header over the pages outside the frame", () => {
+  it.each([
+    [320, []],
+    [390, []],
+    [600, ["Methodology", "Privacy"]],
+    [700, ["Scanner", "Methodology", "Privacy"]],
+    [768, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
+    [1440, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
+  ] as const)(
+    "keeps one row on the sign-in at %ipx with the site's sections %j and its doors, and no menu",
+    async (width, sections) => {
+      const context = await browser.newContext({ viewport: { width, height: 700 } });
+      const page = await context.newPage();
+      await page.goto(`${origin}${BASE}/sign-in`);
+      await page.waitForLoadState("networkidle");
+      expect(await inTheSiteFace(page)).toBe(true);
+
+      const bar = await theBar(page.locator("header.site-header"));
+      expect(bar.spread).toBeLessThanOrEqual(1);
+      expect(bar.sections).toEqual(sections);
+      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
+      expect(bar.button).toBe(false);
+      await context.close();
     },
   );
 });

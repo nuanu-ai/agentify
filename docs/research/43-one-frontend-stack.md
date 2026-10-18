@@ -462,8 +462,9 @@ process, which keeps its own secrets and its own image: its build bundles the
 pages, the API routes and every package they import into one server module,
 and the image runs that module with nothing installed beside it. Next.js has
 left the workspace, and with it every setting and file kept only for it. Both
-surfaces draw one site header from the shared component package, the
-scanner's front-page header, which the dashboard draws over its own sections.
+surfaces draw their headers from the shared component package: the scanner's
+front-page header over the public pages and the dashboard's pages outside its
+frame, and a working header, without the public sections, over the frame.
 The documentation portal stays on VitePress; whether it joins the one stack is
 decided separately, later.
 

@@ -9,6 +9,7 @@ export {
   SiteDoors,
   SiteHeader,
   SiteMenu,
+  WorkHeader,
 } from "./header.js";
 export { BrandMark } from "./mark.js";
 export { HeaderMenu } from "./menu.js";
