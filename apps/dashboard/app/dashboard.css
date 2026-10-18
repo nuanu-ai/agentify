@@ -926,6 +926,25 @@ td.control {
   stroke-linejoin: round;
 }
 
+/* The short form of an identifier, which opens to the whole value under it. */
+.ident-whole > summary {
+  list-style: none;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.ident-whole > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ident-all {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .copy-whole {
   flex-basis: 100%;
   color: var(--fg-2);
