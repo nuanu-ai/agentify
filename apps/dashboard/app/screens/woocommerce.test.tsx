@@ -18,9 +18,11 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
+import { switchRefused } from "../../src/gateway.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type ShopAnswer, type ShopRead, wooImportView, wooShopView } from "../../src/woo-views.js";
+import { SITE_IN_SETTINGS } from "../../src/words.js";
 import type { Chrome } from "../answer.js";
 import { WooImportScreen, WooPage, WooShopScreen } from "./woocommerce.js";
 
@@ -54,10 +56,7 @@ const served = (screen: () => ReactElement): string => {
 const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
   served(() => (
     <WooShopScreen
-      view={wooShopView(
-        { state: { kind: "none" }, unset: [], through: "api", stopped: false, ...read },
-        answer,
-      )}
+      view={wooShopView({ state: { kind: "none" }, unset: [], through: "api", ...read }, answer)}
       base=""
     />
   ));
@@ -72,10 +71,10 @@ const formOf = (html: string, action: string): string =>
   new RegExp(`<form[^>]*action="${action}"[^>]*>[\\s\\S]*?</form>`).exec(html)?.[0] ?? "";
 
 /**
- * Not `/import again/i`: the "No verdict" block reads "Import again later",
+ * Not `/import again/i`: the "No verdict" group reads "Import again later",
  * which would match where the invitation must not appear.
  */
-const SENT_TO_THE_SHOP = /shop and import again/i;
+const SENT_TO_THE_SHOP = /change what they name/i;
 
 describe("what the import screen says about a product the door never answered about", () => {
   it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", () => {
@@ -101,9 +100,9 @@ describe("what the import screen says about a product the door never answered ab
     );
     const text = readable(html);
 
-    expect(text).toContain("1 product published");
-    expect(text).toContain("1 refused");
-    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 published");
+    expect(text).toContain("1 to fix");
+    expect(text).toContain("1 without a verdict");
 
     // The unanswered product stands under its own heading only, after the
     // refused one, and the invitation to change the shop is not repeated over
@@ -146,6 +145,34 @@ describe("what the import screen says about a product the door never answered ab
     expect(text).toContain(finding);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("what the import screen offers beside a product it could not publish", () => {
+  it("offers Settings beside a parcel held for want of the shop's site, and nothing beside one the shop must change", () => {
+    const html = served(() => (
+      <WooImportScreen
+        view={wooImportView(
+          SHOP,
+          [
+            { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
+            {
+              id: "13",
+              title: "Canvas tote bag",
+              problems: [
+                "description: this description is 856 characters and a listing carries at most 500",
+              ],
+            },
+          ],
+          [],
+        )}
+        base=""
+      />
+    ));
+
+    expect([...html.matchAll(/href="\/settings"/g)]).toHaveLength(1);
+    expect(html.indexOf('href="/settings"')).toBeGreaterThan(html.indexOf("Coffee beans"));
+    expect(html.indexOf('href="/settings"')).toBeLessThan(html.indexOf("Canvas tote bag"));
   });
 });
 
@@ -193,6 +220,57 @@ describe("where the shop screen says why a press was refused", () => {
     const html = shopPage({ state: CONNECTED, through: "api" }, { switching });
 
     expect(problemsIn(formOf(html, "/woocommerce/switch"))).toStrictEqual([switching]);
+  });
+
+  it("names each order that holds a switch with a button copying it whole, and counts the ones it leaves out", () => {
+    const waiting = Array.from({ length: 7 }, (_, at) => `ord_${at}0f3c9a1b2d4e6f8a7b9c`);
+    const refused = switchRefused("woocommerce", waiting);
+    if (refused.ok) throw new Error("a switch with orders waiting was not refused");
+
+    const form = formOf(
+      shopPage({ state: CONNECTED, through: "api" }, { switching: refused }),
+      "/woocommerce/switch",
+    );
+
+    expect([...form.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
+    for (const id of waiting.slice(0, 5)) expect(readable(form)).toContain(id);
+    for (const id of waiting.slice(5)) expect(readable(form)).not.toContain(id);
+    expect(readable(form)).toMatch(/\b2 more\b/);
+  });
+
+  it("names five waiting orders without saying there are more", () => {
+    const waiting = Array.from({ length: 5 }, (_, at) => `ord_${at}0f3c9a1b2d4e6f8a7b9c`);
+    const refused = switchRefused("api", waiting);
+    if (refused.ok) throw new Error("a disconnect with orders waiting was not refused");
+
+    const form = formOf(
+      shopPage({ state: CONNECTED, through: "woocommerce" }, { leaving: refused }),
+      "/woocommerce/disconnect",
+    );
+
+    expect([...form.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
+    expect(readable(form)).not.toMatch(/\bmore\b/);
+  });
+
+  it("says a refused Connect again beside it when the shop granted read alone", () => {
+    const html = shopPage(
+      {
+        state: {
+          kind: "connected",
+          shop: {
+            shopUrl: SHOP,
+            permissions: "read",
+            connectedAt: new Date("2026-10-12T09:00:00Z"),
+          },
+        },
+        through: "woocommerce",
+      },
+      { problem: "Your shop did not show its approval screen." },
+    );
+
+    expect(readable(formOf(html, "/woocommerce/connect"))).toContain(
+      "Your shop did not show its approval screen.",
+    );
   });
 
   it("draws what it was given as text, never as markup", () => {

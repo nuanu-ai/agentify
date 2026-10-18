@@ -519,7 +519,6 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   state,
   unset: [],
   through: "woocommerce",
-  stopped: false,
   ...more,
 });
 
@@ -604,8 +603,8 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING)).why;
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING)).why;
+const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
+const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
 
 // --- the states ----------------------------------------------------------------
 
@@ -1664,19 +1663,33 @@ const INTEGRATIONS: GalleryState[] = [
 
 /**
  * The banner over a WooCommerce screen: the shop's when the merchant sells
- * through it, and all sales paused where the screen says so.
+ * through it, and all sales paused where the example says so.
  */
-const shopBanner = (view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>) =>
-  bannerOf(seenBy("test"), {
+/** What the merchant's layout reads beside a WooCommerce example, where it is not as usual. */
+interface ShopAccount {
+  readonly selling?: AccountRead["selling"];
+  /** No payout wallet set, which the example's own read says. */
+  readonly noWallet?: true;
+}
+
+const shopBanner = (
+  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  { selling = "open", noWallet }: ShopAccount,
+) =>
+  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), {
     through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
-    selling: view.screen === "shop" && view.connection?.stopped === true ? "paused" : "open",
+    selling,
   });
 
-const shop = (told: Told, view: ReturnType<typeof wooShopView>, path = "/woocommerce") =>
+const shop = (
+  told: Told,
+  view: ReturnType<typeof wooShopView>,
+  { path = "/woocommerce", ...account }: ShopAccount & { readonly path?: string } = {},
+) =>
   at(told, {
     path,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     loaded: { "routes/woocommerce": view },
   });
 
@@ -1685,11 +1698,12 @@ const shopPress = (
   told: Told,
   press: "connect" | "import" | "switch" | "disconnect",
   view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  account: ShopAccount = {},
 ) =>
   at(told, {
     path: `/woocommerce/${press}`,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -1739,7 +1753,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The shop's server posted its keys, and the browser came back from the shop.",
     },
     shopOn(shopRead(CONNECTED), { cameBack: true }),
-    "/woocommerce?from=shop",
+    { path: "/woocommerce?from=shop" },
   ),
   shop(
     {
@@ -1760,6 +1774,7 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
     },
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
+    { noWallet: true },
   ),
   shop(
     {
@@ -1768,7 +1783,8 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant with a connected shop has paused all sales.",
       cause: "The merchant's selling is stopped, so nothing imported sells until it starts again.",
     },
-    shopOn(shopRead(CONNECTED, { stopped: true })),
+    shopOn(shopRead(CONNECTED)),
+    { selling: "paused" },
   ),
   shop(
     {
@@ -1815,7 +1831,7 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-import",
       screen: "WooCommerce import",
-      when: "A merchant presses Import the catalog.",
+      when: "A merchant presses Import products.",
       cause:
         "The shop's catalogue was read, and each product was published, refused or left in the shop.",
     },
@@ -1872,6 +1888,7 @@ const WOOCOMMERCE: GalleryState[] = [
     },
     "import",
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), { refused: ["no_payout_wallet"] }),
+    { noWallet: true },
   ),
   shopPress(
     {
@@ -1889,12 +1906,30 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-disconnect-refused",
       screen: "WooCommerce",
-      when: "A merchant presses Forget this shop while orders the shop took are open.",
+      when: "A merchant presses Disconnect shop while orders the shop took are open.",
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",
     shopOn(shopRead(CONNECTED), {
       leaving: TO_THE_CODE,
+    }),
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-disconnect-refused-many",
+      screen: "WooCommerce",
+      when: "A merchant presses Disconnect shop while seven orders the shop took are open.",
+      cause:
+        "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
+    },
+    "disconnect",
+    shopOn(shopRead(CONNECTED), {
+      leaving: refusalIn(
+        switchRefused(
+          "api",
+          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+        ),
+      ),
     }),
   ),
   at(
