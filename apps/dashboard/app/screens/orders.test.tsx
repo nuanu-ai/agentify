@@ -13,6 +13,7 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { readable } from "../../src/testing/html.js";
 import { ordersView } from "../../src/views.js";
+import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
 const served = (screen: () => ReactElement): string => {
@@ -113,11 +114,13 @@ describe("searching the orders", () => {
   });
 
   it("finds an order by the short form the page shows it in", () => {
-    expect(searched("ord_17ff…7de3")).toStrictEqual([FIRST]);
+    expect(searched(shortened(FIRST))).toStrictEqual([FIRST]);
   });
 
-  it("finds it by the short form typed with three dots, with spaces, or without its prefix", () => {
+  it("finds it by the short form typed with dots, with spaces, or without its prefix", () => {
     expect(searched("ord_17ff...7de3")).toStrictEqual([FIRST]);
+    expect(searched("ord_17ff..7de3")).toStrictEqual([FIRST]);
+    expect(searched("ord_17ff....7de3")).toStrictEqual([FIRST]);
     expect(searched("ord_17ff … 7de3")).toStrictEqual([FIRST]);
     expect(searched("17ff…7de3")).toStrictEqual([FIRST]);
     expect(searched("ORD_17FF…7DE3")).toStrictEqual([FIRST]);
@@ -125,9 +128,48 @@ describe("searching the orders", () => {
 
   it("finds every order either half of a short form belongs to", () => {
     expect(searched("ord_17ff")).toStrictEqual([FIRST, SAME_HEAD]);
+    expect(searched("17ff")).toStrictEqual([FIRST, SAME_HEAD]);
     expect(searched("7de3")).toStrictEqual([FIRST, SAME_TAIL]);
     expect(searched("ord_17ff…")).toStrictEqual([FIRST, SAME_HEAD]);
     expect(searched("…7de3")).toStrictEqual([FIRST, SAME_TAIL]);
+  });
+
+  it("finds an order whose whole ID is in what was pasted, as text copied off its row is", () => {
+    expect(searched(`${shortened(FIRST)}${FIRST} Price set 2026-10-12 16:40:00 UTC`)).toStrictEqual(
+      [FIRST],
+    );
+  });
+
+  describe("among IDs whose hidden middle holds a word a merchant might search for", () => {
+    // The middle of an ID is never shown, so a few characters found only there
+    // would list orders whose rows show nothing of what was searched for.
+    const MIDDLE = `ord_a1b2${"5de30bed".repeat(3)}c3d4`;
+    const orders = ordersOf([{ id: MIDDLE }, { id: FIRST }]);
+    const among = (q: string) => found(new URLSearchParams({ q }).toString(), orders);
+
+    it("does not find an order by a few characters from the middle of its ID", () => {
+      expect(among("5")).toStrictEqual([]);
+      expect(among("de")).toStrictEqual([]);
+      expect(among("bed")).toStrictEqual([]);
+      expect(among("5de3")).toStrictEqual([]);
+    });
+
+    it("finds an order by a run of its ID too long to turn up in another by chance", () => {
+      expect(among("5de30bed")).toStrictEqual([MIDDLE]);
+    });
+  });
+
+  it("answers a search pasted with a long run of spaces at once", () => {
+    const many = ordersOf(
+      Array.from({ length: 200 }, (_, at) => ({
+        id: idOf(at.toString(16).padStart(4, "0"), "0000"),
+      })),
+    );
+    const started = performance.now();
+
+    found(new URLSearchParams({ q: `a${" ".repeat(20_000)}b` }).toString(), many);
+
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   it("does not take a short form for an order that shares only one of its halves", () => {
@@ -171,6 +213,21 @@ describe("searching the orders", () => {
     const view = ordersView(CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
 
     expect(view.needsYou.map((one) => one.id)).toStrictEqual([FIRST]);
+  });
+});
+
+describe("a refund due on a test purchase", () => {
+  it("says the sum to return is a test purchase's, and says nothing of tests for a real one", () => {
+    const owing = ordersOf([
+      { id: FIRST, status: "refund_due", test: true },
+      { id: SAME_TAIL, status: "refund_due" },
+    ]);
+
+    const [test, real] = ordersView(CARDS, owing, owing).needsYou;
+
+    expect(test?.why).toContain("Return the full price of this test purchase, 5.00 USD,");
+    expect(real?.why).toContain("Return the full price, 5.00 USD,");
+    expect(real?.why).not.toContain("test");
   });
 });
 
