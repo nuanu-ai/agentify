@@ -61,7 +61,6 @@ interface Nothing {
 
 export interface Listing<Row> {
   readonly rows: readonly Row[];
-  /** The search box's words, and the segment it searches within. */
   /**
    * The search box's words, the segment it searches within, and the length
    * the words were cut to where the address held more; null where it did not.
@@ -89,17 +88,17 @@ const once = (query: URLSearchParams, name: string): string | null => {
 };
 
 /**
- * What an address asks of a list with these segments. A segment nobody
- * defined, and a page that is not a whole number from one, read as the
- * default.
- */
-/**
  * The most characters of a search that are matched and given back: more than
  * any name or code a merchant types, few enough that a pasted page does not
  * travel into every link and sentence.
  */
 const Q_AT_MOST = 200;
 
+/**
+ * What an address asks of a list with these segments. A segment nobody
+ * defined, and a page that is not a whole number from one, read as the
+ * default.
+ */
 export const askedIn = (query: URLSearchParams, segments: readonly string[]): Asked => {
   const show = once(query, "show");
   const page = Number(once(query, "page") ?? "1");

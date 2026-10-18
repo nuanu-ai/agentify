@@ -1121,7 +1121,7 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-account-unread",
       screen: "Cards",
-      when: "A merchant opens Cards while one of the reads about their account does not answer in time.",
+      when: "A merchant opens Cards while the read of their account's standing does not answer in time.",
       cause:
         "The layout could not read whether anything holds the account's sales, so the banner says it could not check rather than showing nothing.",
     },
@@ -1533,7 +1533,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant has orders that owe a refund or were delivered without payment.",
       cause:
-        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened and what to do.",
+        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened, and each refund what is the merchant's to return.",
     },
     OWING,
     "/orders",

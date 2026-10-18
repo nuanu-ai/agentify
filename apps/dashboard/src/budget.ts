@@ -12,7 +12,7 @@ import express from "express";
 import type { ServerBuild } from "react-router";
 import { builtPages } from "./pages.js";
 
-/** A little above the 95 KB the heaviest page loads today. */
+/** A little above what the heaviest page loads, so a page that grows is caught here. */
 const SCRIPT_BUDGET = 100 * 1024;
 
 const pages = await builtPages();

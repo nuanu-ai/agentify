@@ -7,7 +7,7 @@
  *
  * Two words are deliberately weak. `in_progress` folds an order the merchant
  * has taken on with one that was priced and never paid (`order-status.ts` says
- * why), so it reads "in progress" and nothing about fulfilment or delivery,
+ * why), so it reads "In progress" and nothing about fulfilment or delivery,
  * which would show an unpaid request as goods the merchant owes.
  * `payment_unresolved` reads as a question, because we asked the payment
  * network and heard nothing, which is not the same as nothing being charged.
