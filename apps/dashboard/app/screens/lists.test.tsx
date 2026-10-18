@@ -690,6 +690,43 @@ describe("a search over the cards", () => {
     expect(found("item")).toStrictEqual(["1", "11", "21", "Lamp-1", "LAMP-10"]);
   });
 
+  it("says a search was read as a whole product code, in what it found and in what it did not", () => {
+    // Card 11 holds "1" and is off sale, so "no card off sale matches 1"
+    // would be false; the sentences say the search was read as a code.
+    const coded = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [
+        { ...entry, id: "itm_1", card: { ...entry.card, merchant_item_id: "1" } },
+        {
+          ...entry,
+          id: "itm_11",
+          selling: "paused",
+          paused: true,
+          card: { ...entry.card, merchant_item_id: "11" },
+        },
+      ],
+    });
+    const drawn = (address: string) =>
+      readable(
+        served(() => (
+          <CardsScreen
+            view={cardsView(
+              coded,
+              "https://agentify.ad",
+              false,
+              undefined,
+              new URLSearchParams(address),
+            )}
+            base=""
+          />
+        )),
+      );
+
+    expect(drawn("q=1")).toContain("Only the card with the product code “1”.");
+    expect(drawn("q=1&show=off-sale")).toContain("No card off sale has the product code “1”.");
+    expect(drawn("q=room")).not.toContain("product code “");
+  });
+
   it("finds a card by its product code as well as its title", () => {
     const text = page(many(12), "q=room-11");
 
