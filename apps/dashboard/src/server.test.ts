@@ -3430,6 +3430,68 @@ describe("the cards screen", () => {
     expect(readable((await browser.get("/cards")).html)).toContain("Resume");
   });
 
+  it("leads a press back to the search and the segment it was drawn under, all selling's switch too", async () => {
+    // A merchant pausing a card they searched for goes on reading what they
+    // searched for, not every card from the first.
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    const html = (await browser.get("/cards?q=room&show=on-sale")).html;
+    const forms = formsIn(html).filter(({ method }) => method === "post");
+    const pause = forms.find(({ action }) => action.includes(encodeURIComponent(room)));
+    const all = forms.find(({ action }) => action === STOP_SELLING);
+    if (pause === undefined || all === undefined) throw new Error("the cards draw no switch");
+
+    const paused = await browser.post(pause.action, Object.fromEntries(pause.fields));
+    const stopped = await browser.post(all.action, Object.fromEntries(all.fields));
+
+    expect(paused.to).toBe("/cards?q=room&show=on-sale");
+    expect(stopped.to).toBe("/cards?q=room&show=on-sale");
+    expect(await purchasable(gateway, room)).toBe(false);
+  });
+
+  it("reads the place a press carries as the cards' own address is read, the page included", async () => {
+    // Read as the loader reads an address, so a field no list draws leads to
+    // the default rather than to an address of its own.
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await browser.signIn();
+    await browser.get("/cards");
+
+    const kept = await browser.post(switchOf(room, "pause"), {
+      q: "room",
+      show: "off-sale",
+      page: "3",
+    });
+    const unknown = await browser.post(switchOf(room, "resume"), {
+      q: " room ",
+      show: "every",
+      page: "-1",
+    });
+
+    expect(kept.to).toBe("/cards?q=room&show=off-sale&page=3");
+    expect(unknown.to).toBe("/cards?q=room");
+    expect(await purchasable(gateway, room)).toBe(true);
+  });
+
+  it("answers a press from a searched list inside the application, leading back to that list", async () => {
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await browser.signIn();
+    const drawn = formsIn((await browser.get("/cards?q=room")).html).find(
+      ({ method, action }) => method === "post" && action.includes(encodeURIComponent(room)),
+    );
+    if (drawn === undefined) throw new Error("the cards draw no switch for the card");
+    const [path = "", query = ""] = drawn.action.split("?");
+
+    const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
+
+    expect(pressed.status).toBe(202);
+    expect(pressed.html).toContain('"redirect","/cards?q=room"');
+    expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
+  });
+
   it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
     // Only a press answered back on its own page stays inside the
     // application; the seller name is answered on the cards.

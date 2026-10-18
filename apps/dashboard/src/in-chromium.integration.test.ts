@@ -106,9 +106,14 @@ beforeAll(async () => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
     // The receipts' data and the open orders' arrive late, as from a slow
     // gateway, so what a page shows before its data is there can be seen.
+    // So do the searched cards a press leads back to, so what the page marks
+    // before they arrive can be seen too.
     if (
       request.path === `${BASE}/receipts.data` ||
-      (request.path === `${BASE}/orders.data` && request.query.open === "true")
+      (request.path === `${BASE}/orders.data` && request.query.open === "true") ||
+      (request.method === "GET" &&
+        request.path === `${BASE}/cards.data` &&
+        request.query.q === "suite")
     ) {
       setTimeout(next, SLOW_MS);
       return;
@@ -242,6 +247,45 @@ describe("a press answered on its own page", () => {
 
     expect(scrolled).toBeGreaterThan(0);
     expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
+    await page.context().close();
+  });
+
+  it("keeps the search, the segment and the page pressed on, before the cards arrive and after", async () => {
+    // Suites enough to fill more than one page of the cards on sale.
+    for (let suite = 1; suite <= 55; suite += 1) {
+      const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        merchant_item_id: `suite-${suite}`,
+        title: "A suite for the night",
+        description: `One night in suite ${suite}`,
+        price: { amount: "180.00", currency: "USD" },
+        result: { access_code: { type: "string" } },
+        fulfillment: "sync",
+      });
+      if (!published.ok) throw new Error("the test's card was not published");
+    }
+    const listing = `${origin}${BASE}/cards?q=suite&show=on-sale&page=2`;
+    const page = await onTheCards();
+    await page.goto(listing);
+    await page.waitForLoadState("networkidle");
+    const marked = () => page.locator(".segments .here").textContent();
+
+    const arrived = page.waitForResponse(
+      (answer) =>
+        answer.request().method() === "GET" &&
+        new URL(answer.url()).pathname === `${BASE}/cards.data`,
+    );
+    await page.locator(".list-row form[action*='pause='] button").first().click();
+    await page.waitForTimeout(400);
+    const meanwhile = await marked();
+    await arrived;
+    // The pressed button is busy until the cards answering it are drawn.
+    await page.waitForFunction(() => document.querySelector("[aria-busy='true']") === null);
+
+    expect(meanwhile).toContain("On sale");
+    expect(page.url()).toBe(listing);
+    expect(await marked()).toContain("On sale");
+    expect(await page.locator("input[name=q]").inputValue()).toBe("suite");
+    expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
     await page.context().close();
   });
 });
