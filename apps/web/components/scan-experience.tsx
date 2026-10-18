@@ -1,5 +1,6 @@
 import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
+import { Badge } from "@agentify/ui";
 import {
   type CSSProperties,
   type ReactNode,
@@ -414,7 +415,9 @@ function ScanStateBadge({
 }>) {
   if (accessState === "missing" || accessState === "invalid")
     return <StatusBadge status="unavailable" />;
-  if (status === "failed") return <StatusBadge status="fail" />;
+  // A scan that ended without a result found no fault: "Fail" is a check's
+  // verdict on something it could read.
+  if (status === "failed") return <Badge tone="quiet">No result</Badge>;
   if (status === "completed") return <StatusBadge status="complete" />;
   if (status === "partial") return <StatusBadge status="partial" />;
   return <StatusBadge status="running" />;

@@ -685,7 +685,9 @@ describe("a scan in Chromium", () => {
     await page.getByText("No reliable diagnostic was produced").waitFor();
 
     const frames = await cardFrames(page);
-    expect(frames.filter((frame) => frame.badge === "Fail" && frame.heading === null)).toEqual([]);
+    expect(frames.filter((frame) => frame.badge === "No result" && frame.heading === null)).toEqual(
+      [],
+    );
     await page.context().close();
   });
 

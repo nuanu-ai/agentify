@@ -90,6 +90,13 @@ describe("ScanExperience teaser actions", () => {
     expect(running).not.toContain("2026");
   });
 
+  it("says a scan that ended without a result has none, not that it failed a check", async () => {
+    const markup = await drawn("failed");
+
+    expect(markup).toContain("No result");
+    expect(markup).not.toMatch(/>Fail</);
+  });
+
   it("keeps privacy choices reachable from the scan help links", async () => {
     expect(await drawn("teaser")).toContain("Privacy choices");
   });
