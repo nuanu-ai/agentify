@@ -942,6 +942,34 @@ const SCANNING: GalleryState[] = [
   ),
   scan(
     {
+      id: "scanner-scan-browser-running",
+      screen: "Scan",
+      when: "A scan has finished while a real browser is still looking at the site.",
+      cause:
+        "The browser observation runs after the eighteen checks, so its part of the result says it is on its way.",
+    },
+    {
+      status: ended("teaser"),
+      observation: { ...OBSERVATION, status: "running", pages_assessed: 0, findings: [] },
+      shows: "This step runs after the report.",
+    },
+  ),
+  scan(
+    {
+      id: "scanner-scan-browser-unreadable",
+      screen: "Scan",
+      when: "A scan has finished while its browser observation cannot be read.",
+      cause:
+        "The site answered the page's ask for the observation with an error; the eighteen checks stand without it.",
+    },
+    {
+      status: ended("teaser"),
+      more: { [`GET /api/v1/scans/${SCAN}/browser-observation`]: { status: 503 } },
+      shows: "Browser observations are temporarily unavailable",
+    },
+  ),
+  scan(
+    {
       id: "scanner-scan-signed-in",
       screen: "Scan",
       when: "A person already signed in finishes a scan.",
@@ -1183,7 +1211,7 @@ const REPORTS: GalleryState[] = [
             score: 46,
             level: "readable",
             rubric_version: "gtm-v1.0.0",
-            generated_at: "2026-10-12T15:40:00Z",
+            generated_at: SCANNED_AT,
           },
           false,
         ),
