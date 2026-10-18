@@ -68,9 +68,11 @@ The payout wallet is set in the dashboard, on the Settings screen, and nowhere
 else. The keys you issue operate your shop, but none of them can change where
 its money goes, so a copy of a key in a server's environment cannot send your
 sales anywhere else: no call your code can reach sets the wallet. Your code
-can still read it with `GET /v0/payout-wallet`, which on the live channel also
-shows a change of it still waiting to take effect ([Replacing your
-wallet](/money#replacing-your-wallet)).
+can still read it with `GET /v0/payout-wallet`. On the live channel the answer
+also carries a change still waiting to take effect, under `pending` with its
+`takes_effect_at`; on the test channel a change applies at once, so `pending`
+is always null there, and the first waiting change your code meets is on the
+live channel ([Replacing your wallet](/money#replacing-your-wallet)).
 
 Buyers do not pay that wallet directly. Every payment request names your
 payout contract for it, a split contract of the 0xSplits protocol with no owner

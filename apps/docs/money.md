@@ -130,8 +130,8 @@ account is sent a message about it afterwards.
 
 On the test channel every change applies at once and nothing is sent. Your
 engineer's code reads back the wallet in force with any waiting change beside
-it (`pending`, with its `takes_effect_at`), and because nothing waits on the
-test channel, the first waiting change that code meets is on the live channel.
+it, and because nothing waits on the test channel, the first waiting change
+that code meets is on the live channel.
 
 ## What they pay in
 
