@@ -104,7 +104,9 @@ const THREE = ordersOf([
 
 /** The ids of the rows the address asks for, among these orders, all of them open. */
 const found = (address: string, orders = THREE, open = orders) =>
-  ordersView(CARDS, orders, open, new URLSearchParams(address)).listing.rows.map((row) => row.id);
+  ordersView("live", CARDS, orders, open, new URLSearchParams(address)).listing.rows.map(
+    (row) => row.id,
+  );
 
 const searched = (q: string) => found(new URLSearchParams({ q }).toString());
 
@@ -199,12 +201,12 @@ describe("searching the orders", () => {
     const missed = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView(CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
+          view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
         />
       )),
     );
     const none = readable(
-      served(() => <OrdersScreen view={ordersView(CARDS, ordersOf([]), ordersOf([]))} />),
+      served(() => <OrdersScreen view={ordersView("live", CARDS, ordersOf([]), ordersOf([]))} />),
     );
 
     expect(missed).toContain("No order matches “router”.");
@@ -220,7 +222,7 @@ describe("searching the orders", () => {
       { id: SAME_TAIL, status: "refund_due" },
     ]);
 
-    const view = ordersView(CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
+    const view = ordersView("live", CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
 
     expect(view.needsYou.map((one) => one.id)).toStrictEqual([FIRST]);
   });
@@ -233,7 +235,7 @@ describe("a refund due on a test purchase", () => {
       { id: SAME_TAIL, status: "refund_due" },
     ]);
 
-    const [test, real] = ordersView(CARDS, owing, owing).needsYou;
+    const [test, real] = ordersView("live", CARDS, owing, owing).needsYou;
 
     // The test word stands with the sum itself.
     expect(test?.why).toMatch(/test purchase, 5\.00 USD/);
@@ -252,7 +254,7 @@ describe("the open orders", () => {
     ]);
     const open = ordersOf([{ id: FIRST, status: "in_progress" }]);
 
-    const view = ordersView(CARDS, all, open, new URLSearchParams("show=open"));
+    const view = ordersView("live", CARDS, all, open, new URLSearchParams("show=open"));
 
     expect(view.listing.rows.map((row) => row.id)).toStrictEqual([FIRST]);
     expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
@@ -265,7 +267,7 @@ describe("the open orders", () => {
     const text = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView(CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
+          view={ordersView("live", CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
         />
       )),
     );
@@ -286,7 +288,7 @@ describe("a long list of orders", () => {
   );
 
   it("draws the newest fifty first and says which of how many", () => {
-    const view = ordersView(CARDS, many, many);
+    const view = ordersView("live", CARDS, many, many);
 
     expect(view.listing.rows[0]?.id).toBe(many.orders[119]?.id);
     expect(view.listing.rows).toHaveLength(50);
@@ -297,7 +299,7 @@ describe("a long list of orders", () => {
     // The oldest sixty fall on the eleventh of October and the newest sixty on
     // the twelfth, so the second page holds the turn of the day.
     const html = served(() => (
-      <OrdersScreen view={ordersView(CARDS, many, many, new URLSearchParams("page=2"))} />
+      <OrdersScreen view={ordersView("live", CARDS, many, many, new URLSearchParams("page=2"))} />
     ));
 
     const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(

@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 
 import { type ResumeIntent as GateIntent, rememberResumeIntent } from "../lib/resume-intent";
 import styles from "./copy-remediation-prompt.module.css";
+import row from "./report-actions.module.css";
 
 type CopyState = "idle" | "loading" | "copied" | "fallback" | "error" | "gated";
 
@@ -165,7 +166,7 @@ export function CopyRemediationPrompt({
 
   return (
     <>
-      <div className={styles.actions}>
+      <div className={`${styles.actions} ${row.group}`}>
         <button
           className={`${styles.button} ${secondary ? styles.secondary : styles.primary}`}
           disabled={state === "loading"}

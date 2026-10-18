@@ -18,6 +18,7 @@ import { Gateway } from "./app/gateway.js";
 import { keyDigest, setPayoutWallet, setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
+import { widestChallengeOn } from "./http/x402.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 
 /**
@@ -72,6 +73,7 @@ async function aGatewayOnAPort() {
     ids,
     // A test channel, where nothing is announced.
     announcer: nobodyAnnounces,
+    widestChallenge: widestChallengeOn(config),
   });
   await gateway.start();
 

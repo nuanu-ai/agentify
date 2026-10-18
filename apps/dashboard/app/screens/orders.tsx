@@ -82,6 +82,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         label="Search orders"
         placeholder="Search by order ID or product"
       />
+      {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.needsYou.length === 0 ? null : (
         <Group
           title="Needs you"

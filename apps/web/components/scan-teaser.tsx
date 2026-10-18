@@ -6,6 +6,7 @@ import { unexplainedUnavailable } from "../lib/robots-notice";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { PublicShareActions } from "./public-share-actions";
 import { RegistrationForm } from "./registration-form";
+import row from "./report-actions.module.css";
 import { RobotsNotice } from "./robots-notice";
 import styles from "./scan-experience.module.css";
 import { StatusBadge } from "./status-badge";
@@ -66,7 +67,7 @@ export function ScanTeaser({
       </div>
       {shareShown || promptShown ? (
         <div className={styles.teaserActions}>
-          <div className={styles.teaserActionRows}>
+          <div className={`${row.row} ${styles.teaserActionRows}`}>
             <PublicShareActions
               enabled={publicShareEnabled}
               preview={{

@@ -18,6 +18,7 @@ import { MemoryStore } from "./adapters/memory/store.js";
 import { Gateway } from "./app/gateway.js";
 import { setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
+import { widestChallengeOn } from "./http/x402.js";
 import { runPayout } from "./payout-command.js";
 import { DISTRIBUTOR } from "./split/fixture.js";
 import {
@@ -86,6 +87,7 @@ const aGatewayOver = (
     clock: () => NOW,
     ids: countedIds(),
     announcer: new RecordingAnnouncer(),
+    widestChallenge: widestChallengeOn(config),
   });
   return running;
 };

@@ -35,6 +35,15 @@ export function KeptChoiceScript() {
   return <script dangerouslySetInnerHTML={HIDDEN_WHILE_KEPT} />;
 }
 
+/**
+ * For a drawing of a page where no script runs, such as the screens gallery:
+ * the page as a visitor who has already answered the banner sees it, with the
+ * banner out of the way as their browser keeps it.
+ */
+export function BannerAnswered() {
+  return <style>{".consent-banner{display:none}"}</style>;
+}
+
 /** Tab and Shift+Tab go round the dialog's own controls, as long as it is open. */
 const keepTabInside = (event: KeyPress<HTMLElement>) => {
   if (event.key !== "Tab") return;

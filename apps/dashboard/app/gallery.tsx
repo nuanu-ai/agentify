@@ -162,11 +162,6 @@ interface Drawn {
   /** Under the dashboard's prefix, query and all. */
   readonly path: string;
   readonly mode: SurfaceMode;
-  /**
-   * The orders that need the merchant, on a page about their selling; none
-   * unless the state is about them.
-   */
-  readonly needYou?: number | null;
   /** The banner the layout reads for a page about the merchant's selling; none unless given. */
   readonly account?: readonly AccountNote[];
   readonly loaded?: HydrationState["loaderData"];
@@ -178,8 +173,8 @@ type Told = Omit<GalleryState, "address" | "draw">;
 
 /**
  * The address the gate's loader names, for a page behind the gate, and the
- * count the frame's sidebar reads on a page about a merchant's selling; a page
- * in front of the gate is drawn for nobody, as the server draws it.
+ * banner the merchant's layout reads on a page about their selling; a page in
+ * front of the gate is drawn for nobody, as the server draws it.
  */
 const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] => {
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
@@ -193,7 +188,7 @@ const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] =>
 /** A state at its address, drawn by the route tree as the server answers that address. */
 const at = (
   told: Told,
-  { path, mode, needYou = 0, account = [], loaded, pressed, failed }: Drawn,
+  { path, mode, account = [], loaded, pressed, failed }: Drawn,
 ): GalleryState => ({
   ...told,
   address: `${BASE}${path}`,
@@ -205,7 +200,7 @@ const at = (
         hydrationData={{
           loaderData: {
             root: chromeIn(mode),
-            ...gateAt(path, { needYou, account }),
+            ...gateAt(path, { account }),
             ...loaded,
           },
           ...(pressed === undefined ? {} : { actionData: pressed }),
@@ -527,7 +522,6 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   state,
   unset: [],
   through: "woocommerce",
-  stopped: false,
   ...more,
 });
 
@@ -612,17 +606,23 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING)).why;
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING)).why;
+const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
+const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
 
 // --- the states ----------------------------------------------------------------
+
+/**
+ * Whether the sign-in offers Google, as both channels are configured: the live
+ * site and the test site each serve the Google button.
+ */
+const GOOGLE_ON = true;
 
 /** The sign-in page at its address, or, given the answer to a press, as that answer draws it. */
 const signIn = (told: Told, path: string, answered?: SignInView): GalleryState =>
   at(told, {
     path,
     mode: "live",
-    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, false) },
+    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, GOOGLE_ON) },
     ...(answered === undefined ? {} : { pressed: { "routes/sign-in": answered } }),
   });
 
@@ -649,25 +649,6 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody presses the button on a landing page they reached through a paid ad.",
       cause:
-        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the box is offered, unticked.",
-    },
-    {
-      path: "/sign-in?clickid=qa_click_0123456789abcdef",
-      mode: "live",
-      loaded: {
-        "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), false),
-          click: { id: "qa_click_0123456789abcdef", consented: false },
-        },
-      },
-    },
-  ),
-  at(
-    {
-      id: "dashboard-sign-in-from-an-ad-google",
-      screen: "Sign in",
-      when: "Somebody presses the button on a paid ad's landing page, on a channel configured for Google sign-in.",
-      cause:
         "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the one box is offered, unticked, and goes with whichever way in is pressed.",
     },
     {
@@ -675,21 +656,11 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), true),
+          ...askViewOf(new URLSearchParams(), GOOGLE_ON),
           click: { id: "qa_click_0123456789abcdef", consented: false },
         },
       },
     },
-  ),
-  signIn(
-    {
-      id: "dashboard-sign-in-google",
-      screen: "Sign in",
-      when: "Somebody opens the dashboard on a channel configured for Google sign-in.",
-      cause: "Google sign-in is available alongside the email link.",
-    },
-    "/sign-in?destination=settings",
-    { screen: "ask", destination: "settings", googleEnabled: true },
   ),
   at(
     {
@@ -702,7 +673,7 @@ const SIGNING_IN: GalleryState[] = [
       path: "/sign-in/google",
       mode: "live",
       pressed: {
-        "routes/sign-in-google": googleRefusalView(true, "unavailable", "settings"),
+        "routes/sign-in-google": googleRefusalView(GOOGLE_ON, "unavailable", "settings"),
       },
     },
   ),
@@ -718,7 +689,7 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in-google-callback": googleRefusalView(
-          true,
+          GOOGLE_ON,
           "email-unverified",
           "settings",
           WHO,
@@ -763,7 +734,7 @@ const SIGNING_IN: GalleryState[] = [
       cause: "The typed address does not have the shape of an email address, so no link was sent.",
     },
     "/sign-in",
-    { screen: "ask", destination: "default", googleEnabled: false, problem: NOT_AN_ADDRESS },
+    { screen: "ask", destination: "default", googleEnabled: GOOGLE_ON, problem: NOT_AN_ADDRESS },
   ),
   signIn(
     {
@@ -845,7 +816,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in",
       mode: "test",
-      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), false) },
+      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), GOOGLE_ON) },
     },
   ),
   at(
@@ -981,12 +952,11 @@ const cards = (
   told: Told,
   view: ReturnType<typeof cardsView>,
   mode: SurfaceMode,
-  more: Readonly<{ needYou?: number | null; path?: string; account?: readonly AccountNote[] }> = {},
+  more: Readonly<{ path?: string; account?: readonly AccountNote[] }> = {},
 ): GalleryState =>
   at(told, {
     path: more.path ?? "/cards",
     mode,
-    ...(more.needYou === undefined ? {} : { needYou: more.needYou }),
     ...(more.account === undefined ? {} : { account: more.account }),
     loaded: { "routes/cards": view },
   });
@@ -1110,30 +1080,6 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
     "live",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-refunds-due",
-      screen: "Cards",
-      when: "A merchant with two refunds due opens the dashboard at their cards.",
-      cause:
-        "Two of the merchant's orders are refund due, so Orders in the sidebar carries the count on every page; goods delivered and not paid are not counted.",
-    },
-    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: 2 },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-count-unknown",
-      screen: "Cards",
-      when: "A merchant opens Cards while the orders could not be read in time.",
-      cause:
-        "The count beside Orders could not be read, so the sidebar marks it as unknown rather than drawing none.",
-    },
-    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: null },
   ),
   cards(
     {
@@ -1397,10 +1343,11 @@ const ordersAt = (
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
-    owed?: Parameters<typeof ordersView>[4];
+    owed?: Parameters<typeof ordersView>[5];
   }> = {},
 ) =>
   ordersView(
+    mode,
     cards,
     listed,
     open,
@@ -1408,10 +1355,6 @@ const ordersAt = (
     owed,
     paidIntoSplit(mode, listed.orders),
   );
-
-/** The sidebar counts every refund due, whatever the page's search narrows its rows to. */
-const refundsIn = (listed: ReturnType<typeof ordersOf>) =>
-  listed.orders.filter((order) => order.status === "refund_due").length;
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
 const orders = (
@@ -1423,7 +1366,6 @@ const orders = (
   at(told, {
     path,
     mode: more.mode ?? "live",
-    needYou: refundsIn(listed),
     account: bannerOf(seenBy(more.mode ?? "live"), {
       selling: (more.cards ?? CATALOGUE).selling,
     }),
@@ -1802,19 +1744,33 @@ const INTEGRATIONS: GalleryState[] = [
 
 /**
  * The banner over a WooCommerce screen: the shop's when the merchant sells
- * through it, and all sales paused where the screen says so.
+ * through it, and all sales paused where the example says so.
  */
-const shopBanner = (view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>) =>
-  bannerOf(seenBy("test"), {
+/** What the merchant's layout reads beside a WooCommerce example, where it is not as usual. */
+interface ShopAccount {
+  readonly selling?: AccountRead["selling"];
+  /** No payout wallet set, which the example's own read says. */
+  readonly noWallet?: true;
+}
+
+const shopBanner = (
+  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  { selling = "open", noWallet }: ShopAccount,
+) =>
+  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), {
     through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
-    selling: view.screen === "shop" && view.connection?.stopped === true ? "paused" : "open",
+    selling,
   });
 
-const shop = (told: Told, view: ReturnType<typeof wooShopView>, path = "/woocommerce") =>
+const shop = (
+  told: Told,
+  view: ReturnType<typeof wooShopView>,
+  { path = "/woocommerce", ...account }: ShopAccount & { readonly path?: string } = {},
+) =>
   at(told, {
     path,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     loaded: { "routes/woocommerce": view },
   });
 
@@ -1823,11 +1779,12 @@ const shopPress = (
   told: Told,
   press: "connect" | "import" | "switch" | "disconnect",
   view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
+  account: ShopAccount = {},
 ) =>
   at(told, {
     path: `/woocommerce/${press}`,
     mode: "test",
-    account: shopBanner(view),
+    account: shopBanner(view, account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -1877,7 +1834,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The shop's server posted its keys, and the browser came back from the shop.",
     },
     shopOn(shopRead(CONNECTED), { cameBack: true }),
-    "/woocommerce?from=shop",
+    { path: "/woocommerce?from=shop" },
   ),
   shop(
     {
@@ -1898,6 +1855,7 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
     },
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
+    { noWallet: true },
   ),
   shop(
     {
@@ -1906,7 +1864,8 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant with a connected shop has paused all sales.",
       cause: "The merchant's selling is stopped, so nothing imported sells until it starts again.",
     },
-    shopOn(shopRead(CONNECTED, { stopped: true })),
+    shopOn(shopRead(CONNECTED)),
+    { selling: "paused" },
   ),
   shop(
     {
@@ -1953,7 +1912,7 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-import",
       screen: "WooCommerce import",
-      when: "A merchant presses Import the catalog.",
+      when: "A merchant presses Import products.",
       cause:
         "The shop's catalogue was read, and each product was published, refused or left in the shop.",
     },
@@ -2010,6 +1969,7 @@ const WOOCOMMERCE: GalleryState[] = [
     },
     "import",
     shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), { refused: ["no_payout_wallet"] }),
+    { noWallet: true },
   ),
   shopPress(
     {
@@ -2027,12 +1987,30 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-disconnect-refused",
       screen: "WooCommerce",
-      when: "A merchant presses Forget this shop while orders the shop took are open.",
+      when: "A merchant presses Disconnect shop while orders the shop took are open.",
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",
     shopOn(shopRead(CONNECTED), {
       leaving: TO_THE_CODE,
+    }),
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-disconnect-refused-many",
+      screen: "WooCommerce",
+      when: "A merchant presses Disconnect shop while seven orders the shop took are open.",
+      cause:
+        "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
+    },
+    "disconnect",
+    shopOn(shopRead(CONNECTED), {
+      leaving: refusalIn(
+        switchRefused(
+          "api",
+          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+        ),
+      ),
     }),
   ),
   at(

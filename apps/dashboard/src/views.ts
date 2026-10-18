@@ -7,7 +7,7 @@
  * thing; `words.ts` carries those cases.
  */
 
-import type { Readiness, SurfaceMode } from "@agentify/core";
+import { type Readiness, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
@@ -58,8 +58,6 @@ export const momentView = (iso: string): MomentView => {
  * same on every section.
  */
 export interface FrameView {
-  /** The orders that need the merchant; null where they could not be counted, which is not none. */
-  readonly needYou: number | null;
   /** The banner's reasons, empty where the account sells as usual and everything was read. */
   readonly account: readonly AccountNote[];
 }
@@ -375,6 +373,11 @@ export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
   /**
+   * Said once over the orders where some are test purchases and no band over
+   * the page says the channel's payments are tests; null otherwise.
+   */
+  readonly testNote: string | null;
+  /**
    * The orders the address asked for, newest first and at most a page of
    * them: what was searched for, the segments with their counts, how much was
    * cut, and why none is drawn where the merchant has some.
@@ -469,6 +472,7 @@ const setAt = (order: OrderList["orders"][number]): number => {
 };
 
 export const ordersView = (
+  mode: SurfaceMode,
   cards: MerchantCardList,
   orders: OrderList,
   open: OrderList,
@@ -514,6 +518,7 @@ export const ordersView = (
       }));
   return {
     none: orders.orders.length === 0,
+    testNote: testOrders(orders, mode),
     listing: listingOf({
       rows: listed.map(({ row }) => row),
       asked,
@@ -529,6 +534,22 @@ export const ordersView = (
     needsYou: told(needsYou),
     waitsOnTheBuyer: told(waitsOnTheBuyer),
   };
+};
+
+/**
+ * Orders carry the test flag too, and their sums would otherwise be taken for
+ * money that moved: each sum carries the mark, and the page says it once too.
+ * Where the band over every page of the channel already says its payments are
+ * tests, the page does not say it a second time.
+ */
+const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
+  const tests = orders.orders.filter((order) => order.test).length;
+  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
+    return null;
+  }
+  return tests === orders.orders.length
+    ? "Every order here is a test purchase: no real money moved."
+    : `${countOf(tests, "order")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no real money moved for ${tests === 1 ? "it" : "those"}.`;
 };
 
 /**
@@ -684,22 +705,17 @@ const sumsOf = (receipts: ReceiptList): string => {
 
 /**
  * A mark per row tells two rows apart but does not stop a merchant reading a
- * page of them as takings, so when every row is a test the page says so once.
+ * page of them as takings, so where a row is a test the page says so once: in
+ * the band over every page of a channel that has one, or else in a sentence.
  */
 const testWarning = (receipts: ReceiptList, mode: SurfaceMode): string | null => {
   const tests = receipts.receipts.filter((receipt) => receipt.test).length;
-  if (tests === 0) {
+  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
     return null;
   }
   const subject =
     tests === receipts.receipts.length
       ? "Every receipt here is a test purchase"
       : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}`;
-  const consequence =
-    mode === "test"
-      ? "test funds settled on Base Sepolia, but no real money moved."
-      : mode === "sandbox"
-        ? "no payment settled and no real money moved."
-        : "no real money moved.";
-  return `${subject}: ${consequence}`;
+  return `${subject}: no real money moved.`;
 };

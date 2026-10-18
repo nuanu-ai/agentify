@@ -90,11 +90,14 @@ const receipt = (id: string, test: boolean) => ({
   test,
 });
 
-const ordersPage = (orders: OrderList): string =>
-  served(() => <OrdersScreen view={ordersView(cards, orders, orders)} />);
+const ordersPage = (orders: OrderList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <OrdersScreen view={ordersView(viewer.mode, cards, orders, orders)} />);
 
-const receiptsPage = (receipts: ReceiptList): string =>
-  served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
+const receiptsPage = (receipts: ReceiptList, viewer: Viewer = SEEN_BY): string =>
+  served(() => <ReceiptsScreen view={receiptsView(viewer, cards, receipts)} />);
+
+/** On the live site, which draws no band over its pages to say what is a test. */
+const ON_LIVE: Viewer = { ...SEEN_BY, mode: "live" };
 
 /**
  * The split a merchant's payments go to on the test channel, made by the
@@ -181,6 +184,17 @@ describe("the receipts of sales that went out", () => {
 });
 
 describe("a list where some of the money was real and some was not", () => {
+  it("counts the test purchases rather than calling the whole page a test", () => {
+    const orders: OrderList = OrderListSchema.parse({
+      orders: [order("ord_1", true), order("ord_2", false), order("ord_3", false)],
+    });
+
+    const text = readable(ordersPage(orders, ON_LIVE));
+
+    expect(text).toContain("1 order here is a test purchase");
+    expect(text).not.toContain("Every order here is a test purchase");
+  });
+
   it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
     const orders: OrderList = OrderListSchema.parse({
       orders: [
@@ -203,7 +217,7 @@ describe("a list where some of the money was real and some was not", () => {
       receipts: [receipt("rcp_1", true), receipt("rcp_2", false)],
     });
 
-    const html = receiptsPage(receipts);
+    const html = receiptsPage(receipts, ON_LIVE);
     const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
@@ -220,10 +234,41 @@ describe("a list where some of the money was real and some was not", () => {
     });
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", false)] });
 
-    expect(readable(receiptsPage(receipts))).not.toContain("test purchase");
-    expect(readable(ordersPage(orders))).not.toContain("test purchase");
-    expect(receiptsPage(receipts)).not.toContain(">test<");
-    expect(ordersPage(orders)).not.toContain(">test<");
+    expect(readable(receiptsPage(receipts, ON_LIVE))).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, ON_LIVE))).not.toContain("test purchase");
+    expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
+    expect(ordersPage(orders, ON_LIVE)).not.toContain(">test<");
+  });
+
+  it("says once on the live site, which draws no band, that every row is a test", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    expect(readable(receiptsPage(receipts, ON_LIVE))).toContain(
+      "Every receipt here is a test purchase: no real money moved.",
+    );
+    expect(readable(ordersPage(orders, ON_LIVE))).toContain(
+      "Every order here is a test purchase: no real money moved.",
+    );
+  });
+
+  it("leaves it to the band on a channel that draws one, and still marks every sum", () => {
+    // The test site's band says on every page that its payments are tests, so
+    // the list does not say it a second time; the mark on each sum stays.
+    const onTest: Viewer = { ...SEEN_BY, mode: "test" };
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
+    });
+    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
+
+    const html = receiptsPage(receipts, onTest);
+    const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
+
+    expect(readable(html)).not.toContain("test purchase");
+    expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
+    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
   });
 });
 
@@ -284,7 +329,9 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
     const html = served(() => (
-      <OrdersScreen view={ordersView(cards, orders, orders, undefined, {}, paidInto)} />
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, paidInto)}
+      />
     ));
 
     // A wide row says the merchant's share under the price; the row a phone
@@ -329,6 +376,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const html = served(() => (
       <OrdersScreen
         view={ordersView(
+          SEEN_BY.mode,
           cards,
           orders,
           orders,
@@ -353,7 +401,9 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
 
     const html = served(() => (
-      <OrdersScreen view={ordersView(cards, orders, orders, undefined, {}, { ord_split: SPLIT })} />
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, { ord_split: SPLIT })}
+      />
     ));
 
     expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 79.92 USD to you", "80.00 USD"]);
@@ -373,6 +423,7 @@ describe("a refund owed", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
+            SEEN_BY.mode,
             cards,
             owing,
             owing,
@@ -400,7 +451,9 @@ describe("a refund owed", () => {
       orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
     });
 
-    const text = readable(served(() => <OrdersScreen view={ordersView(cards, owing, owing)} />));
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY.mode, cards, owing, owing)} />),
+    );
     const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/Paid, and the product was not delivered/);

@@ -536,6 +536,24 @@ required fields first.
 | `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional | `'handler'` |
 | `tags` | words describing the product for an agent's search, at most five | optional | `['esim', 'telecom']` |
 
+## How large a card may be
+
+An agent is asked to pay in one HTTP header, `PAYMENT-REQUIRED`. Node's HTTP
+client and `fetch` read at most 16,384 bytes of a response's headers in all; we
+keep half of that as a margin for the response's other headers and for whatever
+stands between us and the buyer, so a card is published only if its header
+stays within 8,192 bytes. A card whose header could grow past that is refused
+with the finding `challenge_too_large`, which says how large the header would
+get.
+
+The header is the challenge's JSON in base64, which turns every three bytes into
+four. It carries the description and the tags once, and the name of each
+declared field: a required purchase parameter's name three times, an optional
+one's twice, and a result field's once, so a description of 500 Chinese
+characters, 1,500 bytes as text, takes about 2,000 bytes of the header. To bring
+a refused card within the limit, declare fewer fields, give them shorter names,
+or shorten the description.
+
 ## Refusal codes
 
 A handler's refusal carries a short code and a reason a person can read. Both go
@@ -573,7 +591,7 @@ Two of us: the check we ship, run on your side, and we ourselves before the
 card goes into the catalogues. Both sides look at the same thing — whether an
 agent can assemble a correct purchase from this card — and both read the card
 by the same contract, so a card the first accepts is not turned away by the
-second for anything about the card itself.
+second for its shape or its price.
 
 They answer in the same shape as well. The check hands you a list of findings,
 each naming the field it is about and what is wrong with it; a publish we refuse
@@ -586,7 +604,9 @@ wallet set for your share of the sales wherever a payment settles
 yet (`no_operator_approval`), and on a parcel's card alone, no site set for
 your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
 your side cannot see either which channel a card is published on, so it passes
-a parcel's card that the live channel then refuses.
+a parcel's card that the live channel then refuses. Nor can it measure the
+header a card is paid through, so a card it passes can still be refused for its
+size ([how large a card may be](#how-large-a-card-may-be)).
 
 ## Updating a card, and taking one off sale
 

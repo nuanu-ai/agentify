@@ -88,7 +88,7 @@ describe("BrowserObservations", () => {
     const markup = renderToStaticMarkup(
       <BrowserObservations initialData={observation()} scanId="scan-1" surface="scan" />,
     );
-    expect(markup).not.toContain("Unnamed Control Count");
+    expect(markup).not.toContain("Unnamed control count");
     expect(markup).not.toContain("Copy this fix");
   });
 });

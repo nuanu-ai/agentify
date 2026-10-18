@@ -1,5 +1,5 @@
 import { LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";
-import { CardSchema, PAYABLE_DECIMALS } from "@nuanu-ai/agentify-contracts";
+import { AmountSchema, CardSchema, PAYABLE_DECIMALS } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { getDefaultAsset } from "@x402/evm";
 import type { DiscoveryExtension } from "@x402/extensions/bazaar";
@@ -10,7 +10,8 @@ import {
 } from "@x402/extensions/bazaar";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
-import { atomicUnits, PaymentEdge, paymentFingerprint } from "./x402.js";
+import { randomIds } from "../ports/clock.js";
+import { atomicUnits, CHALLENGE_REASONS, PaymentEdge, paymentFingerprint } from "./x402.js";
 
 describe("a price in the token's own units", () => {
   it("writes an exact amount, whatever the price looked like", async () => {
@@ -481,17 +482,12 @@ describe("the discovery declaration a challenge carries", () => {
       tags: ["a", "b", "c", "d", "e"].map((letter) => letter.repeat(32)),
     });
     const { resource } = decodePaymentRequiredHeader(
-      edge().challengeFor(
-        { amount: "5.00", currency: "USD" },
-        null,
-        {
-          itemId: "itm_4d21bb",
-          card: wide,
-          serviceName: "n".repeat(32),
-          payTo: SELLERS_SPLIT,
-        },
-        "POST",
-      ),
+      edge().challengeFor({ amount: "5.00", currency: "USD" }, null, {
+        itemId: "itm_4d21bb",
+        card: wide,
+        serviceName: "n".repeat(32),
+        payTo: SELLERS_SPLIT,
+      }),
     );
 
     expect(sanitizeResourceServiceMetadata(resource)).toStrictEqual({
@@ -615,6 +611,73 @@ describe("a parcel's challenge", () => {
     );
 
     expect(error).toContain("includes shipping");
+  });
+});
+
+describe("a card's challenge at its widest", () => {
+  // Publishing refuses a card by this measure, so it must never fall short of a
+  // challenge the card is answered with later, whatever its merchant is renamed
+  // to, its order is priced at, or the reason the challenge gives.
+  const edge = new PaymentEdge(
+    {
+      facilitatorUrl: "https://x402.org/facilitator",
+      network: "eip155:84532",
+      timeoutSeconds: 300,
+      payTo: null,
+      cdpApiKeyId: null,
+      cdpApiKeySecret: null,
+    },
+    "https://agentify.example",
+    300,
+  );
+  const cards = [
+    CardSchema.parse({
+      merchant_item_id: "room-101",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: { amount: "80.00", currency: "USD" },
+      params: { nights: { type: "integer", required: true } },
+      result: { access_code: { type: "string" } },
+    }),
+    CardSchema.parse({
+      merchant_item_id: "coffee-1kg",
+      title: "Coffee beans, one kilogram",
+      description: "Single-origin beans, roasted to order.",
+      price: { amount: "18.00", currency: "USD" },
+      fulfillment: "ship",
+      ship_within_seconds: 172_800,
+      price_check: "handler",
+    }),
+  ];
+
+  /** The widest amount an order can be priced at: every whole digit an amount may carry. */
+  const WIDEST_AMOUNT = `${"9".repeat(18)}.${"9".repeat(PAYABLE_DECIMALS)}`;
+
+  it("is exactly as wide as the widest challenge the card can be answered with", () => {
+    // Narrower would let a card past the bound that is later answered over it;
+    // wider would refuse cards whose every challenge fits.
+    expect(AmountSchema.safeParse(WIDEST_AMOUNT).success).toBe(true);
+    expect(AmountSchema.safeParse(`9${WIDEST_AMOUNT}`).success).toBe(false);
+    for (const card of cards) {
+      const answered = Object.values(CHALLENGE_REASONS).flatMap((why) =>
+        [null, randomIds("ord")].map(
+          (orderId) =>
+            edge.challengeFor(
+              { amount: WIDEST_AMOUNT, currency: "USD" },
+              orderId,
+              {
+                itemId: randomIds("item"),
+                card,
+                serviceName: '"'.repeat(32),
+                payTo: SELLERS_SPLIT,
+              },
+              why,
+            ).length,
+        ),
+      );
+
+      expect(edge.widestChallengeFor(card), card.fulfillment).toBe(Math.max(...answered));
+    }
   });
 });
 

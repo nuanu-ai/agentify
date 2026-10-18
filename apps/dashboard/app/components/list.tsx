@@ -57,9 +57,17 @@ export function List({
   );
 }
 
-/** `off` draws a row the merchant cannot act on as quieter. */
-export function Row({ off = false, children }: Readonly<{ off?: boolean; children: ReactNode }>) {
-  return <li className={off ? "list-row off" : "list-row"}>{children}</li>;
+/**
+ * `off` draws a row the merchant cannot act on as quieter; `needsYou` marks
+ * one that needs them.
+ */
+export function Row({
+  off = false,
+  needsYou = false,
+  children,
+}: Readonly<{ off?: boolean; needsYou?: boolean; children: ReactNode }>) {
+  const classes = ["list-row", ...(off ? ["off"] : []), ...(needsYou ? ["needs-you"] : [])];
+  return <li className={classes.join(" ")}>{children}</li>;
 }
 
 /** Where a cell goes on a narrow box; see the list's own description. */

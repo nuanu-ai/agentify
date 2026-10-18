@@ -3602,6 +3602,20 @@ describe("a card held off sale by what its merchant lacks", () => {
     expect(settings).not.toMatch(/approv/i);
   });
 
+  it("on live, before Agentify approves, says so once on Settings, in the banner", async () => {
+    const running = await started({
+      gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
+      dashboard: CHANNELS.live,
+    });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+
+    expect(settings.split("Not approved for live sales yet")).toHaveLength(2);
+    expect(settings).not.toMatch(/has not approved your merchant/);
+  });
+
   it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
     const running = await started({
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
@@ -3881,56 +3895,17 @@ describe("the banner about the account", () => {
 
   it("says it could not check the account where a read does not answer, and still draws the page", async () => {
     const { browser, gateway } = await started({
-      client: (real) => ({ ...real, payoutWallet: async () => lateAnswer(10) }),
+      client: (real) => ({ ...real, standing: async () => lateAnswer(10) }),
     });
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    // The keys read nothing of the wallet themselves, so only the banner's read fails.
+    // The keys read nothing of the merchant's standing themselves, so only the
+    // banner's read fails.
     const keys = await browser.get("/keys");
 
     expect(keys.status).toBe(200);
     expect(readable(keys.html)).toContain("Your account could not be checked");
-  });
-});
-
-describe("the count of orders that need the merchant", () => {
-  /** The sidebar's sections as a person reads them. */
-  const sidebarOf = (html: string): string =>
-    readable(/<nav class="tabs"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? "");
-
-  it("counts a refund due beside Orders on every screen, and not goods delivered and not paid", async () => {
-    const { browser, gateway, harnessed } = await started();
-    const esim = await publish(gateway, esimCard);
-    const room = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, esim, {
-      onOrder: () => ({ refused: { code: "out_of_stock", message: "no eSIMs left" } }),
-    });
-    harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
-    await buyOverHttp(harnessed, gateway, room, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
-    // The fixture took: one of each.
-    const listed = readable((await browser.get("/orders")).html);
-    expect(listed).toContain("Refund due");
-    expect(listed).toContain("Delivered, not paid");
-
-    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
-      const sidebar = sidebarOf((await browser.get(path)).html);
-      expect(sidebar, path).toContain("1 needs you");
-      expect(sidebar, path).not.toMatch(/2 need you|could not count/);
-    }
-  });
-
-  it("draws no count while nothing needs the merchant", async () => {
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-
-    const sidebar = sidebarOf((await browser.signIn()).html);
-
-    expect(sidebar).toContain("Orders");
-    expect(sidebar).not.toMatch(/need|could not count/);
   });
 
   it("is read beside the page's own data, never after it", async () => {
@@ -3949,20 +3924,17 @@ describe("the count of orders that need the merchant", () => {
       return { done, awaited };
     };
     const cardsAsked = asked();
-    const countAsked = asked();
+    const standingAsked = asked();
     const { browser, gateway } = await started({
       client: (real) => ({
         ...real,
         cards: async () => {
           cardsAsked.done();
-          return (await countAsked.awaited()) ? await real.cards() : lateAnswer(2_000);
+          return (await standingAsked.awaited()) ? await real.cards() : lateAnswer(2_000);
         },
-        orders: async (open) => {
-          if (open) {
-            countAsked.done();
-            if (!(await cardsAsked.awaited())) return lateAnswer(2_000);
-          }
-          return await real.orders(open);
+        standing: async () => {
+          standingAsked.done();
+          return (await cardsAsked.awaited()) ? await real.standing() : lateAnswer(2_000);
         },
       }),
     });
@@ -3972,22 +3944,7 @@ describe("the count of orders that need the merchant", () => {
 
     expect(cards.status).toBe(200);
     expect(readable(cards.html)).toContain("A room for the night");
-    expect(sidebarOf(cards.html)).not.toContain("could not count");
-  });
-
-  it("says it could not count where the orders do not answer, and still draws the page", async () => {
-    const { browser, gateway } = await started({
-      client: (real) => ({
-        ...real,
-        orders: async (open) => (open ? lateAnswer(10) : await real.orders(open)),
-      }),
-    });
-    await publish(gateway, roomCard);
-
-    const cards = await browser.signIn();
-
-    expect(cards.status).toBe(200);
-    expect(sidebarOf(cards.html)).toContain("could not count the orders that need you");
+    expect(readable(cards.html)).not.toContain("could not be checked");
   });
 });
 
@@ -4080,12 +4037,12 @@ describe("the receipts screen", () => {
     const receipts = readable((await browser.get("/receipts")).html);
     const orders = readable((await browser.get("/orders")).html);
 
-    expect(receipts).toContain("Every receipt here is a test purchase");
-    expect(receipts).toContain("test funds settled on Base Sepolia");
-    expect(receipts).toContain("no real money moved");
-    // The mark is on each sum as well: the sentence above stops applying the
-    // moment one real payment lands beside the tests, and Orders has the mark
-    // alone.
+    // The band over every page of the test channel says it, once.
+    expect(receipts).toContain(SURFACE_WORDS.test);
+    expect(orders).toContain(SURFACE_WORDS.test);
+    expect(receipts).not.toContain("Every receipt here is a test purchase");
+    expect(orders).not.toContain("Every order here is a test purchase");
+    // The mark is on each sum as well, which the band promises.
     expect(receipts).toContain("80.00 USD test");
     expect(orders).toContain("80.00 USD test");
     // Never calls the summary a record of takings.
@@ -4816,6 +4773,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           setSellerSite: answer,
           payoutWallet: answer,
           integration: answer,
+          standing: answer,
           refundsOwed: answer,
         }) as never,
     });
