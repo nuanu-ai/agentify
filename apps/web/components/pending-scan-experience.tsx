@@ -11,6 +11,16 @@ import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge
 
 type StartState = "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
 
+/** What the page calls each state: the word beside the card's name, and its heading. */
+const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
+  starting: { label: "starting", title: "Your report is getting ready" },
+  challenge: { label: "check needed", title: "Confirm you are a person" },
+  "hard-limit": { label: "limit reached", title: "Too many scans for now" },
+  busy: { label: "busy", title: "The scanner is busy" },
+  error: { label: "not started", title: "The scan could not start" },
+  missing: { label: "no request", title: "No scan request in this tab" },
+};
+
 export function PendingScanExperience({
   turnstileSiteKey,
 }: Readonly<{ turnstileSiteKey: string | null }>) {
@@ -122,11 +132,11 @@ export function PendingScanExperience({
         <header className={styles.header}>
           <span>Private website diagnostic</span>
           <span className={styles.status} data-state={state}>
-            {starting ? "starting" : state.replace("-", " ")}
+            {SAID[state].label}
           </span>
         </header>
         <div className={styles.body}>
-          <h1>{starting ? "Your report is getting ready" : "Scan needs attention"}</h1>
+          <h1>{SAID[state].title}</h1>
           <p aria-live="polite" className={styles.message} role="status">
             {message}
           </p>
