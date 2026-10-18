@@ -618,20 +618,23 @@ export const receiptsView = (
       (receipt) => receipt.outcome === "delivered" || receipt.outcome === "shipped",
     ).length,
     ofCount: `of ${countOf(receipts.receipts.length, "receipt")}`,
-    rows: receipts.receipts.map((receipt) => ({
-      id: receipt.id,
-      orderId: receipt.order_id,
-      needsYou: needsYou(receipt.outcome),
-      product: titles.get(receipt.item_id) ?? receipt.item_id,
-      amount: money(receipt.price),
-      test: receipt.test,
-      shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
-      outcome: ORDER_WORDS[receipt.outcome],
-      paid: momentView(receipt.paid_at),
-      priceSet: momentView(receipt.price.at),
-      priceAsOf: momentView(receipt.price.as_of),
-      transfer: transferOf(receipt.transaction, transactionPage),
-    })),
+    // The latest payment first, whatever order the gateway lists them in.
+    rows: [...receipts.receipts]
+      .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
+      .map((receipt) => ({
+        id: receipt.id,
+        orderId: receipt.order_id,
+        needsYou: needsYou(receipt.outcome),
+        product: titles.get(receipt.item_id) ?? receipt.item_id,
+        amount: money(receipt.price),
+        test: receipt.test,
+        shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
+        outcome: ORDER_WORDS[receipt.outcome],
+        paid: momentView(receipt.paid_at),
+        priceSet: momentView(receipt.price.at),
+        priceAsOf: momentView(receipt.price.as_of),
+        transfer: transferOf(receipt.transaction, transactionPage),
+      })),
   };
 };
 
