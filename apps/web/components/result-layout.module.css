@@ -147,6 +147,11 @@
   gap: var(--space-snug);
 }
 
+/* A published result's foot, on the bottom edge of a page shorter than the window. */
+.page > footer {
+  margin-top: auto;
+}
+
 .foot {
   display: flex;
   flex-wrap: wrap;
