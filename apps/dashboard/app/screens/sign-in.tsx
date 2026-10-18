@@ -111,7 +111,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
           <Click click={view.click} />
           <ConsentBox click={view.click} />
           <Button>Send me a sign-in link</Button>
-          <p>Or sign in with Google.</p>
+          <p className="or">Or sign in with Google.</p>
           <GoogleButton formAction={toGoogle} formNoValidate />
           <SignInNotes />
         </Form>
@@ -133,7 +133,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
         </Form>
         {view.googleEnabled ? (
           <>
-            <p>Or sign in with Google.</p>
+            <p className="or">Or sign in with Google.</p>
             <Form method="post" action="/sign-in/google" reloadDocument>
               <Destination destination={view.destination} />
               <GoogleButton />

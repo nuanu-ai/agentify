@@ -566,6 +566,12 @@ td.control {
   margin-top: 8px;
 }
 
+/* The sentence that offers a second way in belongs to the button under it, so
+   it stands a field's distance from the one above. */
+.gate .or {
+  margin-top: 20px;
+}
+
 .gate label {
   display: block;
   margin: 20px 0 8px;
