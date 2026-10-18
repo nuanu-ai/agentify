@@ -1,25 +1,21 @@
 import type { CheckStatus } from "@agentify/scanner-contracts";
-
-import styles from "./status-badge.module.css";
+import { Badge, type BadgeTone } from "@agentify/ui";
 
 type BadgeStatus = CheckStatus | "complete";
 
-const STATUS_LABELS: Record<BadgeStatus, string> = {
-  pending: "pending",
-  running: "checking",
-  pass: "pass",
-  partial: "partial",
-  fail: "fail",
-  unavailable: "unavailable",
-  not_applicable: "n/a",
-  complete: "complete",
+/** Each state's own word: an unavailable check is never said to have failed. */
+const STATES: Record<BadgeStatus, readonly [label: string, tone: BadgeTone]> = {
+  pending: ["Pending", "quiet"],
+  running: ["Checking", "progress"],
+  pass: ["Pass", "pass"],
+  partial: ["Partial", "partial"],
+  fail: ["Fail", "fail"],
+  unavailable: ["Unavailable", "quiet"],
+  not_applicable: ["Not applicable", "quiet"],
+  complete: ["Complete", "pass"],
 };
 
 export function StatusBadge({ status }: Readonly<{ status: BadgeStatus }>) {
-  return (
-    <span className={`${styles.badge} ${styles[status]}`}>
-      <span aria-hidden="true" className={styles.dot} />
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  const [label, tone] = STATES[status];
+  return <Badge tone={tone}>{label}</Badge>;
 }
