@@ -9,10 +9,10 @@ the receipt. The first buyer is the operator-run sandbox program described in
 step 6. You do not rewrite the shop to get there: a handler appears beside it,
 a process that takes paid orders and gives out the goods for them.
 
-The SDK is the current product path. A WooCommerce connector exists as an
-experiment, but it is not required for this integration or used as its
-acceptance gate. [Connecting to Agentify](/) explains that boundary for the
-owner of the business.
+This page is the route through the SDK. A business that sells from a
+WooCommerce shop has the other route, which connects the shop in the dashboard
+without code, and [Connecting to Agentify](/) describes it for the owner of the
+business.
 
 ## The words used below
 

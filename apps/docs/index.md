@@ -71,9 +71,13 @@ Your engineer writes the handler against your API. The whole path from an empty
 project to a test sale is on [The first test sale](/quickstart). Agentify carries
 the paid order to that handler and returns its delivery to the buyer.
 
-The WooCommerce connector is an experiment. It is not the route used to accept
-the SDK product, and you do not need it for an SDK integration. Delivery by a
-message that you confirm by hand is designed but not switched on.
+With a WooCommerce shop nobody has to write code: the dashboard connects the
+shop, imports its products as cards, and the shop takes the paid orders, as
+[Selling through a WooCommerce shop](/woocommerce) describes. The connector
+runs on the test channel, where the money is not real, and it stays off the
+live channel until its orders have gone through on the test channel from start
+to finish. Delivery by a message that you confirm by hand is designed but not
+switched on.
 
 ## After you are connected
 
