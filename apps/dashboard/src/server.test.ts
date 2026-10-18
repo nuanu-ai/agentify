@@ -4009,14 +4009,14 @@ describe("the orders screen", () => {
     const text = readable((await browser.get("/orders?show=open")).html);
 
     expect(text).toContain("the goods are held");
-    // Still open, with nothing owed and nothing for the merchant to do. What
-    // can still happen is the portal's to explain, and the page links there. It
-    // must never suggest the buyer start again, which would deliver twice.
+    // Still open, with nothing owed by the merchant. What can still happen is
+    // the portal's to explain, and the page links there. It must never suggest
+    // the buyer start again, which would deliver twice.
     expect(text).toContain("The buyer can pay again for this same order");
     expect(text).not.toContain("repeat purchase");
-    // The buyer can pay again and the merchant has nothing to do, so the
-    // order is not counted among those that need them.
-    expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
+    // Nothing is owed by the merchant, so the order is not counted among
+    // those that need them.
+    expect(text).toContain("Waiting on the buyer 1 Nothing owed by you");
     expect(text).not.toMatch(/needs? you/i);
   });
 });

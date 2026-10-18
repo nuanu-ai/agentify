@@ -431,9 +431,9 @@ describe("a refund owed", () => {
 });
 
 describe("an order delivered and not paid", () => {
-  // The buyer can pay again and nothing is the merchant's to do, so it is not
-  // counted among the orders that need them; what can still happen to it is
-  // said all the same.
+  // Nothing is owed by the merchant, so it is not counted among the orders
+  // that need them; but whether to revoke what was delivered or to wait is
+  // theirs to decide, as the documentation says, and the screen says so.
   const held: OrderList = OrderListSchema.parse({
     orders: [{ ...order("ord_held", false), status: "delivered_unpaid" }],
   });
@@ -441,12 +441,19 @@ describe("an order delivered and not paid", () => {
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
+    expect(text).toContain("Waiting on the buyer 1 Nothing owed by you");
     expect(text).not.toMatch(/needs? you/i);
     expect(text).toContain("the payment failed, so the goods are held");
     // Paid again for the same order, never bought again, which would deliver
     // twice.
     expect(text).toContain("The buyer can pay again for this same order");
+  });
+
+  it("leaves to the merchant whether to revoke what they delivered or to wait", () => {
+    const text = readable(ordersPage(held));
+
+    expect(text).toContain("whether to revoke what you delivered or wait is yours to decide");
+    expect(text).not.toMatch(/nothing for you to do/i);
   });
 
   it("is told apart from a refund due listed beside it", () => {

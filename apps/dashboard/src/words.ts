@@ -78,8 +78,9 @@ export const CARD_WORDS = Object.freeze({
 /**
  * Money taken and nothing delivered: the one ending a merchant has to act on.
  * Goods delivered against a payment that never executed are not here: the
- * buyer can pay again and the order closes when they do, so there is nothing
- * for the merchant to do. An order merely under way is not here either: it may
+ * merchant owes nobody anything, the buyer can pay again and the order closes
+ * when they do, and whether to revoke what was delivered meanwhile is the
+ * merchant's own choice. An order merely under way is not here either: it may
  * be the merchant's to deliver, but this API cannot tell it from one created a
  * second ago, so demanding attention for it would be a claim beyond the
  * evidence.

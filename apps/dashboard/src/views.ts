@@ -403,7 +403,10 @@ export interface OrdersView {
   readonly listing: Listing<OrderRow>;
   /** The refunds due the search finds: the orders the merchant has to act on. */
   readonly needsYou: readonly OrderNeed[];
-  /** Goods delivered and held until the buyer pays: nothing for the merchant to do. */
+  /**
+   * Goods delivered and held until the buyer pays: nothing owed by the
+   * merchant, who decides whether to revoke what they delivered or to wait.
+   */
   readonly waitsOnTheBuyer: readonly OrderNeed[];
 }
 
@@ -598,7 +601,7 @@ const whatHappened = (
 ): string =>
   order.status === "refund_due"
     ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price${order.test ? " of this test purchase" : ""}, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
-    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order; if that payment settles, the goods are released and the order closes.";
+    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
 
 const sharesIn = (
   price: { readonly amount: string; readonly currency: string },
@@ -606,9 +609,9 @@ const sharesIn = (
 ): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
 
 /**
- * How a refund is made is linked once, over the refunds. Held goods are not
- * the merchant's to act on: what can still happen is a payment somebody else
- * makes, and the documentation says what settles it.
+ * How a refund is made is linked once, over the refunds. Held goods owe
+ * nobody anything: what can still happen is a payment the buyer makes, and the
+ * documentation says what settles it and what the merchant's choice is.
  */
 const whereTheRestIs = (status: OrderStatus): Rest | null =>
   status === "refund_due"

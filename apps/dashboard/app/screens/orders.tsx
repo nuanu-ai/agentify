@@ -105,7 +105,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         <Group
           title="Waiting on the buyer"
           count={view.waitsOnTheBuyer.length}
-          aside="Nothing for you to do"
+          aside="Nothing owed by you"
         >
           <List label="Orders waiting on the buyer" columns="1fr">
             {view.waitsOnTheBuyer.map((order) => (
