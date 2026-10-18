@@ -52,9 +52,9 @@ have answered them we have no more questions for you.
    Access, a key, a link, a subscription go out a second time to the same buyer
    without loss; a unit off a shelf or a one-off code from a limited batch does
    not. During the pilot we take on goods of the first kind only, and that is
-   our limit rather than a property of what you sell: we have not chosen how
-   money goes back yet, so we sell what we are almost certain we can deliver.
-   Once there is a way to send money back, the limit comes off
+   our limit rather than a property of what you sell: there is no way yet to
+   record that money went back, so we sell what we are almost certain we can
+   deliver. Once a refund can be recorded, the limit comes off
    ([Money](/money)). A parcel sent by a carrier is the one exception, and on
    the test channel only, where the money is not real: it can be tried there
    end to end, and it is not sold live until a lost parcel's refund can be
