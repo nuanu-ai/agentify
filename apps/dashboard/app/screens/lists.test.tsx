@@ -757,3 +757,34 @@ describe("a search over the cards", () => {
     expect(text).not.toContain("Room 50 ");
   });
 });
+
+describe("an empty catalogue", () => {
+  const none = (selling: "open" | "departed") =>
+    readable(
+      served(() => (
+        <CardsScreen
+          view={cardsView(
+            MerchantCardListSchema.parse({ selling, cards: [] }),
+            "https://agentify.ad",
+            true,
+          )}
+          base=""
+        />
+      )),
+    );
+
+  it("offers the ways to a first card to a merchant who sells", () => {
+    expect(none("open")).toContain("Publish a card through the SDK");
+    expect(none("open")).toContain("Connect a WooCommerce shop");
+  });
+
+  it("offers no way to sell to a merchant who has left", () => {
+    // Nothing on this page puts a merchant who left back on sale, so a way to
+    // publish would lead to a refusal.
+    const text = none("departed");
+
+    expect(text).not.toContain("Publish a card through the SDK");
+    expect(text).not.toContain("Connect a WooCommerce shop");
+    expect(text).toContain("You have no cards.");
+  });
+});

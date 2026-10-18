@@ -1376,6 +1376,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-left-none",
+      screen: "Cards",
+      when: "A merchant who left Agentify before publishing anything opens Cards.",
+      cause:
+        "The merchant's selling is departed and they have no cards, so the page offers no way to publish one.",
+    },
+    cardsView(cardsOf("departed", []), ORIGIN.live, true),
+    "live",
+    { account: bannerOf(seenBy("live"), { selling: "departed" }) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-selling-through-shop",
       screen: "Cards",
       when: "A merchant who switched to their WooCommerce shop looks at the cards their code published.",

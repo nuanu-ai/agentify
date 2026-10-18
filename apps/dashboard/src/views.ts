@@ -224,11 +224,12 @@ export interface CardsView {
    */
   readonly listing: Listing<CardRow>;
   /**
-   * Present only when there are no cards: the sentence, and whether the shop
-   * is a way to the first card beside the SDK. What the account lacks to
-   * publish is the banner's to say.
+   * Present only when there are no cards: the sentence, and the ways to a
+   * first card, the shop beside the SDK where this dashboard offers it; none
+   * for a merchant who has left, whom nothing here puts back on sale. What
+   * the account lacks to publish is the banner's to say.
    */
-  readonly empty: null | Readonly<{ says: string; woo: boolean }>;
+  readonly empty: null | Readonly<{ says: string; ways: null | Readonly<{ woo: boolean }> }>;
   /** The line under the cards about what their switches do, and where the rest is. */
   readonly note: Readonly<{ says: string; rest: Rest }>;
   /** Over the rows, where the search was read as a whole product code, which it says. */
@@ -313,9 +314,11 @@ export const cardsView = (
       showAll: "Show all cards",
     }),
     empty:
-      cards.cards.length === 0
-        ? { says: "You haven't published any cards yet.", woo: wooAvailable }
-        : null,
+      cards.cards.length > 0
+        ? null
+        : gone
+          ? { says: "You have no cards.", ways: null }
+          : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
     note: switchesNote(cards.selling),
     byCode: byCode
       ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
