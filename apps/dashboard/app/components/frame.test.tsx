@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
+import { shouldRevalidate } from "../routes/merchant-only.js";
 import { OrdersScreen } from "../screens/orders.js";
 import { Frame, type Tab } from "./frame.js";
 
@@ -382,8 +383,9 @@ describe("the sidebar", () => {
 describe("the banner, read by the merchant's layout", () => {
   /**
    * The cards and the orders under a layout whose loader answers the banner as
-   * the server does, through a promise; each answer after the first is held
-   * until the test lets it go.
+   * the server does, through a promise, and which is read again when the real
+   * layout says it is; each answer after the first is held until the test lets
+   * it go.
    */
   const reading = (banners: readonly FrameView["account"][]) => {
     const loads: ReturnType<typeof held>[] = [];
@@ -424,7 +426,7 @@ describe("the banner, read by the merchant's layout", () => {
                     }
                     return { account } satisfies FrameView;
                   },
-                  shouldRevalidate: () => true,
+                  shouldRevalidate,
                   Component: Outlet,
                   children: [screenAt("cards"), screenAt("orders")],
                 },

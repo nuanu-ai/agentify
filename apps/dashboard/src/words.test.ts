@@ -9,7 +9,15 @@ import {
   ReceiptOutcomeSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { dayOf, FULFILLMENT_WORDS, moment, money, needsYou, ORDER_WORDS } from "./words.js";
+import {
+  dayOf,
+  FULFILLMENT_WORDS,
+  moment,
+  money,
+  needsYou,
+  ORDER_WORDS,
+  waitsOnTheBuyer,
+} from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -32,6 +40,15 @@ describe("the words a merchant reads", () => {
     for (const mode of FulfillmentSchema.options) {
       expect(FULFILLMENT_WORDS[mode], mode).toBeTruthy();
     }
+  });
+
+  it("holds as waiting on the buyer only goods delivered against a failed payment", () => {
+    // A payment nobody heard back about is refused a repeat, so its buyer
+    // cannot pay again, and it must not be listed as waiting for them to.
+    const waiting = ORDER_STATUSES.filter((status) => waitsOnTheBuyer(status));
+
+    expect(waiting).toStrictEqual(["delivered_unpaid"]);
+    expect(waitsOnTheBuyer("payment_unresolved")).toBe(false);
   });
 
   it("counts an order as needing the merchant only while a refund is due", () => {

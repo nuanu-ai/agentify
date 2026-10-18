@@ -4048,9 +4048,31 @@ describe("the banner about the account", () => {
     expect(readable(keys.html)).toContain("Your account could not be checked");
   });
 
+  it("does not hold a page past its own short deadline where the standing is slow to come", async () => {
+    // The gateway itself takes longer than the frame waits; the page is drawn
+    // at the frame's two seconds, not at the gateway's ten, and says it could
+    // not check.
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+    const standingOf = harnessed.gateway.standingOf.bind(harnessed.gateway);
+    harnessed.gateway.standingOf = async (merchantId) => {
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      return await standingOf(merchantId);
+    };
+
+    const begun = Date.now();
+    const keys = await browser.get("/keys");
+    const took = Date.now() - begun;
+
+    expect(keys.status).toBe(200);
+    expect(readable(keys.html)).toContain("Your account could not be checked");
+    expect(took).toBeLessThan(3_500);
+  });
+
   it("is read beside the page's own data, never after it", async () => {
     // Each read waits until the other has been asked for: read one after the
-    // other, the page or the count would come back unanswered.
+    // other, the page would come back unanswered.
     const asked = () => {
       let done = () => {};
       const once = new Promise<void>((resolve) => {
