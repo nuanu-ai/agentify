@@ -615,19 +615,35 @@ td.control {
     display: none;
   }
 
-  /* The lines of a narrow row, each drawn only where a cell names it, so a
-     row without an identifier or an action has no empty line. */
+  /*
+   * The lines of a narrow row, in this order whatever the order of the
+   * columns: the title and the amount; the state and one fact; the identifier
+   * and the action; a note; the opened row. A row of boxes that wrap, so a
+   * fact too long to sit beside the state moves whole to a line of its own
+   * rather than wrapping beside it, and a line no cell names takes no room.
+   * The two breaks between the first three lines are the row's own.
+   */
   .list-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "title title amount"
-      "state fact fact"
-      "ident ident action"
-      "note note note"
-      "more more more";
-    gap: 0 10px;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 0 12px;
     padding: 14px 16px;
+  }
+
+  .list-row::before,
+  .list-row::after {
+    content: "";
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .list-row::before {
+    order: 3;
+  }
+
+  .list-row::after {
+    order: 6;
   }
 
   .list-row > .cell-main {
@@ -635,12 +651,15 @@ td.control {
   }
 
   .cell-title {
-    grid-area: title;
+    order: 1;
+    flex: 1 1 0;
+    align-self: flex-start;
   }
 
   .cell-amount {
-    grid-area: amount;
-    align-self: start;
+    order: 2;
+    flex: none;
+    align-self: flex-start;
   }
 
   .cell-aside {
@@ -648,38 +667,41 @@ td.control {
   }
 
   .cell-state {
-    grid-area: state;
+    order: 4;
+    flex: none;
     margin-top: 6px;
   }
 
   .cell-fact {
-    grid-area: fact;
+    order: 5;
+    flex: 0 1 auto;
     margin-top: 6px;
   }
 
-  .list-row:has(> .cell-state) > .cell-fact::before {
-    content: "· ";
-  }
-
   .cell-ident {
-    grid-area: ident;
+    order: 7;
+    flex: 1 1 auto;
     margin-top: 6px;
   }
 
   .cell-action {
-    grid-area: action;
+    order: 8;
+    flex: none;
     margin-top: 6px;
+    margin-left: auto;
   }
 
   .cell-note {
-    grid-area: note;
+    order: 9;
+    flex-basis: 100%;
     margin-top: 6px;
     text-align: left;
   }
 
   .cell-more {
+    order: 10;
+    flex-basis: 100%;
     display: block;
-    grid-area: more;
     margin-top: 4px;
     color: var(--muted);
     font-size: 0.8125rem;
