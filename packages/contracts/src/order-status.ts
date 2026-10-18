@@ -68,7 +68,7 @@ export const ORDER_STATUSES = Object.freeze([
    * `refunded`, and a buyer already paid back still reads this word.
    */
   "refund_due",
-  /** That debt has since been paid back to the buyer. */
+  /** A refund of that debt is recorded. Nothing can record one yet. */
   "refunded",
   /**
    * The merchant delivered synchronously and the payment did not execute. The

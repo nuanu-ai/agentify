@@ -9,7 +9,7 @@ import type { OrderCallResponse } from "@nuanu-ai/agentify-contracts";
 
 const WHY: Record<MerchantAnswerError, string> = {
   refund_already_settled:
-    "the buyer has his money back for this order, so there is nothing left to deliver against",
+    "a refund is recorded for this order, so there is nothing left to deliver against",
   order_already_closed: "this order reached an ending that no call reopens",
   not_applicable_in_mode:
     "this does not exist for this card's mode — in the synchronous one the handler answers with the goods or a refusal, and there is no taking the order on and no separate deliver or refuse call",
