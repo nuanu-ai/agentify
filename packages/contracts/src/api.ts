@@ -94,11 +94,12 @@ export const MerchantCardListSchema = z
   });
 
 /**
- * Every receipt this merchant has. A purchase that ended before any payment
- * has no receipt, none is written while it is unknown whether the buyer was
- * charged, and a gateway that writes receipts only as goods are released has
- * none for a payment whose goods have not come. So the list is not by itself
- * an account of what was received.
+ * Every receipt this merchant has. A receipt is written as the goods of a paid
+ * purchase are released: when they are delivered, or when a parcel's shipment
+ * is recorded. A purchase that ended before any payment has none, none is
+ * written while it is unknown whether the buyer was charged, and a paid order
+ * whose goods have not come, or that owes a refund, has none either. So the
+ * list is not an account of the money that came in.
  */
 export const ReceiptListSchema = z
   .strictObject({
@@ -106,7 +107,7 @@ export const ReceiptListSchema = z
   })
   .meta({
     description:
-      "The receipts of one merchant. A receipt is written when the money moves, so a purchase that ended before any payment is not here, and neither is one whose payment outcome is still unknown — that receipt is written if and when the answer arrives. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
+      "The receipts of one merchant. A receipt is written as the goods of a paid purchase are released — when they are delivered, or when a parcel's shipment is recorded — and it is the record of that sale. So a purchase that ended before any payment is not here; neither is one whose payment outcome is still unknown, whose receipt is written if and when the answer arrives; and neither is a paid order whose goods have not come or that owes a refund, which is on the merchant's order list and not here. The list is therefore not an account of the money that came in. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
   });
 
 /**
