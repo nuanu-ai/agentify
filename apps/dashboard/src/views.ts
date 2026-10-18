@@ -408,29 +408,52 @@ const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
   ];
 };
 
-/** What stands between the two halves of an identifier shown short, typed either way. */
-const ELLIPSIS = /\s*(?:…|\.\.\.)\s*/;
+/** What stands between the two halves of an identifier shown short: its ellipsis, or dots typed for it. */
+const ELLIPSIS = /…|\.{2,}/;
+
+/** How many characters of an ID the page shows on each side of the ellipsis. */
+const HALF = 4;
+
+/** A run of an ID's characters this long does not turn up in another order's ID by chance. */
+const RUN = 8;
 
 /**
- * An order is found by any part of its ID, by the short form the page shows
- * the ID in, `ord_17ff…7de3`, and by its product's title or code. The short
- * form finds an ID that begins with what stands before the ellipsis, its
- * prefix allowed to be left off, and ends with what stands after; four
- * characters a side are all the page shows, so two orders alike in both are
- * both found.
+ * Which orders a search finds, worked out once from the words searched for,
+ * since a pasted search can be long. An order is found by its product's title
+ * or code; by its ID where the words hold the whole of it, begin it (its
+ * prefix may be left off) or end it, at least as many characters as the page
+ * shows of each side, or are a run of it too long to turn up by chance; and by
+ * the short form the page shows it in, `ord_17ff…7de3`, which finds an ID that
+ * begins with what stands before the ellipsis and ends with what stands after.
+ * A few characters from the middle of an ID, which the page never shows, find
+ * nothing: they would list orders whose rows show nothing of what was searched
+ * for.
  */
-const orderMatches = (row: OrderRow, words: string): boolean => {
-  const id = row.id.toLocaleLowerCase();
-  const named = [id, row.product.toLocaleLowerCase(), row.itemId.toLocaleLowerCase()];
-  if (named.some((one) => one.includes(words))) {
-    return true;
-  }
-  const [head = "", tail, ...more] = words.split(ELLIPSIS);
-  if (tail === undefined || more.length > 0 || head + tail === "") {
-    return false;
-  }
-  const holds = (whole: string) => whole.startsWith(head) && whole.endsWith(tail);
-  return holds(id) || holds(id.slice(id.indexOf("_") + 1));
+const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
+  const parts = words.split(ELLIPSIS).map((part) => part.trim());
+  const [head = "", tail = ""] = parts;
+  const short = parts.length === 2 && head + tail !== "";
+  return (row) => {
+    if (
+      row.product.toLocaleLowerCase().includes(words) ||
+      row.itemId.toLocaleLowerCase().includes(words)
+    ) {
+      return true;
+    }
+    const id = row.id.toLocaleLowerCase();
+    if (words.includes(id)) {
+      return true;
+    }
+    const rest = id.slice(id.indexOf("_") + 1);
+    const begins = (part: string) => id.startsWith(part) || rest.startsWith(part);
+    if (short) {
+      return begins(head) && id.endsWith(tail);
+    }
+    return (
+      (words.length >= HALF && (begins(words) || id.endsWith(words))) ||
+      (words.length >= RUN && id.includes(words))
+    );
+  };
 };
 
 /** When an order's price was set, to sort by; a moment that cannot be read goes last. */
@@ -473,8 +496,8 @@ export const ordersView = (
     query,
     segments.map((one) => one.key),
   );
-  const words = asked.q.toLocaleLowerCase();
-  const found = words === "" ? listed : listed.filter(({ row }) => orderMatches(row, words));
+  const finds = orderSearch(asked.q.toLocaleLowerCase());
+  const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
   const told = (which: (status: OrderStatus) => boolean): readonly OrderNeed[] =>
     found
       .filter(({ order }) => which(order.status))
@@ -490,7 +513,7 @@ export const ordersView = (
       asked,
       path: "/orders",
       segments,
-      matches: orderMatches,
+      matches: finds,
       noMatch: (q, within) =>
         within === null
           ? `No order matches “${q}”.`
@@ -518,8 +541,10 @@ const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
 /**
  * A refund owes the buyer the whole price, though a payout split paid the
  * merchant only their share of it: the split gives Agentify's commission back
- * to nobody. Held goods are released by the buyer's own second payment for
- * the same order, never by a new purchase, which would deliver twice.
+ * to nobody. The sum is a test purchase's where it is one, since an unmarked
+ * sum reads as money that moved. Held goods are released by the buyer's own
+ * second payment for the same order, never by a new purchase, which would
+ * deliver twice.
  */
 const whatHappened = (
   order: OrderList["orders"][number],
@@ -527,7 +552,7 @@ const whatHappened = (
   intoASplit: boolean,
 ): string =>
   order.status === "refund_due"
-    ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price${order.test ? " of this test purchase" : ""}, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
     : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order; if that payment settles, the goods are released and the order closes.";
 
 const sharesIn = (

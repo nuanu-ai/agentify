@@ -3818,8 +3818,9 @@ describe("the orders screen", () => {
 
     expect(text).toContain("Refund due");
     expect(text).toContain("Needs you 1");
-    // The whole price, though the split paid the merchant only their share.
-    expect(text).toContain("the full price, 8.00 USD");
+    // The whole price, though the split paid the merchant only their share,
+    // and said to be a test purchase's, as every sale on this stack is.
+    expect(text).toContain("the full price of this test purchase, 8.00 USD");
     // `refund_due` is what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
   });

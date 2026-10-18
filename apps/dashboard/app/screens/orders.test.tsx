@@ -152,6 +152,9 @@ describe("searching the orders", () => {
       expect(among("de")).toStrictEqual([]);
       expect(among("bed")).toStrictEqual([]);
       expect(among("5de3")).toStrictEqual([]);
+      // Fewer characters than the page shows of either end find no ID by its end.
+      expect(among("a1")).toStrictEqual([]);
+      expect(among("d4")).toStrictEqual([]);
     });
 
     it("finds an order by a run of its ID too long to turn up in another by chance", () => {
