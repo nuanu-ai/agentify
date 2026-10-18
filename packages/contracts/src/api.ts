@@ -98,8 +98,10 @@ export const MerchantCardListSchema = z
  * purchase are released: when they are delivered, or when a parcel's shipment
  * is recorded. A purchase that ended before any payment has none, none is
  * written while it is unknown whether the buyer was charged, and a paid order
- * whose goods have not come, or that owes a refund, has none either. So the
- * list is not an account of the money that came in.
+ * whose goods have not come, or that owes a refund, has none either. A charge
+ * the payment layer never answered about and an operator later records by
+ * hand leaves its order delivered with no receipt, because nothing here saw
+ * that payment. So the list is not an account of the money that came in.
  */
 export const ReceiptListSchema = z
   .strictObject({
@@ -107,7 +109,7 @@ export const ReceiptListSchema = z
   })
   .meta({
     description:
-      "The receipts of one merchant. A receipt is written as the goods of a paid purchase are released — when they are delivered, or when a parcel's shipment is recorded — and it is the record of that sale. So a purchase that ended before any payment is not here; neither is one whose payment outcome is still unknown, whose receipt is written if and when the answer arrives; and neither is a paid order whose goods have not come or that owes a refund, which is on the merchant's order list and not here. The list is therefore not an account of the money that came in. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
+      "The receipts of one merchant. A receipt is written as the goods of a paid purchase are released — when they are delivered, or when a parcel's shipment is recorded — and it is the record of that sale. So a purchase that ended before any payment is not here; neither is one whose payment outcome is still unknown, whose receipt is written if and when the payment layer answers — a charge an operator records by hand instead has none, because nothing here saw that payment; and neither is a paid order whose goods have not come or that owes a refund, which is on the merchant's order list and not here. The list is therefore not an account of the money that came in. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
   });
 
 /**
