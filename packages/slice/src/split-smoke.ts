@@ -72,7 +72,7 @@ import {
   setPayoutWallet,
   systemClock,
 } from "@agentify/gateway";
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import type { CardInput } from "@nuanu-ai/agentify-contracts";
 import {
   createPublicClient,
   createWalletClient,
@@ -335,7 +335,7 @@ async function main(): Promise<void> {
     const merchant = startMerchant(booted.baseUrl, secret);
     await merchant.start();
     try {
-      const card: Card = { ...EUROPE_ESIM, price: { amount: priceUsd, currency: "USD" } };
+      const card: CardInput = { ...EUROPE_ESIM, price: { amount: priceUsd, currency: "USD" } };
       const published = await merchant.client.catalog.publish(card);
       if (!published.ok) {
         throw new SmokeStopped(

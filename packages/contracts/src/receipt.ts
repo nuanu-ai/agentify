@@ -18,8 +18,9 @@ import { IdentifierSchema, SalePriceSchema, TimestampSchema } from "./primitives
  * Only endings a paid purchase can reach appear here. `payment_unresolved` is
  * left out on purpose: it means nobody can say whether the buyer was charged,
  * and a receipt is the evidence that they were. No receipt is written while
- * that question is open; if the money turns out to have moved, the receipt is
- * written then.
+ * that question is open; if the payment layer later answers that the money
+ * moved, the receipt is written then. A charge an operator records by hand
+ * gets none, because nothing here saw that payment.
  *
  * The list does not promise that a receipt exists for every payment that
  * executed. Agentify's gateway writes a receipt only on the way into delivery,

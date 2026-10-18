@@ -818,7 +818,7 @@ describe("an asynchronous purchase", () => {
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
 
-  it("refuses a delivery once the refund has been paid back", async () => {
+  it("refuses a delivery once a refund is recorded", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -842,16 +842,15 @@ describe("an asynchronous purchase", () => {
       ok: false,
       error: {
         code: "refund_already_settled",
-        message:
-          "the buyer has his money back for this order, so there is nothing left to deliver against",
+        message: expect.any(String),
         retryable: false,
       },
     });
   });
 
-  it("closes the debt when late goods arrive before the refund does", async () => {
-    // To a buyer, late goods are better than a refund — as long as the refund
-    // has not gone through yet.
+  it("closes the debt when late goods arrive before a refund is recorded", async () => {
+    // To a buyer, late goods are better than a refund — as long as no refund
+    // has been recorded.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});

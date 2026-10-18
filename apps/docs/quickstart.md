@@ -9,10 +9,10 @@ the receipt. The first buyer is the operator-run sandbox program described in
 step 6. You do not rewrite the shop to get there: a handler appears beside it,
 a process that takes paid orders and gives out the goods for them.
 
-The SDK is the current product path. A WooCommerce connector exists as an
-experiment, but it is not required for this integration or used as its
-acceptance gate. [Connecting to Agentify](/) explains that boundary for the
-owner of the business.
+This page is the route through the SDK. A business that sells from a
+WooCommerce shop has the other route, which connects the shop in the dashboard
+without code, and [Connecting to Agentify](/) describes it for the owner of the
+business.
 
 ## The words used below
 
@@ -68,39 +68,17 @@ The payout wallet is set in the dashboard, on the Settings screen, and nowhere
 else. The keys you issue operate your shop, but none of them can change where
 its money goes, so a copy of a key in a server's environment cannot send your
 sales anywhere else: no call your code can reach sets the wallet. Your code
-can still read it with `GET /v0/payout-wallet`.
+can still read it with `GET /v0/payout-wallet`. On the live channel the answer
+also carries a change still waiting to take effect, under `pending` with its
+`takes_effect_at`; on the test channel a change applies at once, so `pending`
+is always null there, and the first waiting change your code meets is on the
+live channel ([Replacing your wallet](/money#replacing-your-wallet)).
 
-What it reads is where your share arrives, and it is never the `payTo` of a
-payment request. Every payment request names your payout contract for that
-wallet, a split contract of the 0xSplits protocol with no owner, that pays
-99.9% to `payout_wallet` and 0.1% to Agentify whenever somebody sends its
-payout ([Money](/money#where-the-money-arrives)). So code that reconciles
-payments finds each buyer's transfer going into that contract, under the hash a
-receipt carries in `transaction`, and finds the wallet receiving one transfer
-per payout, each covering every sale since the payout before it, from the
-0xSplits warehouse, the shared contract that every such split pays its shares
-through. Code that compares `payTo` with `payout_wallet`, or looks for one
-incoming transfer per sale, finds no match.
-
-On the live channel a wallet already saved is not replaced at once. Everybody
-who signs in to your merchant's dashboard is sent a message first, saying the
-change was asked for in the dashboard and which account's session asked for it,
-and the new address takes effect forty-eight hours after the message went out.
-Until then every payment request names the payout contract of the wallet still
-in force, and the Settings screen shows the waiting address, the moment it
-takes effect and a control to cancel it. Your code reading the wallet in that
-time gets the wallet still in force in `payout_wallet` and the new one under
-`pending`, with `takes_effect_at`. The first wallet your merchant saves applies
-at once, and on the live channel every account is sent a message about it
-afterwards. On the test channel every change applies at once, nothing is sent
-and `pending` is always null, so the first time your code meets a waiting
-change is on the live channel.
-
-A change that cannot be announced to every account is not recorded, the
-dashboard says why, and your sales keep paying out where they did. A message
-about a change that was then refused is safe to ignore: every message says the
-change takes effect only if the Settings screen of your dashboard shows it
-waiting.
+Buyers do not pay that wallet directly. Every payment request names your
+payout contract for it, a split contract of the 0xSplits protocol with no owner
+that pays 99.9% to `payout_wallet` and 0.1% to Agentify whenever somebody sends
+its payout, so the wallet receives one transfer per payout rather than one per
+sale ([Where the money arrives](/money#where-the-money-arrives)).
 
 Once the seller name and wallet are set, open API Keys, press "Issue a key",
 name it so you can distinguish it from the next one — one line of at most 100
@@ -464,8 +442,8 @@ delivery lands in one of them. A handler slower than our wait for its answer can
 have the same order delivered again to another instance while it is still
 working on it ([Running the handler in several
 instances](/orders#running-the-handler-in-several-instances)). Within one
-instance the orders are worked through one at a time; a parameter for taking
-several at once is among the things not settled.
+instance the orders are worked through one at a time, and no parameter takes
+several at once.
 
 We remember where the orders stand as well, so after a restart you do not have
 to rebuild the picture from your own database alone: the open orders can be
@@ -609,24 +587,20 @@ separate from that SDK path and carry no promise of automatic listing.
 
 ## What is not settled yet
 
-- The price hook, an address of yours that we would call instead of your price
-  handler. A card cannot name one yet, and when one can, your side will need
-  something to check a request against to know that it came from us. A price
-  handler has neither question — the subscription channel is authenticated when
-  it connects.
-- The exact names of an order's fields, and of the two fields a handler's
-  refusal carries. Their shapes are settled and described on these pages. A
-  change to the published spelling requires a new package version.
-- The names of the fields a card sets deadlines in.
-- The parameter that lets one subscription work on several orders at once: its
-  name and its default.
 - How to take orders outside Node. The subscription's wire protocol is not
   documented for external consumers; the ready-made tools are for Node only.
+- Whether one instance of the handler will be able to work on several orders
+  at once.
 - The surface of the other order transports: the request to an address of
   yours, and the cursor that pulls batches.
+- When we start calling a price hook, an https address of yours asked instead
+  of your price handler, and what your side will check its requests against to
+  know that they came from us.
 - The half of the check that would send one order twice and watch for a second
   delivery. Nothing on our surface raises that order to send, so this check
   still cannot exercise your delivery system's idempotency from outside.
-- A public way for an unassigned self-signup to ask for the operator-started
-  test purchase: there is no channel yet.
-- Starting the test purchase with a command of your own is not supported.
+- A way to have the test purchase started without an operator. There is no
+  public channel for an unassigned self-signup to ask for it, and no command of
+  your own starts it.
+- Whether an external discovery catalogue lists a product whose sale settled
+  on a test chain.

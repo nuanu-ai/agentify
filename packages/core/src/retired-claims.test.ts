@@ -66,6 +66,11 @@ const RETIRED: readonly Retired[] = [
     instead:
       "the queue's own retries are off; redelivery is decided by the order machine, and a drawn envelope is never re-offered",
   },
+  {
+    words: "if the refund has gone out",
+    instead:
+      "a late delivery closes an order owing a refund as delivered until a refund is recorded on it; a refund the merchant sends from their own wallet is not seen and nothing records one yet, so only a recorded refund makes a later delivery fail with refund_already_settled",
+  },
 ];
 
 describe("sentences this repository has retired", () => {

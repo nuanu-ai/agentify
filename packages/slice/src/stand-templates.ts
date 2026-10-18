@@ -11,7 +11,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { CardInput } from "@nuanu-ai/agentify";
-import { CATALOG } from "./cards.js";
+import { EUROPE_ESIM, RENTED_NUMBER } from "./cards.js";
 
 export interface Template {
   /** What the form posts back, and what names this example in the log. */
@@ -51,11 +51,7 @@ const written =
  * system default of a day, which nobody at a console will reach; ten seconds is
  * short enough to watch run out.
  */
-const esimWithADeadline = (): CardInput => {
-  const card = structuredClone(CATALOG[1]) as Record<string, unknown>;
-  card.fulfill_deadline_seconds = 10;
-  return card as CardInput;
-};
+const esimWithADeadline = (): CardInput => ({ ...EUROPE_ESIM, fulfill_deadline_seconds: 10 });
 
 /*
  * Three cards in the shape the public x402 catalogue is mostly made of:
@@ -145,7 +141,7 @@ export const TEMPLATES: readonly Template[] = [
     key: "rented_number",
     label: "Rented number, 3.00",
     about: "The pilot's synchronous product, priced by the handler at the moment of purchase.",
-    read: written(CATALOG[0] as CardInput),
+    read: written(RENTED_NUMBER),
   },
   {
     key: "esim",

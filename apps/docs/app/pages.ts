@@ -27,7 +27,7 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
   "/": {
     file: "index.md",
     description:
-      "Learn how to sell through Agentify, what your business needs to connect, and how the SDK and experimental WooCommerce connector fit.",
+      "Learn how to sell through Agentify, what your business needs to connect, and how the SDK and the WooCommerce connector differ.",
   },
   "/money": {
     file: "money.md",

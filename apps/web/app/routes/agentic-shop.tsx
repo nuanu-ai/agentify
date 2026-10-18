@@ -250,7 +250,8 @@ export default function AgenticShopPage() {
               <h3>Connect your catalog.</h3>
               <p>
                 Use the <a href="/docs/quickstart">SDK</a> to publish the offer, price and
-                fulfilment promises. The WooCommerce connector is experimental.
+                fulfilment promises, or import products from a WooCommerce store, on the test
+                channel for now.
               </p>
             </li>
             <li>

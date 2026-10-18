@@ -33,7 +33,7 @@ import {
   type StoredOrder,
   X402Facilitator,
 } from "@agentify/gateway";
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import type { CardInput } from "@nuanu-ai/agentify-contracts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { getDefaultAsset } from "@x402/evm";
 import { type Bought, makeBuyer } from "./buyer.js";
@@ -283,7 +283,7 @@ async function main(): Promise<void> {
   // settlement, so a single paid call is the whole of what the smoke has to do.
   // Same merchant_item_id as the catalog eSIM, so the mock merchant's own
   // handler answers it; only the price is the testnet one.
-  const smokeCard: Card = { ...EUROPE_ESIM, price: { amount: priceUsd, currency: "USD" } };
+  const smokeCard: CardInput = { ...EUROPE_ESIM, price: { amount: priceUsd, currency: "USD" } };
 
   try {
     const published = await merchant.client.catalog.publish(smokeCard);

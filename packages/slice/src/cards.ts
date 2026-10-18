@@ -27,7 +27,7 @@ const asTimestamp = (at: number): string => new Date(at).toISOString();
  * subscription the orders arrive on. The sale goes through at whatever the desk
  * answers, which is what the synchronous cycle is here to exercise.
  */
-export const RENTED_NUMBER: Card = {
+export const RENTED_NUMBER = {
   merchant_item_id: "rented-number-us-30d",
   title: "Rented US phone number, 30 days",
   description:
@@ -42,7 +42,7 @@ export const RENTED_NUMBER: Card = {
   },
   fulfillment: "sync",
   price_check: "handler",
-};
+} satisfies Card;
 
 /**
  * A data-only eSIM for Europe, paid for at once and provisioned afterwards.
@@ -54,7 +54,7 @@ export const RENTED_NUMBER: Card = {
  * run, because its subject is the ordinary path where the merchant delivers in
  * time.
  */
-export const EUROPE_ESIM: Card = {
+export const EUROPE_ESIM = {
   merchant_item_id: "esim-eu-5gb-30d",
   title: "eSIM, Europe, 5 GB, 30 days",
   description:
@@ -68,10 +68,10 @@ export const EUROPE_ESIM: Card = {
     iccid: { type: "string", title: "The eSIM ICCID" },
   },
   fulfillment: "async",
-};
+} satisfies Card;
 
 /** The two cards the mock merchant publishes, in the order it publishes them. */
-export const CATALOG: readonly Card[] = [RENTED_NUMBER, EUROPE_ESIM];
+export const CATALOG = [RENTED_NUMBER, EUROPE_ESIM] as const;
 
 /**
  * What the merchant's price desk answers for the rented number when it is asked

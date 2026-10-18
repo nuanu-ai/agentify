@@ -52,10 +52,10 @@ have answered them we have no more questions for you.
    Access, a key, a link, a subscription go out a second time to the same buyer
    without loss; a unit off a shelf or a one-off code from a limited batch does
    not. During the pilot we take on goods of the first kind only, and that is
-   our limit rather than a property of what you sell: we have not chosen how
-   money goes back yet, so we sell what we are almost certain we can deliver.
-   Once there is a way to send money back, the limit comes off
-   ([Money](/money)). A parcel sent by a carrier is the one exception, and on
+   our limit rather than a property of what you sell: how money goes back to a
+   buyer is not settled yet, neither how you send it nor how a refund is
+   recorded, so we sell what we are almost certain we can deliver. Once it is
+   settled, the limit comes off ([Money](/money)). A parcel sent by a carrier is the one exception, and on
    the test channel only, where the money is not real: it can be tried there
    end to end, and it is not sold live until a lost parcel's refund can be
    recorded ([Orders](/orders)).
@@ -71,9 +71,11 @@ Your engineer writes the handler against your API. The whole path from an empty
 project to a test sale is on [The first test sale](/quickstart). Agentify carries
 the paid order to that handler and returns its delivery to the buyer.
 
-The WooCommerce connector is an experiment. It is not the route used to accept
-the SDK product, and you do not need it for an SDK integration. Delivery by a
-message that you confirm by hand is designed but not switched on.
+With a WooCommerce shop nobody has to write code: the dashboard connects the
+shop and imports its products as cards, as [Selling through a WooCommerce
+shop](/woocommerce) describes. The connector stays off the live channel until
+its orders have gone through on the test channel from start to finish. Delivery by a message that you confirm by hand is designed but not
+switched on.
 
 ## After you are connected
 

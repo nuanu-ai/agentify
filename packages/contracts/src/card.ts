@@ -617,24 +617,91 @@ export type PriceCheck = z.infer<typeof PriceCheckSchema>;
 export type Card = z.infer<typeof CardSchema>;
 
 /**
- * A card as a merchant may write it for publication, before the short forms
- * are opened out. Nothing is ever read back in this shape; `Card` is what
- * everything else uses.
- *
- * It is written by hand because zod cannot infer it, but every field except
- * the four below is taken from `Card`, so a field added to a card appears here
- * too.
+ * What every card is written with at publication, whatever its mode. It is
+ * written by hand because zod cannot infer it, but every field not named here
+ * is taken from `Card`, so a field added to a card appears here too.
  */
-export type CardInput = Omit<Card, "price" | "params" | "result" | "fulfillment"> & {
+interface CardInputFields
+  extends Omit<
+    Card,
+    | "price"
+    | "params"
+    | "result"
+    | "fulfillment"
+    | "price_check"
+    | "confirm_deadline_seconds"
+    | "fulfill_deadline_seconds"
+    | "ship_within_seconds"
+  > {
   /** `{ amount, currency }`, or the two as one string: `'5.00 USD'`. */
   price: Money | string;
   /** Each field whole, or written as its type word alone: `email: 'string'`. */
   params?: ParamSpecInput;
-  /** Left out on a parcel's card, whose mode fixes what the agent receives. */
-  result?: ParamSpecInput;
-  /** Left out on a card that is delivered in the answer to the purchase. */
-  fulfillment?: Fulfillment;
-};
+  /** No card that can be published is asked to confirm, so none names a time for it. */
+  confirm_deadline_seconds?: never;
+}
+
+/** A card whose goods are delivered to the agent, in the answer or later. */
+interface DeliveredCardInput extends CardInputFields {
+  /**
+   * What the agent receives on delivery, each field whole or written as its
+   * type word alone: `access_url: 'string'`.
+   */
+  result: ParamSpecInput;
+  price_check?: PriceCheck;
+  /** Only a parcel's card names a time to hand it to a carrier. */
+  ship_within_seconds?: never;
+}
+
+/** A card paid for at the purchase and delivered later, by a separate call. */
+interface AsyncCardInput extends DeliveredCardInput, Pick<Card, "fulfill_deadline_seconds"> {
+  fulfillment: "async";
+}
+
+/** A parcel the merchant hands to a carrier, paid for at the purchase. */
+interface ShipCardInput extends CardInputFields {
+  fulfillment: "ship";
+  /** What the agent receives is fixed by the mode: the record of the parcel's shipment. */
+  result?: never;
+  /** The price includes shipping to the buyer's place, so it is asked of the price handler. */
+  price_check: "handler";
+  /** How long the merchant may take to hand the parcel to a carrier, counted from the charge. */
+  ship_within_seconds: number;
+  /** A parcel names the time to ship instead, since a deadline would read as when it arrives. */
+  fulfill_deadline_seconds?: never;
+}
+
+// Declared after the other modes on purpose: the compiler explains a card that
+// fits none of them against the last one declared, and a card that names no
+// mode is most likely this one, missing its result.
+/** A card delivered in the answer to the purchase. */
+interface SyncCardInput extends DeliveredCardInput {
+  /** Left out, a card is delivered in the answer to the purchase. */
+  fulfillment?: "sync";
+  /** Delivered inside the response budget every card shares, so it names no deadline of its own. */
+  fulfill_deadline_seconds?: never;
+}
+
+/**
+ * A card as a merchant may write it for publication, before the short forms
+ * are opened out. Nothing is ever read back in this shape; `Card` is what
+ * everything else uses.
+ *
+ * It is one shape per mode, chosen by `fulfillment`, so the compiler refuses
+ * what publishing would refuse between the mode and the other fields: a card
+ * delivered to the agent declares a `result` and a parcel declares none, only
+ * a parcel names `ship_within_seconds` and a parcel's `price_check` is
+ * `"handler"`, only an `"async"` card names `fulfill_deadline_seconds`, and
+ * `"confirm"` is not offered, since it cannot be published yet. What a type
+ * cannot say, such as the price rule, plain text, or a parcel asking for
+ * `ship_to` among its parameters, is refused at publication and named in the
+ * refusal.
+ *
+ * A `Card` read back is not split by mode, so it is not a `CardInput` as it
+ * stands. Publication takes a card read back unchanged, but TypeScript code
+ * republishes the card it holds, or asserts the read-back one's type.
+ */
+export type CardInput = SyncCardInput | AsyncCardInput | ShipCardInput;
 
 /**
  * The check an agent's purchase parameters are held to, for this card. It and

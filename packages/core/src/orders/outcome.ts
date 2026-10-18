@@ -48,7 +48,7 @@ export const ORDER_OUTCOMES = [
   "cancelled",
   /** The money was taken and the goods never came: a refund is owed. */
   "refund_due",
-  /** That refund has been paid back. */
+  /** A refund of it is recorded. */
   "refunded",
   /**
    * The merchant produced the goods for a synchronous purchase and the charge

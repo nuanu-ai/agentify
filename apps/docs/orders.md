@@ -294,7 +294,7 @@ card and never against the state of the order, so the fault in your handler is
 what you hear about first either way. But an order still yours to finish is
 refused with the words that it stands where it did, marked as worth calling
 again: fix the handler and deliver. An order that has ended — one that ran out
-of time, one you refused yourself, one whose refund has gone out — is refused
+of time, one you refused yourself, one with a refund recorded on it — is refused
 with its ending named and marked as not worth calling again, and the fields that
 did not fit are still listed. There is nothing left to deliver against, and a
 handler that ignores that mark makes the goods once for every attempt.
@@ -315,10 +315,25 @@ carries is neither checked nor kept. What it ought to carry is in [Telling a
 repeat apart](#telling-a-repeat-apart).
 
 A late call is accepted. If your delivery deadline has passed, the order is
-already marked as needing a refund and the refund has not yet gone out,
-`deliver` closes the debt with the goods: the money for them has been paid, and
-late goods are better for the buyer than a refund. If the refund has gone out
-by then, the call returns an error — there is nothing left to deliver against.
+already marked as needing a refund, and `deliver` closes that debt with the
+goods: the money for them has been paid, and late goods are better for the
+buyer than a refund.
+
+That holds until a refund is recorded on the order. Only a recorded refund
+makes a later delivery fail, with `refund_already_settled`, and recording a
+refund is not available yet. We do not see a refund you send from your own
+wallet, so it does not stop a late delivery: the order closes as delivered, and
+the buyer keeps both the money you sent back and the goods.
+
+::: warning Once you have refunded an order, do not deliver it
+Nothing on our side stops that delivery for you. An order owing a refund stays
+on the list of open orders, and one your handler has not answered can still
+reach it, for example when your process comes back after the deadline has
+passed; a delivery from either closes the order. Calling `refuse` after the
+refund does not close it either: the call succeeds and the order goes on owing
+a refund. So keep your own record of the orders you have refunded, and have
+your handler and every loop over the open orders check it before they deliver.
+:::
 
 ### When a closing call does not go through
 
@@ -332,7 +347,7 @@ own words instead of being flattened into the nearest of these.
 
 | Code | When it arrives | Repeating could change it |
 | --- | --- | --- |
-| `refund_already_settled` | the buyer has their money back for this order, so there is nothing left to deliver against | no |
+| `refund_already_settled` | a refund is recorded on this order, so there is nothing left to deliver against | no |
 | `order_already_closed` | the order reached an ending that no call reopens | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
 | `delivery_does_not_match_card` | the goods are not the ones the order was sold with, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
@@ -406,6 +421,11 @@ waiting out your delivery deadline and arriving at the same result through
 silence: the buyer hears about the debt the minute you do, instead of a day
 later.
 
+The refusal does not close the order. It stays open owing a refund, and goods
+delivered for it afterwards still close it as delivered, the way a late
+delivery does ([Confirming a delivery with a separate
+call](#confirming-a-delivery-with-a-separate-call)).
+
 ## Finding out where an order stands
 
 We remember where the orders stand as well, so you can ask us at any moment.
@@ -426,7 +446,8 @@ for (const waiting of open) {
 
   if (issued !== null) {
     // On an order marked as needing a refund this closes the debt with the
-    // goods instead of paying the money back.
+    // goods, even after you have paid the buyer back yourself, so `accessFor`
+    // has to answer null for an order you refunded.
     await waiting.deliver({ access_url: issued.url, expires_at: issued.expiresAt })
   }
 }
@@ -458,7 +479,8 @@ never happened. It is still readable by its identifier, and there its status
 is the buyer's word for a purchase that has not finished, which is not an
 instruction to you. It holds an order marked as needing a refund, where
 delivering closes the debt with the goods instead of paying the money back, and
-that may be what you want.
+that may be what you want. It goes on holding that order after you have sent
+the refund, and delivering then gives the buyer the goods as well as the money.
 
 It also holds orders that already have their goods and are waiting only on
 money, and those are the ones a loop over the list has to step around. A
@@ -710,8 +732,9 @@ Within one instance the orders are worked through one at a time, and the
 instance is handed the next order or question only once it has answered the one
 before, so each costs it a handler call and two trips: its answer coming back to
 us and the poll for the next one. Running more instances is how to get through
-more of them at once. A parameter for taking several at once within one instance
-is among the things [not settled](/quickstart).
+more of them at once: no parameter takes several at once within one instance,
+and whether one will is among the things [not
+settled](/quickstart#what-is-not-settled-yet).
 
 ## Test orders
 
@@ -794,8 +817,10 @@ your side never hears about it — no order reaches you.
   that mode is settled — the request to confirm and your two answers — and the
   agent's side of it is not, which is one of the reasons the mode is not open
   during the pilot.
-- How your side learns that a refund on an order has gone out: together with
-  the mechanics of refunding ([Money](/money)).
+- Recording a refund on an order. Nothing records one yet, so no order ends
+  as refunded and `refund_already_settled` is never sent. How a refund you sent
+  comes to be recorded belongs to the mechanics of refunding, which are open
+  as well ([Money](/money)).
 - Telling your code that a synchronous answer arrived after its deadline. The
   answer carries the word; the tools drop it, because they report only the
   answers we refuse.

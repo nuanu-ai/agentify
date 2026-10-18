@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Card, Order } from "@nuanu-ai/agentify-contracts";
+import type { CardInput, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  type AgentifyClient,
   AgentifyError,
   ANSWER_NOT_UNDERSTOOD,
   CALL_DID_NOT_REACH_US,
@@ -17,7 +18,7 @@ import { REACH, type Reach, reachOf, type TransportFailure, whatIsKnown } from "
 
 const API_KEY = "merchant-key-for-the-tests";
 
-const card: Card = {
+const card: CardInput = {
   merchant_item_id: "access-monthly",
   title: "Доступ к сервису на один месяц",
   description: "Что покупатель получает, для какой задачи это годится и что в это не входит.",
@@ -143,6 +144,120 @@ describe("publishing a card", () => {
     await expect(agentify.catalog.publish(card)).rejects.toThrow(/document it promises/);
   });
 });
+
+/**
+ * The cards the compiler refuses, so that a card publishing would refuse is a
+ * type error where it is written rather than a refusal after the call. None
+ * of this runs: every `@ts-expect-error` fails the build the day the line
+ * under it starts compiling, and every line without one fails the day it
+ * stops.
+ */
+const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void => {
+  const { catalog } = agentify;
+  const named = {
+    merchant_item_id: "access-monthly",
+    title: "One month of access to the service",
+    description: "Access for 30 days from delivery, renewal not included",
+    price: "5.00 USD",
+  };
+  const result = { access_url: "string" } as const;
+  const parcel = { ...named, price_check: "handler", ship_within_seconds: 172_800 } as const;
+  // A mode chosen while the program runs, as by a caller that sells two kinds of card.
+  const either = <Mode extends string>(one: Mode, other: Mode): Mode =>
+    Math.random() < 0.5 ? one : other;
+
+  // Each mode with what it needs, the mode left out being "sync".
+  void catalog.publish({ ...named, result });
+  void catalog.publish({ ...named, result, fulfillment: "async" });
+  void catalog.publish({ ...named, result, fulfillment: "async", fulfill_deadline_seconds: 60 });
+  void catalog.publish({ ...parcel, fulfillment: "ship" });
+
+  // Each mode with every optional field it takes, so that a type refusing what
+  // publishing accepts fails here too.
+  const params = { email: "string" } as const;
+  const tags = ["access"];
+  void catalog.publish({ ...named, result, params, tags, price_check: "handler" });
+  void catalog.publish({
+    ...named,
+    result,
+    params,
+    tags,
+    price_check: "handler",
+    fulfillment: "async",
+    fulfill_deadline_seconds: 60,
+  });
+  void catalog.publish({ ...parcel, params, tags, fulfillment: "ship" });
+
+  // A card in the canonical form, every short form written out, compiles too.
+  void catalog.publish({
+    ...named,
+    price: { amount: "5.00", currency: "USD" },
+    result: { access_url: { type: "string" } },
+    fulfillment: "sync",
+  });
+
+  // A card whose mode is decided at run time compiles as long as every mode it may take does.
+  void catalog.publish({ ...named, result, fulfillment: either("sync", "async") });
+
+  // @ts-expect-error a card delivered in the answer to the purchase declares what arrives
+  void catalog.publish({ ...named });
+
+  // @ts-expect-error so does a card delivered later
+  void catalog.publish({ ...named, fulfillment: "async" });
+
+  // @ts-expect-error a parcel declares no result, since what the agent receives is its shipment
+  void catalog.publish({ ...parcel, result, fulfillment: "ship" });
+
+  // @ts-expect-error a parcel names the time it is handed to a carrier
+  void catalog.publish({ ...named, price_check: "handler", fulfillment: "ship" });
+
+  // @ts-expect-error a parcel's price is asked of the merchant's price handler
+  void catalog.publish({ ...named, ship_within_seconds: 60, fulfillment: "ship" });
+
+  // @ts-expect-error a parcel names no delivery deadline, which would read as when it arrives
+  void catalog.publish({ ...parcel, fulfill_deadline_seconds: 60, fulfillment: "ship" });
+
+  // @ts-expect-error a card delivered in the answer names no delivery deadline
+  void catalog.publish({ ...named, result, fulfill_deadline_seconds: 60 });
+
+  // @ts-expect-error only a parcel names a time to ship
+  void catalog.publish({ ...named, result, fulfillment: "async", ship_within_seconds: 60 });
+
+  // @ts-expect-error no card that can be published is asked to confirm, so none names a time for it
+  void catalog.publish({ ...named, result, fulfillment: "async", confirm_deadline_seconds: 60 });
+
+  // @ts-expect-error a card cannot be published as "confirm" yet
+  void catalog.publish({ ...named, result, fulfillment: "confirm" });
+
+  // @ts-expect-error and a mode decided at run time is held to every mode it may take
+  void catalog.publish({ ...named, result, fulfillment: either("sync", "ship") });
+
+  // A card built before the call is held to the same rules, where a field its
+  // mode refuses is no longer caught as a stray property of the literal.
+  const builtLater = { ...named, result, fulfillment: "async" } as const;
+  const builtToShip = { ...builtLater, ship_within_seconds: 60 };
+  const builtToConfirm = { ...builtLater, confirm_deadline_seconds: 60 };
+  const builtParcel = { ...parcel, fulfillment: "ship" } as const;
+  const builtParcelWithResult = { ...builtParcel, result };
+  const builtParcelWithDeadline = { ...builtParcel, fulfill_deadline_seconds: 60 };
+
+  void catalog.publish(builtLater);
+  void catalog.publish(builtParcel);
+
+  // @ts-expect-error only a parcel names a time to ship, however the card was built
+  void catalog.publish(builtToShip);
+
+  // @ts-expect-error no card that can be published names a time to confirm, however it was built
+  void catalog.publish(builtToConfirm);
+
+  // @ts-expect-error a parcel declares no result, however it was built
+  void catalog.publish(builtParcelWithResult);
+
+  // @ts-expect-error a parcel names no delivery deadline, however it was built
+  void catalog.publish(builtParcelWithDeadline);
+};
+
+void compilerRefusesWhatPublishingRefuses;
 
 describe("reading orders back", () => {
   it("reads one order and the state it is in", async () => {
@@ -278,7 +393,7 @@ describe("closing an order the merchant took on", () => {
     // merchant never wraps a retry loop around a case no repeat changes.
     const error = {
       code: "refund_already_settled",
-      message: "the debt was paid back",
+      message: "a refund is recorded for this order",
       retryable: false,
     };
     const agentify = await gatewayServing({
