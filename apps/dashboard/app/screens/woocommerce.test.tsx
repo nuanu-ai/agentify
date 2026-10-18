@@ -238,6 +238,41 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(form)).toMatch(/\b2 more\b/);
   });
 
+  it("names five waiting orders without saying there are more", () => {
+    const waiting = Array.from({ length: 5 }, (_, at) => `ord_${at}0f3c9a1b2d4e6f8a7b9c`);
+    const refused = switchRefused("api", waiting);
+    if (refused.ok) throw new Error("a disconnect with orders waiting was not refused");
+
+    const form = formOf(
+      shopPage({ state: CONNECTED, through: "woocommerce" }, { leaving: refused }),
+      "/woocommerce/disconnect",
+    );
+
+    expect([...form.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
+    expect(readable(form)).not.toMatch(/\bmore\b/);
+  });
+
+  it("says a refused Connect again beside it when the shop granted read alone", () => {
+    const html = shopPage(
+      {
+        state: {
+          kind: "connected",
+          shop: {
+            shopUrl: SHOP,
+            permissions: "read",
+            connectedAt: new Date("2026-10-12T09:00:00Z"),
+          },
+        },
+        through: "woocommerce",
+      },
+      { problem: "Your shop did not show its approval screen." },
+    );
+
+    expect(readable(formOf(html, "/woocommerce/connect"))).toContain(
+      "Your shop did not show its approval screen.",
+    );
+  });
+
   it("draws what it was given as text, never as markup", () => {
     const html = shopPage(
       { state: CONNECTED, through: "woocommerce" },

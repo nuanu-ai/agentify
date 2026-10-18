@@ -189,7 +189,7 @@ function WhatCanBeImported() {
           <Tick />
           <span>
             <b>A parcel</b>: a physical product. The agent pays its price plus your cheapest
-            shipping rate, and your shop gets a paid order with the buyer's address
+            shipping rate to the buyer, and your shop gets a paid order with the buyer's address
           </span>
         </li>
         <li>
@@ -294,9 +294,9 @@ function ParcelRules({ base }: Readonly<{ base: string }>) {
 }
 
 /**
- * The refusal under the status is drawn there rather than on a form because
- * it is about something different: what the shop answered when we read it,
- * not what was just pressed.
+ * With a read-only grant the refusal is the answer to Connect again and is
+ * drawn beside it; otherwise it is what the shop answered when an import read
+ * it, which is about the connection, so it goes under the status.
  */
 function Connected({
   connection,
@@ -317,7 +317,7 @@ function Connected({
           Your shop is connected: the keys came directly from its server.
         </p>
       ) : null}
-      <Problem said={view.problem} base={base} />
+      {connection.granted === null ? <Problem said={view.problem} base={base} /> : null}
       {connection.granted === null ? null : (
         <FormPanel
           action="/woocommerce/connect"
@@ -330,9 +330,13 @@ function Connected({
                 Every purchase is refused before payment, because Agentify cannot create its order
                 in your shop. Connect again and approve read and write access; you stay connected
                 until the new keys arrive.
+                {connection.offerSwitch
+                  ? " Connecting also switches you to selling through the shop at once."
+                  : null}
               </p>
               <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
               <Button pending={pending}>Connect again</Button>
+              <Problem said={view.problem} base={base} />
             </>
           )}
         </FormPanel>
@@ -380,11 +384,12 @@ function Connected({
             {(pending) => (
               <>
                 <p className={styles.sub}>
-                  Removes the shop's keys and switches you back to your own code: the shop's cards
-                  go off sale, and the cards your code published come back with selling stopped.
-                  Orders still waiting on the shop have to finish first. A parcel already owed a
-                  refund stays owed: once the shop is disconnected, marking it Completed no longer
-                  clears the debt. <a href={`${GUIDE}#disconnecting`}>What disconnecting does</a>.
+                  Deletes Agentify's copy of the shop's keys, which stay valid in WooCommerce until
+                  you revoke them there, and switches you back to your own code: the shop's cards go
+                  off sale, and the cards your code published come back with selling stopped. Orders
+                  still waiting on the shop have to finish first. A parcel already owed a refund
+                  stays owed: once the shop is disconnected, marking it Completed no longer clears
+                  the debt. <a href={`${GUIDE}#disconnecting`}>What disconnecting does</a>.
                 </p>
                 <Button variant="secondary" pending={pending}>
                   <span className={styles.leave}>Disconnect shop</span>

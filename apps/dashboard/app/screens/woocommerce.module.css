@@ -221,7 +221,7 @@
   color: var(--fail);
 }
 
-/* On a phone the panel's one control spans it, as the mockups' thumbs expect. */
+/* On a phone a panel's control spans the panel. */
 @container (max-width: 560px) {
   .panel {
     padding: 20px 16px;

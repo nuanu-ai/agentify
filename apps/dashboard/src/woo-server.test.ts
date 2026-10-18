@@ -1044,10 +1044,11 @@ describe("importing the catalogue", () => {
     expect(text).toContain("Access code");
   });
 
-  it("leads from each product it published to its own card on Cards by its product code, not a title it shares", async () => {
+  it("leads from each product it published to Cards by its product code, not by a title it shares", async () => {
     // Two products of one name, as a shop selling a size apart may list them:
-    // a way found by the title would land on both. Cards finds a code as a
-    // part of one, so product 1 would also list product 11; these are not.
+    // a way found by the title would land on both. Cards finds any card whose
+    // code contains the one asked for, so product 1's way would also list
+    // product 11; these two are chosen apart from that.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -2116,6 +2117,21 @@ describe("one integration at a time", () => {
     expect(readable(refused.html)).toContain(order?.order.id ?? "no order");
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
     void asking;
+  });
+
+  it("refuses to sell through a connected shop while an order still waits on the code, and names it to be copied", async () => {
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "api");
+    const orderId = await paidFor(running, await publishedByTheCode(running));
+
+    const refused = await running.post("/woocommerce/switch");
+
+    expect(refused.status).toBe(409);
+    expect(refused.html).toMatch(/aria-label="Copy the whole order ID [^"]+"/);
+    expect(readable(refused.html)).toContain(orderId);
+    expect((await theCodePolls(running)).status).toBe(200);
   });
 
   it("brings the code's cards back with selling stopped, on the screen that starts it", async () => {
