@@ -628,29 +628,48 @@ describe("a card's row on a phone", () => {
   });
 
   it("does not repeat under every title the moment a fixed price holds from", () => {
-    // On a real catalogue every fixed-price row would carry the same line; the
-    // moment stays reachable on the price itself and in the opened row.
+    // On a real catalogue every fixed-price row would carry the same line.
     const html = served(() => (
       <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
     const main =
       /<div class="cell cell-main">([\s\S]*?)<div class="cell cell-amount"/.exec(html)?.[1] ?? "";
-    const price = /<div class="cell cell-amount"><span title="([^"]*)"/.exec(html)?.[1] ?? "";
 
     expect(readable(main)).toContain("A room for the night");
-    expect(readable(main)).not.toContain("Price on the card since");
-    expect(price).toBe("Price on the card since 2026-08-26 09:00:00 UTC");
+    expect(readable(main)).not.toMatch(/since/i);
   });
 
-  it("keeps what the narrow row leaves out in the row's opened part", () => {
-    // The moment the price holds from is not in the row's lines; on a phone it
-    // is one press away, never gone.
+  it("opens the price, at a press or a key, to the moment it holds from, on every width", () => {
+    // A title on a span is reached by a resting pointer alone; a disclosure
+    // the browser opens itself is reached by a key and a tap as well, without
+    // the page's script.
     const html = served(() => (
       <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
-    const opened = /<details class="cell-more">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "";
+    const price =
+      /<div class="cell cell-amount"><details[^>]*><summary[^>]*>([^<]*)<\/summary>([\s\S]*?)<\/details>/.exec(
+        html,
+      );
 
-    expect(readable(opened)).toContain("Price on the card since 2026-08-26 09:00:00 UTC");
+    expect(price?.[1]).toBe("80.00 USD");
+    expect(readable(price?.[2] ?? "")).toBe("On the card since 2026-08-26 09:00:00 UTC");
+    expect(html).not.toContain('class="cell-more');
+  });
+
+  it("leaves a price asked at purchase as it is, with nothing to open", () => {
+    const entry = cards.cards[0];
+    if (entry === undefined) throw new Error("the example catalogue has no card");
+    const asked = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
+    });
+    const html = served(() => (
+      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
+    ));
+    const price = /<div class="cell cell-amount">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+
+    expect(price).not.toContain("<details");
+    expect(readable(price)).toBe("80.00 USD");
   });
 });
 

@@ -774,6 +774,31 @@ form.inline {
   color: var(--muted);
 }
 
+/* A fixed price, which opens to the moment it holds from, under it. The words
+   keep to a narrow column, so an opened price on a phone leaves the title its
+   room. */
+.price-since > summary {
+  list-style: none;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.price-since > summary::-webkit-details-marker {
+  display: none;
+}
+
+.since-said {
+  display: block;
+  max-width: 9rem;
+  margin: 2px 0 0 auto;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  white-space: normal;
+}
+
 /* The short form of an identifier, which opens to the whole value under it. */
 .ident-whole > summary {
   list-style: none;

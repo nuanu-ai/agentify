@@ -1157,9 +1157,9 @@ const CARDS: GalleryState[] = [
       {
         id: "dashboard-cards-opened-row",
         screen: "Cards",
-        when: "A merchant on a phone taps a card's last line to read since when its price holds.",
+        when: "A merchant taps a card's price to read since when it holds.",
         cause:
-          "A phone's row shows the title, the price, the state, the delivery and the product code; the moment the price on the card holds from is in the row's opened part, which a wide screen shows under the title.",
+          "A row shows the title, the price, the state, the delivery and the product code; a fixed price opens to the moment it holds from, which no row prints, on every width.",
       },
       cardsView(CATALOGUE, ORIGIN.live),
       "live",
@@ -1167,11 +1167,11 @@ const CARDS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Price date",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "On the card since",
+          does: (page) => page.querySelector("details.price-since")?.setAttribute("open", ""),
         },
       ],
-      shows: "Price date",
+      shows: "On the card since",
     },
   },
   cards(

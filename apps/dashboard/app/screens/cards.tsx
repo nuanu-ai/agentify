@@ -1,7 +1,7 @@
 import { Button } from "@agentify/ui";
 import type { CardControl, CardPrice, CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
-import { Cell, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import { Cell, List, ListEmpty, Row } from "../components/list.js";
 import { CutNote, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
@@ -21,18 +21,21 @@ const Kept = ({ place }: Readonly<{ place: Place }>) =>
   ));
 
 /**
- * Said on the price itself, where a pointer resting on it finds it: on every
- * fixed-price row the line would be the same one, so the row does not print
- * it, and a narrow row's opened part says it in full.
+ * A fixed price opens to the moment it holds from, which the browser does at
+ * a press, a tap or a key with no script on the page; on every such row the
+ * line would be the same one, so the row does not print it.
  */
-const sinceIn = (priced: Extract<CardPrice, { since: unknown }>): string =>
-  `Price on the card since ${"text" in priced.since ? priced.since.text : `${priced.since.date} ${priced.since.time}`}`;
-
-const Since = ({ priced }: Readonly<{ priced: Extract<CardPrice, { since: unknown }> }>) => (
-  <>
-    Price on the card since <Moment at={priced.since} />
-  </>
-);
+const Price = ({ price, priced }: Readonly<{ price: string; priced: CardPrice }>) =>
+  "asked" in priced ? (
+    price
+  ) : (
+    <details className="price-since">
+      <summary>{price}</summary>
+      <span className="since-said">
+        On the card since <Moment at={priced.since} />
+      </span>
+    </details>
+  );
 
 const Control = ({
   id,
@@ -138,9 +141,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                 </Cell>
               </Cell>
               <Cell at="amount">
-                <span title={"since" in row.priced ? sinceIn(row.priced) : undefined}>
-                  {row.price}
-                </span>
+                <Price price={row.price} priced={row.priced} />
               </Cell>
               <Cell at="fact">
                 {row.delivery.says}
@@ -158,11 +159,6 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                 <Word word={row.state} />
               </Cell>
               <Control id={row.id} control={row.control} place={listing.place} />
-              {"since" in row.priced ? (
-                <RowMore summary="Price date" of={row.title}>
-                  <Since priced={row.priced} />
-                </RowMore>
-              ) : null}
             </Row>
           ))}
         </List>

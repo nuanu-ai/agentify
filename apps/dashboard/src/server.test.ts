@@ -3257,7 +3257,7 @@ describe("the cards screen", () => {
     expect(text).toContain("eSIM Europe, 5 GB for 30 days");
     expect(text).toContain("8.00 USD");
     expect(text).toContain("Later, within 4 hours");
-    expect(text).toContain("Price on the card since");
+    expect(text).toContain("80.00 USD On the card since");
     expect(text).toContain("On sale");
   });
 
