@@ -380,12 +380,14 @@ function Account({ view }: Readonly<{ view: SettingsView }>) {
 export function SettingsScreen({ view }: Readonly<{ view: SettingsView }>) {
   return (
     <>
-      <div className="lede">
-        <div>
-          <p>{view.lede}</p>
-          {view.approval === null ? null : <p>{view.approval}</p>}
+      {view.lede === null && view.approval === null ? null : (
+        <div className="lede">
+          <div>
+            {view.lede === null ? null : <p>{view.lede}</p>}
+            {view.approval === null ? null : <p>{view.approval}</p>}
+          </div>
         </div>
-      </div>
+      )}
       <div className="settings-grid">
         <section className="settings-panel settings-pair">
           <NameAndSite view={view} />

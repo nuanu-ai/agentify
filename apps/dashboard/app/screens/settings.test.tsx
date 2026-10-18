@@ -211,6 +211,8 @@ const configOn = (mode: SurfaceMode) =>
 
 interface Looking {
   readonly mode?: SurfaceMode;
+  /** Null for a merchant who has chosen none. */
+  readonly sellerName?: string | null;
   readonly wallet?: string | null;
   readonly pending?: string;
   readonly liveApproval?: boolean;
@@ -221,6 +223,7 @@ interface Looking {
 
 const viewOf = ({
   mode = "sandbox",
+  sellerName = "Freeland",
   wallet = null,
   pending,
   liveApproval,
@@ -231,7 +234,7 @@ const viewOf = ({
     mode,
     "owner@example.com",
     {
-      sellerName: "Freeland",
+      sellerName,
       sellerSite: "https://freeland.example",
       payoutWallet: PayoutWalletSchema.parse({
         payout_wallet: wallet,
@@ -323,15 +326,12 @@ describe("the payout wallet on the settings screen", () => {
     expect(text).toMatch(/optional/i);
   });
 
-  it("says publishing is refused without an address where the door asks for one", () => {
-    // Until an address is set, every card the merchant's code publishes is
-    // refused, in test mode as in live; the sandbox asks for none.
-    for (const mode of ["test", "live"] as const) {
-      expect(readable(walletPanel({ wallet: null, mode })), mode).toMatch(
-        /publishing a card is refused/i,
-      );
+  it("leaves the refusal without an address to the banner, where the door asks for one", () => {
+    // The banner over every page says no payout wallet is set and that every
+    // card is refused until one is; the panel under it does not say it again.
+    for (const mode of ["sandbox", "test", "live"] as const) {
+      expect(readable(walletPanel({ wallet: null, mode })), mode).not.toMatch(/refused/i);
     }
-    expect(readable(walletPanel({ wallet: null }))).not.toMatch(/refused/i);
   });
 
   it("says nothing about a refusal once an address is set", () => {
@@ -426,6 +426,20 @@ describe("a change of the payout wallet on its way", () => {
     expect(readable(walletPanel({ mode: "live", wallet: SHAPED }))).not.toMatch(
       /is sent a message about a different address/,
     );
+  });
+});
+
+describe("the name the products are sold under, over the settings", () => {
+  const settings = (looking: Looking): string =>
+    readable(renderToString(routed(() => <SettingsScreen view={viewOf(looking)} />)));
+
+  it("says which name buyers read, and leaves a missing one to the banner", () => {
+    // The banner over every page says no seller name is set and what that
+    // holds back; said again here it would be the same sentence twice.
+    expect(settings({ sellerName: "Freeland" })).toContain(
+      "Your products are sold under Freeland.",
+    );
+    expect(settings({ sellerName: null })).not.toMatch(/not set a seller name|cannot be published/);
   });
 });
 
