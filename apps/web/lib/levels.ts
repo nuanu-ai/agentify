@@ -17,5 +17,11 @@ export const PROVISIONAL_BELOW = 0.7;
 
 const SCAN_DAY = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
 
-/** The day a scan finished, in UTC, as its public link names it. */
-export const scanDay = (moment: string): string => SCAN_DAY.format(new Date(moment));
+/**
+ * The day a scan finished, in UTC, as its public link names it; null for a
+ * moment that is no date, which then names no day rather than a wrong one.
+ */
+export const scanDay = (moment: string): string | null => {
+  const at = new Date(moment);
+  return Number.isNaN(at.getTime()) ? null : SCAN_DAY.format(at);
+};

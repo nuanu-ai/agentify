@@ -59,7 +59,9 @@ export function ScanTeaser({
             coverage={teaser.coverage}
             host={data.target_host ?? "Private website diagnostic"}
             level={teaser.level}
-            line={`${SCAN_STATUS_LINES[data.status]} · ${scanDay(data.updated_at)}`}
+            line={[SCAN_STATUS_LINES[data.status], scanDay(data.updated_at)]
+              .filter(Boolean)
+              .join(" · ")}
             score={teaser.score}
           />
           <RobotsNotice checks={data.checks} className={layout.note} />

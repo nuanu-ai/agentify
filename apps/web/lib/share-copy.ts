@@ -82,7 +82,7 @@ export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean)
       hostLabel: snapshot.host,
       level: snapshot.level,
       score: snapshot.score,
-      scannedLabel: `Scanned ${scanDay(snapshot.generated_at)}`,
+      scannedLabel: `Scanned ${scanDay(snapshot.generated_at) ?? "on an unknown day"}`,
     },
   };
 }
