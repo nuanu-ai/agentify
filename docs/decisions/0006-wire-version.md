@@ -24,8 +24,10 @@ storefront's reader is different: a stranger's agent that no handshake reaches.
    serves them says so here. That change also moves the version once, to
    `"3"`, whatever else it carries: every package published before it speaks
    `"2"` without reading every document `"2"` carries by then, so without the
-   move such a worker would pass the handshake and misread an order, and with
-   it every one of them stops at startup saying it is out of date (the product
+   move such a worker would pass the handshake and misread an order. With it,
+   such a worker stops at the first poll answer it can read, saying it is out
+   of date; an answer it cannot read is a failed poll that it asks again
+   after, and it handles none of the orders that answer carried (the product
    owner, 2026-10-18). The exception is what no SDK worker reads: the
    payout wallet's pending fields (ADR-0019), and the routes and refusal codes
    only the dashboard called, which left the contract with its key
