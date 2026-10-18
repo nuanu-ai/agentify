@@ -171,17 +171,26 @@ describe("searching the orders", () => {
     });
   });
 
-  it("answers a search pasted with a long run of spaces at once", () => {
+  it("answers at once a search as long as the page keeps, a run of spaces pasted, over many orders", () => {
     const many = ordersOf(
-      Array.from({ length: 200 }, (_, at) => ({
+      Array.from({ length: 2_000 }, (_, at) => ({
         id: idOf(at.toString(16).padStart(4, "0"), "0000"),
       })),
     );
+    // Two hundred characters, all of them searched for: none is cut.
+    const pasted = `a${" ".repeat(198)}b`;
     const started = performance.now();
 
-    found(new URLSearchParams({ q: `a${" ".repeat(20_000)}b` }).toString(), many);
+    const { search } = ordersView(
+      "live",
+      CARDS,
+      many,
+      many,
+      new URLSearchParams({ q: pasted }),
+    ).listing;
 
     expect(performance.now() - started).toBeLessThan(1_000);
+    expect(search).toMatchObject({ q: pasted, cutAt: null });
   });
 
   it("does not take a short form for an order that shares only one of its halves", () => {
