@@ -1159,6 +1159,28 @@ const CARDS: GalleryState[] = [
     ),
     "live",
   ),
+  {
+    ...cards(
+      {
+        id: "dashboard-cards-opened-row",
+        screen: "Cards",
+        when: "A merchant on a phone taps a card's last line to read since when its price holds.",
+        cause:
+          "A phone's row shows the title, the price, the state, the delivery and the product code; the moment the price on the card holds from is in the row's opened part, which a wide screen shows under the title.",
+      },
+      cardsView(CATALOGUE, ORIGIN.live),
+      "live",
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Price date",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Price date",
+    },
+  },
   cards(
     {
       id: "dashboard-cards-cut-short",
@@ -1314,11 +1336,14 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-all-paused",
       screen: "Cards",
-      when: "A merchant has pressed Pause all sales.",
+      when: "A merchant who had paused one card has pressed Pause all sales.",
       cause:
-        "The merchant's selling is paused, so every card reads paused whatever its own switch says.",
+        "The merchant's selling is paused, so every card is off sale and the banner says why; the card they paused themselves keeps its Resume, and stays paused when all sales resume.",
     },
-    cardsView(cardsOf("paused", ON_SALE), ORIGIN.live),
+    cardsView(
+      cardsOf("paused", ["esimEurope", { product: "vpn", paused: true }, "number"]),
+      ORIGIN.live,
+    ),
     "live",
     { account: bannerOf(seenBy("live"), { selling: "paused" }) },
   ),
@@ -1347,6 +1372,20 @@ const CARDS: GalleryState[] = [
     }),
     "test",
     { account: bannerOf(seenBy("test"), { through: "woocommerce" }) },
+  ),
+  cards(
+    {
+      id: "dashboard-cards-shop-cards-while-code-sells",
+      screen: "Cards",
+      when: "A merchant who imported products from their WooCommerce shop switched back to selling through their own code.",
+      cause:
+        "The code sells, so the cards the shop published are off sale; no banner reason covers them, so each of those rows says why.",
+    },
+    cardsView(cardsOf("open", ON_SALE), ORIGIN.test, true, {
+      through: "api",
+      offSale: [idOf("itm", "number")],
+    }),
+    "test",
   ),
 ];
 
