@@ -46,7 +46,11 @@ const Tick = () => (
   </svg>
 );
 
-const SAID: Readonly<Record<Copied, string>> = { idle: "", copied: "Copied", failed: "" };
+const SAID: Readonly<Record<Copied, string>> = {
+  idle: "",
+  copied: "Copied",
+  failed: "Could not copy; select it",
+};
 
 /**
  * An identifier's prefix up to its first underscore, then its first four and
@@ -65,7 +69,8 @@ const shortened = (value: string): string => {
  * of it. The whole value is its title and what a screen reader reads, so it is
  * reachable before the page's script runs and without the clipboard; where
  * copying fails, the whole value takes the short one's place to be selected.
- * `what` names it in the button's words: "order ID".
+ * `what` names it in the button's words, "order ID", and the short value
+ * follows, so a list of buttons read out tells its rows apart.
  */
 export function Ident({ value, what }: Readonly<{ value: string; what: string }>) {
   const { copied, copy } = useCopy(value);
@@ -85,14 +90,14 @@ export function Ident({ value, what }: Readonly<{ value: string; what: string }>
       <button
         type="button"
         className={copied === "copied" ? "copy copied" : "copy"}
-        aria-label={`Copy the whole ${what}`}
+        aria-label={`Copy the whole ${what} ${short}`}
         title={`Copy the whole ${what}`}
         onClick={copy}
       >
         {copied === "copied" ? <Tick /> : <Squares />}
       </button>
       <span className="sr-only" role="status">
-        {copied === "failed" ? "Could not copy; select it" : SAID[copied]}
+        {SAID[copied]}
       </span>
     </span>
   );
@@ -113,7 +118,7 @@ export function CodeCopy({ code, address }: Readonly<{ code: string; address: st
       <button
         type="button"
         className={copied === "copied" ? "copy copied" : "copy"}
-        aria-label="Copy the purchase address"
+        aria-label={`Copy the purchase address of ${code}`}
         title={`Copy the purchase address: ${address}`}
         onClick={copy}
       >
