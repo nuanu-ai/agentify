@@ -1090,6 +1090,50 @@ const WHOLE_CATALOGUE = MerchantCardListSchema.parse({
   ),
 });
 
+/**
+ * A parcel, which names its time to reach a carrier, and a data plan sent
+ * later that names no window of its own, beside one that names its window.
+ */
+const WINDOWS = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    {
+      id: idOf("itm", "esimEurope"),
+      as_of: "2026-10-01T09:00:00Z",
+      card: PRODUCTS.esimEurope,
+      selling: "open",
+      paused: false,
+    },
+    {
+      id: idOf("itm", "esim-japan-unnamed"),
+      as_of: "2026-10-01T09:00:00Z",
+      card: {
+        ...PRODUCTS.esimEurope,
+        merchant_item_id: "esim-jp-3gb-15d",
+        title: "eSIM Japan, 3 GB for 15 days",
+        fulfill_deadline_seconds: undefined,
+      },
+      selling: "open",
+      paused: false,
+    },
+    {
+      id: idOf("itm", "router"),
+      as_of: "2026-10-01T09:00:00Z",
+      card: {
+        merchant_item_id: "travel-router",
+        title: "A pocket travel router",
+        description: "A router for a hotel room, sent by post",
+        price: { amount: "39.00", currency: "USD" },
+        fulfillment: "ship",
+        ship_within_seconds: 172_800,
+        price_check: "handler",
+      },
+      selling: "open",
+      paused: false,
+    },
+  ],
+});
+
 const CARDS: GalleryState[] = [
   cards(
     {
@@ -1181,6 +1225,17 @@ const CARDS: GalleryState[] = [
       shows: "Price date",
     },
   },
+  cards(
+    {
+      id: "dashboard-cards-windows",
+      screen: "Cards",
+      when: "A merchant who sells a parcel and a data plan whose card names no delivery window opens Cards.",
+      cause:
+        "A parcel's card names its time to reach a carrier; a card sent later that names no window is held to Agentify's default one, which the row says and links to rather than reading as no window at all.",
+    },
+    cardsView(WINDOWS, ORIGIN.live),
+    "live",
+  ),
   cards(
     {
       id: "dashboard-cards-cut-short",
@@ -1338,7 +1393,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant who had paused one card has pressed Pause all sales.",
       cause:
-        "The merchant's selling is paused, so every card is off sale and the banner says why; the card they paused themselves keeps its Resume, and stays paused when all sales resume.",
+        "The merchant's selling is paused, so every card is off sale and the banner says why; each card keeps its own switch, and the one they paused themselves stays paused when all sales resume.",
     },
     cardsView(
       cardsOf("paused", ["esimEurope", { product: "vpn", paused: true }, "number"]),
