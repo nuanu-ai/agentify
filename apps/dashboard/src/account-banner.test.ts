@@ -63,6 +63,14 @@ describe("the account banner", () => {
     ]);
   });
 
+  it("says it could not check where a read failed, beside what the other reads found", () => {
+    expect(reasonsOf({ ...READY, sellerName: null }, { unread: true })).toStrictEqual([
+      "no_seller_name",
+      "unread",
+    ]);
+    expect(reasonsOf(READY, { selling: "departed", unread: true })).toStrictEqual(["left"]);
+  });
+
   it("names nothing that rests on what the page did not read", () => {
     // The orders and receipts read the seller name and the selling state, not
     // the wallet, the approval or the integration.

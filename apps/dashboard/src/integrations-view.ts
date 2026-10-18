@@ -5,7 +5,7 @@
  * down.
  */
 
-import { type FrameView, type MomentView, momentView } from "./views.js";
+import { type MomentView, momentView } from "./views.js";
 import { noKeysYet, type ShopTile } from "./woo-views.js";
 
 /**
@@ -27,7 +27,6 @@ export type ShopTileView =
   | Readonly<{ kind: "not-arrived"; what: string; why: string; next: string }>;
 
 export interface IntegrationsView {
-  readonly frame: FrameView;
   readonly lede: string;
   /** Null where this dashboard keeps no connection, which draws no block at all. */
   readonly shop: ShopTileView | null;
@@ -56,7 +55,6 @@ const tileOf = (shop: ShopTile): ShopTileView => {
 };
 
 export const integrationsView = (shop: ShopTile | undefined): IntegrationsView => ({
-  frame: { account: [] },
   lede:
     shop === undefined
       ? "Your products reach Agentify from your own code through the SDK."

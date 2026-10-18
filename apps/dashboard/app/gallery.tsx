@@ -41,6 +41,7 @@ import {
   type RouteObject,
 } from "react-router";
 import config from "../react-router.config.js";
+import { type AccountNote, type AccountRead, accountOf } from "../src/account-banner.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
 import {
   ANSWER_WITHIN_MS,
@@ -78,7 +79,7 @@ import {
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
 import type { Viewer } from "../src/viewer.js";
-import { cardsView, ordersView, receiptsView } from "../src/views.js";
+import { cardsView, type FrameView, ordersView, receiptsView } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import {
@@ -165,6 +166,8 @@ interface Drawn {
    * unless the state is about them.
    */
   readonly needYou?: number | null;
+  /** The banner the layout reads for a page about the merchant's selling; none unless given. */
+  readonly account?: readonly AccountNote[];
   readonly loaded?: HydrationState["loaderData"];
   readonly pressed?: HydrationState["actionData"];
   readonly failed?: HydrationState["errors"];
@@ -177,19 +180,19 @@ type Told = Omit<GalleryState, "address" | "draw">;
  * count the frame's sidebar reads on a page about a merchant's selling; a page
  * in front of the gate is drawn for nobody, as the server draws it.
  */
-const gateAt = (path: string, needYou: number | null): HydrationState["loaderData"] => {
+const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] => {
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
   const under = (id: string) => matched.some(({ route }) => route.id === id);
   return {
     ...(under("routes/gate") ? { "routes/gate": { who: WHO } } : {}),
-    ...(under("routes/merchant-only") ? { "routes/merchant-only": { needYou } } : {}),
+    ...(under("routes/merchant-only") ? { "routes/merchant-only": frame } : {}),
   };
 };
 
 /** A state at its address, drawn by the route tree as the server answers that address. */
 const at = (
   told: Told,
-  { path, mode, needYou = 0, loaded, pressed, failed }: Drawn,
+  { path, mode, needYou = 0, account = [], loaded, pressed, failed }: Drawn,
 ): GalleryState => ({
   ...told,
   address: `${BASE}${path}`,
@@ -199,7 +202,11 @@ const at = (
       <Stub
         initialEntries={[path]}
         hydrationData={{
-          loaderData: { root: chromeIn(mode), ...gateAt(path, needYou), ...loaded },
+          loaderData: {
+            root: chromeIn(mode),
+            ...gateAt(path, { needYou, account }),
+            ...loaded,
+          },
           ...(pressed === undefined ? {} : { actionData: pressed }),
           ...(failed === undefined ? {} : { errors: failed }),
         }}
@@ -420,6 +427,10 @@ const seenBy = (mode: SurfaceMode, more: Partial<Viewer> = {}): Viewer => ({
   ...more,
 });
 
+/** The banner the merchant's layout reads for this viewer, selling through their code unless told. */
+const bannerOf = (viewer: Viewer, read: AccountRead = {}) =>
+  accountOf(viewer, { selling: "open", through: "api", ...read });
+
 type Status =
   | "in_progress"
   | "delivered"
@@ -517,8 +528,7 @@ const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => (
   ...more,
 });
 
-const shopOn = (read: ShopRead, answer: ShopAnswer = {}) =>
-  wooShopView(seenBy("test"), read, answer);
+const shopOn = (read: ShopRead, answer: ShopAnswer = {}) => wooShopView(read, answer);
 
 const CONNECTED: ShopState = {
   kind: "connected",
@@ -968,9 +978,15 @@ const cards = (
   told: Told,
   view: ReturnType<typeof cardsView>,
   mode: SurfaceMode,
-  needYou: number | null = 0,
-  path = "/cards",
-): GalleryState => at(told, { path, mode, needYou, loaded: { "routes/cards": view } });
+  more: Readonly<{ needYou?: number | null; path?: string; account?: readonly AccountNote[] }> = {},
+): GalleryState =>
+  at(told, {
+    path: more.path ?? "/cards",
+    mode,
+    ...(more.needYou === undefined ? {} : { needYou: more.needYou }),
+    ...(more.account === undefined ? {} : { account: more.account }),
+    loaded: { "routes/cards": view },
+  });
 
 /** The cards at an address that asks for a search, a segment or a page. */
 const cardsAt = (path: string, list: ReturnType<typeof cardsOf>, mode: SurfaceMode = "live") =>
@@ -1102,7 +1118,7 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
     "live",
-    2,
+    { needYou: 2 },
   ),
   cards(
     {
@@ -1114,7 +1130,19 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
     "live",
-    null,
+    { needYou: null },
+  ),
+  cards(
+    {
+      id: "dashboard-cards-account-unread",
+      screen: "Cards",
+      when: "A merchant opens Cards while one of the reads about their account does not answer in time.",
+      cause:
+        "The layout could not read whether anything holds the account's sales, so the banner says it could not check rather than showing nothing.",
+    },
+    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { unread: true }) },
   ),
   cards(
     {
@@ -1160,8 +1188,7 @@ const CARDS: GalleryState[] = [
     },
     cardsAt("/cards?q=japan", WHOLE_CATALOGUE),
     "live",
-    0,
-    "/cards?q=japan",
+    { path: "/cards?q=japan" },
   ),
   cards(
     {
@@ -1176,8 +1203,7 @@ const CARDS: GalleryState[] = [
       cardsOf("open", ["esimEurope", "esimAsia", { product: "vpn", paused: true }, "number"]),
     ),
     "live",
-    0,
-    "/cards?q=router",
+    { path: "/cards?q=router" },
   ),
   cards(
     {
@@ -1188,8 +1214,7 @@ const CARDS: GalleryState[] = [
     },
     cardsAt("/cards?show=off-sale", CATALOGUE),
     "live",
-    0,
-    "/cards?show=off-sale",
+    { path: "/cards?show=off-sale" },
   ),
   cards(
     {
@@ -1211,6 +1236,7 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live", { sellerName: null }), cardsOf("open", []), ORIGIN.live),
     "live",
+    { account: bannerOf(seenBy("live", { sellerName: null })) },
   ),
   cards(
     {
@@ -1239,6 +1265,7 @@ const CARDS: GalleryState[] = [
       ORIGIN.live,
     ),
     "live",
+    { account: bannerOf(seenBy("live", { liveApproval: false })) },
   ),
   cards(
     {
@@ -1257,6 +1284,7 @@ const CARDS: GalleryState[] = [
       ORIGIN.test,
     ),
     "test",
+    { account: bannerOf(seenBy("test", { payout: { wallet: null } })) },
   ),
   cards(
     {
@@ -1275,6 +1303,7 @@ const CARDS: GalleryState[] = [
       ORIGIN.live,
     ),
     "live",
+    { account: bannerOf(seenBy("live", { sellerName: null })) },
   ),
   cards(
     {
@@ -1290,6 +1319,11 @@ const CARDS: GalleryState[] = [
       ORIGIN.live,
     ),
     "live",
+    {
+      account: bannerOf(seenBy("live", { liveApproval: false, payout: { wallet: null } }), {
+        selling: "paused",
+      }),
+    },
   ),
   cards(
     {
@@ -1301,6 +1335,7 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), cardsOf("paused", ON_SALE), ORIGIN.live),
     "live",
+    { account: bannerOf(seenBy("live"), { selling: "paused" }) },
   ),
   cards(
     {
@@ -1311,6 +1346,7 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), cardsOf("departed", ON_SALE), ORIGIN.live),
     "live",
+    { account: bannerOf(seenBy("live"), { selling: "departed" }) },
   ),
   cards(
     {
@@ -1325,6 +1361,7 @@ const CARDS: GalleryState[] = [
       offSale: CATALOGUE.cards.map((entry) => entry.id),
     }),
     "test",
+    { account: bannerOf(seenBy("test"), { through: "woocommerce" }) },
   ),
 ];
 
@@ -1333,12 +1370,13 @@ const orders = (
   view: ReturnType<typeof ordersView>,
   mode: SurfaceMode,
   open = false,
-  needYou = view.needsYou.length,
+  account: readonly AccountNote[] = [],
 ): GalleryState =>
   at(told, {
     path: open ? "/orders?open=true" : "/orders",
     mode,
-    needYou,
+    needYou: view.needsYou.length,
+    account,
     loaded: { "routes/orders": view },
   });
 
@@ -1358,15 +1396,7 @@ const ORDERS: GalleryState[] = [
       cause:
         "The gateway lists orders that went through or are under way, none of them owing anything.",
     },
-    ((listed) =>
-      ordersView(
-        seenBy("live"),
-        CATALOGUE,
-        listed,
-        false,
-        {},
-        paidIntoSplit("live", listed.orders),
-      ))(
+    ((listed) => ordersView(CATALOGUE, listed, false, {}, paidIntoSplit("live", listed.orders)))(
       ordersOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
@@ -1385,7 +1415,6 @@ const ORDERS: GalleryState[] = [
         "Orders in refund due or delivered, not paid, each set out under the table with what to do.",
     },
     ordersView(
-      seenBy("live"),
       CATALOGUE,
       OWING,
       false,
@@ -1406,7 +1435,6 @@ const ORDERS: GalleryState[] = [
       cause: "The gateway lists an order in each way an order can stand or end.",
     },
     ordersView(
-      seenBy("live"),
       CATALOGUE,
       ordersOf([
         ["vpn", "delivered"],
@@ -1433,7 +1461,7 @@ const ORDERS: GalleryState[] = [
         cause:
           "A phone's row shows the product, the amount, the state and the time; its ID, product code and shares are in the row's opened part, which a wide screen shows in its columns.",
       },
-      ordersView(seenBy("live"), CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
+      ordersView(CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
       "live",
     ),
     scene: {
@@ -1456,7 +1484,6 @@ const ORDERS: GalleryState[] = [
     },
     ((listed) =>
       ordersView(
-        seenBy("live"),
         cardsOf("paused", ON_SALE),
         listed,
         false,
@@ -1469,6 +1496,8 @@ const ORDERS: GalleryState[] = [
       ]),
     ),
     "live",
+    false,
+    bannerOf(seenBy("live"), { selling: "paused" }),
   ),
   orders(
     {
@@ -1477,7 +1506,7 @@ const ORDERS: GalleryState[] = [
       when: "A merchant opens Orders before anything has been bought.",
       cause: "The gateway lists no orders.",
     },
-    ordersView(seenBy("live"), CATALOGUE, ordersOf([]), false),
+    ordersView(CATALOGUE, ordersOf([]), false),
     "live",
   ),
   orders(
@@ -1487,7 +1516,7 @@ const ORDERS: GalleryState[] = [
       when: "A merchant filters Orders to the open ones and none is open.",
       cause: "The gateway's open filter lists no order owed goods or money.",
     },
-    ordersView(seenBy("live"), CATALOGUE, ordersOf([]), true),
+    ordersView(CATALOGUE, ordersOf([]), true),
     "live",
     true,
   ),
@@ -1499,7 +1528,6 @@ const ORDERS: GalleryState[] = [
       cause: "Every order on the test site is marked as a test purchase.",
     },
     ordersView(
-      seenBy("test"),
       CATALOGUE,
       ordersOf(
         [
@@ -1683,8 +1711,23 @@ const INTEGRATIONS: GalleryState[] = [
   ),
 ];
 
+/**
+ * The banner over a WooCommerce screen: the shop's when the merchant sells
+ * through it, and all sales paused where the screen says so.
+ */
+const shopBanner = (view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>) =>
+  bannerOf(seenBy("test"), {
+    through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
+    selling: view.screen === "shop" && view.connection?.stopped === true ? "paused" : "open",
+  });
+
 const shop = (told: Told, view: ReturnType<typeof wooShopView>, path = "/woocommerce") =>
-  at(told, { path, mode: "test", loaded: { "routes/woocommerce": view } });
+  at(told, {
+    path,
+    mode: "test",
+    account: shopBanner(view),
+    loaded: { "routes/woocommerce": view },
+  });
 
 /** The answer to a press on the shop screen, drawn at the press's own address. */
 const shopPress = (
@@ -1695,6 +1738,7 @@ const shopPress = (
   at(told, {
     path: `/woocommerce/${press}`,
     mode: "test",
+    account: shopBanner(view),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -2012,11 +2056,16 @@ const KEYS: GalleryState[] = [
 const settings = (
   told: Told,
   view: ReturnType<typeof settingsView>,
-  { mode = "live", path = "/settings" }: { mode?: SurfaceMode; path?: string } = {},
+  {
+    mode = "live",
+    path = "/settings",
+    account = [],
+  }: { mode?: SurfaceMode; path?: string; account?: readonly AccountNote[] } = {},
 ) =>
   at(told, {
     path,
     mode,
+    account,
     loaded:
       path === "/settings/payout-wallet"
         ? { "routes/settings-payout-wallet": view }
@@ -2049,7 +2098,10 @@ const SETTINGS: GalleryState[] = [
       addressPage: ADDRESSES.test,
       walletChain: WALLET_CHAINS.test,
     }),
-    { mode: "test" },
+    {
+      mode: "test",
+      account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
+    },
   ),
   settings(
     {
@@ -2059,6 +2111,7 @@ const SETTINGS: GalleryState[] = [
       cause: "The operator's approval is missing, so every card is refused on live.",
     },
     settingsView("live", WHO, { ...settingsOf(), liveApproval: false }),
+    { account: bannerOf(seenBy("live", { liveApproval: false })) },
   ),
   settings(
     {

@@ -68,19 +68,21 @@ function NeedYou({ count }: Readonly<{ count: number | null }>) {
   );
 }
 
-/** `heading` is the bar's words where they are not the window's title. */
+/**
+ * `heading` is the bar's words where they are not the window's title. The
+ * count and the banner are the merchant's pages' layout's, read once for every
+ * section; a page drawn outside that layout draws neither.
+ */
 export function Frame({
   tab,
   title,
   heading = title,
-  frame,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections. */
   tab?: Tab;
   title: string;
   heading?: string;
-  frame: FrameView;
   children: ReactNode;
 }>) {
   const chrome = useChrome();
@@ -95,14 +97,14 @@ export function Frame({
       : (TABS.find(
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
-  const counted = useRouteLoaderData<{ needYou: number | null }>("routes/merchant-only");
+  const framed = useRouteLoaderData<FrameView>("routes/merchant-only");
   const sections: Section[] = TABS.map(([key, label]) => ({
     key,
     label:
-      key === "orders" && counted !== undefined ? (
+      key === "orders" && framed !== undefined ? (
         <>
           {label}
-          <NeedYou count={counted.needYou} />
+          <NeedYou count={framed.needYou} />
         </>
       ) : (
         label
@@ -156,7 +158,7 @@ export function Frame({
             </div>
           </div>
           <main className="app-content" id="main">
-            <AccountBanner notes={frame.account} here={tab === undefined ? undefined : `/${tab}`} />
+            <AccountBanner notes={framed?.account ?? []} />
             {children}
           </main>
         </div>

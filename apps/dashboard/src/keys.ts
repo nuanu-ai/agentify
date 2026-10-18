@@ -10,14 +10,13 @@
  */
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
-import { type FrameView, type MomentView, momentView } from "./views.js";
+import { type MomentView, momentView } from "./views.js";
 
 /**
  * No selling state and no line about a missing seller name: each would be a
  * gateway call, for a coloured dot or a line, on the screen a merchant reads
  * when something about their keys has gone wrong.
  */
-const FRAME: FrameView = { account: [] };
 
 interface KeyRow {
   readonly id: string;
@@ -35,7 +34,6 @@ interface KeyRow {
 
 export interface KeysView {
   readonly screen: "list";
-  readonly frame: FrameView;
   readonly lede: string;
   readonly rows: readonly KeyRow[];
   /** Why the press that drew this page issued nothing; drawn under the form. */
@@ -50,7 +48,6 @@ export interface KeysView {
 /** The one view that carries a secret: the answer to the press that issued it. */
 export interface NewKeyView {
   readonly screen: "issued";
-  readonly frame: FrameView;
   readonly label: string;
   readonly secret: string;
 }
@@ -68,7 +65,6 @@ export const keysView = (
   const working = keys.filter((entry) => entry.disabled_at === null).length;
   return {
     screen: "list",
-    frame: FRAME,
     lede:
       keys.length === 0
         ? `You haven't created any API keys yet. ${WHAT_A_KEY_IS}`
@@ -88,7 +84,6 @@ export const keysView = (
 
 export const newKeyView = (label: string, secret: string): NewKeyView => ({
   screen: "issued",
-  frame: FRAME,
   label,
   secret,
 });

@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import type { AccountNote } from "../../src/account-banner.js";
 
 /**
@@ -7,10 +7,8 @@ import type { AccountNote } from "../../src/account-banner.js";
  * where a page puts it right, the way there. A way to the page it is drawn on
  * is left out, since the control it names is already on screen.
  */
-export function AccountBanner({
-  notes,
-  here,
-}: Readonly<{ notes: readonly AccountNote[]; here: string | undefined }>) {
+export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[] }>) {
+  const here = useLocation().pathname;
   if (notes.length === 0) return null;
   return (
     <section className="account-banner" aria-label="About your account">

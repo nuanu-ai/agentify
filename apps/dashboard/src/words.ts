@@ -116,7 +116,8 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
 /**
  * Why the account as a whole is not selling as usual: the merchant left, all
  * sales are paused, something publishing needs is missing, or the cards their
- * own code published are off sale while a WooCommerce shop sells.
+ * own code published are off sale while a WooCommerce shop sells; or that what
+ * would say so could not be read.
  */
 export type AccountReason =
   | "left"
@@ -124,7 +125,8 @@ export type AccountReason =
   | "not_approved"
   | "no_seller_name"
   | "no_payout_wallet"
-  | "through_shop";
+  | "through_shop"
+  | "unread";
 
 /** A page of the dashboard, named without its prefix, and the words that lead there. */
 export interface Way {
@@ -169,6 +171,11 @@ export const ACCOUNT_WORDS: Readonly<
     title: "Selling through your WooCommerce shop",
     says: "The cards your own code published are off sale while your shop sells.",
     fix: { to: "/woocommerce", words: "Open WooCommerce" },
+  },
+  unread: {
+    title: "Your account could not be checked",
+    says: "Whether anything holds your sales could not be read just now, so a reason may be missing here; reload the page to check again.",
+    fix: null,
   },
 });
 

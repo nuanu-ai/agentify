@@ -1,8 +1,8 @@
 /**
- * The account banner's reasons, from what a screen read and nothing else: a
- * screen that did not read the selling state, a setting or the integration
- * names no reason that rests on it, because a guessed "all is well" and a
- * guessed "this is missing" are both claims nothing stands behind.
+ * The account banner's reasons, from what was read and nothing else: a fact
+ * that could not be read names no reason that rests on it, because a guessed
+ * "all is well" and a guessed "this is missing" are both claims nothing stands
+ * behind, and the banner says instead that it could not check.
  */
 
 import type { Integration } from "@agentify/gateway";
@@ -18,10 +18,12 @@ export interface AccountNote {
   readonly fix: Way | null;
 }
 
-/** What the screen read beside the viewer; absent is not read. */
+/** What was read beside the viewer; absent is not read. */
 export interface AccountRead {
   readonly selling?: SellingState;
   readonly through?: Integration;
+  /** True where a read was asked for and failed. */
+  readonly unread?: boolean;
 }
 
 /**
@@ -47,12 +49,13 @@ const ORDER: readonly AccountReason[] = [
   "no_seller_name",
   "no_payout_wallet",
   "through_shop",
+  "unread",
 ];
 
 const noteOf = (reason: AccountReason): AccountNote => ({ reason, ...ACCOUNT_WORDS[reason] });
 
 /**
- * Empty where the account is selling as usual, as far as the screen knows.
+ * Empty where the account is selling as usual and every fact was read.
  * Leaving is said alone: nothing else on the list would put a card back on
  * sale once a merchant has left.
  */
@@ -66,5 +69,6 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   const selling = read.selling === undefined ? null : FROM_SELLING[read.selling];
   if (selling !== null) found.add(selling);
   if (read.through === "woocommerce") found.add("through_shop");
+  if (read.unread === true) found.add("unread");
   return ORDER.filter((reason) => found.has(reason)).map(noteOf);
 };
