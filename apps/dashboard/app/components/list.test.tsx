@@ -46,6 +46,35 @@ describe("a list's parts, as a screen reader meets them", () => {
     expect(screen.getByLabelText("Price date for VPN, one year")).toBeTruthy();
   });
 
+  it("says when the search was cut to its first characters", () => {
+    const tools = (q: string) => {
+      const listing = listingOf({
+        rows: [{ on: true }],
+        asked: askedIn(new URLSearchParams({ q }), ["all"]),
+        path: "/things",
+        segments: [{ key: "all", label: "All", holds: () => true, none: "" }],
+        matches: () => true,
+        noMatch: () => "",
+        showAll: "Show all things",
+      });
+      const Stub = createRoutesStub([
+        {
+          path: "/things",
+          Component: () => (
+            <ListTools listing={listing} path="/things" label="Search things" placeholder="" />
+          ),
+        },
+      ]);
+      render(<Stub initialEntries={["/things"]} />);
+    };
+
+    tools("x".repeat(300));
+    expect(screen.getByText("Only the first 200 characters of the search were used.")).toBeTruthy();
+    cleanup();
+    tools("lamp");
+    expect(screen.queryByText(/characters of the search/)).toBeNull();
+  });
+
   it("reads a segment's label and its count apart", () => {
     const listing = listingOf({
       rows: [{ on: true }, { on: false }, { on: false }],

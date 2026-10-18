@@ -60,6 +60,11 @@ export function ListTools({
           ),
         )}
       </nav>
+      {listing.search.cutAt === null ? null : (
+        <p className="search-cut">
+          {`Only the first ${listing.search.cutAt} characters of the search were used.`}
+        </p>
+      )}
     </div>
   );
 }

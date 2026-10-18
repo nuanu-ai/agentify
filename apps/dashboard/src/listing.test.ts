@@ -105,13 +105,13 @@ describe("a search and a segment", () => {
 
     expect(shown.cut?.previous).toBe("/things?q=chair&show=on");
     expect(shown.cut?.next).toBe("/things?q=chair&show=on&page=3");
-    expect(shown.search).toStrictEqual({ q: "chair", show: "on" });
+    expect(shown.search).toStrictEqual({ q: "chair", show: "on", cutAt: null });
   });
 
   it("reads a value the address names twice as not named", () => {
     const shown = listed(things(30), "q=lamp&q=chair&show=on&show=off");
 
-    expect(shown.search).toStrictEqual({ q: "", show: null });
+    expect(shown.search).toStrictEqual({ q: "", show: null, cutAt: null });
     expect(shown.rows).toHaveLength(30);
   });
 });
@@ -169,5 +169,29 @@ describe("a list that draws no row", () => {
     // "Nothing yet" is the screen's to say, with the way to a first row.
     expect(listed([], "q=sofa").nothing).toBeNull();
     expect(listed([]).nothing).toBeNull();
+  });
+});
+
+describe("a search longer than any name", () => {
+  it("is matched and given back at its first 200 characters, and says it was cut", () => {
+    const long = `lamp${"x".repeat(296)}`;
+    const shown = listed(things(30), `q=${long}`);
+
+    expect(shown.search.q).toBe(long.slice(0, 200));
+    expect(shown.search.cutAt).toBe(200);
+    expect(shown.nothing?.says).toBe(`Nothing matches “${long.slice(0, 200)}”.`);
+  });
+
+  it("is not called cut when it fits", () => {
+    expect(listed(things(30), "q=lamp").search.cutAt).toBeNull();
+  });
+
+  it("cuts between characters, never inside one", () => {
+    // Each of these takes two units of a JavaScript string; cut by units, the
+    // last would be half a character.
+    const shown = listed(things(3), `q=${"😀".repeat(250)}`);
+
+    expect([...shown.search.q]).toHaveLength(200);
+    expect(shown.search.q.endsWith("😀")).toBe(true);
   });
 });

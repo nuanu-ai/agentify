@@ -1235,6 +1235,21 @@ const CARDS: GalleryState[] = [
     "live",
     { path: "/cards?q=router" },
   ),
+  ((pasted) =>
+    cards(
+      {
+        id: "dashboard-cards-search-cut",
+        screen: "Cards",
+        when: "A merchant pastes a card's whole description into the search.",
+        cause:
+          "The search is longer than 200 characters, so its first 200 are matched and given back, and the page says the rest was not used.",
+      },
+      cardsAt(`/cards?${new URLSearchParams({ q: pasted })}`, CATALOGUE),
+      "live",
+      { path: `/cards?${new URLSearchParams({ q: pasted })}` },
+    ))(
+    "A data plan delivered as a profile after the purchase. Scan the code it arrives with, keep the profile switched off until you land, and turn it on in your phone's settings once you are there; the plan starts counting its thirty days from that moment.",
+  ),
   cards(
     {
       id: "dashboard-cards-segment-empty",

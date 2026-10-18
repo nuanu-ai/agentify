@@ -17,6 +17,8 @@ const PAGE_ROWS = 50;
 /** What the address asks of the list. */
 export interface Asked {
   readonly q: string;
+  /** True where the address searched for more than `q` holds. */
+  readonly cut: boolean;
   /** A segment's key; the first segment's where the address names none. */
   readonly show: string;
   readonly page: number;
@@ -60,7 +62,11 @@ interface Nothing {
 export interface Listing<Row> {
   readonly rows: readonly Row[];
   /** The search box's words, and the segment it searches within. */
-  readonly search: Readonly<{ q: string; show: string | null }>;
+  /**
+   * The search box's words, the segment it searches within, and the length
+   * the words were cut to where the address held more; null where it did not.
+   */
+  readonly search: Readonly<{ q: string; show: string | null; cutAt: number | null }>;
   readonly segments: readonly Segment[];
   /** Null where every row the search and the segment hold is drawn. */
   readonly cut: CutView | null;
@@ -87,11 +93,21 @@ const once = (query: URLSearchParams, name: string): string | null => {
  * defined, and a page that is not a whole number from one, read as the
  * default.
  */
+/**
+ * The most characters of a search that are matched and given back: more than
+ * any name or code a merchant types, few enough that a pasted page does not
+ * travel into every link and sentence.
+ */
+const Q_AT_MOST = 200;
+
 export const askedIn = (query: URLSearchParams, segments: readonly string[]): Asked => {
   const show = once(query, "show");
   const page = Number(once(query, "page") ?? "1");
+  // By character, not by unit of the string, so no character is cut in half.
+  const typed = [...(once(query, "q") ?? "").trim()];
   return {
-    q: (once(query, "q") ?? "").trim(),
+    q: typed.slice(0, Q_AT_MOST).join("").trim(),
+    cut: typed.length > Q_AT_MOST,
     show: show !== null && segments.includes(show) ? show : (segments[0] ?? ""),
     page: Number.isInteger(page) && page >= 1 ? page : 1,
   };
@@ -168,7 +184,11 @@ export const listingOf = <Row>({
 
   return {
     rows: shown.slice(start, start + PAGE_ROWS),
-    search: { q: asked.q, show: asked.show === first ? null : asked.show },
+    search: {
+      q: asked.q,
+      show: asked.show === first ? null : asked.show,
+      cutAt: asked.cut ? Q_AT_MOST : null,
+    },
     segments: segments.map((one) => ({
       key: one.key,
       label: one.label,

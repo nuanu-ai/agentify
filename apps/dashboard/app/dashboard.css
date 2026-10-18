@@ -801,6 +801,14 @@ td.control {
   }
 }
 
+/* Under the search box, on a line of its own, where the search was cut. */
+.search-cut {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 /* Under a list cut short: which rows of how many, then the ways to the rest. */
 .cut {
   display: flex;
