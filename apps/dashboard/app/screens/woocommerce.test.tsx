@@ -18,6 +18,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
+import { switchRefused } from "../../src/gateway.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type ShopAnswer, type ShopRead, wooImportView, wooShopView } from "../../src/woo-views.js";
@@ -223,6 +224,22 @@ describe("where the shop screen says why a press was refused", () => {
     const html = shopPage({ state: CONNECTED, through: "api" }, { switching });
 
     expect(problemsIn(formOf(html, "/woocommerce/switch"))).toStrictEqual([switching]);
+  });
+
+  it("names each order that holds a switch with a button copying it whole, and counts the ones it leaves out", () => {
+    const waiting = Array.from({ length: 7 }, (_, at) => `ord_${at}0f3c9a1b2d4e6f8a7b9c`);
+    const refused = switchRefused("woocommerce", waiting);
+    if (refused.ok) throw new Error("a switch with orders waiting was not refused");
+
+    const form = formOf(
+      shopPage({ state: CONNECTED, through: "api" }, { switching: refused }),
+      "/woocommerce/switch",
+    );
+
+    expect([...form.matchAll(/aria-label="Copy the whole order ID"/g)]).toHaveLength(5);
+    for (const id of waiting.slice(0, 5)) expect(readable(form)).toContain(id);
+    for (const id of waiting.slice(5)) expect(readable(form)).not.toContain(id);
+    expect(readable(form)).toMatch(/\b2 more\b/);
   });
 
   it("draws what it was given as text, never as markup", () => {
