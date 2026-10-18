@@ -94,6 +94,21 @@ describe("pending scan acceptance", () => {
     );
   });
 
+  it("says the scanner did not answer, not that it is busy, when the request cannot reach it", async () => {
+    // Nothing was heard back, so nothing is known about how busy it is.
+    savePendingScan(window.sessionStorage, pending("unreachable"));
+    globalThis.fetch = async (input) => {
+      if (String(input) === "/api/v1/attribution") return new Response(null, { status: 201 });
+      throw new TypeError("the network is down");
+    };
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner did not answer" });
+    expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
+    expect(readPendingScan(window.sessionStorage)).not.toBeNull();
+  });
+
   it("keeps the retry when the answer is not a refusal of ours", async () => {
     // A proxy's error page says nothing about whether the address is good.
     savePendingScan(window.sessionStorage, pending("proxy"));

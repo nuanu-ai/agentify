@@ -58,9 +58,9 @@
 
 /* Only a scan being started pulses in the accent; every stopped state takes a
    report verdict colour. "error" and "hard-limit" are a failure or a refusal
-   from the scanner, so a fail. "busy", "challenge" and "missing" have had no
-   such answer (the scanner is full or out of reach, a challenge comes first,
-   or this tab holds no request), so a partial. Whether a retry is offered does
+   from the scanner, so a fail. "busy", "unreachable", "challenge" and
+   "missing" have had no such answer (the scanner is full or out of reach, a
+   challenge comes first, or this tab holds no request), so a partial. Whether a retry is offered does
    not decide the colour. */
 .status:not([data-state="starting"]) {
   color: var(--partial);

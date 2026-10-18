@@ -9,16 +9,27 @@ import { SiteDoors } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
-type StartState = "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
+type StartState =
+  | "starting"
+  | "challenge"
+  | "hard-limit"
+  | "busy"
+  | "unreachable"
+  | "error"
+  | "missing";
 
-/** What the page calls each state: the word beside the card's name, and its heading. */
+/**
+ * What the page calls each state: its heading, and the word beside the card's
+ * name, short enough to stay on that line on a small phone.
+ */
 const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
   starting: { label: "starting", title: "Your report is getting ready" },
-  challenge: { label: "check needed", title: "Confirm you are a person" },
-  "hard-limit": { label: "limit reached", title: "Too many scans for now" },
+  challenge: { label: "waiting", title: "Confirm you are a person" },
+  "hard-limit": { label: "limit", title: "Too many scans for now" },
   busy: { label: "busy", title: "The scanner is busy" },
-  error: { label: "not started", title: "The scan could not start" },
-  missing: { label: "no request", title: "No scan request in this tab" },
+  unreachable: { label: "no reply", title: "The scanner did not answer" },
+  error: { label: "failed", title: "The scan could not start" },
+  missing: { label: "no scan", title: "No scan request in this tab" },
 };
 
 export function PendingScanExperience({
@@ -90,7 +101,7 @@ export function PendingScanExperience({
       setRetryable(readRetryable(payload));
       setMessage(readErrorMessage(payload) ?? "The scan could not be accepted. Please retry.");
     } catch {
-      setState("busy");
+      setState("unreachable");
       setMessage("The scanner cannot be reached right now. Please retry shortly.");
     }
   }, []);
