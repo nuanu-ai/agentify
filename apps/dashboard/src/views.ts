@@ -127,10 +127,10 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
 
 /**
  * What stands in a card's last column: the card's own switch, or nothing where
- * no switch here would put the card on sale. A card the shop published while
- * the merchant's code sells is the one with words of its own: the banner names
- * no reason for it, and only its row can say which of the cards came from the
- * shop.
+ * pressing it now would mean nothing the merchant could act on. A card the
+ * shop published while the merchant's code sells is the one with words of its
+ * own: the banner names no reason for it, and only its row can say which of
+ * the cards came from the shop.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
@@ -148,12 +148,15 @@ export interface CardsIntegration {
 
 /**
  * A merchant who has left sells through nothing, so their cards are offered
- * no switch and no reason. A card published by the integration not in use is
- * off sale whatever its own switch says, so it is offered none either. Every
- * other card keeps its own switch whatever holds the whole account: a card
- * paused while all sales are paused or the account lacks something stays
- * paused once the account sells again, and a Resume pressed meanwhile can be
- * taken back.
+ * no switch and no reason. Every other card keeps its own switch whatever
+ * holds the whole account, because those holds lift at once, the moment the
+ * approval lands or a name or a wallet is set: a card paused before then stays
+ * paused, and a Resume pressed meanwhile can be taken back. A card published
+ * by the integration not in use is offered none, and its word does not say
+ * its own pause either: the move between integrations is made on the
+ * WooCommerce page, coming back to the code puts none of its cards on sale at
+ * once (all sales come back paused here if any would sell), and going to the
+ * shop puts the shop's cards on sale as they stand.
  */
 const cardControl = (
   entry: MerchantCard,
