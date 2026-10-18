@@ -223,7 +223,11 @@ const framed = (tab: Tab, { account = [] }: Partial<FrameView> = {}, at: string 
                 {
                   path: at,
                   Component: () => (
-                    <Frame tab={tab} title="A screen">
+                    <Frame
+                      tab={tab}
+                      title="A screen"
+                      action={<button type="button">The page's control</button>}
+                    >
                       <p>The screen</p>
                     </Frame>
                   ),
@@ -348,6 +352,18 @@ describe("the banner on the pages that say a reason themselves", () => {
     await screen.findByText("The screen");
 
     expect(banner()).toBeNull();
+  });
+});
+
+describe("the way past the header", () => {
+  it("leads to the page's title and its control about the whole page, before the screen", async () => {
+    framed("cards");
+    await screen.findByText("The screen");
+    const target = document.getElementById("main");
+    if (target === null) throw new Error("the skip link leads nowhere");
+
+    expect(within(target).getByRole("heading", { level: 1, name: "A screen" })).toBeTruthy();
+    expect(within(target).getByRole("button", { name: "The page's control" })).toBeTruthy();
   });
 });
 

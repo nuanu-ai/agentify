@@ -3273,7 +3273,7 @@ describe("the cards screen", () => {
 
     expect(title).toBeGreaterThan(-1);
     expect(control).toBeGreaterThan(title);
-    expect(control).toBeLessThan(html.indexOf("<main"));
+    expect(control).toBeLessThan(html.indexOf('class="app-content"'));
   });
 
   it("answers a search in the address with the cards it finds, and says what found none", async () => {
