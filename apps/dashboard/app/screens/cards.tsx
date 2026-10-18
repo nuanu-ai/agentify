@@ -162,7 +162,9 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
           {note.says}
           <Rest rest={note.rest} />
         </p>
-        <p>The link icon beside a product code copies the address an agent buys the card at.</p>
+        {listing.rows.length === 0 ? null : (
+          <p>The link icon beside a product code copies the address an agent buys the card at.</p>
+        )}
       </div>
     </>
   );
