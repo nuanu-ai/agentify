@@ -245,17 +245,23 @@ how much, and why it was left undelivered. That covers both the orders you did
 not manage to deliver in time and the orders still open at the moment you
 leave.
 
-How the money travels back remains open. We are looking at how working sellers
-do it and taking a pattern that works. What exactly you do during a refund is
-not decided, and it is the largest open item in the money contract.
+We do not see the refund itself: it goes from your wallet to the buyer's, and
+nothing of ours is in between. A refund cannot be recorded on the order yet
+either, so an order you have paid back stays open on our side as owing a
+refund. If your engineer's code delivers the goods for it afterwards — a
+delivery that was running late, say — the order closes as delivered and the
+buyer keeps both the money and the goods. So once you have refunded an order,
+it must not be delivered, and what your engineer does to make sure of that is
+on [Orders](/orders#confirming-a-delivery-with-a-separate-call).
 
-Until there is a way, the pilot's rule applies — the one we ask about when you
-connect ([What we will ask you](/)): only goods that can be delivered a second
-time are paid for in advance, and we repeat the attempt to deliver, up to a
-limit, until the deadline named in the card. The rule narrows the case without
-removing it: an order that could not be delivered at all remains possible. We
-tell you about every such order separately, and during the pilot there are few
-of them — but not none, and each one is dealt with by hand.
+Until the way money travels back is settled, the pilot's rule applies — the
+one we ask about when you connect ([What we will ask you](/)): only goods that
+can be delivered a second time are paid for in advance, and we repeat the
+attempt to deliver, up to a limit, until the deadline named in the card. The
+rule narrows the case without removing it: an order that could not be
+delivered at all remains possible. We tell you about every such order
+separately, and during the pilot there are few of them — but not none, and
+each one is dealt with by hand.
 
 ## What we take
 
@@ -282,8 +288,8 @@ arrives](#where-the-money-arrives)).
 
 - Who pays the network fee on a buyer's payment and how it sits against the
   price of the goods.
-- How you send money back for an undelivered order, and how we learn that you
-  have.
+- How you send money back for an undelivered order, and how a refund you sent
+  comes to be recorded on the order. Nothing records one yet.
 - Reconciling what came in against what was sold. Your wallet receives one
   transfer per payout, covering every sale since the payout before it, and
   nothing yet shows which sales a payout covered. A receipt follows the goods,
