@@ -14,7 +14,7 @@ export function PublicSharePage({ preview }: Readonly<{ preview: PublicResultPre
       <SiteTop end={<span className={layout.quiet}>Public result</span>} />
       <main className={layout.body}>
         <div className={`${layout.sheet} ${layout.single}`}>
-          <section aria-label="Public result card">
+          <section aria-label="Public result">
             <ResultHead
               host={preview.hostLabel}
               level={preview.level}
