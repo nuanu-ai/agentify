@@ -198,7 +198,8 @@ td.ident {
  * An identifier breaks only where its column ends and nothing is inserted, so a
  * double-click still selects all of it. Its column has a width of its own,
  * because a wrapping column is the one a table takes room from first: a
- * thirty-six-character receipt identifier takes two lines at eighteen.
+ * transfer's sixty-six-character hash, written whole, takes four lines at
+ * eighteen, and a receipt's ID shown short fits on one beside its button.
  */
 td.ident,
 .under.mono {
