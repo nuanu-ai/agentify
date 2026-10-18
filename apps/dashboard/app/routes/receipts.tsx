@@ -12,7 +12,7 @@ export async function loader(asked: LoaderFunctionArgs) {
 export default function Receipts() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="receipts" title="Receipts" frame={view.frame}>
+    <Frame tab="receipts" title="Receipts">
       <ReceiptsScreen view={view} />
     </Frame>
   );

@@ -605,7 +605,7 @@ export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView |
     return <Navigate to="/woocommerce" replace />;
   }
   return view.screen === "shop" ? (
-    <Frame tab="integrations" title="WooCommerce" frame={view.frame}>
+    <Frame tab="integrations" title="WooCommerce">
       <WooShopScreen view={view} base={base} />
     </Frame>
   ) : (
@@ -613,7 +613,6 @@ export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView |
       tab="integrations"
       title="WooCommerce import"
       heading={view.finished ? "Import finished" : "Import stopped"}
-      frame={view.frame}
     >
       <WooImportScreen view={view} base={base} />
     </Frame>

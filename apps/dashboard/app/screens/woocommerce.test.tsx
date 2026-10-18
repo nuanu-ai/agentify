@@ -56,11 +56,7 @@ const served = (screen: () => ReactElement): string => {
 const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
   served(() => (
     <WooShopScreen
-      view={wooShopView(
-        SEEN_BY,
-        { state: { kind: "none" }, unset: [], through: "api", ...read },
-        answer,
-      )}
+      view={wooShopView({ state: { kind: "none" }, unset: [], through: "api", ...read }, answer)}
       base=""
     />
   ));
@@ -236,7 +232,7 @@ describe("where the shop screen says why a press was refused", () => {
       "/woocommerce/switch",
     );
 
-    expect([...form.matchAll(/aria-label="Copy the whole order ID"/g)]).toHaveLength(5);
+    expect([...form.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
     for (const id of waiting.slice(0, 5)) expect(readable(form)).toContain(id);
     for (const id of waiting.slice(5)) expect(readable(form)).not.toContain(id);
     expect(readable(form)).toMatch(/\b2 more\b/);

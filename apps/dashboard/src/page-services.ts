@@ -15,6 +15,7 @@ import {
   IssueKeyRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
+import { accountOf } from "./account-banner.js";
 import { ADS_CONSENT } from "./ads-consent.js";
 import type { DashboardConfig } from "./config.js";
 import {
@@ -53,6 +54,7 @@ import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
   cardsView,
+  type FrameView,
   type OrdersView,
   ordersView,
   type ReceiptsView,
@@ -213,10 +215,10 @@ export interface PageServices {
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
     /**
-     * How many orders need the merchant, for the frame's sidebar on every
-     * screen; null where they could not be counted, which is not none.
+     * What the frame draws over every page about the merchant's selling: the
+     * count of orders that need them and the banner about their account.
      */
-    needYou(person: Person): Promise<number | null>;
+    frame(person: Person): Promise<FrameView>;
   };
   /** The ways a merchant's catalogue reaches Agentify. */
   readonly integrations: {
@@ -490,10 +492,30 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 };
 
 /**
- * How long the sidebar's count may take: a page is answered whole, so a slow
- * count would hold every page it is drawn on.
+ * How long the frame's reads may take: a page is answered whole, so a slow one
+ * would hold every page the frame is drawn on.
  */
-const COUNT_WITHIN_MS = 2_000;
+const FRAME_WITHIN_MS = 2_000;
+
+/** A gateway answer as the frame takes it: the document, or that it failed. */
+type Read<T> =
+  | Readonly<{ read: true; value: T; failed: false }>
+  | Readonly<{ read: false; failed: boolean }>;
+
+/** For a fact this channel does not ask for, which is not a failure. */
+const NOT_ASKED: Read<never> = { read: false, failed: false };
+
+const readOf = async <T>(asked: Promise<Answer<T>>): Promise<Read<T>> => {
+  try {
+    const answered = await asked;
+    return answered.ok
+      ? { read: true, value: answered.document, failed: false }
+      : { read: false, failed: true };
+  } catch {
+    console.error("[dashboard] a read for the frame failed");
+    return { read: false, failed: true };
+  }
+};
 
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
@@ -1027,47 +1049,36 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // Only the exact word narrows the list, as the contract says.
         const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, name, owed, paidInto] = await Promise.all([
+        const [cards, orders, owed, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.orders(open),
-          gateway.sellerName(),
           gateway.refundsOwed(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
-        if (!name.ok) return problemOf(name);
         if (!owed.ok) return problemOf(owed);
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
-          view: ordersView(
-            viewing(person, name.document),
-            cards.document,
-            orders.document,
-            open,
-            owed.document,
-            paidInto.document,
-          ),
+          view: ordersView(cards.document, orders.document, open, owed.document, paidInto.document),
         };
       },
 
       async receipts(person) {
         const gateway = gatewayAs(person);
-        const [cards, receipts, name, paidInto] = await Promise.all([
+        const [cards, receipts, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.receipts(),
-          gateway.sellerName(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!receipts.ok) return problemOf(receipts);
-        if (!name.ok) return problemOf(name);
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: receiptsView(
-            viewing(person, name.document),
+            viewing(person),
             cards.document,
             receipts.document,
             config.transactionPage,
@@ -1076,18 +1087,35 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      // A count that fails or is slow does not take the page it is drawn beside
-      // down with it, nor hold it long: the sidebar says it could not count.
-      async needYou(person) {
-        try {
-          const open = await gatewayAs(person, COUNT_WITHIN_MS).orders(true);
-          return open.ok
-            ? open.document.orders.filter((order) => needsYou(order.status)).length
-            : null;
-        } catch {
-          console.error("[dashboard] the orders that need the merchant could not be counted");
-          return null;
-        }
+      // Asked beside the page's own reads, each one cut short at the frame's
+      // deadline: a read that fails or is slow does not take the page down or
+      // hold it long; the count is said to be unknown and the banner says it
+      // could not check.
+      async frame(person) {
+        const gateway = gatewayAs(person, FRAME_WITHIN_MS);
+        const [open, integration, name, wallet, approval] = await Promise.all([
+          readOf(gateway.orders(true)),
+          readOf(gateway.integration()),
+          readOf(gateway.sellerName()),
+          readOf(gateway.payoutWallet()),
+          config.surfaceMode === "live" ? readOf(gateway.liveApproval()) : NOT_ASKED,
+        ]);
+        const viewer: Viewer = {
+          ...viewing(person, name.read ? name.value : undefined),
+          ...(wallet.read ? { payout: { wallet: wallet.value.payout_wallet } } : {}),
+          ...(approval.read ? { liveApproval: approval.value } : {}),
+        };
+        return {
+          needYou: open.read
+            ? open.value.orders.filter((order) => needsYou(order.status)).length
+            : null,
+          account: accountOf(viewer, {
+            ...(integration.read
+              ? { selling: integration.value.selling, through: integration.value.through }
+              : {}),
+            unread: [integration, name, wallet, approval].some((one) => one.failed),
+          }),
+        };
       },
     },
 

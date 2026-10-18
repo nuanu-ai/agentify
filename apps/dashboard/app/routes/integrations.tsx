@@ -12,7 +12,7 @@ export async function loader(asked: LoaderFunctionArgs) {
 export default function Integrations() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="integrations" title="Integrations" frame={view.frame}>
+    <Frame tab="integrations" title="Integrations">
       <IntegrationsScreen view={view} base={useChrome().base} />
     </Frame>
   );

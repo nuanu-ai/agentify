@@ -22,14 +22,13 @@ import {
   useLoaderData,
 } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
-import { accountOf } from "../../src/account.js";
+import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
 import { OrdersScreen } from "../screens/orders.js";
 import { Frame, type Tab } from "./frame.js";
 
 const PERSON = "owner@example.com";
-const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: PERSON, confirmed: true };
 const NO_CARDS = MerchantCardListSchema.parse({ selling: "open", cards: [] });
 const NO_ORDERS = OrderListSchema.parse({ orders: [] });
 
@@ -86,7 +85,7 @@ const dashboardAt = (base: string, path: string) => {
             {
               path: "cards",
               Component: () => (
-                <Frame tab="cards" title="Product cards" frame={{ account: [] }}>
+                <Frame tab="cards" title="Product cards">
                   <p>The cards</p>
                 </Frame>
               ),
@@ -101,12 +100,12 @@ const dashboardAt = (base: string, path: string) => {
                   await load.done;
                 }
                 const open = new URL(request.url).searchParams.get("open") === "true";
-                return ordersView(SEEN_BY, NO_CARDS, NO_ORDERS, open);
+                return ordersView(NO_CARDS, NO_ORDERS, open);
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;
                 return (
-                  <Frame tab="orders" title="Orders" frame={view.frame}>
+                  <Frame tab="orders" title="Orders">
                     <OrdersScreen view={view} />
                   </Frame>
                 );
@@ -184,7 +183,7 @@ describe.each([
  * One screen drawn in the frame, behind the gate and the merchant's own pages
  * as every section is.
  */
-const framed = (tab: Tab, frame: FrameView, needYou: number | null = 0) => {
+const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}) => {
   const Stub = createRoutesStub([
     {
       id: "root",
@@ -202,7 +201,7 @@ const framed = (tab: Tab, frame: FrameView, needYou: number | null = 0) => {
                 {
                   path: tab,
                   Component: () => (
-                    <Frame tab={tab} title="A screen" frame={frame}>
+                    <Frame tab={tab} title="A screen">
                       <p>The screen</p>
                     </Frame>
                   ),
@@ -224,7 +223,7 @@ const framed = (tab: Tab, frame: FrameView, needYou: number | null = 0) => {
             surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
           },
           "routes/gate": { who: PERSON },
-          "routes/merchant-only": { needYou },
+          "routes/merchant-only": { needYou, account } satisfies FrameView,
         },
       }}
     />,
@@ -300,7 +299,7 @@ describe("the sidebar", () => {
   });
 
   it("carries beside Orders the count of orders that need the merchant", async () => {
-    framed("cards", { account: [] }, 2);
+    framed("cards", { needYou: 2 });
     await screen.findByText("The screen");
 
     expect(orders().textContent).toBe("Orders2, 2 need you");
@@ -308,9 +307,96 @@ describe("the sidebar", () => {
   });
 
   it("marks a count it could not read, which is not the same as none", async () => {
-    framed("cards", { account: [] }, null);
+    framed("cards", { needYou: null });
     await screen.findByText("The screen");
 
     expect(orders().textContent).toContain("could not count the orders that need you");
+  });
+});
+
+describe("the count beside Orders, read by the merchant's layout", () => {
+  /**
+   * The cards and the orders under a layout whose loader answers the count as
+   * the server does, through a promise; each answer after the first is held
+   * until the test lets it go.
+   */
+  const counting = (counts: readonly number[]) => {
+    const loads: ReturnType<typeof held>[] = [];
+    let asked = 0;
+    const screenAt = (tab: Tab) => ({
+      path: tab,
+      Component: () => (
+        <Frame tab={tab} title={tab}>
+          <p>{`The ${tab}`}</p>
+        </Frame>
+      ),
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          id: "root",
+          path: "/",
+          loader: () => ({
+            base: "",
+            surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
+          }),
+          Component: Outlet,
+          children: [
+            {
+              id: "routes/gate",
+              loader: () => ({ who: PERSON }),
+              Component: Outlet,
+              children: [
+                {
+                  id: "routes/merchant-only",
+                  loader: async () => {
+                    const count = counts[Math.min(asked, counts.length - 1)] ?? 0;
+                    asked += 1;
+                    if (asked > 1) {
+                      const load = held();
+                      loads.push(load);
+                      await load.done;
+                    }
+                    return { needYou: count, account: [] } satisfies FrameView;
+                  },
+                  shouldRevalidate: () => true,
+                  Component: Outlet,
+                  children: [screenAt("cards"), screenAt("orders")],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      { initialEntries: ["/cards"] },
+    );
+    render(
+      <FrameworkContext.Provider value={FRAMEWORK}>
+        <RouterProvider router={router} />
+      </FrameworkContext.Provider>,
+    );
+    return {
+      releaseAll: () => {
+        for (const load of loads.splice(0)) load.release();
+      },
+    };
+  };
+  const orders = () => within(sections()).getByText(/^Orders/);
+
+  it("keeps the count it has on screen while the next page's count is read, then shows that one", async () => {
+    const dashboard = counting([1, 2]);
+    await screen.findByText("The cards");
+    expect(orders().textContent).toBe("Orders1, 1 needs you");
+
+    fireEvent.click(orders());
+    await aMoment(50);
+
+    // Still the cards, and the count it was drawn with, not an empty badge.
+    expect(screen.getByText("The cards")).toBeTruthy();
+    expect(orders().textContent).toBe("Orders1, 1 needs you");
+
+    act(() => dashboard.releaseAll());
+    await screen.findByText("The orders");
+    expect(orders().textContent).toBe("Orders2, 2 need you");
   });
 });

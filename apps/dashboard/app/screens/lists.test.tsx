@@ -91,7 +91,7 @@ const receipt = (id: string, test: boolean) => ({
 });
 
 const ordersPage = (orders: OrderList): string =>
-  served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false)} />);
+  served(() => <OrdersScreen view={ordersView(cards, orders, false)} />);
 
 const receiptsPage = (receipts: ReceiptList): string =>
   served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
@@ -240,7 +240,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
     const cells = amountsIn(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, paidInto)} />),
+      served(() => <OrdersScreen view={ordersView(cards, orders, false, {}, paidInto)} />),
     );
 
     expect(cells).toStrictEqual(
@@ -280,7 +280,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const [cell] = amountsIn(
       served(() => (
         <OrdersScreen
-          view={ordersView(SEEN_BY, cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
+          view={ordersView(cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
         />
       )),
     );
@@ -297,7 +297,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
 
     const cells = amountsIn(
       served(() => (
-        <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, { ord_split: SPLIT })} />
+        <OrdersScreen view={ordersView(cards, orders, false, {}, { ord_split: SPLIT })} />
       )),
     );
 
@@ -320,7 +320,6 @@ describe("a refund owed", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            SEEN_BY,
             cards,
             owing,
             false,
@@ -347,9 +346,7 @@ describe("a refund owed", () => {
       orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
     });
 
-    const text = readable(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
-    );
+    const text = readable(served(() => <OrdersScreen view={ordersView(cards, owing, false)} />));
     const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/The payment was received and the product was not delivered/);

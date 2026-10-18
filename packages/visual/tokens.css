@@ -88,9 +88,9 @@
 
   /* Type sizes, named for what they set; body text is the base, 1rem at 1.6.
      Use one of these rather than a literal, and never a size in pixels. */
-  --text-caption: 0.75rem; /* a column head, a badge, a caption: the monospaced face */
+  --text-caption: 0.75rem; /* a column head or a caption: the monospaced face */
   --text-label: 0.8125rem; /* a field's label, an identifier, the signed-in address */
-  --text-small: 0.875rem; /* a table, a note, a hint under a box */
+  --text-small: 0.875rem; /* a table, a note, a hint under a box, a state beside its dot */
   --text-code: 0.9375rem; /* a value read character by character: a secret, an address */
   --text-section: 1.5rem; /* the heading of a section inside a page */
   --text-title: clamp(2rem, 5vw, 2.5rem); /* the heading of a page that stands alone */

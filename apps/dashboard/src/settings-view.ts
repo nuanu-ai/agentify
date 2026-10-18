@@ -13,7 +13,7 @@ import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
 import { type CommissionRate, percentagesOf } from "./shares.js";
-import { type FrameView, type MomentView, momentView } from "./views.js";
+import { type MomentView, momentView } from "./views.js";
 import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
 /**
@@ -96,7 +96,6 @@ export interface WalletView {
 }
 
 export interface SettingsView {
-  readonly frame: FrameView;
   readonly who: string;
   readonly lede: string;
   readonly approval: string | null;
@@ -235,7 +234,6 @@ export const settingsView = (
   const pending = payoutWallet.pending;
 
   return {
-    frame: { account: [] },
     who,
     lede:
       sellerName === null
