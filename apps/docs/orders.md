@@ -732,8 +732,9 @@ Within one instance the orders are worked through one at a time, and the
 instance is handed the next order or question only once it has answered the one
 before, so each costs it a handler call and two trips: its answer coming back to
 us and the poll for the next one. Running more instances is how to get through
-more of them at once. A parameter for taking several at once within one instance
-is among the things [not settled](/quickstart).
+more of them at once: no parameter takes several at once within one instance,
+and whether one will is among the things [not
+settled](/quickstart#what-is-not-settled-yet).
 
 ## Test orders
 

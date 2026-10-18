@@ -440,8 +440,8 @@ delivery lands in one of them. A handler slower than our wait for its answer can
 have the same order delivered again to another instance while it is still
 working on it ([Running the handler in several
 instances](/orders#running-the-handler-in-several-instances)). Within one
-instance the orders are worked through one at a time; a parameter for taking
-several at once is among the things not settled.
+instance the orders are worked through one at a time, and no parameter takes
+several at once.
 
 We remember where the orders stand as well, so after a restart you do not have
 to rebuild the picture from your own database alone: the open orders can be
@@ -585,24 +585,20 @@ separate from that SDK path and carry no promise of automatic listing.
 
 ## What is not settled yet
 
-- The price hook, an address of yours that we would call instead of your price
-  handler. A card cannot name one yet, and when one can, your side will need
-  something to check a request against to know that it came from us. A price
-  handler has neither question — the subscription channel is authenticated when
-  it connects.
-- The exact names of an order's fields, and of the two fields a handler's
-  refusal carries. Their shapes are settled and described on these pages. A
-  change to the published spelling requires a new package version.
-- The names of the fields a card sets deadlines in.
-- The parameter that lets one subscription work on several orders at once: its
-  name and its default.
 - How to take orders outside Node. The subscription's wire protocol is not
   documented for external consumers; the ready-made tools are for Node only.
+- Whether one instance of the handler will be able to work on several orders
+  at once.
 - The surface of the other order transports: the request to an address of
   yours, and the cursor that pulls batches.
+- When we start calling a price hook, an https address of yours asked instead
+  of your price handler, and what your side will check its requests against to
+  know that they came from us.
 - The half of the check that would send one order twice and watch for a second
   delivery. Nothing on our surface raises that order to send, so this check
   still cannot exercise your delivery system's idempotency from outside.
-- A public way for an unassigned self-signup to ask for the operator-started
-  test purchase: there is no channel yet.
-- Starting the test purchase with a command of your own is not supported.
+- A way to have the test purchase started without an operator. There is no
+  public channel for an unassigned self-signup to ask for it, and no command of
+  your own starts it.
+- Whether an external discovery catalogue lists a product whose sale settled
+  on a test chain.
