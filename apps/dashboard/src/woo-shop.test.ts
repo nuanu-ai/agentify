@@ -29,6 +29,7 @@ const createParcel = (
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
+import type { WooRequest } from "./woo-request.js";
 import {
   catalogueOf,
   createTheOrderInTheShop,
@@ -639,6 +640,67 @@ describe("the protected product check", () => {
     const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
 
     expect(read).toMatchObject({ ok: false, again: false });
+  });
+
+  /**
+   * `fetch`, except that a request whose address contains `lost` is dropped
+   * before any answer, or answered with a body that breaks off.
+   */
+  const losing =
+    (lost: string, how: "request" | "body"): WooRequest =>
+    async (url, init) => {
+      if (!String(url).includes(lost)) return fetch(url, init);
+      if (how === "request") throw new TypeError("fetch failed");
+      const broken = new ReadableStream({
+        start: (controller) => controller.error(new Error("connection reset")),
+      });
+      return new Response(broken, { status: 200 });
+    };
+
+  const shopSellingBoth = () =>
+    shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      }
+      return {
+        status: 200,
+        body: asked.url.endsWith("/28") ? parcelDocument() : productDocument(),
+      };
+    });
+
+  it("judges a product by its class's settings when the shop loses its answer about another class's", async () => {
+    stand = await shopSellingBoth();
+    for (const [requested, lost] of [
+      ["11", "woocommerce_ship_to_destination"],
+      ["28", "woocommerce_downloads_require_login"],
+    ] as const) {
+      for (const how of ["request", "body"] as const) {
+        const read = await inspectProductInTheShop(
+          connectionTo(stand.url),
+          merchantItemIdFor(stand.url, requested),
+          losing(lost, how),
+        );
+
+        expect(read, `${lost}, ${how}`).toMatchObject({ ok: true });
+      }
+    }
+  });
+
+  it("asks again when the shop drops the request for a setting the product's class needs", async () => {
+    stand = await shopSellingBoth();
+    for (const [requested, lost] of [
+      ["11", "woocommerce_downloads_require_login"],
+      ["28", "woocommerce_ship_to_destination"],
+    ] as const) {
+      const read = await inspectProductInTheShop(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, requested),
+        losing(lost, "request"),
+      );
+
+      expect(read, lost).toMatchObject({ ok: false, again: true });
+    }
   });
 
   it("refuses a product document that names another product, as a parcel or a download", async () => {
