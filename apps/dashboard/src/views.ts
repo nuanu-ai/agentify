@@ -7,12 +7,11 @@
  * thing; `words.ts` carries those cases.
  */
 
-import type { Readiness, SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
 import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
   expandPath,
-  MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type OrderList,
@@ -23,9 +22,8 @@ import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
 import { askedIn, type Listing, listingOf, placeOf, type SegmentRule } from "./listing.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
-import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
+import type { Viewer } from "./viewer.js";
 import {
-  APPROVAL_PENDING,
   CARD_WORDS,
   dayOf,
   FULFILLMENT_WORDS,
@@ -33,7 +31,6 @@ import {
   money,
   needsYou,
   ORDER_WORDS,
-  UNSET_WORDS,
   type Word,
   waitsOnTheBuyer,
 } from "./words.js";
@@ -75,49 +72,49 @@ const countOf = (many: number, thing: string): string => `${many} ${thing}${many
 // --- cards -------------------------------------------------------------------
 
 /**
- * Every fact that applies is listed, not the first one found: a card can both
- * have its price asked at purchase and owe a delivery inside a window, and
- * dropping the deadline because the price check came first would hide a promise
- * the merchant is answerable for. With none, the screen says since when the
- * price on the card holds, the one place `as_of` is shown: a merchant working
- * out why a sale went through at an old price has nowhere else to look.
+ * What the price beside a card means. A price asked at purchase may not be the
+ * one paid, so that is said wherever the price is; a price that stands on the
+ * card holds from `as_of`, the one place that moment is shown: a merchant
+ * working out why a sale went through at an old price has nowhere else to look.
  */
-export type CardAside = Readonly<{ facts: string }> | Readonly<{ since: MomentView }>;
+export type CardPrice = Readonly<{ asked: true }> | Readonly<{ since: MomentView }>;
 
-const cardAside = (entry: MerchantCard): CardAside => {
-  const facts: string[] = [];
+const cardPrice = (entry: MerchantCard): CardPrice =>
+  entry.card.price_check === undefined ? { since: momentView(entry.as_of) } : { asked: true };
 
-  if (entry.card.price_check !== undefined) {
-    facts.push("Price asked at purchase");
-  }
-
-  const seconds = entry.card.fulfill_deadline_seconds;
-  if (seconds !== undefined) {
-    const hours = seconds / 3600;
-    facts.push(
-      hours >= 1 && Number.isInteger(hours)
-        ? `delivery within ${hours} ${hours === 1 ? "hour" : "hours"}`
-        : `delivery within ${seconds} seconds`,
-    );
-  }
-
-  if (facts.length === 0) {
-    return { since: momentView(entry.as_of) };
-  }
-
-  const line = facts.join(", ");
-  return { facts: `${line.charAt(0).toUpperCase()}${line.slice(1)}` };
+/** A span of seconds in the largest whole unit that says it exactly. */
+const spanOf = (seconds: number): string => {
+  const [count, unit] =
+    seconds % 3600 === 0
+      ? [seconds / 3600, "hour"]
+      : seconds % 60 === 0
+        ? [seconds / 60, "minute"]
+        : [seconds, "second"];
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
 };
 
 /**
- * What stands in a card's last column. A switch where the card can be switched;
- * otherwise words saying what holds it, and where the merchant lacks something
- * set in Settings, which things, with the way there.
+ * How the goods come, with the window they are owed within where the card names
+ * one: a promise the merchant answers for, since an order still without goods
+ * at its end owes the buyer their money back.
+ */
+const deliveryOf = (card: MerchantCard["card"]): string => {
+  const word = FULFILLMENT_WORDS[card.fulfillment];
+  const seconds = card.fulfill_deadline_seconds;
+  return seconds === undefined ? word : `${word}, within ${spanOf(seconds)}`;
+};
+
+/**
+ * What stands in a card's last column: the card's own switch, or nothing where
+ * what holds the card holds every card of the account, which the banner over
+ * the page says once. A card the shop published while the merchant's code
+ * sells is the one with words of its own: the banner names no reason for it,
+ * and only its row can say which of the cards came from the shop.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "words"; text: string }>
-  | Readonly<{ kind: "unset"; what: string; waiting: string }>;
+  | Readonly<{ kind: "reason"; text: string }>
+  | Readonly<{ kind: "none" }>;
 
 /**
  * The integration the merchant sells through, and their cards that are off
@@ -129,51 +126,26 @@ export interface CardsIntegration {
 }
 
 /**
- * With all selling stopped every card reads paused, and resuming one changes
- * nothing visible, so this says which switch holds it. A third reason, which
- * the document does not name: the merchant lacks something the gateway asks of
- * every merchant, which it folds into every card's word. Then the control names
- * what is missing, with the words and link the other screens use, and never
- * says selling was stopped. A missing live approval is said as such; a card
- * paused where the rule finds nothing missing (only a change between two reads
- * can do that) is said to be off sale and no more.
- *
- * A card published by the integration not in use is off sale for that reason
- * whatever else holds it, and that is said first: neither resuming it nor
- * anything set in Settings would put it on sale.
+ * A card published by the integration not in use is off sale whatever its own
+ * switch says, so it is offered no switch: neither would put it on sale. Nor is
+ * a card of a merchant who has left, since nothing here puts it back on sale.
+ * A card the merchant paused keeps its Resume while all sales are paused or the
+ * account lacks something, so it is on sale again once the account is.
  */
 const cardControl = (
   entry: MerchantCard,
-  merchant: MerchantCardList["selling"],
-  door: Readiness,
+  selling: MerchantCardList["selling"],
   integration: CardsIntegration,
 ): CardControl => {
   if (integration.offSale.includes(entry.id)) {
-    return {
-      kind: "words",
-      text:
-        integration.through === "woocommerce"
-          ? "Off sale while you sell through your WooCommerce shop"
-          : "Off sale while you sell through your own code",
-    };
+    return integration.through === "woocommerce"
+      ? { kind: "none" }
+      : { kind: "reason", text: "Off sale while you sell through your own code" };
   }
-  if (entry.paused) {
-    return { kind: "switch", verb: "resume" };
-  }
-  if (entry.selling === "open") {
-    return { kind: "switch", verb: "pause" };
-  }
-  if (merchant !== "open") {
-    return { kind: "words", text: "All selling is stopped" };
-  }
-  const unset = unsetIn(door);
-  const waiting = door.missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-    ? ` ${APPROVAL_PENDING}`
-    : "";
-  if (unset.length > 0) {
-    return { kind: "unset", what: unset.map((one) => UNSET_WORDS[one]).join(" and "), waiting };
-  }
-  return { kind: "words", text: `Not on sale.${waiting}` };
+  if (selling === "departed") return { kind: "none" };
+  if (entry.paused) return { kind: "switch", verb: "resume" };
+  if (entry.selling === "open") return { kind: "switch", verb: "pause" };
+  return { kind: "none" };
 };
 
 /**
@@ -205,7 +177,7 @@ interface CardRow {
   /** Off sale for whatever reason, which the screen draws as a quieter row. */
   readonly off: boolean;
   readonly title: string;
-  readonly aside: CardAside;
+  readonly priced: CardPrice;
   /** The address an agent buys the card at. */
   readonly buy: string;
   readonly itemId: string;
@@ -228,26 +200,17 @@ export interface CardsView {
    * drawn where the merchant has some.
    */
   readonly listing: Listing<CardRow>;
-  /** Present only when there are no cards: why, and the two ways to the first. */
-  readonly empty: null | Readonly<{ why: string; woo: boolean }>;
-  readonly sellingNote: string;
-  readonly sellingRest: Rest;
+  /**
+   * Present only when there are no cards: the sentence, and whether the shop
+   * is a way to the first card beside the SDK. What the account lacks to
+   * publish is the banner's to say.
+   */
+  readonly empty: null | Readonly<{ says: string; woo: boolean }>;
+  /** The line under the cards about what their switches do, and where the rest is. */
+  readonly note: Readonly<{ says: string; rest: Rest }>;
 }
 
 const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
-
-/**
- * The SDK comes first and the WooCommerce connector after it, only where this
- * dashboard has one. While no name is set, everything published is refused, so
- * the line says so rather than leaving a merchant to work out why their card
- * never arrived.
- */
-const emptyCatalogue = (viewer: Viewer): string =>
-  refusedForNoName(viewer)
-    ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
-    : readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-      ? `You haven't published any cards yet. ${APPROVAL_PENDING}`
-      : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
 
 /**
  * A card on sale is one an agent can buy now; every other card is off sale,
@@ -279,7 +242,6 @@ export const cardsView = (
   // (`selling.ts` explains).
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
-  const door = readinessSeenBy(viewer);
 
   return {
     frame: frameOf(viewer, { selling: cards.selling, through: integration.through }),
@@ -295,13 +257,13 @@ export const cardsView = (
           id: entry.id,
           off: state !== CARD_WORDS.onSale,
           title: entry.card.title,
-          aside: cardAside(entry),
+          priced: cardPrice(entry),
           buy: buyingAddress(origin, entry),
           itemId: entry.card.merchant_item_id,
           price: money(entry.card.price),
-          delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
+          delivery: deliveryOf(entry.card),
           state,
-          control: cardControl(entry, cards.selling, door, integration),
+          control: cardControl(entry, cards.selling, integration),
         };
       }),
       asked: askedIn(query, CARD_SEGMENT_KEYS),
@@ -317,34 +279,44 @@ export const cardsView = (
           : `No card ${within.toLocaleLowerCase()} matches “${q}”.`,
       showAll: "Show all cards",
     }),
-    empty: cards.cards.length === 0 ? { why: emptyCatalogue(viewer), woo: wooAvailable } : null,
-    sellingNote: sellingNote(cards.selling),
-    sellingRest:
-      cards.selling === "departed"
-        ? {
-            href: "/docs/faq#can-i-leave-altogether",
-            words: "What leaving settles and what it does not",
-          }
-        : {
-            href: "/docs/faq#can-i-pause-the-selling",
-            words: "What a pause does to the orders you have",
-          },
+    empty:
+      cards.cards.length === 0
+        ? { says: "You haven't published any cards yet.", woo: wooAvailable }
+        : null,
+    note: switchesNote(cards.selling),
   };
 };
 
+const WHAT_A_PAUSE_DOES: Rest = {
+  href: "/docs/faq#can-i-pause-the-selling",
+  words: "What a pause does",
+};
+
 /**
- * A pause leaves accepted orders to play out; leaving closed them and owes back
- * the money for anything paid for and not delivered. One sentence cannot be
- * true of both.
+ * A pause leaves accepted orders to play out, which the banner says while all
+ * sales are paused, so then the line says what resuming leaves alone; leaving
+ * closed the open orders, and nothing on this page starts selling again.
  */
-const sellingNote = (selling: MerchantCardList["selling"]): string => {
+const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] => {
   switch (selling) {
     case "departed":
-      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
+      return {
+        says: "Selling does not start again from this page.",
+        rest: {
+          href: "/docs/faq#can-i-leave-altogether",
+          words: "What leaving settles and what it does not",
+        },
+      };
     case "paused":
-      return "All sales are paused: no new orders are accepted, and the orders you have already accepted play out as usual. Cards you paused yourself stay paused when you resume.";
+      return {
+        says: `Cards you paused yourself stay paused when you press ${RESUME_ALL_SELLING}.`,
+        rest: WHAT_A_PAUSE_DOES,
+      };
     case "open":
-      return "A pause takes the card off sale without abandoning orders: the ones you have already accepted play out as usual.";
+      return {
+        says: "A pause takes a card off sale; orders you have already accepted play out as usual.",
+        rest: WHAT_A_PAUSE_DOES,
+      };
   }
 };
 

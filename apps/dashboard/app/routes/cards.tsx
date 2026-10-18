@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { acted, answer, formOf, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
-import { CardsScreen } from "../screens/cards.js";
+import { AllSelling, CardsScreen } from "../screens/cards.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -30,7 +30,7 @@ export async function action(asked: ActionFunctionArgs) {
 export default function Cards() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="cards" title="Product cards" frame={view.frame}>
+    <Frame tab="cards" title="Product cards" action={<AllSelling view={view} />} frame={view.frame}>
       <CardsScreen view={view} base={useChrome().base} />
     </Frame>
   );

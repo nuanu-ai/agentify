@@ -184,7 +184,9 @@ describe("a list where some of the money was real and some was not", () => {
 });
 
 describe("whether a live merchant is approved, on the cards", () => {
-  // A card off sale for want of the operator's approval says so.
+  // Without the approval every card is off sale and every live publish is
+  // refused. The banner over the cards says so once, over an empty Cards page
+  // too, where a merchant looks for why nothing appears; no row says it again.
   const live = (approved: boolean): Viewer => ({
     ...SEEN_BY,
     mode: "live",
@@ -196,26 +198,23 @@ describe("whether a live merchant is approved, on the cards", () => {
     ...cards,
     cards: cards.cards.map((entry) => ({ ...entry, selling: "paused" })),
   });
-  const cardsPage = (viewer: Viewer, list: typeof cards): string =>
-    served(() => (
-      <CardsScreen view={cardsView(viewer, list, "https://agentify.ad")} base={viewer.base} />
-    ));
+  const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
+  const reasonsOver = (viewer: Viewer, list: typeof cards) =>
+    cardsView(viewer, list, "https://agentify.ad").frame.account.map((note) => note.reason);
 
-  it("says on an empty Cards page that publishing waits for the approval", () => {
-    // Without the approval every live publish is refused, so an unapproved
-    // merchant's Cards page is the empty one, where they look for why nothing
-    // appears.
-    const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
-
-    expect(readable(cardsPage(live(false), none))).toMatch(/not approved your merchant/);
-    expect(readable(cardsPage(live(true), none))).not.toMatch(/approv/);
+  it("says over an empty Cards page that publishing waits for the approval", () => {
+    expect(reasonsOver(live(false), none)).toStrictEqual(["not_approved"]);
+    expect(reasonsOver(live(true), none)).toStrictEqual([]);
   });
 
-  it("says a card is off sale because the approval is still to come", () => {
-    const waiting = readable(cardsPage(live(false), offSale));
+  it("says over the cards that the approval is still to come, and not beside each card", () => {
+    const rows = served(() => (
+      <CardsScreen view={cardsView(live(false), offSale, "https://agentify.ad")} base="" />
+    ));
 
-    expect(waiting).toMatch(/not approved your merchant/);
-    expect(waiting).not.toMatch(/cannot tell/);
+    expect(reasonsOver(live(false), offSale)).toStrictEqual(["not_approved"]);
+    expect(readable(rows)).toContain("Off sale");
+    expect(readable(rows)).not.toMatch(/approv/i);
   });
 });
 

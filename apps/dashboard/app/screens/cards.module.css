@@ -1,0 +1,32 @@
+/* The ways to a first card, under the sentence that says there is none yet. */
+.ways {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* What a narrow row says on its own line that a wide row says under the
+   title. The list's own box decides, as it does for the row's lines. */
+.narrowOnly {
+  display: none;
+}
+
+@container (max-width: 860px) {
+  .narrowOnly {
+    display: inline;
+  }
+}
+
+/* The two lines under the cards, one after the other as one note. */
+.notes {
+  margin: 0 0 32px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.notes > p + p {
+  margin-top: 4px;
+}

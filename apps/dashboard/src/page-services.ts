@@ -997,8 +997,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     screens: {
       async cards(person, query) {
         const gateway = gatewayAs(person);
-        // A card can read paused for want of any of these, and the control
-        // beside it says which. The operator's approval is read only on live,
+        // A card can read paused for want of any of these, and the banner over
+        // the cards says which. The operator's approval is read only on live,
         // the one place publishing needs it.
         const [cards, name, wallet, approval, integration] = await Promise.all([
           gateway.cards(),
