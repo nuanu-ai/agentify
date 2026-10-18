@@ -411,6 +411,9 @@ const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
 /** What stands between the two halves of an identifier shown short: its ellipsis, or dots typed for it. */
 const ELLIPSIS = /…|\.{2,}/;
 
+/** A character no order ID holds. */
+const NOT_OF_AN_ID = /[^a-z0-9_]/;
+
 /** How many characters of an ID the page shows on each side of the ellipsis. */
 const HALF = 4;
 
@@ -431,7 +434,10 @@ const RUN = 8;
  */
 const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
   const parts = words.split(ELLIPSIS).map((part) => part.trim());
-  const [head = "", tail = ""] = parts;
+  // The short form's halves are the run of an ID's characters on each side,
+  // so the words or marks a paste brings around it are left out.
+  const head = (parts[0] ?? "").split(NOT_OF_AN_ID).at(-1) ?? "";
+  const tail = (parts[1] ?? "").split(NOT_OF_AN_ID)[0] ?? "";
   const short = parts.length === 2 && head + tail !== "";
   return (row) => {
     if (

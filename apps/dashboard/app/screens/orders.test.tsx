@@ -134,6 +134,13 @@ describe("searching the orders", () => {
     expect(searched("…7de3")).toStrictEqual([FIRST, SAME_TAIL]);
   });
 
+  it("finds an order by its short form pasted with words or marks around it", () => {
+    expect(searched("“ord_17ff…7de3”")).toStrictEqual([FIRST]);
+    expect(searched("ord_17ff…7de3.")).toStrictEqual([FIRST]);
+    expect(searched("refund for ord_17ff…7de3, please")).toStrictEqual([FIRST]);
+    expect(searched("(17ff…7de3)")).toStrictEqual([FIRST]);
+  });
+
   it("finds an order whose whole ID is in what was pasted, as text copied off its row is", () => {
     expect(searched(`${shortened(FIRST)}${FIRST} Price set 2026-10-12 16:40:00 UTC`)).toStrictEqual(
       [FIRST],
@@ -228,9 +235,10 @@ describe("a refund due on a test purchase", () => {
 
     const [test, real] = ordersView(CARDS, owing, owing).needsYou;
 
-    expect(test?.why).toContain("Return the full price of this test purchase, 5.00 USD,");
-    expect(real?.why).toContain("Return the full price, 5.00 USD,");
-    expect(real?.why).not.toContain("test");
+    // The test word stands with the sum itself.
+    expect(test?.why).toMatch(/test purchase, 5\.00 USD/);
+    expect(real?.why).toContain("5.00 USD");
+    expect(real?.why).not.toMatch(/test/i);
   });
 });
 
