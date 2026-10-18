@@ -19,7 +19,7 @@ import {
   type OrderStatus,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { type AccountNote, type AccountRead, accountOf } from "./account.js";
+import type { AccountNote } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
 import { askedIn, type Listing, listingOf, type SegmentRule } from "./listing.js";
@@ -52,12 +52,15 @@ export const momentView = (iso: string): MomentView => {
   return time.length === 0 ? { text } : { date: date ?? "", time: time.join(" ") };
 };
 
-/** What the frame draws over every screen inside it. */
+/**
+ * What the frame draws over every page about a merchant's selling, read once
+ * by their pages' layout rather than by each screen, so the banner says the
+ * same on every section.
+ */
 export interface FrameView {
-  /**
-   * The banner's reasons, empty where the account sells as usual or where the
-   * screen read nothing they rest on.
-   */
+  /** The orders that need the merchant; null where they could not be counted, which is not none. */
+  readonly needYou: number | null;
+  /** The banner's reasons, empty where the account sells as usual and everything was read. */
   readonly account: readonly AccountNote[];
 }
 
@@ -66,10 +69,6 @@ export interface Rest {
   readonly href: string;
   readonly words: string;
 }
-
-const frameOf = (viewer: Viewer, read: AccountRead): FrameView => ({
-  account: accountOf(viewer, read),
-});
 
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
 
@@ -217,7 +216,6 @@ interface CardRow {
 }
 
 export interface CardsView {
-  readonly frame: FrameView;
   /**
    * The control that stops or restarts all selling; absent for a merchant who
    * has left, who is offered no way back on sale here.
@@ -277,7 +275,6 @@ export const cardsView = (
   const door = readinessSeenBy(viewer);
 
   return {
-    frame: frameOf(viewer, { selling: cards.selling, through: integration.through }),
     allSelling: gone
       ? null
       : stopped
@@ -375,7 +372,6 @@ interface OrderNeed extends OrderRow {
 }
 
 export interface OrdersView {
-  readonly frame: FrameView;
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
   /**
@@ -444,7 +440,6 @@ const setAt = (order: OrderList["orders"][number]): number => {
 };
 
 export const ordersView = (
-  viewer: Viewer,
   cards: MerchantCardList,
   orders: OrderList,
   open: OrderList,
@@ -489,7 +484,6 @@ export const ordersView = (
         rest: whereTheRestIs(order.status),
       }));
   return {
-    frame: frameOf(viewer, { selling: cards.selling }),
     none: orders.orders.length === 0,
     listing: listingOf({
       rows: listed.map(({ row }) => row),
@@ -596,7 +590,6 @@ interface ReceiptRow {
 }
 
 export interface ReceiptsView {
-  readonly frame: FrameView;
   /** Null when no receipt is a test purchase. */
   readonly testWarning: string | null;
   readonly count: number;
@@ -615,7 +608,6 @@ export const receiptsView = (
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   return {
-    frame: frameOf(viewer, { selling: cards.selling }),
     testWarning: testWarning(receipts, viewer.mode),
     count: receipts.receipts.length,
     sums: sumsOf(receipts),

@@ -12,11 +12,8 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { readable } from "../../src/testing/html.js";
-import type { Viewer } from "../../src/viewer.js";
 import { ordersView } from "../../src/views.js";
 import { OrdersScreen } from "./orders.js";
-
-const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 const served = (screen: () => ReactElement): string => {
   const Stub = createRoutesStub([
@@ -25,7 +22,7 @@ const served = (screen: () => ReactElement): string => {
   return renderToString(
     <Stub
       initialEntries={["/orders"]}
-      hydrationData={{ loaderData: { "routes/gate": { who: SEEN_BY.who } } }}
+      hydrationData={{ loaderData: { "routes/gate": { who: "owner@example.com" } } }}
     />,
   );
 };
@@ -106,9 +103,7 @@ const THREE = ordersOf([
 
 /** The ids of the rows the address asks for, among these orders, all of them open. */
 const found = (address: string, orders = THREE, open = orders) =>
-  ordersView(SEEN_BY, CARDS, orders, open, new URLSearchParams(address)).listing.rows.map(
-    (row) => row.id,
-  );
+  ordersView(CARDS, orders, open, new URLSearchParams(address)).listing.rows.map((row) => row.id);
 
 const searched = (q: string) => found(new URLSearchParams({ q }).toString());
 
@@ -152,12 +147,12 @@ describe("searching the orders", () => {
     const missed = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView(SEEN_BY, CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
+          view={ordersView(CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
         />
       )),
     );
     const none = readable(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY, CARDS, ordersOf([]), ordersOf([]))} />),
+      served(() => <OrdersScreen view={ordersView(CARDS, ordersOf([]), ordersOf([]))} />),
     );
 
     expect(missed).toContain("No order matches “router”.");
@@ -173,7 +168,7 @@ describe("searching the orders", () => {
       { id: SAME_TAIL, status: "refund_due" },
     ]);
 
-    const view = ordersView(SEEN_BY, CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
+    const view = ordersView(CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
 
     expect(view.needsYou.map((one) => one.id)).toStrictEqual([FIRST]);
   });
@@ -189,7 +184,7 @@ describe("the open orders", () => {
     ]);
     const open = ordersOf([{ id: FIRST, status: "in_progress" }]);
 
-    const view = ordersView(SEEN_BY, CARDS, all, open, new URLSearchParams("show=open"));
+    const view = ordersView(CARDS, all, open, new URLSearchParams("show=open"));
 
     expect(view.listing.rows.map((row) => row.id)).toStrictEqual([FIRST]);
     expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
@@ -202,7 +197,7 @@ describe("the open orders", () => {
     const text = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView(SEEN_BY, CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
+          view={ordersView(CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
         />
       )),
     );
@@ -223,7 +218,7 @@ describe("a long list of orders", () => {
   );
 
   it("draws the newest fifty first and says which of how many", () => {
-    const view = ordersView(SEEN_BY, CARDS, many, many);
+    const view = ordersView(CARDS, many, many);
 
     expect(view.listing.rows[0]?.id).toBe(many.orders[119]?.id);
     expect(view.listing.rows).toHaveLength(50);
@@ -234,10 +229,12 @@ describe("a long list of orders", () => {
     // The oldest sixty fall on the eleventh of October and the newest sixty on
     // the twelfth, so the second page holds the turn of the day.
     const html = served(() => (
-      <OrdersScreen view={ordersView(SEEN_BY, CARDS, many, many, new URLSearchParams("page=2"))} />
+      <OrdersScreen view={ordersView(CARDS, many, many, new URLSearchParams("page=2"))} />
     ));
 
-    const days = [...html.matchAll(/<li class="list-day">([^<]*)<\/li>/g)].map((day) => day[1]);
+    const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
+      (day) => day[1],
+    );
 
     expect(days).toStrictEqual(["12 October 2026", "11 October 2026"]);
   });

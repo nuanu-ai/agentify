@@ -18,7 +18,7 @@ import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
-import { unsetIn, type Viewer } from "./viewer.js";
+import { unsetIn } from "./viewer.js";
 import {
   cardsFromTheShop,
   decimalOfMinorUnits,
@@ -202,15 +202,6 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     return parts.clientFor({ merchantId: person.merchant.id, email: person.email });
   };
 
-  /** The name is passed only by a screen that asked the gateway for it. */
-  const viewing = (person: Person, sellerName?: string | null): Viewer => ({
-    base,
-    mode: config.surfaceMode,
-    who: person.email,
-    confirmed: person.confirmed,
-    sellerName,
-  });
-
   /**
    * The rule is the gateway's own (`readinessOf` in the core). This dashboard
    * has its gateway's chain and facilitator, so its surface mode is the
@@ -262,7 +253,6 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       kind: "view",
       status,
       view: wooShopView(
-        viewing(person, standing.document.sellerName),
         {
           state,
           unset: standing.document.unset,

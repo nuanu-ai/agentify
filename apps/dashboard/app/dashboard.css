@@ -181,7 +181,6 @@ tbody tr.needs-you {
 }
 
 td.amount,
-td.key,
 td.ident {
   font-family: var(--font-mono);
 }
@@ -190,7 +189,6 @@ td.amount {
   white-space: nowrap;
 }
 
-td.key,
 td.ident {
   font-size: 0.8125rem;
   color: var(--muted);
@@ -200,23 +198,16 @@ td.ident {
  * An identifier breaks only where its column ends and nothing is inserted, so a
  * double-click still selects all of it. Its column has a width of its own,
  * because a wrapping column is the one a table takes room from first: a
- * thirty-six-character order or receipt identifier takes two lines at eighteen;
- * twenty characters hold a key name like `rented-number-us-30d` on one line.
+ * thirty-six-character receipt identifier takes two lines at eighteen.
  */
-td.key,
 td.ident,
 .under.mono {
   overflow-wrap: anywhere;
 }
 
-td.key,
 td.ident {
   box-sizing: content-box;
   width: 18ch;
-}
-
-td.key {
-  width: 20ch;
 }
 
 .title {
@@ -439,11 +430,6 @@ td.control {
   line-height: 1.55;
 }
 
-/* Stands clear of the bar above; the heading block under it brings its own 32px. */
-.app-content > .callout:first-child {
-  margin: 32px 0 0;
-}
-
 .callout.done {
   border-color: color-mix(in srgb, var(--pass) 32%, var(--line));
 }
@@ -599,6 +585,12 @@ td.control {
   color: var(--muted);
   font-size: 0.8125rem;
   font-weight: 600;
+}
+
+.list-day h3 {
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
 }
 
 .list > li.list-day + li {
@@ -813,7 +805,6 @@ td.control {
 }
 
 .segments b {
-  margin-left: 4px;
   color: var(--fg);
   font-weight: 600;
 }
@@ -1746,29 +1737,7 @@ h2 {
   }
 }
 
-/* The card counts as pills, and the empty catalogue as a panel with its ways in
-   as buttons. */
-.stat-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-}
-.stat-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-.stat-pills .stat-pill b {
-  color: var(--fg);
-  font-family: var(--font-mono);
-}
+/* The empty catalogue as a panel with its ways in as buttons. */
 .empty-start {
   margin: 24px 0;
   padding: 28px;

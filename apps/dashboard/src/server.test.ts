@@ -64,6 +64,9 @@ import { memoryWooShops, type WooShops } from "./woo-shops.js";
  * key's prefix, so a copy would come apart from the harness when the prefix
  * changed.
  */
+
+/** Every section of the dashboard a merchant works in. */
+const ALL_SECTIONS = ["/cards", "/orders", "/receipts", "/keys", "/integrations", "/settings"];
 const KEY = theMerchantKey("test");
 const asMerchant = { authorization: `Bearer ${KEY}` };
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -3126,7 +3129,7 @@ describe("a merchant who has chosen no name", () => {
     await unname(running);
     await running.browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts"]) {
+    for (const path of ALL_SECTIONS) {
       const screen = await running.browser.get(path);
       const text = readable(screen.html);
       expect(screen.status, path).toBe(200);
@@ -3146,7 +3149,7 @@ describe("a merchant who has chosen no name", () => {
     await publish(running.gateway, roomCard);
     await running.browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts"]) {
+    for (const path of ALL_SECTIONS) {
       const text = readable((await running.browser.get(path)).html);
       expect(text, path).not.toMatch(
         /every card you publish is refused, until you choose the name buyers see/i,
@@ -3860,6 +3863,33 @@ describe("the orders screen", () => {
     // order is not counted among those that need them.
     expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
     expect(text).not.toMatch(/needs? you/i);
+  });
+});
+
+describe("the banner about the account", () => {
+  it("says the same on every section, all sales paused among it", async () => {
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+    await browser.post(STOP_SELLING);
+
+    for (const path of ALL_SECTIONS) {
+      expect(readable((await browser.get(path)).html), path).toContain("All sales are paused");
+    }
+  });
+
+  it("says it could not check the account where a read does not answer, and still draws the page", async () => {
+    const { browser, gateway } = await started({
+      client: (real) => ({ ...real, payoutWallet: async () => lateAnswer(10) }),
+    });
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    // The keys read nothing of the wallet themselves, so only the banner's read fails.
+    const keys = await browser.get("/keys");
+
+    expect(keys.status).toBe(200);
+    expect(readable(keys.html)).toContain("Your account could not be checked");
   });
 });
 

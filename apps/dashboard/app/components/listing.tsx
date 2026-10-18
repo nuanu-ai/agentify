@@ -55,13 +55,11 @@ export function ListTools({
         {listing.segments.map((segment) =>
           marked(segment.key, segment.here) ? (
             <span key={segment.key} className="here" aria-current="page">
-              {segment.label}
-              <b>{segment.count}</b>
+              {segment.label} <b>{segment.count}</b>
             </span>
           ) : (
             <Link key={segment.key} to={segment.to} prefetch="intent">
-              {segment.label}
-              <b>{segment.count}</b>
+              {segment.label} <b>{segment.count}</b>
             </Link>
           ),
         )}
