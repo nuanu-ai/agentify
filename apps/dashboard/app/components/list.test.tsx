@@ -46,7 +46,7 @@ describe("a list's parts, as a screen reader meets them", () => {
     expect(screen.getByLabelText("Price date for VPN, one year")).toBeTruthy();
   });
 
-  it("says when the search was cut to its first characters", () => {
+  it("says how many characters of a search that was cut were searched for, and shows those", () => {
     const tools = (q: string) => {
       const listing = listingOf({
         rows: [{ on: true }],
@@ -69,10 +69,14 @@ describe("a list's parts, as a screen reader meets them", () => {
     };
 
     tools("x".repeat(300));
-    expect(screen.getByText("Only the first 200 characters of the search were used.")).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "Search things" })).toHaveProperty(
+      "value",
+      "x".repeat(200),
+    );
+    expect(screen.getByText(/\b200\b/)).toBeTruthy();
     cleanup();
     tools("lamp");
-    expect(screen.queryByText(/characters of the search/)).toBeNull();
+    expect(screen.queryByText(/\b200\b/)).toBeNull();
   });
 
   it("reads a segment's label and its count apart", () => {
