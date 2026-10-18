@@ -551,6 +551,32 @@ describe("a search over the cards", () => {
     expect(page(many(0), "q=suite")).toContain("You haven't published any cards yet.");
   });
 
+  it("finds only the card whose product code is the whole search, as a link to one card names it", () => {
+    // A link to the card with product code 1 must not list 11 and 21 beside it.
+    const coded = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: ["1", "11", "21", "Lamp-1", "LAMP-10"].map((code, at) => ({
+        ...entry,
+        id: `itm_${at}`,
+        card: { ...entry.card, merchant_item_id: code, title: `Item ${code}` },
+      })),
+    });
+    const found = (q: string) =>
+      cardsView(
+        coded,
+        "https://agentify.ad",
+        false,
+        undefined,
+        new URLSearchParams({ q }),
+      ).listing.rows.map((row) => row.itemId);
+
+    expect(found("1")).toStrictEqual(["1"]);
+    expect(found(" lamp-1 ")).toStrictEqual(["Lamp-1"]);
+    // Any other search still finds a part of a title or a code.
+    expect(found("2")).toStrictEqual(["21"]);
+    expect(found("item")).toStrictEqual(["1", "11", "21", "Lamp-1", "LAMP-10"]);
+  });
+
   it("finds a card by its product code as well as its title", () => {
     const text = page(many(12), "q=room-11");
 
