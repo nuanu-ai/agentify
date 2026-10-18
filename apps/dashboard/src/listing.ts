@@ -12,7 +12,7 @@
  */
 
 /** The most rows a page draws. */
-const PAGE_ROWS = 50;
+export const PAGE_ROWS = 50;
 
 /** What the address asks of the list. */
 export interface Asked {

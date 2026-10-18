@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { Shares } from "../../src/shares.js";
-import type { OrdersView } from "../../src/views.js";
+import type { OrdersView, ToldOrders } from "../../src/views.js";
 import { Ident } from "../components/copy.js";
 import { Cell, DayHeading, Group, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { CutNote, ListTools, NothingHere } from "../components/listing.js";
@@ -35,7 +35,7 @@ export const SharesOf = ({ shares }: Readonly<{ shares: Shares | null }>) =>
  * product and its sum, then what happened and what is the merchant's to do,
  * then its ID and when its price was set.
  */
-const Told = ({ order }: Readonly<{ order: OrdersView["needsYou"][number] }>) => (
+const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
   <li className={styles.told}>
     <div className={styles.state}>
       <Word word={order.state} />
@@ -56,6 +56,20 @@ const Told = ({ order }: Readonly<{ order: OrdersView["needsYou"][number] }>) =>
       </span>
     </div>
   </li>
+);
+
+/** Orders told in full, and under them how many of how many where they were cut. */
+const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>) => (
+  <>
+    <List label={label} columns="1fr">
+      {told.rows.map((order) => (
+        <Told key={order.id} order={order} />
+      ))}
+    </List>
+    {told.rows.length === told.of ? null : (
+      <p className="cut">{`Showing the newest ${told.rows.length} of ${told.of}`}</p>
+    )}
+  </>
 );
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
@@ -83,10 +97,10 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         placeholder="Search by order ID or product"
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
-      {view.needsYou.length === 0 ? null : (
+      {view.needsYou.of === 0 ? null : (
         <Group
           title="Needs you"
-          count={view.needsYou.length}
+          count={view.needsYou.of}
           warn
           aside={
             <a className={styles.end} href="/docs/money#if-the-buyer-did-not-get-the-goods">
@@ -94,24 +108,16 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
             </a>
           }
         >
-          <List label="Orders that need you" columns="1fr">
-            {view.needsYou.map((order) => (
-              <Told key={order.id} order={order} />
-            ))}
-          </List>
+          <ToldList told={view.needsYou} label="Orders that need you" />
         </Group>
       )}
-      {view.waitsOnTheBuyer.length === 0 ? null : (
+      {view.waitsOnTheBuyer.of === 0 ? null : (
         <Group
           title="Waiting on the buyer"
-          count={view.waitsOnTheBuyer.length}
+          count={view.waitsOnTheBuyer.of}
           aside="Nothing owed by you"
         >
-          <List label="Orders waiting on the buyer" columns="1fr">
-            {view.waitsOnTheBuyer.map((order) => (
-              <Told key={order.id} order={order} />
-            ))}
-          </List>
+          <ToldList told={view.waitsOnTheBuyer} label="Orders waiting on the buyer" />
         </Group>
       )}
       <Group

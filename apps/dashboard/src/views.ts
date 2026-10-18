@@ -21,7 +21,14 @@ import {
 import type { AccountNote } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
-import { askedIn, type Listing, listingOf, placeOf, type SegmentRule } from "./listing.js";
+import {
+  askedIn,
+  type Listing,
+  listingOf,
+  PAGE_ROWS,
+  placeOf,
+  type SegmentRule,
+} from "./listing.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import type { Viewer } from "./viewer.js";
 import {
@@ -387,6 +394,12 @@ interface OrderNeed extends OrderRow {
   readonly rest: Rest | null;
 }
 
+/** Orders told in full, the newest first and at most a page of them, and how many there are. */
+export interface ToldOrders {
+  readonly rows: readonly OrderNeed[];
+  readonly of: number;
+}
+
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
@@ -402,12 +415,12 @@ export interface OrdersView {
    */
   readonly listing: Listing<OrderRow>;
   /** The refunds due the search finds: the orders the merchant has to act on. */
-  readonly needsYou: readonly OrderNeed[];
+  readonly needsYou: ToldOrders;
   /**
    * Goods delivered and held until the buyer pays: nothing owed by the
    * merchant, who decides whether to revoke what they delivered or to wait.
    */
-  readonly waitsOnTheBuyer: readonly OrderNeed[];
+  readonly waitsOnTheBuyer: ToldOrders;
 }
 
 /** The terms of the payout split each order's charge went into, by order. */
@@ -529,14 +542,17 @@ export const ordersView = (
   );
   const finds = orderSearch(asked.q.toLocaleLowerCase());
   const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
-  const told = (which: (status: OrderStatus) => boolean): readonly OrderNeed[] =>
-    found
-      .filter(({ order }) => which(order.status))
-      .map(({ order, row }) => ({
+  const told = (which: (status: OrderStatus) => boolean): ToldOrders => {
+    const all = found.filter(({ order }) => which(order.status));
+    return {
+      rows: all.slice(0, PAGE_ROWS).map(({ order, row }) => ({
         ...row,
         why: whatHappened(order, owed[order.id], paidInto[order.id] !== undefined),
         rest: whereTheRestIs(order.status),
-      }));
+      })),
+      of: all.length,
+    };
+  };
   return {
     none: orders.orders.length === 0,
     testNote: testOrders(orders, mode),

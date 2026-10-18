@@ -224,7 +224,7 @@ describe("searching the orders", () => {
 
     const view = ordersView("live", CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
 
-    expect(view.needsYou.map((one) => one.id)).toStrictEqual([FIRST]);
+    expect(view.needsYou.rows.map((one) => one.id)).toStrictEqual([FIRST]);
   });
 });
 
@@ -235,7 +235,7 @@ describe("a refund due on a test purchase", () => {
       { id: SAME_TAIL, status: "refund_due" },
     ]);
 
-    const [test, real] = ordersView("live", CARDS, owing, owing).needsYou;
+    const [test, real] = ordersView("live", CARDS, owing, owing).needsYou.rows;
 
     // The test word stands with the sum itself.
     expect(test?.why).toMatch(/test purchase, 5\.00 USD/);
@@ -307,5 +307,48 @@ describe("a long list of orders", () => {
     );
 
     expect(days).toStrictEqual(["12 October 2026", "11 October 2026"]);
+  });
+});
+
+describe("a long run of orders told in full", () => {
+  const sixtyOf = (status: string) =>
+    ordersOf(
+      Array.from({ length: 60 }, (_, at) => ({
+        id: idOf(at.toString(16).padStart(4, "0"), "0000"),
+        status,
+        at: new Date(Date.parse("2026-10-11T23:00:00Z") + at * 60_000).toISOString(),
+      })),
+    );
+
+  /** The ids of the rows drawn in the group the list is labelled with, in order. */
+  const toldIn = (html: string, label: string): readonly string[] => {
+    const group = new RegExp(`<ul class="list" aria-label="${label}">([\\s\\S]*?)</ul>`).exec(html);
+    return [...(group?.[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+      .map((id) => id[0])
+      .filter((id, at, all) => all.indexOf(id) === at);
+  };
+
+  it.each([
+    ["refund_due", "Needs you", "Orders that need you"],
+    ["delivered_unpaid", "Waiting on the buyer", "Orders waiting on the buyer"],
+  ])("draws the newest fifty orders %s and says which of how many", (status, title, label) => {
+    const orders = sixtyOf(status);
+
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    const told = toldIn(html, label);
+    expect(told).toHaveLength(50);
+    expect(told[0]).toBe(orders.orders[59]?.id);
+    expect(readable(html)).toContain(`${title} 60`);
+    expect(readable(html)).toContain("Showing the newest 50 of 60");
+  });
+
+  it("says nothing of a cut where the group holds every order", () => {
+    const orders = ordersOf([{ id: FIRST, status: "refund_due" }]);
+
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
+    expect(readable(html)).not.toContain("Showing the newest");
   });
 });
