@@ -39,6 +39,7 @@ const wallet = ({
   declines,
   breaks,
   loses,
+  acknowledges = { id: "0x00b47c4" },
 }: {
   readonly windows?: readonly unknown[];
   readonly startsOn?: string;
@@ -46,6 +47,8 @@ const wallet = ({
   readonly breaks?: string;
   /** A request whose answer the provider can no longer read, its session with the window gone. */
   readonly loses?: string;
+  /** What the wallet answers once it has taken a batch. */
+  readonly acknowledges?: unknown;
 } = {}) => {
   let chain = startsOn;
   let remembered: unknown = null;
@@ -76,7 +79,7 @@ const wallet = ({
         if (batch.version !== "2.0.0") throw { code: -32602, message: "Unsupported version" };
         if (batch.chainId !== chain) throw { code: 4901, message: "Chain mismatch" };
         sent.push(batch);
-        return { id: "0x00b47c4" };
+        return acknowledges;
       }
       throw { code: 4200, message: `Unsupported method ${method}` };
     },
@@ -239,6 +242,22 @@ describe("sending the payout through the merchant's wallet", () => {
     const { answering } = wallet({ loses: "wallet_sendCalls" });
 
     expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "lost" });
+  });
+
+  it("does not know whether a payout went out when the wallet's acknowledgment names no batch", async () => {
+    for (const acknowledges of [null, {}, { id: 7 }, { id: "" }]) {
+      const { answering } = wallet({ acknowledges });
+
+      expect(await sendPayout(answering, 84532, payout), JSON.stringify(acknowledges)).toEqual({
+        kind: "lost",
+      });
+    }
+  });
+
+  it("calls a payout sent when the wallet names its batch on its own, as wallets answering an earlier version do", async () => {
+    const { answering } = wallet({ acknowledges: "0x00b47c4" });
+
+    expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "sent" });
   });
 
   it("does not call a payout sent that the wallet refused to send", async () => {

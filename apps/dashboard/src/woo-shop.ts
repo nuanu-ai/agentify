@@ -131,12 +131,14 @@ const ProductSchema = z.looseObject({
   downloads: z.array(z.looseObject({ id: z.string(), name: z.string(), file: z.string() })),
 });
 
-const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
+/** WooCommerce writes the setting's own id beside its value, matched to the address asked. */
+const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string(), z.boolean()]) });
 
 /**
  * Download and shipping settings are asked for in one batch, one round trip
  * whichever class the product is, and only the answers bearing on its class
- * decide; a shop that hides its download settings can still sell a parcel.
+ * decide, a lost one included; a shop that hides or drops its download
+ * settings can still sell a parcel.
  */
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
@@ -164,47 +166,49 @@ export const inspectProductInTheShop = async (
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
-  let responses: Response[];
-  let bodies: string[];
-  try {
-    responses = await Promise.all(
-      endpoints.map((path) =>
-        request(`${keys.shopUrl}${path}`, {
+  /** Null where the shop never answered; `body` is null where its answer broke off. */
+  const answers = await Promise.all(
+    endpoints.map(async (path) => {
+      let response: Response;
+      try {
+        response = await request(`${keys.shopUrl}${path}`, {
           headers: { authorization: basicFor(keys), accept: "application/json" },
           redirect: "manual",
           signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
-        }),
-      ),
-    );
-  } catch {
-    return { ok: false, why: "The shop did not answer the protected product check.", again: true };
-  }
-  try {
-    bodies = await Promise.all(responses.map((response) => response.text()));
-  } catch {
-    return {
-      ok: false,
-      why: "The shop's protected product check did not return readable JSON.",
-      again: false,
-    };
-  }
+        });
+      } catch {
+        return null;
+      }
+      const body = await response.text().catch(() => null);
+      return { response, body };
+    }),
+  );
   /** Undefined where it is not JSON. */
   const documentOf = (index: number): unknown => {
+    const body = answers[index]?.body;
+    if (typeof body !== "string") return undefined;
     try {
-      return JSON.parse(bodies[index] ?? "");
+      return JSON.parse(body);
     } catch {
       return undefined;
     }
   };
   const unanswered = (indices: readonly number[]): ProductInspection | null => {
-    if (indices.some((index) => worthAskingAgain(responses[index]?.status ?? 0))) {
+    if (indices.some((index) => answers[index] === null)) {
+      return {
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      };
+    }
+    if (indices.some((index) => worthAskingAgain(answers[index]?.response.status ?? 0))) {
       return {
         ok: false,
         why: "The shop was too busy to answer the protected product check.",
         again: true,
       };
     }
-    if (indices.some((index) => responses[index]?.ok !== true)) {
+    if (indices.some((index) => answers[index]?.response.ok !== true)) {
       return {
         ok: false,
         why: "The shop refused the protected product or its settings check.",
@@ -231,6 +235,18 @@ export const inspectProductInTheShop = async (
     };
   }
   const product = parsed.data;
+  // What is returned carries the identity asked for, so a document naming
+  // another product, as a cache or rewrite in front of the shop can serve,
+  // would lend this card that product's eligibility, price and file.
+  if (String(product.id) !== productId) {
+    return {
+      ok: false,
+      why:
+        `The shop answered the check of product ${productId} with product ${product.id}'s` +
+        " document, so nothing in it can be taken for this card.",
+      again: false,
+    };
+  }
   // Neither virtual nor downloadable is a parcel; everything else is judged as
   // a download, so a virtual product with no file is told what a download
   // lacks.
@@ -245,6 +261,22 @@ export const inspectProductInTheShop = async (
     return {
       ok: false,
       why: "The shop's protected product or settings document is incomplete.",
+      again: false,
+    };
+  }
+  // As with the product, a cache that confused two settings' addresses would
+  // lend one setting's answer to the other.
+  const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
+  const misnamed = BEARING[kind].slice(1).find((index) => {
+    const setting = settings[index];
+    return setting?.success === true && setting.data.id !== settingAsked(index);
+  });
+  if (misnamed !== undefined) {
+    return {
+      ok: false,
+      why:
+        `The shop answered the check of its ${settingAsked(misnamed)} setting with another` +
+        " setting's document, so nothing in it can be taken for this card.",
       again: false,
     };
   }

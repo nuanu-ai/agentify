@@ -100,7 +100,7 @@ const dashboardAt = (base: string, path: string) => {
                   await load.done;
                 }
                 const open = new URL(request.url).searchParams.get("open") === "true";
-                return ordersView(NO_CARDS, NO_ORDERS, open);
+                return ordersView("live", NO_CARDS, NO_ORDERS, open);
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;

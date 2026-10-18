@@ -4010,12 +4010,12 @@ describe("the receipts screen", () => {
     const receipts = readable((await browser.get("/receipts")).html);
     const orders = readable((await browser.get("/orders")).html);
 
-    expect(receipts).toContain("Every receipt here is a test purchase");
-    expect(receipts).toContain("test funds settled on Base Sepolia");
-    expect(receipts).toContain("no real money moved");
-    expect(orders).toContain("Every order here is a test purchase");
-    // The mark is on each sum as well: the sentence above stops applying the
-    // moment one real payment lands beside the tests.
+    // The band over every page of the test channel says it, once.
+    expect(receipts).toContain(SURFACE_WORDS.test);
+    expect(orders).toContain(SURFACE_WORDS.test);
+    expect(receipts).not.toContain("Every receipt here is a test purchase");
+    expect(orders).not.toContain("Every order here is a test purchase");
+    // The mark is on each sum as well, which the band promises.
     expect(receipts).toContain("80.00 USD test");
     expect(orders).toContain("80.00 USD test");
     // Never calls the summary a record of takings.

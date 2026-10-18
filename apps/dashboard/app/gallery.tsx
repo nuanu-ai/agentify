@@ -609,12 +609,18 @@ const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING)).why;
 
 // --- the states ----------------------------------------------------------------
 
+/**
+ * Whether the sign-in offers Google, as both channels are configured: the live
+ * site and the test site each serve the Google button.
+ */
+const GOOGLE_ON = true;
+
 /** The sign-in page at its address, or, given the answer to a press, as that answer draws it. */
 const signIn = (told: Told, path: string, answered?: SignInView): GalleryState =>
   at(told, {
     path,
     mode: "live",
-    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, false) },
+    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, GOOGLE_ON) },
     ...(answered === undefined ? {} : { pressed: { "routes/sign-in": answered } }),
   });
 
@@ -641,25 +647,6 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody presses the button on a landing page they reached through a paid ad.",
       cause:
-        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the box is offered, unticked.",
-    },
-    {
-      path: "/sign-in?clickid=qa_click_0123456789abcdef",
-      mode: "live",
-      loaded: {
-        "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), false),
-          click: { id: "qa_click_0123456789abcdef", consented: false },
-        },
-      },
-    },
-  ),
-  at(
-    {
-      id: "dashboard-sign-in-from-an-ad-google",
-      screen: "Sign in",
-      when: "Somebody presses the button on a paid ad's landing page, on a channel configured for Google sign-in.",
-      cause:
         "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the one box is offered, unticked, and goes with whichever way in is pressed.",
     },
     {
@@ -667,21 +654,11 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in": {
-          ...askViewOf(new URLSearchParams(), true),
+          ...askViewOf(new URLSearchParams(), GOOGLE_ON),
           click: { id: "qa_click_0123456789abcdef", consented: false },
         },
       },
     },
-  ),
-  signIn(
-    {
-      id: "dashboard-sign-in-google",
-      screen: "Sign in",
-      when: "Somebody opens the dashboard on a channel configured for Google sign-in.",
-      cause: "Google sign-in is available alongside the email link.",
-    },
-    "/sign-in?destination=settings",
-    { screen: "ask", destination: "settings", googleEnabled: true },
   ),
   at(
     {
@@ -694,7 +671,7 @@ const SIGNING_IN: GalleryState[] = [
       path: "/sign-in/google",
       mode: "live",
       pressed: {
-        "routes/sign-in-google": googleRefusalView(true, "unavailable", "settings"),
+        "routes/sign-in-google": googleRefusalView(GOOGLE_ON, "unavailable", "settings"),
       },
     },
   ),
@@ -710,7 +687,7 @@ const SIGNING_IN: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/sign-in-google-callback": googleRefusalView(
-          true,
+          GOOGLE_ON,
           "email-unverified",
           "settings",
           WHO,
@@ -755,7 +732,7 @@ const SIGNING_IN: GalleryState[] = [
       cause: "The typed address does not have the shape of an email address, so no link was sent.",
     },
     "/sign-in",
-    { screen: "ask", destination: "default", googleEnabled: false, problem: NOT_AN_ADDRESS },
+    { screen: "ask", destination: "default", googleEnabled: GOOGLE_ON, problem: NOT_AN_ADDRESS },
   ),
   signIn(
     {
@@ -837,7 +814,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in",
       mode: "test",
-      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), false) },
+      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), GOOGLE_ON) },
     },
   ),
   at(
@@ -1365,7 +1342,8 @@ const ORDERS: GalleryState[] = [
       cause:
         "The gateway lists orders that went through or are under way, none of them owing anything.",
     },
-    ((listed) => ordersView(CATALOGUE, listed, false, {}, paidIntoSplit("live", listed.orders)))(
+    ((listed) =>
+      ordersView("live", CATALOGUE, listed, false, {}, paidIntoSplit("live", listed.orders)))(
       ordersOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
@@ -1384,6 +1362,7 @@ const ORDERS: GalleryState[] = [
         "Orders in refund due or delivered, not paid, each set out under the table with what to do.",
     },
     ordersView(
+      "live",
       CATALOGUE,
       OWING,
       false,
@@ -1404,6 +1383,7 @@ const ORDERS: GalleryState[] = [
       cause: "The gateway lists an order in each way an order can stand or end.",
     },
     ordersView(
+      "live",
       CATALOGUE,
       ordersOf([
         ["vpn", "delivered"],
@@ -1430,7 +1410,7 @@ const ORDERS: GalleryState[] = [
         cause:
           "A phone's row shows the product, the amount, the state and the time; its ID, product code and shares are in the row's opened part, which a wide screen shows in its columns.",
       },
-      ordersView(CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
+      ordersView("live", CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
       "live",
     ),
     scene: {
@@ -1453,6 +1433,7 @@ const ORDERS: GalleryState[] = [
     },
     ((listed) =>
       ordersView(
+        "live",
         cardsOf("paused", ON_SALE),
         listed,
         false,
@@ -1475,7 +1456,7 @@ const ORDERS: GalleryState[] = [
       when: "A merchant opens Orders before anything has been bought.",
       cause: "The gateway lists no orders.",
     },
-    ordersView(CATALOGUE, ordersOf([]), false),
+    ordersView("live", CATALOGUE, ordersOf([]), false),
     "live",
   ),
   orders(
@@ -1485,7 +1466,7 @@ const ORDERS: GalleryState[] = [
       when: "A merchant filters Orders to the open ones and none is open.",
       cause: "The gateway's open filter lists no order owed goods or money.",
     },
-    ordersView(CATALOGUE, ordersOf([]), true),
+    ordersView("live", CATALOGUE, ordersOf([]), true),
     "live",
     true,
   ),
@@ -1497,6 +1478,7 @@ const ORDERS: GalleryState[] = [
       cause: "Every order on the test site is marked as a test purchase.",
     },
     ordersView(
+      "test",
       CATALOGUE,
       ordersOf(
         [

@@ -5,6 +5,7 @@ import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import type { PublicResultPreview } from "./public-result-card";
 import { PublicShareActions } from "./public-share-actions";
 import styles from "./report-action-panel.module.css";
+import row from "./report-actions.module.css";
 
 export function ReportActionPanel({
   aiPrompt,
@@ -69,7 +70,7 @@ export function ReportActionPanel({
           )}
         </p>
       ) : null}
-      <div className={styles.rows}>
+      <div className={`${row.row} ${styles.rows}`}>
         {shareShown ? (
           <PublicShareActions enabled={shareEnabled} preview={preview} scanId={scanId} />
         ) : null}

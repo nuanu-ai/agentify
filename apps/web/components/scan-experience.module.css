@@ -346,11 +346,9 @@
   background: var(--accent-soft);
 }
 
+/* Four buttons. */
 .teaserActionRows {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 10px 14px;
+  --one-line-from: 37rem;
 }
 
 .teaserCaption {

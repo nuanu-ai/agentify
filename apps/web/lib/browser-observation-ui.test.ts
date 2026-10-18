@@ -37,11 +37,11 @@ describe("browser observation presentation", () => {
     expect(entries).toEqual([
       {
         key: "unnamed_control_count",
-        label: "Unnamed Control Count",
+        label: "Unnamed control count",
         value: "3",
       },
-      { key: "script_count", label: "Script Count", value: "12" },
-      { key: "has_main", label: "Has Main", value: "Yes" },
+      { key: "script_count", label: "Script count", value: "12" },
+      { key: "has_main", label: "Has main", value: "Yes" },
       {
         key: "categories",
         label: "Categories",

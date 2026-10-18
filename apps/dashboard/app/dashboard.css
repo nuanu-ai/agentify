@@ -337,9 +337,9 @@ tbody td::before {
  * The box is the shared button's counterpart: 48px, the control corner, and the
  * 1.5px border that makes a boundary visible at all. No fixed width: a box in a
  * flex row fills its row, so a 42-character wallet address cannot push a panel
- * wider than its frame.
+ * wider than its frame. A checkbox is no such box and keeps its own size.
  */
-input {
+input:where(:not([type="checkbox"])) {
   min-width: 0;
   width: 100%;
   min-height: 48px;
@@ -1040,6 +1040,12 @@ td.control {
   margin-top: 8px;
 }
 
+/* The sentence that offers a second way in belongs to the button under it, so
+   it stands a field's distance from the one above. */
+.gate .or {
+  margin-top: 20px;
+}
+
 .gate label {
   display: block;
   margin: 20px 0 8px;
@@ -1050,11 +1056,12 @@ td.control {
 }
 
 /* The box a visitor an ad sent may tick: the box beside its sentence, in the
-   size of a note under a field, so it reads as a choice about the sign-in and
-   not as a second thing to fill in. Written against the gate, whose rule for
-   labels would otherwise stack the two. */
+   size and weight of a note under a field, so it reads as a choice about the
+   sign-in and not as a second thing to fill in. It stands a field's distance
+   from the address and from the button under it. Written against the gate,
+   whose rule for labels would otherwise stack the two. */
 .gate .consent {
-  margin: var(--space-block) 0 0;
+  margin: 20px 0;
   font-size: var(--text-small);
   color: var(--muted);
 }
@@ -1064,6 +1071,8 @@ td.control {
   align-items: flex-start;
   gap: var(--space-tight);
   margin: 0;
+  font-size: inherit;
+  font-weight: 400;
   cursor: pointer;
 }
 
@@ -1073,11 +1082,12 @@ td.control {
   margin: 4px 0 0 calc(18px + var(--space-tight));
 }
 
+/* Centred on the sentence's first line. */
 .gate .consent input {
   flex: none;
   width: 18px;
   height: 18px;
-  margin: 1px 0 0;
+  margin: calc((1lh - 18px) / 2) 0 0;
   accent-color: var(--accent);
 }
 
@@ -1101,6 +1111,11 @@ td.control {
 .gate .button {
   margin-top: 12px;
   width: 100%;
+}
+
+/* The consent block keeps a field's distance below itself. */
+.gate .consent + .button {
+  margin-top: 0;
 }
 
 /* The fail colour on a sentence, for two things a merchant must not read past:

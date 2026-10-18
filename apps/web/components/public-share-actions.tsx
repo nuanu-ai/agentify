@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { sharePreviewIn } from "../lib/api-answers";
 import type { PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-actions.module.css";
+import row from "./report-actions.module.css";
 
 type PublishedShare = Readonly<{ slug: string; url: string }>;
 type ScopedPublishedShare = Readonly<{
@@ -185,8 +186,8 @@ export function PublicShareActions({
   const busy = actionState === "publishing" || actionState === "revoking";
 
   return (
-    <div className={styles.bar}>
-      <div className={styles.actions}>
+    <div className={row.group}>
+      <div className={row.group}>
         <button
           className="button button-primary"
           disabled={busy || !exactPreview}

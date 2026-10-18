@@ -34,7 +34,7 @@ export {
   type Refused,
 } from "./http/merchant-answers.js";
 export { buildApp, hold } from "./http/server.js";
-export { PaymentEdge } from "./http/x402.js";
+export { PaymentEdge, widestChallengeOn } from "./http/x402.js";
 export { nobodyAnnounces } from "./ports/announcer.js";
 export { randomIds, systemClock } from "./ports/clock.js";
 export type { Facilitator } from "./ports/facilitator.js";

@@ -2275,6 +2275,7 @@ describe("a shop whose Number of decimals changed after the quote", () => {
         const setting = /\/settings\/\w+\/(\w+)$/.exec(path)?.[1];
         if (setting !== undefined) {
           return answer(200, {
+            id: setting,
             value: setting === "woocommerce_price_num_decimals" ? decimals() : settings[setting],
           });
         }

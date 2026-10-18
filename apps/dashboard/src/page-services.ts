@@ -1051,7 +1051,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
-          view: ordersView(cards.document, orders.document, open, owed.document, paidInto.document),
+          view: ordersView(
+            viewing(person).mode,
+            cards.document,
+            orders.document,
+            open,
+            owed.document,
+            paidInto.document,
+          ),
         };
       },
 
