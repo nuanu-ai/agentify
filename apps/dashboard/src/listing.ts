@@ -66,6 +66,11 @@ export interface Listing<Row> {
   readonly cut: CutView | null;
   /** Null where a row is drawn, or where the list has none at all. */
   readonly nothing: Nothing | null;
+  /**
+   * The search, the segment and the page drawn, each only where it is not the
+   * default, as fields a form posted from the list carries back (`placeOf`).
+   */
+  readonly place: Readonly<Record<string, string>>;
 }
 
 /**
@@ -92,14 +97,27 @@ export const askedIn = (query: URLSearchParams, segments: readonly string[]): As
   };
 };
 
-const addressOf = (path: string, asked: Asked, first: string): string => {
+const fieldsOf = (asked: Asked, first: string): URLSearchParams => {
   const query = new URLSearchParams();
   if (asked.q !== "") query.set("q", asked.q);
   if (asked.show !== first) query.set("show", asked.show);
   if (asked.page !== 1) query.set("page", String(asked.page));
-  const written = query.toString();
+  return query;
+};
+
+const addressOf = (path: string, asked: Asked, first: string): string => {
+  const written = fieldsOf(asked, first).toString();
   return written === "" ? path : `${path}?${written}`;
 };
+
+/**
+ * Where a press made on `path`'s list leads back to: the list as the fields
+ * its form carried name it, read as `askedIn` reads the list's own address, so
+ * the merchant is shown the search, the segment and the page they pressed on
+ * and a field nobody's list would draw is the default.
+ */
+export const placeOf = (path: string, fields: URLSearchParams, segments: readonly string[]) =>
+  addressOf(path, askedIn(fields, segments), segments[0] ?? "");
 
 /**
  * The rows of `path`'s list that the address asks for. A page past the last
@@ -169,5 +187,6 @@ export const listingOf = <Row>({
             next: page === pages ? null : at({ page: page + 1 }),
           },
     nothing: nothing(),
+    place: Object.fromEntries(fieldsOf({ ...asked, page }, first)),
   };
 };
