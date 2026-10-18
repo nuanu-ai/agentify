@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import type { AccountNote } from "../../src/account.js";
+import type { AccountNote } from "../../src/account-banner.js";
 
 /**
  * The one banner over a dashboard page, drawn only where something about the

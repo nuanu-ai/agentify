@@ -18,7 +18,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { type AccountNote, type AccountRead, accountOf } from "./account.js";
+import { type AccountNote, type AccountRead, accountOf } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
 import { askedIn, type Listing, listingOf, type SegmentRule } from "./listing.js";

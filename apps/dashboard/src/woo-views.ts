@@ -11,7 +11,7 @@
  */
 
 import type { Integration } from "@agentify/gateway";
-import { accountOf } from "./account.js";
+import { accountOf } from "./account-banner.js";
 import type { Viewer } from "./viewer.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
 import type { SkippedProduct } from "./woo-catalog.js";
