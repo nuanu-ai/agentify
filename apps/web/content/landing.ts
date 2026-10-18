@@ -32,7 +32,7 @@ export const LANDING_SHARED_CONTENT = {
     {
       index: "02",
       title: "Watch real phases",
-      body: "Queued, running, partial, blocked or failed. Never a percent.",
+      body: "Queued, running, partial, blocked or no result. Never a percent.",
     },
     {
       index: "03",
