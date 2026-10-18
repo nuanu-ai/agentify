@@ -231,6 +231,18 @@ export const inspectProductInTheShop = async (
     };
   }
   const product = parsed.data;
+  // What is returned carries the identity asked for, so a document naming
+  // another product, as a cache or rewrite in front of the shop can serve,
+  // would lend this card that product's eligibility, price and file.
+  if (String(product.id) !== productId) {
+    return {
+      ok: false,
+      why:
+        `The shop answered the check of product ${productId} with product ${product.id}'s` +
+        " document, so nothing in it can be taken for this card.",
+      again: false,
+    };
+  }
   // Neither virtual nor downloadable is a parcel; everything else is judged as
   // a download, so a virtual product with no file is told what a download
   // lacks.
