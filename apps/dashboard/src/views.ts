@@ -24,6 +24,7 @@ import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
   APPROVAL_PENDING,
+  CARD_WORDS,
   FULFILLMENT_WORDS,
   moment,
   money,
@@ -177,6 +178,20 @@ const cardControl = (
 };
 
 /**
+ * A card published by the integration not in use is off sale whatever its own
+ * switch says, so it never reads paused by the merchant: resuming it would not
+ * put it on sale.
+ */
+const cardWord = (entry: MerchantCard, integration: CardsIntegration): Word =>
+  integration.offSale.includes(entry.id)
+    ? CARD_WORDS.offSale
+    : entry.paused
+      ? CARD_WORDS.pausedByYou
+      : entry.selling === "open"
+        ? CARD_WORDS.onSale
+        : CARD_WORDS.offSale;
+
+/**
  * Built from the route table, not written out, so the two cannot drift. The
  * origin is the one the deployment is reached at, not the internal gateway
  * address. The identifier is our catalog one, not the merchant's own: a
@@ -260,18 +275,21 @@ export const cardsView = (
       : stopped
         ? { verb: "resume", label: RESUME_ALL_SELLING }
         : { verb: "pause", label: STOP_ALL_SELLING },
-    rows: cards.cards.map((entry) => ({
-      id: entry.id,
-      off: entry.selling !== "open",
-      title: entry.card.title,
-      aside: cardAside(entry),
-      buy: buyingAddress(origin, entry),
-      itemId: entry.card.merchant_item_id,
-      price: money(entry.card.price),
-      delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
-      state: SELLING_WORDS[entry.selling],
-      control: cardControl(entry, cards.selling, door, integration),
-    })),
+    rows: cards.cards.map((entry) => {
+      const state = cardWord(entry, integration);
+      return {
+        id: entry.id,
+        off: state !== CARD_WORDS.onSale,
+        title: entry.card.title,
+        aside: cardAside(entry),
+        buy: buyingAddress(origin, entry),
+        itemId: entry.card.merchant_item_id,
+        price: money(entry.card.price),
+        delivery: FULFILLMENT_WORDS[entry.card.fulfillment],
+        state,
+        control: cardControl(entry, cards.selling, door, integration),
+      };
+    }),
     empty: cards.cards.length === 0 ? { why: emptyCatalogue(viewer), woo: wooAvailable } : null,
     sellingNote: sellingNote(cards.selling),
     sellingRest:

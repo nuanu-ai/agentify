@@ -330,7 +330,7 @@ describe("a refund owed", () => {
         />
       )),
     );
-    const callout = text.slice(text.indexOf("Order ord_owed refund due"));
+    const callout = text.slice(text.indexOf("Order ord_owed"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).toMatch(/the commission stays with Agentify/);
@@ -348,7 +348,7 @@ describe("a refund owed", () => {
     const text = readable(
       served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
     );
-    const callout = text.slice(text.indexOf("Order ord_owed refund due"));
+    const callout = text.slice(text.indexOf("Order ord_owed"));
 
     expect(callout).toMatch(/The payment was received and the product was not delivered/);
     expect(callout).toMatch(/the full price, 80\.00 USD/);
@@ -382,5 +382,38 @@ describe("an order delivered and not paid", () => {
 
     expect(text).toContain("1 order needs you");
     expect(text).toContain("1 delivered without payment waits on the buyer");
+  });
+});
+
+describe("the state of each card", () => {
+  const entry = cards.cards[0];
+  if (entry === undefined) throw new Error("the example catalogue has no card");
+  const listOf = (selling: "open" | "paused" | "departed", ...more: Partial<typeof entry>[]) =>
+    MerchantCardListSchema.parse({
+      selling,
+      cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
+    });
+  const wordsOf = (list: ReturnType<typeof listOf>, offSale: readonly string[] = []) =>
+    cardsView(SEEN_BY, list, "https://agentify.ad", false, { through: "api", offSale }).rows.map(
+      (row) => row.state.text,
+    );
+
+  it("tells a card on sale from one the merchant paused and one held by the account", () => {
+    const list = listOf(
+      "open",
+      { selling: "open", paused: false },
+      { selling: "paused", paused: true },
+      { selling: "paused", paused: false },
+    );
+
+    expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
+  });
+
+  it("does not call a card paused by the merchant while the other integration holds it", () => {
+    // Resuming it would not put it on sale, so "Paused by you" would send the
+    // merchant to a switch that changes nothing.
+    const list = listOf("open", { selling: "paused", paused: true });
+
+    expect(wordsOf(list, ["itm_0"])).toStrictEqual(["Off sale"]);
   });
 });

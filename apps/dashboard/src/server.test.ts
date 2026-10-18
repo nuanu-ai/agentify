@@ -3228,12 +3228,12 @@ describe("the cards screen", () => {
     expect(text).toContain("A room for the night");
     expect(text).toContain("SKU 100/1");
     expect(text).toContain("80.00 USD");
-    expect(text).toContain("immediate");
+    expect(text).toContain("Immediate");
     expect(text).toContain("eSIM Europe, 5 GB for 30 days");
     expect(text).toContain("8.00 USD");
-    expect(text).toContain("later");
+    expect(text).toContain("Later");
     expect(text).toContain("Delivery within 4 hours");
-    expect(text).toContain("sales enabled");
+    expect(text).toContain("On sale");
   });
 
   it("shows every promise a card makes, not the first one it finds", async () => {
@@ -3297,7 +3297,7 @@ describe("the cards screen", () => {
     const text = readable((await browser.get("/cards")).html);
 
     expect(paused.to).toBe("/cards");
-    expect(text).toContain("paused");
+    expect(text).toContain("Paused by you");
     expect(text).toContain("Resume");
     expect(await purchasable(gateway, room)).toBe(false);
     // The negative control: the switch is per card, so the other one still
@@ -3377,7 +3377,7 @@ describe("the cards screen", () => {
     const text = readable((await browser.get("/cards")).html);
 
     expect(text).toContain("90.00 USD");
-    expect(text).toContain("paused");
+    expect(text).toContain("Paused by you");
     expect(await purchasable(gateway, itemId)).toBe(false);
   });
 
@@ -3694,7 +3694,7 @@ describe("the orders screen", () => {
     const all = readable((await browser.get("/orders")).html);
     const openOnly = readable((await browser.get("/orders?open=true")).html);
 
-    expect(all).toContain("in progress");
+    expect(all).toContain("In progress");
     expect(openOnly).toContain("Nothing is open");
     expect(openOnly).not.toMatch(/finished/i);
   });
@@ -3709,7 +3709,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders?open=true")).html);
 
-    expect(text).toContain("in progress");
+    expect(text).toContain("In progress");
     expect(text).not.toContain("owed money or goods");
     expect(text).toContain("No refunds are due");
   });
@@ -3763,7 +3763,7 @@ describe("the orders screen", () => {
     await browser.signIn();
     const text = readable((await browser.get("/orders?open=true")).html);
 
-    expect(text).toContain("refund due");
+    expect(text).toContain("Refund due");
     expect(text).toContain("1 order needs you");
     // The whole price, though the split paid the merchant only their share.
     expect(text).toContain("the full price, 8.00 USD");

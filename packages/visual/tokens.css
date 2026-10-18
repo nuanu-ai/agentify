@@ -341,17 +341,18 @@ p {
   color: var(--fail);
 }
 
-/* A state in one word with a dot before it. The monospaced word tells a state
-   from the sentence beside it without relying on colour; the dot is hollow for
-   a state that is not settled yet. No pulse: a page that does not update itself
-   must not look as if it were watching something. Without a tone it is muted. */
+/* A state in a few words of plain sentence case with a dot before it, the dot
+   telling the state from the sentence beside it; it is hollow for a state that
+   is not settled yet, so the two read apart without relying on colour. No
+   pulse: a page that does not update itself must not look as if it were
+   watching something. Without a tone it is muted. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   white-space: nowrap;
   color: var(--muted);
-  font: 500 var(--text-caption) / 1.4 var(--font-mono);
+  font: 500 var(--text-small) / 1.4 var(--font-sans);
 }
 
 .badge::before {

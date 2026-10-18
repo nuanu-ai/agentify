@@ -10,7 +10,15 @@ import {
   SELLING_STATES,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { FULFILLMENT_WORDS, moment, money, needsYou, ORDER_WORDS, SELLING_WORDS } from "./words.js";
+import {
+  CARD_WORDS,
+  FULFILLMENT_WORDS,
+  moment,
+  money,
+  needsYou,
+  ORDER_WORDS,
+  SELLING_WORDS,
+} from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -26,6 +34,20 @@ describe("the words a merchant reads", () => {
     // screens and a state reads the same on each.
     for (const outcome of ReceiptOutcomeSchema.options) {
       expect(ORDER_WORDS[outcome]?.text, outcome).toBeTruthy();
+    }
+  });
+
+  it("writes every word for display, capitalised and in plain sentence case", () => {
+    const words = [
+      ...Object.values(ORDER_WORDS).map((word) => word.text),
+      ...Object.values(FULFILLMENT_WORDS),
+      ...Object.values(CARD_WORDS).map((word) => word.text),
+    ];
+    for (const text of words) {
+      expect(text.charAt(0), text).toBe(text.charAt(0).toUpperCase());
+      // A capital after the first letter would be a word set in title case or
+      // shouted, which the screens no longer do.
+      expect(text.slice(1), text).toBe(text.slice(1).toLowerCase());
     }
   });
 
@@ -61,7 +83,7 @@ describe("the words a merchant reads", () => {
   it("does not turn a payment we never heard about into a refusal", () => {
     // A purchase whose charge went unanswered may still have been charged; a
     // merchant told otherwise would reconcile it wrongly.
-    expect(ORDER_WORDS.payment_unresolved.text).toContain("unknown");
+    expect(ORDER_WORDS.payment_unresolved.text).toMatch(/unknown/i);
     expect(ORDER_WORDS.payment_unresolved.text).not.toContain("refus");
     expect(ORDER_WORDS.payment_unresolved.tone).toBe("warn");
   });

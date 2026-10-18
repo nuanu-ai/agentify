@@ -20,8 +20,13 @@ import type {
   SellingState,
 } from "@nuanu-ai/agentify-contracts";
 
-export type Tone = "ok" | "warn" | "busy" | "quiet";
+/**
+ * `waiting` is a state held until somebody acts, the merchant or the buyer, and
+ * nothing is lost meanwhile.
+ */
+export type Tone = "ok" | "warn" | "busy" | "waiting" | "quiet";
 
+/** Written for display, capitalised, so a word stands on its own beside its dot. */
 export interface Word {
   readonly text: string;
   readonly tone: Tone;
@@ -30,38 +35,50 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the money is the merchant's.
+ * the buyer and the money is the merchant's. Goods delivered and not paid wait
+ * on the buyer, who can pay again.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
-  in_progress: { text: "in progress", tone: "busy" },
-  delivered: { text: "delivered", tone: "ok" },
-  shipped: { text: "shipped", tone: "ok" },
-  rejected: { text: "refused", tone: "quiet" },
-  payment_unresolved: { text: "payment outcome unknown", tone: "warn" },
-  declined: { text: "declined at confirmation", tone: "quiet" },
-  expired: { text: "closed on time limit", tone: "quiet" },
-  cancelled: { text: "closed when you left", tone: "quiet" },
-  refund_due: { text: "refund due", tone: "warn" },
-  refunded: { text: "refunded", tone: "quiet" },
-  delivered_unpaid: { text: "delivered, not paid", tone: "warn" },
+  in_progress: { text: "In progress", tone: "busy" },
+  delivered: { text: "Delivered", tone: "ok" },
+  shipped: { text: "Shipped", tone: "ok" },
+  rejected: { text: "Refused", tone: "quiet" },
+  payment_unresolved: { text: "Payment outcome unknown", tone: "warn" },
+  declined: { text: "Declined at confirmation", tone: "quiet" },
+  expired: { text: "Closed on time limit", tone: "quiet" },
+  cancelled: { text: "Closed when you left", tone: "quiet" },
+  refund_due: { text: "Refund due", tone: "warn" },
+  refunded: { text: "Refunded", tone: "quiet" },
+  delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
 });
 
 /**
- * The merchant's words: "immediate" and "later" say what their operation has to
+ * The merchant's words: "Immediate" and "Later" say what their operation has to
  * be ready for, where `sync` and `async` say how the call is shaped.
  */
 export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.freeze({
-  sync: "immediate",
-  async: "later",
-  confirm: "after you confirm",
-  ship: "by parcel",
+  sync: "Immediate",
+  async: "Later",
+  confirm: "After you confirm",
+  ship: "By parcel",
 });
 
 export const SELLING_WORDS: Readonly<Record<SellingState, Word>> = Object.freeze({
-  open: { text: "sales enabled", tone: "ok" },
-  paused: { text: "sales paused", tone: "warn" },
-  departed: { text: "left", tone: "quiet" },
+  open: { text: "Sales enabled", tone: "ok" },
+  paused: { text: "Sales paused", tone: "warn" },
+  departed: { text: "Left", tone: "quiet" },
 });
+
+/**
+ * Where a card stands, said from the card's own switch: a card the merchant
+ * paused waits on them to resume it; one off sale for anything else is held by
+ * something about the whole account, which the banner over the page names.
+ */
+export const CARD_WORDS = Object.freeze({
+  onSale: { text: "On sale", tone: "ok" },
+  pausedByYou: { text: "Paused by you", tone: "waiting" },
+  offSale: { text: "Off sale", tone: "quiet" },
+} as const satisfies Readonly<Record<string, Word>>);
 
 /**
  * Money taken and nothing delivered: the one ending a merchant has to act on.
