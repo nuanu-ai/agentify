@@ -1044,11 +1044,14 @@ describe("importing the catalogue", () => {
     expect(text).toContain("Access code");
   });
 
-  it("leads from each product it published to that card alone on Cards", async () => {
+  it("leads from each product it published to its own card on Cards by its product code, not a title it shares", async () => {
+    // Two products of one name, as a shop selling a size apart may list them:
+    // a way found by the title would land on both. Cards finds a code as a
+    // part of one, so product 1 would also list product 11; these are not.
     const running = await started({
       catalogue: async () => ({
         ok: true,
-        products: [aProduct(), aProduct({ id: 10, name: "Access code", sku: "agentify-code" })],
+        products: [aProduct(), aProduct({ id: 10, sku: "canvas-tote-large" })],
       }),
     });
     await connected(running);
@@ -1057,13 +1060,15 @@ describe("importing the catalogue", () => {
     const ways = [...imported.html.matchAll(/href="(\/cards\?[^"]+)"/g)].map(([, to = ""]) =>
       to.replaceAll("&amp;", "&"),
     );
-    const found = await Promise.all(ways.map(async (to) => readable((await running.get(to)).html)));
+    const listed = await Promise.all(
+      ways.map(
+        async (to) => readable((await running.get(to)).html).split("Canvas tote bag").length - 1,
+      ),
+    );
 
     expect(ways).toHaveLength(2);
-    expect(found[0]).toContain("Canvas tote bag");
-    expect(found[0]).not.toContain("Access code");
-    expect(found[1]).toContain("Access code");
-    expect(found[1]).not.toContain("Canvas tote bag");
+    expect(new Set(ways).size).toBe(2);
+    expect(listed).toStrictEqual([1, 1]);
   });
 
   it("does not call an import finished when it stopped before the last product", async () => {
