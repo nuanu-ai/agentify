@@ -2686,13 +2686,14 @@ describe("a merchant's standing in one read", () => {
     };
   };
 
-  it("says what each separate read says, before and after every one of them changes", async () => {
+  it("says what the separate reads say, before and after the selling, the integration, the name and the approval change", async () => {
     const harnessed = await started();
     const id = harnessed.merchant.id;
     expect(await harnessed.gateway.standingOf(id)).toStrictEqual(await separately(harnessed));
 
     await harnessed.gateway.setSelling(id, "paused");
     await harnessed.gateway.sellThrough(id, "woocommerce");
+    await harnessed.gateway.setSellerName(id, { seller_name: "Another name" });
     await harnessed.store.grantLiveApproval(id, harnessed.now());
 
     const changed = await harnessed.gateway.standingOf(id);
@@ -2700,23 +2701,28 @@ describe("a merchant's standing in one read", () => {
     expect(changed).toMatchObject({
       selling: "paused",
       through: "woocommerce",
+      sellerName: "Another name",
       liveApproved: true,
     });
   });
 
-  it("reads none of the merchant's cards", async () => {
+  it("reads the merchant's own row and nothing else, however many cards they have", async () => {
     const harnessed = await started();
     await published(harnessed, syncCard);
-    let cardsRead = 0;
-    const cards = harnessed.store.cards.bind(harnessed.store);
-    harnessed.store.cards = async (...asked) => {
-      cardsRead += 1;
-      return await cards(...asked);
-    };
+    const read: string[] = [];
+    const store = harnessed.store as unknown as Record<string, (...asked: unknown[]) => unknown>;
+    for (const name of Object.getOwnPropertyNames(Object.getPrototypeOf(harnessed.store))) {
+      const method = store[name];
+      if (name === "constructor" || typeof method !== "function") continue;
+      store[name] = (...asked) => {
+        read.push(name);
+        return method.apply(harnessed.store, asked);
+      };
+    }
 
     await harnessed.gateway.standingOf(harnessed.merchant.id);
 
-    expect(cardsRead).toBe(0);
+    expect(read).toStrictEqual(["merchantById"]);
   });
 });
 
