@@ -160,6 +160,11 @@ interface Drawn {
   /** Under the dashboard's prefix, query and all. */
   readonly path: string;
   readonly mode: SurfaceMode;
+  /**
+   * The orders that need the merchant, on a page about their selling; none
+   * unless the state is about them.
+   */
+  readonly needYou?: number | null;
   readonly loaded?: HydrationState["loaderData"];
   readonly pressed?: HydrationState["actionData"];
   readonly failed?: HydrationState["errors"];
@@ -168,18 +173,24 @@ interface Drawn {
 type Told = Omit<GalleryState, "address" | "draw">;
 
 /**
- * The address the gate's loader names, for a page behind the gate; a page in
- * front of it is drawn for nobody, as the server draws it.
+ * The address the gate's loader names, for a page behind the gate, and the
+ * count the frame's sidebar reads on a page about a merchant's selling; a page
+ * in front of the gate is drawn for nobody, as the server draws it.
  */
-const gateAt = (path: string): HydrationState["loaderData"] =>
-  matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname)?.some(
-    ({ route }) => route.id === "routes/gate",
-  )
-    ? { "routes/gate": { who: WHO } }
-    : {};
+const gateAt = (path: string, needYou: number | null): HydrationState["loaderData"] => {
+  const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
+  const under = (id: string) => matched.some(({ route }) => route.id === id);
+  return {
+    ...(under("routes/gate") ? { "routes/gate": { who: WHO } } : {}),
+    ...(under("routes/merchant-only") ? { "routes/merchant-only": { needYou } } : {}),
+  };
+};
 
 /** A state at its address, drawn by the route tree as the server answers that address. */
-const at = (told: Told, { path, mode, loaded, pressed, failed }: Drawn): GalleryState => ({
+const at = (
+  told: Told,
+  { path, mode, needYou = 0, loaded, pressed, failed }: Drawn,
+): GalleryState => ({
   ...told,
   address: `${BASE}${path}`,
   draw: () => {
@@ -188,7 +199,7 @@ const at = (told: Told, { path, mode, loaded, pressed, failed }: Drawn): Gallery
       <Stub
         initialEntries={[path]}
         hydrationData={{
-          loaderData: { root: chromeIn(mode), ...gateAt(path), ...loaded },
+          loaderData: { root: chromeIn(mode), ...gateAt(path, needYou), ...loaded },
           ...(pressed === undefined ? {} : { actionData: pressed }),
           ...(failed === undefined ? {} : { errors: failed }),
         }}
@@ -953,8 +964,12 @@ const SETTING_UP: GalleryState[] = [
     ))("Freeland — eSIM & VPN"),
 ];
 
-const cards = (told: Told, view: ReturnType<typeof cardsView>, mode: SurfaceMode): GalleryState =>
-  at(told, { path: "/cards", mode, loaded: { "routes/cards": view } });
+const cards = (
+  told: Told,
+  view: ReturnType<typeof cardsView>,
+  mode: SurfaceMode,
+  needYou: number | null = 0,
+): GalleryState => at(told, { path: "/cards", mode, needYou, loaded: { "routes/cards": view } });
 
 const CARDS: GalleryState[] = [
   cards(
@@ -966,6 +981,30 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
     "live",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-refunds-due",
+      screen: "Cards",
+      when: "A merchant with two refunds due opens the dashboard at their cards.",
+      cause:
+        "Two of the merchant's orders are refund due, so Orders in the sidebar carries the count on every page; goods delivered and not paid are not counted.",
+    },
+    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
+    "live",
+    2,
+  ),
+  cards(
+    {
+      id: "dashboard-cards-count-unknown",
+      screen: "Cards",
+      when: "A merchant opens Cards while the orders could not be read in time.",
+      cause:
+        "The count beside Orders could not be read, so the sidebar marks it as unknown rather than drawing none.",
+    },
+    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
+    "live",
+    null,
   ),
   cards(
     {
@@ -1132,10 +1171,12 @@ const orders = (
   view: ReturnType<typeof ordersView>,
   mode: SurfaceMode,
   open = false,
+  needYou = view.needsYou.length,
 ): GalleryState =>
   at(told, {
     path: open ? "/orders?open=true" : "/orders",
     mode,
+    needYou,
     loaded: { "routes/orders": view },
   });
 

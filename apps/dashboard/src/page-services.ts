@@ -60,7 +60,7 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment } from "./words.js";
+import { moment, needsYou } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -211,6 +211,11 @@ export interface PageServices {
     cards(person: Person): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+    /**
+     * How many orders need the merchant, for the frame's sidebar on every
+     * screen; null where they could not be counted, which is not none.
+     */
+    needYou(person: Person): Promise<number | null>;
   };
   /** The ways a merchant's catalogue reaches Agentify. */
   readonly integrations: {
@@ -482,6 +487,12 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
   const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
   return `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`;
 };
+
+/**
+ * How long the sidebar's count may take: a page is answered whole, so a slow
+ * count would hold every page it is drawn on.
+ */
+const COUNT_WITHIN_MS = 2_000;
 
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
@@ -1061,6 +1072,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             paidInto.document,
           ),
         };
+      },
+
+      // A count that fails or is slow does not take the page it is drawn beside
+      // down with it, nor hold it long: the sidebar says it could not count.
+      async needYou(person) {
+        try {
+          const open = await gatewayAs(person, COUNT_WITHIN_MS).orders(true);
+          return open.ok
+            ? open.document.orders.filter((order) => needsYou(order.status)).length
+            : null;
+        } catch {
+          console.error("[dashboard] the orders that need the merchant could not be counted");
+          return null;
+        }
       },
     },
 

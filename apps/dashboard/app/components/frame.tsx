@@ -1,9 +1,10 @@
 /**
  * The frame every screen about a merchant's selling is drawn in: the site
  * header with who is signed in and the way out, and under it the dashboard's
- * working area, its numbered sections in a sidebar beside a bar with the
- * screen's title, and over the screen the banner about the account where
- * something about it is not as usual. Where there is no room for
+ * working area, its sections in a sidebar beside a bar with the screen's
+ * title, and over the screen the banner about the account where something
+ * about it is not as usual. Orders carries the count of orders that need the
+ * merchant. Where there is no room for
  * the sidebar, a menu at the end of the header's row holds the sections, the
  * documentation and who is signed in with the way out.
  */
@@ -17,7 +18,7 @@ import {
   SignedIn,
   SiteHeader,
 } from "@agentify/ui";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense, use } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
@@ -47,6 +48,27 @@ const FOOT = [
   { href: "/terms", label: "Terms" },
 ] as const;
 
+/**
+ * Beside Orders, the orders that need the merchant, drawn only above nought.
+ * A count that could not be read is marked as such, so it is not taken for
+ * none.
+ */
+function NeedYou({ count: coming }: Readonly<{ count: Promise<number | null> | number | null }>) {
+  const count = coming instanceof Promise ? use(coming) : coming;
+  if (count === 0) return null;
+  return count === null ? (
+    <span className="need unknown" title="Could not count the orders that need you">
+      <span aria-hidden="true">?</span>
+      <span className="sr-only">, could not count the orders that need you</span>
+    </span>
+  ) : (
+    <span className="need">
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{`, ${count} ${count === 1 ? "needs" : "need"} you`}</span>
+    </span>
+  );
+}
+
 /** `heading` is the bar's words where they are not the window's title. */
 export function Frame({
   tab,
@@ -74,14 +96,22 @@ export function Frame({
       : (TABS.find(
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
-  const sections: Section[] = TABS.map(([key, label], index) => ({
+  const counted = useRouteLoaderData<{ needYou: Promise<number | null> | number | null }>(
+    "routes/merchant-only",
+  );
+  const sections: Section[] = TABS.map(([key, label]) => ({
     key,
-    label: (
-      <>
-        <i>{index + 1}</i>
-        {label}
-      </>
-    ),
+    label:
+      key === "orders" && counted !== undefined ? (
+        <>
+          {label}
+          <Suspense fallback={null}>
+            <NeedYou count={counted.needYou} />
+          </Suspense>
+        </>
+      ) : (
+        label
+      ),
     current: key === marked,
     to: `/${key}`,
   }));

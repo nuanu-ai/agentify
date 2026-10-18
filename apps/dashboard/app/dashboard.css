@@ -53,8 +53,8 @@ textarea {
   align-self: stretch;
 }
 
-.tabs a,
-.tabs span {
+.tabs > a,
+.tabs > span {
   display: flex;
   align-items: center;
   padding: 0 14px;
@@ -63,12 +63,12 @@ textarea {
   white-space: nowrap;
 }
 
-.tabs a:hover {
+.tabs > a:hover {
   color: var(--fg);
   text-decoration: none;
 }
 
-.tabs [aria-current="page"] {
+.tabs > [aria-current="page"] {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
@@ -1014,9 +1014,9 @@ h2 {
 }
 
 /*
- * The working area under the site header: the numbered sections in a sidebar
- * beside the workspace, and a bar at the top of the workspace with the
- * screen's title and the selling light. On a laptop the sections and the bar
+ * The working area under the site header: the sections in a sidebar beside
+ * the workspace, and a bar at the top of the workspace with the screen's
+ * title. On a laptop the sections and the bar
  * stay in view under the site header, 68px tall there with its hairline under
  * it; they stop at the hairline, never over it or under it. Only the
  * sidebar's own words stay in view, at their own height, so on a window
@@ -1060,8 +1060,8 @@ h2 {
   overflow: visible;
 }
 
-.app-sidebar .tabs a,
-.app-sidebar .tabs span {
+.app-sidebar .tabs > a,
+.app-sidebar .tabs > span {
   min-height: 42px;
   padding: 0 12px;
   border-radius: 10px;
@@ -1072,26 +1072,32 @@ h2 {
   box-shadow: none;
 }
 
-.app-sidebar .tabs i {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: var(--hairline) solid var(--line);
-  border-radius: 7px;
-  color: var(--faint);
-  font: normal 600 0.625rem var(--font-mono);
-}
-
-.app-sidebar .tabs [aria-current="page"] {
+.app-sidebar .tabs > [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
 }
 
-.app-sidebar .tabs [aria-current="page"] i {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-  background: var(--surface);
+/* The orders that need the merchant, at the end of the Orders item, in the
+   colour of what costs them money; a count that could not be read is muted. */
+.need {
+  min-width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--fail);
+  color: var(--on-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.need.unknown {
+  background: var(--raised);
+  color: var(--fg-2);
 }
 
 .sidebar-help {
@@ -1416,26 +1422,11 @@ h2 {
 }
 
 /* The menu at the end of the header's row holds, where there is no room for
-   the sidebar, the sections as the sidebar numbers them and the way to the
+   the sidebar, the sections as the sidebar lists them and the way to the
    documentation, over who is signed in. */
-.site-menu .app-menu-sections i {
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  border: var(--hairline) solid var(--line);
-  border-radius: 7px;
-  color: var(--faint);
-  font: normal 600 0.625rem var(--font-mono);
-}
 .site-menu .app-menu-sections [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
-}
-.site-menu .app-menu-sections [aria-current="page"] i {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-  background: var(--surface);
 }
 .site-menu .app-menu-docs {
   display: flex;

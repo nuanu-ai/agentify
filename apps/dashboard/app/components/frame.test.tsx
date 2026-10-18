@@ -184,7 +184,7 @@ describe.each([
  * One screen drawn in the frame, behind the gate and the merchant's own pages
  * as every section is.
  */
-const framed = (tab: Tab, frame: FrameView) => {
+const framed = (tab: Tab, frame: FrameView, needYou: number | null = 0) => {
   const Stub = createRoutesStub([
     {
       id: "root",
@@ -224,6 +224,7 @@ const framed = (tab: Tab, frame: FrameView) => {
             surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
           },
           "routes/gate": { who: PERSON },
+          "routes/merchant-only": { needYou },
         },
       }}
     />,
@@ -284,5 +285,32 @@ describe("the banner about the account", () => {
     expect(screen.getByRole("link", { name: "Resume on Cards" }).getAttribute("href")).toBe(
       "/cards",
     );
+  });
+});
+
+describe("the sidebar", () => {
+  const orders = () => within(sections()).getByRole("link", { name: /^Orders/ });
+
+  it("lists the sections by name alone", async () => {
+    framed("cards", { account: [] });
+    await screen.findByText("The screen");
+
+    expect(within(sections()).getByText("Cards").textContent).toBe("Cards");
+    expect(orders().textContent).toBe("Orders");
+  });
+
+  it("carries beside Orders the count of orders that need the merchant", async () => {
+    framed("cards", { account: [] }, 2);
+    await screen.findByText("The screen");
+
+    expect(orders().textContent).toBe("Orders2, 2 need you");
+    expect(orders().querySelector(".need")).not.toBeNull();
+  });
+
+  it("marks a count it could not read, which is not the same as none", async () => {
+    framed("cards", { account: [] }, null);
+    await screen.findByText("The screen");
+
+    expect(orders().textContent).toContain("could not count the orders that need you");
   });
 });
