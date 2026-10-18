@@ -132,8 +132,8 @@ export interface GatewayClient {
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   orders(open: boolean): Promise<Answer<OrderList>>;
   /**
-   * Why each order owing a refund owes it, by order, for the callout that says
-   * so. The order document carries the debt and not its cause.
+   * Why each order owing a refund owes it, by order, for the row that says so
+   * under Needs you. The order document carries the debt and not its cause.
    */
   refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
