@@ -137,7 +137,8 @@ const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string()
 /**
  * Download and shipping settings are asked for in one batch, one round trip
  * whichever class the product is, and only the answers bearing on its class
- * decide; a shop that hides its download settings can still sell a parcel.
+ * decide, a lost one included; a shop that hides or drops its download
+ * settings can still sell a parcel.
  */
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
@@ -165,47 +166,49 @@ export const inspectProductInTheShop = async (
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
-  let responses: Response[];
-  let bodies: string[];
-  try {
-    responses = await Promise.all(
-      endpoints.map((path) =>
-        request(`${keys.shopUrl}${path}`, {
+  /** Null where the shop never answered; `body` is null where its answer broke off. */
+  const answers = await Promise.all(
+    endpoints.map(async (path) => {
+      let response: Response;
+      try {
+        response = await request(`${keys.shopUrl}${path}`, {
           headers: { authorization: basicFor(keys), accept: "application/json" },
           redirect: "manual",
           signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
-        }),
-      ),
-    );
-  } catch {
-    return { ok: false, why: "The shop did not answer the protected product check.", again: true };
-  }
-  try {
-    bodies = await Promise.all(responses.map((response) => response.text()));
-  } catch {
-    return {
-      ok: false,
-      why: "The shop's protected product check did not return readable JSON.",
-      again: false,
-    };
-  }
+        });
+      } catch {
+        return null;
+      }
+      const body = await response.text().catch(() => null);
+      return { response, body };
+    }),
+  );
   /** Undefined where it is not JSON. */
   const documentOf = (index: number): unknown => {
+    const body = answers[index]?.body;
+    if (typeof body !== "string") return undefined;
     try {
-      return JSON.parse(bodies[index] ?? "");
+      return JSON.parse(body);
     } catch {
       return undefined;
     }
   };
   const unanswered = (indices: readonly number[]): ProductInspection | null => {
-    if (indices.some((index) => worthAskingAgain(responses[index]?.status ?? 0))) {
+    if (indices.some((index) => answers[index] === null)) {
+      return {
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      };
+    }
+    if (indices.some((index) => worthAskingAgain(answers[index]?.response.status ?? 0))) {
       return {
         ok: false,
         why: "The shop was too busy to answer the protected product check.",
         again: true,
       };
     }
-    if (indices.some((index) => responses[index]?.ok !== true)) {
+    if (indices.some((index) => answers[index]?.response.ok !== true)) {
       return {
         ok: false,
         why: "The shop refused the protected product or its settings check.",
