@@ -76,6 +76,11 @@ export type Answer<T> =
        * `why`.
        */
       readonly code?: string;
+      /**
+       * The orders a refusal is about, oldest first, for a screen that shows
+       * each one to be copied rather than leaving them inside the sentence.
+       */
+      readonly orders?: readonly string[];
     };
 
 /**
@@ -416,6 +421,7 @@ export const switchRefused = (to: Integration, waiting: readonly string[]): Answ
     ok: false,
     status: CONFLICT,
     code: "orders_waiting",
+    orders: waiting,
     why:
       to === "woocommerce"
         ? `${counted} on your own code: ${which}. ${one ? "It has" : "Each has"} to end before your shop takes over, because from then on your code receives nothing: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, stop all selling on Cards.`
