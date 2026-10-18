@@ -169,7 +169,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   through_shop: {
     title: "Selling through your WooCommerce shop",
-    says: "The cards your own code published are off sale while your shop sells.",
+    says: "The cards your own code published are off sale until you switch back to it on the WooCommerce page.",
     fix: { to: "/woocommerce", words: "Open WooCommerce" },
   },
   unread: {

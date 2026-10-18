@@ -44,6 +44,16 @@ describe("the account banner", () => {
     expect(notes[0]?.says).toMatch(/\.$/);
   });
 
+  it("does not claim the shop sells, which a Connect never approved leaves untrue", () => {
+    // Selling goes through the shop from the press of Connect, whether or not
+    // the shop ever approved; what holds in every such state is that the
+    // code's cards wait for the switch back.
+    const [note] = accountOf(READY, { through: "woocommerce" });
+
+    expect(note?.says).not.toMatch(/shop sells/);
+    expect(note?.says).toMatch(/until you switch back/);
+  });
+
   it("names every reason that holds at once, broadest first", () => {
     const viewer: Viewer = { ...READY, sellerName: null, payout: { wallet: null } };
 
