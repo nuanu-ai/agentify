@@ -1330,23 +1330,13 @@ h2 {
   position: sticky;
   top: var(--under-header);
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-}
-
-.app-sidebar-name {
-  padding: 24px 26px 0;
-  color: var(--faint);
-  font: 600 0.625rem / 1.2 var(--font-mono);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 .app-sidebar .tabs {
   display: grid;
   align-content: start;
   gap: 4px;
-  padding: 20px 14px;
+  padding: 24px 14px;
   overflow: visible;
 }
 
@@ -1365,28 +1355,6 @@ h2 {
 .app-sidebar .tabs > [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
-}
-
-.sidebar-help {
-  margin: 4px 14px 12px;
-  padding: 14px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--bg);
-}
-
-.sidebar-help span,
-.sidebar-help a {
-  display: block;
-}
-.sidebar-help span {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-.sidebar-help a {
-  margin-top: 4px;
-  font-size: 0.8125rem;
-  font-weight: 650;
 }
 
 .app-workspace {

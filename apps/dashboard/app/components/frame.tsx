@@ -115,12 +115,7 @@ export function Frame({
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <div className="app-sidebar-name">Seller dashboard</div>
             <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
-            <div className="sidebar-help">
-              <span>Need help?</span>
-              <a href="/docs/">Open the docs →</a>
-            </div>
           </div>
         </aside>
         <div className="app-workspace">
