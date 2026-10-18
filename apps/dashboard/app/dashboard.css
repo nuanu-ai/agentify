@@ -1251,12 +1251,12 @@ h2 {
  * between groups, because this block has no scroller and an unbroken run would
  * scroll the page sideways on a phone.
  */
+/* A saved address and its contract, a part of the panel set apart by a
+   hairline over it rather than a box inside the box. */
 .saved {
   margin: 0 0 24px;
-  padding: 16px 20px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface);
+  padding: 16px 0 0;
+  border-top: var(--hairline) solid var(--line);
 }
 
 .saved .label {
@@ -1630,10 +1630,12 @@ h2 {
 .settings-wide {
   grid-column: 1 / -1;
 }
+/* The ways in, side by side in the one panel with a hairline between them,
+   not a box each inside it. */
 .connect-ways {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 24px;
   padding: 16px 24px 24px;
 }
 /* No heading above the ways to carry the top inset. */
@@ -1644,10 +1646,18 @@ h2 {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 20px;
-  border: var(--hairline) solid var(--line);
-  border-radius: 14px;
-  background: var(--bg);
+}
+.connect-way + .connect-way {
+  padding-left: 24px;
+  border-left: var(--hairline) solid var(--line);
+}
+/* A way's notice, in the notice's colours without a frame of its own. */
+.connect-way .callout {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 0.875rem;
 }
 .connect-way h3 {
   margin: 0;
@@ -1678,13 +1688,15 @@ h2 {
   .connect-ways {
     grid-template-columns: minmax(0, 1fr);
   }
+  .connect-way + .connect-way {
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: var(--hairline) solid var(--line);
+  }
 }
 @media (max-width: 560px) {
   .connect-ways,
   .settings-connect > .connect-ways:first-child {
-    padding: 16px;
-  }
-  .connect-way {
     padding: 16px;
   }
   .connect-way .connect-actions .button {
@@ -1695,9 +1707,6 @@ h2 {
   .connect-ways,
   .settings-connect > .connect-ways:first-child {
     padding: 12px;
-  }
-  .connect-way {
-    padding: 14px;
   }
   .connect-way .connect-actions .button {
     padding-inline: 12px;
