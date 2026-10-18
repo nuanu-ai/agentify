@@ -292,6 +292,65 @@ describe("a press answered on its own page", () => {
   });
 });
 
+describe("a switch pressed from the keyboard", () => {
+  /** The cards called rooms, listed as `show` asks, with selling on so every card has its switch. */
+  const onTheRooms = async (show: string): Promise<Page> => {
+    const page = await onTheCards();
+    const resume = page.locator("form[action*='selling=resume'] button");
+    if ((await resume.count()) > 0) {
+      await resume.click();
+      await page.locator("form[action*='selling=pause']").waitFor();
+    }
+    await page.goto(`${origin}${BASE}/cards?q=room${show}`);
+    await page.waitForLoadState("networkidle");
+    return page;
+  };
+
+  /** What has the focus once the press is answered: its words, and the row it is in. */
+  const focusedAfter = async (page: Page) => {
+    await page.waitForFunction(() => document.querySelector("[aria-busy='true']") === null);
+    await page
+      .waitForFunction(() => document.activeElement !== document.body, null, { timeout: 2_000 })
+      .catch(() => {});
+    return await page.evaluate(() => ({
+      button: document.activeElement?.textContent,
+      row: document.activeElement?.closest(".list-row")?.textContent,
+    }));
+  };
+
+  it("keeps the focus on the switch where its row stays", async () => {
+    const page = await onTheRooms("");
+    const row = page.locator(".list-row").first();
+    const switched =
+      (await row.locator("form button").textContent()) === "Pause" ? "Resume" : "Pause";
+
+    await row.locator("form button").focus();
+    await page.keyboard.press("Enter");
+    await row.locator("form button", { hasText: switched }).waitFor();
+
+    expect((await focusedAfter(page)).button).toBe(switched);
+    await page.context().close();
+  });
+
+  it("hands the focus to the row that takes the place of one the press took out of the list", async () => {
+    const page = await onTheRooms("&show=on-sale");
+    const rows = page.locator(".list-row");
+    const pressed = await rows.first().textContent();
+    const after = await rows.nth(1).textContent();
+
+    await rows.first().locator("form[action*='pause='] button").focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      (gone) =>
+        ![...document.querySelectorAll(".list-row")].some((row) => row.textContent === gone),
+      pressed,
+    );
+
+    expect(await focusedAfter(page)).toStrictEqual({ button: "Pause", row: after });
+    await page.context().close();
+  });
+});
+
 describe("a copy button once the page's script runs", () => {
   it("puts the whole purchase address on the clipboard and shows it did", async () => {
     const page = await onTheCards();

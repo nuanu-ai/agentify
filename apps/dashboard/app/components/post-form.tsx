@@ -1,6 +1,68 @@
-import { type ReactNode, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Form, useNavigation, useRouteLoaderData } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
+
+/** The press's button in a row, the way a keyboard reaches the next one. */
+const PRESS = "form button";
+
+/**
+ * Where the focus goes once a press made with the focus in the form is
+ * answered. The button takes no second press meanwhile, and the browser takes
+ * the focus off a button that takes none, so the next Tab would start again
+ * from the top of the page. It goes back to the form's button where the form
+ * is still on the page; where the answer took the form's row out of the list,
+ * a card paused while only the cards on sale are listed, to the row that took
+ * its place, else the row before, else the list. Returns what the form calls
+ * as it is sent.
+ */
+const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean) => {
+  const pressed = useRef(false);
+  useEffect(() => {
+    if (pending || !pressed.current) return;
+    pressed.current = false;
+    if (document.activeElement === document.body) {
+      form.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+    }
+  }, [pending, form]);
+  useLayoutEffect(() => {
+    const held = form.current;
+    return () => {
+      if (held === null || !pressed.current) return;
+      const row = held.closest("li");
+      const list = row?.closest("ul") ?? null;
+      const around: Element[] = [];
+      for (let next = row?.nextElementSibling; next; next = next.nextElementSibling) {
+        around.push(next);
+      }
+      for (
+        let before = row?.previousElementSibling;
+        before;
+        before = before.previousElementSibling
+      ) {
+        around.push(before);
+      }
+      requestAnimationFrame(() => {
+        if (held.isConnected || document.activeElement !== document.body) return;
+        const to =
+          around
+            .filter((one) => one.isConnected)
+            .map((one) => one.querySelector<HTMLElement>(PRESS))
+            .find((one) => one !== null) ?? (list?.isConnected ? list : null);
+        to?.focus({ preventScroll: true });
+      });
+    };
+  }, [form]);
+  return () => {
+    pressed.current = form.current?.contains(document.activeElement) === true;
+  };
+};
 
 /**
  * Every form behind the gate that posts: it carries the address its page was
@@ -41,17 +103,23 @@ export function PostForm({
   }
   const navigation = useNavigation();
   const [sent, setSent] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
   const pending =
     sent || (navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true);
+  const pressing = useFocusKept(form, pending);
   return (
     <Form
+      ref={form}
       method="post"
       action={action}
       reloadDocument={document}
       preventScrollReset
       {...(replace === undefined ? {} : { replace })}
       className={className}
-      onSubmit={document ? () => setSent(true) : undefined}
+      onSubmit={() => {
+        pressing();
+        if (document) setSent(true);
+      }}
     >
       <input type="hidden" name={DRAWN_FOR} value={gate.who} autoComplete="off" />
       {children(pending)}

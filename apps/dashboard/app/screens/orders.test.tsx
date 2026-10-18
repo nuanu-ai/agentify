@@ -331,7 +331,9 @@ describe("a long run of orders told in full", () => {
 
   /** The ids of the rows drawn in the group the list is labelled with, in order. */
   const toldIn = (html: string, label: string): readonly string[] => {
-    const group = new RegExp(`<ul class="list" aria-label="${label}">([\\s\\S]*?)</ul>`).exec(html);
+    const group = new RegExp(`<ul class="list" aria-label="${label}"[^>]*>([\\s\\S]*?)</ul>`).exec(
+      html,
+    );
     return [...(group?.[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
       .map((id) => id[0])
       .filter((id, at, all) => all.indexOf(id) === at);

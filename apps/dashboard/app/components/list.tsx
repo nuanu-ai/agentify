@@ -35,7 +35,7 @@ export function List({
 }>) {
   return (
     <div className="list-box" style={{ "--columns": columns } as CSSProperties}>
-      <ul className="list" aria-label={label}>
+      <ul className="list" aria-label={label} tabIndex={-1}>
         {head === undefined ? null : (
           <li className="list-head" aria-hidden="true">
             {head.map((one, at) =>
