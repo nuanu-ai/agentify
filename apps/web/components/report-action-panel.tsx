@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { type ResumeIntent, takeResumeIntent } from "../lib/resume-intent";
+import type { PublicResultPreview } from "../lib/share-copy";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
-import type { PublicResultPreview } from "./public-result-card";
 import { PublicShareActions } from "./public-share-actions";
 import styles from "./report-action-panel.module.css";
 import { columnsFor } from "./report-actions";

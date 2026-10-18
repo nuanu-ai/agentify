@@ -1,6 +1,14 @@
-import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
+import type { DiagnosticLevel, PublicShareSnapshot } from "@agentify/scanner-contracts";
 
 import { scanDay } from "./levels";
+
+/** What a published result shows: the domain, the level, the score and the day it was scanned. */
+export type PublicResultPreview = Readonly<{
+  hostLabel: string;
+  level: DiagnosticLevel;
+  score: number;
+  scannedLabel?: string;
+}>;
 
 export type ShareTone = "critical" | "warning" | "neutral" | "positive";
 

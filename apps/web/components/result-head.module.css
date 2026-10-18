@@ -71,6 +71,25 @@
   background: var(--surface);
 }
 
+/* Each level's name under its stretch of the scale: 0–24, 25–49, 50–69, 70–100. */
+.legend {
+  display: grid;
+  grid-template-columns: 25fr 25fr 20fr 30fr;
+  gap: 8px;
+  margin-top: var(--space-tight);
+  color: var(--muted);
+  font-size: var(--text-label);
+}
+
+.legend span:last-child {
+  text-align: right;
+}
+
+.legend .reached {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .caption {
   display: flex;
   flex-wrap: wrap;

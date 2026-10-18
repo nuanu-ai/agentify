@@ -5,9 +5,11 @@ import { LEVEL_LABELS, PROVISIONAL_BELOW } from "../lib/levels";
 import styles from "./result-head.module.css";
 
 /**
- * The head a scan's result and its report both open with: the site and what
- * this page of it is, the level and the score on their scale, and what the
- * level is not. `caption` is said after "not a certification", on its line.
+ * The head a scan's result, its report and its published snapshot open with:
+ * the site and what this page of it is, the level and the score on their
+ * scale, and what the level is not. `caption` is said after "not a
+ * certification", on its line; a snapshot, which keeps no coverage, names the
+ * levels under the scale instead.
  */
 export function ResultHead({
   caption,
@@ -18,13 +20,14 @@ export function ResultHead({
   score,
 }: Readonly<{
   caption?: ReactNode;
-  coverage: number;
+  coverage?: number;
   host: string;
   level: DiagnosticLevel;
   line: ReactNode;
   score: number | null;
 }>) {
-  const provisional = coverage < PROVISIONAL_BELOW || level === "incomplete";
+  const provisional =
+    level === "incomplete" || (coverage !== undefined && coverage < PROVISIONAL_BELOW);
   return (
     <>
       <p className={styles.site}>
@@ -50,12 +53,13 @@ export function ResultHead({
         )}
       </div>
       {score === null ? null : <ScoreScale score={score} />}
+      {coverage === undefined ? <LevelLegend level={level} /> : null}
       <p className={styles.caption}>
         <span>
           Diagnostic level, not a certification
           {caption ? <> · {caption}</> : null}
         </span>
-        <span>Coverage {Math.round(coverage * 100)}%</span>
+        {coverage === undefined ? null : <span>Coverage {Math.round(coverage * 100)}%</span>}
       </p>
       {level === "callable_ready" ? (
         <p className={styles.note}>
@@ -84,5 +88,20 @@ function ScoreScale({ score }: Readonly<{ score: number }>) {
       <i style={{ left: "50%" }} />
       <i style={{ left: "70%" }} />
     </div>
+  );
+}
+
+const LEGEND = ["invisible", "readable", "callable_ready", "ahead_of_market"] as const;
+
+/** The four levels under the scale, the one reached in the ink of its fill. */
+function LevelLegend({ level }: Readonly<{ level: DiagnosticLevel }>) {
+  return (
+    <p className={styles.legend}>
+      {LEGEND.map((each) => (
+        <span className={each === level ? styles.reached : undefined} key={each}>
+          {LEVEL_LABELS[each]}
+        </span>
+      ))}
+    </p>
   );
 }

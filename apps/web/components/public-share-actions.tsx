@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { sharePreviewIn } from "../lib/api-answers";
-import type { PublicResultPreview } from "./public-result-card";
+import type { PublicResultPreview } from "../lib/share-copy";
 import styles from "./public-share-actions.module.css";
 import row from "./report-actions.module.css";
 
