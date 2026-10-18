@@ -3423,23 +3423,28 @@ describe("the cards screen", () => {
     expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
   });
 
-  it("says once, over the cards, which switch holds them, and offers none on a card it holds", async () => {
-    // With everything stopped, an unpaused card reads paused and resuming it
-    // would change nothing, so the banner says which switch holds the cards
-    // and the card's row says only that it is off sale.
+  it("says once, over the cards, which switch holds them, and keeps each card's own switch", async () => {
+    // With everything stopped the banner says which switch holds the cards
+    // and a card's row says only that it is off sale. Its own switch stays:
+    // a card paused now stays paused when all sales resume, and a Resume
+    // pressed by mistake can be taken back before they do.
     const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
+    const room = await publish(gateway, roomCard);
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
     const html = (await browser.get("/cards")).html;
-
     const [row = ""] = rowsIn(html);
+    const [own] = cardSwitchesIn(row);
+    if (own === undefined) throw new Error("the card drawn under a pause has no switch");
+    await browser.post(own.action, Object.fromEntries(own.fields));
+    await browser.post(START_SELLING);
 
     expect(reasonsIn(html)).toStrictEqual(["paused"]);
     expect(readable(row)).toContain("Off sale");
     expect(readable(row)).not.toMatch(/selling|sales/i);
-    expect(cardSwitchesIn(html)).toStrictEqual([]);
+    expect(own.presses[0]?.label).toBe("Pause");
+    expect(await purchasable(gateway, room)).toBe(false);
   });
 
   it("leaves a card paused when it is published again", async () => {
@@ -3520,9 +3525,14 @@ describe("the cards screen", () => {
       show: "every",
       page: "-1",
     });
+    // A search in another script goes back as a browser writes it, since a
+    // header carries no letter outside Latin-1.
+    const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
+    await browser.post(switchOf(room, "resume"));
 
     expect(kept.to).toBe("/cards?q=room&show=off-sale&page=3");
     expect(unknown.to).toBe("/cards?q=room");
+    expect(written.to).toBe(`/cards?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
   });
 
@@ -3588,8 +3598,8 @@ describe("a card held off sale by what its merchant lacks", () => {
   // because the merchant lacks something the gateway asks of every merchant.
   // The banner over the cards names each thing the gateway finds missing, and
   // nothing else: a reason it did not find would send a merchant looking for
-  // something nobody asked of them. The card's own row says it is off sale and
-  // offers no switch, since neither switch would put it on sale.
+  // something nobody asked of them. The card's own row says it is off sale
+  // and offers its own switch, which holds once nothing is missing.
   //
   // Each merchant is registered by the dashboard's press, never approved, and
   // its card written straight into the gateway's store, since publishing would
@@ -3693,9 +3703,12 @@ describe("a card held off sale by what its merchant lacks", () => {
         );
         expect(readable(row)).toContain("Off sale");
         // What the account lacks is said once, over the cards, not again in
-        // every row.
+        // every row; the card keeps its own switch, so a card paused now
+        // stays paused once nothing is missing.
         expect(readable(row)).not.toMatch(/settings|approv|\bname\b|wallet/i);
-        expect(cardSwitchesIn(row)).toStrictEqual([]);
+        expect(cardSwitchesIn(row).map(({ presses }) => presses[0]?.label)).toStrictEqual([
+          "Pause",
+        ]);
       });
     }
   }

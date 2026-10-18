@@ -183,25 +183,6 @@ describe("a list where some of the money was real and some was not", () => {
   });
 });
 
-describe("a card held off sale by the account, on the cards", () => {
-  // Without the operator's approval, a seller name or a payout wallet every
-  // card is off sale. The banner over every page says why, once; a row that
-  // said it again would be the same sentence on every card.
-  const offSale = MerchantCardListSchema.parse({
-    ...cards,
-    cards: cards.cards.map((entry) => ({ ...entry, selling: "paused" })),
-  });
-
-  it("says the card is off sale and nothing about what the account lacks", () => {
-    const rows = readable(
-      served(() => <CardsScreen view={cardsView(offSale, "https://agentify.ad")} base="" />),
-    );
-
-    expect(rows).toContain("Off sale");
-    expect(rows).not.toMatch(/approv|settings|seller name|wallet/i);
-  });
-});
-
 describe("the shares of a sale paid into the merchant's payout split", () => {
   // Computed by hand in whole millionths of a dollar, USDC's smallest unit,
   // each share rounded down as the split rounds it: 0.29 at 99.9% is 289710
@@ -411,6 +392,24 @@ describe("the state of each card", () => {
     expect(row).not.toContain("<form");
   });
 
+  it("gives a shop's card of a merchant who has left no reason of its own: they sell through nothing", () => {
+    const list = listOf("departed", { selling: "departed", paused: false });
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(list, "https://agentify.ad", false, {
+          through: "api",
+          offSale: ["itm_0"],
+        })}
+        base=""
+      />
+    ));
+    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+
+    expect(readable(row)).toContain("Off sale");
+    expect(readable(row)).not.toMatch(/own code/i);
+    expect(row).not.toContain("<form");
+  });
+
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
     // merchant to a switch that changes nothing.
@@ -423,39 +422,71 @@ describe("the state of each card", () => {
 describe("how a card is delivered", () => {
   const entry = cards.cards[0];
   if (entry === undefined) throw new Error("the example catalogue has no card");
-  const deliveryOf = (seconds: number) =>
-    cardsView(
-      MerchantCardListSchema.parse({
-        selling: "open",
-        cards: [
-          {
-            ...entry,
-            card: { ...entry.card, fulfillment: "async", fulfill_deadline_seconds: seconds },
-          },
-        ],
-      }),
-      "https://agentify.ad",
-    ).listing.rows[0]?.delivery;
+  /** The delivery cell's words for a card of these fields. */
+  const deliveryOf = (card: Partial<typeof entry.card>) => {
+    const list = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [{ ...entry, card: { ...entry.card, ...card } }],
+    });
+    const html = served(() => (
+      <CardsScreen view={cardsView(list, "https://agentify.ad")} base="" />
+    ));
+    return readable(/<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "");
+  };
+  const later = (seconds: number) =>
+    deliveryOf({ fulfillment: "async", fulfill_deadline_seconds: seconds });
 
   it("says the window the goods are owed within beside the word for how they come", () => {
     // The window is a promise the merchant answers for: an order still without
     // goods at its end owes the buyer their money back.
-    expect(deliveryOf(14_400)).toBe("Later, within 4 hours");
-    expect(deliveryOf(3_600)).toBe("Later, within 1 hour");
-    expect(deliveryOf(900)).toBe("Later, within 15 minutes");
-    expect(deliveryOf(5_400)).toBe("Later, within 90 minutes");
-    expect(deliveryOf(61)).toBe("Later, within 61 seconds");
+    expect(later(14_400)).toBe("Later, within 4 hours");
+    expect(later(3_600)).toBe("Later, within 1 hour");
+    expect(later(900)).toBe("Later, within 15 minutes");
+    expect(later(5_400)).toBe("Later, within 90 minutes");
+    expect(later(61)).toBe("Later, within 61 seconds");
+    expect(later(172_800)).toBe("Later, within 2 days");
   });
 
-  it("names no window for a card that names none", () => {
-    const [row] = cardsView(cards, "https://agentify.ad").listing.rows;
+  it("says a parcel's time to reach a carrier, which is not the time it arrives", () => {
+    const parcel = deliveryOf({
+      fulfillment: "ship",
+      ship_within_seconds: 604_800,
+      price_check: "handler",
+      result: undefined,
+    });
 
-    expect(row?.delivery).toBe("Immediate");
+    expect(parcel).toContain("By parcel, to a carrier within 7 days");
+  });
+
+  it("says a card that names no window of its own is held to Agentify's, not to none", () => {
+    // An order that runs past the default window owes a refund as one past a
+    // window of the card's own would, so "Later" alone would read as no
+    // deadline at all.
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(
+          MerchantCardListSchema.parse({
+            selling: "open",
+            cards: [{ ...entry, card: { ...entry.card, fulfillment: "async" } }],
+          }),
+          "https://agentify.ad",
+        )}
+        base=""
+      />
+    ));
+    const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+
+    expect(readable(fact)).toBe("Later, within Agentify's default window");
+    expect(fact).toContain('href="/docs/cards#goods-that-leave-later-than-the-answer"');
+  });
+
+  it("names no window for a card delivered at once", () => {
+    expect(deliveryOf({})).toBe("Immediate");
   });
 });
 
 describe("a card's row on a phone", () => {
-  it("says on the row's own line that a price is asked at purchase, and leaves nothing out", () => {
+  it("says on the row's own line that a price is asked at purchase", () => {
     // The price shown may not be the one paid, so a phone does not hide that
     // behind a press.
     const entry = cards.cards[0];
@@ -470,7 +501,6 @@ describe("a card's row on a phone", () => {
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
 
     expect(readable(fact)).toContain("price asked at purchase");
-    expect(html).not.toContain('class="cell-more"');
   });
 
   it("keeps what the narrow row leaves out in the row's opened part", () => {
