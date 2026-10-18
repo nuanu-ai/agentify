@@ -36,21 +36,14 @@ between two payouts reach your wallet as one transfer, and that transfer comes
 from the 0xSplits warehouse, the shared contract every payout contract pays
 its shares through, rather than from a buyer. If your accounting is used to
 one line per sale, there will be one line per payout instead, and it can
-cover many sales.
+cover many sales. The payment request a buyer pays against names your payout
+contract and never your wallet, so looking for your wallet's address on a
+payment, or for one incoming transfer per sale, finds no match.
 
 Saving your wallet costs nothing and writes nothing to the chain: the payout
 contract's address follows from your wallet, and it can receive USDC from that
 moment. The first payout puts the contract itself on the chain, and from then
 on a block explorer shows its two recipients and their shares.
-
-A new wallet comes with a new payout contract, and the old contract goes on
-paying the old wallet. Whatever is already in it is paid out to the old wallet
-only, whoever sends the payout: if somebody else may hold that wallet's keys,
-it is theirs to collect, and if you have lost access to it, it is lost with it.
-On the live channel a new wallet takes effect forty-eight hours after the
-change is announced, and buyers pay into the old contract until then, so if
-you can no longer trust the old wallet, replace it at once and pause selling
-for those two days.
 
 ### If you have no wallet yet
 
@@ -111,6 +104,34 @@ takes from that wallet. Before you send it, check that the address your
 wallet is about to call is the Multicall3 address the screen shows, that the
 amount is zero, and that the data is the whole of what the screen gives, with
 nothing cut off.
+
+### Replacing your wallet
+
+A new wallet comes with a new payout contract, and the old contract goes on
+paying the old wallet. Whatever is already in it is paid out to the old wallet
+only, whoever sends the payout: if somebody else may hold that wallet's keys,
+it is theirs to collect, and if you have lost access to it, it is lost with it.
+
+On the live channel a wallet you have already saved is not replaced at once.
+Everybody who signs in to your merchant's dashboard is sent a message first,
+saying the change was asked for in the dashboard and from which account's
+session, and the new address takes effect forty-eight hours after the messages
+went out. Until then buyers pay into the old contract, and your Settings screen
+shows the waiting address, the moment it takes effect and a button that
+cancels the change. So if you can no longer trust the old wallet, replace it at
+once and pause selling for those two days.
+
+A change that cannot be announced to every account is not recorded at all: the
+dashboard says why, and your sales go on paying out where they did. A message
+about a change that was then refused is safe to ignore, because every message
+says the change takes effect only if your Settings screen shows it waiting.
+The first wallet you save applies at once, and on the live channel every
+account is sent a message about it afterwards.
+
+On the test channel every change applies at once and nothing is sent. Your
+engineer's code reads back the wallet in force with any waiting change beside
+it (`pending`, with its `takes_effect_at`), and because nothing waits on the
+test channel, the first waiting change that code meets is on the live channel.
 
 ## What they pay in
 
