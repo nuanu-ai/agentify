@@ -456,9 +456,11 @@ p {
 }
 
 /*
- * The site header: the lockup, the public site's sections, and the doors to
- * the documentation, the dashboard and the session. It stays at the top of the
- * window, translucent over what scrolls under it.
+ * The bar of both headers: the lockup, then on the site header the public
+ * site's sections and the doors to the documentation, the dashboard and the
+ * session, and on the working header the doors to the documentation and the
+ * session. It stays at the top of the window, translucent over what scrolls
+ * under it.
  */
 .site-header {
   position: sticky;
@@ -571,6 +573,21 @@ p {
 .site-sign-out button:hover,
 .site-sign-out button:focus-visible {
   color: var(--accent);
+}
+
+/* The working header's doors follow the lockup with no sections to set them
+   apart from. Where the menu's button takes the end of the row, the menu
+   holds the doors too, so the row keeps the lockup and the button alone at
+   every width down to 320px, and nothing in it moves. */
+.work-header .site-doors {
+  padding-left: 0;
+  border-left: 0;
+}
+
+@media (max-width: 910px) {
+  .work-header .site-doors {
+    display: none;
+  }
 }
 
 /*

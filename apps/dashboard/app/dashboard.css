@@ -1304,10 +1304,10 @@ h2 {
 }
 
 /*
- * The working area under the site header: the sections in a sidebar beside
+ * The working area under the working header: the sections in a sidebar beside
  * the workspace, and a bar at the top of the workspace with the screen's
  * title. On a laptop the sections and the bar
- * stay in view under the site header, 68px tall there with its hairline under
+ * stay in view under the header, 68px tall there with its hairline under
  * it; they stop at the hairline, never over it or under it. Only the
  * sidebar's own words stay in view, at their own height, so on a window
  * taller than those words and the foot of the page together the foot pushes
@@ -1435,11 +1435,11 @@ h2 {
 }
 
 /* On a phone and a tablet the sidebar gives way to the menu at the end of the
-   site header's row, and only that row stays in view; the title bar scrolls
-   with the page. The frame turns at the width where the shared header takes
-   up its menu and leaves who is signed in to it, so the bar never shows the
-   sidebar and the menu together; the frame's other narrow rules below turn at
-   the same width. */
+   header's row, and only that row stays in view; the title bar scrolls with
+   the page. The frame turns at the width where the working header takes up
+   its menu and leaves its doors to it, so the page never shows the sidebar and
+   the menu together; the frame's other narrow rules below turn at the same
+   width. */
 @media (max-width: 910px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1602,9 +1602,9 @@ h2 {
   }
 }
 
-/* The site header over the frame starts its lockup on the sidebar's line of
-   words and ends its doors on the content's right edge, as the foot under the
-   frame does, rather than centring them in the window. */
+/* The working header over the frame starts its lockup on the sidebar's line
+   of words and ends its doors on the content's right edge, as the foot under
+   the frame does, rather than centring them in the window. */
 .app-frame .site-header-inner {
   --workspace: calc(100% - 252px);
   --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
