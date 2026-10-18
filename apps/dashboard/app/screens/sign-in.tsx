@@ -96,7 +96,8 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
   if (view.click !== undefined && view.googleEnabled) {
     // One box goes with both ways in, and a box belongs to one form, so the
     // Google button sends this form elsewhere. The email button comes first
-    // because Enter in the address presses a form's first button. Every press
+    // because Enter in the address presses a form's first button, and the
+    // page without the box keeps the same order. Every press
     // goes as a whole page: Google's answer moves the browser to Google, and
     // React Router cannot send one button's press whole and another's in place.
     return (
@@ -122,17 +123,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
       <div className="gate-card">
         <h1>Sign in</h1>
         {view.reason === undefined ? null : <p>{view.reason}</p>}
-        {view.googleEnabled ? (
-          <>
-            <Form method="post" action="/sign-in/google" reloadDocument>
-              <Destination destination={view.destination} />
-              <GoogleButton />
-            </Form>
-            <p>Or enter your email address and we will send you a sign-in link.</p>
-          </>
-        ) : (
-          <p>Enter your email address and we will send you a sign-in link.</p>
-        )}
+        <p>Enter your email address and we will send you a sign-in link.</p>
         <Form method="post" action="/sign-in">
           <AddressField view={view} />
           <Destination destination={view.destination} />
@@ -140,6 +131,15 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
           <ConsentBox click={view.click} />
           <Button pending={pressed}>Send me a sign-in link</Button>
         </Form>
+        {view.googleEnabled ? (
+          <>
+            <p>Or sign in with Google.</p>
+            <Form method="post" action="/sign-in/google" reloadDocument>
+              <Destination destination={view.destination} />
+              <GoogleButton />
+            </Form>
+          </>
+        ) : null}
         <SignInNotes />
       </div>
     </GatePage>
