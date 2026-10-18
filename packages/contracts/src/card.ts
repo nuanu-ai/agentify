@@ -694,7 +694,12 @@ interface SyncCardInput extends DeliveredCardInput {
  * `"handler"`, only an `"async"` card names `fulfill_deadline_seconds`, and
  * `"confirm"` is not offered, since it cannot be published yet. What a type
  * cannot say, such as the price rule, plain text, or a parcel asking for
- * `ship_to` among its parameters, is refused at publication with a finding.
+ * `ship_to` among its parameters, is refused at publication and named in the
+ * refusal.
+ *
+ * A `Card` read back is not split by mode, so it is not a `CardInput` as it
+ * stands. Publication takes a card read back unchanged, but TypeScript code
+ * republishes the card it holds, or asserts the read-back one's type.
  */
 export type CardInput = SyncCardInput | AsyncCardInput | ShipCardInput;
 

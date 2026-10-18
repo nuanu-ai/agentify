@@ -147,7 +147,7 @@ describe("publishing a card", () => {
 
 /**
  * The cards the compiler refuses, so that a card publishing would refuse is a
- * type error where it is written rather than a finding after the call. None
+ * type error where it is written rather than a refusal after the call. None
  * of this runs: every `@ts-expect-error` fails the build the day the line
  * under it starts compiling, and every line without one fails the day it
  * stops.
@@ -172,7 +172,23 @@ const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void =>
   void catalog.publish({ ...named, result, fulfillment: "async", fulfill_deadline_seconds: 60 });
   void catalog.publish({ ...parcel, fulfillment: "ship" });
 
-  // A card as it is read back, every short form written out, is published again unchanged.
+  // Each mode with every optional field it takes, so that a type refusing what
+  // publishing accepts fails here too.
+  const params = { email: "string" } as const;
+  const tags = ["access"];
+  void catalog.publish({ ...named, result, params, tags, price_check: "handler" });
+  void catalog.publish({
+    ...named,
+    result,
+    params,
+    tags,
+    price_check: "handler",
+    fulfillment: "async",
+    fulfill_deadline_seconds: 60,
+  });
+  void catalog.publish({ ...parcel, params, tags, fulfillment: "ship" });
+
+  // A card in the canonical form, every short form written out, compiles too.
   void catalog.publish({
     ...named,
     price: { amount: "5.00", currency: "USD" },
