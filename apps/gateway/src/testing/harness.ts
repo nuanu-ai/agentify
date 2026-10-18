@@ -34,6 +34,7 @@ import {
   PAYMENT_SIGNATURE_HEADER,
   PaymentEdge,
   paymentFingerprint,
+  widestChallengeOn,
   X402_VERSION,
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
@@ -140,6 +141,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     clock: () => now,
     ids,
     announcer,
+    widestChallenge: widestChallengeOn(config),
   };
 
   const gateway = new Gateway(runtime);

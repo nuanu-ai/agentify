@@ -33,6 +33,7 @@ import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
+import { widestChallengeOn } from "../../http/x402.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
@@ -209,14 +210,16 @@ if (databaseUrl === null) {
       store = PostgresStore.over(connected.db, "eip155:84532", countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();
 
+      const config = testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" });
       const runtime: Runtime = {
-        config: testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" }),
+        config,
         store,
         queue,
         facilitator,
         clock: () => now,
         ids: countedIds(),
         announcer: nobodyAnnounces,
+        widestChallenge: widestChallengeOn(config),
       };
       gateway = new Gateway(runtime);
       await gateway.start();
@@ -1504,16 +1507,19 @@ if (databaseUrl === null) {
       });
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
-      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) =>
-        new Gateway({
-          config: loadConfig({ DATABASE_URL: databaseUrl }, table),
+      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) => {
+        const config = loadConfig({ DATABASE_URL: databaseUrl }, table);
+        return new Gateway({
+          config,
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
           queue: new MemoryQueue(),
           facilitator: new ScriptedFacilitator(),
           clock: () => now,
           ids: countedIds(),
           announcer: nobodyAnnounces,
+          widestChallenge: widestChallengeOn(config),
         });
+      };
 
       /** Merchants whose wallets were written with no split recorded. */
       const withoutTheirSplits = async () => {

@@ -34,6 +34,7 @@ import {
   seedSandboxKey,
   setPayoutWallet,
   systemClock,
+  widestChallengeOn,
 } from "@agentify/gateway";
 
 /**
@@ -189,6 +190,7 @@ export async function bootGateway(
       // announced; a live configuration would reach this and be refused by
       // the first wallet change rather than quietly skip telling anybody.
       announcer: nobodyAnnounces,
+      widestChallenge: widestChallengeOn(config),
     };
 
     const gateway = new Gateway(runtime);

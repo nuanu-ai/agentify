@@ -487,6 +487,7 @@ export class Gateway {
     const unsellable = [
       ...priceProblemsOf(parsed.data.price),
       ...notOnThisChannel(parsed.data, this.runtime.config.environment),
+      ...oversizedChallenge(this.runtime.widestChallenge(parsed.data)),
     ];
     const lacking = [...missing, ...parcelWithoutSite];
     if (lacking.length > 0 || unsellable.length > 0) {
@@ -2389,6 +2390,34 @@ function notOnThisChannel(card: Card, environment: Environment): Problem[] {
           code: "not_sold_yet",
           message:
             'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel cannot be recorded anywhere yet, so publish it on the test channel, where the money is not real',
+        },
+      ]
+    : [];
+}
+
+/**
+ * The most bytes a card's payment challenge header may take. Node's HTTP client
+ * and fetch read at most 16 KiB of a response's headers in all; taking half is
+ * a margin, chosen rather than measured, for the other headers and for
+ * whatever stands between the gateway and the buyer.
+ */
+const CHALLENGE_HEADER_MAX = 8_192;
+
+/** A card whose challenge at its widest passes the bound, refused while its merchant can be told. */
+function oversizedChallenge(widest: number): Problem[] {
+  return widest > CHALLENGE_HEADER_MAX
+    ? [
+        {
+          path: [],
+          code: "challenge_too_large",
+          message:
+            `this card's payment challenge, the PAYMENT-REQUIRED header that asks an agent to pay,` +
+            ` would be up to ${widest} bytes, and a card is published only if it stays within` +
+            ` ${CHALLENGE_HEADER_MAX}: Node's HTTP client and fetch read at most 16384 bytes of a` +
+            " response's headers in all, and half of that is kept as a margin for the other" +
+            " headers and for whatever stands between us and the buyer; the header carries the" +
+            " description, the tags and the name of every declared field, so declare fewer" +
+            " fields, give them shorter names, or shorten the description",
         },
       ]
     : [];

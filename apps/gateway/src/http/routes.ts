@@ -39,6 +39,8 @@ import {
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
 import { hold, refusal } from "./server.js";
 import {
+  CHALLENGE_REASONS,
+  type ChallengeReason,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_RESPONSE_HEADER,
   PaymentEdge,
@@ -393,7 +395,7 @@ async function probeAnswer(
   edge: PaymentEdge,
   response: RouteCall["response"],
   itemId: string,
-  why: string,
+  why: ChallengeReason,
 ): Promise<RouteAnswer> {
   const offered = await gateway.paidResource(itemId);
   if (offered === null) {
@@ -474,9 +476,7 @@ async function purchase(
       // A payment on a GET is an agent that took the probe for the purchase.
       // It is told the payment was not read (not that there was none), or it
       // could not tell the bare challenge from a failed payment.
-      presented === null
-        ? "payment required"
-        : "this GET is not read for payment: the purchase is a POST with a JSON body",
+      presented === null ? CHALLENGE_REASONS.probe : CHALLENGE_REASONS.paymentOnAGet,
     );
   }
 
@@ -495,7 +495,7 @@ async function purchase(
 
   // The probe on the purchase's own method, as a catalog validator asks.
   if (presented === null && (body === undefined || isEmptyDocument(body))) {
-    return probeAnswer(gateway, edge, response, itemId, "payment required");
+    return probeAnswer(gateway, edge, response, itemId, CHALLENGE_REASONS.probe);
   }
 
   const held = hold(PurchaseRequestSchema, body);
@@ -566,8 +566,8 @@ async function purchase(
     presented === null
       ? undefined
       : presented === "unreadable"
-        ? "the payment could not be read, so here is a fresh price"
-        : "the payment did not name an order this gateway is holding, so here is a fresh price",
+        ? CHALLENGE_REASONS.unreadablePayment
+        : CHALLENGE_REASONS.noHeldOrder,
   );
 }
 
@@ -582,7 +582,7 @@ async function answerPurchase(
   response: RouteCall["response"],
   attempt: PurchaseAttempt,
   seller: Seller | null,
-  why?: string,
+  why?: ChallengeReason,
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
     case "no_such_item":

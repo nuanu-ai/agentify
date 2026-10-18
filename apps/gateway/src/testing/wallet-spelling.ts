@@ -15,6 +15,7 @@ import { MemoryQueue } from "../adapters/memory/queue.js";
 import { Gateway } from "../app/gateway.js";
 import { setServiceName } from "../app/merchants.js";
 import { loadConfig } from "../config.js";
+import { widestChallengeOn } from "../http/x402.js";
 import type { PayoutWalletRead, Store } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -71,17 +72,19 @@ export function describeWalletSpelling(
 
     const gatewayOn = (database: WalletSpellingDatabase, environment: Record<string, string>) => {
       const announcer = new RecordingAnnouncer();
+      const config = loadConfig({
+        DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+        ...environment,
+      });
       const gateway = new Gateway({
-        config: loadConfig({
-          DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
-          ...environment,
-        }),
+        config,
         store: database.store,
         queue: new MemoryQueue(),
         facilitator: new ScriptedFacilitator(),
         clock: () => now,
         ids: countedIds(),
         announcer,
+        widestChallenge: widestChallengeOn(config),
       });
       running.push(gateway);
       return { gateway, announcer };
