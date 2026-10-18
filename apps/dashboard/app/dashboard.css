@@ -351,8 +351,7 @@ input {
 }
 
 /* The label over a box, at the weight the scanner gives one. */
-label,
-.issue-title {
+label {
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -428,10 +427,6 @@ td.control {
   background: var(--notice-bg);
   color: var(--notice-ink);
   line-height: 1.55;
-}
-
-.callout.done {
-  border-color: color-mix(in srgb, var(--pass) 32%, var(--line));
 }
 
 .callout .what {
@@ -1142,8 +1137,7 @@ h2 {
   padding: 20px 0 32px;
 }
 
-.issue label,
-.issue .issue-title {
+.issue label {
   display: block;
   margin: 0 0 8px;
 }
@@ -1372,8 +1366,7 @@ h2 {
   padding: 24px 0 40px;
 }
 
-.settings-panel,
-.integration-shell {
+.settings-panel {
   min-width: 0;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
@@ -1381,13 +1374,11 @@ h2 {
   box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
-.settings-panel > .lede,
-.integration-shell > .lede {
+.settings-panel > .lede {
   padding: 24px 24px 0;
 }
 
-.settings-panel > .issue,
-.integration-shell > .issue {
+.settings-panel > .issue {
   padding: 20px 24px 24px;
 }
 
@@ -1414,23 +1405,6 @@ h2 {
    ends in a form; otherwise its last line sits on the bottom border. */
 .settings-panel > .lede:last-child {
   padding-bottom: 24px;
-}
-
-.integration-shell {
-  margin-top: 32px;
-  margin-bottom: 40px;
-  padding-bottom: 8px;
-}
-
-.integration-shell > .callout,
-.integration-shell > .scroller,
-.integration-shell > .summary {
-  margin-left: 24px;
-  margin-right: 24px;
-}
-/* A callout under the shop screen's opening paragraphs stands clear of them. */
-.integration-shell > .lede + .callout {
-  margin-top: 20px;
 }
 
 @media (max-width: 980px) {
@@ -1590,8 +1564,7 @@ h2 {
 }
 .app-content .scroller,
 .app-content .table-frame,
-.app-content .settings-panel,
-.app-content .integration-shell {
+.app-content .settings-panel {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
 }
 
