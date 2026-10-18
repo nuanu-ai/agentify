@@ -922,7 +922,7 @@ describe("importing the catalogue", () => {
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("2 products published");
+    expect(text).toContain("2 published");
     expect(text).toContain("Canvas tote bag");
     expect(text).not.toMatch(/on sale/i);
     expect((await cardsOf(running)).find((one) => one.id === tote?.id)?.paused).toBe(true);
@@ -941,7 +941,7 @@ describe("importing the catalogue", () => {
 
     const imported = await running.post("/woocommerce/import");
 
-    expect(imported.html).toContain("Refused");
+    expect(imported.html).toContain("To fix");
     // The ceiling and the length they wrote: the second says how much to cut,
     // and a summary would lose it.
     expect(readable(imported.html)).toContain("at most 500");
@@ -961,11 +961,11 @@ describe("importing the catalogue", () => {
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 without a verdict");
     expect(text).toContain("Canvas tote bag");
     expect(text).toContain("Agentify did not answer");
     // Neither the refusals' heading nor their count.
-    expect(text).not.toContain("Refused");
+    expect(text).not.toContain("To fix");
     expect(text).not.toContain("publishing rules");
   });
 
@@ -985,7 +985,7 @@ describe("importing the catalogue", () => {
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 without a verdict");
     expect(text).toContain("1 not attempted");
     expect(text).toContain("whether it was published is not known");
   });
@@ -1020,7 +1020,7 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import");
     const text = readable(imported.html);
 
-    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 without a verdict");
     expect(text).toContain("1 not attempted");
     expect(text).toContain("Canvas tote bag");
     expect(text).toContain("Access code");
@@ -1075,7 +1075,7 @@ describe("importing the catalogue", () => {
 
     const imported = await running.post("/woocommerce/import");
 
-    expect(imported.html).toContain("Left in the shop");
+    expect(imported.html).toContain("Not imported");
     expect(imported.html).toContain("A set of things");
     expect(imported.html).toContain("grouped");
   });
@@ -1343,16 +1343,17 @@ describe("importing the catalogue", () => {
       });
     };
 
+  /** Each product left in the shop by its number in the shop, with the reason given. */
   const leftInTheShop = (html: string): Record<string, string> =>
     Object.fromEntries(
       [
-        ...(/<h2>Left in the shop<\/h2>[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "").matchAll(
-          /<li>([\s\S]*?)<\/li>/g,
+        ...(/<ul[^>]*aria-label="Not imported"[^>]*>[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "").matchAll(
+          /<li class="list-row[^"]*">([\s\S]*?)<\/li>/g,
         ),
       ]
         .map((item) => readable(item[1] ?? ""))
         .flatMap((line) => {
-          const found = /^(.*?) — product (\d+) (.*)$/.exec(line);
+          const found = /^(.*?) Product (\d+) in your shop (.*)$/.exec(line);
           return found === null ? [] : [[found[2], found[3]]];
         }),
     );

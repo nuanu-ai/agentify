@@ -6,6 +6,7 @@ import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { GatePage } from "../components/gate-page.js";
+import { Cell, Group, List, Row } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
@@ -374,134 +375,182 @@ export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base
   );
 }
 
-const Block = ({ heading, children }: Readonly<{ heading: string; children: ReactNode }>) => (
-  <div className="lede">
-    <div>
-      <h2>{heading}</h2>
-      {children}
-    </div>
-  </div>
+/** The shop's own number for a product, which the merchant finds it by in their shop. */
+const InTheShop = ({ id }: Readonly<{ id: string }>) => (
+  <Cell at="ident">
+    <span className={styles.quiet}>Product {id} in your shop</span>
+  </Cell>
 );
 
+const ONE_COLUMN = "minmax(0, 1fr)";
+const WITH_ACTION = "minmax(0, 1fr) auto";
+
 export function WooImportScreen({ view, base }: Readonly<{ view: WooImportView; base: string }>) {
+  const tally: readonly (readonly [number, string])[] = [
+    [view.published.length, "published"],
+    [view.refused.length, "to fix"],
+    [view.unanswered.length, "without a verdict"],
+    [view.notAttempted.length, "not attempted"],
+    [view.skipped.length, "not imported"],
+  ];
   return (
-    <>
-      <div className="lede">
-        <div>
-          <p>{view.summary}</p>
-          <p className="quiet">
-            <a href={`${base}/cards`}>Your cards</a> ·{" "}
-            <a href={`${base}/woocommerce`}>Back to the shop</a>
-          </p>
-        </div>
-      </div>
+    <div className={styles.page}>
+      <p className={styles.read}>
+        <span className={styles.shop}>{view.shopUrl}</span> ·{" "}
+        {`${view.read} ${view.read === 1 ? "product" : "products"} read`}
+      </p>
+      <ul className={styles.tally} aria-label="What became of them">
+        {tally
+          .filter(([count, what]) => count > 0 || what === "published")
+          .map(([count, what]) => (
+            <li key={what}>
+              <b>{count}</b> {what}
+            </li>
+          ))}
+      </ul>
       {view.published.length === 0 ? null : (
         // Named for what publishing did and no more: its answer says nothing
         // about selling, and a card the merchant paused stays paused, so "on
         // sale" would be a guess.
-        <Block heading="Published">
-          <p className="quiet">
-            Each is one of your cards. Whether it can be bought is on your cards screen. A card you
-            paused stays paused through an import, and while all selling is stopped no card takes an
-            order.
-          </p>
-          <ul>
+        <Group
+          title="Published"
+          count={view.published.length}
+          aside="A card you paused stays paused; whether each sells is on Cards."
+        >
+          <List label="Published" columns={WITH_ACTION}>
             {view.published.map((one) => (
-              <li key={one.id}>
-                {one.title}{" "}
-                <span className="quiet">
-                  — product {one.id} in your shop, card {one.published}
-                </span>
-              </li>
+              <Row key={one.id}>
+                <Cell at="main">
+                  <Cell at="title">{one.title}</Cell>
+                  <InTheShop id={one.id} />
+                </Cell>
+                <Cell at="action">
+                  <a href={`${base}/cards?${new URLSearchParams({ q: one.code })}`}>
+                    Open in Cards
+                  </a>
+                </Cell>
+              </Row>
             ))}
-          </ul>
-        </Block>
+          </List>
+        </Group>
       )}
       {view.refused.length === 0 ? null : (
-        // Word for word: the merchant's next move is to change the named thing
-        // in their shop, and a paraphrase would be a second description of a
-        // rule that has one.
-        <Block heading="Refused">
-          <p className="quiet">
-            These are our own publishing rules, and the sentences under each product are the ones
-            the publish door gave. Change what they name in your shop and import again.
+        // Word for word: the merchant's next move is to change the named thing,
+        // and a paraphrase would be a second description of a rule that has one.
+        <Group
+          title="To fix"
+          count={view.refused.length}
+          warn
+          aside="Agentify's publishing rules, in their own words: change what they name, then import again."
+        >
+          <div className={styles.fixes}>
+            <List label="To fix" columns={WITH_ACTION}>
+              {view.refused.map((one) => (
+                <Row key={one.id} needsYou>
+                  <Cell at="main">
+                    <Cell at="title">{one.title}</Cell>
+                    <InTheShop id={one.id} />
+                    <Cell at="note">
+                      <ul className={styles.findings}>
+                        {one.problems.map((problem, at) => (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: one card's findings never reorder
+                          <li key={at}>{problem}</li>
+                        ))}
+                      </ul>
+                    </Cell>
+                  </Cell>
+                  {one.fix === null ? null : (
+                    <Cell at="action">
+                      <a
+                        className="button button-secondary button-compact"
+                        href={`${base}${one.fix.to}`}
+                      >
+                        {one.fix.words}
+                      </a>
+                    </Cell>
+                  )}
+                </Row>
+              ))}
+            </List>
+          </div>
+          <p className={styles.after}>
+            A length is counted with the markup removed, so your shop's editor shows a larger
+            number.
           </p>
-          <p className="quiet">
-            The count is of your description with markup removed, so your shop's editor shows a
-            larger number.
-          </p>
-          <ul>
-            {view.refused.map((one) => (
-              <li key={one.id}>
-                {one.title} <span className="quiet">— product {one.id}</span>
-                <ul>
-                  {one.problems.map((problem, at) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: one card's findings never reorder
-                    <li key={at}>{problem}</li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </Block>
+        </Group>
       )}
       {view.unanswered.length === 0 ? null : (
-        // Nobody read these products, so no edit in the shop helps. "The
-        // gateway" means the WooCommerce payment plugin to a WooCommerce
-        // merchant, so the paragraph defines the word before the lines use it.
-        <Block heading="No verdict">
-          <p className="quiet">
-            Nothing here is a finding about the product, and nothing in your shop needs changing:
-            the part of Agentify that keeps your cards — the lines below call it the gateway — did
-            not answer when this product was sent to it, or answered with something other than its
-            verdict. Import again later; importing again does not double cards.
-          </p>
-          <ul>
+        // Nobody read these products, so no edit in the shop helps.
+        <Group
+          title="No verdict"
+          count={view.unanswered.length}
+          aside="Agentify gave no verdict on these, so nothing in your shop needs changing. Import again later; it does not double cards."
+        >
+          <List label="No verdict" columns={ONE_COLUMN}>
             {view.unanswered.map((one) => (
-              <li key={one.id}>
-                {one.title} <span className="quiet">— product {one.id}</span>
-                <ul>
-                  <li>{one.failed}</li>
-                </ul>
-              </li>
+              <Row key={one.id}>
+                <Cell at="main">
+                  <Cell at="title">{one.title}</Cell>
+                  <InTheShop id={one.id} />
+                  <Cell at="note">
+                    <span className={styles.left}>{one.failed}</span>
+                  </Cell>
+                </Cell>
+              </Row>
             ))}
-          </ul>
-        </Block>
+          </List>
+        </Group>
       )}
       {view.notAttempted.length === 0 ? null : (
-        <Block heading="Not attempted">
-          <p className="quiet">
-            Import stopped after the first product got no verdict, so these products were not sent
-            to Agentify. Import again later.
-          </p>
-          <ul>
+        <Group
+          title="Not attempted"
+          count={view.notAttempted.length}
+          aside="The import stopped at the first product without a verdict, so these were not sent. Import again later."
+        >
+          <List label="Not attempted" columns={ONE_COLUMN}>
             {view.notAttempted.map((one) => (
-              <li key={one.id}>
-                {one.title} <span className="quiet">— product {one.id}</span>
-              </li>
+              <Row key={one.id} off>
+                <Cell at="main">
+                  <Cell at="title">{one.title}</Cell>
+                  <InTheShop id={one.id} />
+                </Cell>
+              </Row>
             ))}
-          </ul>
-        </Block>
+          </List>
+        </Group>
       )}
       {view.skipped.length === 0 ? null : (
-        // Apart from the refused: those the gateway would not take, these
+        // Apart from the refused: those the publish door would not take, these
         // could not be read as a card at all, and the merchant's move differs.
-        <Block heading="Left in the shop">
-          <p className="quiet">
-            Nothing was published for these, and nothing about them was changed in your shop.
-          </p>
-          <ul>
+        <Group
+          title="Not imported"
+          count={view.skipped.length}
+          aside="left in your shop as they are"
+        >
+          <List label="Not imported" columns={ONE_COLUMN}>
             {view.skipped.map((one) => (
-              <li key={one.id}>
-                {one.title} <span className="quiet">— product {one.id}</span>
-                <br />
-                {one.why}
-              </li>
+              <Row key={one.id} off>
+                <Cell at="main">
+                  <Cell at="title">{one.title}</Cell>
+                  <InTheShop id={one.id} />
+                  <Cell at="note">
+                    <span className={styles.left}>{one.why}</span>
+                  </Cell>
+                </Cell>
+              </Row>
             ))}
-          </ul>
-        </Block>
+          </List>
+        </Group>
       )}
-    </>
+      <div className={styles.ends}>
+        <a className="button button-primary" href={`${base}/cards`}>
+          Go to Cards
+        </a>
+        <a className="button button-secondary" href={`${base}/woocommerce`}>
+          Back to WooCommerce
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -526,7 +575,7 @@ export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView |
     <Frame
       tab="integrations"
       title="WooCommerce import"
-      heading={`What came over from ${view.shopUrl}`}
+      heading={view.finished ? "Import finished" : "Import stopped"}
       frame={view.frame}
     >
       <WooImportScreen view={view} base={base} />

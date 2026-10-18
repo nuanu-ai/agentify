@@ -231,3 +231,88 @@
     width: 100%;
   }
 }
+
+/* --- what an import did ------------------------------------------------- */
+
+.read {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tally li {
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--fg-2);
+  font-size: 0.875rem;
+}
+
+.tally b {
+  font-weight: 600;
+}
+
+.quiet {
+  color: var(--muted);
+}
+
+/* A row's sentences read from the left at every width, unlike a short note. */
+.findings,
+.left {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+  text-align: left;
+}
+
+.findings li + li {
+  margin-top: 4px;
+}
+
+.after {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.ends {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+/* On a narrow list a row's way to put it right comes after what it says. */
+@container (max-width: 860px) {
+  .fixes :global(.list-row) {
+    grid-template-areas:
+      "title title amount"
+      "state fact fact"
+      "ident ident ident"
+      "note note note"
+      "action action action"
+      "more more more";
+  }
+
+  .fixes :global(.cell-action) {
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+}
+
+@container (max-width: 560px) {
+  .ends :global(.button) {
+    flex: 1 1 100%;
+  }
+}

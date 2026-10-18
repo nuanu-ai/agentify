@@ -14,10 +14,10 @@ import type { Integration } from "@agentify/gateway";
 import { accountOf } from "./account.js";
 import type { Viewer } from "./viewer.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
-import type { SkippedProduct } from "./woo-catalog.js";
+import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
-import { UNSET_WORDS, type Unset } from "./words.js";
+import { SITE_IN_SETTINGS, UNSET_WORDS, type Unset, type Way } from "./words.js";
 
 /**
  * A shape of its own rather than the stored row, which also holds the shop's
@@ -256,6 +256,20 @@ interface NotAttempted extends Sent {
  */
 export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
 
+/** A published product with the product code its card is found by on Cards. */
+interface PublishedRow extends Published {
+  readonly code: string;
+}
+
+/**
+ * A refused product, and the page that puts it right where that is the
+ * dashboard rather than the shop: the shop's site, which the person here sets
+ * in Settings.
+ */
+interface RefusedRow extends Refused {
+  readonly fix: Way | null;
+}
+
 /**
  * A page rather than a redirect, because it carries a list: each refusal is
  * the publish step's own sentence about one field of one card, the only thing
@@ -265,31 +279,21 @@ export interface WooImportView {
   readonly screen: "import";
   readonly frame: FrameView;
   readonly shopUrl: string;
-  readonly summary: string;
-  readonly published: readonly Published[];
-  readonly refused: readonly Refused[];
+  /** Every product the shop listed, whatever became of it. */
+  readonly read: number;
+  /**
+   * False once a product got no verdict: the import stops there, and every
+   * product after it is not attempted.
+   */
+  readonly finished: boolean;
+  readonly published: readonly PublishedRow[];
+  readonly refused: readonly RefusedRow[];
   readonly unanswered: readonly Unanswered[];
   readonly notAttempted: readonly NotAttempted[];
   readonly skipped: readonly SkippedProduct[];
 }
 
-/** Published is always said; each other outcome is said whenever it is not zero. */
-const summaryOf = (
-  published: number,
-  refused: number,
-  unanswered: number,
-  notAttempted: number,
-  skipped: number,
-): string => {
-  const parts = [
-    `${published} ${published === 1 ? "product" : "products"} published`,
-    ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
-    ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
-    ...(notAttempted === 0 ? [] : [`${notAttempted} not attempted`]),
-    ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
-  ];
-  return `${parts.join(", ")}.`;
-};
+const TO_SETTINGS: Way = { to: "/settings", words: "Open Settings" };
 
 export const wooImportView = (
   shopUrl: string,
@@ -306,15 +310,13 @@ export const wooImportView = (
     // reason about choosing one never applies.
     frame: { account: [] },
     shopUrl,
-    summary: summaryOf(
-      published.length,
-      refused.length,
-      unanswered.length,
-      notAttempted.length,
-      skipped.length,
-    ),
-    published,
-    refused,
+    read: outcomes.length + skipped.length,
+    finished: unanswered.length === 0,
+    published: published.map((one) => ({ ...one, code: merchantItemIdFor(shopUrl, one.id) })),
+    refused: refused.map((one) => ({
+      ...one,
+      fix: one.problems.includes(SITE_IN_SETTINGS) ? TO_SETTINGS : null,
+    })),
     unanswered,
     notAttempted,
     skipped,

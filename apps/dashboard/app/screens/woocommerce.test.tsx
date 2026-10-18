@@ -74,10 +74,10 @@ const formOf = (html: string, action: string): string =>
   new RegExp(`<form[^>]*action="${action}"[^>]*>[\\s\\S]*?</form>`).exec(html)?.[0] ?? "";
 
 /**
- * Not `/import again/i`: the "No verdict" block reads "Import again later",
+ * Not `/import again/i`: the "No verdict" group reads "Import again later",
  * which would match where the invitation must not appear.
  */
-const SENT_TO_THE_SHOP = /shop and import again/i;
+const SENT_TO_THE_SHOP = /change what they name/i;
 
 describe("what the import screen says about a product the door never answered about", () => {
   it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", () => {
@@ -103,9 +103,9 @@ describe("what the import screen says about a product the door never answered ab
     );
     const text = readable(html);
 
-    expect(text).toContain("1 product published");
-    expect(text).toContain("1 refused");
-    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 published");
+    expect(text).toContain("1 to fix");
+    expect(text).toContain("1 without a verdict");
 
     // The unanswered product stands under its own heading only, after the
     // refused one, and the invitation to change the shop is not repeated over
