@@ -1,25 +1,30 @@
-/* The unmodified Google asset carries its required font, logo, border and colours. */
-.google {
-  display: block;
-  width: 180px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  cursor: pointer;
+/* Only the letters of "Sign in with Google"; anything else falls to the site's face. */
+@font-face {
+  font-family: "Google Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/google-sans-500-sign-in.woff2") format("woff2");
+  unicode-range: U+20, U+47, U+53, U+65, U+67-69, U+6C, U+6E-6F, U+74, U+77;
 }
 
-.google img {
-  display: block;
+/*
+ * Google's light button at the height, width and corners of the site's other
+ * buttons, as Google's branding guidelines let a site adapt it: the white fill,
+ * the 1 px #747775 edge, the words in #1F1F1F Google Sans Medium 14/20, and the
+ * "G" at its own 20 px, 10 px from them (assets/README.md). Written against the
+ * element as well, so the shared secondary button's edge and face do not win.
+ */
+button.google {
+  gap: 10px;
+  border: 1px solid #747775;
+  background: #fff;
+  color: #1f1f1f;
+  font:
+    500 0.875rem / 1.25rem "Google Sans",
+    var(--font-sans);
 }
 
-.google:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-
-/* Under the sentence that offers Google after the email button. */
-.second {
-  margin-top: 12px;
+button.google img {
+  flex: none;
 }

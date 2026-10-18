@@ -17,7 +17,7 @@ import type {
   SignInView,
 } from "../../src/page-services.js";
 import type { Chrome } from "../answer.js";
-import googleButton from "../assets/google-sign-in-light.png";
+import googleMark from "../assets/google-g.svg";
 import { GatePage } from "../components/gate-page.js";
 import styles from "./sign-in.module.css";
 
@@ -70,9 +70,11 @@ const AddressField = ({ view }: Readonly<{ view: AskView }>) => (
   />
 );
 
+/** Named by its words; the "G" beside them says nothing a screen reader needs. */
 const GoogleButton = (sends: Readonly<{ formAction?: string; formNoValidate?: boolean }>) => (
-  <button className={styles.google} type="submit" {...sends}>
-    <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
+  <button className={`button button-secondary ${styles.google}`} type="submit" {...sends}>
+    <img src={googleMark} alt="" width="20" height="20" />
+    Sign in with Google
   </button>
 );
 
@@ -109,9 +111,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
           <ConsentBox click={view.click} />
           <Button>Send me a sign-in link</Button>
           <p>Or sign in with Google.</p>
-          <div className={styles.second}>
-            <GoogleButton formAction={toGoogle} formNoValidate />
-          </div>
+          <GoogleButton formAction={toGoogle} formNoValidate />
           <SignInNotes />
         </Form>
       </GatePage>
