@@ -319,13 +319,23 @@ function Connected({
       ) : null}
       <Problem said={view.problem} base={base} />
       {connection.granted === null ? null : (
-        <section className={`${styles.panel} ${styles.attention}`}>
-          <h2>Your shop granted {connection.granted} access, not read and write</h2>
-          <p className={styles.sub}>
-            Every purchase is refused before payment, because Agentify cannot create its order in
-            your shop. Connect again and approve read and write access.
-          </p>
-        </section>
+        <FormPanel
+          action="/woocommerce/connect"
+          title={`Your shop granted ${connection.granted} access, not read and write`}
+          attention
+        >
+          {(pending) => (
+            <>
+              <p className={styles.sub}>
+                Every purchase is refused before payment, because Agentify cannot create its order
+                in your shop. Connect again and approve read and write access; you stay connected
+                until the new keys arrive.
+              </p>
+              <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
+              <Button pending={pending}>Connect again</Button>
+            </>
+          )}
+        </FormPanel>
       )}
       {connection.offerSwitch ? (
         <FormPanel action="/woocommerce/switch" title="You sell through your own code" attention>
