@@ -122,26 +122,32 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       onFocusCapture={markRegistrationStarted}
       onSubmit={(event) => void submit(event)}
     >
+      {signedIn ? (
+        <p className={styles.lead}>
+          You are signed in, so the report will be filed under <strong>{visitor.email}</strong> and
+          open here without a message.
+        </p>
+      ) : (
+        <p className={styles.lead}>We email you a secure link to open it. Phone is optional.</p>
+      )}
       {state === "sent" ? (
         <div className={styles.sent} aria-live="polite">
           <strong>Check your inbox</strong>
           <p>{sentConfirmationCopy(sentTo)}</p>
         </div>
       ) : null}
-      {signedIn ? (
-        <p>
-          You are signed in, so the report will be filed under <strong>{visitor.email}</strong> and
-          open here without a message.
-        </p>
-      ) : (
+      {signedIn ? null : (
         <div>
           <label htmlFor={emailId}>Email</label>
           <input id={emailId} name="email" type="email" autoComplete="email" required />
         </div>
       )}
       <div>
-        <label htmlFor={phoneId}>Phone</label>
+        <label htmlFor={phoneId}>
+          Phone <span className={styles.optional}>optional</span>
+        </label>
         <input
+          aria-describedby={`${phoneId}-hint`}
           autoComplete="tel"
           id={phoneId}
           inputMode="tel"
@@ -150,9 +156,8 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           placeholder="+1 415 555 0123"
           type="tel"
         />
-        <span className={styles.hint}>
-          Optional. Include the country code if you add one. We store it as contact information;
-          only your email is verified.
+        <span className={styles.hint} id={`${phoneId}-hint`}>
+          With the country code. We store it as contact information; only your email is verified.
         </span>
       </div>
       <div>

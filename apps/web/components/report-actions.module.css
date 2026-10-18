@@ -1,15 +1,21 @@
 /*
- * The report's actions, drawn alike on the scan's result and on the report:
- * every share and prompt button is one of the row's, equal to the others, on
- * one line where the row is wide enough for all of them and in a column of
- * full-width buttons where it is not. The row never wraps partway, which would
- * rewrap whenever "Copied" replaces a longer label. A row names the width it
- * needs to hold its buttons on one line in `--one-line-from`.
+ * The report's actions, drawn alike on a scan's result and on the report: an
+ * equal grid of buttons, as many to a line as the row's `data-columns` names
+ * wherever the grid's own width holds that many at their longest label, and
+ * two to a line where it does not, the public link's button across a line of
+ * its own and a button left over across another. The grid never rewraps when
+ * "Copied" replaces a longer label, since the width that decides is the
+ * grid's, not the labels'.
  *
  * The groups the buttons come in draw no box of their own inside a row, and
  * whatever a group says under its buttons, a message or a field to copy from,
  * opens on a line of its own under all of them.
  */
+.share {
+  container-type: inline-size;
+  margin-top: var(--space-card);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
@@ -20,20 +26,60 @@
   display: contents;
 }
 
-/* Wider than `--one-line-from`, the basis is below zero and every button grows
-   from nothing to an equal share of the line; narrower, it is far wider than
-   the row and every button takes a line of its own. */
 .row .group > button {
-  flex: 1 1 calc((var(--one-line-from) - 100%) * 999);
+  min-width: 0;
   min-height: 48px;
+  flex: 1 1 calc(50% - 5px);
   border-radius: var(--radius-control);
-  padding: 0 12px;
+  padding: 0 8px;
   font: 600 0.875rem / 1.2 var(--font-sans);
   white-space: nowrap;
+}
+
+.row .group > :global(.button-primary) {
+  flex-basis: 100%;
 }
 
 .row > :not(.group),
 .row .group > :not(button, .group) {
   flex-basis: 100%;
+  grid-column: 1 / -1;
   order: 1;
+}
+
+/* The widths below hold each count of buttons at the longest label it can
+   carry, "Copy AI fix prompt" (127px) for four and "Copy developer brief"
+   (141px) for three, in the site's face, with the button's padding and edges
+   and a few pixels to spare; under the first, a pair does not fit either. */
+@container (width < 21rem) {
+  .row .group > button {
+    flex-basis: 100%;
+  }
+}
+
+@container (min-width: 22rem) {
+  .row[data-columns="2"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 33rem) {
+  .row[data-columns="3"] {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 40rem) {
+  .row[data-columns="4"] {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.note {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: var(--text-label);
 }

@@ -1,5 +1,6 @@
 import { PrivacyChoicesButton } from "@agentify/consent";
 import { SiteDoors as Doors, SiteHeader as Header, SiteMenu as Menu } from "@agentify/ui";
+import type { ReactNode } from "react";
 import { Brand } from "./brand";
 import { usePublicConfig } from "./public-config";
 import styles from "./site-chrome.module.css";
@@ -25,6 +26,21 @@ export function SiteDoors() {
       <Doors surface="scanner" link={SiteLink} visitor={<VisitorDoor />} />
       <Menu surface="scanner" link={SiteLink} visitor={<VisitorDoor />} />
     </div>
+  );
+}
+
+/**
+ * The top of a scan's, a report's and a published result's page: the lockup
+ * and the doors with who is visiting, over a hairline, without the site's
+ * sections the landing pages' header lists. `end` stands in for the doors on
+ * a page that offers none, and `null` leaves the end empty.
+ */
+export function SiteTop({ end }: Readonly<{ end?: ReactNode }>) {
+  return (
+    <header className={styles.top}>
+      <Brand />
+      {end === undefined ? <SiteDoors /> : end}
+    </header>
   );
 }
 

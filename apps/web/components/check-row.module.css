@@ -1,0 +1,86 @@
+/*
+ * The rows of a list of checks sit on the list's own surface, a hairline
+ * between one and the next. A folded row that is open is drawn on a sunken
+ * fill reaching a little past the list's edges, so what it says reads as its
+ * own, and the lines on either side of it give way.
+ */
+.row + .row {
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-block);
+  padding: 14px 0;
+}
+
+.title {
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Muted rather than faint, so it still reads on an open row's sunken fill. */
+.number {
+  margin-right: 10px;
+  color: var(--muted);
+  font: var(--text-label) / 1 var(--font-mono);
+}
+
+summary.line {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary.line::-webkit-details-marker {
+  display: none;
+}
+
+summary.line:hover .title,
+summary.line:focus-visible .title {
+  color: var(--accent);
+}
+
+summary.line:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.detail {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 16px;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+details.row[open] {
+  margin-inline: -16px;
+  border-radius: var(--radius-control);
+  padding-inline: 16px;
+  background: var(--surface-sunken);
+}
+
+details.row[open],
+details.row[open] + .row {
+  border-top-color: transparent;
+}
+
+/* A row whose name is a sentence puts its state under it on a phone, where
+   the sentence would otherwise run in a column a few words wide. */
+@media (max-width: 600px) {
+  .row:not(.numbered) .line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  details.row[open] {
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
+}

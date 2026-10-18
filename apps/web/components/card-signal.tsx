@@ -23,12 +23,14 @@ type SetupResponse = Readonly<{
 
 export function CardSignal({
   scanId,
+  className,
   enabled,
   adapter,
   publishableKey,
   initialSignal,
 }: Readonly<{
   scanId: string;
+  className?: string;
   enabled: boolean;
   adapter: "local" | "stripe";
   publishableKey: string | null;
@@ -204,14 +206,10 @@ export function CardSignal({
   }
 
   return (
-    <section className={styles.panel} id="card-signal">
-      <div className={styles.heading}>
-        <div>
-          <span className="eyebrow">Optional signal · not a checkout</span>
-          <h2>Would you consider buying help later?</h2>
-        </div>
-        <strong>$0 now</strong>
-      </div>
+    <section className={className} id="card-signal">
+      <p className={styles.kicker}>Optional signal, not a checkout</p>
+      <h2>Would you consider buying help later?</h2>
+      <p className={styles.free}>$0 now.</p>
       <ul className={styles.disclosures}>
         {CARD_SIGNAL_DISCLOSURES.map((disclosure) => (
           <li key={disclosure}>{disclosure}</li>

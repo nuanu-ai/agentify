@@ -576,7 +576,7 @@ const watchCardFrames = (page: Page) =>
           stepsDone:
             card.querySelector("ol") !== null &&
             [...card.querySelectorAll("ol > li")].every(
-              (step) => step.lastElementChild?.textContent === "done",
+              (step) => step.lastElementChild?.textContent === "Done",
             ),
         };
         if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);

@@ -2,19 +2,21 @@ import type {
   BrowserObservationFinding,
   BrowserObservationStatusResponse,
 } from "@agentify/scanner-contracts";
+import { Badge, type BadgeTone } from "@agentify/ui";
 import { useEffect, useId, useState } from "react";
 
 import {
   browserObservationImpact,
   browserObservationLabel,
-  browserObservationSummary,
   formatRegistryCode,
   isActionableBrowserFinding,
   isExperimentalBrowserObservation,
   safeEvidenceEntries,
 } from "../lib/browser-observation-ui";
 import styles from "./browser-observations.module.css";
+import { CheckRow } from "./check-row";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
+import layout from "./result-layout.module.css";
 import { StatusBadge } from "./status-badge";
 
 type ViewState = "hidden" | "ready" | "error";
@@ -111,14 +113,11 @@ export function BrowserObservations({
   if (viewState === "hidden") return null;
   if (viewState === "error") {
     return (
-      <section aria-labelledby={titleId} className={styles.panel}>
-        <PanelHeader
-          status="unavailable"
-          titleId={titleId}
-          title="Browser observations are temporarily unavailable"
-        />
+      <section aria-labelledby={titleId}>
+        <PanelHeader status="unavailable" titleId={titleId} />
         <p className={styles.notice}>
-          The 18-check report is unaffected. This is not a failure of your site.
+          Browser observations are temporarily unavailable. The 18-check report is unaffected. This
+          is not a failure of your site.
         </p>
       </section>
     );
@@ -127,20 +126,25 @@ export function BrowserObservations({
 
   const visibleFindings = selectVisibleFindings(data.findings, surface);
   return (
-    <section aria-labelledby={titleId} className={styles.panel}>
-      <PanelHeader status={data.status} titleId={titleId} title={browserObservationSummary(data)} />
-      <div className={styles.meta}>
-        <span>Does not change the score</span>
-        <span>{data.version}</span>
-        <span>
-          {data.pages_assessed} {data.pages_assessed === 1 ? "page" : "pages"}
-        </span>
-      </div>
+    <section aria-labelledby={titleId}>
+      <PanelHeader
+        meta={[
+          "Does not change the score",
+          `${data.pages_assessed} ${data.pages_assessed === 1 ? "page" : "pages"}`,
+          // The full report names the method's version, as its methodology does.
+          ...(surface === "report" ? [data.version] : []),
+        ].join(" · ")}
+        status={data.status}
+        titleId={titleId}
+      />
 
       {data.status === "queued" || data.status === "running" ? (
         <p aria-live="polite" className={styles.notice} role="status">
           This step runs after the report.
         </p>
+      ) : null}
+      {data.status === "partial" ? (
+        <p className={styles.notice}>Browser observations complete with unavailable surfaces.</p>
       ) : null}
       {data.status === "blocked" ? (
         <p className={styles.notice}>
@@ -170,25 +174,31 @@ export function BrowserObservations({
   );
 }
 
+const LIFECYCLE: Record<BrowserObservationStatusResponse["status"], readonly [string, BadgeTone]> =
+  {
+    queued: ["Queued", "progress"],
+    running: ["Running", "progress"],
+    completed: ["Completed", "pass"],
+    partial: ["Partial", "partial"],
+    blocked: ["Blocked", "quiet"],
+    unavailable: ["Unavailable", "quiet"],
+  };
+
 function PanelHeader({
+  meta,
   status,
-  title,
   titleId,
 }: Readonly<{
+  meta?: string;
   status: BrowserObservationStatusResponse["status"];
-  title: string;
   titleId: string;
 }>) {
+  const [word, tone] = LIFECYCLE[status];
   return (
-    <header className={styles.header}>
-      <div>
-        <span className="eyebrow">Browser observations</span>
-        <h2 id={titleId}>{title}</h2>
-      </div>
-      <span className={`${styles.lifecycle} ${styles[status]}`}>
-        <span aria-hidden="true" />
-        {status}
-      </span>
+    <header className={layout.sectionHead}>
+      <h2 id={titleId}>Browser check</h2>
+      <Badge tone={tone}>{word}</Badge>
+      {meta ? <span className={layout.quiet}>{meta}</span> : null}
     </header>
   );
 }
@@ -204,61 +214,51 @@ function BrowserFinding({
 }>) {
   const evidence = safeEvidenceEntries(finding.evidence);
   const actionable = isActionableBrowserFinding(finding);
-  const body = (
-    <div className={styles.findingBody}>
-      <p>{formatRegistryCode(finding.summary_code)}</p>
-      <p>
-        {finding.user_impact_code
-          ? formatRegistryCode(finding.user_impact_code)
-          : browserObservationImpact(finding.id)}
-      </p>
-      {actionable && finding.remediation_code ? (
-        <p>
-          <strong>Fix:</strong> {formatRegistryCode(finding.remediation_code)}
-        </p>
-      ) : null}
-      {surface === "report" && evidence.length > 0 ? (
-        <dl>
-          {evidence.map(({ key, label, value }) => (
-            <div key={key}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
+  // The scan shows its few findings whole; the report folds every one, a
+  // failure open.
+  return (
+    <CheckRow
+      detail={
+        <>
+          <p>{formatRegistryCode(finding.summary_code)}</p>
+          <p>
+            {finding.user_impact_code
+              ? formatRegistryCode(finding.user_impact_code)
+              : browserObservationImpact(finding.id)}
+          </p>
+          {actionable && finding.remediation_code ? (
+            <p>
+              <strong>Fix:</strong> {formatRegistryCode(finding.remediation_code)}
+            </p>
+          ) : null}
+          {surface === "report" && evidence.length > 0 ? (
+            <dl className={styles.evidence}>
+              {evidence.map(({ key, label, value }) => (
+                <div key={key}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {surface === "report" && actionable && fixPrompt !== undefined ? (
+            <div className={styles.copyFix}>
+              <CopyRemediationPrompt label="Copy this fix" prompt={fixPrompt} secondary />
             </div>
-          ))}
-        </dl>
-      ) : null}
-      {surface === "report" && actionable && fixPrompt !== undefined ? (
-        <CopyRemediationPrompt label="Copy this fix" prompt={fixPrompt} secondary />
-      ) : null}
-    </div>
-  );
-
-  if (surface === "scan") {
-    return (
-      <article className={styles.finding}>
-        <div className={styles.findingHeader}>
-          <strong>{browserObservationLabel(finding.id)}</strong>
+          ) : null}
+        </>
+      }
+      fold={surface === "scan" ? undefined : finding.status === "fail" ? "open" : "closed"}
+      state={<StatusBadge status={finding.status} />}
+      title={
+        <>
+          {browserObservationLabel(finding.id)}
           {isExperimentalBrowserObservation(finding.id) ? (
             <span className={styles.experimental}>Experimental</span>
           ) : null}
-          <StatusBadge status={finding.status} />
-        </div>
-        {body}
-      </article>
-    );
-  }
-
-  return (
-    <details className={styles.finding} open={finding.status === "fail"}>
-      <summary className={styles.findingHeader}>
-        <strong>{browserObservationLabel(finding.id)}</strong>
-        {isExperimentalBrowserObservation(finding.id) ? (
-          <span className={styles.experimental}>Experimental</span>
-        ) : null}
-        <StatusBadge status={finding.status} />
-      </summary>
-      {body}
-    </details>
+        </>
+      }
+    />
   );
 }
 

@@ -5,6 +5,7 @@ import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import type { PublicResultPreview } from "./public-result-card";
 import { PublicShareActions } from "./public-share-actions";
 import styles from "./report-action-panel.module.css";
+import { columnsFor } from "./report-actions";
 import row from "./report-actions.module.css";
 
 export function ReportActionPanel({
@@ -54,7 +55,7 @@ export function ReportActionPanel({
   if (!shareShown && !promptEnabled) return null;
 
   return (
-    <section aria-label="Report actions" className={styles.panel}>
+    <div className={row.share}>
       {promptEnabled && intent ? (
         <p aria-live="polite" className={styles.verified}>
           <span aria-hidden="true" className={styles.dot} />
@@ -70,7 +71,10 @@ export function ReportActionPanel({
           )}
         </p>
       ) : null}
-      <div className={`${row.row} ${styles.rows}`}>
+      <div
+        className={row.row}
+        data-columns={columnsFor((shareShown ? 2 : 0) + (promptEnabled ? 3 : 0))}
+      >
         {shareShown ? (
           <PublicShareActions enabled={shareEnabled} preview={preview} scanId={scanId} />
         ) : null}
@@ -88,10 +92,10 @@ export function ReportActionPanel({
         ) : null}
       </div>
       {shareShown ? (
-        <p className={styles.caption}>
+        <p className={row.note}>
           The public link shows only the domain, level, score, and scan date. Prompts stay private.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }

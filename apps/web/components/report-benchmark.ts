@@ -7,13 +7,7 @@ import type { ReportResponse } from "@agentify/scanner-contracts";
  * more. The cohort is the segment the scan was started from; the front page is
  * the owner segment.
  */
-export function ReportBenchmark({
-  benchmark,
-}: Readonly<{ benchmark: ReportResponse["benchmark"] }>) {
+export function benchmarkCaption(benchmark: ReportResponse["benchmark"]): string | null {
   if (!benchmark) return null;
-  return (
-    <p>
-      Segment average {Math.round(benchmark.average_score)} from {benchmark.sample_size} scans
-    </p>
-  );
+  return `Segment average ${Math.round(benchmark.average_score)} from ${benchmark.sample_size} scans`;
 }

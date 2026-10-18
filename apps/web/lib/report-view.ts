@@ -54,9 +54,8 @@ export type ReportView = Readonly<{
   scanId: string;
   host: string;
   level: DiagnosticLevel;
-  levelLabel: string;
   score: number | null;
-  coveragePercent: number;
+  coverage: number;
   benchmark: ReportResponse["benchmark"];
   actions: Readonly<{
     aiPrompt: string;
@@ -66,6 +65,8 @@ export type ReportView = Readonly<{
     shareEnabled: boolean;
   }>;
   robots: readonly Readonly<{ id: number; robots: RobotsReason | null }>[];
+  /** How many checks are in each state, failures first; a state no check is in is left out. */
+  tally: readonly Readonly<{ status: CheckStatus; count: number }>[];
   groups: readonly Readonly<{ title: string; checks: readonly ReportCheckView[] }>[];
   browserObservation: BrowserObservationStatusResponse | null;
   /** The prompt that fixes each actionable browser finding, by its id, where prompts are on. */
@@ -82,6 +83,16 @@ const REPORT_GROUPS: readonly Readonly<{ title: string; ids: readonly number[] }
   { title: "Informational", ids: [16] },
 ];
 
+const TALLY_ORDER: readonly CheckStatus[] = [
+  "fail",
+  "partial",
+  "unavailable",
+  "not_applicable",
+  "pending",
+  "running",
+  "pass",
+];
+
 const SCOPE_NOTES: Readonly<Record<number, string>> = {
   9: "The MCP server-card location is an experimental discovery convention; presence does not verify any tool.",
   10: "A UCP declaration does not verify catalog freshness, checkout rules, or a transaction.",
@@ -90,7 +101,6 @@ const SCOPE_NOTES: Readonly<Record<number, string>> = {
 };
 
 function formatCode(value: string): string {
-  if (value === "callable_ready") return "Callable-ready";
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
@@ -138,9 +148,8 @@ export function reportView(
     scanId: report.scan_id,
     host: report.host,
     level: report.level,
-    levelLabel: formatCode(report.level),
     score: report.score,
-    coveragePercent: Math.round(report.coverage * 100),
+    coverage: report.coverage,
     benchmark: report.benchmark,
     actions: {
       aiPrompt,
@@ -150,6 +159,10 @@ export function reportView(
       shareEnabled: site.shareEnabled,
     },
     robots: report.checks.map(({ id, robots }) => ({ id, robots })),
+    tally: TALLY_ORDER.flatMap((status) => {
+      const count = report.checks.filter((check) => check.status === status).length;
+      return count > 0 ? [{ status, count }] : [];
+    }),
     groups: REPORT_GROUPS.map((group) => ({
       title: group.title,
       checks: report.checks.filter((check) => group.ids.includes(check.id)).map(checkView),

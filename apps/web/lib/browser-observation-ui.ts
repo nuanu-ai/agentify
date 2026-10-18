@@ -1,8 +1,4 @@
-import type {
-  BrowserObservationFinding,
-  BrowserObservationId,
-  BrowserObservationStatusResponse,
-} from "@agentify/scanner-contracts";
+import type { BrowserObservationFinding, BrowserObservationId } from "@agentify/scanner-contracts";
 
 const OBSERVATION_LABELS: Record<BrowserObservationId, string> = {
   rendered_content_delta: "Rendered content availability",
@@ -211,23 +207,6 @@ export function safeEvidenceEntries(
       },
     ];
   });
-}
-
-export function browserObservationSummary(data: BrowserObservationStatusResponse): string {
-  switch (data.status) {
-    case "queued":
-      return "Browser analysis queued";
-    case "running":
-      return "Rendering public pages safely";
-    case "completed":
-      return "Passive browser observations complete";
-    case "partial":
-      return "Browser observations complete with unavailable surfaces";
-    case "blocked":
-      return "Browser rendering stopped at a public access boundary";
-    case "unavailable":
-      return "Browser observations are temporarily unavailable";
-  }
 }
 
 function renderSafeEvidenceValue(value: string | number | boolean | string[]): string | undefined {

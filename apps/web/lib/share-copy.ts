@@ -1,5 +1,7 @@
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 
+import { scanDay } from "./levels";
+
 export type ShareTone = "critical" | "warning" | "neutral" | "positive";
 
 export type ShareCopy = {
@@ -61,8 +63,6 @@ export function shareCopy(snapshot: PublicShareSnapshot): ShareCopy {
   }
 }
 
-const SCAN_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
-
 /** What a published result's page says, from its public snapshot alone. */
 export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean) {
   const copy = shareCopy(snapshot);
@@ -74,7 +74,7 @@ export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean)
       hostLabel: snapshot.host,
       level: snapshot.level,
       score: snapshot.score,
-      scannedLabel: `Scanned ${SCAN_DATE.format(new Date(snapshot.generated_at))}`,
+      scannedLabel: `Scanned ${scanDay(snapshot.generated_at)}`,
     },
   };
 }

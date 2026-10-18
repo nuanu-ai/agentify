@@ -64,7 +64,7 @@
   width: 100%;
   margin-top: 8px;
   color: var(--muted);
-  font: 0.75rem / 1.5 var(--font-mono);
+  font-size: var(--text-label);
 }
 
 .fallback {
@@ -91,10 +91,4 @@
   background: var(--bg);
   color: var(--fg);
   font: 0.75rem / 1.5 var(--font-mono);
-}
-
-@media (max-width: 560px) {
-  .button {
-    width: 100%;
-  }
 }

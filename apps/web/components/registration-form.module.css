@@ -1,39 +1,47 @@
+/* The form draws no box of its own: the panel it stands in is its frame. */
 .form {
   display: grid;
   gap: 14px;
   width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 16px;
-  background: var(--surface);
   color: var(--fg);
 }
 .form > div {
   display: grid;
-  gap: 6px;
+  gap: var(--space-tight);
 }
 .form label {
-  font-size: 0.8125rem;
+  font-size: var(--text-small);
   font-weight: 600;
+}
+.form .optional {
+  color: var(--muted);
+  font-weight: 400;
+}
+.lead {
+  margin-bottom: 4px;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
 }
 .form input:not([type="checkbox"]),
 .form select {
   min-height: 48px;
   width: 100%;
   border: 1.5px solid var(--line-strong);
-  border-radius: 10px;
-  padding: 0 12px;
+  border-radius: var(--radius-control);
+  padding: 0 14px;
   background: var(--surface);
   color: var(--fg);
 }
 /* The box and its sentence: two parts, so the sentence and any link in it
    flow as one line of text beside the box. */
-.check {
+.form .check {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: start;
-  gap: 9px;
-  font-weight: 400 !important;
+  gap: var(--space-control);
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  font-weight: 400;
   line-height: 1.45;
 }
 /* In the words of the label, whatever the block around the form does to its
@@ -49,8 +57,8 @@
     linear-gradient(45deg, transparent 50%, var(--fg-2) 50%),
     linear-gradient(135deg, var(--fg-2) 50%, transparent 50%);
   background-position:
-    calc(100% - 17px) 50%,
-    calc(100% - 12px) 50%;
+    calc(100% - 19px) 50%,
+    calc(100% - 14px) 50%;
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
@@ -62,19 +70,19 @@
 }
 .form .hint {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 .error {
   margin: 0;
   color: var(--fail);
-  font-size: 0.8125rem;
+  font-size: var(--text-small);
 }
+/* On the panel's own fill, which is tinted on a phone: a rule beside it, not a box. */
 .sent {
   width: 100%;
-  border-radius: var(--radius-control);
-  padding: 18px;
-  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 12px;
   color: var(--fg);
 }
 .sent p {
