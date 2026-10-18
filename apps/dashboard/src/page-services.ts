@@ -62,7 +62,7 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment, needsYou } from "./words.js";
+import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -214,10 +214,7 @@ export interface PageServices {
     cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
-    /**
-     * What the frame draws over every page about the merchant's selling: the
-     * count of orders that need them and the banner about their account.
-     */
+    /** The banner the frame draws over every page about the merchant's selling. */
     frame(person: Person): Promise<FrameView>;
   };
   /** The ways a merchant's catalogue reaches Agentify. */
@@ -492,7 +489,7 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 };
 
 /**
- * How long the frame's reads may take: a page is answered whole, so a slow one
+ * How long the frame's read may take: a page is answered whole, so a slow one
  * would hold every page the frame is drawn on.
  */
 const FRAME_WITHIN_MS = 2_000;
@@ -1080,20 +1077,12 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      // Asked beside the page's own reads, each one cut short at the frame's
+      // Asked beside the page's own reads and cut short at the frame's
       // deadline: a read that fails or is slow does not take the page down or
-      // hold it long; the count is said to be unknown and the banner says it
-      // could not check.
+      // hold it long, and the banner says it could not check.
       async frame(person) {
-        const gateway = gatewayAs(person, FRAME_WITHIN_MS);
-        const [open, standing] = await Promise.all([
-          readOf(() => gateway.orders(true)),
-          readOf(() => gateway.standing()),
-        ]);
+        const standing = await readOf(() => gatewayAs(person, FRAME_WITHIN_MS).standing());
         return {
-          needYou: open.read
-            ? open.value.orders.filter((order) => needsYou(order.status)).length
-            : null,
           account: standing.read
             ? accountOf(
                 {

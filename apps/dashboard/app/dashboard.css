@@ -1503,29 +1503,6 @@ h2 {
   background: var(--accent-soft);
 }
 
-/* The orders that need the merchant, at the end of the Orders item, in the
-   colour of what costs them money; a count that could not be read is muted. */
-.need {
-  min-width: 22px;
-  height: 22px;
-  margin-left: auto;
-  padding: 0 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: var(--fail);
-  color: var(--on-accent);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.need.unknown {
-  background: var(--raised);
-  color: var(--fg-2);
-}
-
 .sidebar-help {
   margin: 4px 14px 12px;
   padding: 14px;

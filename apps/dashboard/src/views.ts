@@ -57,8 +57,6 @@ export const momentView = (iso: string): MomentView => {
  * same on every section.
  */
 export interface FrameView {
-  /** The orders that need the merchant; null where they could not be counted, which is not none. */
-  readonly needYou: number | null;
   /** The banner's reasons, empty where the account sells as usual and everything was read. */
   readonly account: readonly AccountNote[];
 }

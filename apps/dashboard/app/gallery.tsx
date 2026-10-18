@@ -161,11 +161,6 @@ interface Drawn {
   /** Under the dashboard's prefix, query and all. */
   readonly path: string;
   readonly mode: SurfaceMode;
-  /**
-   * The orders that need the merchant, on a page about their selling; none
-   * unless the state is about them.
-   */
-  readonly needYou?: number | null;
   /** The banner the layout reads for a page about the merchant's selling; none unless given. */
   readonly account?: readonly AccountNote[];
   readonly loaded?: HydrationState["loaderData"];
@@ -177,8 +172,8 @@ type Told = Omit<GalleryState, "address" | "draw">;
 
 /**
  * The address the gate's loader names, for a page behind the gate, and the
- * count the frame's sidebar reads on a page about a merchant's selling; a page
- * in front of the gate is drawn for nobody, as the server draws it.
+ * banner the merchant's layout reads on a page about their selling; a page in
+ * front of the gate is drawn for nobody, as the server draws it.
  */
 const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] => {
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
@@ -192,7 +187,7 @@ const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] =>
 /** A state at its address, drawn by the route tree as the server answers that address. */
 const at = (
   told: Told,
-  { path, mode, needYou = 0, account = [], loaded, pressed, failed }: Drawn,
+  { path, mode, account = [], loaded, pressed, failed }: Drawn,
 ): GalleryState => ({
   ...told,
   address: `${BASE}${path}`,
@@ -204,7 +199,7 @@ const at = (
         hydrationData={{
           loaderData: {
             root: chromeIn(mode),
-            ...gateAt(path, { needYou, account }),
+            ...gateAt(path, { account }),
             ...loaded,
           },
           ...(pressed === undefined ? {} : { actionData: pressed }),
@@ -978,12 +973,11 @@ const cards = (
   told: Told,
   view: ReturnType<typeof cardsView>,
   mode: SurfaceMode,
-  more: Readonly<{ needYou?: number | null; path?: string; account?: readonly AccountNote[] }> = {},
+  more: Readonly<{ path?: string; account?: readonly AccountNote[] }> = {},
 ): GalleryState =>
   at(told, {
     path: more.path ?? "/cards",
     mode,
-    ...(more.needYou === undefined ? {} : { needYou: more.needYou }),
     ...(more.account === undefined ? {} : { account: more.account }),
     loaded: { "routes/cards": view },
   });
@@ -1107,30 +1101,6 @@ const CARDS: GalleryState[] = [
     },
     cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
     "live",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-refunds-due",
-      screen: "Cards",
-      when: "A merchant with two refunds due opens the dashboard at their cards.",
-      cause:
-        "Two of the merchant's orders are refund due, so Orders in the sidebar carries the count on every page; goods delivered and not paid are not counted.",
-    },
-    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: 2 },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-count-unknown",
-      screen: "Cards",
-      when: "A merchant opens Cards while the orders could not be read in time.",
-      cause:
-        "The count beside Orders could not be read, so the sidebar marks it as unknown rather than drawing none.",
-    },
-    cardsView(seenBy("live"), CATALOGUE, ORIGIN.live),
-    "live",
-    { needYou: null },
   ),
   cards(
     {
@@ -1375,7 +1345,6 @@ const orders = (
   at(told, {
     path: open ? "/orders?open=true" : "/orders",
     mode,
-    needYou: view.needsYou.length,
     account,
     loaded: { "routes/orders": view },
   });

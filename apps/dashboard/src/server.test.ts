@@ -3884,46 +3884,6 @@ describe("the banner about the account", () => {
     expect(keys.status).toBe(200);
     expect(readable(keys.html)).toContain("Your account could not be checked");
   });
-});
-
-describe("the count of orders that need the merchant", () => {
-  /** The sidebar's sections as a person reads them. */
-  const sidebarOf = (html: string): string =>
-    readable(/<nav class="tabs"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? "");
-
-  it("counts a refund due beside Orders on every screen, and not goods delivered and not paid", async () => {
-    const { browser, gateway, harnessed } = await started();
-    const esim = await publish(gateway, esimCard);
-    const room = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, esim, {
-      onOrder: () => ({ refused: { code: "out_of_stock", message: "no eSIMs left" } }),
-    });
-    harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
-    await buyOverHttp(harnessed, gateway, room, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
-    // The fixture took: one of each.
-    const listed = readable((await browser.get("/orders")).html);
-    expect(listed).toContain("Refund due");
-    expect(listed).toContain("Delivered, not paid");
-
-    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
-      const sidebar = sidebarOf((await browser.get(path)).html);
-      expect(sidebar, path).toContain("1 needs you");
-      expect(sidebar, path).not.toMatch(/2 need you|could not count/);
-    }
-  });
-
-  it("draws no count while nothing needs the merchant", async () => {
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-
-    const sidebar = sidebarOf((await browser.signIn()).html);
-
-    expect(sidebar).toContain("Orders");
-    expect(sidebar).not.toMatch(/need|could not count/);
-  });
 
   it("is read beside the page's own data, never after it", async () => {
     // Each read waits until the other has been asked for: read one after the
@@ -3941,20 +3901,17 @@ describe("the count of orders that need the merchant", () => {
       return { done, awaited };
     };
     const cardsAsked = asked();
-    const countAsked = asked();
+    const standingAsked = asked();
     const { browser, gateway } = await started({
       client: (real) => ({
         ...real,
         cards: async () => {
           cardsAsked.done();
-          return (await countAsked.awaited()) ? await real.cards() : lateAnswer(2_000);
+          return (await standingAsked.awaited()) ? await real.cards() : lateAnswer(2_000);
         },
-        orders: async (open) => {
-          if (open) {
-            countAsked.done();
-            if (!(await cardsAsked.awaited())) return lateAnswer(2_000);
-          }
-          return await real.orders(open);
+        standing: async () => {
+          standingAsked.done();
+          return (await cardsAsked.awaited()) ? await real.standing() : lateAnswer(2_000);
         },
       }),
     });
@@ -3964,22 +3921,7 @@ describe("the count of orders that need the merchant", () => {
 
     expect(cards.status).toBe(200);
     expect(readable(cards.html)).toContain("A room for the night");
-    expect(sidebarOf(cards.html)).not.toContain("could not count");
-  });
-
-  it("says it could not count where the orders do not answer, and still draws the page", async () => {
-    const { browser, gateway } = await started({
-      client: (real) => ({
-        ...real,
-        orders: async (open) => (open ? lateAnswer(10) : await real.orders(open)),
-      }),
-    });
-    await publish(gateway, roomCard);
-
-    const cards = await browser.signIn();
-
-    expect(cards.status).toBe(200);
-    expect(sidebarOf(cards.html)).toContain("could not count the orders that need you");
+    expect(readable(cards.html)).not.toContain("could not be checked");
   });
 });
 
