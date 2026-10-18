@@ -119,9 +119,15 @@ html {
   background: var(--bg);
 }
 
+/* A full-height column, so the foot of a page shorter than the window sits on
+   the window's bottom edge (`margin-top: auto` on the foot) rather than above
+   an empty band. */
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
@@ -873,7 +879,8 @@ p {
 }
 
 /* The ink band at the foot of a page. `margin-top: auto` holds it against the
-   bottom of a short page wherever the page is a full-height flex column. */
+   bottom of a short page, the body or the page's own frame being a full-height
+   flex column. */
 .foot {
   margin-top: auto;
   background: var(--fg);
