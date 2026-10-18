@@ -532,6 +532,18 @@ const START_SELLING = "/cards?selling=resume";
 const switchOf = (itemId: string, way: "pause" | "resume"): string =>
   `/cards?${new URLSearchParams({ [way]: itemId })}`;
 
+/** The reasons the banner over a page names, in its order. */
+const reasonsIn = (html: string): readonly string[] =>
+  [...html.matchAll(/data-reason="([^"]+)"/g)].map(([, reason = ""]) => reason);
+
+/** Each card's row on the cards screen, as markup. */
+const rowsIn = (html: string): readonly string[] =>
+  [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(([, row = ""]) => row);
+
+/** The switches drawn for one card each. */
+const cardSwitchesIn = (html: string) =>
+  formsIn(html).filter(({ action }) => /^\/cards\?(pause|resume)=/.test(action));
+
 const publish = async (gateway: Served, card: Card): Promise<string> => {
   const answered = await gateway.call("POST", "/v0/catalog/publish", {
     body: card,
@@ -3241,9 +3253,24 @@ describe("the cards screen", () => {
     expect(text).toContain("Immediate");
     expect(text).toContain("eSIM Europe, 5 GB for 30 days");
     expect(text).toContain("8.00 USD");
-    expect(text).toContain("Later");
-    expect(text).toContain("Delivery within 4 hours");
+    expect(text).toContain("Later, within 4 hours");
+    expect(text).toContain("Price on the card since");
     expect(text).toContain("On sale");
+  });
+
+  it("puts the switch for all selling at the end of the title bar, over the page", async () => {
+    // A merchant on a phone who has to stop selling reaches the switch
+    // without scrolling past every card first.
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+
+    const html = (await browser.signIn()).html;
+    const title = html.indexOf('class="top-title"');
+    const control = html.indexOf(`action="${STOP_SELLING}"`);
+
+    expect(title).toBeGreaterThan(-1);
+    expect(control).toBeGreaterThan(title);
+    expect(control).toBeLessThan(html.indexOf("<main"));
   });
 
   it("answers a search in the address with the cards it finds, and says what found none", async () => {
@@ -3276,7 +3303,7 @@ describe("the cards screen", () => {
     const text = readable((await browser.signIn()).html);
 
     expect(text).toContain("Price asked at purchase");
-    expect(text).toContain("delivery within 1 hour");
+    expect(text).toContain("Later, within 1 hour");
   });
 
   it("says so plainly when a merchant has published nothing", async () => {
@@ -3287,6 +3314,20 @@ describe("the cards screen", () => {
 
     expect(text).toContain("haven't published any cards yet");
     expect(screen.html).toContain('href="/docs/quickstart"');
+  });
+
+  it("says an empty catalogue in the same sentence whatever the account lacks, which the banner says", async () => {
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+
+    const html = (await running.browser.get("/cards")).html;
+    const banner = html.indexOf('class="account-banner"');
+    const underIt = readable(html.slice(html.indexOf("</section>", banner)));
+
+    expect(reasonsIn(html)).toContain("no_seller_name");
+    expect(underIt).toContain("haven't published any cards yet");
+    expect(underIt).not.toMatch(/seller name|choose/i);
   });
 
   it("puts a merchant's own text on the page as text, whatever is in it", async () => {
@@ -3352,16 +3393,18 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
-    const stopped = readable((await browser.get("/cards")).html);
+    const stopped = (await browser.get("/cards")).html;
 
-    expect(stopped).toContain("All selling is stopped");
-    expect(stopped).toContain("Resume all sales");
+    expect(reasonsIn(stopped)).toStrictEqual(["paused"]);
+    expect(readable(stopped)).toContain("Resume all sales");
     expect(await purchasable(gateway, itemId)).toBe(false);
 
     await browser.post(START_SELLING);
+    const reopened = (await browser.get("/cards")).html;
 
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
+    expect(readable(reopened)).toContain("Pause all sales");
+    expect(reasonsIn(reopened)).toStrictEqual([]);
   });
 
   it("does not promise a merchant that the orders they accepted get fulfilled", async () => {
@@ -3377,9 +3420,10 @@ describe("the cards screen", () => {
     expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
   });
 
-  it("tells a merchant which switch is holding a card off sale", async () => {
+  it("says once, over the cards, which switch holds them, and offers none on a card it holds", async () => {
     // With everything stopped, an unpaused card reads paused and resuming it
-    // changes nothing, so the screen says which switch holds it.
+    // would change nothing, so the banner says which switch holds the cards
+    // and the card's row says only that it is off sale.
     const { browser, gateway } = await started();
     await publish(gateway, roomCard);
     await browser.signIn();
@@ -3387,8 +3431,12 @@ describe("the cards screen", () => {
     await browser.post(STOP_SELLING);
     const html = (await browser.get("/cards")).html;
 
-    expect(readable(html)).toContain("All selling is stopped");
-    expect(html).not.toContain(">Resume<");
+    const [row = ""] = rowsIn(html);
+
+    expect(reasonsIn(html)).toStrictEqual(["paused"]);
+    expect(readable(row)).toContain("Off sale");
+    expect(readable(row)).not.toMatch(/selling|sales/i);
+    expect(cardSwitchesIn(html)).toStrictEqual([]);
   });
 
   it("leaves a card paused when it is published again", async () => {
@@ -3533,12 +3581,12 @@ describe("the cards screen", () => {
 });
 
 describe("a card held off sale by what its merchant lacks", () => {
-  // The control beside a card names what holds it off sale in the gateway's
-  // terms. A card nobody paused, of a merchant who is selling, reads paused
-  // only because the merchant lacks something the gateway asks of every
-  // merchant; "All selling is stopped" there would send them looking for a
-  // switch nobody pressed. Settings are named and linked; the operator's
-  // approval is said to be still to come exactly where it is asked for.
+  // A card nobody paused, of a merchant who is selling, reads paused only
+  // because the merchant lacks something the gateway asks of every merchant.
+  // The banner over the cards names each thing the gateway finds missing, and
+  // nothing else: a reason it did not find would send a merchant looking for
+  // something nobody asked of them. The card's own row says it is off sale and
+  // offers no switch, since neither switch would put it on sale.
   //
   // Each merchant is registered by the dashboard's press, never approved, and
   // its card written straight into the gateway's store, since publishing would
@@ -3572,11 +3620,12 @@ describe("a card held off sale by what its merchant lacks", () => {
     return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
   };
 
-  /** In the gateway's words for the same things. */
-  const named = (control: string): readonly string[] => [
-    ...(/\bname\b/i.test(control) ? [MERCHANT_FINDINGS.NO_SELLER_NAME] : []),
-    ...(/wallet/i.test(control) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
-  ];
+  /** The banner's reason for each thing the gateway finds missing. */
+  const SAID_AS: Readonly<Record<string, string>> = {
+    [MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL]: "not_approved",
+    [MERCHANT_FINDINGS.NO_SELLER_NAME]: "no_seller_name",
+    [MERCHANT_FINDINGS.NO_PAYOUT_WALLET]: "no_payout_wallet",
+  };
 
   for (const channel of Object.keys(CHANNELS) as Channel[]) {
     for (const [hasName, hasWallet] of [
@@ -3624,26 +3673,26 @@ describe("a card held off sale by what its merchant lacks", () => {
         await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
 
         const screen = await running.browser.get("/cards");
-        const cell =
-          /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
-        const control = readable(cell);
+        const [row = ""] = rowsIn(screen.html);
 
         expect(screen.status).toBe(200);
         if (door.length === 0) {
-          // Nothing stands in the way, so the control is the merchant's own
-          // switch.
-          expect(control).toBe("Pause");
+          // Nothing stands in the way, so the banner says nothing and the
+          // control is the merchant's own switch.
+          expect(reasonsIn(screen.html)).toStrictEqual([]);
+          expect(cardSwitchesIn(row).map(({ presses }) => presses[0]?.label)).toStrictEqual([
+            "Pause",
+          ]);
           return;
         }
-        expect(control).not.toMatch(/all selling is stopped/i);
-        const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-        expect(named(control), control).toStrictEqual(settable);
-        expect(cell.includes('href="/settings"'), cell).toBe(settable.length > 0);
-        const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-        expect(/approv/i.test(control), control).toBe(approvalAsked);
-        if (approvalAsked) {
-          expect(control).toMatch(/not approved your merchant/i);
-        }
+        expect([...reasonsIn(screen.html)].sort()).toStrictEqual(
+          door.map((code) => SAID_AS[code]).sort(),
+        );
+        expect(readable(row)).toContain("Off sale");
+        // What the account lacks is said once, over the cards, not again in
+        // every row.
+        expect(readable(row)).not.toMatch(/settings|approv|\bname\b|wallet/i);
+        expect(cardSwitchesIn(row)).toStrictEqual([]);
       });
     }
   }
@@ -3685,12 +3734,11 @@ describe("a card held off sale by what its merchant lacks", () => {
 
     const settings = readable((await running.browser.get("/settings")).html);
     const screen = await running.browser.get("/cards");
-    const cell =
-      /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
 
     expect(settings).toMatch(/approved your merchant/);
     expect(settings).not.toMatch(/not approved your merchant/);
-    expect(readable(cell)).toBe("Pause");
+    expect(reasonsIn(screen.html)).toStrictEqual([]);
+    expect(readable(rowsIn(screen.html)[0] ?? "")).toContain("On sale");
   });
 });
 
@@ -3716,6 +3764,23 @@ describe("a merchant who has left", () => {
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
     expect(text).toContain("closed with you");
+  });
+
+  it("is offered no switch on a card, not even one they paused before they left", async () => {
+    // A card's own switch puts nothing back on sale once its merchant has
+    // left, so a Resume beside it would promise what nothing here does.
+    const { browser, gateway, harnessed } = await started();
+    const room = await publish(gateway, roomCard);
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    await browser.post(switchOf(room, "pause"));
+    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
+
+    const page = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(page)).toStrictEqual(["left"]);
+    expect(readable(page)).toContain("Paused by you");
+    expect(cardSwitchesIn(page)).toStrictEqual([]);
   });
 
   it("is told what the gateway said, not that the gateway is down", async () => {

@@ -412,6 +412,25 @@ describe("the state of each card", () => {
     expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
   });
 
+  it("says beside a card the shop published that it is off sale while the code sells", () => {
+    // The banner names no reason for it: only this card's row can say which
+    // of the merchant's cards came from the shop.
+    const list = listOf("open", { selling: "paused", paused: false });
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(SEEN_BY, list, "https://agentify.ad", false, {
+          through: "api",
+          offSale: ["itm_0"],
+        })}
+        base=""
+      />
+    ));
+    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+
+    expect(readable(row)).toMatch(/off sale while you sell through your own code/i);
+    expect(row).not.toContain("<form");
+  });
+
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
     // merchant to a switch that changes nothing.
@@ -421,7 +440,60 @@ describe("the state of each card", () => {
   });
 });
 
+describe("how a card is delivered", () => {
+  const entry = cards.cards[0];
+  if (entry === undefined) throw new Error("the example catalogue has no card");
+  const deliveryOf = (seconds: number) =>
+    cardsView(
+      SEEN_BY,
+      MerchantCardListSchema.parse({
+        selling: "open",
+        cards: [
+          {
+            ...entry,
+            card: { ...entry.card, fulfillment: "async", fulfill_deadline_seconds: seconds },
+          },
+        ],
+      }),
+      "https://agentify.ad",
+    ).listing.rows[0]?.delivery;
+
+  it("says the window the goods are owed within beside the word for how they come", () => {
+    // The window is a promise the merchant answers for: an order still without
+    // goods at its end owes the buyer their money back.
+    expect(deliveryOf(14_400)).toBe("Later, within 4 hours");
+    expect(deliveryOf(3_600)).toBe("Later, within 1 hour");
+    expect(deliveryOf(900)).toBe("Later, within 15 minutes");
+    expect(deliveryOf(5_400)).toBe("Later, within 90 minutes");
+    expect(deliveryOf(61)).toBe("Later, within 61 seconds");
+  });
+
+  it("names no window for a card that names none", () => {
+    const [row] = cardsView(SEEN_BY, cards, "https://agentify.ad").listing.rows;
+
+    expect(row?.delivery).toBe("Immediate");
+  });
+});
+
 describe("a card's row on a phone", () => {
+  it("says on the row's own line that a price is asked at purchase, and leaves nothing out", () => {
+    // The price shown may not be the one paid, so a phone does not hide that
+    // behind a press.
+    const entry = cards.cards[0];
+    if (entry === undefined) throw new Error("the example catalogue has no card");
+    const asked = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
+    });
+    const html = served(() => (
+      <CardsScreen view={cardsView(SEEN_BY, asked, "https://agentify.ad")} base="" />
+    ));
+    const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+
+    expect(readable(fact)).toContain("price asked at purchase");
+    expect(html).not.toContain('class="cell-more"');
+  });
+
   it("keeps what the narrow row leaves out in the row's opened part", () => {
     // The moment the price holds from is drawn under the title on a wide box
     // only; on a phone it is one press away, never gone.
