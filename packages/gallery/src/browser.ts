@@ -76,11 +76,22 @@ export async function drawnInBrowser(
   // part into view shows nothing different for it in a still picture.
   const unscrollable = typeof Element.prototype.scrollIntoView !== "function";
   if (unscrollable) Element.prototype.scrollIntoView = () => {};
+  // Nor does it draw a box for anything, and a part that asks whether it is
+  // drawn, as the header's menu asks before it stays open, is told it is, as
+  // it is on the device the state is drawn for. What such a part goes on to
+  // measure still reads zero, as every box here does.
+  const drawsNoBoxes = document.body.getClientRects().length === 0;
+  const boxesOf = Element.prototype.getClientRects;
+  if (drawsNoBoxes) {
+    Element.prototype.getClientRects = function (this: Element) {
+      return [this.getBoundingClientRect()] as unknown as DOMRectList;
+    };
+  }
   const acting = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
   const wasActing = acting.IS_REACT_ACT_ENVIRONMENT;
   acting.IS_REACT_ACT_ENVIRONMENT = true;
 
-  const root = react.createRoot(container);
+  let root: ReturnType<BrowserReact["createRoot"]> | undefined;
   const shown = async (words: string): Promise<void> => {
     const by = Date.now() + SETTLES_WITHIN_MS;
     while (
@@ -101,7 +112,9 @@ export async function drawnInBrowser(
     }
   };
   try {
-    await react.act(async () => root.render(state.draw()));
+    const drawing = react.createRoot(container);
+    root = drawing;
+    await react.act(async () => drawing.render(state.draw()));
     for (const step of scene.steps ?? []) {
       await shown(step.shows);
       await react.act(async () => step.does(document));
@@ -114,9 +127,11 @@ export async function drawnInBrowser(
       ? container.innerHTML
       : `<title>${title.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</title>${container.innerHTML}`;
   } finally {
-    await react.act(async () => root.unmount());
+    const drawn = root;
+    if (drawn !== undefined) await react.act(async () => drawn.unmount());
     globalThis.fetch = fetched;
     if (unscrollable) Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    if (drawsNoBoxes) Element.prototype.getClientRects = boxesOf;
     acting.IS_REACT_ACT_ENVIRONMENT = wasActing;
     sessionStorage.clear();
     localStorage.clear();
