@@ -33,10 +33,11 @@
   color: var(--accent);
 }
 
+/* On the card's own surface, so it stands out of an open row's sunken fill. */
 .evidence {
   border-radius: var(--radius-control);
   padding: 12px;
-  background: var(--bg);
+  background: var(--surface);
   font: var(--text-caption) / 1.5 var(--font-mono);
 }
 

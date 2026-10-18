@@ -251,4 +251,10 @@
   .aside > .tinted {
     background: var(--accent-soft);
   }
+
+  /* Under its heading rather than pushed to the far end of a line of its own. */
+  .sectionHead > .quiet {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
 }
