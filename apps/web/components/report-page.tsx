@@ -114,7 +114,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
               />
             ) : null}
           </div>
-          <aside className={layout.aside}>
+          <div className={layout.aside}>
             <section className={`${layout.panel} ${layout.tinted}`}>
               <h2>Selling to agents</h2>
               <p className={layout.lead}>
@@ -134,7 +134,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
                 scanId={view.scanId}
               />
             ) : null}
-          </aside>
+          </div>
         </div>
       </main>
       <nav aria-label="Your data" className={layout.foot}>

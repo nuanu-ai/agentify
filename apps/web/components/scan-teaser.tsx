@@ -125,7 +125,7 @@ export function ScanTeaser({
           </section>
         ) : null}
       </div>
-      <aside className={layout.aside}>
+      <div className={layout.aside}>
         <section className={`${layout.panel} ${layout.tinted} ${styles.unlock}`} id="registration">
           <h2>
             {hidden > 0
@@ -138,7 +138,7 @@ export function ScanTeaser({
             <p className={layout.lead}>Email verification is not enabled in this deployment yet.</p>
           )}
         </section>
-      </aside>
+      </div>
       <div className={layout.after}>{browser}</div>
     </div>
   );
