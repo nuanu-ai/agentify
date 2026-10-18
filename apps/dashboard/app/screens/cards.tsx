@@ -132,7 +132,13 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               </Cell>
               <Cell at="amount">{row.price}</Cell>
               <Cell at="fact">
-                {row.delivery}
+                {row.delivery.says}
+                {row.delivery.byDefault === null ? null : (
+                  <>
+                    {" "}
+                    <a href={row.delivery.byDefault.href}>{row.delivery.byDefault.words}</a>
+                  </>
+                )}
                 {"asked" in row.priced ? (
                   <span className={styles.narrowOnly}> · price asked at purchase</span>
                 ) : null}

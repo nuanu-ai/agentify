@@ -84,31 +84,54 @@ const cardPrice = (entry: MerchantCard): CardPrice =>
 /** A span of seconds in the largest whole unit that says it exactly. */
 const spanOf = (seconds: number): string => {
   const [count, unit] =
-    seconds % 3600 === 0
-      ? [seconds / 3600, "hour"]
-      : seconds % 60 === 0
-        ? [seconds / 60, "minute"]
-        : [seconds, "second"];
+    seconds % 86_400 === 0
+      ? [seconds / 86_400, "day"]
+      : seconds % 3600 === 0
+        ? [seconds / 3600, "hour"]
+        : seconds % 60 === 0
+          ? [seconds / 60, "minute"]
+          : [seconds, "second"];
   return `${count} ${unit}${count === 1 ? "" : "s"}`;
 };
 
 /**
- * How the goods come, with the window they are owed within where the card names
- * one: a promise the merchant answers for, since an order still without goods
- * at its end owes the buyer their money back.
+ * How the goods come and the window they are owed within: a promise the
+ * merchant answers for, since an order still without goods at its end owes
+ * the buyer their money back. A card whose goods come later and that names no
+ * window is held to Agentify's own, which the merchant's list of cards does
+ * not carry, so the words say whose window it is and the link where it is
+ * written, rather than reading as no window at all. A parcel's window is the
+ * time to hand it to a carrier, not the time it arrives.
  */
-const deliveryOf = (card: MerchantCard["card"]): string => {
+type Delivery = Readonly<{ says: string; byDefault: Rest | null }>;
+
+const DEFAULT_WINDOW: Rest = {
+  href: "/docs/cards#goods-that-leave-later-than-the-answer",
+  words: "Agentify's default window",
+};
+
+const deliveryOf = (card: MerchantCard["card"]): Delivery => {
   const word = FULFILLMENT_WORDS[card.fulfillment];
-  const seconds = card.fulfill_deadline_seconds;
-  return seconds === undefined ? word : `${word}, within ${spanOf(seconds)}`;
+  if (card.ship_within_seconds !== undefined) {
+    return {
+      says: `${word}, to a carrier within ${spanOf(card.ship_within_seconds)}`,
+      byDefault: null,
+    };
+  }
+  if (card.fulfill_deadline_seconds !== undefined) {
+    return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
+  }
+  return card.fulfillment === "async" || card.fulfillment === "confirm"
+    ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
+    : { says: word, byDefault: null };
 };
 
 /**
  * What stands in a card's last column: the card's own switch, or nothing where
- * what holds the card holds every card of the account, which the banner over
- * the page says once. A card the shop published while the merchant's code
- * sells is the one with words of its own: the banner names no reason for it,
- * and only its row can say which of the cards came from the shop.
+ * no switch here would put the card on sale. A card the shop published while
+ * the merchant's code sells is the one with words of its own: the banner names
+ * no reason for it, and only its row can say which of the cards came from the
+ * shop.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
@@ -125,26 +148,26 @@ export interface CardsIntegration {
 }
 
 /**
- * A card published by the integration not in use is off sale whatever its own
- * switch says, so it is offered no switch: neither would put it on sale. Nor is
- * a card of a merchant who has left, since nothing here puts it back on sale.
- * A card the merchant paused keeps its Resume while all sales are paused or the
- * account lacks something, so it is on sale again once the account is.
+ * A merchant who has left sells through nothing, so their cards are offered
+ * no switch and no reason. A card published by the integration not in use is
+ * off sale whatever its own switch says, so it is offered none either. Every
+ * other card keeps its own switch whatever holds the whole account: a card
+ * paused while all sales are paused or the account lacks something stays
+ * paused once the account sells again, and a Resume pressed meanwhile can be
+ * taken back.
  */
 const cardControl = (
   entry: MerchantCard,
   selling: MerchantCardList["selling"],
   integration: CardsIntegration,
 ): CardControl => {
+  if (selling === "departed") return { kind: "none" };
   if (integration.offSale.includes(entry.id)) {
     return integration.through === "woocommerce"
       ? { kind: "none" }
       : { kind: "reason", text: "Off sale while you sell through your own code" };
   }
-  if (selling === "departed") return { kind: "none" };
-  if (entry.paused) return { kind: "switch", verb: "resume" };
-  if (entry.selling === "open") return { kind: "switch", verb: "pause" };
-  return { kind: "none" };
+  return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
 };
 
 /**
@@ -181,7 +204,7 @@ interface CardRow {
   readonly buy: string;
   readonly itemId: string;
   readonly price: string;
-  readonly delivery: string;
+  readonly delivery: Delivery;
   readonly state: Word;
   readonly control: CardControl;
 }
