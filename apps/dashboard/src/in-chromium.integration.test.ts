@@ -250,7 +250,7 @@ describe("a press answered on its own page", () => {
     await page.context().close();
   });
 
-  it("keeps the search, the segment and the page pressed on, before the cards arrive and after", async () => {
+  it("keeps the segment marked while the cards arrive, and the search and the page once they have", async () => {
     // Suites enough to fill more than one page of the cards on sale.
     for (let suite = 1; suite <= 55; suite += 1) {
       const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
