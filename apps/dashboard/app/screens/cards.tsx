@@ -86,7 +86,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <p>{empty.says}</p>
         <div className={styles.ways}>
           <a className="button button-primary" href="/docs/quickstart">
-            Publish your first card through the SDK
+            Publish a card through the SDK
           </a>
           {empty.woo ? (
             <a className="button button-secondary" href={`${base}/woocommerce`}>
@@ -112,7 +112,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
       ) : (
         <List
           label="Product cards"
-          columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 14rem)" : "6.5rem"}`}
+          columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
           head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
         >
           {listing.rows.map((row) => (

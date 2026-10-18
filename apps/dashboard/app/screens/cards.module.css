@@ -1,10 +1,22 @@
-/* The ways to a first card, under the sentence that says there is none yet. */
+/* The ways to a first card, under the sentence that says there is none yet:
+   buttons, not the underlined links of an empty list, one under the other
+   where the list's box is narrow. */
 .ways {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
   margin-top: 16px;
+}
+
+.ways > :global(.button) {
+  text-decoration: none;
+}
+
+@container (max-width: 560px) {
+  .ways {
+    flex-direction: column;
+  }
 }
 
 /* What a narrow row says on its own line that a wide row says under the
