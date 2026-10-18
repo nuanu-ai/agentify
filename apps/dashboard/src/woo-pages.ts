@@ -339,7 +339,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // through a shop with none connected, and the page offers the way back.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { problem: switched.why, typed }, 409);
+        return await drawTheShop(person, { problem: switched, typed }, 409);
       }
 
       // Written only now: a Connect nobody could complete is a row nobody comes
@@ -496,7 +496,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // shop is already here.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { switching: switched.why }, 409);
+        return await drawTheShop(person, { switching: switched }, 409);
       }
       noted(person, "switched to selling through their connected WooCommerce shop");
       return { kind: "redirect", location: `${base}/woocommerce` };
@@ -509,7 +509,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // off the shop, and only while it is connected.
       const switched = await gatewayAs(person).sellThrough("api");
       if (!switched.ok) {
-        return await drawTheShop(person, { leaving: switched.why }, 409);
+        return await drawTheShop(person, { leaving: switched }, 409);
       }
       const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");

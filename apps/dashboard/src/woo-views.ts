@@ -113,6 +113,35 @@ interface BeforeImporting {
   readonly what: string;
 }
 
+/** How many of the orders a refusal names are drawn before the rest are counted. */
+const ORDERS_DRAWN = 5;
+
+/**
+ * Why a press was refused, as the screen draws it: the sentence, then the
+ * orders it names, which the merchant carries into their own system, each
+ * drawn short with a button that copies it whole. A long list is cut, and how
+ * many were left out is said.
+ */
+export interface Refusal {
+  readonly says: string;
+  readonly orders: readonly string[];
+  readonly more: number;
+}
+
+/** A refusal as a press's answer hands it over: a sentence, or a refusal naming its orders. */
+type Said = string | Readonly<{ why: string; orders?: readonly string[] }>;
+
+const refusalOf = (said: Said | undefined): Refusal | null => {
+  if (said === undefined) return null;
+  if (typeof said === "string") return { says: said, orders: [], more: 0 };
+  const orders = said.orders ?? [];
+  return {
+    says: said.why,
+    orders: orders.slice(0, ORDERS_DRAWN),
+    more: Math.max(0, orders.length - ORDERS_DRAWN),
+  };
+};
+
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
   readonly shopUrl: string;
@@ -130,7 +159,7 @@ export interface ConnectionView {
    */
   readonly offerSwitch: boolean;
   /** Why selling through this shop, or Import, was just refused. */
-  readonly switching: string | null;
+  readonly switching: Refusal | null;
   readonly productsAtMost: number;
   readonly beforeImporting: BeforeImporting | null;
 }
@@ -165,9 +194,9 @@ export interface WooShopView {
    * Why the press was refused: drawn under Connect, or, with a shop connected,
    * under the shop, since it is then about what the shop answered.
    */
-  readonly problem: string | null;
+  readonly problem: Refusal | null;
   /** Why going back to the merchant's own code was refused, beside the control that asked. */
-  readonly leaving: string | null;
+  readonly leaving: Refusal | null;
 }
 
 /** What our rows and the gateway said when the screen was drawn. */
@@ -179,9 +208,9 @@ export interface ShopRead {
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
 export interface ShopAnswer {
-  readonly problem?: string;
-  readonly leaving?: string;
-  readonly switching?: string;
+  readonly problem?: Said;
+  readonly leaving?: Said;
+  readonly switching?: Said;
   readonly typed?: string;
   readonly cameBack?: boolean;
   /** Where the screen answers a press of Import: what was unset at that moment. */
@@ -203,7 +232,7 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
             connectedAt: momentView(state.shop.connectedAt.toISOString()),
             granted: state.shop.permissions === "read_write" ? null : state.shop.permissions,
             offerSwitch: read.through === "api",
-            switching: answer.switching ?? null,
+            switching: refusalOf(answer.switching),
             productsAtMost: PRODUCTS_AT_MOST,
             beforeImporting:
               unset.length === 0
@@ -220,8 +249,8 @@ export const wooShopView = (viewer: Viewer, read: ShopRead, answer: ShopAnswer):
       answer.typed ??
       (state.kind === "waiting" || state.kind === "unanswered" ? state.shopUrl : ""),
     connectSwitches: read.through === "api",
-    problem: answer.problem ?? null,
-    leaving: answer.leaving ?? null,
+    problem: refusalOf(answer.problem),
+    leaving: refusalOf(answer.leaving),
   };
 };
 

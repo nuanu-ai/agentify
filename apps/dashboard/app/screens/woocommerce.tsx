@@ -1,9 +1,16 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
-import type { ConnectionView, NoKeysYet, WooImportView, WooShopView } from "../../src/woo-views.js";
+import type {
+  ConnectionView,
+  NoKeysYet,
+  Refusal,
+  WooImportView,
+  WooShopView,
+} from "../../src/woo-views.js";
 import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
+import { Ident } from "../components/copy.js";
 import { Frame } from "../components/frame.js";
 import { GatePage } from "../components/gate-page.js";
 import { Cell, Group, List, Row } from "../components/list.js";
@@ -17,8 +24,28 @@ const GUIDE = "/docs/woocommerce";
 
 const CONNECTED: WordView = { text: "Connected", tone: "ok" };
 
-const Problem = ({ said }: Readonly<{ said: string | null }>) =>
-  said === null ? null : <p className="problem">{said}</p>;
+/** A refusal beside the control that was pressed, with each order it names to be copied. */
+function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }>) {
+  if (said === null) return null;
+  if (said.orders.length === 0) return <p className="problem">{said.says}</p>;
+  return (
+    <div className={styles.refusal}>
+      <p className="problem">{said.says}</p>
+      <ul className={styles.orders} aria-label="The orders still waiting">
+        {said.orders.map((order) => (
+          <li key={order}>
+            <Ident value={order} what="order ID" />
+          </li>
+        ))}
+        {said.more === 0 ? null : (
+          <li>
+            and {said.more} more on <a href={`${base}/orders`}>Orders</a>
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+}
 
 const Exclamation = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -79,7 +106,7 @@ function NoKeysYetNote({ said, base }: Readonly<{ said: NoKeysYet; base: string 
   );
 }
 
-function WayBack({ leaving }: Readonly<{ leaving: string | null }>) {
+function WayBack({ leaving, base }: Readonly<{ leaving: Refusal | null; base: string }>) {
   return (
     <FormPanel
       action="/woocommerce/disconnect"
@@ -95,7 +122,7 @@ function WayBack({ leaving }: Readonly<{ leaving: string | null }>) {
           <Button variant="secondary" pending={pending}>
             Sell through your own code
           </Button>
-          <Problem said={leaving} />
+          <Problem said={leaving} base={base} />
         </>
       )}
     </FormPanel>
@@ -132,7 +159,7 @@ function ConnectPanel({ view, base }: Readonly<{ view: WooShopView; base: string
             </div>
           ) : null}
           <Button pending={pending}>Connect</Button>
-          <Problem said={view.problem} />
+          <Problem said={view.problem} base={base} />
         </>
       )}
     </FormPanel>
@@ -186,7 +213,7 @@ function NotConnected({ view, base }: Readonly<{ view: WooShopView; base: string
         Import your shop's products as cards that agents can buy. You approve access in WooCommerce;
         Agentify never asks for your shop password.
       </p>
-      {view.wayBack ? <WayBack leaving={view.leaving} /> : null}
+      {view.wayBack ? <WayBack leaving={view.leaving} base={base} /> : null}
       <div className={styles.cols}>
         <ConnectPanel view={view} base={base} />
         <WhatCanBeImported />
@@ -290,7 +317,7 @@ function Connected({
           Your shop is connected: the keys came directly from its server.
         </p>
       ) : null}
-      <Problem said={view.problem} />
+      <Problem said={view.problem} base={base} />
       {connection.granted === null ? null : (
         <section className={`${styles.panel} ${styles.attention}`}>
           <h2>Your shop granted {connection.granted} access, not read and write</h2>
@@ -310,7 +337,7 @@ function Connected({
                 until you disconnect the shop.
               </p>
               <Button pending={pending}>Sell through this shop</Button>
-              <Problem said={connection.switching} />
+              <Problem said={connection.switching} base={base} />
             </>
           )}
         </FormPanel>
@@ -352,7 +379,7 @@ function Connected({
                 <Button variant="secondary" pending={pending}>
                   <span className={styles.leave}>Disconnect shop</span>
                 </Button>
-                <Problem said={view.leaving} />
+                <Problem said={view.leaving} base={base} />
               </>
             )}
           </FormPanel>

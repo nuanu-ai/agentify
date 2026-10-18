@@ -316,3 +316,22 @@
     flex: 1 1 100%;
   }
 }
+
+/* A refusal naming the orders that hold a switch: each on a line of its own. */
+.refusal {
+  margin-top: 12px;
+}
+
+.refusal :global(p.problem) {
+  margin: 0;
+}
+
+.orders {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+}

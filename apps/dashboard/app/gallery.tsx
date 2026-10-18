@@ -598,8 +598,8 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING)).why;
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING)).why;
+const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
+const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
 
 // --- the states ----------------------------------------------------------------
 
@@ -1890,6 +1890,24 @@ const WOOCOMMERCE: GalleryState[] = [
     "disconnect",
     shopOn(shopRead(CONNECTED), {
       leaving: TO_THE_CODE,
+    }),
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-disconnect-refused-many",
+      screen: "WooCommerce",
+      when: "A merchant presses Disconnect shop while seven orders the shop took are open.",
+      cause:
+        "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
+    },
+    "disconnect",
+    shopOn(shopRead(CONNECTED), {
+      leaving: refusalIn(
+        switchRefused(
+          "api",
+          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+        ),
+      ),
     }),
   ),
   at(
