@@ -1106,6 +1106,13 @@ const WINDOWS = MerchantCardListSchema.parse({
   ],
 });
 
+/** Presses the button that opens the menu at the end of the header's row. */
+const openTheMenu = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-menu > summary");
+  if (button === null) throw new Error("the page draws no menu");
+  button.click();
+};
+
 const CARDS: GalleryState[] = [
   cards(
     {
@@ -1117,6 +1124,23 @@ const CARDS: GalleryState[] = [
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
   ),
+  {
+    ...cards(
+      {
+        id: "dashboard-cards-menu",
+        screen: "Cards",
+        when: "A merchant on a phone or a tablet opens the menu at the end of the header's row.",
+        cause:
+          "Where the sidebar gives way, the header keeps the lockup and the menu's button, and the menu holds the sections, the way to the documentation, the address and the way out.",
+      },
+      cardsView(CATALOGUE, ORIGIN.live),
+      "live",
+    ),
+    scene: {
+      steps: [{ shows: "Product cards", does: openTheMenu }],
+      shows: "Sign out",
+    },
+  },
   cards(
     {
       id: "dashboard-cards-account-unread",
