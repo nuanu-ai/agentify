@@ -108,13 +108,25 @@ describe("a report's page", () => {
     expect(page).not.toContain("All 18 checks");
   });
 
-  it("shows its owner the level, the score, the coverage and the segment's average", async () => {
+  it("shows its owner the level, the score on the scan page's scale, the coverage and the segment's average", async () => {
     const page = await drawn();
 
-    expect(page).toMatch(/<h1>Readable<\/h1>/);
+    expect(page).toMatch(/<h1[^>]*>Readable<\/h1>/);
     expect(page).toContain("46<small>/100</small>");
+    expect(page).toMatch(/<div[^>]*aria-valuenow="46"[^>]*role="meter"/);
     expect(page).toContain("Coverage 78%");
     expect(page).toContain("Segment average 51 from 42 scans");
+    expect(page).toContain("not a certification");
+  });
+
+  it("counts its checks by state at the head of the list, an unavailable check apart from the failures", async () => {
+    const tally = /<ul aria-label="Checks by state"[^>]*>([\s\S]*?)<\/ul>/.exec(await drawn())?.[1];
+    const words = tally
+      ?.replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    expect(words).toBe("Fail 1 Partial 1 Unavailable 1 Pass 15");
   });
 
   it("lists all eighteen checks in their groups, the first failure open with its fix and evidence", async () => {
@@ -122,7 +134,10 @@ describe("a report's page", () => {
 
     // Every disclosure but the header's menu is a check.
     expect(page.match(/<details(?! class="site-menu")/g)).toHaveLength(18);
-    expect(page).toMatch(/<details[^>]*open=""[^>]*><summary><span class="mono">06<\/span>/);
+    const opened = page.match(/<details[^>]*open=""[^>]*>[\s\S]*?<\/details>/g) ?? [];
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toContain(">06<");
+    expect(opened[0]).toContain("Business-specific structured data");
     expect(page).toContain(
       "No business-specific structured-data type was found for this scan segment.",
     );
@@ -132,7 +147,7 @@ describe("a report's page", () => {
     expect(page).toContain("Detected Types");
     expect(page).toContain("Organization, WebSite");
     for (const group of ["Discovery", "Content", "Agent access", "Commerce", "Informational"]) {
-      expect(page).toContain(`<h3>${group}</h3>`);
+      expect(page).toMatch(new RegExp(`<h3[^>]*>${group}</h3>`));
     }
   });
 
