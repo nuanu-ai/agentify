@@ -20,7 +20,7 @@ import { type Acting, gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
-import { importFormOf, readable, shownMarkIn } from "./testing/html.js";
+import { formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -699,6 +699,24 @@ describe("the keys arriving from the shop", () => {
     // Told, rather than finding out from a refunded buyer.
     const seen = await running.get("/woocommerce");
     expect(seen.html).toContain("read and write");
+  });
+
+  it("offers a shop that granted read alone a Connect again at its own address, which goes to that shop", async () => {
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""), "read"));
+
+    const seen = await running.get("/woocommerce");
+    const again = formTo(seen.html, "post", "/woocommerce/connect");
+    const sent = await running.post(
+      "/woocommerce/connect",
+      Object.fromEntries(again?.fields ?? []),
+    );
+
+    expect(again?.fields.get("shop_url")).toBe(SHOP);
+    expect(sent.status).toBe(303);
+    expect(new URL(sent.to ?? "", PUBLIC).origin).toBe(SHOP);
   });
 });
 
