@@ -1262,6 +1262,28 @@ const ORDERS: GalleryState[] = [
     ),
     "live",
   ),
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-opened-row",
+        screen: "Orders",
+        when: "A merchant on a phone taps the first order's line to read what the narrow row leaves out.",
+        cause:
+          "A phone's row shows the product, the amount, the state and the time; its ID, product code and shares are in the row's opened part, which a wide screen shows in its columns.",
+      },
+      ordersView(seenBy("live"), CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
+      "live",
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Order ID and shares",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Order ID and shares",
+    },
+  },
   orders(
     {
       id: "dashboard-orders-sales-paused",

@@ -3546,7 +3546,8 @@ describe("a card held off sale by what its merchant lacks", () => {
         await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
 
         const screen = await running.browser.get("/cards");
-        const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
+        const cell =
+          /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
         const control = readable(cell);
 
         expect(screen.status).toBe(200);
@@ -3606,7 +3607,8 @@ describe("a card held off sale by what its merchant lacks", () => {
 
     const settings = readable((await running.browser.get("/settings")).html);
     const screen = await running.browser.get("/cards");
-    const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
+    const cell =
+      /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
 
     expect(settings).toMatch(/approved your merchant/);
     expect(settings).not.toMatch(/not approved your merchant/);
@@ -3961,8 +3963,13 @@ describe("the receipts screen", () => {
 
     for (const path of ["/orders", "/receipts"]) {
       const html = (await browser.get(path)).html;
-      const cell = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(html)?.[1] ?? "";
-      expect(readable(cell), path).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+      const cell =
+        /<td class="amount"[^>]*>([\s\S]*?)<\/td>|<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
+          html,
+        );
+      expect(readable(cell?.[1] ?? cell?.[2] ?? ""), path).toBe(
+        "80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify",
+      );
     }
   });
 

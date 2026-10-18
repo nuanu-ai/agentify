@@ -9,7 +9,15 @@ import {
   ReceiptOutcomeSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { CARD_WORDS, FULFILLMENT_WORDS, moment, money, needsYou, ORDER_WORDS } from "./words.js";
+import {
+  CARD_WORDS,
+  dayOf,
+  FULFILLMENT_WORDS,
+  moment,
+  money,
+  needsYou,
+  ORDER_WORDS,
+} from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -96,5 +104,12 @@ describe("money and moments on a screen", () => {
 
   it("shows a moment it cannot read rather than inventing one", () => {
     expect(moment("not a moment")).toBe("not a moment");
+    expect(dayOf("not a moment")).toBe("not a moment");
+  });
+
+  it("names the day a moment falls on in UTC, as the moments under it are given", () => {
+    expect(dayOf("2026-10-12T16:40:00Z")).toBe("12 October 2026");
+    // Late evening west of Greenwich is already the next day in UTC.
+    expect(dayOf("2026-10-12T23:30:00-02:00")).toBe("13 October 2026");
   });
 });

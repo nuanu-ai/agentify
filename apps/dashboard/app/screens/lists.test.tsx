@@ -120,11 +120,13 @@ const pricedAt = (amount: string, id = `ord_${amount}`) => ({
   price: { ...order(id, false).price, amount },
 });
 
-/** Each row's amount cell, as a person reads it. */
+/** Each row's amount, as a person reads it on a wide screen: a receipt's cell, or an order's. */
 const amountsIn = (html: string): string[] =>
-  [...html.matchAll(/<td class="amount"[^>]*>([\s\S]*?)<\/td>/g)].map((cell) =>
-    readable(cell[1] ?? ""),
-  );
+  [
+    ...html.matchAll(
+      /<td class="amount"[^>]*>([\s\S]*?)<\/td>|<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/g,
+    ),
+  ].map((cell) => readable(cell[1] ?? cell[2] ?? ""));
 
 describe("the receipts of sales that went out", () => {
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
@@ -330,7 +332,7 @@ describe("a refund owed", () => {
         />
       )),
     );
-    const callout = text.slice(text.indexOf("Refund due ord_owed"));
+    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).toMatch(/the commission stays with Agentify/);
@@ -348,7 +350,7 @@ describe("a refund owed", () => {
     const text = readable(
       served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
     );
-    const callout = text.slice(text.indexOf("Refund due ord_owed"));
+    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/The payment was received and the product was not delivered/);
     expect(callout).toMatch(/the full price, 80\.00 USD/);
@@ -415,5 +417,18 @@ describe("the state of each card", () => {
     const list = listOf("open", { selling: "paused", paused: true });
 
     expect(wordsOf(list, ["itm_0"])).toStrictEqual(["Off sale"]);
+  });
+});
+
+describe("a card's row on a phone", () => {
+  it("keeps what the narrow row leaves out in the row's opened part", () => {
+    // The moment the price holds from is drawn under the title on a wide box
+    // only; on a phone it is one press away, never gone.
+    const html = served(() => (
+      <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
+    ));
+    const opened = /<details class="cell-more">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "";
+
+    expect(readable(opened)).toContain("Price on the card since 2026-08-26 09:00:00 UTC");
   });
 });

@@ -513,6 +513,283 @@ td.control {
   margin-top: 4px;
 }
 
+/* --- lists -------------------------------------------------------------- */
+
+/*
+ * One bordered surface of rows separated by hairlines. Where the list's own box
+ * is wide a row is a grid on the columns the list names in `--columns`, under a
+ * light row of heads; where it is narrow a row's cells stack in lines by the
+ * place each names, and the head gives way. The box decides, a container
+ * query, so the rule holds wherever a list is put.
+ */
+.list-box {
+  margin: 20px 0 14px;
+  container-type: inline-size;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.list-empty {
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.list > li + li {
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.list-head,
+.list-row {
+  display: grid;
+  grid-template-columns: var(--columns);
+  gap: 16px;
+  align-items: center;
+  padding-inline: 20px;
+}
+
+.list-head {
+  padding-block: 12px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list > .list-head + li {
+  border-top: 0;
+}
+
+.list-head .end,
+.cell-amount {
+  text-align: right;
+}
+
+.list-row {
+  padding-block: 14px;
+  font-size: 0.875rem;
+}
+
+.list-row.off {
+  background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
+}
+
+.list-row.needs-you {
+  background: color-mix(in oklab, var(--fail) 7%, var(--surface));
+}
+
+.list-day {
+  padding: 10px 20px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list > li.list-day + li {
+  border-top: 0;
+}
+
+.list > li + li.list-day {
+  border-top-color: var(--line);
+}
+
+.cell {
+  min-width: 0;
+}
+
+.cell-main {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.cell-title {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cell-aside {
+  color: var(--muted);
+}
+
+.cell-amount {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.list-row.off .cell-amount {
+  color: var(--muted);
+}
+
+.cell-fact {
+  color: var(--muted);
+}
+
+.cell-action {
+  display: flex;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.cell-note {
+  color: var(--muted);
+  text-align: right;
+}
+
+.cell-more {
+  display: none;
+}
+
+@container (max-width: 860px) {
+  .list-head {
+    display: none;
+  }
+
+  /* The lines of a narrow row, each drawn only where a cell names it, so a
+     row without an identifier or an action has no empty line. */
+  .list-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title title amount"
+      "state fact fact"
+      "ident ident action"
+      "note note note"
+      "more more more";
+    gap: 0 10px;
+    align-items: center;
+    padding: 14px 16px;
+  }
+
+  .list-row > .cell-main {
+    display: contents;
+  }
+
+  .cell-title {
+    grid-area: title;
+  }
+
+  .cell-amount {
+    grid-area: amount;
+    align-self: start;
+  }
+
+  .cell-aside {
+    display: none;
+  }
+
+  .cell-state {
+    grid-area: state;
+    margin-top: 6px;
+  }
+
+  .cell-fact {
+    grid-area: fact;
+    margin-top: 6px;
+  }
+
+  .list-row:has(> .cell-state) > .cell-fact::before {
+    content: "· ";
+  }
+
+  .cell-ident {
+    grid-area: ident;
+    margin-top: 6px;
+  }
+
+  .cell-action {
+    grid-area: action;
+    margin-top: 6px;
+  }
+
+  .cell-note {
+    grid-area: note;
+    margin-top: 6px;
+    text-align: left;
+  }
+
+  .cell-more {
+    display: block;
+    grid-area: more;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+
+  .cell-more > summary {
+    width: fit-content;
+    cursor: pointer;
+  }
+
+  .more-body {
+    margin-top: 4px;
+    color: var(--fg-2);
+    font-size: 0.875rem;
+  }
+}
+
+/* A heading over a group of rows, with its count in a pill. */
+.group {
+  margin-top: 28px;
+}
+
+.group > .callout {
+  margin: 12px 0 0;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.group-aside {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.count.warn {
+  background: var(--fail);
+  color: var(--on-accent);
+}
+
 /* --- identifiers and their copy buttons -------------------------------- */
 
 /* An identifier shown short in the monospaced face, and a product code, each

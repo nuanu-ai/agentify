@@ -1,10 +1,10 @@
-import { Table } from "@agentify/ui";
+import { Fragment } from "react";
 import { Link } from "react-router";
 import type { Shares } from "../../src/shares.js";
 import type { OrdersView } from "../../src/views.js";
 import { Ident } from "../components/copy.js";
 import { useGoingTo } from "../components/going-to.js";
-import { Moment } from "../components/moment.js";
+import { Cell, DayHeading, Group, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 
@@ -28,6 +28,20 @@ export const SharesOf = ({ shares }: Readonly<{ shares: Shares | null }>) =>
       <div className="under">{shares.commission} to Agentify</div>
     </>
   );
+
+/** Each order that needs saying in full, in its own box under its group's heading. */
+const Callouts = ({ callouts }: Readonly<{ callouts: OrdersView["needsYou"] }>) =>
+  callouts.map((callout) => (
+    <div className="callout" key={callout.id}>
+      <div className="what">
+        <Word word={callout.state} /> <Ident value={callout.id} what="order ID" />
+      </div>
+      <p className="why">
+        {callout.why}
+        {callout.rest === null ? null : <Rest rest={callout.rest} />}
+      </p>
+    </div>
+  ));
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   // The filter chosen is marked as soon as it is clicked.
@@ -60,56 +74,74 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           )}
         </div>
       </div>
-      <Table
-        // "Price set", not "Bought": the moment is when the price was fixed,
-        // and where the price is checked at purchase the buyer may pay well
-        // after it.
-        columns={["Order", "Product", "Amount", "State", "Price set"]}
-        empty={view.empty}
-        rows={view.rows.map((row) => ({
-          key: row.id,
-          ...(row.needsYou ? { className: "needs-you" } : {}),
-          cells: [
-            { className: "ident", content: <Ident value={row.id} what="order ID" /> },
-            {
-              content: (
-                <>
-                  <div>{row.product}</div>
-                  <div className="under mono">{row.itemId}</div>
-                </>
-              ),
-            },
-            {
-              className: "amount",
-              content: (
-                <>
-                  {row.amount}
-                  <TestMark test={row.test} />
-                  <SharesOf shares={row.shares} />
-                </>
-              ),
-            },
-            { content: <Word word={row.state} /> },
-            { className: "quiet moment", content: <Moment at={row.priceSet} /> },
-          ],
-        }))}
-      />
+      {view.needsYou.length === 0 ? null : (
+        <Group title="Needs you" count={view.needsYou.length} warn>
+          <Callouts callouts={view.needsYou} />
+        </Group>
+      )}
+      {view.waitsOnTheBuyer.length === 0 ? null : (
+        <Group
+          title="Waiting on the buyer"
+          count={view.waitsOnTheBuyer.length}
+          aside="Nothing for you to do"
+        >
+          <Callouts callouts={view.waitsOnTheBuyer} />
+        </Group>
+      )}
+      <Group title={view.open ? "Open orders" : "All orders"} count={view.rows.length}>
+        {view.rows.length === 0 ? (
+          <ListEmpty>{view.empty}</ListEmpty>
+        ) : (
+          <List
+            label={view.open ? "Open orders" : "All orders"}
+            columns="6.5rem minmax(12rem, 1fr) 9rem 9rem 10rem"
+            // "Price set", not "Bought": the moment is when the price was
+            // fixed, and where the price is checked at purchase the buyer may
+            // pay well after it.
+            head={["Price set", "Product", { text: "Amount", end: true }, "State", "Order"]}
+          >
+            {view.rows.map((row, at) => (
+              <Fragment key={row.id}>
+                {row.day === view.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
+                <Row needsYou={row.needsYou}>
+                  <Cell at="fact">
+                    {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
+                  </Cell>
+                  <Cell at="main">
+                    <Cell at="title">{row.product}</Cell>
+                    <Cell at="aside">
+                      <span className="mono">{row.itemId}</span>
+                    </Cell>
+                  </Cell>
+                  <Cell at="amount">
+                    {row.amount}
+                    <TestMark test={row.test} />
+                    <Cell at="aside">
+                      <SharesOf shares={row.shares} />
+                    </Cell>
+                  </Cell>
+                  <Cell at="state">
+                    <Word word={row.state} />
+                  </Cell>
+                  <Cell at="aside">
+                    <Ident value={row.id} what="order ID" />
+                  </Cell>
+                  <RowMore summary="Order ID and shares">
+                    <Ident value={row.id} what="order ID" />
+                    <div className="mono">{row.itemId}</div>
+                    <SharesOf shares={row.shares} />
+                  </RowMore>
+                </Row>
+              </Fragment>
+            ))}
+          </List>
+        )}
+      </Group>
       <p className="note">
         Purchases that closed before they had a price do not appear here: for example, you said the
         product was out of stock, or you did not answer a price request. No money was charged for
         them.
       </p>
-      {[...view.needsYou, ...view.waitsOnTheBuyer].map((callout) => (
-        <div className="callout" key={callout.id}>
-          <div className="what">
-            <Word word={callout.state} /> <Ident value={callout.id} what="order ID" />
-          </div>
-          <p className="why">
-            {callout.why}
-            {callout.rest === null ? null : <Rest rest={callout.rest} />}
-          </p>
-        </div>
-      ))}
     </>
   );
 }

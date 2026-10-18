@@ -5,8 +5,9 @@
  * shown: the headers that promise this are held offline in `server.test.ts`,
  * and a change of React Router's data addresses could break it with every
  * header still in place. A press answered on its own page leaves the merchant
- * where they were on it, and the sections stay in reach however far a page is
- * scrolled, which only a page that really scrolls can show.
+ * where they were on it, the sections stay in reach however far a page is
+ * scrolled, which only a page that really scrolls can show, and a copy button
+ * writes to a real clipboard.
  *
  * It needs the build (`pnpm --filter @agentify/dashboard build`) and
  * Playwright's Chromium, and counts what reaches the dashboard rather than what
@@ -230,7 +231,7 @@ describe("a press answered on its own page", () => {
     }
     // The last card's row in the middle of a short window, with the page
     // scrolled to reach it.
-    const row = page.locator("tbody tr").last();
+    const row = page.locator(".list-row").last();
     await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
     const scrolled = await page.evaluate(() => window.scrollY);
     const before = await row.evaluate((element) => element.getBoundingClientRect().top);
@@ -241,6 +242,24 @@ describe("a press answered on its own page", () => {
 
     expect(scrolled).toBeGreaterThan(0);
     expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
+    await page.context().close();
+  });
+});
+
+describe("a copy button once the page's script runs", () => {
+  it("puts the whole purchase address on the clipboard and shows it did", async () => {
+    const page = await onTheCards();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    const button = page.getByRole("button", { name: "Copy the purchase address" }).first();
+    const title = (await button.getAttribute("title")) ?? "";
+
+    await button.click();
+    await page.locator("button.copy.copied").first().waitFor();
+
+    expect(title).toMatch(/^Copy the purchase address: http\S+\/purchase$/);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      title.replace("Copy the purchase address: ", ""),
+    );
     await page.context().close();
   });
 });

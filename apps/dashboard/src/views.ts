@@ -26,6 +26,7 @@ import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewe
 import {
   APPROVAL_PENDING,
   CARD_WORDS,
+  dayOf,
   FULFILLMENT_WORDS,
   moment,
   money,
@@ -332,6 +333,8 @@ interface OrderRow {
   readonly shares: Shares | null;
   readonly state: Word;
   readonly priceSet: MomentView;
+  /** The day of `priceSet`, for the heading over that day's orders. */
+  readonly day: string;
 }
 
 /** One order said in full under the table, with what it needs and of whom. */
@@ -386,6 +389,7 @@ export const ordersView = (
       shares: sharesIn(order.price, paidInto[order.id]),
       state: ORDER_WORDS[order.status],
       priceSet: momentView(order.price.at),
+      day: dayOf(order.price.at),
     })),
     empty: open
       ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."

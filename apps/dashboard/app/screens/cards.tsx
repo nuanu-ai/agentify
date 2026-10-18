@@ -1,6 +1,7 @@
-import { Button, Table } from "@agentify/ui";
+import { Button } from "@agentify/ui";
 import type { CardAside, CardControl, CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
+import { Cell, List, Row, RowMore } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
@@ -77,34 +78,36 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         </div>
       </div>
       {view.empty === null ? (
-        <Table
-          columns={["Product", "Product code", "Price", "Delivery", "State", ""]}
-          empty=""
-          rows={view.rows.map((row) => ({
-            key: row.id,
-            ...(row.off ? { className: "off" } : {}),
-            cells: [
-              {
-                content: (
-                  <>
-                    <div className="title">{row.title}</div>
-                    <div className="under">
-                      <Aside aside={row.aside} />
-                    </div>
-                  </>
-                ),
-              },
-              { className: "key", content: <CodeCopy code={row.itemId} address={row.buy} /> },
-              { className: "amount", content: row.price },
-              { className: "quiet", content: row.delivery },
-              { content: <Word word={row.state} /> },
-              {
-                className: "control",
-                content: <Control id={row.id} control={row.control} base={base} />,
-              },
-            ],
-          }))}
-        />
+        <List
+          label="Product cards"
+          columns="minmax(12rem, 1fr) 7rem 9rem 9rem minmax(6rem, 15rem)"
+          head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
+        >
+          {view.rows.map((row) => (
+            <Row key={row.id} off={row.off}>
+              <Cell at="main">
+                <Cell at="title">{row.title}</Cell>
+                <Cell at="aside">
+                  <Aside aside={row.aside} />
+                </Cell>
+                <Cell at="ident">
+                  <CodeCopy code={row.itemId} address={row.buy} />
+                </Cell>
+              </Cell>
+              <Cell at="amount">{row.price}</Cell>
+              <Cell at="fact">{row.delivery}</Cell>
+              <Cell at="state">
+                <Word word={row.state} />
+              </Cell>
+              <Cell at={row.control.kind === "switch" ? "action" : "note"}>
+                <Control id={row.id} control={row.control} base={base} />
+              </Cell>
+              <RowMore summary="Price and delivery">
+                <Aside aside={row.aside} />
+              </RowMore>
+            </Row>
+          ))}
+        </List>
       ) : (
         <div className="empty-start">
           <p>{view.empty.why}</p>
