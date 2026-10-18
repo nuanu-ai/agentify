@@ -183,7 +183,11 @@ describe.each([
  * One screen drawn in the frame, behind the gate and the merchant's own pages
  * as every section is.
  */
-const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}) => {
+const framed = (
+  tab: Tab,
+  { needYou = 0, account = [] }: Partial<FrameView> = {},
+  at: string = tab,
+) => {
   const Stub = createRoutesStub([
     {
       id: "root",
@@ -199,7 +203,7 @@ const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}
               Component: Outlet,
               children: [
                 {
-                  path: tab,
+                  path: at,
                   Component: () => (
                     <Frame tab={tab} title="A screen">
                       <p>The screen</p>
@@ -215,7 +219,7 @@ const framed = (tab: Tab, { needYou = 0, account = [] }: Partial<FrameView> = {}
   ]);
   render(
     <Stub
-      initialEntries={[`/${tab}`]}
+      initialEntries={[`/${at}`]}
       hydrationData={{
         loaderData: {
           root: {
@@ -284,6 +288,48 @@ describe("the banner about the account", () => {
     expect(screen.getByRole("link", { name: "Resume on Cards" }).getAttribute("href")).toBe(
       "/cards",
     );
+  });
+});
+
+describe("the banner on the pages that say a reason themselves", () => {
+  const SHOP: Viewer = {
+    base: "",
+    mode: "test",
+    who: PERSON,
+    confirmed: true,
+    sellerName: "Freeland",
+    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
+  };
+  const selling = accountOf(SHOP, { selling: "paused", through: "woocommerce" });
+
+  it.each(["woocommerce", "woocommerce/import"])(
+    "leaves out selling through the shop on %s, and keeps the other reasons",
+    async (at) => {
+      framed("integrations", { account: selling }, at);
+      await screen.findByText("The screen");
+      const drawn = banner();
+      if (drawn === null) throw new Error("no banner was drawn");
+
+      expect(within(drawn).getByText("All sales are paused")).toBeTruthy();
+      expect(within(drawn).queryByText("Selling through your WooCommerce shop")).toBeNull();
+    },
+  );
+
+  it("says it, with the way to the shop's page, everywhere else", async () => {
+    framed("cards", { account: selling });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(within(drawn).getByText("Selling through your WooCommerce shop")).toBeTruthy();
+    expect(within(drawn).getByRole("link", { name: "Open WooCommerce" })).toBeTruthy();
+  });
+
+  it("draws no banner on the shop's page when selling through the shop is all there is", async () => {
+    framed("integrations", { account: accountOf(SHOP, { through: "woocommerce" }) }, "woocommerce");
+    await screen.findByText("The screen");
+
+    expect(banner()).toBeNull();
   });
 });
 
