@@ -719,8 +719,7 @@ td.control {
   }
 }
 
-/* Over a long list: the search, the segments with their counts, and the
-   controls about the whole list at the end of the row. */
+/* Over a long list: the search and the segments with their counts. */
 .list-tools {
   display: flex;
   flex-wrap: wrap;
@@ -793,10 +792,6 @@ td.control {
   background: var(--raised);
   color: var(--fg);
   font-weight: 500;
-}
-
-.list-tools-end {
-  margin-left: auto;
 }
 
 @media (max-width: 560px) {

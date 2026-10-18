@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import type { CutView, Listing } from "../../src/listing.js";
 import { useGoingTo } from "./going-to.js";
@@ -15,7 +14,6 @@ export function ListTools({
   path,
   label,
   placeholder,
-  children,
 }: Readonly<{
   listing: Listing<unknown>;
   /** The list's page, without the dashboard's prefix. */
@@ -23,8 +21,6 @@ export function ListTools({
   /** What the search box is called, "Search cards". */
   label: string;
   placeholder: string;
-  /** Controls about the whole list, at the end of the row. */
-  children?: ReactNode;
 }>) {
   const going = useGoingTo();
   const goingTo =
@@ -64,7 +60,6 @@ export function ListTools({
           ),
         )}
       </nav>
-      {children === undefined ? null : <div className="list-tools-end">{children}</div>}
     </div>
   );
 }
