@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { BannerAnswered } from "@agentify/consent";
 import type { BrowserScene, GalleryState, GallerySurface } from "@agentify/gallery";
 import { levelForScore } from "@agentify/scanner";
 import {
@@ -170,25 +171,34 @@ interface Drawn {
   readonly loaded?: HydrationState["loaderData"];
   readonly failed?: HydrationState["errors"];
   readonly scene?: BrowserScene;
+  /**
+   * A visitor whose browser keeps no answer to the consent banner, so the
+   * banner is up over the page. Every other state is drawn as a visitor who
+   * answered it sees the page, since the banner would cover its foot.
+   */
+  readonly firstVisit?: true;
 }
 
 type Told = Omit<GalleryState, "address" | "draw" | "scene">;
 
 /** A state at its address, drawn by the route tree as the server answers that address. */
-const at = (told: Told, { path, loaded, failed, scene }: Drawn): GalleryState => ({
+const at = (told: Told, { path, loaded, failed, scene, firstVisit }: Drawn): GalleryState => ({
   ...told,
   address: path,
   ...(scene === undefined ? {} : { scene }),
   draw: () => {
     const Stub = createRoutesStub(TREE);
     return (
-      <Stub
-        initialEntries={[path]}
-        hydrationData={{
-          loaderData: { root: { app: SITE, analytics: ANALYTICS }, ...loaded },
-          ...(failed === undefined ? {} : { errors: failed }),
-        }}
-      />
+      <>
+        <Stub
+          initialEntries={[path]}
+          hydrationData={{
+            loaderData: { root: { app: SITE, analytics: ANALYTICS }, ...loaded },
+            ...(failed === undefined ? {} : { errors: failed }),
+          }}
+        />
+        {firstVisit ? null : <BannerAnswered />}
+      </>
     );
   },
 });
@@ -569,6 +579,16 @@ const PUBLIC: GalleryState[] = [
     },
     "/",
     "routes/home.tsx",
+  ),
+  at(
+    {
+      id: "scanner-front-page-first-visit",
+      screen: "Front page",
+      when: "Somebody opens agentify.ad for the first time, or after clearing what their browser keeps.",
+      cause:
+        "The browser keeps no answer about measuring the visit, so the banner over the page asks for one.",
+    },
+    { path: "/", loaded: { "routes/home": ownDataOf("routes/home.tsx") }, firstVisit: true },
   ),
   own(
     {

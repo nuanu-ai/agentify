@@ -6,6 +6,7 @@
  * Nothing here runs on the site.
  */
 
+import { BannerAnswered } from "@agentify/consent";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
 import type { ComponentType } from "react";
@@ -54,15 +55,22 @@ const SERVED = fillTemplates(servedTemplate(), CHANNELS.live);
 const loadedAt = (path: string) =>
   Page.loader({ params: { "*": path.slice(1) } } as unknown as LoaderFunctionArgs);
 
+/**
+ * As a visitor who has answered the consent banner sees the page: the scanner's
+ * gallery draws the banner itself, the same one on every page of the origin.
+ */
 const drawnAt = async (path: string) => {
   const loaded = await loadedAt(path);
   return () => {
     const Stub = createRoutesStub(TREE);
     return (
-      <Stub
-        initialEntries={[path]}
-        hydrationData={{ loaderData: { root: { served: SERVED }, front: loaded, page: loaded } }}
-      />
+      <>
+        <Stub
+          initialEntries={[path]}
+          hydrationData={{ loaderData: { root: { served: SERVED }, front: loaded, page: loaded } }}
+        />
+        <BannerAnswered />
+      </>
     );
   };
 };
