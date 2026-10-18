@@ -536,10 +536,6 @@ td.control {
   background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
 }
 
-.list-row.needs-you {
-  background: color-mix(in oklab, var(--fail) 7%, var(--surface));
-}
-
 .list-day {
   padding: 10px 20px;
   border-bottom: var(--hairline) solid var(--line);
