@@ -65,11 +65,16 @@ const shortened = (value: string): string => {
  * of it. The whole value is its title and what a screen reader reads, so it is
  * reachable before the page's script runs and without the clipboard; where
  * copying fails, the whole value takes the short one's place to be selected.
- * `what` names it in the button's words: "order ID".
+ * `what` names it in the button's words: "order ID". `whole` prints all of it,
+ * for the place a narrow row opens to show what it shortened.
  */
-export function Ident({ value, what }: Readonly<{ value: string; what: string }>) {
+export function Ident({
+  value,
+  what,
+  whole = false,
+}: Readonly<{ value: string; what: string; whole?: boolean }>) {
   const { copied, copy } = useCopy(value);
-  const short = shortened(value);
+  const short = whole ? value : shortened(value);
   return (
     <span className="ident">
       <span title={value}>
