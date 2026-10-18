@@ -228,6 +228,8 @@ export interface CardsView {
   readonly empty: null | Readonly<{ says: string; woo: boolean }>;
   /** The line under the cards about what their switches do, and where the rest is. */
   readonly note: Readonly<{ says: string; rest: Rest }>;
+  /** Over the rows, where the search was read as a whole product code, which it says. */
+  readonly byCode: string | null;
 }
 
 const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
@@ -282,7 +284,8 @@ export const cardsView = (
   // product code, as a link to one card writes it, finds that code alone:
   // the card coded 1 is not the card coded 11.
   const code = asked.q.toLocaleLowerCase();
-  const byCode = code !== "" && rows.some((row) => row.itemId.toLocaleLowerCase() === code);
+  const coded = rows.filter((row) => row.itemId.toLocaleLowerCase() === code).length;
+  const byCode = code !== "" && coded > 0;
 
   return {
     allSelling: gone
@@ -300,10 +303,10 @@ export const cardsView = (
           ? row.itemId.toLocaleLowerCase() === words
           : row.title.toLocaleLowerCase().includes(words) ||
             row.itemId.toLocaleLowerCase().includes(words),
-      noMatch: (q, within) =>
-        within === null
-          ? `No card matches “${q}”.`
-          : `No card ${within.toLocaleLowerCase()} matches “${q}”.`,
+      noMatch: (q, within) => {
+        const which = within === null ? "No card" : `No card ${within.toLocaleLowerCase()}`;
+        return byCode ? `${which} has the product code “${q}”.` : `${which} matches “${q}”.`;
+      },
       showAll: "Show all cards",
     }),
     empty:
@@ -311,6 +314,9 @@ export const cardsView = (
         ? { says: "You haven't published any cards yet.", woo: wooAvailable }
         : null,
     note: switchesNote(cards.selling),
+    byCode: byCode
+      ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
+      : null,
   };
 };
 

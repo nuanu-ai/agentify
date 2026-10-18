@@ -107,6 +107,9 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         label="Search cards"
         placeholder="Search by name or product code"
       />
+      {view.byCode === null || listing.rows.length === 0 ? null : (
+        <p className={styles.byCode}>{view.byCode}</p>
+      )}
       {listing.rows.length === 0 ? (
         <NothingHere listing={listing} />
       ) : (

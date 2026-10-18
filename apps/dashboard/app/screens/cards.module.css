@@ -31,6 +31,14 @@
   }
 }
 
+/* Over the rows a search found by a whole product code, so the list is not
+   read as every card that holds the search. */
+.byCode {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 /* The two lines under the cards, one after the other as one note. */
 .notes {
   margin: 0 0 32px;
