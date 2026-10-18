@@ -57,7 +57,7 @@ const SAID: Readonly<Record<Copied, string>> = {
  * last four characters with an ellipsis between; one too short to gain from
  * it is left whole.
  */
-const shortened = (value: string): string => {
+export const shortened = (value: string): string => {
   const cut = value.indexOf("_") + 1;
   const prefix = value.slice(0, cut);
   const rest = value.slice(cut);

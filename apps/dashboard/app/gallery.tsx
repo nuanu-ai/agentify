@@ -91,6 +91,7 @@ import {
 } from "../src/woo-views.js";
 import { SITE_IN_SETTINGS } from "../src/words.js";
 import type { Chrome, Trouble } from "./answer.js";
+import { shortened } from "./components/copy.js";
 import routes from "./routes.js";
 
 // --- the route tree, drawn ---------------------------------------------------
@@ -1451,9 +1452,6 @@ const SEASON = ordersOf(
   ),
 );
 
-/** An order's ID as the page shows it short, the way a merchant pastes it back. */
-const shortOf = (id: string): string => `${id.slice(0, 8)}…${id.slice(-4)}`;
-
 const ORDERS: GalleryState[] = [
   orders(
     {
@@ -1537,7 +1535,7 @@ const ORDERS: GalleryState[] = [
         "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its refund row and in the list.",
     },
     OWING,
-    `/orders?q=${encodeURIComponent(shortOf(OWING.orders[0]?.id ?? ""))}`,
+    `/orders?q=${encodeURIComponent(shortened(OWING.orders[0]?.id ?? ""))}`,
     { owed: OWED_BECAUSE },
   ),
   orders(
