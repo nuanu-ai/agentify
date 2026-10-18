@@ -2,7 +2,7 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on two things.
+ * frames are. It fails on three things.
  *
  * At a phone's, a tablet's and a desktop's width (390, 768 and 1440 pixels),
  * something on the page reaches past the window's right edge. An element
@@ -13,6 +13,14 @@
  * page's own clipping hides nothing here, since content it cuts off at the
  * window's edge is the same defect as content it lets scroll. A failure names
  * the state, the width and the outermost elements that reach past the edge.
+ *
+ * At any of the three, a page that draws a `footer` and fits the window ends
+ * that footer more than a pixel above the window's bottom edge, leaving an
+ * empty band under it. The footer measured is the one drawn lowest, and the
+ * window's bottom is taken less the room the body keeps clear under its
+ * content, which the consent banner holds while it asks. A failure names the
+ * state, the width and the band's height. A page taller than the window is
+ * not measured here, since its footer ends where its content does.
  *
  * At any of the three, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
@@ -61,6 +69,15 @@ type FrameDocument = (lang: string, fonts: string, css: string, html: string) =>
 interface Overflow {
   readonly window: number;
   readonly culprits: readonly string[];
+}
+
+interface Foot {
+  readonly window: number;
+  readonly page: number;
+  /** The window's bottom edge less the room the body keeps clear under its content. */
+  readonly floor: number;
+  /** Where the lowest footer ends, or `null` on a page that draws none. */
+  readonly bottom: number | null;
 }
 
 interface Violation {
@@ -141,6 +158,23 @@ function overflowOf(): Overflow {
   };
 }
 
+/** Runs in the page, as source, under the same constraint as `overflowOf`. */
+function footOf(): Foot {
+  const height = document.documentElement.clientHeight;
+  let bottom: number | null = null;
+  for (const footer of document.querySelectorAll("footer")) {
+    const drawn = footer.getBoundingClientRect();
+    if (drawn.height === 0) continue;
+    bottom = bottom === null ? drawn.bottom : Math.max(bottom, drawn.bottom);
+  }
+  return {
+    window: height,
+    page: document.documentElement.scrollHeight,
+    floor: height - Number.parseFloat(getComputedStyle(document.body).paddingBottom),
+    bottom,
+  };
+}
+
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
   await page.setViewportSize({ width, height });
   await page.setContent(document, { waitUntil: "load" });
@@ -179,6 +213,7 @@ const work = Object.entries(gallery.states).flatMap(([id, state]) => {
 });
 
 const overflows: string[] = [];
+const bands: string[] = [];
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -196,6 +231,12 @@ try {
         if (overflow.culprits.length > 0) {
           overflows.push(
             `${id} at ${width} px reaches past the window's ${overflow.window} px: ${overflow.culprits.join("; ")}`,
+          );
+        }
+        const foot = await page.evaluate(footOf);
+        if (foot.bottom !== null && foot.page <= foot.window && foot.floor - foot.bottom > 1) {
+          bands.push(
+            `${id} at ${width} px ends its footer ${Math.round(foot.floor - foot.bottom)} px above the bottom of the ${foot.window} px window it fits in`,
           );
         }
         for (const violation of await axeOn(page, axe)) {
@@ -220,6 +261,7 @@ try {
 
 const failures = [
   ...overflows,
+  ...bands,
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");
