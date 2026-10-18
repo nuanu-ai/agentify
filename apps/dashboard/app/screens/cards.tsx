@@ -1,6 +1,6 @@
 import { Button, Table } from "@agentify/ui";
-import { Fragment } from "react";
 import type { CardAside, CardControl, CardsView } from "../../src/views.js";
+import { CodeCopy } from "../components/copy.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
@@ -14,27 +14,6 @@ const Aside = ({ aside }: Readonly<{ aside: CardAside }>) =>
       Price on the card since <Moment at={aside.since} />
     </>
   );
-
-/**
- * A break before each separator, so a wrapped address breaks between its parts
- * rather than mid-word; zero-width rather than a soft hyphen, so a copied
- * address is the address.
- */
-const Wrappable = ({ parts }: Readonly<{ parts: readonly string[] }>) => (
-  <>
-    {parts.map((part, at) =>
-      at === 0 ? (
-        part
-      ) : (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one address never reorder
-        <Fragment key={at}>
-          <wbr />
-          {part}
-        </Fragment>
-      ),
-    )}
-  </>
-);
 
 const Control = ({
   id,
@@ -112,13 +91,10 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                     <div className="under">
                       <Aside aside={row.aside} />
                     </div>
-                    <div className="buy">
-                      <Wrappable parts={row.buy} />
-                    </div>
                   </>
                 ),
               },
-              { className: "key", content: row.itemId },
+              { className: "key", content: <CodeCopy code={row.itemId} address={row.buy} /> },
               { className: "amount", content: row.price },
               { className: "quiet", content: row.delivery },
               { content: <Word word={row.state} /> },
@@ -149,12 +125,9 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <Rest rest={view.sellingRest} />
       </p>
       <p className="note">
-        {
-          // Text, not a link: asking for this address without paying is
-          // answered with a payment demand in a header, so a browser shows a
-          // blank page and the card looks broken.
-          "The line under each product is the address an agent buys it at. It is meant for an agent or a test from a terminal: without payment it returns a payment request, not a web page. A card that is off sale cannot be bought there."
-        }
+        The link icon beside a product code copies the address an agent buys the card at. It is
+        meant for an agent or a test from a terminal: without payment it returns a payment request,
+        not a web page. A card that is off sale cannot be bought there.
       </p>
     </>
   );

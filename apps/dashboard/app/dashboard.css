@@ -74,20 +74,6 @@ textarea {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
-/*
- * Text rather than a link: asking for this address without paying is answered
- * with a payment demand in a header, so a browser shows a blank page and the
- * card looks broken. Set to be read and copied whole, wrapping wherever it has to
- * rather than widening the table.
- */
-.buy {
-  margin-top: 3px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
 .lede {
   padding: 32px 0 0;
   display: flex;
@@ -525,6 +511,70 @@ td.control {
   color: var(--muted);
   font-size: 0.875rem;
   margin-top: 4px;
+}
+
+/* --- identifiers and their copy buttons -------------------------------- */
+
+/* An identifier shown short in the monospaced face, and a product code, each
+   with a small button beside it. A press turns the button's icon into a tick
+   in the colour of what went through; the words are for a screen reader, and
+   where the browser will not copy the whole value is shown instead. */
+.ident,
+.code {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.ident {
+  color: var(--fg-2);
+}
+
+.code {
+  color: var(--faint);
+}
+
+.copy {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: var(--hairline) solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.copy.copied {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+
+.copy svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.copy-whole {
+  flex-basis: 100%;
+  color: var(--fg-2);
+  user-select: all;
 }
 
 /* --- the account banner ------------------------------------------------- */

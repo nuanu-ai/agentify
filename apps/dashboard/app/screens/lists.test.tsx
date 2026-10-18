@@ -330,7 +330,7 @@ describe("a refund owed", () => {
         />
       )),
     );
-    const callout = text.slice(text.indexOf("Order ord_owed"));
+    const callout = text.slice(text.indexOf("Refund due ord_owed"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).toMatch(/the commission stays with Agentify/);
@@ -348,7 +348,7 @@ describe("a refund owed", () => {
     const text = readable(
       served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
     );
-    const callout = text.slice(text.indexOf("Order ord_owed"));
+    const callout = text.slice(text.indexOf("Refund due ord_owed"));
 
     expect(callout).toMatch(/The payment was received and the product was not delivered/);
     expect(callout).toMatch(/the full price, 80\.00 USD/);

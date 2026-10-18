@@ -2,6 +2,7 @@ import { Table } from "@agentify/ui";
 import { Link } from "react-router";
 import type { Shares } from "../../src/shares.js";
 import type { OrdersView } from "../../src/views.js";
+import { Ident } from "../components/copy.js";
 import { useGoingTo } from "../components/going-to.js";
 import { Moment } from "../components/moment.js";
 import { Rest } from "../components/rest.js";
@@ -69,7 +70,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           key: row.id,
           ...(row.needsYou ? { className: "needs-you" } : {}),
           cells: [
-            { className: "ident", content: row.id },
+            { className: "ident", content: <Ident value={row.id} what="order ID" /> },
             {
               content: (
                 <>
@@ -101,7 +102,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       {[...view.needsYou, ...view.waitsOnTheBuyer].map((callout) => (
         <div className="callout" key={callout.id}>
           <div className="what">
-            Order <span className="mono">{callout.id}</span> {callout.state}
+            <Word word={callout.state} /> <Ident value={callout.id} what="order ID" />
           </div>
           <p className="why">
             {callout.why}

@@ -3209,15 +3209,16 @@ describe("the cards screen", () => {
   it("gives each card the whole address an agent buys it at, and it is one that works", async () => {
     // The whole address, carrying our catalog identifier rather than the
     // merchant's own: a merchant who pasted theirs into it would get a 404 from
-    // a working gateway.
+    // a working gateway. It is the copy button's, and its title says it.
     const running = await started({ dashboard: { PUBLIC_BASE_URL: "https://shop.example.com" } });
     const itemId = await publish(running.gateway, roomCard);
     await running.browser.signIn();
 
     const screen = await running.browser.get("/cards");
-    const shown = /https:\/\/shop\.example\.com(\/x402\/\S+?\/purchase)/.exec(
-      readable(screen.html),
-    );
+    const shown =
+      /title="Copy the purchase address: https:\/\/shop\.example\.com(\/x402\/[^"]+?\/purchase)"/.exec(
+        screen.html,
+      );
 
     expect(shown?.[1], "the cards screen names the address").toBe(`/x402/${itemId}/purchase`);
     // An agent asking at that path gets the payment challenge, not a 404.

@@ -193,15 +193,10 @@ const cardWord = (entry: MerchantCard, integration: CardsIntegration): Word =>
  * origin is the one the deployment is reached at, not the internal gateway
  * address. The identifier is our catalog one, not the merchant's own: a
  * merchant who pasted their `merchant_item_id` into it would get a 404 from a
- * working gateway. Cut at each separator, so a wrapped address breaks between
- * its parts rather than mid-word, and the parts joined back are the address.
+ * working gateway.
  */
-const buyingAddress = (origin: string, entry: MerchantCard): readonly string[] => {
-  const [first, ...segments] = `${origin}${expandPath(API_ROUTES.purchase_item.path, {
-    item_id: entry.id,
-  })}`.split(/(?<!\/)\/(?!\/)/);
-  return [first ?? "", ...segments.map((segment) => `/${segment}`)];
-};
+const buyingAddress = (origin: string, entry: MerchantCard): string =>
+  `${origin}${expandPath(API_ROUTES.purchase_item.path, { item_id: entry.id })}`;
 
 interface CardRow {
   readonly id: string;
@@ -209,7 +204,8 @@ interface CardRow {
   readonly off: boolean;
   readonly title: string;
   readonly aside: CardAside;
-  readonly buy: readonly string[];
+  /** The address an agent buys the card at. */
+  readonly buy: string;
   readonly itemId: string;
   readonly price: string;
   readonly delivery: string;
@@ -341,7 +337,7 @@ interface OrderRow {
 /** One order said in full under the table, with what it needs and of whom. */
 interface OrderCallout {
   readonly id: string;
-  readonly state: string;
+  readonly state: Word;
   readonly why: string;
   readonly rest: Rest | null;
 }
@@ -409,7 +405,7 @@ const calloutsOf = (
     .filter((order) => which(order.status))
     .map((order) => ({
       id: order.id,
-      state: ORDER_WORDS[order.status].text,
+      state: ORDER_WORDS[order.status],
       why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
       rest: whereTheRestIs(order.status),
     }));
