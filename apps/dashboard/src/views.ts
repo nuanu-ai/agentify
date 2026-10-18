@@ -262,6 +262,28 @@ export const cardsView = (
   // (`selling.ts` explains).
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
+  const rows = cards.cards.map((entry): CardRow => {
+    const state = cardWord(entry, integration);
+    return {
+      id: entry.id,
+      off: state !== CARD_WORDS.onSale,
+      title: entry.card.title,
+      priced: cardPrice(entry),
+      buy: buyingAddress(origin, entry),
+      itemId: entry.card.merchant_item_id,
+      price: money(entry.card.price),
+      delivery: deliveryOf(entry.card),
+      state,
+      control: cardControl(entry, cards.selling, integration),
+    };
+  });
+  const asked = askedIn(query, CARD_SEGMENT_KEYS);
+  // A card is found by its title or by a part of its product code, the two a
+  // merchant knows it by, except that a search that is some card's whole
+  // product code, as a link to one card writes it, finds that code alone:
+  // the card coded 1 is not the card coded 11.
+  const code = asked.q.toLocaleLowerCase();
+  const byCode = code !== "" && rows.some((row) => row.itemId.toLocaleLowerCase() === code);
 
   return {
     allSelling: gone
@@ -270,28 +292,15 @@ export const cardsView = (
         ? { verb: "resume", label: RESUME_ALL_SELLING }
         : { verb: "pause", label: STOP_ALL_SELLING },
     listing: listingOf({
-      rows: cards.cards.map((entry): CardRow => {
-        const state = cardWord(entry, integration);
-        return {
-          id: entry.id,
-          off: state !== CARD_WORDS.onSale,
-          title: entry.card.title,
-          priced: cardPrice(entry),
-          buy: buyingAddress(origin, entry),
-          itemId: entry.card.merchant_item_id,
-          price: money(entry.card.price),
-          delivery: deliveryOf(entry.card),
-          state,
-          control: cardControl(entry, cards.selling, integration),
-        };
-      }),
-      asked: askedIn(query, CARD_SEGMENT_KEYS),
+      rows,
+      asked,
       path: "/cards",
       segments: CARD_SEGMENTS,
-      // Found by its title or its product code, the two a merchant knows it by.
       matches: (row, words) =>
-        row.title.toLocaleLowerCase().includes(words) ||
-        row.itemId.toLocaleLowerCase().includes(words),
+        byCode
+          ? row.itemId.toLocaleLowerCase() === words
+          : row.title.toLocaleLowerCase().includes(words) ||
+            row.itemId.toLocaleLowerCase().includes(words),
       noMatch: (q, within) =>
         within === null
           ? `No card matches “${q}”.`
