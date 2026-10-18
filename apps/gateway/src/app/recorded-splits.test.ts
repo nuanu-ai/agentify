@@ -22,6 +22,7 @@ import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { loadConfig } from "../config.js";
+import { widestChallengeOn } from "../http/x402.js";
 import type { PayoutWalletRead } from "../ports/store.js";
 import { splitAddress } from "../split/address.js";
 import { DISTRIBUTOR } from "../split/fixture.js";
@@ -106,6 +107,7 @@ const aGatewayOver = (
     clock: () => NOW,
     ids: countedIds(),
     announcer,
+    widestChallenge: widestChallengeOn(config),
   });
   running = gateway;
   return { gateway, facilitator, config, announcer };

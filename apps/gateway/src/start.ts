@@ -17,7 +17,7 @@ import { RefusedToStart } from "./app/recorded-splits.js";
 import type { Runtime } from "./app/runtime.js";
 import { type GatewayConfig, isSandboxFacilitator, secondAttemptProblem } from "./config.js";
 import { buildApp } from "./http/server.js";
-import { PaymentEdge } from "./http/x402.js";
+import { PaymentEdge, widestChallengeOn } from "./http/x402.js";
 import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
@@ -206,6 +206,7 @@ export async function startGateway(
     // The gateway announces only on the live deployment; elsewhere a change
     // applies at once and nobody is told.
     announcer,
+    widestChallenge: widestChallengeOn(config),
   };
 
   const gateway = new Gateway(runtime);

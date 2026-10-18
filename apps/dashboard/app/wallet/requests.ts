@@ -39,8 +39,9 @@ export interface Failed {
 }
 
 /**
- * The wallet's answer could not be read, its session with the page gone: what
- * the merchant did in the wallet's window, approving included, is unknown.
+ * The wallet's answer could not be read, its session with the page gone or the
+ * answer not one a wallet gives: what the merchant did in the wallet's window,
+ * approving included, is unknown.
  */
 export interface Lost {
   readonly kind: "lost";
@@ -75,6 +76,16 @@ const accountOf = async (wallet: Wallet): Promise<string> => {
     throw { message: "the wallet answered with no address" };
   }
   return getAddress(first);
+};
+
+/**
+ * EIP-5792 acknowledges a batch with an object carrying its identifier; a
+ * wallet answering an earlier version of it names the identifier alone.
+ */
+const namesABatch = (answer: unknown): boolean => {
+  const id =
+    typeof answer === "object" && answer !== null ? (answer as { id?: unknown }).id : answer;
+  return typeof id === "string" && id !== "";
 };
 
 const disconnected = (wallet: Wallet): Promise<void> =>
@@ -119,8 +130,8 @@ export async function askAddress(
  * `chainId`. The wallet is moved to that chain first, because a batch is sent
  * on the chain the wallet is on, and Multicall3 sits at the same address on
  * most chains: sent elsewhere, it can succeed, pay out nothing and still cost
- * a fee. `sent` means the wallet accepted the batch, not that the network has
- * included it.
+ * a fee. `sent` means the wallet acknowledged the batch, not that the network
+ * has included it; an acknowledgment naming no batch is `lost`.
  */
 export async function sendPayout(
   wallet: Wallet,
@@ -132,7 +143,7 @@ export async function sendPayout(
   return forgotten(wallet, alone, async () => {
     const from = await accountOf(wallet);
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
-    await wallet.request({
+    const acknowledged = await wallet.request({
       method: "wallet_sendCalls",
       params: [
         {
@@ -144,6 +155,6 @@ export async function sendPayout(
         },
       ],
     });
-    return { kind: "sent" } as const;
+    return namesABatch(acknowledged) ? ({ kind: "sent" } as const) : ({ kind: "lost" } as const);
   });
 }

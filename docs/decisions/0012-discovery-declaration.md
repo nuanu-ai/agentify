@@ -35,6 +35,11 @@ filled in from the display name, which may be in any alphabet where the listing
 name goes out under the catalog's ASCII rule. Merchant-written text is held at
 the publish to the catalog's limits, by the catalog's own code where that code
 can be run, because the catalog drops what breaks them without telling anybody.
+The declaration rides in one header, so the publish refuses a card whose
+challenge, encoded with every other part at its widest, would pass 8 KiB. Node's
+HTTP client and fetch read 16 KiB of response headers in all
+(`docs/research/50-commerce-correctness-test.md`); taking half is a judgment, a
+margin for the response's other headers and for intermediaries.
 
 Every card is declared, with no opt-in, and only while it is for sale: a card
 off sale for any reason answers no challenge, so the catalog never carries a
@@ -54,10 +59,9 @@ once, which is not acceptance; `pnpm smoke:listing` makes the live call with the
 purchase's method and reports a probe with no verdict as no verdict. The
 catalog's limits belong to the card schema the publish and read paths share, so
 a stored card that breaks a newer limit is unreadable until republished, except
-under ADR-0017's plain-text rule, held at the publish alone. A name in Cyrillic,
-Greek or Arabic cannot be a listing name, and the merchant is told so here
-rather than dropped silently by the catalog. The declaration rides in one
-challenge header that grows with the card.
+under ADR-0017's plain-text rule and the challenge's 8 KiB bound, both held at
+the publish alone; a later change to the public address, the network or the
+challenge's own text is not measured again against stored cards.
 
 Rejected: an opt-in flag, making invisibility the default this decision exists
 to leave; the display name as the listing name, which puts one catalog's

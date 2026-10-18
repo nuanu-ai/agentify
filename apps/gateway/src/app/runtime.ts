@@ -33,6 +33,11 @@ export interface Runtime {
    * Asked on the live deployment only.
    */
   readonly announcer: Announcer;
+  /**
+   * The size in bytes of the widest payment challenge header a card can be
+   * answered with, measured by the code that writes the header.
+   */
+  readonly widestChallenge: (card: Card) => number;
 }
 
 export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
