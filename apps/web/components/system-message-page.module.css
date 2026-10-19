@@ -1,9 +1,9 @@
+/* The window's height between the header and the footer, the card in its middle. */
 .page {
-  min-height: 100vh;
+  flex: 1;
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 32px;
   padding-block: 64px;
 }
 
