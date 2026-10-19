@@ -845,8 +845,12 @@ describe("a stand killed with an order paused with its answer recorded", () => {
       await waitFor(async () => (await recordsIn(directory)).length === 1);
       expect(redelivering.answers).toEqual([]);
 
+      // The process the page names is the one a tester kills, so that is the
+      // one killed here, once it is known to be the stand.
+      const named = /data-pid="(\d+)"/.exec(await crashing.page("/orders"))?.[1];
+      expect(Number(named)).toBe(crashing.child.pid);
       const died = new Promise<void>((resolve) => crashing.child.once("exit", () => resolve()));
-      crashing.child.kill("SIGKILL");
+      process.kill(Number(named), "SIGKILL");
       await died;
 
       const restarted = await standProcess({ STAND_RECORDS_DIR: directory });

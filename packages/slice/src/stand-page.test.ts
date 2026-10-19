@@ -4,8 +4,8 @@
  * names an environment is the prefix of the key somebody typed, and the page
  * has to keep three answers apart — real money, test money, and not knowing.
  * That sentence is the promise, so the sentence is what those check. And a
- * paused order's Release button, which has to post back the very order it is
- * drawn beside.
+ * paused order's row, whose Release button has to post back the very order it
+ * is drawn beside and which has to say where that order stands.
  */
 
 import { describe, expect, it } from "vitest";
@@ -90,6 +90,10 @@ const hiddenFieldsOfEachForm = (page: string): Record<string, string>[] =>
       ),
     );
 
+/** Where each paused row on a page says its order stands, in the order drawn. */
+const whereEachPausedRowSays = (page: string): string[] =>
+  [...page.matchAll(/<tr data-paused="([^"]*)"/g)].map(([, where = ""]) => where);
+
 describe("a paused order on the Orders tab", () => {
   it("is drawn with a Release form that posts its own identifier back", () => {
     // The promise: pressing Release lets go of the order it is drawn beside
@@ -107,5 +111,22 @@ describe("a paused order on the Orders tab", () => {
     );
 
     expect(releasing).toEqual([{ action: "release_pause", order_id: id }]);
+  });
+
+  it("says the point it is paused at, and whether its answer is on disk yet", () => {
+    // The promise: the row is what a tester reads before `kill -9`. A row
+    // naming the other point, or calling an answer recorded on a stand that
+    // keeps no records, sends them to crash in a phase they did not mean.
+    const paused: PageState["paused"] = [
+      { id: "paused-as-it-arrived", merchantItemId: "the-item", phase: "arrival", since: 0 },
+      { id: "paused-with-its-answer", merchantItemId: "the-item", phase: "answer_ready", since: 0 },
+    ];
+    const rowsOnAStandKeeping = (records: string | null): string[] =>
+      whereEachPausedRowSays(
+        renderPage({ ...A_CONNECTED_PAGE, tab: "orders", paused, stand: { pid: 4242, records } }),
+      );
+
+    expect(rowsOnAStandKeeping(null)).toEqual(["arrival", "answer_ready"]);
+    expect(rowsOnAStandKeeping("/tmp/stand-records")).toEqual(["arrival", "answer_recorded"]);
   });
 });
