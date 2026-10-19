@@ -327,8 +327,10 @@ const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<nu
     "content-length": answer.body.length,
   });
   return new Promise((resolve) => {
-    // A write to a connection that dies under it may never call back, so the
-    // connection's close settles the cut as well.
+    // Node drops the callback of a write to a connection that is closing. The
+    // caller's check before the cut keeps the known cases out; the close
+    // settles the cut should another slip through, so that it never hangs
+    // unlogged with the rule counted as spent.
     response.once("close", () => resolve(null));
     response.write(answer.body.subarray(0, half), (error) => {
       if (error) {
