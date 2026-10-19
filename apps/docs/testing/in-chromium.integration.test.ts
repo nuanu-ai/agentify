@@ -710,6 +710,49 @@ describe("on a phone", () => {
   });
 });
 
+describe("a diagram or a table on a narrow or a wide screen", () => {
+  const PHONE = { width: 375, height: 812 };
+
+  it("draws a diagram on a phone at three quarters of its own size or more, its figure scrolling rather than the page", async () => {
+    const { page } = await visit("/docs/orders", PHONE, true);
+    const scales = await page
+      .locator("figure.diagram svg")
+      .evaluateAll((pictures) =>
+        pictures.map(
+          (picture) =>
+            picture.getBoundingClientRect().width /
+            (picture as SVGSVGElement).viewBox.baseVal.width,
+        ),
+      );
+
+    expect(scales.length).toBeGreaterThan(0);
+    for (const scale of scales) expect(scale).toBeGreaterThanOrEqual(0.74);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    await page.context().close();
+  });
+
+  it.each(DOCS_PAGES.filter((entry) => !entry.path.startsWith("/scanner")))(
+    "fits every table of $path into the column on a wide screen",
+    async (entry) => {
+      const { page } = await visit(docsAddress(entry.path), { width: 1440, height: 900 });
+      const wider = await page
+        .locator(".doc table")
+        .evaluateAll((tables) =>
+          tables
+            .filter((table) => table.scrollWidth > table.clientWidth + 1)
+            .map((table) => table.querySelector("th")?.textContent ?? "a table"),
+        );
+
+      expect(wider).toEqual([]);
+      await page.context().close();
+    },
+  );
+});
+
 describe("on a tablet", () => {
   it("reads the article at its whole measure, with the search and the sections in the bar and the pages in the menu", async () => {
     const { page } = await visit("/docs/orders", { width: 768, height: 1024 });
