@@ -277,6 +277,47 @@ describe("buying a parcel", () => {
     );
   });
 
+  it("does not tell a payer who is not the parcel's buyer whether an address is the one paid for", async () => {
+    // Verifying moves no money, so a wallet holding the price could sign as
+    // many payments as it likes against a paid parcel whose reference was
+    // published, and try addresses with each.
+    const { harnessed, served, itemId } = await started();
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await worker.stop();
+    const accepted = decodePaymentRequiredHeader(
+      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (accepted === undefined) throw new Error("no payment was offered");
+    const payingFrom = (from: string, nonce: string, body: unknown) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body,
+        headers: {
+          [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+            x402Version: 2,
+            accepted,
+            payload: { signature: `0xparcel-${nonce}`, authorization: { from, nonce } },
+          }),
+        },
+      });
+    const bought = await payingFrom(`0x${"a".repeat(40)}`, "0x01", { params: {} });
+    expect(bought.status).toBeLessThan(300);
+
+    const stranger = `0x${"b".repeat(40)}`;
+    const tried = async (nonce: string, shipTo: ShipTo) => {
+      const answered = await payingFrom(stranger, nonce, { params: {}, ship_to: shipTo });
+      return { status: answered.status, code: (answered.body as Refused).error.code };
+    };
+
+    expect(await tried("0x02", { ...address, line_one: "Jl. Pantai Nyanyi" })).toStrictEqual({
+      status: 409,
+      code: "not_this_purchase",
+    });
+    expect(await tried("0x03", address)).toStrictEqual({ status: 409, code: "not_this_purchase" });
+  });
+
   it("pays for the address it was priced for when the payment carries none", async () => {
     const { harnessed, served, itemId } = await started();
 
