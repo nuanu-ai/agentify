@@ -217,8 +217,8 @@ const environmentSchema = z.object({
   /**
    * How long a price holds, and with it the unpaid order it was named for. The
    * authorisation a payment challenge asks for lasts this long and more, so
-   * that one signed as the price runs out still outlives a charge sent after
-   * the goods (`app/payment-window.ts`).
+   * that one signed as soon as the price is named and presented as it runs out
+   * still outlives a charge sent after the goods (`app/payment-window.ts`).
    */
   QUOTE_TTL_MS: durationMs(30_000),
   /**
