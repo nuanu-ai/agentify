@@ -1,6 +1,6 @@
 # Product acceptance: a merchant sells, a buyer receives, and both understand
 
-Date: 2026-10-18. A working protocol, not a record of tests run or a product
+Date: 2026-10-19. A working protocol, not a record of tests run or a product
 decision. Stage 4 includes the SDK and WooCommerce on equal terms. One
 merchant uses one integration at a time. WooCommerce and parcels remain on
 the test channel until their release conditions are met.
@@ -527,9 +527,12 @@ handover to a fresh reader. Scanner identity/privacy is required when that
 entry path is offered. G is separately authorised.
 
 A release check is a selected subset, not full readiness: A-03/A-04, B-02,
-J-01/J-02, D-04/D-06, E-02/E-03, H-01/H-03/H-08, M-01/M-02 and one
-morning-after U-02/K-01 recovery. Add F for parcel changes, I for scanner or
-identity changes, and L for discovery/declaration/payment-recipient changes.
+J-01/J-02, D-04/D-06/D-07, E-02/E-03, H-01/H-03/H-08, M-01/M-02 and one
+morning-after U-02/K-01 recovery. Add C-09 for changes to the payment window,
+B-07/B-08 for changes to what an agent reads at the door or on the test
+channel, U-06/U-07 for documentation and site-frame changes, F for parcel
+changes, I for scanner or identity changes, and L for
+discovery/declaration/payment-recipient changes.
 Test and UX results from an earlier revision carry forward only with an
 explicit unchanged-promise rationale; never call them freshly run.
 
@@ -624,14 +627,21 @@ command refuses accounts with orders/receipts. Never erase debts to tidy a run.
 
 ## Sources and limits of this protocol
 
-The current public merchant promises are [quickstart](../../apps/docs/quickstart.md),
-[cards](../../apps/docs/cards.md), [orders](../../apps/docs/orders.md),
-[failures](../../apps/docs/failures.md), [money](../../apps/docs/money.md) and
-[WooCommerce](../../apps/docs/woocommerce.md). Their installed/published versions
-must agree with what participants receive.
+The current public merchant promises are, for the owner,
+[connecting](../../apps/docs/index.md), [money](../../apps/docs/money.md),
+[sending a payout](../../apps/docs/payout.md),
+[WooCommerce](../../apps/docs/woocommerce.md) and the
+[common questions](../../apps/docs/faq.md), and for the engineer,
+[quickstart](../../apps/docs/quickstart.md), [cards](../../apps/docs/cards.md),
+[orders](../../apps/docs/orders.md) and [failures](../../apps/docs/failures.md).
+What an agent is told is the site's [llms.txt](../../apps/web/lib/llms.ts), the
+test channel's own, served by the [edge](../../deploy/Caddyfile), and the route
+descriptions in the [contract](../../packages/contracts/src/api.ts). Their
+installed/published versions must agree with what participants receive.
 
 The decisions defining acceptance boundaries are
 [identity](../decisions/0026-one-way-in.md),
+[the order key](../decisions/0011-agent-collection-door.md),
 [one integration](../decisions/0036-a-merchant-sells-through-one-integration-at-a-time.md),
 [WooCommerce](../decisions/0023-woocommerce-connect.md),
 [address erasure](../decisions/0032-a-buyers-address-passes-through.md),
@@ -645,6 +655,8 @@ Implementation evidence for the organiser lives in the
 [order machine](../../packages/core/src/orders/machine.ts),
 [SDK transport](../../packages/sdk/src/transport.ts),
 [gateway](../../apps/gateway/src/app/gateway.ts),
+[payment edge](../../apps/gateway/src/http/x402.ts),
+[authorisation window](../../apps/gateway/src/app/payment-window.ts),
 [operator payment report](../../apps/gateway/src/payment-report-command.ts),
 [Postgres store](../../apps/gateway/src/adapters/postgres/store.ts),
 [Woo worker](../../apps/dashboard/src/woo-worker.ts),
