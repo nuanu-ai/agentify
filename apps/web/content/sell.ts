@@ -247,7 +247,6 @@ export const SELL_LANDING = {
     signIn: "Sign in",
     signUp: "Sign up",
   },
-  footer: { line: "Sales infrastructure for AI agents.", copyright: "© 2026 Agentify" },
 };
 
 export type SellLanding = typeof SELL_LANDING;
