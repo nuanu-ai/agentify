@@ -34,17 +34,21 @@ given by its https address: its http address answers with a redirect to
 https, the caller follows that redirect straight to the gateway, and the
 purchase is paid where the proxy never sees it. The proxy passes a redirect
 uncounted with its address unchanged, and its line warns that the caller may
-go around the proxy by following it. `--to` is refused if it
-carries a user name or a password, since the caller's own credentials travel
-in its headers and the proxy passes those on as they are. The proxy listens on
-`127.0.0.1:8788`, or on the port given with `--port`, and only on loopback. The
-caller is then pointed at the proxy instead of the gateway: the buyer with
-`GATEWAY_URL=http://127.0.0.1:8788 pnpm buy`, a merchant's code with
-`baseUrl: "http://127.0.0.1:8788"` in its SDK client. The pattern is quoted so
-that the shell does not expand the `*`. The first line the proxy prints says
-where it listens, where it forwards and which answer it will cut; a malformed or
-missing flag is refused with one sentence naming the flag, and the command then
-exits without listening.
+go around the proxy by following it. `--to` is refused if it carries a user
+name or a password, since the caller's own credentials travel in its headers
+and the proxy passes those on as they are. The refusal does not repeat them,
+but pnpm prints the command line it runs before the proxy starts, and again
+when the command fails, so whatever `--to` carries is in the terminal anyway
+and a secret has no place in it.
+
+The proxy listens on `127.0.0.1:8788`, or on the port given with `--port`, and
+only on loopback. The caller is then pointed at the proxy instead of the
+gateway: the buyer with `GATEWAY_URL=http://127.0.0.1:8788 pnpm buy`, a
+merchant's code with `baseUrl: "http://127.0.0.1:8788"` in its SDK client. The
+pattern is quoted so that the shell does not expand the `*`. The first line the
+proxy prints says where it listens, where it forwards and which answer it will
+cut; a malformed or missing flag is refused with one sentence naming the flag,
+and the command then exits without listening.
 
 The rule names a method, a path pattern and a phase. The method is matched
 exactly and is written in capitals. The pattern is matched against the whole
@@ -63,20 +67,25 @@ that carries the order, and that answer passes uncounted too. The unpaid first
 call of a purchase is answered with a 402 challenge; it passes through
 untouched and is not counted, which is why the rule above cuts the paid answer
 that follows it and not the challenge. `--nth` picks which counted answer is
-cut, the first by default. Other answers are not counted either, and the log
-says why each time: an answer shorter than two bytes, or an answer to HEAD,
-which has no body at all, since neither has a middle to cut midway; an answer
-whose caller had already left by the time it was complete, or left while the
-cut midway was still being written to it, since the cut never reached anyone;
-and an upstream that could not be reached or broke off its answer, which the
-caller receives as a 502 naming the upstream and the network code, unless the
-caller has left too, in which case the line says that no 502 was sent.
+cut, the first by default. It counts answers in the order they came back whole
+from the gateway, which with several requests in flight at once is not always
+the order in which the requests arrived; the sequence number in the log keeps
+the order of arrival.
+
+Other answers are not counted either, and the log says why each time: an
+answer shorter than two bytes, or an answer to HEAD, which has no body at all,
+since neither has a middle to cut midway; an answer whose caller had already
+left by the time it was complete, or left while the cut midway was still being
+written to it, since the cut never reached anyone; and an upstream that could
+not be reached or broke off its answer, which the caller receives as a 502
+naming the upstream and the network code, unless the caller has left too, in
+which case the line says that no 502 was sent.
 
 The phase decides what the caller sees. With `before-headers` the proxy writes
 nothing and closes the connection, so the caller has no status at all; curl
 reports an empty reply from the server. With `mid-body` it writes the status
 and the headers, with a content length that promises the whole body, then half
-of the body, and closes the connection once those bytes are sent; curl reports
+of the body, and closes the connection once those bytes are written; curl reports
 the transfer closed with bytes remaining. A rule cuts once. After the cut, the
 proxy passes everything through, as it does for every request the rule does
 not match, with the status, the headers and the body unchanged except that the
@@ -111,6 +120,13 @@ The order document a purchase is answered with names its own address in
 configured to answer as. It points at the gateway itself, so a buyer that
 follows it after a cut reads the order directly and bypasses the proxy, and
 those reads do not appear in the proxy's log.
+
+After a cut purchase `pnpm buy` ends with a fetch error, and running it again
+signs a new payment rather than repeating the one whose answer was lost. The
+story in which a buyer sends the very same signed payment again after the cut
+needs a buyer that keeps its signed payment header and resends it. The
+repository has no such buyer, and the proxy's log cannot stand in for one,
+since it never prints the signature.
 
 Arming the rule again means restarting the proxy. Stop the caller first: a
 restart drops whatever is in flight through the proxy at that moment, such as
