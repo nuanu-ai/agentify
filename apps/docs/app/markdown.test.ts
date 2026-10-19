@@ -12,8 +12,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOCS_GROUPS, DOCS_PAGES } from "@agentify/ui/docs";
 import { describe, expect, it } from "vitest";
-import { markdownCopy } from "./markdown-copy.js";
 import { parser, renderedPages, sourceOf, withSiteValues } from "./markdown.server.js";
+import { markdownCopy } from "./markdown-copy.js";
 import { PAGES } from "./pages.js";
 import { UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
 

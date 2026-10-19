@@ -12,12 +12,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { includedFile, includeOf } from "./includes.js";
 import { sourceOf } from "./markdown.server.js";
-import { PAGES } from "./pages.js";
+import { markdownFileOf, PAGES } from "./pages.js";
 import { isSiteValueName, UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
-
-/** Where a page's Markdown is written in the build: `/money` as `money.md`, the front page as `index.md`. */
-const markdownFileOf = (path: string): string =>
-  path === "/" ? "index.md" : `${path.slice(1)}.md`;
 
 const OPENER = /^(:{3,})\s*(\S+)(?:\s+(.*))?$/;
 const CLOSER = /^(:{3,})\s*$/;

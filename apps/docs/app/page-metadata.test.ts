@@ -21,9 +21,12 @@ const headOfPage = async (path: string): Promise<MetaDescriptor[]> =>
     matches: [],
   } as unknown as Parameters<typeof meta>[0]);
 
-const valueOf = (tags: MetaDescriptor[], property: string): unknown =>
-  tags.find((tag) => "property" in tag && tag.property === property)?.content ??
-  tags.find((tag) => "name" in tag && tag.name === property)?.content;
+/** A tag's fields, read as plain data. */
+const fieldsOf = (tag: MetaDescriptor): Readonly<Record<string, unknown>> =>
+  tag as Readonly<Record<string, unknown>>;
+
+const contentOf = (tags: MetaDescriptor[], named: string): unknown =>
+  tags.map(fieldsOf).find((tag) => tag.property === named || tag.name === named)?.content;
 
 describe("documentation search metadata", () => {
   it("describes every page individually in search results and link previews", async () => {
@@ -67,9 +70,9 @@ describe("a page's Markdown", () => {
     const origin = `${valueTemplate("origin")}/docs/`;
 
     for (const page of PAGES) {
-      const named = (await headOfPage(page.path)).find(
-        (tag) => "rel" in tag && tag.rel === "alternate" && tag.type === "text/markdown",
-      );
+      const named = (await headOfPage(page.path))
+        .map(fieldsOf)
+        .find((tag) => tag.rel === "alternate" && tag.type === "text/markdown");
       const href = String(named?.href ?? "");
 
       expect(href.startsWith(origin), `${page.path}: ${href}`).toBe(true);
@@ -84,13 +87,13 @@ describe("a link to a page, unfurled", () => {
   it("shows the picture about selling to agents for a merchant page, and the site's for a scanner page", async () => {
     for (const page of PAGES) {
       const tags = await headOfPage(page.path);
-      const picture = String(valueOf(tags, "og:image"));
+      const picture = String(contentOf(tags, "og:image"));
 
-      expect(valueOf(tags, "twitter:card"), page.path).toBe("summary_large_image");
+      expect(contentOf(tags, "twitter:card"), page.path).toBe("summary_large_image");
       expect(picture, page.path).toBe(
         `${valueTemplate("origin")}${page.site === true ? "/opengraph-image" : "/agentic-shop/opengraph-image"}`,
       );
-      expect(valueOf(tags, "og:image:alt"), page.path).toBeTruthy();
+      expect(contentOf(tags, "og:image:alt"), page.path).toBeTruthy();
     }
   });
 });
