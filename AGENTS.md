@@ -56,20 +56,23 @@ that can silently take a deployment down is a defect in the knob, not in the
 operator.
 
 ## Product operation
-Agentify has no staffed purchase or refund service. Merchant onboarding,
-fulfilment and recovery should be self-service wherever their safety can be
-verified. Human approval admits a merchant to live sales; it does not establish
-that a payment or refund happened. Administrative and maintenance access must
-not become a required staffed step in an ordinary sale. Unverified financial
-outcomes remain unknown (the product owner, 2026-10-19).
+Agentify has no staffed purchase or refund service. Human approval admits a
+merchant to live sales; it does not establish a payment outcome. Administrative
+and maintenance access must not become a required staffed step in an ordinary
+sale. Original payment verification and automatic recovery remain Agentify's
+responsibility; unverified payment outcomes remain unknown.
 
-The merchant owns stock, fulfilment, cancellation and refund policy. Obligations
-on accepted Agentify sales still hold, including the whole price when a refund
-is owed. A shop connector adapts and validates the shop's evidence against
-existing contracts; the core and public SDK do not acquire shop-specific
-business rules. The merchant's system initiates and executes refunds;
-Agentify's role is to supply sale facts, verify repayment evidence, record the
-outcome and coordinate its own delivery (the product owner, 2026-10-19).
+The merchant owns stock, fulfillment, cancellation and refund policy, money
+transfers and fulfillment outside Agentify. Agentify does not confirm refunds
+or adjudicate an agreement between the parties. The accepted direction is one
+authenticated, idempotent merchant action that stops future Agentify fulfillment,
+with an optional explanation to the buyer. Agentify records "fulfillment closed
+by merchant", preserves the original payment and history, and attributes any
+refund or agreement claim to the merchant. A missed deadline establishes
+unfulfilled delivery, not a required whole-price refund. A shop connector adapts
+the shop to the public contracts; the core and SDK acquire no shop-specific
+business rules. The closure action and corresponding contract changes are not
+built (ADR-0028; the product owner, 2026-10-19).
 
 ## Git
 - Main branch: `main`. Every change is made on a branch and reaches `main`

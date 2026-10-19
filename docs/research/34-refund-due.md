@@ -1,7 +1,8 @@
 # A refund owed: what the system does, what practice says, what was weighed
 
-Date: 2026-09-23. A research note that may be rewritten. The decision it
-supports is ADR-0028.
+Historical: observations and comparisons from 2026-09-23. The accepted
+merchant-closure boundary is ADR-0028; implementation gaps are in
+`52-self-service.md`. This note is not a refund implementation plan.
 
 ## The question
 
@@ -107,28 +108,3 @@ Letting the buyer choose between late goods and money would need a route
 through which an agent writes to its order. The order identifier would be the
 only proof of who is asking (ADR-0011), and that is too much surface for the
 pilot.
-
-The option taken is to allow late goods until a refund is recorded. It keeps
-most of what the contract already promises and adds the missing pieces: a
-way to record a refund, the payer's address in front of the merchant, and
-honest words. It narrows one promise. The error for a late delivery now comes
-once a refund is recorded, instead of once it has gone out, because a refund
-nobody reports cannot be seen here. That leaves one case open, which the order
-machine's own comments also name: a refund already on its way and not yet
-reported races a late delivery, and the buyer may end up with both.
-
-## The numbers
-
-The time limits in the examples above belong to those services. Agentify has
-no staffed refund service and does not adopt a three-business-day intervention
-or fourteen-day goods-or-money guarantee. It promises no refund from its own
-funds. The product owner's rule is merchant self-service with verifiable
-payment evidence; ADR-0028 records it.
-
-## Still open
-
-The merchant needs the original payer and a way to refund without racing a late
-delivery. Recording a transfer must verify its network, asset, recipient,
-amount and unique use for this sale. Unknown payer and unavailable evidence
-cannot be resolved by guessing or by asking a nonexistent support desk. The
-implementation inventory is in `52-self-service.md`.

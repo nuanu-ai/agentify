@@ -1,64 +1,54 @@
-# 0028. Late goods settle a refund owed until a refund is recorded
+# 0028. The merchant closes fulfillment; Agentify does not confirm a refund
 
 Date: 2026-09-23
-Status: accepted (the product owner, 2026-09-23, 2026-09-28; commission,
-2026-10-14; self-service, 2026-10-19). The state machine handles late goods
-and recorded refunds. Recording a refund and showing its payer to the merchant
-are not built; there is no staffed refund service.
+Status: accepted (the product owner, 2026-10-19). Merchant closure is not
+built; the current refund states and public contract still require changes.
 
 ## Context
 
-An asynchronous order past its delivery deadline becomes `refund_due`: the
-buyer has paid and the merchant owes goods or the whole price back from their
-own wallet (ADR-0019). Agentify does not observe a transfer from that wallet.
-The order stays on the open-order list, so the merchant's worker may still
-try to deliver it. Closing a debt on an unverified report would let a seller
-keep both the money and the goods.
+A missed delivery deadline establishes that an order was not fulfilled in time. It
+does not establish the remedy the merchant and buyer agree. A refund can be
+partial, use another asset or network, or be replaced by an offset or another
+agreement. Deciding whether that settles the parties' obligations would make
+Agentify responsible for shop policy and adjudication.
 
 ## Decision
 
-Late goods settle the debt until a refund is recorded. Before that, delivery
-closes the order as `delivered`. `refund_due` is not final and has no deadline
-of its own. A recorded refund makes the order `refunded`, which is final, and
-later delivery is refused. A transfer that Agentify has not recorded does not
-stop delivery; the public contract must say so.
+The merchant has one authenticated, idempotent action to stop future
+fulfillment through Agentify, optionally explaining the action to the buyer.
+Agentify records the merchant's action and stops its own future fulfillment.
+The public claim is "fulfillment closed by merchant". An assertion of a refund
+or agreement stays attributed to the merchant; it is not "refund verified" or
+"parties settled". Agentify neither confirms a refund nor judges the agreement.
 
-Refunds belong to merchant self-service. The merchant's system initiates and
-executes them; Agentify supplies the sale's payment facts, verifies repayment
-evidence and coordinates its own delivery. Agentify neither signs a merchant's
-transfer nor keeps their key. A seller or administrator saying "refunded" is
-not proof: a refund may close an order only after the system verifies payment
-back to the original payer, on the sale's network and in its asset, for the
-whole price. The evidence must belong to this sale and cannot settle another
-order as well. Unknown payer, missing evidence and an unavailable network are
-unresolved cases, never a successful refund or proof that no transfer happened.
+The merchant owns cancellation and refund policy, transfers and fulfillment
+outside Agentify. A missed deadline means unfulfilled by the deadline, not a
+mandatory whole-price refund. Partial refunds, another currency or network,
+and offsets require neither Agentify exceptions nor database repair. There is
+no refund proof protocol, transfer reservation, refund RPC or staffed service.
+Agentify signs no merchant transfer and keeps no merchant key (ADR-0019).
 
-Before this flow is offered, it must also prevent an in-flight refund and a
-late delivery from completing together. Merely accepting a transaction hash
-after the seller sends money is insufficient. Its reservation, verification
-and recovery rules need implementation and tests before the portal promises
-that the system protects a refunding merchant from late delivery.
-
-The merchant refunds the whole price, including the 0.1% commission, which
-stays with Agentify (the product owner, 2026-10-14). The split and its warehouse
-return no commission (ADR-0037). The payer, amount, asset, network and the
-recorded result must be visible to the merchant. No support contact is a
-required step. Agentify promises no manual intervention after three business
-days, no goods-or-money guarantee at fourteen days, and no payment from its own
-funds to cover an unresolved order.
-
-A refund for a parcel the merchant admits lost follows the same evidence rule.
-It moves a shipped order to `refunded`, for parcels only (ADR-0033). It must
-not reopen the order as `refund_due`, where a stale shipment could close it.
-Parcel sales remain refused on live until their existing readiness gates hold.
+The original payment and order history remain. Closure is not nonpayment,
+does not release an accepted payment authorization for reuse and does not
+cause another charge. Original payment verification and recovery stay under
+ADR-0027. Agentify retains its 0.1% commission; neither the split nor its
+warehouse returns it (ADR-0037). This decision adds no net accounting or
+partial-refund schema and changes no address-retention rule (ADR-0032).
 
 ## Consequences and alternatives
 
-The merchant controls their money and delivery; the system must distinguish
-what it verified from what somebody asserted. The current recording gap stays
-visible in the portal and in `docs/research/52-self-service.md`.
+The runtime's `refund_due`, `refund_settled` and `refunded` still express a
+refund obligation or confirmation. Their semantics, public status and errors,
+receipts, documentation and tests must change together before closure is
+offered. The API shape, state names and treatment of already-delivered orders
+are not decided here. Implementation gaps are in
+`docs/research/52-self-service.md`.
 
-Rejected: a staffed reconciliation queue or an Agentify-funded backstop; an
-unchecked merchant or administrator refund button; a second settle to resolve
-a silent charge; and returning the commission in a separate transfer. None
-provides a safe, unattended completion of this sale.
+Parcels remain refused on live until their closure flow and public contract
+are implemented, reviewed and tested, and their other readiness gates hold
+(ADR-0033). No goods-or-money guarantee or Agentify-funded refund is promised.
+
+Rejected: verifying or coordinating the parties' refund agreement, an
+administrator declaring it settled, a staffed reconciliation queue and a
+mandatory whole-price return. Each gives Agentify authority over shop policy
+or claims an outcome it does not establish.

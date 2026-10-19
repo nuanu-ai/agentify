@@ -12,7 +12,7 @@ dies before the effects run, a retry cannot repair it: an order that says
 `paid` and was never handed over has moved past the transition that emits the
 hand-over. A `delivered` order with no receipt is a sale its merchant cannot
 reconcile, and an open order whose reminder was lost is one nothing will
-close or refund.
+close.
 
 ## Decision
 
@@ -45,8 +45,9 @@ belongs to a real failure. A receipt and a reminder pass
 both: writing a receipt again writes the same row, and the machine refuses an
 expiry that no longer applies. A hand-over passes the first only, because every
 hand-over counts against the order's redelivery cap and the closure at the cap
-is a refund; so the sweep skips an order whose envelope is still on the stream
-or whose payment is younger than a configured patience, and runs one at a time
+needs merchant resolution (ADR-0028); so the sweep skips an order whose
+envelope is still on the stream or whose payment is younger than a configured
+patience, and runs one at a time
 under a lock, since two runs side by side both find the stream empty. A
 merchant event is delivered at most once, so the sweep has no arm for it and
 must not get one. The deletion has no receiver. Every path that hands an order

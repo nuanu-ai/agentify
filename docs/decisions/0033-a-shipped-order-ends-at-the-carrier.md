@@ -2,13 +2,13 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28 and 2026-10-09). Built, and
-sold on the test channel only; the refund of a lost parcel is not built.
+sold on the test channel only; merchant closure under ADR-0028 is not built.
 
 ## Context
 
 The asynchronous mode sells goods that leave after the charge, and a missed
-deadline leaves a refund owed (ADR-0028). Its `delivered` assumes goods that
-reach the agent when handed over: it ends the order, issues the receipt and
+deadline leaves fulfillment overdue (ADR-0028). Its `delivered` assumes goods
+that reach the agent when handed over: it ends the order, issues the receipt and
 stops every clock. A merchant who ships a parcel knows only that a carrier took
 it, and the pilot pays in advance only for goods that survive a second delivery
 (`apps/docs/index.md`), which a parcel does not.
@@ -43,14 +43,15 @@ place and nobody's home. `ship` and `shipped` join the storefront's open
 vocabularies (ADR-0006 §5), and the contract version does not move, as no
 merchant outside our control runs a published SDK yet (ADR-0006 §2).
 
-When a merchant admits a parcel lost, ADR-0028's verified self-service flow records a refund, and
-the order moves from `delivered` to `refunded`, the only way out of `delivered`
-and for parcels only, with the receipt reading the refund. Neither is built, so
-the live channel refuses a `ship` card with words until that flow and
-ADR-0028's view of the payer run there and the dashboard tells a merchant how
-to report a refund. Who may read a parcel's tracking is ADR-0011's rule: the
-holder of the order identifier, which no payment requirement or listing
-carries.
+A lost parcel and any refund or other agreement remain the merchant's
+responsibility. Agentify records no verified refund or settlement of that
+agreement (ADR-0028). The live channel continues to refuse a `ship` card until
+the merchant closure flow and its public contract are implemented, reviewed
+and tested, and the other parcel readiness gates hold. The state and receipt
+representation of closure, including an already-shipped parcel, still need
+design; no such transition is offered. Who may read a parcel's tracking is
+ADR-0011's rule: the holder of the order identifier, which no payment
+requirement or listing carries.
 
 ## Consequences
 
@@ -68,5 +69,5 @@ declares (no agent learns every shape); a second shipment accepted in silence
 shuts out local couriers and invites made-up numbers); reusing
 `fulfill_deadline_seconds` (one name, two meanings); a ceiling in deployment
 configuration (unseen by the offline check, and a lowered one strands published
-cards); reopening a lost parcel into a refund owed (a stale delivery would
+cards); reopening a lost parcel for fulfillment (a stale delivery would
 close it); a "physical" flag beside `fulfillment` (two fields, one fact).

@@ -44,7 +44,7 @@ carries price questions (ADR-0002 §2) and order events.
    twice and recognise it by the order's identifier. An event lost in a poll
    response that never reached its worker is gone, and no event is the only
    record of anything: its order stays in `orders.list({ open: true })` until
-   whatever it owes, a refund included, is settled.
+   its fulfillment ends (ADR-0028).
 4. A connected, waiting worker receives a message with no polling lag: its poll
    is parked at the gateway and woken on publish, so an agent waiting on the
    price question of a synchronous purchase waits on the network alone.

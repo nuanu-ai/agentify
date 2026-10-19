@@ -16,31 +16,33 @@ orders. Maintenance tools can exist without being a required step in a sale.
 | Registration, keys, seller details, pause and resume | The merchant | Their authenticated account and existing selling checks | Dashboard and relevant SDK operations |
 | Payout | The merchant or anyone sending the immutable split's payout | The contract's fixed recipients; wallet confirmation authorizes the transaction | Merchant payout screen; no Agentify signer |
 | Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Quickstart step 6 runs an x402 buyer with the merchant's own test wallet and Base Sepolia faucet funds |
-| Full offboarding | The merchant | Accepted orders and refund debts remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |
-| Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; a recorded refund refuses delivery |
-| Refund | The merchant's system executes; Agentify verifies | Evidence of the full transfer to the original payer and coordination with Agentify's delivery | Recording, payer view and concurrency protection are missing; ADR-0028 |
+| Full offboarding | The merchant | Accepted orders and payment history remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |
+| Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; merchant closure is missing |
+| Refund or another agreement | The merchant and buyer | Their policy and agreement; Agentify does not confirm either | Policy, transfers and external fulfillment belong to the merchant; ADR-0028 |
+| Close Agentify fulfillment | The merchant | An authenticated, idempotent action, with an optional buyer explanation | Not built; requires the contract changes in ADR-0028 |
 | Silent payment | Automatic reconciliation | Finalized chain evidence bound to the saved authorization and reserved attempt | Configured RPC enables minutely recovery, including closed orders and lost hashes; facilitator-only payments retain unresolved outcomes; ADR-0027 |
 | WooCommerce recovery | The merchant, with system checks | The original shop and sale match exactly; an uncertain creation is never repeated blindly | Authenticated page from the merchant's Orders links an existing download order or retries its saved delivery; no shop creation action; ADR-0023 |
 
 ## The shop's responsibility
 
-The merchant owns stock, fulfillment and the policy for cancellations and
-refunds. Obligations on accepted Agentify sales still hold, including the whole
-price when a refund is owed. The connector validates the shop's evidence and
-translates it into Agentify's existing purchase and delivery contracts. The
-recovery action attaches the exact existing shop order to its sale; it does
-not create a shop order again or decide what the shop should do. This applies
-the connector boundary in ADR-0023 and the unchanged public contract and SDK in
-ADR-0036: WooCommerce-specific rules do not become business decisions in
-Agentify's core or SDK.
+The merchant owns stock, fulfillment, cancellation and refund policy, money
+transfers and fulfillment outside Agentify. The connector translates the shop
+into Agentify's purchase and delivery contracts. The recovery action attaches
+the exact existing shop order to its sale; it does not create a shop order
+again or decide what the shop should do. This applies the connector boundary
+in ADR-0023 and ADR-0036: WooCommerce-specific rules do not become business
+decisions in Agentify's core or SDK.
 
-The merchant's system decides and executes refunds, including stopping its own
-fulfillment. Agentify is responsible for reliable debt and payment facts,
-repayment verification, recording the result and coordinating its own delivery.
-The dashboard is for showing the debt, verified result or unresolved outcome;
-verified refund recording is still missing. The merchant's returns workflow
-and payment execution belong in their system. A WooCommerce order marked
-refunded does not establish that the original payer received USDC.
+The product owner's accepted decision is that Agentify does not confirm
+refunds or adjudicate the parties' agreement. The merchant closes future
+Agentify fulfillment through one authenticated, idempotent action, optionally
+explaining it to the buyer. Agentify records "fulfillment closed by merchant";
+a statement about a refund or agreement is visibly the merchant's statement.
+A missed deadline means unfulfilled by that deadline, not a mandated return of
+the whole price. Partial refunds, another currency or network and offsets need
+no Agentify exception or database repair. The original payment and history
+remain, and Agentify retains its 0.1% commission. This direction is accepted in
+ADR-0028; the closure action and corresponding public contract are not built.
 
 ## Admission to real sales
 
@@ -98,9 +100,10 @@ silently reclassified as unpaid.
 
 Completion races the original callback under the same order lock and attempt
 identifier. The due payment deadline is applied first. Held synchronous goods
-can be released once; a prepaid order past its payment deadline becomes a refund
-obligation without a fresh handover. Receipt and merchant messages commit with
-the state. A chain-recovered receipt carries the block's execution time and
+can be released once; a prepaid order past its payment deadline enters the
+existing `refund_due` state without a fresh handover. ADR-0028 requires that
+state's refund semantics to change, while original payment recovery stays
+unchanged. Receipt and merchant messages commit with the state. A chain-recovered receipt carries the block's execution time and
 transaction; it supplies no fabricated facilitator response header.
 
 The proof relies on the canonical Circle USDC event sequence, checked in
@@ -138,58 +141,37 @@ these read-only checks.
 
 ## Remaining work
 
-Verified refund recording needs a complete integration design under ADR-0028.
-It must bind the original payer, sale's network and token, whole price and
-unique evidence to that sale. Unknown payer and unavailable evidence remain
-unresolved. A merchant or shop status cannot substitute for payment evidence.
+Merchant closure needs implementation under ADR-0028. It must record the
+merchant's authenticated action idempotently and reliably stop future
+Agentify fulfillment under retries and concurrent delivery. It cannot cancel a
+merchant handler, shop email or external fulfillment already in flight; the
+merchant owns that work. An optional explanation must remain attributed to the
+merchant, including any assertion that money was returned or an agreement
+reached. No refund transfer, proof reader, reservation or recovery protocol is
+part of this work.
 
-The gateway keeps the verified payer, the original payment payload and the
-facilitator's settlement transaction or verified chain evidence. Older records
-may hold a payment fingerprint as owner, which is not an address to refund. The saved
-x402 version 2 payload can carry the sale's network, token and amount: these
-were checked against the gateway's own requirements at verification. A refund
-must validate that saved context against the order and the original settlement;
-it cannot infer old terms from today's deployment settings. Missing or
-inconsistent evidence makes a sale ineligible until its payment is established.
+The current machine still uses `refund_due` for an overdue paid order and
+`refund_settled` to reach `refunded`. Those names and their existing semantics
+are not the accepted closure contract. There is no merchant closure action.
+The machine, API and SDK, public status and errors, receipts, portal examples
+and tests need one coherent implementation before it is offered. Its API shape,
+state names and eligibility for already-delivered orders remain design work;
+this decision authorizes neither deleting exposed goods nor inventing a refund
+amount or accounting schema.
 
-A reservation must precede the merchant's repayment and durably block Agentify
-from releasing or recording late goods. It cannot cancel an already-running
-merchant handler, a shop email or other external fulfillment in flight. A lost
-transfer response and a restart need recoverable evidence; accepting a hash
-afterwards does not justify another debit or resolve concurrent delivery.
-
-A plain transfer matching sender, recipient and amount proves movement, but
-does not identify the refund it was intended for. Verification needs an exact
-successful transfer, a defined finality rule and permanent evidence uniqueness
-across orders and merchants, committed atomically with the recorded outcome.
-Accepted purchase authorizations retain their ownership permanently, and the
-payment recovery reader verifies those original authorizations. Refunds still
-need their own reservation and evidence ownership; a purchase proof is not a
-repayment proof. An unavailable network or a timeout establishes neither
-repayment nor permission to restore Agentify's delivery.
-
-USDC's EIP-3009 authorization is one possible evidence protocol for a merchant
-integration: its signed sender, recipient, amount, validity and one-use nonce
-could bind an attempt to a sale and support safe resubmission. Installed
-libraries contain its types for Base and Base Sepolia, but this protocol is
-unchosen and unimplemented. No refund wallet journey in Agentify's dashboard
-follows from that possibility ([EIP-3009](https://eips.ethereum.org/EIPS/eip-3009)).
-
-Silent-charge recovery verifies the original one-use authorization and its
-exact transfer, rather than accepting a generic transfer for the same amount.
-Neither merchant nor admin gets a button that asserts success, failure or
-refund without evidence.
-
-The quickstart's test buyer lets a merchant exercise their own product without
-staff or a shared funded wallet. It signs a test-chain payment with the buyer's
-own key after funding that address from Circle's Base Sepolia faucet. This is
-a documented integration path, not a dashboard purchase button or a mocked sale.
+Original payment verification and recovery continue to establish payment
+facts and outcomes, including for closed orders. Late payment recovery must
+not restart fulfillment closed by the merchant. A closure must not imply
+nonpayment, release the original payment authorization for reuse or trigger
+another charge. Payment facts and
+history remain available. Address erasure keeps ADR-0032's existing triggers.
+Parcels remain refused on live until the closure flow and public contract are
+implemented, reviewed and tested, and their other readiness gates hold.
 
 Full offboarding also needs a self-service path. Pausing sales and revoking
-keys are available; neither cancels accepted orders, settles debts or deletes
-an account. A merchant must not be sent to a nonexistent support process to
-finish leaving.
+keys are available; neither cancels accepted orders, resolves the merchant's
+obligations or deletes an account. Accepted orders and payment history must
+remain accounted for, without requiring a nonexistent support process.
 
-The public documentation states these gaps. It promises neither scheduled
-manual intervention nor an Agentify-funded refund. An open item here is not a
-claim that self-service exists.
+These are implementation gaps, not a claim that self-service closure exists.
+Agentify promises neither manual intervention nor a refund from its own funds.
