@@ -86,16 +86,6 @@ export function PlaceLink({
   );
 }
 
-/** The mark and the name, a link to the front page. */
-export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
-  return (
-    <a className="brand" href={home}>
-      <BrandMark className="brand-mark" />
-      <span>Agentify</span>
-    </a>
-  );
-}
-
 function DocsDoor(drawn: Drawn) {
   return (
     <PlaceLink place={DOCS} current={drawn.surface === "docs"} {...drawn}>
