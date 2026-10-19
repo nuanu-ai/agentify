@@ -260,6 +260,67 @@ export const wooShopsContract = (
       });
     });
 
+    it.each(["https://other.example.com", "https://shop.example.com:8443"])(
+      "keeps the connected shop when a pending grant names %s",
+      async (shopUrl) => {
+        await using(async (shops, accounts) => {
+          await shops.beginGrant({
+            token: "pending-token",
+            accountId: accounts.one,
+            shopUrl,
+            startedAt: NOW,
+            expiresAt: MUCH_LATER,
+          });
+          const before = connection(accounts.one);
+          await shops.connect(before);
+
+          expect(await shops.connectFromGrant("pending-token", keys, LATER)).toBeNull();
+          expect(await shops.connectionOf(accounts.one)).toStrictEqual(before);
+        });
+      },
+    );
+
+    it.each(["https://shop.example.com", "https://SHOP.example.com:443/"])(
+      "renews credentials for the same shop at %s",
+      async (shopUrl) => {
+        await using(async (shops, accounts) => {
+          await shops.connect(connection(accounts.one));
+          await shops.beginGrant({
+            token: "renewed-token",
+            accountId: accounts.one,
+            shopUrl,
+            startedAt: NOW,
+            expiresAt: MUCH_LATER,
+          });
+          const renewed = { ...keys, consumerKey: "ck_renewed", consumerSecret: "cs_renewed" };
+
+          const connected = await shops.connectFromGrant("renewed-token", renewed, LATER);
+
+          expect(connected).toMatchObject({ ...renewed, revision: "renewed-token" });
+          expect(await shops.connectionOf(accounts.one)).toStrictEqual(connected);
+        });
+      },
+    );
+
+    it("connects a different shop after the previous connection is forgotten", async () => {
+      await using(async (shops, accounts) => {
+        await shops.connect(connection(accounts.one));
+        await shops.forget(accounts.one);
+        await shops.beginGrant({
+          token: "replacement-token",
+          accountId: accounts.one,
+          shopUrl: "https://other.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        const connected = await shops.connectFromGrant("replacement-token", keys, LATER);
+
+        expect(connected?.shopUrl).toBe("https://other.example.com");
+        expect(await shops.connectionOf(accounts.one)).toStrictEqual(connected);
+      });
+    });
+
     it("replaces a connection rather than keeping two", async () => {
       // Connecting a second shop means moving; two rows would be two shops to
       // place every order in.
@@ -319,7 +380,7 @@ export const wooShopsContract = (
         await shops.beginGrant({
           token: "racing-token",
           accountId: accounts.one,
-          shopUrl: "https://replacement.example.com",
+          shopUrl: "https://shop.example.com",
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
