@@ -1,6 +1,6 @@
 # Orders and fulfillment modes
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You are writing the handler that takes paid orders and gives out the goods for
 them. Everything it rests on is collected here: what the fulfillment modes are,
@@ -8,14 +8,6 @@ what arrives in the handler, how an order can end, and what happens when time
 runs out. The working words — card, handler, idempotency key — are defined on
 [The first test sale](/quickstart), and the individual failures are collected
 on [What can go wrong](/failures).
-
-::: warning The public surface is versioned
-Use this page with the package version you installed. Function or field changes
-arrive in a new package version, and the test channel can speak them before it
-is released. During the pilot the contract version does not move with each of
-them, so keep the package current: a release older than the gateway can read a
-word it does not know as a failure.
-:::
 
 ## Fulfillment modes
 

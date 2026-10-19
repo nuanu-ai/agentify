@@ -1,6 +1,6 @@
 # The product card
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 Your SDK integration writes and publishes the cards, and remains their source
 when a product or price changes. The whole path, from an empty project to a
@@ -19,15 +19,6 @@ The page begins at the smallest card that sells and adds one field at a time,
 each of them under the need that asks for it. If what you came for is a lookup
 rather than a first reading, [every field of a card](#every-field-of-a-card) is
 in one table at the end.
-
-::: warning The public surface is versioned
-The package is `@nuanu-ai/agentify`. Use this reference for the version you
-installed. Function or field changes arrive in a new package version, and
-the test channel can speak them before it is released. During the pilot the
-contract version does not move with each of them, so keep the package current:
-a release older than the gateway can read a word it does not know as a
-failure.
-:::
 
 ## The smallest card that sells
 

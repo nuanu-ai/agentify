@@ -8,7 +8,9 @@
  * outside link opened apart; code highlighted by Shiki; and a `mermaid` fence
  * drawn into an inline SVG from its kept drawing. Two rules are the
  * documentation's own: a site value named as `{{origin}}`, and a part kept off
- * a channel inside `:::: unless identity-confirmed` (`site-values.ts`).
+ * a channel inside `:::: unless identity-confirmed` (`site-values.ts`). What
+ * the build itself knows, the SDK's release, is written into the source first
+ * (`build-values.ts`).
  * `WRITING.md` tells a writer which syntax this understands.
  *
  * Every page is rendered once per build: the pages and the search index read
@@ -26,6 +28,7 @@ import markdownIt, {
 } from "markdown-it";
 import container from "markdown-it-container";
 import { createHighlighter, type Highlighter } from "shiki";
+import { withBuildValues } from "./build-values.js";
 import { drawingOf } from "./diagrams.server.js";
 import { includedFile, includeOf } from "./includes.js";
 import { PAGES, type Page } from "./pages.js";
@@ -232,8 +235,9 @@ async function renderer(): Promise<MarkdownIt> {
   return md;
 }
 
-export const sourceOf = (page: Pick<Page, "file">): Promise<string> =>
-  readFile(join(APP, page.file), "utf8");
+/** A page's Markdown as the build reads it, with what the build knows written in. */
+export const sourceOf = async (page: Pick<Page, "file">): Promise<string> =>
+  withBuildValues(await readFile(join(APP, page.file), "utf8"));
 
 async function renderAll(): Promise<ReadonlyMap<string, RenderedPage>> {
   const md = await renderer();

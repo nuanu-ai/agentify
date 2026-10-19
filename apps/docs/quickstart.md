@@ -1,6 +1,6 @@
 # The first test sale
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to
@@ -33,15 +33,6 @@ business.
   handler.
 - Delivery result — what the agent receives once the delivery has gone through:
   a link, a key, a set of fields. Its shape is declared in the card.
-
-::: warning The public surface is versioned
-The package name is `@nuanu-ai/agentify`. Use the examples for the version you
-installed. Function or field changes arrive in a new package version, and the
-test channel can speak them before it is released. During the pilot the
-contract version does not move with each of them, so keep the package current:
-a release older than the gateway can read a word it does not know as a
-failure.
-:::
 
 ## 1. Make the merchant account ready
 
@@ -99,9 +90,13 @@ data. Nothing beyond those arrives in your project.
 npm install @nuanu-ai/agentify
 ```
 
-Release tags publish this package to the public npm registry. A stable release
-is installed through npm's default `latest` channel. Stage 0 does not publish
-prerelease versions.
+It runs on Node.js 24 or later. The release this page describes is named at
+its top, and what changed between releases is in the
+[changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md).
+Keep the package current: the test channel can speak a change before it is
+released, and during the pilot the contract's version does not move with each
+change, so a release older than Agentify can read a word it does not know as a
+failure.
 
 The client needs two things from you: a key, which you keep wherever you keep
 the rest of your secrets, and the address to call.

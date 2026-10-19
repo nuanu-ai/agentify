@@ -99,9 +99,9 @@ with one; prose carries causation, trade-offs and models. Announce a number of
 items and then give the list. Paragraphs vary in length. The contrastive "X,
 not Y" appears at most once per page. The turns "this is a deliberate
 decision", "we say it honestly", "not decoration", "not a formality" are not
-used. The headings of one page do not all start with the same word. The note
-about the public contract being versioned is one line in the header, identical
-everywhere.
+used. The headings of one page do not all start with the same word. Each page
+for the engineer opens with one line, identical on all of them, naming the
+release of the SDK it describes; the owner's pages carry no such line.
 
 Plain and unnarrated (the product owner's rule, 2026-08-26; the specimen
 defect was "the code enters the conversation only on the first path"):
@@ -164,6 +164,10 @@ the sequence in `accDescr:` so a reader using a screen reader can follow it.
 After writing or changing a diagram, run
 `pnpm --filter @agentify/docs diagrams`, which draws what is missing in
 Chromium and deletes what no page uses, and commit the drawings with the page.
+
+What the build knows is written in by the build: `{{sdk-version}}` is the
+release of `@nuanu-ai/agentify` in this repository, filled everywhere a page
+names it, code blocks included.
 
 What a deployment decides is not written into a page but named: `{{origin}}`
 for the site's address, `{{abuse-email}}` and `{{operator}}` for the scanner's

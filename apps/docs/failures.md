@@ -1,6 +1,6 @@
 # What can go wrong
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You have written the handler, or you are writing it now, and this page is what
 will go wrong with it. Refusals and failures are part of ordinary work for us,

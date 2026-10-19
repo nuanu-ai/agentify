@@ -1,7 +1,5 @@
 # Selling through a WooCommerce shop
 
-*The public contract is versioned; changes arrive in a new package version.*
-
 You run a WooCommerce shop and want buyers — programs buying on a person's
 behalf — to buy from it without anybody writing code. The WooCommerce page of
 your dashboard connects the shop, imports its products as cards, and from then

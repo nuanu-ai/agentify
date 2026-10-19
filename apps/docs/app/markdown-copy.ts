@@ -11,9 +11,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { includedFile, includeOf } from "./includes.js";
+import { sourceOf } from "./markdown.server.js";
 import { PAGES } from "./pages.js";
 import { isSiteValueName, UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
-import { APP } from "./where.server.js";
 
 /** Where a page's Markdown is written in the build: `/money` as `money.md`, the front page as `index.md`. */
 const markdownFileOf = (path: string): string =>
@@ -96,6 +96,6 @@ export async function writeMarkdownCopies(client: string): Promise<void> {
   for (const page of PAGES) {
     const written = join(client, markdownFileOf(page.path));
     await mkdir(dirname(written), { recursive: true });
-    await writeFile(written, await markdownCopy(await readFile(join(APP, page.file), "utf8")));
+    await writeFile(written, await markdownCopy(await sourceOf(page)));
   }
 }
