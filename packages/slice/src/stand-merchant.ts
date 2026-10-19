@@ -177,19 +177,32 @@ const makeDeliverySession = (): DeliverySession => ({
   inFlight: new Set(),
 });
 
-/**
- * Makes a merchant whose handler decisions are changed directly by the stand page.
- *
- * `closedOnItsOwn` is called when an order stops being owed anything without
- * the page having asked for it — a delivery this side had promised and then
- * made from a timer, and any event the gateway sends about an order. Those are
- * the moments nobody pressed anything for, so they are the moments a console
- * drawn from a press goes stale on. The calls the page makes itself need no
- * telling: whoever pressed the button reads the orders back after it.
- */
+/** What the handler settled on for one order, before any of it goes back. */
+interface Decision {
+  readonly answer: HandlerAnswer;
+  /** The feed's line for the moment this answer goes back to the gateway. */
+  readonly said: string;
+  readonly detail: Record<string, unknown>;
+  /** Whether the goods are promised for later, from a timer on this side. */
+  readonly deliversLater: boolean;
+}
+
+interface StandMerchantOptions {
+  /**
+   * Called when an order stops being owed anything without the page having
+   * asked for it — a delivery this side had promised and then made from a
+   * timer, and any event the gateway sends about an order. Those are the
+   * moments nobody pressed anything for, so they are the moments a console
+   * drawn from a press goes stale on. The calls the page makes itself need no
+   * telling: whoever pressed the button reads the orders back after it.
+   */
+  readonly closedOnItsOwn?: () => void;
+}
+
+/** Makes a merchant whose handler decisions are changed directly by the stand page. */
 export const makeStandMerchant = (
   feed: Feed,
-  closedOnItsOwn: () => void = () => {},
+  { closedOnItsOwn = () => {} }: StandMerchantOptions = {},
 ): StandMerchant => {
   const moods = defaultMoods();
   const taken = new Map<string, LiveOrder>();
@@ -362,56 +375,79 @@ export const makeStandMerchant = (
   };
 
   /** Every handler answer but the one that asks a person first. */
-  const decide = async (order: LiveOrder, mood: DecidedMood): Promise<HandlerAnswer> => {
+  const decide = async (order: LiveOrder, mood: DecidedMood): Promise<Decision> => {
     switch (mood) {
       case "deliver": {
         const delivery = deliveryFor(order.merchant_item_id);
-        const answer = order.delivered(delivery);
-        writeOrderAnswer("The handler delivered the goods.", order, { delivery });
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered the goods.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
       case "accept_then_deliver": {
-        taken.set(order.id, order);
         const answer = order.accepted();
-        writeOrderAnswer("The handler accepted the order and promised the goods later.", order, {
+        return {
           answer,
-        });
-        deliverLater(order);
-        return answer;
+          said: "The handler accepted the order and promised the goods later.",
+          detail: { answer },
+          deliversLater: true,
+        };
       }
       case "accept_and_say_nothing": {
-        taken.set(order.id, order);
         const answer = order.accepted();
-        writeOrderAnswer("The handler accepted the order and will never deliver it.", order, {
+        return {
           answer,
-        });
-        return answer;
+          said: "The handler accepted the order and will never deliver it.",
+          detail: { answer },
+          deliversLater: false,
+        };
       }
-      case "refuse": {
-        const answer = order.refused(moods.refusal);
-        writeOrderAnswer("The handler refused the order.", order, { refusal: moods.refusal });
-        return answer;
-      }
+      case "refuse":
+        return {
+          answer: order.refused(moods.refusal),
+          said: "The handler refused the order.",
+          detail: { refusal: moods.refusal },
+          deliversLater: false,
+        };
       case "say_nothing": {
         await wait(SILENCE_PAST_DEADLINES_MS);
         const delivery = deliveryFor(order.merchant_item_id);
-        const answer = order.delivered(delivery);
-        writeOrderAnswer(
-          "The handler delivered, long past the deadline the card promised.",
-          order,
-          { delivery },
-        );
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered, long past the deadline the card promised.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
       case "answer_wrong_shape": {
         const delivery = { a_field_this_card_never_declared: "wrong-shape" };
-        const answer = order.delivered(delivery);
-        writeOrderAnswer("The handler delivered a shape the card never declared.", order, {
-          delivery,
-        });
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered a shape the card never declared.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
     }
+  };
+
+  /** What the handler's mood makes of one order, asking a person first where it is set to. */
+  const decided = async (order: LiveOrder): Promise<Decision> => {
+    if (moods.order !== "ask_me") {
+      return decide(order, moods.order);
+    }
+    const answered = await askAbout(order);
+    if (answered === RAN_OUT) {
+      return {
+        answer: order.refused(NOBODY_ANSWERED),
+        said: "Nobody at the console answered, so the handler refused.",
+        detail: { refusal: NOBODY_ANSWERED },
+        deliversLater: false,
+      };
+    }
+    return decide(order, HELD_MEANS[answered]);
   };
 
   const register = (fresh: AgentifyClient): void => {
@@ -421,18 +457,13 @@ export const makeStandMerchant = (
         merchant_item_id: order.merchant_item_id,
         params: order.params,
       });
-      if (moods.order !== "ask_me") {
-        return decide(order, moods.order);
+      const decision = await decided(order);
+      if (decision.deliversLater) {
+        taken.set(order.id, order);
+        deliverLater(order);
       }
-      const answered = await askAbout(order);
-      if (answered === RAN_OUT) {
-        const answer = order.refused(NOBODY_ANSWERED);
-        writeOrderAnswer("Nobody at the console answered, so the handler refused.", order, {
-          refusal: NOBODY_ANSWERED,
-        });
-        return answer;
-      }
-      return decide(order, HELD_MEANS[answered]);
+      writeOrderAnswer(decision.said, order, decision.detail);
+      return decision.answer;
     });
 
     fresh.on("quote", async (question) => {

@@ -88,8 +88,10 @@ const feed = makeFeed();
 // panels that draw those orders are read at a press, so those are exactly the
 // moments they go stale on — and stale here is not cosmetic, because the Owed
 // panel goes on offering to deliver and refuse an order that is already closed.
-const merchant = makeStandMerchant(feed, () => {
-  refreshOrders();
+const merchant = makeStandMerchant(feed, {
+  closedOnItsOwn: () => {
+    refreshOrders();
+  },
 });
 
 let apiKey: string | null = null;
