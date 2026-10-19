@@ -1730,6 +1730,21 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderByPaymentRef("pay_1"))?.order.id).toBe("ord_1");
       });
 
+      it("keeps orders written without a payment reference apart, and finds none of them by one", async () => {
+        // An order written before references were issued has none until the
+        // migration gives it one, and two of them do not share one.
+        const store = await twoMerchants();
+        const withoutAReference = (id: string, createdAt: number) => {
+          const { paymentRef: _none, ...written } = anOrder(id, "delivered", { createdAt });
+          return written as StoredOrder;
+        };
+        await store.addOrder(withoutAReference("ord_1", 1_000));
+        await store.addOrder(withoutAReference("ord_2", 2_000));
+
+        expect(await idsOf(store.orders(A))).toStrictEqual(["ord_1", "ord_2"]);
+        expect(await store.orderByPaymentRef("undefined")).toBeNull();
+      });
+
       it("is listed among the ones still owed something, or apart from them", async () => {
         // Open includes a debt and goods delivered unpaid. Postgres answers from
         // a column written on save and memory from the state, so this catches a

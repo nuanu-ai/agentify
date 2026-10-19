@@ -1105,4 +1105,112 @@ if (databaseUrl === null) {
       ).resolves.toBeDefined();
     });
   });
+
+  describe("the migration that gives every order a payment reference", () => {
+    // A payment names its order by a reference kept in the order's document.
+    // Every order written before references existed is given one, so every
+    // order has one and an order still waiting for its buyer to pay again can
+    // be found by it.
+    const url = databaseUrl;
+    let connected: ReturnType<typeof connect>;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      connected = connect(url);
+      pool = connected.pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+        "0013_delete_dashboard_keys.sql",
+        "0014_one_integration.sql",
+        "0015_payout_splits.sql",
+        "0016_payout_split_wallet_any_spelling.sql",
+        "0017_order_pay_to_index.sql",
+      ]) {
+        await run(file);
+      }
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at)
+         values ('mch_old', 'Old', 'open', now(), now())`,
+      );
+    });
+
+    /** An order as the version before this migration wrote it, with no reference. */
+    const writtenBefore = async (id: string, state: string, open: boolean) => {
+      const record = {
+        order: { id, state },
+        merchantId: "mch_old",
+        itemId: "item_1",
+        merchantItemId: "sku-1",
+        payment: "PAYMENT",
+        paidBy: "0x1111111111111111111111111111111111111111",
+      };
+      await pool.query(
+        `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
+           created_at, updated_at)
+         values ($1, $2, $3, 'mch_old', 'item_1', 'sku-1', $4, now(), now())`,
+        [id, state, open, JSON.stringify(record)],
+      );
+      return record;
+    };
+
+    const recordOf = async (id: string): Promise<Record<string, unknown>> => {
+      const { rows } = await pool.query<{ record: Record<string, unknown> }>(
+        "select record from orders where id = $1",
+        [id],
+      );
+      return rows[0]?.record ?? {};
+    };
+
+    it("gives every order written before it a reference of its own, and changes nothing else", async () => {
+      const unpaid = await writtenBefore("ord_unpaid", "delivered_unpaid", true);
+      const done = await writtenBefore("ord_done", "delivered", false);
+
+      await run("0018_order_payment_ref.sql");
+
+      const [first, second] = [await recordOf("ord_unpaid"), await recordOf("ord_done")];
+      expect(first.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
+      expect(second.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
+      expect(first.paymentRef).not.toBe(second.paymentRef);
+      const { paymentRef: _first, ...firstRest } = first;
+      const { paymentRef: _second, ...secondRest } = second;
+      expect([firstRest, secondRest]).toStrictEqual([unpaid, done]);
+    });
+
+    it("finds a migrated order by the reference it was given", async () => {
+      await writtenBefore("ord_unpaid", "delivered_unpaid", true);
+
+      await run("0018_order_payment_ref.sql");
+
+      const given = (await recordOf("ord_unpaid")).paymentRef;
+      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
+      expect((await store.orderByPaymentRef(String(given)))?.order.id).toBe("ord_unpaid");
+    });
+  });
 }
