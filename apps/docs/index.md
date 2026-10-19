@@ -70,26 +70,30 @@ that takes longer to prepare and a physical product as a parcel.
 The same choices, with the words your engineer's code uses for them, are on
 [Orders and fulfillment modes](/orders).
 
-## What we will ask you
+## What the dashboard asks for
 
-The conversation about connecting comes down to four questions, and once you
-have answered them we have no more questions for you.
+You connect on your own, in the dashboard, and it asks for four things:
 
-1. What you sell. Your integration publishes a card with the title,
-   description, price and list of what has to be given at purchase. The card is
-   the whole of what an agent reads, and your code republishes it when the
-   product changes.
-2. Where to send the money. We need the address of your wallet on Base, where
-   your share of every sale arrives; nothing of yours sits in an account of
-   ours.
-3. Whether the product survives being delivered twice. The same order can reach
-   you twice, and access, a key or a link go out a second time without loss,
-   while a unit off a shelf does not. During the pilot we take on goods of the
-   first kind only, because how money goes back to a buyer is not settled yet
-   ([Money](/money#if-the-buyer-did-not-get-the-goods)); a parcel on the test
-   channel, where the money is not real, is the one exception.
-4. How the goods are delivered: by your code or by your WooCommerce shop, as
-   the next section says.
+1. Your email address, where it sends a one-time sign-in link, or your Google
+   account.
+2. The seller name buyers see beside your products and in the payment they
+   approve.
+3. The address of your wallet on Base, where your share of every sale arrives;
+   nothing of yours sits in an account of ours.
+4. How the goods are delivered: an API key you issue for your engineer's code,
+   or your WooCommerce shop's address, as the next section says.
+
+What you sell then reaches the catalogue as cards, which your integration
+publishes with the title, description, price and list of what has to be given
+at purchase. The card is the whole of what an agent reads.
+
+Whether your product survives being delivered twice is yours to decide before
+connecting, since nothing in the dashboard asks it. The same order can reach
+you twice, and access, a key or a link go out a second time without loss,
+while a unit off a shelf does not. During the pilot we take on goods of the
+first kind only, because how money goes back to a buyer is not settled yet
+([Money](/money#if-the-buyer-did-not-get-the-goods)); a parcel on the test
+channel, where the money is not real, is the one exception.
 
 ## Your code or your WooCommerce shop
 
