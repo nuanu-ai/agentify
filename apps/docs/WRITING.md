@@ -39,12 +39,17 @@ Internal notions from the model — "the owner of a deadline", "a terminal
 state", "an outcome" — do not go outside; everything is named in words from the
 reader's life ("you did not deliver in time", "the agent did not pay", "the
 order closed"). A word a merchant would not use in conversation about their own
-shop is a candidate for replacement.
+shop is a candidate for replacement. The words an engineer's code branches on
+are the exception on the engineer's pages: a status such as `refund_due`, a
+reason, an error code is named exactly as it is written on the wire, with the
+words of the situation beside it rather than in its place.
 
 The unknown is stated honestly and not used as furniture: everything unresolved
 lives in one section, "What is not settled yet", at the end of the page, and
 the body carries no columns and no cells saying "not named yet". A column with
-no information in it does not exist.
+no information in it does not exist. Something designed and not built gets one
+sentence in the body at most, where a reader would otherwise look for it, and
+the rest of it goes to that section.
 
 The example comes before the abstraction: the mechanism is shown on a concrete
 case — a request and an answer, a scenario with numbers — and the rule comes
@@ -78,13 +83,20 @@ sentences, a link to the full page. The FAQ routes; it does not answer.
 
 ## Vocabulary
 
-Canon: handler (not worker, not receiver); card; order; idempotency key;
+Canon: handler (not worker, not receiver), and your process for the program
+that runs it; card; order; idempotency key;
 receipt; the price in the card (not a snapshot); the price check, answered by
 the price handler (in the same process as the order handler), with the price
 hook (the HTTP alternative for a separate pricing service; not an endpoint)
 named only as designed and not called; how long a price holds (not a quote); agent
 on the engineer's pages, buyer on the owner's (with "it is a program" said
-once, at the first use on that page).
+once, at the first use on that page); Agentify for our side (not the gateway);
+the facilitator for the side that verifies and executes a payment (not the
+payment network or the payment layer), defined once in the table of who is who
+on the front page; the payment request for what the buyer is asked to pay
+against (not the payment challenge); the test channel and the live channel
+(not an environment, a world or a test site); the pilot, defined once on the
+front page.
 
 Not used: worker, snapshot, quote as the merchant-facing word for a price,
 endpoint, "It was decided that…", and calques such as fail-open without a
@@ -95,7 +107,9 @@ in the reference; everywhere else links to it rather than retelling it.
 ## Delivery
 
 A table is an enumeration with two or more attributes; a list is an enumeration
-with one; prose carries causation, trade-offs and models. Announce a number of
+with one; prose carries causation and trade-offs. A model with more than three
+parties, states or clocks is drawn or tabled, and the prose explains the
+drawing rather than retelling it. Announce a number of
 items and then give the list. Paragraphs vary in length. The contrastive "X,
 not Y" appears at most once per page. The turns "this is a deliberate
 decision", "we say it honestly", "not decoration", "not a formality" are not
