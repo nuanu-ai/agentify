@@ -13,7 +13,7 @@ import {
   type IncomingHttpHeaders,
   type ServerResponse,
 } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, connect, type Socket } from "node:net";
 import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from "node:zlib";
@@ -163,13 +163,14 @@ const proxy = async (
 
 /** The log line for request number `n`, once the proxy has printed it. */
 const lineFor = async (log: readonly string[], n: number): Promise<string> => {
-  for (;;) {
+  for (let waited = 0; waited < 5_000; waited += 5) {
     const line = log.find((entry) => entry.includes(` #${n} `));
     if (line !== undefined) {
       return line;
     }
     await pause(5);
   }
+  throw new Error(`The proxy printed no line for request #${n} within 5 seconds.`);
 };
 
 const PURCHASE = '{"answers":{"email":"buyer@example.com"}}';
@@ -337,6 +338,75 @@ describe("which answer is cut", () => {
     expect(up.events).toContain("upstream finished #1");
     expect(next.status).toBeNull();
   });
+
+  it("does not spend the cut on a caller that reset its connection as the upstream finished, before the proxy heard it close", async () => {
+    let caller: Socket | undefined;
+    const up = await upstream(async (n, response) => {
+      if (n > 1) {
+        plainly(200, PAID)(n, response);
+        return;
+      }
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": PAID.length,
+      });
+      response.write(PAID.slice(0, 10));
+      await pause(30);
+      // The reset and the answer's last bytes reach the proxy in one turn of
+      // its event loop, before the caller's connection has closed there.
+      caller?.resetAndDestroy();
+      response.end(PAID.slice(10));
+    });
+    const { port, log } = await proxy(up.url, purchases("mid-body"));
+
+    const leaving = httpRequest({
+      host: "127.0.0.1",
+      port,
+      method: "POST",
+      path: "/x402/itm_7/purchase",
+      agent: false,
+    });
+    leaving.on("socket", (socket) => {
+      caller = socket;
+    });
+    leaving.on("error", () => {});
+    leaving.end(PURCHASE);
+    const left = await lineFor(log, 1);
+
+    const next = await call(port, "POST", "/x402/itm_7/purchase");
+
+    expect(left).toMatch(/not counted, the rule is still armed/);
+    expect(next.whole).toBe(false);
+    expect(await lineFor(log, 2)).toContain("CUT mid-body");
+  });
+
+  it("does not spend the cut on a caller that left while the cut was being written to it", async () => {
+    // Far more than the kernel buffers on loopback hold, so the proxy is still
+    // writing the first half when the caller leaves.
+    const goods = Buffer.alloc(64 * 1024 * 1024, "g");
+    const up = await upstream((n, response) => {
+      response.writeHead(200, { "content-type": "application/octet-stream" });
+      response.end(n === 1 ? goods : PAID);
+    });
+    const { port, log } = await proxy(up.url, purchases("mid-body"));
+
+    const caller = connect(port, "127.0.0.1");
+    caller.on("error", () => {});
+    caller.once("data", () => {
+      caller.pause();
+      caller.resetAndDestroy();
+    });
+    caller.write(
+      "POST /x402/itm_7/purchase HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n",
+    );
+    const left = await lineFor(log, 1);
+
+    const next = await call(port, "POST", "/x402/itm_7/purchase");
+
+    expect(left).toMatch(/not counted, the rule is still armed/);
+    expect(next.whole).toBe(false);
+    expect(await lineFor(log, 2)).toContain("CUT mid-body");
+  });
 });
 
 describe("what passes between the caller and the upstream", () => {
@@ -476,6 +546,41 @@ describe("an upstream that gives no whole answer", () => {
     expect(broken.status).toBe(502);
     expect(broken.body.toString("utf8")).toContain("ECONNRESET");
     expect(cut.status).toBeNull();
+  });
+
+  it("does not say it answered 502 to a caller that had already left", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let arrived: () => void = () => {};
+    const firstArrived = new Promise<void>((resolve) => {
+      arrived = resolve;
+    });
+    const up = await upstream(async (_n, response) => {
+      arrived();
+      await held;
+      response.destroy();
+    });
+    const { port, log } = await proxy(up.url, purchases("before-headers"));
+
+    const leaving = httpRequest({
+      host: "127.0.0.1",
+      port,
+      method: "POST",
+      path: "/x402/itm_7/purchase",
+      agent: false,
+    });
+    leaving.on("error", () => {});
+    leaving.end(PURCHASE);
+    await firstArrived;
+    leaving.destroy();
+    await pause(50);
+    release();
+    const line = await lineFor(log, 1);
+
+    expect(line).not.toContain("answered 502");
+    expect(line).toMatch(/caller had left/);
   });
 });
 
