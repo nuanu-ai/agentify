@@ -86,10 +86,7 @@ describe("a report link asked for by the scanner", () => {
     expect(one.messages[0]?.body).not.toContain(SCAN);
     expect(one.messages[0]?.body).not.toContain(REQUEST);
     expect(await one.identity.byEmail(EMAIL)).toBeNull();
-    expect(await one.identity.landingOf(token)).toStrictEqual({
-      email: EMAIL,
-      tellsTracker: false,
-    });
+    expect(await one.identity.landingOf(token)).toStrictEqual({ email: EMAIL });
   });
 
   it("opens a session that leads to the report and names the request its link was asked for", async () => {

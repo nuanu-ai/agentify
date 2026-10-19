@@ -12,12 +12,11 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ADS_CONSENT } from "../../src/ads-consent.js";
 import type { LinkAnswer } from "../../src/page-services.js";
 import { formTo, readable, waitingButton } from "../../src/testing/html.js";
 import type { Chrome } from "../answer.js";
@@ -136,52 +135,6 @@ describe("the Google sign-in choice", () => {
 
     expect(formTo(html, "post", "/sign-in/google")).toBeUndefined();
     expect(formTo(html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
-  });
-});
-
-describe("the box a visitor an ad sent is offered", () => {
-  it("is named by its sentence, so a screen reader reads it out and pressing the words ticks it", () => {
-    const { getByLabelText, getByText } = render(
-      routed(() => (
-        <AskScreen
-          chrome={chromeIn("live")}
-          view={{
-            screen: "ask",
-            destination: "default",
-            googleEnabled: false,
-            click: { id: "qa_click_0123456789abcdef", consented: false },
-          }}
-        />
-      )),
-    );
-
-    const box = getByLabelText(ADS_CONSENT.sentence) as HTMLInputElement;
-    expect(box.type).toBe("checkbox");
-    expect(box.checked).toBe(false);
-
-    fireEvent.click(getByText(ADS_CONSENT.sentence));
-
-    expect(box.checked).toBe(true);
-  });
-
-  it("leads, from beside the box, to the privacy page's section naming the tracker", () => {
-    const { getByLabelText } = render(
-      routed(() => (
-        <AskScreen
-          chrome={chromeIn("live")}
-          view={{
-            screen: "ask",
-            destination: "default",
-            googleEnabled: false,
-            click: { id: "qa_click_0123456789abcdef", consented: false },
-          }}
-        />
-      )),
-    );
-
-    const box = getByLabelText(ADS_CONSENT.sentence) as HTMLInputElement;
-    const ways = [...(box.form?.querySelectorAll("a") ?? [])].map((a) => a.getAttribute("href"));
-    expect(ways).toContain("/privacy#processors");
   });
 });
 
@@ -334,35 +287,22 @@ describe("the script that waits the wait out", () => {
   });
 });
 
-describe("the link's page, where the address's owner answers whether to tell the tracker", () => {
-  const opening = (tellsTracker: boolean) =>
-    render(
+describe("the link's page", () => {
+  it("names the address it signs in and offers one button, which sends the token alone", () => {
+    const { getAllByRole, container } = render(
       routed(() => (
         <OpenLinkScreen
           chrome={chromeIn("live")}
-          view={{ screen: "open", token: "a".repeat(32), email: PERSON, tellsTracker }}
+          view={{ screen: "open", token: "a".repeat(32), email: PERSON }}
         />
       )),
     );
 
-  it("sends with each button the answer its words give, and draws the two alike", () => {
-    // Neither answer is the one the page leans towards.
-    const { getByRole, container } = opening(true);
-
-    const tell = getByRole("button", { name: ADS_CONSENT.tell }) as HTMLButtonElement;
-    const without = getByRole("button", { name: ADS_CONSENT.without }) as HTMLButtonElement;
-
-    expect([tell.name, tell.value]).toStrictEqual(["report", "yes"]);
-    expect([without.name, without.value]).toStrictEqual(["report", "no"]);
-    expect(tell.className).toBe(without.className);
-    expect(container.textContent).toContain(PERSON);
-  });
-
-  it("has one button that sends no answer where the press would tell the tracker nothing", () => {
-    const { getAllByRole } = opening(false);
-
     const buttons = getAllByRole("button") as HTMLButtonElement[];
+    const sent = new FormData(buttons[0]?.form ?? undefined);
 
     expect(buttons.map((button) => [button.name, button.value])).toStrictEqual([["", ""]]);
+    expect([...sent]).toStrictEqual([["token", "a".repeat(32)]]);
+    expect(container.textContent).toContain(PERSON);
   });
 });

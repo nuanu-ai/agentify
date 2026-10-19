@@ -154,8 +154,8 @@ if (databaseUrl === null) {
 
   let accounts = 0;
   /**
-   * An account and its pending registration, as opening a consented link
-   * leaves them, made `createdAgoMs` before the test clock.
+   * An account and its pending registration, as opening a link asked for with
+   * an ad's click leaves them, made `createdAgoMs` before the test clock.
    */
   const registered = async (click: string, createdAgoMs = 0): Promise<string> => {
     accounts += 1;
@@ -168,8 +168,8 @@ if (databaseUrl === null) {
     );
     await pool.query(
       `insert into dashboard_registration_postbacks
-         (account_id, click_id, consented_at, consent_wording, state, attempts, next_attempt_at, created_at)
-       values ($1, $2, $3, '2026-10-15', 'pending', 0, $3, $3)`,
+         (account_id, click_id, state, attempts, next_attempt_at, created_at)
+       values ($1, $2, 'pending', 0, $3, $3)`,
       [id, click, created],
     );
     return id;
