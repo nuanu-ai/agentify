@@ -37,12 +37,10 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
                 <span key={assurance}>{assurance}</span>
               ))}
             </div>
-            {config.secondDoor ? (
-              <p className={styles.secondDoor}>
-                {config.secondDoor.lead}{" "}
-                <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
-              </p>
-            ) : null}
+            <p className={styles.secondDoor}>
+              {config.secondDoor.lead}{" "}
+              <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
+            </p>
           </div>
           <ExampleSurface segmentPhase={config.segmentPhase} />
         </section>

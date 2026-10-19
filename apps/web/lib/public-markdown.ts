@@ -59,12 +59,8 @@ function renderLanding(config: LandingConfig): string {
     config.hero.subtitle,
     "",
     ...LANDING_SHARED_CONTENT.assurances.map((item) => `- ${item}`),
-    ...(config.secondDoor
-      ? [
-          "",
-          `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
-        ]
-      : []),
+    "",
+    `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
     "",
   ];
 
