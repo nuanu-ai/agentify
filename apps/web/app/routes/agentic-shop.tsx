@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { SiteFooter, SiteHeader } from "../../components/site-chrome";
-import { AGENTIC_SHOP } from "../../content/agentic-shop";
+import { AGENTIC_SHOP, numbered } from "../../content/agentic-shop";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import type { RichText } from "../../content/public-editorial";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
@@ -76,9 +76,6 @@ function Lines({ of, accent = false }: Readonly<{ of: readonly string[]; accent?
     ),
   );
 }
-
-/** Two digits, as a step's number is written: 1 is "01". */
-const numbered = (index: number): string => String(index + 1).padStart(2, "0");
 
 export default function AgenticShopPage() {
   const { hero, promise, opportunity, how, payment, loyalty, businesses, start, questions } =

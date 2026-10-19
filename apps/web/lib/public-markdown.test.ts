@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
+import { KEPT_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicPageMarkdown } from "./public-markdown";
 
 const originalBaseUrl = process.env.APP_BASE_URL;
@@ -13,7 +13,7 @@ afterEach(() => {
 describe("public Markdown variants", () => {
   it("renders structured canonical content for every public route", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
-    for (const path of PUBLIC_PAGE_PATHS) {
+    for (const path of KEPT_PAGE_PATHS) {
       const markdown = getPublicPageMarkdown(path);
       expect(markdown).toMatch(/^#\s+\S+/);
       expect(markdown).toMatch(/^##\s+\S+/m);

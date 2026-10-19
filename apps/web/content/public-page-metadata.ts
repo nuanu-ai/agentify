@@ -2,6 +2,16 @@ export const PUBLIC_PAGE_PATHS = ["/", "/store", "/local", "/privacy", "/terms"]
 
 export type PublicPagePath = (typeof PUBLIC_PAGE_PATHS)[number];
 
+/**
+ * Every page that is the same for everybody: a shared cache may keep it, a
+ * client may ask for it as Markdown and a link to it is fetched ahead of a
+ * click. The public pages above, which the sitemap dates below and llms.txt
+ * lists as such, and the page about selling to agents, which both name apart.
+ */
+export const KEPT_PAGE_PATHS = [...PUBLIC_PAGE_PATHS, "/agentic-shop"] as const;
+
+export type KeptPagePath = (typeof KEPT_PAGE_PATHS)[number];
+
 export type PublicPageMetadata = Readonly<{
   lastModified: `${number}-${number}-${number}`;
   priority: number;

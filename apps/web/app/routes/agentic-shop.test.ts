@@ -148,7 +148,8 @@ describe("the sell-to-agents page", () => {
       (match[1] ?? "")
         .replace(/<br\/?>/g, " ")
         .replace(/<[^>]+>/g, "")
-        .replace(/&#x27;/g, "'"),
+        .replace(/&#x27;/g, "'")
+        .replace(/&amp;/g, "&"),
     );
 
     expect(answered.status).toBe(200);

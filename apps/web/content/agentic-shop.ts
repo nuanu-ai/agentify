@@ -19,6 +19,9 @@ const AGENTIC_SHOP_RESEARCH = {
   },
 } as const;
 
+/** Two digits, as a step's number is written: the first is "01". */
+export const numbered = (index: number): string => String(index + 1).padStart(2, "0");
+
 const text = (value: string) => ({ kind: "text", value }) as const;
 const link = (value: string, href: string) => ({ kind: "link", value, href }) as const;
 
