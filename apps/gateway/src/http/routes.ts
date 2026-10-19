@@ -326,6 +326,10 @@ async function orderStatus(
   gateway: Gateway,
   { params, response }: RouteCall,
 ): Promise<RouteAnswer> {
+  // The answer can carry the goods, and whoever holds a copy holds them, so no
+  // cache on the way may keep one. The refusal says the same, or the header
+  // alone would tell an order from a guess.
+  response.setHeader("Cache-Control", "no-store");
   const record = await gateway.orderById(params.order_id ?? "");
   if (record === null) {
     return refusedWith(response, NO_SUCH_ORDER);
