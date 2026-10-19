@@ -738,6 +738,30 @@ describe("a diagram or a table on a narrow or a wide screen", () => {
     await page.context().close();
   });
 
+  it.each(["/docs/orders", "/docs/money"])(
+    "draws every label of a diagram on %s whole inside its box",
+    async (address) => {
+      const { page } = await visit(address, { width: 1440, height: 900 });
+      await page.evaluate(() => document.fonts.ready);
+      const cut = await page.locator("figure.diagram foreignObject").evaluateAll((boxes) =>
+        boxes
+          .filter((box) => {
+            const label = box.firstElementChild as HTMLElement | null;
+            const drawn = box.getBoundingClientRect();
+            const wanted = label?.getBoundingClientRect();
+            return (
+              wanted !== undefined &&
+              (wanted.width > drawn.width + 1 || wanted.height > drawn.height + 1)
+            );
+          })
+          .map((box) => box.textContent ?? ""),
+      );
+
+      expect(cut).toEqual([]);
+      await page.context().close();
+    },
+  );
+
   it.each(DOCS_PAGES.filter((entry) => !entry.path.startsWith("/scanner")))(
     "fits every table of $path into the column on a wide screen",
     async (entry) => {
