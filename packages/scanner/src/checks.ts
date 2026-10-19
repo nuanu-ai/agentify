@@ -752,7 +752,8 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-const declaresAuth = (artifacts: ScanArtifacts): boolean => {
+/** Whether a discovery document or an HTTP challenge declares authorization. */
+export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean => {
   const documents = [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])]
     .map(validDiscovery)
     .filter(Boolean);
@@ -777,16 +778,17 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
   const documents = artifacts.oauth
     .map(validDiscovery)
     .filter((value): value is Record<string, unknown> => Boolean(value));
+  if (artifacts.oauth.length < 2 || artifacts.oauth.some((artifact) => inaccessible(artifact)))
+    return result({
+      id: 11,
+      status: "unavailable",
+      earnedWeight: 0,
+      summaryCode: "oauth_unavailable",
+      evidence: { documents_found: documents.length },
+      userImpactCode: "oauth_not_assessed",
+      errorCode: unreadReason(artifacts.oauth, "oauth_fetch_incomplete"),
+    });
   if (!documents.length) {
-    if (artifacts.oauth.some((artifact) => inaccessible(artifact)))
-      return result({
-        id: 11,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "oauth_unavailable",
-        userImpactCode: "oauth_not_assessed",
-        errorCode: unreadReason(artifacts.oauth, "oauth_unavailable"),
-      });
     return result({
       id: 11,
       status: "fail",
@@ -1278,19 +1280,108 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     a2aCheck(artifacts),
     hreflangCheck(effective),
   ];
+  const baseTruncated = Boolean(effective.base?.truncated && !inaccessible(effective.base));
+  const pagesTruncated =
+    baseTruncated ||
+    Boolean(effective.representative?.truncated && !inaccessible(effective.representative));
+  const comparisonTruncated = (probe?: FetchArtifact): boolean =>
+    Boolean(
+      probe &&
+        (baseTruncated || probe.truncated) &&
+        !inaccessible(probe) &&
+        probe.status >= 200 &&
+        probe.status < 300 &&
+        !isChallenge(probe.status, probe.body),
+    );
   return checks
     .map((check) => {
       const absence = PRODUCT_PAGE_ABSENCES[check.id];
-      return productUnread && absence?.absent(check)
+      if (productUnread && absence?.absent(check))
+        return result({
+          id: check.id,
+          status: "unavailable",
+          earnedWeight: 0,
+          summaryCode: absence.summaryCode,
+          userImpactCode: absence.userImpactCode,
+          errorCode: productUnread,
+        });
+
+      let truncated = false;
+      let uncertain = false;
+      switch (check.id) {
+        case 5:
+          truncated = pagesTruncated;
+          uncertain = check.summaryCode === "jsonld_absent_or_invalid";
+          break;
+        case 6:
+          truncated = pagesTruncated;
+          uncertain = Boolean(absence?.absent(check));
+          break;
+        case 7:
+          truncated = baseTruncated || Boolean(effective.markdown?.truncated);
+          uncertain =
+            check.summaryCode === "markdown_negotiation_partial" &&
+            !(check.evidence.non_empty === false && !effective.markdown?.truncated) &&
+            /(?:^|,)\s*accept\s*(?:,|$)/i.test(effective.markdown?.headers.vary ?? "");
+          break;
+        case 12:
+          truncated = artifacts.segment === "store" ? pagesTruncated : baseTruncated;
+          uncertain = check.status === "fail" || check.status === "partial";
+          break;
+        case 13: {
+          truncated =
+            baseTruncated ||
+            Boolean(
+              effective.agentProbes.chatgpt?.truncated || effective.agentProbes.claude?.truncated,
+            );
+          const chatgptUnassessed =
+            check.evidence.chatgpt_probe_accessible === false &&
+            comparisonTruncated(effective.agentProbes.chatgpt);
+          const claudeUnassessed =
+            check.evidence.claude_probe_accessible === false &&
+            comparisonTruncated(effective.agentProbes.claude);
+          uncertain = chatgptUnassessed || claudeUnassessed;
+          const refusalObserved =
+            (check.evidence.chatgpt_probe_accessible === false && !chatgptUnassessed) ||
+            (check.evidence.claude_probe_accessible === false && !claudeUnassessed);
+          if (uncertain && refusalObserved) {
+            const evidence: CheckResult["evidence"] = { ...check.evidence, truncated: true };
+            if (chatgptUnassessed) {
+              delete evidence.chatgpt_probe_accessible;
+              evidence.chatgpt_probe_unassessed = true;
+            }
+            if (claudeUnassessed) {
+              delete evidence.claude_probe_accessible;
+              evidence.claude_probe_unassessed = true;
+            }
+            return { ...check, summaryCode: "agent_ua_refusal_observed", evidence };
+          }
+          break;
+        }
+        case 15:
+          truncated = artifacts.segment === "store" && pagesTruncated;
+          uncertain = check.status === "fail" || check.status === "partial";
+          break;
+        case 18:
+          truncated = baseTruncated;
+          uncertain = check.status === "not_applicable";
+          break;
+      }
+      if (!truncated) return check;
+      const evidence = { ...check.evidence, truncated: true };
+      // A prefix proves what it contains, not what the rest of the page lacks.
+      return uncertain
         ? result({
             id: check.id,
             status: "unavailable",
             earnedWeight: 0,
-            summaryCode: absence.summaryCode,
-            userImpactCode: absence.userImpactCode,
-            errorCode: productUnread,
+            summaryCode: "html_truncated",
+            userImpactCode: "html_not_assessed",
+            errorCode: "html_truncated",
+            evidence,
+            durationMs: check.durationMs,
           })
-        : check;
+        : { ...check, evidence };
     })
     .sort((left, right) => left.id - right.id);
 };

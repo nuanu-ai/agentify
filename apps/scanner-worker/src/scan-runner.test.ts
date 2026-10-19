@@ -123,6 +123,8 @@ describe("bounded scan graph", () => {
     });
     const evaluation = await runner.run(job);
     expect(evaluation.checks).toHaveLength(18);
+    expect(evaluation.checks.find((check) => check.id === 11)?.status).toBe("not_applicable");
+    expect(target.paths.filter((request) => request.includes("/.well-known/oauth-"))).toEqual([]);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
     expect(target.getMaxActive()).toBeLessThanOrEqual(2);
     expect(
@@ -329,32 +331,101 @@ describe("bounded scan graph", () => {
     expect(await reasons("", 503)).toEqual(everyRobotsCheck("robots_unavailable"));
   });
 
-  it("names robots.txt when it keeps the scanner off the OAuth documents an MCP server asks for", async () => {
-    const target = transport("User-agent: *\nDisallow: /.well-known/oauth-\n");
-    const adapter: PinnedTransport = {
-      request: async (input) =>
-        input.url.pathname === "/.well-known/mcp.json"
-          ? makeArtifact(
+  it.each(["/", "/.well-known/mcp.json"])(
+    "checks OAuth metadata declared only by the HTTP header on %s",
+    async (declaredAt) => {
+      const target = transport();
+      const requested: string[] = [];
+      const completed: CheckResult[] = [];
+      const adapter: PinnedTransport = {
+        request: async (input) => {
+          if (input.url.pathname.startsWith("/.well-known/oauth-")) {
+            requested.push(input.url.pathname);
+            return makeArtifact(
               input,
               200,
-              '{"name":"MCP","endpoint":"https://example.com/mcp","authorization":"oauth2"}',
+              JSON.stringify(
+                input.url.pathname.endsWith("authorization-server")
+                  ? {
+                      issuer: "https://example.com",
+                      authorization_endpoint: "https://example.com/oauth/authorize",
+                      token_endpoint: "https://example.com/oauth/token",
+                    }
+                  : {
+                      resource: "https://example.com/mcp",
+                      authorization_servers: ["https://example.com"],
+                    },
+              ),
               "application/json",
-            )
-          : target.adapter.request(input),
-    };
-    const evaluation = await new ScanRunner({
-      resolver: {
-        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
-      },
-      transport: adapter,
-      appBaseUrl: "https://agentify.ad",
-    }).run(job);
-    expect(target.paths.filter((request) => request.includes("/.well-known/oauth-"))).toEqual([]);
-    expect(evaluation.checks.find((check) => check.id === 11)).toMatchObject({
-      status: "unavailable",
-      errorCode: "robots_disallowed",
-    });
-  });
+            );
+          }
+          const fetched = await target.adapter.request(input);
+          return input.url.pathname === declaredAt
+            ? {
+                ...fetched,
+                ...(declaredAt === "/" ? {} : { status: 401, body: "", decodedBytes: 0 }),
+                headers: {
+                  ...fetched.headers,
+                  "www-authenticate":
+                    'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+                },
+              }
+            : fetched;
+        },
+      };
+      const evaluation = await new ScanRunner({
+        resolver: { resolve: async () => [{ address: "93.184.216.34", family: 4 }] },
+        transport: adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job, {
+        onChecksComplete: async (checks) => {
+          completed.push(...checks);
+        },
+      });
+      expect(requested.sort()).toEqual([
+        "/.well-known/oauth-authorization-server",
+        "/.well-known/oauth-protected-resource",
+      ]);
+      const oauth = evaluation.checks.find((check) => check.id === 11);
+      expect(oauth).toMatchObject({ status: "pass", earnedWeight: 4 });
+      expect(completed.filter((check) => check.id === 11)).toEqual([oauth]);
+    },
+  );
+
+  it.each(["document", "header"])(
+    "names robots.txt when it blocks OAuth declared by an MCP %s",
+    async (source) => {
+      const target = transport("User-agent: *\nDisallow: /.well-known/oauth-\n");
+      const adapter: PinnedTransport = {
+        request: async (input) =>
+          input.url.pathname === "/.well-known/mcp.json"
+            ? {
+                ...makeArtifact(
+                  input,
+                  source === "document" ? 200 : 401,
+                  source === "document"
+                    ? '{"name":"MCP","endpoint":"https://example.com/mcp","authorization":"oauth2"}'
+                    : "",
+                  "application/json",
+                ),
+                ...(source === "header" ? { headers: { "www-authenticate": "Bearer" } } : {}),
+              }
+            : target.adapter.request(input),
+      };
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      expect(target.paths.filter((request) => request.includes("/.well-known/oauth-"))).toEqual([]);
+      expect(evaluation.checks.find((check) => check.id === 11)).toMatchObject({
+        status: "unavailable",
+        errorCode: "robots_disallowed",
+      });
+    },
+  );
 
   it("reads the sitemap and llms.txt robots.txt allows though it keeps the scanner off the page", async () => {
     const target = transport(

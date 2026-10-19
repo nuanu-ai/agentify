@@ -120,10 +120,11 @@ export interface WooShops {
    * may arrive after the merchant began another Connect; split in two, the
    * older callback could overwrite the newer intent between the writes.
    *
-   * Null covers a token nobody issued, one already spent and one expired,
-   * without telling them apart: on a route anybody can post to, that would
-   * answer questions about somebody else's account. An expired row stays so its
-   * owner can still see the attempt that ended.
+   * A different connected shop must be disconnected first; only the same
+   * shop's keys may be renewed. Null covers that refusal, a token nobody
+   * issued, one already spent and one expired, without telling them apart:
+   * on a route anybody can post to, that would answer questions about somebody
+   * else's account. An expired row stays so its owner can see the attempt that ended.
    */
   connectFromGrant(
     token: string,
@@ -290,6 +291,17 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           )
           .returning();
         if (grant === undefined) return null;
+
+        const [connected] = await tx
+          .select({ shopUrl: wooShops.shopUrl })
+          .from(wooShops)
+          .where(eq(wooShops.accountId, grant.accountId));
+        if (
+          connected !== undefined &&
+          new URL(connected.shopUrl).origin !== new URL(grant.shopUrl).origin
+        ) {
+          return null;
+        }
 
         const connection: WooConnection = {
           accountId: grant.accountId,
@@ -626,6 +638,13 @@ export const memoryWooShops = (): WooShops => {
       // still the current intent; consume and write happen with no await
       // between them.
       grants.delete(token);
+      const connected = shops.get(grant.accountId);
+      if (
+        connected !== undefined &&
+        new URL(connected.shopUrl).origin !== new URL(grant.shopUrl).origin
+      ) {
+        return null;
+      }
       const connection: WooConnection = {
         accountId: grant.accountId,
         shopUrl: grant.shopUrl,

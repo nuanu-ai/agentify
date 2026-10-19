@@ -236,7 +236,7 @@ export class OrderRunner {
     if (!(await this.#runtime.store.addOrder(record, through))) {
       return null;
     }
-    await this.#run(record, effects, at);
+    await this.#run(record, effects);
     return record;
   }
 
@@ -323,7 +323,7 @@ export class OrderRunner {
       return { outcome: "refused", rejection: moved.rejection };
     }
 
-    const answer = await this.#run(known, moved.effects.filter(carriedOutAfterwards), event.at);
+    const answer = await this.#run(known, moved.effects.filter(carriedOutAfterwards));
     this.#wakeTheAgent(known);
 
     return { outcome: "moved", order: known, effects: moved.effects, answer };
@@ -427,7 +427,7 @@ export class OrderRunner {
     const runnable = result.effects.filter(
       (effect) => effect.kind !== "verify_payment" && carriedOutAfterwards(effect),
     );
-    const answer = await this.#run(result.known, runnable, at);
+    const answer = await this.#run(result.known, runnable);
     this.#wakeTheAgent(result.known);
     return { kind: "took", order: result.known, answer };
   }
@@ -739,11 +739,7 @@ export class OrderRunner {
   }
 
   /** Carries out the effects that were not written down, and hands back the answer the merchant is owed. */
-  async #run(
-    record: StoredOrder,
-    effects: readonly Effect[],
-    at: number,
-  ): Promise<MerchantAnswer | null> {
+  async #run(record: StoredOrder, effects: readonly Effect[]): Promise<MerchantAnswer | null> {
     let answer: MerchantAnswer | null = null;
 
     for (const effect of effects) {
@@ -762,7 +758,7 @@ export class OrderRunner {
           break;
 
         case "execute_payment":
-          await this.#settle(record, at);
+          await this.#settle(record);
           break;
 
         case "dispatch_order":
@@ -820,7 +816,7 @@ export class OrderRunner {
     return answer;
   }
 
-  async #settle(record: StoredOrder, at: number): Promise<void> {
+  async #settle(record: StoredOrder): Promise<void> {
     const payment = record.payment;
     const price = record.order.price;
     if (payment === null || price === null) {
@@ -839,6 +835,7 @@ export class OrderRunner {
       // a wallet moved since would be refused after the goods went out.
       payTo: record.payTo,
     });
+    const at = this.#runtime.clock();
 
     if (outcome.settled === true) {
       await this.apply(

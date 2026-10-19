@@ -1,11 +1,11 @@
 import {
   canonicalizeTarget,
+  declaresAuth,
   evaluateChecks,
   evaluateScan,
   type FetchArtifact,
   isPathAllowed,
   parseRobots,
-  parseSafeJson,
   parseSitemap,
   type RobotsParseResult,
   type ScanArtifacts,
@@ -67,12 +67,6 @@ const canonicalSameSiteUrl = (
     return undefined;
   }
 };
-
-const authDeclared = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): boolean =>
-  [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])].some((artifact) => {
-    const parsed = parseSafeJson(artifact.body);
-    return parsed !== undefined && /oauth|bearer|authorization/i.test(JSON.stringify(parsed));
-  });
 
 const unavailableArtifact = (url: URL, errorCode: string): FetchArtifact => ({
   url: url.toString(),
@@ -385,7 +379,7 @@ export class ScanRunner {
       };
       await emitChecks(phaseArtifacts, [4, 7, 8, 9, 10, 13, 14, 16, 17, 18]);
 
-      const oauthPromise = authDeclared(phaseArtifacts)
+      const oauthPromise = declaresAuth(phaseArtifacts)
         ? Promise.all([
             fetchIfRobotsAllowed(discoveryUrl(target, "/.well-known/oauth-authorization-server"), {
               bodyLimit: 1024 * 1024,
