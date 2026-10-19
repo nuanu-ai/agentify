@@ -24,6 +24,7 @@ import {
   ParamSpecSchema,
   PublicCardSchema,
   RecordedShipmentSchema,
+  RefundDueReasonSchema,
   RefusalSchema,
   SalePriceSchema,
   SellerSchema,
@@ -97,7 +98,7 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   refusal: RefusalSchema.optional(),
   reason: z
     .strictObject({
-      code: OrderEndingReasonSchema,
+      code: z.union([OrderEndingReasonSchema, RefundDueReasonSchema]),
       message: z.string().regex(/\S/),
     })
     .optional(),
@@ -105,21 +106,42 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
 })
   .strict()
   .superRefine((written, context) => {
-    // Our own reason is said only where the status word blurs what to do next,
-    // and never in the same breath as a merchant's refusal.
-    if (written.reason !== undefined) {
-      if (written.status !== "rejected" && written.status !== "expired") {
+    // Our own reason is said where the status word blurs what to do next: why
+    // we ended a rejected or expired order, never in the same breath as a
+    // merchant's refusal, and why a refund is owed, on every debt, beside the
+    // merchant's refusal exactly where that refusal is what left it.
+    const { reason } = written;
+    const debt = written.status === "refund_due";
+    if (debt && reason === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "an order owing a refund always says why it is owed",
+      });
+    }
+    if (reason !== undefined) {
+      const words = debt ? RefundDueReasonSchema : OrderEndingReasonSchema;
+      if (!debt && written.status !== "rejected" && written.status !== "expired") {
         context.addIssue({
           code: "custom",
           path: ["reason"],
           message: `an order whose status is "${written.status}" carries no reason`,
         });
+      } else if (!words.safeParse(reason.code).success) {
+        context.addIssue({
+          code: "custom",
+          path: ["reason", "code"],
+          message: `"${reason.code}" is not a reason an order whose status is "${written.status}" is given`,
+        });
       }
-      if (written.refusal !== undefined) {
+      const besideTheirWords = debt && reason.code === "refused";
+      if ((written.refusal !== undefined) !== besideTheirWords) {
         context.addIssue({
           code: "custom",
           path: ["reason"],
-          message: "a merchant's refusal is the whole answer and carries no reason of ours",
+          message: besideTheirWords
+            ? "a refund owed because the merchant refused carries the merchant's refusal"
+            : "a merchant's refusal carries no reason of ours, except to say what it left owed",
         });
       }
     }

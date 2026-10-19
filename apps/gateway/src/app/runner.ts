@@ -45,6 +45,7 @@ import {
   type Receipt,
   type ReceiptOutcome,
   type RecordedShipment,
+  type RefundDueReason,
   type SalePrice,
   type Seller,
   type WorkerEnvelope,
@@ -1089,18 +1090,41 @@ export function agentOrderStatusOf(
 }
 
 /**
- * Why an order ended, where this gateway and not the merchant decided it: a
- * code to branch on and a sentence saying what to do next. Each sentence says
- * that nothing was charged where that is so, since that is the first thing an
- * agent holding a closed purchase needs to know.
+ * Why an order ended, where this gateway and not the merchant decided it, or
+ * why a refund is owed on it: a code to branch on and a sentence saying what to
+ * do next. Each sentence about an ending says that nothing was charged where
+ * that is so, since that is the first thing an agent holding a closed purchase
+ * needs to know; each about a debt says that nothing here will record the
+ * refund, since `refund_due` alone reads as one on its way.
  */
-function reasonOf(order: Order): { reason?: { code: EndingReason; message: string } } {
+function reasonOf(order: Order): {
+  reason?: { code: EndingReason | RefundDueReason; message: string };
+} {
+  if (outcomeFor(order) === "refund_due") {
+    const owed = refundReasonOf(order);
+    return { reason: { code: owed, message: REFUND_WORDS[owed](order) } };
+  }
   const code = endingReasonFor(order);
   if (code === null) {
     return {};
   }
   return { reason: { code, message: REASON_WORDS[code](order) } };
 }
+
+/** What a buyer owed a refund cannot learn here: when it has been paid back. */
+const UNRECORDED =
+  "Agentify cannot record a refund yet, so this status does not change once you are paid back: your wallet is where a refund shows.";
+
+const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> = {
+  refused: () =>
+    `The seller refused this order after it was paid, in their own words under refusal, so they owe you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
+  deadline_passed: (order) =>
+    order.mode.parcel === true
+      ? `This parcel was paid for and not handed to a carrier in time, so the seller owes you the whole price back from their own wallet, unless a shipment they still record appears here first. ${UNRECORDED}`
+      : `This order was paid and its time ran out before the goods came, so the seller owes you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
+  merchant_left: () =>
+    `The seller stopped selling through Agentify after this order was paid and before its goods came, so they owe you the whole price back from their own wallet. ${UNRECORDED}`,
+};
 
 const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
   unavailable: () =>
@@ -1189,7 +1213,7 @@ function shipByOf(order: Order): string | null {
  * goods, because the vocabulary has no word for our side losing track of the
  * money.
  */
-function refundReasonOf(order: Order): "refused" | "deadline_passed" | "merchant_left" {
+function refundReasonOf(order: Order): RefundDueReason {
   const closure = order.closure;
   if (closure === null) {
     throw new Error(`a refund fell due on ${order.id} with nothing recording why`);

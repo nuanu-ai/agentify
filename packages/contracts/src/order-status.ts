@@ -59,7 +59,8 @@ export const ORDER_STATUSES = Object.freeze([
    * The money moved and the goods have not come: the merchant owes the buyer
    * the goods or the money back. Not an ending, and it carries no deadline of
    * its own. Goods the merchant delivers after it still reach the buyer, settle
-   * the debt and make the order `delivered`.
+   * the debt and make the order `delivered`. The agent's status document always
+   * says why it is owed, under `reason`.
    *
    * It does not say whether the money has already gone back. The merchant pays
    * back the whole price from their own wallet, although their payout contract
