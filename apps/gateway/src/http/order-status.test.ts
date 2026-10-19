@@ -455,6 +455,48 @@ describe("an order that owes a refund", () => {
     expect(owing.reason?.message).toMatch(/\S/);
   });
 
+  it("says the charge was reported after the purchase was closed, not that goods came late", async () => {
+    // A charge that went silent closes the purchase before the merchant is
+    // sent anything. If it later turns out to have gone through, the buyer is
+    // owed the price, but no time for any goods ever ran: the sentence for
+    // goods that came late would describe a purchase that did not happen.
+    const { served, harnessed } = await started({
+      SETTLE_BEFORE_GOODS_MS: "50",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "80",
+    });
+    const itemId = await publish(served, {
+      ...laterCard,
+      fulfill_deadline_seconds: undefined,
+    } as Card);
+    harnessed.facilitator.willSettle({ settled: "unknown", reason: "the facilitator timed out" });
+    const silent = await buyOverHttp(harnessed, served, itemId, {});
+    const reported = (silent.body as AgentOrderStatus).order_id;
+    // Closed on the silence, as an operator finds it before recording the charge.
+    await vi.waitFor(
+      async () =>
+        expect((await harnessed.store.orderById(reported))?.order.closure?.cause).toBe(
+          "payment_outcome_unknown",
+        ),
+      { timeout: 2_000, interval: 5 },
+    );
+    expect(((await statusOf(served, reported)).body as AgentOrderStatus).status).toBe(
+      "payment_unresolved",
+    );
+    await harnessed.gateway.runner.apply(reported, {
+      kind: "payment_settled",
+      at: harnessed.now(),
+    });
+    harnessed.facilitator.willSettle({ settled: true, transaction: "0xsettled" });
+    const late = await orderTakenOn(harnessed, served, itemId);
+
+    const owingLate = await owingOf(served, late);
+    const owingReported = await owingOf(served, reported);
+
+    expect(owingReported.reason?.code).toBe("deadline_passed");
+    expect(owingReported.reason?.message).toMatch(/\S/);
+    expect(owingReported.reason?.message).not.toBe(owingLate.reason?.message);
+  });
+
   it("gives each way of coming to owe a sentence of its own", async () => {
     // One sentence for all three would tell an agent waiting on a late
     // delivery the same thing as one whose seller has gone.
