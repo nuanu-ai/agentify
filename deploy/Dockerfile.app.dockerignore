@@ -25,7 +25,6 @@ output
 /apps/scanner-worker
 /apps/browser-observer-actor
 /packages/scanner-database
-/packages/scanner
 /packages/analytics
 /packages/observability
 /packages/remediation

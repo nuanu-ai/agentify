@@ -15,6 +15,13 @@ export type RobotsParseResult = {
 
 const CONTENT_SIGNAL_KEYS = new Set(["search", "ai-input", "ai-train"]);
 
+// RFC 9309 matches a group by a crawler's product token, the leading run of
+// letters, "_" and "-" of a user-agent value, without regard to case: what
+// follows it, a version or a comment, does not count, and a part of the
+// token names another crawler.
+const productToken = (value: string): string =>
+  /^\*(?:\s|$)/.test(value) ? "*" : (/^[a-z_-]*/i.exec(value)?.[0] ?? "").toLowerCase();
+
 export const parseRobots = (body: string): RobotsParseResult => {
   const groups: RobotsGroup[] = [];
   const sitemaps: string[] = [];
@@ -41,8 +48,11 @@ export const parseRobots = (body: string): RobotsParseResult => {
         groups.push(current);
         seenRules = false;
       }
-      if (value) current.agents.push(value.toLowerCase());
-      else malformedDirectives += 1;
+      if (!value) malformedDirectives += 1;
+      else {
+        const token = productToken(value);
+        if (token) current.agents.push(token);
+      }
     } else if (field === "allow" || field === "disallow") {
       if (!current) malformedDirectives += 1;
       else {
@@ -121,24 +131,9 @@ export const isPathAllowed = (
   userAgent: string,
   path: string,
 ): boolean | undefined => {
-  const normalized = userAgent.toLowerCase();
-  const groupsWithSpecificity = parsed.groups.map((group) => ({
-    group,
-    specificity: Math.max(
-      -1,
-      ...group.agents.map((agent) => {
-        if (agent === "*") return 0;
-        return normalized.includes(agent) ? agent.length : -1;
-      }),
-    ),
-  }));
-  const maxSpecificity = Math.max(
-    -1,
-    ...groupsWithSpecificity.map(({ specificity }) => specificity),
-  );
-  const groups = groupsWithSpecificity
-    .filter(({ specificity }) => specificity === maxSpecificity && specificity >= 0)
-    .map(({ group }) => group);
+  const token = productToken(userAgent);
+  const named = parsed.groups.filter((group) => group.agents.includes(token));
+  const groups = named.length ? named : parsed.groups.filter((group) => group.agents.includes("*"));
   const rules = groups.flatMap((group) => [
     ...group.allow.map((rule) => ({ rule, allow: true })),
     ...group.disallow.map((rule) => ({ rule, allow: false })),
@@ -167,9 +162,7 @@ const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [
 
 export const explicitAiPolicies = (parsed: RobotsParseResult): Record<string, string[]> => {
   const output: Record<string, string[]> = {};
-  const tokens = new Set(
-    parsed.groups.flatMap((group) => group.agents.map((agent) => agent.replace(/\/[\d.]+$/, ""))),
-  );
+  const tokens = new Set(parsed.groups.flatMap((group) => group.agents));
   for (const [provider, agents] of PROVIDERS) {
     const found = agents.filter((agent) => tokens.has(agent));
     if (found.length) output[provider] = found;

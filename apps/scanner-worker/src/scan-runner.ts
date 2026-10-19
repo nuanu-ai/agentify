@@ -225,10 +225,14 @@ export class ScanRunner {
       // true or false for the URL, its query included, or undefined when its
       // host's robots.txt could not be read or the decision would cost more
       // than the matcher's budget.
-      const verdictOf = ({ artifact, parsed }: RobotsReading, url: URL) => {
+      const verdictOf = (
+        { artifact, parsed }: RobotsReading,
+        url: URL,
+        crawler = "agentify-scanner",
+      ) => {
         if (artifact.status === 404 || artifact.status === 410) return true;
         if (artifact.errorCode || artifact.status !== 200 || parsed.fatal) return undefined;
-        return isPathAllowed(parsed, "agentify-scanner", `${url.pathname || "/"}${url.search}`);
+        return isPathAllowed(parsed, crawler, `${url.pathname || "/"}${url.search}`);
       };
       const robotsVerdict = async (url: URL): Promise<boolean | undefined> =>
         verdictOf(await readRobotsOf(url.origin), url);
@@ -244,6 +248,17 @@ export class ScanRunner {
           ? reading.artifact.errorCode
           : "robots_unavailable";
       };
+      // A request in an AI agent's name is bound by the group robots.txt keeps
+      // for that agent as well as by the scanner's own.
+      const admitAs =
+        (agent: string) =>
+        async (url: URL): Promise<string | undefined> => {
+          const refusal = await admit(url);
+          if (refusal) return refusal;
+          const verdict = verdictOf(await readRobotsOf(url.origin), url, agent);
+          if (verdict === true) return undefined;
+          return verdict === false ? "agent_robots_disallowed" : "robots_unavailable";
+        };
       const targetVerdict = await robotsVerdict(target);
       const targetAllowed = targetVerdict === true;
       const declaredSitemaps = parsedRobots.sitemaps
@@ -256,10 +271,19 @@ export class ScanRunner {
       const fetchIfRobotsAllowed = async (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
+        admission = admit,
       ): Promise<FetchArtifact> => {
-        const refusal = await admit(url);
-        return refusal ? unavailableArtifact(url, refusal) : fetch(url, { ...fetchOptions, admit });
+        const refusal = await admission(url);
+        return refusal
+          ? unavailableArtifact(url, refusal)
+          : fetch(url, { ...fetchOptions, admit: admission });
       };
+      const fetchAsAgent = (agent: string) =>
+        fetchIfRobotsAllowed(
+          target,
+          { bodyLimit: 2 * 1024 * 1024, userAgent: asAgent(agent) },
+          admitAs(agent),
+        );
 
       const contentPromise = targetAllowed
         ? Promise.all([
@@ -269,16 +293,8 @@ export class ScanRunner {
               accept: "text/markdown",
               admit,
             }),
-            fetch(target, {
-              bodyLimit: 2 * 1024 * 1024,
-              userAgent: asAgent("ChatGPT-User/1.0"),
-              admit,
-            }),
-            fetch(target, {
-              bodyLimit: 2 * 1024 * 1024,
-              userAgent: asAgent("Claude-User"),
-              admit,
-            }),
+            fetchAsAgent("ChatGPT-User/1.0"),
+            fetchAsAgent("Claude-User"),
           ])
         : Promise.resolve([]);
       const sitemapPromise = (async () => {

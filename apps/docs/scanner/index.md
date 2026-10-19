@@ -6,6 +6,10 @@ What our requests look like to your site, and how to stop them.
 
 Scanner user agent: `agentify-scanner/1.0 (+{{origin}}/scanner)`
 
+In robots.txt the scanner answers to the token `agentify-scanner`. Letter case
+and a version after it do not matter, and a group that names only part of the
+token, such as `agentify`, is not read as addressed to the scanner.
+
 One check asks for your page twice more with the tokens ChatGPT and Claude
 agents send, followed by the scanner's own name, for example `ChatGPT-User/1.0
 (compatible; agentify-scanner/1.0; +{{origin}}/scanner)`, to see
@@ -34,7 +38,8 @@ The production domain is active. The final legal identity is not published yet.
 
 A separate non-scoring layer may render up to three public same-site pages
 through a private Apify Actor. Its user agent is `agentify-browser-observer/1.0
-(+https://agentify.ad/scanner)`. Provider, budget, or challenge failures never
+(+https://agentify.ad/scanner)`, and in robots.txt it answers to the token
+`agentify-browser-observer`. Provider, budget, or challenge failures never
 reduce the score.
 
 - GET and HEAD only; public ports 80 and 443 only.
@@ -50,8 +55,12 @@ reduce the score.
 
 We fetch `/robots.txt` first and follow it for every later request, its query
 and each redirect included: the page, its sitemap, llms.txt and the
-`/.well-known` discovery files. An address on another host of the site is judged
-by that host's own robots.txt, read first. A check whose requests it disallows
+`/.well-known` discovery files. The rules we follow are those of the groups that
+name `agentify-scanner`, or of the `*` group when none does. Each of the two
+requests sent in an AI agent's name also follows the group for that agent,
+`ChatGPT-User` or `Claude-User`: where that group keeps the agent off the page,
+the request is not sent. An address on another host of the site is judged by
+that host's own robots.txt, read first. A check whose requests it disallows
 is marked not assessed, and the report names robots.txt as the reason. If
 robots.txt cannot be read, or its rules cannot be decided for an address, we
 read nothing it might forbid. We do not bypass that rule.

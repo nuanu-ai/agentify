@@ -889,6 +889,24 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
     });
   const chatgpt = artifacts.agentProbes.chatgpt;
   const claude = artifacts.agentProbes.claude;
+  // robots.txt kept a request out by the rules it keeps for the agent the
+  // request names, while its rules for the scanner let the scanner in: the
+  // notice telling the owner to allow the scanner would not explain it, so
+  // the check carries a code of its own and names the agents it kept out.
+  const keptOut = (probe?: FetchArtifact) => probe?.errorCode === "agent_robots_disallowed";
+  if (keptOut(chatgpt) || keptOut(claude))
+    return result({
+      id: 13,
+      status: "unavailable",
+      earnedWeight: 0,
+      summaryCode: "agent_ua_robots_disallowed",
+      evidence: {
+        chatgpt_robots_disallowed: keptOut(chatgpt),
+        claude_robots_disallowed: keptOut(claude),
+      },
+      userImpactCode: "agent_ua_not_assessed",
+      errorCode: "agent_robots_disallowed",
+    });
   if (!chatgpt || !claude || inaccessible(chatgpt) || inaccessible(claude))
     return result({
       id: 13,

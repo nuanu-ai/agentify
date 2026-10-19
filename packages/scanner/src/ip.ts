@@ -62,6 +62,22 @@ const isInV4Range = (address: number, network: number, prefix: number): boolean 
   return (address & mask) >>> 0 === (network & mask) >>> 0;
 };
 
+const v4Block = (address: number): IpBlockReason | undefined =>
+  V4_BLOCKS.find(([network, prefix]) => isInV4Range(address, network, prefix))?.[2];
+
+type V6Range = readonly [prefix: readonly number[], bits: number, reason: IpBlockReason];
+
+// The blocks of 2000::/3 IANA's special-purpose registry does not list as
+// globally reachable, and the IETF protocol block whole: what its few
+// reachable exceptions hold (anycast relays, AS112 sinks, identifiers) is
+// never a website. The benchmarking block sits inside it and keeps its name.
+const V6_GLOBAL_BLOCKS: readonly V6Range[] = [
+  [[0x2001, 0x0002, 0x0000], 48, "benchmark"],
+  [[0x2001, 0x0000], 23, "reserved"],
+  [[0x2001, 0x0db8], 32, "documentation"],
+  [[0x3fff], 20, "documentation"],
+];
+
 const parseIpv6 = (input: string): Uint16Array | null => {
   let value = input.toLowerCase();
   const zone = value.indexOf("%");
@@ -97,15 +113,25 @@ const hasPrefix = (words: Uint16Array, prefix: readonly number[], bits: number):
   return true;
 };
 
+const v4At = (words: Uint16Array, index: number): number =>
+  (((words[index] ?? 0) << 16) | (words[index + 1] ?? 0)) >>> 0;
+
+// The forms whose packets end up at an IPv4 address they carry: IPv4-mapped,
+// NAT64's well-known prefix and 6to4. Each is as public as that address.
+const carriedV4 = (words: Uint16Array): number | undefined => {
+  if (hasPrefix(words, [0, 0, 0, 0, 0, 0xffff], 96)) return v4At(words, 6);
+  if (hasPrefix(words, [0x0064, 0xff9b, 0, 0, 0, 0], 96)) return v4At(words, 6);
+  if (hasPrefix(words, [0x2002], 16)) return v4At(words, 1);
+  return undefined;
+};
+
 export const classifyIp = (address: string): IpClassification => {
   const family = isIP(address);
   if (family === 4) {
     const parsed = v4(address);
     if (parsed === null) return { allowed: false, reason: "invalid_ip" };
-    for (const [network, prefix, reason] of V4_BLOCKS) {
-      if (isInV4Range(parsed, network, prefix)) return { allowed: false, family: 4, reason };
-    }
-    return { allowed: true, family: 4 };
+    const reason = v4Block(parsed);
+    return reason ? { allowed: false, family: 4, reason } : { allowed: true, family: 4 };
   }
   if (family !== 6) return { allowed: false, reason: "invalid_ip" };
   const words = parseIpv6(address);
@@ -115,20 +141,19 @@ export const classifyIp = (address: string): IpClassification => {
     return { allowed: false, family: 6, reason: "unspecified" };
   if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1)
     return { allowed: false, family: 6, reason: "loopback" };
+  const carried = carriedV4(words);
+  if (carried !== undefined) {
+    const reason = v4Block(carried);
+    return reason ? { allowed: false, family: 6, reason } : { allowed: true, family: 6 };
+  }
   if (hasPrefix(words, [0xfc00], 7)) return { allowed: false, family: 6, reason: "private" };
   if (hasPrefix(words, [0xfe80], 10)) return { allowed: false, family: 6, reason: "link_local" };
   if (hasPrefix(words, [0xff00], 8)) return { allowed: false, family: 6, reason: "multicast" };
-  if (hasPrefix(words, [0x2001, 0x0db8], 32))
-    return { allowed: false, family: 6, reason: "documentation" };
-  if (hasPrefix(words, [0x2001, 0x0002], 48))
-    return { allowed: false, family: 6, reason: "benchmark" };
-  if (hasPrefix(words, [0x2001, 0x0010], 28))
-    return { allowed: false, family: 6, reason: "reserved" };
-  if (hasPrefix(words, [0x0000, 0, 0, 0, 0, 0xffff], 96)) {
-    const mapped = (((words[6] ?? 0) << 16) | (words[7] ?? 0)) >>> 0;
-    for (const [network, prefix, reason] of V4_BLOCKS) {
-      if (isInV4Range(mapped, network, prefix)) return { allowed: false, family: 6, reason };
-    }
+  // Outside 2000::/3 every address is special-purpose or held back by the
+  // IETF: IPv4-compatible, local-use NAT64, site-local, discard-only.
+  if (!hasPrefix(words, [0x2000], 3)) return { allowed: false, family: 6, reason: "reserved" };
+  for (const [prefix, bits, reason] of V6_GLOBAL_BLOCKS) {
+    if (hasPrefix(words, prefix, bits)) return { allowed: false, family: 6, reason };
   }
   return { allowed: true, family: 6 };
 };
