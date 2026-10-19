@@ -37,6 +37,8 @@ export function buildLlmsText(): string {
     "",
     "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402. The buyer pays into the merchant's own payout contract, which nobody owns and which sends 99.9% to the merchant's wallet and 0.1% to Agentify when it is paid out.",
     "",
+    "To buy, POST `{\"params\": {...}}`, holding the fields the item's `params` declare and empty when it declares none, to the item's `purchase_url` in the catalogue. The first answer is a 402 whose x402 version 2 payment requirements are in the `PAYMENT-REQUIRED` header, payable within its `maxTimeoutSeconds`. The same POST with the payment in a `PAYMENT-SIGNATURE` header is answered with the order: the goods are in its `delivered`, or, where they come later, its `status_url` is read again while its `status` reads `in_progress`. The `order_id` and `status_url` are the only key to the order and its goods: keep them to yourself.",
+    "",
     `- [The sell-to-agents page, for the business owner](${whole("/agentic-shop")})`,
     `- [The catalogue AI agents buy from, as JSON](${whole("/x402/catalog")})`,
     "",
