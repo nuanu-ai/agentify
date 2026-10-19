@@ -287,7 +287,7 @@ describe("what the checks read from the markup real sites write", () => {
 });
 
 describe("a scan of a truncated HTML response", () => {
-  const plain = "<html><head><title>Store</title></head><body><h1>Store</h1>";
+  const plain = "<html><head><title>Coffee</title></head><body><h1>Coffee</h1>";
   const productData = (evaluation: ReturnType<typeof evaluateScan>) =>
     evaluation.checks.filter(({ id }) => [5, 6, 15].includes(id));
 

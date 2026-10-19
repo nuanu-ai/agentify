@@ -65,6 +65,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "No language alternatives were detected, so hreflang is not required for this scan.",
   hreflang_unavailable: "Language-alternative declarations could not be assessed.",
   hreflang_valid: "Language-alternative declarations are present and internally consistent.",
+  html_truncated:
+    "Only part of an HTML response was read because it exceeded the scan's size limit. This check could not be completed; missing data is not inferred from the unread part.",
   jsonld_absent_or_invalid: "No valid JSON-LD structured data was found in the initial HTML.",
   jsonld_partially_parseable:
     "JSON-LD is present, but at least one block could not be parsed reliably.",
@@ -182,6 +184,8 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
 };
 
 const IMPACT_COPY: Readonly<Record<string, string>> = {
+  html_not_assessed:
+    "The unread part of the page may contain the data this check needs. This reduces scan coverage and is not a confirmed site defect.",
   a2a_informational:
     "A2A metadata matters only when the site intentionally exposes an A2A-compatible agent.",
   a2a_not_assessed: "No conclusion can be drawn about the optional A2A surface from this scan.",
