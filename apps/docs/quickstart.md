@@ -366,8 +366,7 @@ holds against a repeat is proved by the purchase on the next step.
 You make the first purchase yourself, buying your own card on the test channel
 with an ordinary x402 client, the payment protocol agents pay with. The buyer
 needs a wallet of its own: a fresh private key you keep for test purchases and
-nothing else, holding test USDC on Base Sepolia, which [Circle's
-faucet](https://faucet.circle.com) gives away. It needs no ETH, because the
+nothing else, holding test USDC on Base Sepolia. It needs no ETH, because the
 payment is an authorisation the buyer signs and the facilitator executes.
 
 Install the x402 client and the library that signs with the key:
@@ -376,11 +375,29 @@ Install the x402 client and the library that signs with the key:
 npm install @x402/core @x402/evm @x402/fetch viem
 ```
 
-Then buy the card by the catalogue identifier step 3 returned, with the
+Make the buyer's key with that library, in the same directory. The command
+prints a fresh private key, as the line `.env` takes, and the address it
+controls:
+
+```sh
+node --input-type=module -e "
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+const key = generatePrivateKey()
+console.log('BUYER_PRIVATE_KEY=' + key)
+console.log('address:', privateKeyToAccount(key).address)
+"
+```
+
+Then open [Circle's faucet](https://faucet.circle.com), choose USDC and Base
+Sepolia, and paste the address: the faucet sends test USDC to it, and that is
+all the buyer needs.
+
+Now buy the card by the catalogue identifier step 3 returned, with the
 purchase parameters the card asks for, and read the order until it has
 finished. The program below is TypeScript whose types Node 24 can simply
 erase, so save it as `buyer.mts` and run it with
-`node --env-file=.env buyer.mts`, with two more lines in `.env`:
+`node --env-file=.env buyer.mts`, with two more lines in `.env`, the first of
+them the one the command above printed:
 
 ```sh
 BUYER_PRIVATE_KEY=0x...
