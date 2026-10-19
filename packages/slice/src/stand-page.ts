@@ -448,20 +448,35 @@ const heldMail = (one: HeldOrder): string => {
 </div>`;
 };
 
-const pausedRow = (one: PausedOrder, recording: boolean): string => `<tr>
+/**
+ * Where a paused order stands, in the words its row says it with. The row
+ * carries the key as `data-paused` too, so a script reading the row is told
+ * what the person reading it is.
+ */
+const PAUSED_WHERE = {
+  arrival: "arrived, nothing done yet",
+  answer_ready: "answer ready, not sent",
+  answer_recorded: "answer recorded, not sent",
+} as const;
+
+const pausedRow = (one: PausedOrder, recording: boolean): string => {
+  const where: keyof typeof PAUSED_WHERE =
+    one.phase === "arrival" ? "arrival" : recording ? "answer_recorded" : "answer_ready";
+  return `<tr data-paused="${where}">
   <td>
     <div class="under mono">${escaped(one.id)}</div>
     <div class="under">${escaped(one.merchantItemId)}</div>
   </td>
-  <td>${dot("busy", one.phase === "arrival" ? "arrived, nothing done yet" : recording ? "answer recorded, not sent" : "answer ready, not sent")}</td>
+  <td>${dot("busy", PAUSED_WHERE[where])}</td>
   <td><span class="mono">${escaped(new Date(one.since).toISOString().slice(11, 19))}</span> <span class="under" data-since="${escaped(one.since)}">for <b>0.0 s</b></span></td>
   <td class="ctl"><div class="actions">${form("release_pause", hidden("order_id", one.id), "Release", true)}</div></td>
 </tr>`;
+};
 
 const pausedPanel = (state: PageState): string => `<section class="panel">
   <header>
     <h2>Paused</h2>
-    <div class="side">process <span class="mono">${escaped(state.stand.pid)}</span> · ${state.stand.records === null ? "no records kept" : `records in <span class="mono">${escaped(state.stand.records)}</span>`}</div>
+    <div class="side">process <span class="mono" data-pid="${escaped(state.stand.pid)}">${escaped(state.stand.pid)}</span> · ${state.stand.records === null ? "no records kept" : `records in <span class="mono">${escaped(state.stand.records)}</span>`}</div>
   </header>
   <div class="body">
     <form method="post" class="decisions">
