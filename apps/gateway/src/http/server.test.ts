@@ -497,11 +497,14 @@ describe("the payment challenge", () => {
     // for what a charge after the goods needs: the synchronous answer's time,
     // the exact-EVM facilitator's six seconds, and two for the gateway's own
     // steps and the clocks. Two more cover the time before the check: its round
-    // trip, and the client rounding its clock down to the second.
+    // trip, and the client rounding its clock down to the second. The protocol
+    // counts whole seconds, so a window configured to the millisecond is
+    // rounded up: a second short would end before the charge.
     const environments: Record<string, string>[] = [
       { QUOTE_TTL_MS: "30000" },
       { QUOTE_TTL_MS: "45000" },
       { QUOTE_TTL_MS: "30000", SYNC_RESPONSE_MS: "15000", SYNC_BUDGET_MS: "30000" },
+      { QUOTE_TTL_MS: "30500" },
     ];
     for (const environment of environments) {
       const { served, harnessed } = await started(environment);
@@ -516,7 +519,7 @@ describe("the payment challenge", () => {
           asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
         );
         expect(challenge.accepts[0]?.maxTimeoutSeconds, JSON.stringify(environment)).toBe(
-          (quoteTtlMs + syncResponseMs) / 1_000 + 6 + 2 + 2,
+          Math.ceil((quoteTtlMs + syncResponseMs) / 1_000) + 6 + 2 + 2,
         );
       }
 
