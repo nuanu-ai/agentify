@@ -1,8 +1,7 @@
 # How the portal is written
 
 In force since 2026-08-26, agreed with the product owner and calibrated on
-their feedback. The requirements it comes from:
-docs/research/19-portal-requirements.md.
+their feedback.
 
 The portal is written in English (the product owner, 2026-08-27), the same
 language as the landing the pages sit behind.
