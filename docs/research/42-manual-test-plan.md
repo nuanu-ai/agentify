@@ -149,18 +149,33 @@ Two worker processes of one merchant share its stream. The sandbox accepts
 artificial payments and proves nothing about signatures.
 Additional equipment required for certain rows is named explicitly:
 
-| Instrument | Required capability and evidence |
-| --- | --- |
-| Response-cutting proxy | Forward the request, observe upstream commitment/response, then drop the downstream response before headers or midway through its body once; log correlation and phase without secrets; restore pass-through afterwards |
-| Merchant barriers | Hold before effect, after durable effect and before acknowledgement; release a named order deliberately, rather than hoping a sleep hit a race |
-| Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model |
-| Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count |
-| Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state |
+| Instrument | Required capability and evidence | In the repository |
+| --- | --- | --- |
+| Response-cutting proxy | Forward the request, observe upstream commitment/response, then drop the downstream response before headers or midway through its body once; log correlation and phase without secrets; restore pass-through afterwards | Exists: `pnpm cut`, described in the [slice README](../../packages/slice/README.md). One cut per run, chosen by method, path pattern and the Nth matching answer the server finished with a 2xx status |
+| Merchant barriers | Hold before effect, after durable effect and before acknowledgement; release a named order deliberately, rather than hoping a sleep hit a race | Exists in the stand: a pause when an order arrives and a pause when its answer is ready, each released by order ID, with durable per-order records when the stand is started with `STAND_RECORDS_DIR`; same README |
+| Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model | Missing |
+| Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count | Missing |
+| Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state | Missing |
 
-These capabilities are requirements for the run, not tools claimed to exist.
-If one is missing, mark its variants blocked and name the smallest missing
-capability. Killing curl after two seconds does not prove a server committed.
-An in-memory event permutation does not prove a Postgres interleaving.
+These capabilities are requirements for the run. The first two exist as the
+third column names them; the other three do not. Mark the variants that need a
+missing capability blocked and name the smallest capability that is missing.
+Killing curl after two seconds does not prove a server committed. An in-memory event permutation does not prove a Postgres
+interleaving.
+
+The two existing instruments have limits that decide which variants they can
+carry. The proxy arms one cut per run, and arming another means restarting it;
+a restart drops whatever is in flight through it, which is itself an unplanned
+cut, so stop the caller first. It cannot pick a poll answer by what it
+carries, which is the smallest capability still missing for J-07's lost-event
+variant. The pauses belong to the stand, our own SDK merchant. They hold the
+handler's answer to an order, not the later deliver call of an order taken on
+earlier, and they say nothing about a newcomer's merchant or the WooCommerce
+connector, whose faults stay with the rows marked missing. A stand keeping
+records answers a repeated order with what it recorded, so it cannot model a
+merchant who corrects their goods on a repeat; run those variants without
+records. Both instruments have been exercised against local servers only, not
+yet against the test channel.
 
 ### What must agree after a sale
 
