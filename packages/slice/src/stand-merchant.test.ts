@@ -5,15 +5,19 @@
  * reason that is not on it.
  */
 
-import { createServer, type Server } from "node:http";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig } from "@agentify/gateway/config";
-import { CONTRACT_VERSION, type WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import { CONTRACT_VERSION, type Order, type WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sliceEnv } from "./gateway-harness.js";
 import { type Entry, makeFeed } from "./stand-log.js";
 import { makeStandMerchant } from "./stand-merchant.js";
 import { renderEntry } from "./stand-page.js";
+import { keepRecordsIn } from "./stand-records.js";
 
 const KEY = "the-key-the-stand-connects-with";
 
@@ -414,5 +418,276 @@ describe("the handler told to answer only after the deadline", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/** What the merchant sent back about one order, as the gateway received it. */
+interface Posted {
+  readonly orderId: string;
+  readonly body: unknown;
+}
+
+/**
+ * A gateway that hands this merchant the orders a test gives it, and keeps
+ * what comes back: the handler's answers and any delivery made later.
+ *
+ * A poll is held open until there is something to hand over, as the real
+ * gateway holds it, so an order handed over mid-test arrives at once rather
+ * than after the pause the worker takes between quiet polls.
+ */
+const handingGateway = async (): Promise<{
+  url: string;
+  hand: (order: Order) => void;
+  answers: Posted[];
+  deliveries: Posted[];
+  close: () => Promise<void>;
+}> => {
+  const parked = new Set<ServerResponse>();
+  const queued: WorkerEnvelope[] = [];
+  const answers: Posted[] = [];
+  const deliveries: Posted[] = [];
+  let envelopes = 0;
+
+  const handOut = (response: ServerResponse): void => {
+    parked.delete(response);
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify({ contract_version: CONTRACT_VERSION, envelopes: queued.splice(0) }),
+    );
+  };
+
+  const server: Server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    if (request.url?.endsWith("/worker/poll") === true) {
+      if (queued.length > 0) {
+        handOut(response);
+        return;
+      }
+      parked.add(response);
+      response.once("close", () => parked.delete(response));
+      return;
+    }
+    const [, , , encodedId, call] = (request.url ?? "").split("/");
+    const posted = {
+      orderId: decodeURIComponent(encodedId ?? ""),
+      body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+    };
+    if (call === "answer") answers.push(posted);
+    if (call === "deliver") deliveries.push(posted);
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ ok: true, result: "delivered" }));
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    hand: (order) => {
+      envelopes += 1;
+      queued.push({
+        kind: "order",
+        id: `envelope-${envelopes}`,
+        sent_at: "2026-10-19T00:00:00Z",
+        payload: order,
+      });
+      const waiting = [...parked][0];
+      if (waiting !== undefined) handOut(waiting);
+    },
+    answers,
+    deliveries,
+    close: async () => {
+      for (const waiting of [...parked]) handOut(waiting);
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error === undefined ? resolve() : reject(error)));
+      });
+    },
+  };
+};
+
+/**
+ * An order whose identifier would be a path, and a dangerous one, if it were
+ * ever used as a file name. Identifiers may hold any printable character.
+ */
+const ORDER_ID = "order/../../escaped: with spaces & *stars*";
+
+const anOrder = (): Order => ({
+  id: ORDER_ID,
+  merchant_item_id: "the-item-ordered",
+  params: {},
+  price: {
+    amount: "1.00",
+    currency: "USD",
+    at: "2026-10-19T00:00:00Z",
+    as_of: "2026-10-19T00:00:00Z",
+  },
+  test: true,
+});
+
+const recordsDirectory = async (): Promise<string> => {
+  const directory = await mkdtemp(join(tmpdir(), "stand-records-"));
+  shutting.push(() => rm(directory, { recursive: true, force: true }));
+  return directory;
+};
+
+/** The answers a records directory holds, one parsed file per answered order. */
+const recordsIn = async (directory: string): Promise<Record<string, unknown>[]> => {
+  const names = (await readdir(directory)).filter((name) => name.endsWith(".json"));
+  return Promise.all(
+    names.map(
+      async (name) =>
+        JSON.parse(await readFile(join(directory, name), "utf8")) as Record<string, unknown>,
+    ),
+  );
+};
+
+/** The arrivals a records directory has counted, one parsed line each. */
+const arrivalsIn = async (directory: string): Promise<Record<string, unknown>[]> => {
+  const text = await readFile(join(directory, "arrivals.jsonl"), "utf8").catch(() => "");
+  return text
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+};
+
+/** Long enough for an answer or a delivery that should not happen to arrive anyway. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 300));
+
+describe("a stand keeping records", () => {
+  it("keeps one record of the answer that went back, and counts the arrival apart", async () => {
+    // The promise: the records directory is the merchant's durable effect,
+    // and a tester reads it to count effects against arrivals. A record that
+    // differed from what the gateway received, or an arrival that went
+    // uncounted, would make that count lie.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    merchant = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant.moods.delivery = { licence: "the-first-goods" };
+    await merchant.connect(gateway.url, KEY);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 1);
+
+    expect(gateway.answers[0]?.orderId).toBe(ORDER_ID);
+    expect(await recordsIn(directory)).toEqual([
+      expect.objectContaining({
+        order_id: ORDER_ID,
+        merchant_item_id: "the-item-ordered",
+        answer: gateway.answers[0]?.body,
+        port: 8701,
+        pid: process.pid,
+      }),
+    ]);
+    expect(await arrivalsIn(directory)).toEqual([
+      expect.objectContaining({ order_id: ORDER_ID, port: 8701, pid: process.pid }),
+    ]);
+    // Nothing but the two, so an identifier read as a path wrote nowhere else
+    // and no half-written file was left beside the record.
+    expect(await readdir(directory)).toHaveLength(2);
+  });
+
+  it("answers a repeat with the recorded answer, whatever it is set to now", async () => {
+    // The promise: one order, one effect. A repeat is allowed to arrive, and
+    // the record decides what goes back — not the mood, which here would hold
+    // the order for a person and so never answer at all.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    merchant = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant.moods.delivery = { licence: "the-first-goods" };
+    await merchant.connect(gateway.url, KEY);
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 1);
+
+    merchant.moods.order = "ask_me";
+    merchant.moods.delivery = { licence: "goods-it-would-give-now" };
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 2);
+
+    expect(gateway.answers[1]?.body).toEqual(gateway.answers[0]?.body);
+    expect(await arrivalsIn(directory)).toHaveLength(2);
+    expect(await recordsIn(directory)).toHaveLength(1);
+  });
+
+  it("makes no second delivery for a repeat of an order it took on", async () => {
+    // The promise: the delivery that follows an order taken on is part of the
+    // one effect. A repeat answered from its record says "accepted" again and
+    // promises nothing new.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    merchant = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant.moods.order = "accept_then_deliver";
+    merchant.moods.deliverAfterMs = 0;
+    await merchant.connect(gateway.url, KEY);
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.deliveries.length === 1);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 2);
+    await settle();
+
+    expect(gateway.answers.map((one) => one.body)).toEqual([{ accepted: {} }, { accepted: {} }]);
+    expect(gateway.deliveries).toHaveLength(1);
+  });
+});
+
+describe("two stands on one records directory", () => {
+  it("keep one record of an order both were handed, and both answer with it", async () => {
+    // The promise: two processes of one merchant share one effect per order.
+    // Both handlers must have looked for a record before either writes one, or
+    // the second simply finds the first's record and the race is never run;
+    // holding both orders for a person is what lines them up, and the two
+    // answers given are the two different moods.
+    const directory = await recordsDirectory();
+    const firstGateway = await handingGateway();
+    const secondGateway = await handingGateway();
+    const first = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    const second = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8702) });
+    merchant = first;
+    shutting.push(() => second.disconnect(), firstGateway.close, secondGateway.close);
+    first.moods.order = "ask_me";
+    second.moods.order = "ask_me";
+    await first.connect(firstGateway.url, KEY);
+    await second.connect(secondGateway.url, KEY);
+
+    firstGateway.hand(anOrder());
+    secondGateway.hand(anOrder());
+    await waitUntil(() => first.held.has(ORDER_ID) && second.held.has(ORDER_ID));
+
+    first.answerHeld(ORDER_ID, "deliver");
+    await waitUntil(() => firstGateway.answers.length === 1);
+    second.answerHeld(ORDER_ID, "refuse");
+    await waitUntil(() => secondGateway.answers.length === 1);
+
+    const records = await recordsIn(directory);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.port).toBe(8701);
+    expect(firstGateway.answers[0]?.body).toEqual(records[0]?.answer);
+    expect(secondGateway.answers[0]?.body).toEqual(records[0]?.answer);
+    expect(await arrivalsIn(directory)).toHaveLength(2);
+  });
+});
+
+describe("a stand keeping no records", () => {
+  it("decides a repeat afresh, so goods corrected on a repeat go out", async () => {
+    // The promise: without a records directory the stand is the stand it has
+    // always been. A story where the merchant corrects their goods on a repeat
+    // can only be played by a stand that remembers nothing.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    merchant = makeStandMerchant(makeFeed());
+    merchant.moods.delivery = { licence: "the-first-goods" };
+    await merchant.connect(gateway.url, KEY);
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 1);
+
+    merchant.moods.delivery = { licence: "the-corrected-goods" };
+    gateway.hand(anOrder());
+    await waitUntil(() => gateway.answers.length === 2);
+
+    expect(gateway.answers[1]?.body).toEqual({ delivered: { licence: "the-corrected-goods" } });
   });
 });
