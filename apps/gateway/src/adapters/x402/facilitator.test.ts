@@ -100,6 +100,26 @@ const forOrder = (orderId: string): string =>
     payload: { signature: "0xsigned" },
   });
 
+/** A charge for the order paid under `paymentRef`, presenting `payment`. */
+const againstReference = (paymentRef: string, payment: string): Charge => ({
+  paymentRef,
+  amount: "80.00",
+  currency: "USD",
+  payment,
+  payTo: PAY_TO,
+});
+
+/** A payment right in every respect but how its offer names the order, which `named` says. */
+const paidNaming = (named: Record<string, unknown>): string =>
+  encodePaymentSignatureHeader({
+    x402Version: 2,
+    accepted: {
+      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, null, PAY_TO),
+      extra: { name: "USDC", version: "2", ...named },
+    },
+    payload: { signature: "0xsigned" },
+  });
+
 /**
  * A payment naming no offer at all. The decoder is a base64 JSON parse with no
  * schema behind it, so a header shaped like this really does arrive; the cast
@@ -376,22 +396,38 @@ describe("verifying a payment", () => {
     expect(wrongChain.asked).toStrictEqual([]);
   });
 
-  it("refuses a payment signed for one order and presented on another", async () => {
+  it("refuses a payment made against another order's reference, or naming its order any other way", async () => {
     // Two orders of ours at the same price make one offer indistinguishable
-    // from the other everywhere except in the order it names. What stops one
-    // signed authorisation from buying both is the claim taken on the payment
-    // before any of this runs, not this branch; what this branch stops is a
-    // payment for somebody else's order being carried to the facilitator as
-    // though it were for this one.
+    // from the other everywhere except in the reference it carries. What stops
+    // one signed authorisation from buying both is the claim taken on the
+    // payment before any of this runs, not this branch; what this branch stops
+    // is a payment for somebody else's order being carried to the facilitator
+    // as though it were for this one. A payment naming an order by its
+    // identifier names no reference, so it is not this order's either.
     const client = new Answering();
-    const answered = await new X402Facilitator(client, edge).verify(charge(forOrder("ord_2")));
+    const facilitator = new X402Facilitator(client, edge);
 
-    expect(answered).toStrictEqual({
-      verified: false,
-      reason: "price_stale",
-      message: "the payment was made against a different order from the one it was presented for",
-    });
+    for (const named of [{ payment_ref: "pay_2" }, { order_id: "pay_1" }, {}]) {
+      expect(await facilitator.verify(againstReference("pay_1", paidNaming(named)))).toStrictEqual({
+        verified: false,
+        reason: "price_stale",
+        message: "the payment was made against a different order from the one it was presented for",
+      });
+    }
     expect(client.asked).toStrictEqual([]);
+  });
+
+  it("names the order to the facilitator by its payment reference alone, at the check and the charge", async () => {
+    const client = new Answering();
+    const facilitator = new X402Facilitator(client, edge);
+    const charge = againstReference("pay_1", paidNaming({ payment_ref: "pay_1" }));
+
+    expect(await facilitator.verify(charge)).toMatchObject({ verified: true });
+    expect(await facilitator.settle(charge)).toStrictEqual({ settled: true, transaction: "0xtx" });
+    expect(client.asked.map((asked) => asked.requirements.extra)).toStrictEqual([
+      { name: "USDC", version: "2", payment_ref: "pay_1" },
+      { name: "USDC", version: "2", payment_ref: "pay_1" },
+    ]);
   });
 
   it("refuses a payment that names no offer to check against", async () => {
