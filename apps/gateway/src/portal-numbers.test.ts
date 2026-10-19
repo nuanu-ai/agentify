@@ -42,6 +42,7 @@ const pageText = (file: string): string => {
 const NUMBER_WORDS: Record<string, number> = {
   three: 3,
   five: 5,
+  fifteen: 15,
   eight: 8,
   ten: 10,
   twenty: 20,
@@ -245,11 +246,6 @@ const PINS: readonly Pin[] = [
     { page: "apps/docs/faq.md" },
     "your payout contract sends {merchant}% of it to your wallet and {agentify}% to us",
   ),
-  ...sharesIn(
-    "the shares, where the engineer reads the wallet back",
-    { page: "apps/docs/quickstart.md" },
-    "that pays {merchant}% to `payout_wallet` and {agentify}% to Agentify",
-  ),
 
   // --- the commission, on the sellers' landing ------------------------------
   ...sharesIn(
@@ -297,11 +293,18 @@ const PINS: readonly Pin[] = [
 
   // --- how long we wait for a price, and how long the answer lives ----------
   {
-    what: "how long a price the merchant named goes on being good",
+    what: "how long a price goes on being good, in the table of every time limit",
     page: "apps/docs/orders.md",
-    anchor: /A price holds for (\w+) seconds/,
+    anchor: /\| The price an order was given \| the agent \| (\w+) seconds \|/,
     reads: "seconds",
     is: deadlines.quoteTtlMs,
+  },
+  {
+    what: "how long a price question may go unanswered, in the table of every time limit",
+    page: "apps/docs/orders.md",
+    anchor: /\| Your price handler's answer \| you \| (\w+) seconds \|/,
+    reads: "seconds",
+    is: deadlines.quoteResponseMs,
   },
   {
     // The anchor holds the moment as well as the number. `expires_at` is a
@@ -323,13 +326,6 @@ const PINS: readonly Pin[] = [
     is: deadlines.quoteResponseMs,
   },
   {
-    what: "the same wait, said again where the page says whose setting it is",
-    page: "apps/docs/failures.md",
-    anchor: /(\w+) seconds is what the system you are connecting to allows/,
-    reads: "seconds",
-    is: deadlines.quoteResponseMs,
-  },
-  {
     what: "the same wait, on the page a price handler is written from",
     page: "apps/docs/cards.md",
     anchor: /We wait (\w+) seconds for an answer/,
@@ -341,19 +337,17 @@ const PINS: readonly Pin[] = [
   //
   // The number a merchant sizes a synchronous handler against.
   {
-    what: "how long a synchronous answer has, in the deadline reference",
+    what: "how long a synchronous answer has, in the table of every time limit",
     page: "apps/docs/orders.md",
-    anchor: /A synchronous answer has (\w+) seconds/,
+    anchor:
+      /\| The goods of a synchronous order \| you \| (\w+) seconds \| the payment checked out \|/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
-    // The anchor holds the moment as well as the number: counted from the
-    // unpaid call that opened the order, the clock would already have run out
-    // on an agent that took its time deciding.
-    what: "the same, where the page explains what the clock covers",
+    what: "the same, where the page says the answer and the charge fit the agent's promise",
     page: "apps/docs/orders.md",
-    anchor: /The (\w+) seconds run from the moment the payment checked out/,
+    anchor: /and your (\w+) seconds and the facilitator's \w+ fit inside them/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
@@ -365,97 +359,60 @@ const PINS: readonly Pin[] = [
     is: deadlines.syncResponseMs,
   },
   {
-    what: "the same, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /as one number for everybody, and it is (\w+) seconds/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the same, said again where the page says whose seconds they are",
-    page: "apps/docs/quickstart.md",
-    anchor: /they are the (\w+) seconds your handler has/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the same, on the page about what goes wrong",
-    page: "apps/docs/failures.md",
-    anchor: /(\w+) seconds, counted from the moment the payment checked out/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
     what: "the whole purchase the agent is promised, which the answer sits inside",
     page: "apps/docs/orders.md",
-    anchor: /fit inside the (\w+) seconds we promise the agent/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  {
-    what: "the same promise, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /the (\w+) seconds we promise the agent/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  // The pages then name both numbers again, without the word "seconds", where
-  // they say the two clocks start together.
-  {
-    what: "the ceiling, where the reference says where its clock starts",
-    page: "apps/docs/orders.md",
-    anchor: /Those (\w+) start where your \w+ do/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  {
-    what: "the answer's time, beside the ceiling it starts with",
-    page: "apps/docs/orders.md",
-    anchor: /Those \w+ start where your (\w+) do/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the ceiling, as what the agent waits for after the check",
-    page: "apps/docs/orders.md",
-    anchor: /what the agent waits for is the check, and then the (\w+)/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  {
-    what: "the answer's time, as what the check runs before",
-    page: "apps/docs/quickstart.md",
-    anchor: /the check itself runs before the (\w+) begin/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the ceiling, where the handler is written and its clock's start is named",
-    page: "apps/docs/quickstart.md",
-    anchor: /The (\w+) start where your \w+ do/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  {
-    what: "the answer's time, beside the ceiling it starts with, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /The \w+ start where your (\w+) do/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the ceiling, as what the agent waits for after the check, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /the agent waits for the check, and then for the (\w+)/,
+    anchor: /promised a synchronous purchase within (\w+) seconds of the payment check/,
     reads: "seconds",
     is: deadlines.syncBudgetMs,
   },
 
+  {
+    what: "how long a synchronous answer has, where the handler is written",
+    page: "apps/docs/quickstart.md",
+    anchor: /a synchronous sale is lost (\w+) seconds after the payment check/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "how long we wait for a handler's answer, where the synchronous handler is written",
+    page: "apps/docs/quickstart.md",
+    anchor: /still working after (\w+) seconds has the same order sent again/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+
+  // --- how long the facilitator is waited for about a charge -----------------
+  //
+  // The only clock that makes an order `payment_unresolved`, so a merchant
+  // reading that word knows how long the silence lasted.
+  {
+    what: "the wait for the facilitator's answer on a synchronous order",
+    page: "apps/docs/orders.md",
+    anchor:
+      /\| The facilitator's answer about the charge \| Agentify \| (\w+) seconds on a synchronous order/,
+    reads: "seconds",
+    is: deadlines.settleResponseMs,
+  },
+  {
+    what: "the same, inside the agent's promise beside the merchant's answer",
+    page: "apps/docs/orders.md",
+    anchor: /the facilitator's (\w+) fit inside them/,
+    reads: "seconds",
+    is: deadlines.settleResponseMs,
+  },
+  {
+    what: "the wait for the facilitator's answer where the charge comes before the goods",
+    page: "apps/docs/orders.md",
+    anchor: /(\w+) where the charge comes before the goods/,
+    reads: "seconds",
+    is: deadlines.settleBeforeGoodsMs,
+  },
+
   // --- what a card that names no deadline of its own is held to -------------
   {
-    what: "the delivery deadline a card leaves out, in the deadline reference",
+    what: "the delivery deadline a card leaves out, in the table of every time limit",
     page: "apps/docs/orders.md",
-    anchor: /leave it out and a (\w+) applies/,
+    anchor: /the deadline your card names; without one, a (\w+) \|/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
@@ -474,13 +431,6 @@ const PINS: readonly Pin[] = [
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
-    what: "the same, in the worked case of a delivery that never arrived",
-    page: "apps/docs/failures.md",
-    anchor: /so the (\w+) we hold it to is the one running/,
-    reads: "period",
-    is: deadlines.defaultAsyncFulfillmentMs,
-  },
-  {
     // The agent's side of the same number: how long an order whose goods come
     // later can run before the merchant owes a refund, said where the agent
     // reads about the route it collects them on.
@@ -491,20 +441,6 @@ const PINS: readonly Pin[] = [
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
-  {
-    what: "the confirmation deadline a card leaves out, in the deadline reference",
-    page: "apps/docs/orders.md",
-    anchor: /a deadline of its own — an (\w+), where the card names none/,
-    reads: "period",
-    is: deadlines.defaultConfirmationResponseMs,
-  },
-  {
-    what: "the same, on the card reference",
-    page: "apps/docs/cards.md",
-    anchor: /a deadline of its own — an (\w+), where the card names none/,
-    reads: "period",
-    is: deadlines.defaultConfirmationResponseMs,
-  },
 
   // --- how long a handler's answer is waited for before the order goes again --
   //
@@ -512,6 +448,13 @@ const PINS: readonly Pin[] = [
   // lands: the order is sent again in the meantime, possibly to another
   // instance. The pages say so where a merchant decides how much work to do
   // before answering, and where they read about instances.
+  {
+    what: "how long we wait for a handler's answer, in the table of every time limit",
+    page: "apps/docs/orders.md",
+    anchor: /\| Each hand-over of an order to your process \| you \| (\w+) seconds \|/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
   {
     what: "how long we wait for a handler's answer, where the three answers are set out",
     page: "apps/docs/orders.md",
@@ -533,15 +476,15 @@ const PINS: readonly Pin[] = [
     reads: "seconds",
     is: deadlines.handlerAnswerMs,
   },
-  {
-    what: "the same wait, on the page about a handler that crashed",
-    page: "apps/docs/failures.md",
-    anchor: /after (\w+) seconds without an answer we send the order again/,
-    reads: "seconds",
-    is: deadlines.handlerAnswerMs,
-  },
 
   // --- how many times an order that never reached the handler is sent again --
+  {
+    what: "the attempt cap, in the table of every time limit",
+    page: "apps/docs/orders.md",
+    anchor: /up to (\w+) deliveries in all, within its own deadline/,
+    reads: "count",
+    is: redelivery.maxAttempts,
+  },
   {
     what: "the attempt cap, where the three answers a handler has are set out",
     page: "apps/docs/orders.md",
@@ -557,9 +500,9 @@ const PINS: readonly Pin[] = [
     is: redelivery.maxAttempts,
   },
   {
-    what: "the same cap, on the page about a handler that threw",
+    what: "the same cap, in the table of failures",
     page: "apps/docs/failures.md",
-    anchor: /until we have tried (\w+) times/,
+    anchor: /up to (\w+) deliveries in all, while its deadline lasts/,
     reads: "count",
     is: redelivery.maxAttempts,
   },
@@ -593,7 +536,7 @@ describe("every number the portal names is the number this gateway ships", () =>
   });
 
   it("grows the pause between attempts, which is the one claim carrying no number", () => {
-    // failures.md: "we repeat the delivery, after a pause that grows with each
+    // failures.md: "the order comes again after a pause that grows with each
     // attempt". The configuration accepts a factor of one, a flat retry that
     // puts every attempt inside a couple of seconds, and the sentence would
     // then describe nothing that happens.
@@ -613,7 +556,7 @@ describe("a number the portal publishes is not also called undecided", () => {
     {
       page: "apps/docs/orders.md",
       claim: /how long we wait for a synchronous answer/,
-      truth: "ten seconds, named in “Time ran out”",
+      truth: "ten seconds, named in “Every time limit”",
     },
     {
       page: "apps/docs/quickstart.md",
@@ -753,7 +696,8 @@ describe("the pin itself", () => {
       ["how long a synchronous answer has", deadlines.syncResponseMs],
       ["the purchase the agent is promised", deadlines.syncBudgetMs],
       ["the delivery deadline a card leaves out", deadlines.defaultAsyncFulfillmentMs],
-      ["the confirmation deadline a card leaves out", deadlines.defaultConfirmationResponseMs],
+      ["how long the facilitator is waited for after the goods", deadlines.settleResponseMs],
+      ["how long the facilitator is waited for before the goods", deadlines.settleBeforeGoodsMs],
       ["how many times an order is sent again", redelivery.maxAttempts],
       ["Agentify's share of every payment", commission],
       ["the merchant's share of every payment", merchantShare],

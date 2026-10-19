@@ -1,37 +1,70 @@
 # Connecting to Agentify
 
-*The public contract is versioned; changes arrive in a new package version.*
-
-You run an online business, and you are deciding whether it is worth putting
-your goods where programs do the buying. This page is what that decision is
-made of: who buys there, what we will ask you, what we take on ourselves, and
-how connecting begins.
+You run an online business, and you are deciding whether it is worth selling
+to programs that buy on a person's behalf. This page is what that decision is
+made of — who buys, who does what in a sale, what it costs and when the buyer
+pays — and how connecting begins.
 
 ## Who buys here
 
-Agentify puts the goods of an ordinary online business into the catalogues
-where AI agents buy — the listings an agent searches when it is looking for
-something, run by other people and not by you. An agent is a program that a
-person handed a task and a budget; to finish the task it finds the goods it
-needs, pays for them and takes delivery, all by itself.
+Agentify publishes your products in its own catalogue, which AI agents read
+and buy from. Catalogues run by other people may list them too, and nothing
+guarantees that, and how many agents read Agentify's catalogue today is not
+something we can tell you yet. An agent is a program that a person handed a
+task and a budget; to finish the task it finds the goods it needs, pays for
+them and takes delivery, all by itself.
 
 For you that is one more place to sell. Your range does not have to change, the
 prices stay yours, and your shop goes on working the way it works now. One
 thing is different: on the other side of the sale, in place of a person who
 opened your site and pressed the buttons, there is a program. It does not look
 at pictures and does not read reviews. It decides whether to buy from the card
-— the text that describes one of your products in a catalogue. How precisely
-that text says what the buyer gets is what settles how many sales you end up
+— the text that describes one of your products in the catalogue — so how
+precisely that text says what the buyer gets settles how many sales you end up
 sorting out by hand.
 
-The buyer pays into a payout contract made for your wallet, which keeps the
-money until it is paid out and then sends 99.9% to your wallet and 0.1% to us.
-Nobody, Agentify included, can change whom it pays, and you can have it paid
-out at any time. Our 0.1% is inside your price, and there is no
-subscription and no monthly fee. The moment the buyer is charged is not the
-same for every product: for some it comes after you have delivered, for others
-at the moment of purchase. That, and the rest of what there is to say about
-the money, is on [Money](/money).
+Buyers pay in USDC, a digital dollar, on the Base network, into a smart
+contract made for your crypto wallet, which then pays your share into that
+wallet. Turning USDC into money in a bank account happens outside Agentify.
+
+## Who is who
+
+| Who | What they do in a sale |
+| --- | --- |
+| The buyer's agent | a program acting for a person: it reads the catalogue, decides from the card, pays and takes the goods |
+| Agentify | publishes your cards, asks the buyer for the payment, carries the paid order to you and your goods back to the buyer, and never holds the money |
+| The facilitator | the payment service that checks the buyer's signed payment and executes it, into your payout contract |
+| Your process, or your WooCommerce shop | your code, running beside your own systems, or your shop connected in the dashboard: it takes the paid order and delivers the goods |
+| Your payout contract and your wallet | the contract receives every payment in full and pays it out, 99.9% to your wallet and 0.1% to us |
+
+Agentify is in its pilot: it runs with its first merchants while the rules
+that are not settled yet get settled, and a few rules on these pages hold only
+until then, each saying so. There is no end date for the pilot yet.
+
+## What it costs and where the money goes
+
+The buyer pays the price on your card into your payout contract, which keeps
+the money until it is paid out and then sends 99.9% to your wallet and 0.1% to
+us. Nobody, Agentify included, can change whom it pays. Our 0.1% is inside
+your price, and there is no subscription and no monthly fee. Your share
+reaches your wallet when you send a payout from your dashboard, at any time,
+or when we collect our own share, which pays out your contract too; there is
+no fixed day for that. [Money](/money) draws the whole path and says what you
+risk on the way.
+
+## When your buyer is charged
+
+When the money moves depends on what you sell, and you choose it product by
+product:
+
+| Your product | When the buyer pays | If you cannot deliver |
+| --- | --- | --- |
+| Handed over at once by your system: a key, a link, access | after you have delivered, as the last step of the purchase | the purchase does not happen and the buyer pays nothing |
+| Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | you owe the buyer the goods or the money back |
+| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | you owe the buyer the money back, unless you ship late after all |
+
+The same choices, with the words your engineer's code uses for them, are on
+[Orders and fulfillment modes](/orders).
 
 ## What we will ask you
 
@@ -42,124 +75,98 @@ have answered them we have no more questions for you.
    description, price and list of what has to be given at purchase. The card is
    the whole of what an agent reads, and your code republishes it when the
    product changes.
-2. Where to send the money. We need the address of your wallet, where your
-   share of every sale arrives. Buyers pay into a payout contract made for
-   that wallet, and what accumulates there is paid out to you whenever you
-   send the payout yourself, or when we collect our own share; nothing of
-   yours sits in an account of ours.
+2. Where to send the money. We need the address of your wallet on Base, where
+   your share of every sale arrives; nothing of yours sits in an account of
+   ours.
 3. Whether the product survives being delivered twice. The same order can reach
-   you twice: a connection dropped, an answer never landed, we tried again.
-   Access, a key, a link, a subscription go out a second time to the same buyer
-   without loss; a unit off a shelf or a one-off code from a limited batch does
-   not. During the pilot we take on goods of the first kind only, and that is
-   our limit rather than a property of what you sell: how money goes back to a
-   buyer is not settled yet, neither how you send it nor how a refund is
-   recorded, so we sell what we are almost certain we can deliver. Once it is
-   settled, the limit comes off ([Money](/money)). A parcel sent by a carrier is the one exception, and on
-   the test channel only, where the money is not real: it can be tried there
-   end to end, and it is not sold live until a lost parcel's refund can be
-   recorded ([Orders](/orders)).
-4. How the goods are delivered. The Agentify SDK runs a handler beside your
-   API that takes paid orders and gives out the goods. A WooCommerce shop can
-   be connected in the dashboard instead, on the test channel for now, and its
-   orders are filled from the shop. You sell through one of the two at a time.
-   Delivery by a message that you confirm by hand is not available.
+   you twice, and access, a key or a link go out a second time without loss,
+   while a unit off a shelf does not. During the pilot we take on goods of the
+   first kind only, because how money goes back to a buyer is not settled yet
+   ([Money](/money#if-the-buyer-did-not-get-the-goods)); a parcel on the test
+   channel, where the money is not real, is the one exception.
+4. How the goods are delivered: by your code or by your WooCommerce shop, as
+   the next section says.
 
-## Your hands or ours
+## Your code or your WooCommerce shop
 
-Your engineer writes the handler against your API. The whole path from an empty
-project to a test sale is on [The first test sale](/quickstart). Agentify carries
-the paid order to that handler and returns its delivery to the buyer.
+| | Your code | Your WooCommerce shop |
+| --- | --- | --- |
+| Who builds it | your engineer, with the Agentify SDK, following [The first test sale](/quickstart) | nobody: the dashboard connects the shop and imports its products as cards |
+| What it sells | anything your systems can deliver | downloads and parcels from the shop ([what can be imported](/woocommerce#what-can-be-imported)) |
+| Where it sells | the test channel, then the live one | the test channel, until its orders have gone through there end to end |
 
-With a WooCommerce shop nobody has to write code: the dashboard connects the
-shop and imports its products as cards, as [Selling through a WooCommerce
-shop](/woocommerce) describes. The connector stays off the live channel until
-its orders have gone through on the test channel from start to finish. Delivery by a message that you confirm by hand is designed but not
-switched on.
+You sell through one of the two at a time. A third way, an order sent to you as
+a message that you confirm by hand before the buyer pays, is designed and not
+available.
 
 ## After you are connected
 
-Your integration remains the source of the cards. When a product, its contents
-or its price changes, your code republishes the card under the same product key.
-Agentify publishes it in its own catalogue and carries paid orders to your
-handler. Listing in an external discovery catalogue is measured separately and
-is not guaranteed by publication or by a completed purchase.
+Your integration remains the source of the cards: when a product, its contents
+or its price changes, your code or the shop's import publishes the card again.
 
-You can stop the sales yourself at any moment. The dashboard is a page on our
-side that you sign in to through a one-time link sent to your email, and it
-shows your cards, your orders and the receipts for the sales that went through.
-That account is not the key your code sends us, so ending someone's session
-does not touch your integration. It carries a pause on each card and one button
-that stops selling altogether. Paused, a card stops selling and disappears from
-the catalogues, while the orders already taken on play out in the ordinary way.
-Leaving is the other thing, and it does not tidy everything away either: the
-orders nobody paid for close, and the ones paid for and not delivered become
-money you send back.
-
-We also mean to stop selling without your asking, when your side stops
-answering or answers too often that the goods are gone — to the buyer that
-looks like a promise the catalogue did not keep. That stop is designed and not
-built: nothing today counts your refusals or takes your cards off sale on its
-own, so during the pilot the switch is the one in your hands, and we watch the
-rest with you. What it will look like when it exists is on [What can go
-wrong](/failures).
+The dashboard is a page on our side that you sign in to through a one-time link
+sent to your email. It shows your cards, your orders and the receipts for the
+sales that went through, and that account is not the key your code sends us,
+so ending someone's session does not touch your integration. You can stop the
+sales yourself at any moment, with a pause on each card or one button that
+stops selling altogether: a paused card stops selling and disappears from the
+catalogue, while the orders already taken play out in the ordinary way.
+Leaving, which during the pilot is arranged with us, closes the orders nobody
+paid for and turns the ones paid for and not delivered into money you owe
+back.
 
 Short answers — what this costs, what happens about refunds, who settles a
-dispute — are collected in the [common questions](/faq).
+dispute — are in the [common questions](/faq).
 
 ## How to start
 
-<a href="/dashboard/sign-in" target="_self">Open the dashboard</a>, enter your email address and
-follow the one-time link in the message. Pressing its confirmation button
-opens your dashboard. On your first visit, it asks for the seller name that the
-buyer's payment request will show. You can then issue an API key and integrate
-against the test channel.
+1. Open the [test channel's dashboard](https://test.agentify.ad/dashboard),
+   enter your email address and follow the one-time link in the message. On
+   your first visit it asks for the seller name buyers will see.
+2. In Settings, save the wallet where your share arrives; on the test channel
+   it only ever receives test USDC. [Money](/money#if-you-have-no-wallet-yet)
+   says how to get one, and replacing a wallet you saved on the live channel
+   takes forty-eight hours ([why](/money#replacing-your-wallet)).
+3. Hand over the integration: issue an API key for your engineer, who follows
+   [The first test sale](/quickstart), or connect your WooCommerce shop
+   ([how](/woocommerce)).
+4. Make your first test purchase yourself: your engineer buys your own card on
+   the test channel with test USDC, as [the guide's sixth
+   step](/quickstart#_6-make-your-first-test-purchase) shows.
+5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
+   as a separate account, save a wallet for real money there, and have your
+   cards published again with a live key. An Agentify operator approves your
+   merchant once before anything sells live.
 
-On both the test and live channels, save the wallet where your share of the
-USDC payments arrives before publishing a card. The local scripted sandbox
-moves no money and does not require a wallet. Live sales also require the
-operator's one-time approval of your merchant; test sales do not. Publication
-lists every missing prerequisite. [The first test sale](/quickstart) walks
-through the setup.
+What changes between the two channels:
 
-The wallet is set on the Settings screen of your dashboard and nowhere else:
-the API keys you issue operate your shop, and none of them can change where its
-money goes. On the live channel, replacing a wallet you have already saved
-takes two days. Everybody who signs in to your merchant's dashboard is sent a
-message about the change first, and the new address takes effect forty-eight
-hours later; until then buyers keep paying into the payout contract of the
-wallet you had, and it pays out to that wallet. The wait is there because the
-wallet is the one setting that sends your money somewhere else, and a dashboard
-session left open on another device, or taken by somebody else, could ask for a
-change: you hear about it, and cancelling it on the Settings screen also signs
-every other session out. Whatever is already in the old payout contract, those
-two days' sales included, is paid out to the old wallet only, whoever sends the
-payout: if somebody else may hold that wallet's keys, it is theirs to collect,
-and if you have lost access to it, it is lost with it. So replace a wallet you
-can no longer trust as soon as you know, and pause selling for the two days so
-that nothing more is paid into the old contract. The first wallet you save
-applies at once, and on the live channel you are sent a message about it too,
-so a wallet somebody else set is not news you find on a screen. On the test
-channel every change applies at once and nothing is sent.
-
-The first test purchase is started by an Agentify operator. If an operator is
-already coordinating your pilot, give them the catalogue ID and keep your
-handler running while they start it. There is no public request path for an
-unassigned self-signup yet. Operator approval opens live publication after the
-review.
+| | Test channel | Live channel |
+| --- | --- | --- |
+| Address | `https://test.agentify.ad` | `https://agentify.ad` |
+| Account | sign in at its dashboard | a separate account: sign in again at its dashboard |
+| Seller name | needed before the first card | needed again |
+| Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
+| API key | starts with `csk_test_` | starts with `csk_live_` |
+| Your first purchase | you make it yourself, with test USDC | — |
+| Agentify's operator | not involved | approves your merchant once before anything sells |
+| Cards | published with a test key | published again with a live key; nothing is copied |
+| WooCommerce | available | not yet |
+| Parcels | sold | not sold yet |
 
 ## What is not settled yet
 
-- Reconciling the money. Orders are visible in the dashboard, but we write a
-  receipt at the moment the goods are delivered, so an order that is paid for
+- A public way to ask for the operator's approval of the live channel.
+- Reconciling the money. Orders are visible in the dashboard, but a receipt is
+  written at the moment the goods are delivered, so an order that is paid for
   and not yet delivered appears among the orders and not among the receipts.
   The money reaches your wallet one payout at a time, each covering every sale
   since the payout before it, and putting the two together is still yours to
   do.
 - What happens when a purchased period runs out: renewing a subscription and
   buying the same access again are not designed yet.
-- What we promise you when it is our side that goes quiet. There is a great
-  deal here about your side falling silent and nothing about ours.
-- Stopping your selling without being asked. Nothing does it today, and what
-  will count as your side having gone quiet, where the limit on "the goods are
-  gone" answers sits, and how selling comes back are all open.
+- What we promise you when it is our side that goes quiet.
+- Stopping your selling without being asked, when your side stops answering or
+  answers too often that the goods are gone. Nothing does it today, so the
+  switch is the one in your hands, and what will count as your side having
+  gone quiet and how selling comes back are open.
+- When the pilot ends.

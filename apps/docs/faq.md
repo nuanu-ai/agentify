@@ -1,7 +1,5 @@
 # Common questions
 
-*The public contract is versioned; changes arrive in a new package version.*
-
 Short answers, each with a link to where the question is worked through in
 full. The first half comes from what people ask while deciding whether to
 connect; the second from what they ask once they sit down to write the code.
@@ -10,137 +8,116 @@ connect; the second from what they ask once they sit down to write the code.
 
 ### Do I have to rebuild my shop?
 
-No. The shop and its code stay as they are, and the range and the prices stay
-yours. Where a product is delivered through your API, a handler appears beside
-the shop that takes paid orders and gives out the goods for them; nothing
-inside the shop changes. The three ways of delivering, and how they differ, are
-worked through on [Connecting to Agentify](/).
+No. The shop, its range and its prices stay as they are; either your code
+delivers through your own API beside the shop, or your WooCommerce shop is
+connected as it stands. The two ways are compared on [Connecting to
+Agentify](/#your-code-or-your-woocommerce-shop).
 
 ### Do I need an engineer for this?
 
-For the SDK, yes: your engineer writes an integration with the Agentify SDK
-that publishes your cards and runs a handler that fulfills paid orders through
-your API. A WooCommerce shop needs no code: it is connected in the dashboard,
-on the test channel for now, and its orders are filled from the shop. You sell
-through one of the two at a time, and delivery by a message is not available.
-Both are described in [Your hands or ours](/).
+For the SDK, yes: your engineer writes the integration that publishes your
+cards and delivers paid orders through your API. A WooCommerce shop needs no
+code and is connected in the dashboard, on the test channel for now ([Selling
+through a WooCommerce shop](/woocommerce)).
 
 ### Can a restaurant or a hotel sell this way?
 
 A card can describe a table, a room night or a pass, as long as your own system
-can hold the booking and your handler can answer for it when the order arrives.
-Local rules on payment and availability decide what the card may promise, and
-those are yours to set. Opening a dashboard is not a commitment from us to build
-a booking connection for your case: the test channel comes first, and live
-publication waits for our approval. What a card has to say is
-in the [card reference](/cards).
+can hold the booking and answer for it when the order arrives. During the
+pilot we take on only goods that survive being delivered twice, and live
+publication waits for our approval, so start on the test channel ([What we will
+ask you](/#what-we-will-ask-you)).
 
 ### What does it cost?
 
 We take 0.1% of every payment, and it is inside your price: the buyer pays the
 price on your card, and your payout contract sends 99.9% of it to your wallet
-and 0.1% to us. There is no subscription and no monthly fee. How the shares are
-rounded and how you get paid out is on [Money](/money#what-we-take).
+and 0.1% to us. There is no subscription and no monthly fee ([What we
+take](/money#what-we-take)).
 
 ### Do you write the product cards, or do I?
 
-Your integration writes and publishes the cards. It remains their source: when
-a product, its contents or its price changes, your code republishes the card
-under the same product key. The card is the whole of what an agent reads before
-buying, so you own what it says and what it costs. The SDK path is on [The first
-test sale](/quickstart).
+You do: your integration or your shop's import publishes them, and republishes
+a card when its product or price changes. The card is the whole of what an
+agent reads before buying ([The product card](/cards)).
 
 ### Will live customers come to me?
 
 No. The buyers here are programs carrying out a person's instruction and paying
-from a budget they were given; the person themselves does not visit your site,
-does not fill a basket and does not write to your support. The program decides
-whether to buy from the text of the card, and what that text has to do is
-described in the [card reference](/cards).
+from a budget they were given; the person does not visit your site and does not
+write to your support. The program decides from the text of the card ([Who buys
+here](/#who-buys-here)).
 
 ### How do I find out about a sale?
 
-The SDK carries the order to your handler, and your integration fulfills it
-through your API; a connected WooCommerce shop gets the order as a paid order
-in the shop. Delivery by a message is not available. The buyer's payment goes
-into your payout contract, before your delivery or after it depending on the
-product, and your share reaches your wallet with the next payout:
-[Money](/money). Orders are visible in the dashboard, which also holds your
-cards and the switch that stops selling. A receipt is written when the goods
-are delivered, so an order paid for but not yet delivered appears under Orders
-and not Receipts. Matching those records to the payouts in your wallet remains
-yours to do.
+Your code receives the paid order, or your connected WooCommerce shop receives
+it as a paid order, and the dashboard shows it under Orders. A receipt is
+written when the goods are delivered, and your share reaches your wallet with
+the next payout ([Money](/money)).
 
 ### Can I pause the selling?
 
-Yes, at any moment and with your own hands: the dashboard has a pause on each
-card and one button that stops selling altogether. Paused, a card stops selling
-and disappears from the catalogues, while the orders already taken on play out
-in the ordinary way. Stopping it without you, when your side goes quiet, is
-designed and not built — [what that would look like](/failures). The full list
-of how an order can end is in [How an order can end](/orders).
+Yes, at any moment: the Cards screen of your dashboard has a pause on each card
+and one button that stops selling altogether, and your code can do the same
+with a call. A paused card disappears from the catalogue, while the orders
+already taken play out in the ordinary way ([After you are
+connected](/#after-you-are-connected)).
 
 ### Can I leave altogether?
 
-Leaving is designed, and nothing on our surface does it yet — during the pilot
-it is arranged with us. The cards come out of the catalogues, the orders nobody
-paid for close, and the money for anything paid for and not delivered you send
-back to the buyers yourself, the whole price, from your own wallet. Neither
-your money nor your goods are left with us: what is still in your payout
-contract can be paid out at any time, and only to your wallet and to us. One
-thing does remain: the key to your API, if we were the ones writing and running
-the handler. Revoke it, and our side can no longer reach yours. The obligation
-to refund, and what is still unchosen in its mechanics, is described on
-[Money](/money).
+Leaving is designed, and nothing on our surface does it yet; during the pilot it
+is arranged with us. The cards come out of the catalogue, the orders nobody
+paid for close, and for anything paid for and not delivered you owe the buyer
+the whole price ([If the buyer did not get the
+goods](/money#if-the-buyer-did-not-get-the-goods)). What is in your payout
+contract can be paid out at any time, only to your wallet and to us. With a
+WooCommerce shop connected, the shop's keys stay valid until you revoke them in
+WooCommerce → Settings → Advanced → REST API.
 
 ### The buyer is unhappy — who settles the dispute?
 
 You do, by your own rules, the same way you settle one in an ordinary shop. We
-do not stand between you and the buyer and do not make decisions on your
-behalf: the rules about refunds and about good faith are yours, and they are
-not ours to apply for you. Our part is technical — we hand you the order and
-the records of what happened with the delivery and when. Where the goods went
-out there is a [receipt with the sale price](/money) as well; where they did
-not, there is the order and the event saying a refund is owed.
+do not stand between you and the buyer; we hand you the order and the record of
+what happened with the delivery and when, and a [receipt](/money#what-proves-a-sale-happened)
+where the goods went out.
 
 ### What do buyers pay with?
 
-USDC. The test channel uses Base Sepolia and test USDC; the live channel uses
-Base mainnet and real USDC. The local sandbox moves no funds even though its
-payment challenge names Base Sepolia and USDC. The complete distinction is on
-[Money](/money).
+USDC, a digital dollar, on the Base network: test USDC on Base Sepolia on the
+test channel, real USDC on Base on the live one ([What they
+pay in](/money#what-they-pay-in)).
 
 ## Questions from the engineer
 
+### Who makes the first test purchase?
+
+You do. You buy your own card on the test channel with an ordinary x402 client
+and test USDC from a public faucet, and the order reaches your handler like
+any other ([Make your first test
+purchase](/quickstart#_6-make-your-first-test-purchase)).
+
 ### The goods ran out or the price changed — how do you find out?
 
-We ask you at the moment of purchase, where the card has a price check turned
-on. Your code answers it, in a price handler that sits in the same process as
-the order handler; the sale then goes at the price you named, and an answer of
-"there is none" closes the purchase before any money moves ([what to answer
-with](/cards)). A price hook at an address of your own, for a separate pricing
-service, is designed and not called yet, so a card cannot name one. Without a
-check we sell at
-the card's price and hear that the goods have run out from your refusal at
-delivery; what happens when the check is silent is on [What can go
-wrong](/failures).
+We ask your price handler at the moment of purchase, where the card has a price
+check; the sale goes at the price you name, and an answer of "there is none"
+closes the purchase before any money moves. Without a check we sell at the
+card's price and hear that the goods have run out from your refusal ([A price
+worked out at the moment of
+purchase](/cards#a-price-worked-out-at-the-moment-of-purchase)).
 
 ### The same order arrived twice — is that normal?
 
-Yes, it is an ordinary event: orders are delivered at least once, and one
-arrives again after a connection breaks, after your process restarts, after a
-retry of ours. The handler has to answer with the earlier result under the
-idempotency key instead of delivering a second time. Which key recognises a
-repeat in which mode is in [Telling a repeat apart](/orders).
+Yes. Orders are delivered at least once, so one arrives again after a dropped
+connection, a restart or a retry of ours, and your handler answers with the
+result it gave the first time ([Telling a repeat
+apart](/orders#telling-a-repeat-apart)).
 
 ### What do I check myself with before publishing?
 
-The check we ship, which these pages call `agentify verify`. It reads your
-cards and reports what an agent could not do with them. What it cannot do yet
-is send one order twice and watch for a second delivery: nothing on our surface
-raises a test order, so holding against repeats is yours to prove against your
-own system. The whole step, and what can actually be run today, is in [Check
-the card](/quickstart).
+`agentify verify`, the command in the package, reads your card files offline
+and reports what an agent could not do with them. Whether your handler holds
+against a repeat is proved by a test purchase rather than by the check ([Check
+the card offline](/quickstart#_5-check-the-card-offline)).
 
 ## What is not settled yet
 

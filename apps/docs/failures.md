@@ -1,213 +1,59 @@
 # What can go wrong
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You have written the handler, or you are writing it now, and this page is what
-will go wrong with it. Refusals and failures are part of ordinary work for us,
-and every case below is laid out the same way: first how it ends for the buyer
-and for you, then why it is built that way and what to do about it.
+will go wrong with it, in one table: each situation, what it does in each
+mode, and what you do about it.
 
-We settle every case below the same way. Faced with not knowing, we either
-carry the sale on or stop it, and what decides is not the severity of the
-failure but where the money is at that moment: while your answer comes before
-the money, your silence costs the buyer nothing; where the money moves at once,
-your silence stops the sale. The moments of charging in each mode are in a
-table on [Orders and fulfillment modes](/orders).
+One rule decides every row. Faced with not knowing, we either carry the sale
+on or stop it, and what decides is where the money is at that moment rather
+than how bad the failure looks. While your answer comes before the money, as
+in the synchronous mode, your silence costs the buyer nothing and the sale can
+go on at a known price. Where the money moves at the moment of purchase, as in
+the asynchronous mode and for a parcel, the same silence would leave a buyer
+who paid with nothing, so the sale stops before the money moves, or the order
+owes a refund after.
 
-The confirmation mode appears below because the design has three of them. A
-card cannot be published in it during the pilot, and the reason is on [The
-product card](/cards).
+## Every failure, mode by mode
 
-## The price check is silent
+| Situation | Synchronous | Asynchronous | A parcel | What you do |
+| --- | --- | --- | --- | --- |
+| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment, and no order reaches you | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
+| You refused | the purchase did not happen and nothing was charged | the order owes a refund (`refund_due`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
+| Your handler threw, or your process fell over | the order comes again after a pause that grows with each attempt, up to five deliveries in all, while its deadline lasts | as in the synchronous mode | as in the synchronous mode | throw for a failure that may pass, and keep refusals for "this cannot be delivered" |
+| No answer by the deadline | nothing was charged (`expired`) | the order owes a refund (`refund_due`) | the order owes a refund (`refund_due`) | name a deadline you can keep; goods or a shipment delivered late still close the debt |
+| The same order arrived twice | answer with the result you gave the first time | as in the synchronous mode | record the same shipment | key your delivery on `order.id` and hand back the first result |
+| The answer to the agent was lost | the agent repeats the purchase and receives what you delivered, with no second charge | the agent reads the order again at its address | as in the asynchronous mode | nothing; a repeat that does reach your handler gets the first result |
+| The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a refund owed | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
+| The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
+| Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and owes a refund if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait |
 
-In the synchronous mode and in the confirmation mode the purchase carries on:
-we take the price from the card and sell at it. In the asynchronous mode the
-purchase does not begin — the agent gets a refusal, and no order appears on
-your side.
+Silence from a price check is any of three things: no answer within five
+seconds, a server error or a network failure in place of an answer, or an
+answer that does not fit the declared shape. The timestamp inside an answer is
+carried and not weighed, so an old one is not a silence. A refusal and its
+message reach the agent word for word, so write the message for a stranger
+([refusal codes](/cards#refusal-codes)).
 
-The difference is set by where the money is. In the first two modes your live
-answer stands between the price and the charge: you still have time to deliver
-or to refuse, and a second of your side being unreachable should not cancel a
-sale that can be made honestly at a known price. In the asynchronous mode the
-money leaves at once, and a sale made while availability is unknown would turn
-into a debt to the buyer — a lost sale is cheaper than that debt.
-
-Three things count as silence: no answer within five seconds; a server error or
-a network failure in place of an answer; and an answer that did not parse
-against the declared shape. That wait is ours, and five seconds is what the
-system you are connecting to allows. The timestamp inside an answer is not a
-fourth thing: we carry that mark and do not yet weigh it, so an answer stamped a
-year ago is honoured exactly as long as one stamped a second ago.
-
-Silence like this does not stop your selling. The automatic stop described
-below goes by deliveries: silence about a price is not silence about the goods.
-
-What follows for you differs by mode. For synchronous products and products
-with confirmation, keep the price in the card current: in a minute of silence
-it is the price of the sale. For asynchronous products a silent check costs you
-sales for as long as it lasts.
-
-## You could not deliver
-
-What your refusal turns into depends on the moment it arrives. In the
-synchronous mode the purchase does not happen: nothing has been charged yet and
-the buyer spends nothing. In the confirmation mode an "I will not deliver"
-answer to a request to confirm closes the order just as freely, while a refusal
-after the confirmation arrives against money already charged. In the
-asynchronous mode the money has been in your payout contract from the start,
-and such an order is marked as needing a refund.
-
-A refusal in itself is an ordinary answer from a handler: there is none, the
-parameters do not fit, the delivery is impossible. The buyer gets a clear
-answer, and you are not left with an order to sort out by hand later.
-
-Both parts of that answer are yours. The code and the message you send travel to
-the buyer's agent with the order's status, unchanged, in every mode — the code
-is what the agent branches on to decide whether to try different parameters or
-go elsewhere, and the message is what it has to show a person. So write the
-message for a stranger rather than for your own logs, and prefer one of the
-common codes where it fits ([the vocabulary](/cards#refusal-codes)). Nothing
-else reaches the agent in your words. Where we ended the order and the status
-word alone would leave the agent guessing — a price that ran out, a synchronous
-answer that came too late, a price check that reported the product gone or gave
-no usable answer, a charge that did not go through — the agent is told why in a
-reason of our own, never beside a refusal of yours ([How an order can
-end](/orders)).
-
-This is also how the mode gets chosen: if refusals at delivery happen to you
-regularly, catch them earlier, in the answer to the question about price and
-availability, before the money. What happens to the money on orders that need a
-refund is in [If the buyer did not get the goods](/money).
-
-## The handler crashed without answering
-
-The order will arrive again. We count a handler's answer only once it has come
-back: an exception inside the handler, a process that fell over, a connection
-that broke — for us all of these mean the order never reached you, and we
-repeat the delivery, after a pause that grows with each attempt, until the
-mode's deadline runs out — or until we have tried five times, whichever comes
-first. That count is ours and no card carries it. It is also the one that
-surprises people: a handler that throws on every attempt runs out of attempts
-long before it runs out of clock. The order is then not sent again, but it stays
-open until the deadline, so an answer or a delivery that arrives before it
-still counts, and at the deadline it ends as any order whose deadline passed.
-
-A handler that is only slow looks the same to us until its answer arrives:
-after three seconds without an answer we send the order again, and the answer
-that comes later still counts. In the asynchronous mode, take the order on at
-once and do the work outside the handler ([What a handler can
-answer](/orders#what-a-handler-can-answer)).
-
-What your handler threw does not travel to us or to the agent. It goes to the
-handler you registered for problems, which is also where a failed poll, a
-refused answer and a message nobody claimed arrive ([registering
-one](/quickstart)).
-
-So the practical rule is to express a temporary failure by throwing and not by
-refusing. We read a refusal as a final "this cannot be delivered" and close the
-order on it, so a supplier that did not answer within five seconds is not worth
-a refusal — a repeat a minute later might well have gone through.
-
-The repeats are not endless; they run into the deadline, and what happens after
-that is in the next section.
-
-## No answer about the delivery
-
-Silence ends the same way a refusal does, only on a deadline. In the
-synchronous mode the purchase closes with nothing charged. In the asynchronous
-mode the order is marked as needing a refund, because the money has already
-gone. In the confirmation mode, silence in answer to a request to confirm
-closes the order at no cost, while silence after the confirmation ends the way
-the asynchronous mode does.
-
-Say an asynchronous card of yours names no delivery deadline, so the day we hold
-it to is the one running. The day passes with no confirmation of a delivery from
-you — the order is marked as needing a refund, and the money for it is already
-in your payout contract. Name a deadline of your own and the agent sees it
-before it buys; leave it out and that day applies, and the agent sees it on your
-card all the same ([The product card](/cards)). How long to wait for a synchronous answer is set
-by us and no card carries it: ten seconds, counted from the moment the payment
-checked out ([Time ran out](/orders)).
-
-It works this way because an order that waits forever is worse than an honest
-refusal: the agent holds its budget tied up and can neither buy from your
-neighbour nor finish its task.
-
-A late answer matters in one case: the delivery started before the deadline and
-finished after it. By then the purchase is closed, but the work already done is
-not lost. The same buyer can retry payment for that order with a fresh
-authorization; if it settles, the stored delivery is released without another
-handler call. This is described in [You did not deliver in time](/orders).
-
-## An order arrived twice
-
-The handler receives an order it already knows and answers with the earlier
-result under the idempotency key. No second delivery happens, and no second
-charge either.
-
-Repeats are an ordinary event here: orders are delivered at least once, and the
-same order arrives again after a connection breaks, after your process
-restarts, after a retry of ours.
-
-Whether your side really holds against repeats is not something we can check
-for you yet: nothing on our surface raises a test order to send twice, and the
-check we ship says it does not check this ([Check the card](/quickstart)). Proving it is yours, and what has to hold is that a second
-order produces no second delivery and no fresh goods: the buyer keeps what the
-first delivery carried, so the repeat has to carry the same thing ([Telling a
-repeat apart](/orders#telling-a-repeat-apart)).
-
-## The buyer paid and the answer was lost
-
-The buyer repeats the purchase and receives what you have already delivered. No
-second charge happens, and no second delivery is asked of you.
-
-The case looks like this: the agent sent the purchase, you carried it out, and
-the answer did not reach the agent — the connection broke, or its own process
-fell over. Not knowing whether the purchase went through, it repeats it under
-the same key. We find the completed purchase by that key and hand back the
-result that is ready, and in this case the repeat does not reach your side at
-all.
-
-Your part of the work is the same as ever: answer with the earlier result under
-the idempotency key. If a repeat did reach the handler — because the purchase
-had not finished closing, for instance — you answer with what you answered the
-first time. Which key recognises a repeat in which mode is in [Telling a repeat
-apart](/orders).
-
-## The goods ran out
-
-The purchase does not happen and the buyer's money does not move, provided you
-said so in time. You can say it in the answer to the question about price and
-availability, or by refusing at delivery; the first is cheaper, because it
-lands before the money in every mode.
-
-We keep no stock counts and do not work them out for you: the only source of
-truth about availability is your side. So goods that can run out are worth
-listing with a price check.
-
-The share of purchases that run into missing goods is what we mean to measure
-and hold below a limit, because to an agent a purchase like that looks like a
-promise the catalogue did not keep. Nothing counts it yet, and the limit is not
-named.
-
-## Your side went quiet for a long time
-
-Nothing stops selling on its own today. The switch is the one in your hands,
-and pausing and unpausing are yours to do at any moment — [how that is
-done](/faq).
-
-An automatic stop is designed, and it is the defence against the worst case,
-where buyers go on paying for goods nobody delivers: your cards would come off
-sale and the orders already taken on would play out, exactly as a pause you set
-by hand does. Nothing builds that yet, so during the pilot we watch for the
-case with you rather than instead of you.
+What each status word means and which of them stay on the list of open orders
+is in [Finding out where an order stands](/orders#finding-out-where-an-order-stands);
+how long each wait lasts is in [Every time limit](/orders#every-time-limit);
+and how a repeat is recognised is in [Telling a repeat apart](/orders#telling-a-repeat-apart).
+Whether your handler holds against a repeat is yours to prove with a test
+purchase of your own ([The first test sale](/quickstart)),
+because nothing on our side sends one order twice on purpose.
 
 ## What is not settled yet
 
-- The automatic stop itself. Nothing builds it yet, and neither its conditions
-  — how many failures in a row and over what period — nor the way selling comes
-  back afterwards is settled.
-- The limit on the share of purchases that run into missing goods.
+- Stopping your selling when your side goes quiet for a long time. Nothing
+  does it today: pausing and resuming are yours, on the Cards screen of your
+  dashboard. The stop is designed to work as that same pause, and neither its
+  conditions — how many failures in a row and over what period — nor the way
+  selling comes back afterwards is settled.
+- The limit on the share of purchases that run into missing goods, which we
+  mean to measure because to an agent such a purchase looks like a promise the
+  catalogue did not keep. Nothing counts it yet.
 - Whether an answer whose timestamp is too old counts as silence at all.
   Nothing weighs that mark today, so what counts as too old has not had to be
   decided.
