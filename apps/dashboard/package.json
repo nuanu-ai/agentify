@@ -22,6 +22,7 @@
   "dependencies": {
     "@agentify/core": "workspace:*",
     "@agentify/gateway": "workspace:*",
+    "@agentify/scanner": "workspace:*",
     "@agentify/scanner-contracts": "workspace:*",
     "@agentify/ui": "workspace:*",
     "@agentify/visual": "workspace:*",

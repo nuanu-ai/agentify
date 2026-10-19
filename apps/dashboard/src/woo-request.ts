@@ -2,7 +2,8 @@
 
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
-import { BlockList, isIP } from "node:net";
+import { isIP } from "node:net";
+import { classifyIp } from "@agentify/scanner/ip";
 
 export type WooRequest = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -11,47 +12,8 @@ interface RequestParts {
   readonly open: (target: URL, address: string, init: RequestInit) => Promise<Response>;
 }
 
-const blocked = new BlockList();
-for (const [network, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-] as const) {
-  blocked.addSubnet(network, prefix, "ipv4");
-}
-for (const [network, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["ff00::", 8],
-  ["2001:db8::", 32],
-  ["2001:2::", 48],
-  ["2001:10::", 28],
-] as const) {
-  blocked.addSubnet(network, prefix, "ipv6");
-}
-
 const publicOnly = (addresses: readonly string[]): void => {
-  if (
-    addresses.length === 0 ||
-    addresses.some((address) => {
-      const family = isIP(address);
-      return family === 0 || blocked.check(address, family === 4 ? "ipv4" : "ipv6");
-    })
-  ) {
+  if (addresses.length === 0 || addresses.some((address) => !classifyIp(address).allowed)) {
     throw new Error("WooCommerce shop addresses must resolve only to public internet addresses.");
   }
 };
