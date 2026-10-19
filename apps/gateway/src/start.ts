@@ -9,7 +9,7 @@
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
-import { facilitatorClientFor, refuseUnlessCredentialsSign } from "./adapters/x402/client.js";
+import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
@@ -36,9 +36,10 @@ const GATEWAY_PORT = 3000;
 const QUEUE_POLL_INTERVAL_MS = 250;
 
 /**
- * The credentials are made to sign once before this returns, and the process
- * stops if they cannot. Signing asks nobody anything, so an unreachable
- * facilitator cannot stop the gateway starting.
+ * The credentials are made to sign once before this returns, and on Coinbase's
+ * facilitator shown to Coinbase once; the process stops if they cannot sign or
+ * Coinbase refuses them. A Coinbase that does not answer stops nothing: the
+ * gateway starts, and its log says the key is unconfirmed.
  */
 async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
@@ -46,7 +47,10 @@ async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<F
   }
 
   const client = facilitatorClientFor(config.payment);
-  await refuseUnlessCredentialsSign(client);
+  const unconfirmed = await refuseUnlessCoinbaseTakesTheKey(client, fetch);
+  if (unconfirmed !== null) {
+    console.warn(`[gateway] ${unconfirmed}`);
+  }
   return new X402Facilitator(client, edge);
 }
 
