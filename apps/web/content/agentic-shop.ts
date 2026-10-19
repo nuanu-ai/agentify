@@ -25,13 +25,13 @@ const link = (value: string, href: string) => ({ kind: "link", value, href }) as
 /**
  * Every word of the page about selling to agents at `/agentic-shop`, which
  * the page draws and its Markdown variant writes out. A title's lines are the
- * lines it breaks into; the last is the one drawn in the accent.
+ * lines it breaks into.
  */
 export const AGENTIC_SHOP = {
   head: {
     title: "Sell products and services to AI agents",
     description:
-      "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
+      "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Buyers pay in USDC, to your own crypto wallet.",
     cardTitle: "Your next customer sends an agent. Be ready.",
     cardDescription: "Your products and services, ready for a new way to buy.",
   },
@@ -39,7 +39,7 @@ export const AGENTIC_SHOP = {
     eyebrow: "Meet your next sales channel",
     title: ["Your next", "customer sends", "an agent."],
     description:
-      "Your products and services, ready for a new way to buy. An agent finds the offer, orders it and pays.",
+      "Your products and services, ready for a new way to buy. An agent finds the offer, orders it and pays in USDC.",
     action: "Open your dashboard",
     howItWorks: "See how it works",
     note: "Start in the test channel. Live publication requires approval. No AI assistant is guaranteed to recommend or buy your products.",
@@ -93,54 +93,38 @@ export const AGENTIC_SHOP = {
       {
         symbol: "✓",
         title: "Prove it in test.",
-        text: "Test publication needs the seller name and test payout wallet. Live publication uses a separate wallet and also needs the operator’s approval for that merchant.",
+        text: [
+          text("The "),
+          link("test channel", "https://test.agentify.ad/dashboard/sign-in"),
+          text(
+            " is an account of its own where buyers pay in test USDC: publish there, then buy your own product to watch the whole path work. Each account publishes once it has a payout wallet, and live sales also need Agentify’s one-time approval.",
+          ),
+        ],
       },
     ],
   },
   payment: {
-    title: ["Set your payout wallet.", "Keep test and live distinct."],
-    text: "Buyers pay in USDC into your own payout contract, which nobody owns and nobody can redirect. It sends 99.9% to the wallet in your dashboard and 0.1% to Agentify when it is paid out, and you can pay it out yourself at any time. Test publication stays open while live waits for approval.",
+    title: ["How you get paid.", "In USDC, to your crypto wallet."],
+    text: "Buyers pay in USDC, a digital dollar, on the Base network, into a payout contract made for your crypto wallet. Nobody, Agentify included, can change whom it pays: a payout sends 99.9% to your wallet and 0.1% to Agentify, with no subscription and no monthly fee, and you can send one at any time. You need a crypto wallet on Base, such as Coinbase Wallet, which your dashboard can create with you. Turning USDC into bank money happens outside Agentify.",
     action: "Open your dashboard",
-    more: { label: "About x402", href: "https://docs.cdp.coinbase.com/x402/welcome" },
+    more: { label: "How the money works", href: "/docs/money" },
     path: {
       label:
-        "Live payment path: the customer's agent, the gateway, your payout contract, your payout wallet.",
-      top: "LIVE ONLY AFTER OPERATOR APPROVAL",
+        "How a payment reaches you: the customer’s agent, Agentify, your payout contract, your crypto wallet.",
+      top: "HOW A PAYMENT REACHES YOU",
       steps: [
         ["Customer’s agent", "Pays in USDC"],
-        ["The gateway", "Checks the payment and sets it going"],
+        ["Agentify", "Checks the payment and sets it going"],
         [
           "Your payout contract",
           "Keeps it until it is paid out: 99.9% to your wallet, 0.1% to Agentify",
         ],
-        ["Your payout wallet", "The address set in your dashboard"],
+        ["Your crypto wallet", "The address saved in your dashboard"],
       ],
-      foot: "Publishing needs a seller name and a payout wallet, on the test channel as well as live, and live publication also needs the operator’s approval. Opening a dashboard grants none of them.",
     },
   },
-  loyalty: {
-    title: "Reward the customer behind the agent.",
-    lede: "Not live yet. The idea is cashback terms an agent can compare, and a record of delivering what you promise.",
-    steps: [
-      {
-        title: "You fund the reward.",
-        text: "Once your merchant is verified, agree a cashback rate, budget and return rules. An agent can read the offer and compare what it is worth to its customer.",
-      },
-      {
-        title: "Delivery unlocks it.",
-        text: "Cashback becomes payable to the customer only after verified delivery of the product or service, under the agreed terms. Payment alone does not trigger a reward.",
-      },
-      {
-        title: "Reliability earns trust.",
-        text: "Delivery success, service quality and refund speed build a record that agents can weigh alongside price and cashback.",
-      },
-    ],
-    note: {
-      strong: "A loyalty model we’re developing.",
-      text: "Reward funding and refund reserves would be accounted for separately. Program terms and availability must be agreed before activation.",
-    },
-    action: "Open your dashboard",
-  },
+  loyalty:
+    "Not live yet: cashback you fund for the customer behind the agent, payable only after delivery.",
   businesses: {
     title: ["If people can buy it,", "let’s explore an agent offer."],
     lede: "From a digital product to a day in Bali. What matters is a process that can fulfil the order.",
@@ -175,7 +159,6 @@ export const AGENTIC_SHOP = {
       [text("Integrate through the "), link("Agentify SDK", "/docs/quickstart")],
       "Publish and verify offers in the test channel",
     ],
-    note: "Publishing in the test channel also needs a test payout wallet. Live publication needs a wallet of its own and a one-time operator approval for the merchant.",
     card: {
       title: "Open the door from your inbox.",
       text: "Enter your email in the dashboard. The message works once and expires after one hour.",
@@ -186,10 +169,6 @@ export const AGENTIC_SHOP = {
   },
   questions: {
     title: "Questions about selling to agents",
-    text: [
-      text("They are answered in the "),
-      link("merchant documentation", "/docs/faq"),
-      text("."),
-    ],
+    text: [text("They are answered in the "), link("merchant documentation", "/docs/"), text(".")],
   },
 } as const;

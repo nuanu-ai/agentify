@@ -240,13 +240,8 @@ export default function AgenticShopPage() {
                 <a className={styles.textLink} href="/dashboard/sign-in">
                   {payment.action} <Arrow />
                 </a>
-                <a
-                  className={styles.textLink}
-                  href={payment.more.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {payment.more.label} <Arrow diagonal />
+                <a className={styles.textLink} href={payment.more.href}>
+                  {payment.more.label} <Arrow />
                 </a>
               </div>
             </div>
@@ -264,41 +259,13 @@ export default function AgenticShopPage() {
                   </span>
                 </div>
               ))}
-              <p>{payment.path.foot}</p>
             </section>
           </div>
         </section>
 
-        <section
-          className={`container ${styles.section}`}
-          id="loyalty"
-          aria-labelledby="loyalty-title"
-        >
-          <div className={styles.sectionHeading}>
-            <h2 id="loyalty-title">{loyalty.title}</h2>
-            <p>{loyalty.lede}</p>
-          </div>
-          {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
-          <ol className={styles.steps} role="list">
-            {loyalty.steps.map((step, index) => (
-              <li key={step.title}>
-                <span className={styles.stepSymbol} aria-hidden="true">
-                  {numbered(index)}
-                </span>
-                <h3>{step.title}</h3>
-                <p>{step.text}</p>
-              </li>
-            ))}
-          </ol>
-          <div className={styles.localNote}>
-            <p>
-              <strong>{loyalty.note.strong}</strong> {loyalty.note.text}
-            </p>
-            <a href="/dashboard/sign-in">
-              {loyalty.action} <Arrow diagonal />
-            </a>
-          </div>
-        </section>
+        <div className="container" id="loyalty">
+          <p className={styles.soon}>{loyalty}</p>
+        </div>
 
         <section className={`container ${styles.section}`} id="businesses">
           <div className={styles.sectionHeading}>
@@ -333,7 +300,6 @@ export default function AgenticShopPage() {
                   </li>
                 ))}
               </ul>
-              <div className={styles.entryNote}>{start.note}</div>
             </div>
             <div className={styles.entryCard}>
               <h3>{start.card.title}</h3>

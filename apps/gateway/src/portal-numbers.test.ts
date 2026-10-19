@@ -282,7 +282,7 @@ const PINS: readonly Pin[] = [
   ...sharesIn(
     "the shares, on the scanner's page about selling to agents",
     { page: "apps/web/content/agentic-shop.ts" },
-    "It sends {merchant}% to the wallet in your dashboard and {agentify}% to Agentify",
+    "a payout sends {merchant}% to your wallet and {agentify}% to Agentify",
   ),
   ...sharesIn(
     "the shares, in that page's payment path",
