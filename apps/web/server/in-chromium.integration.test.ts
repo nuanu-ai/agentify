@@ -16,7 +16,6 @@
  * saved choice, so what is seen is the banner's.
  */
 
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -42,36 +41,9 @@ const SLOW_MS = 1_500;
 let browser: Browser;
 let server: Server;
 let origin = "";
-let liveEdge: Server;
-let liveOrigin = "";
 let build: ServerBuild;
 let viteManifest: ViteManifest;
 const asked: string[] = [];
-
-/**
- * What the live channel's edge does with an address of the merchant landing,
- * read from the edge's own route table: the addresses it withholds and the one
- * it hands the scanner instead.
- */
-const withheldOnLive = (): Readonly<{ matches: (path: string) => boolean; to: string }> => {
-  const caddyfile = readFileSync(
-    fileURLToPath(new URL("../../../deploy/Caddyfile", import.meta.url)),
-    "utf8",
-  );
-  const paths = caddyfile
-    .match(/@sell_withheld \{\s*path ([^\n]+)/)?.[1]
-    ?.trim()
-    .split(/\s+/);
-  const to = caddyfile.match(/rewrite @sell_withheld (\S+)/)?.[1];
-  if (paths === undefined || to === undefined) {
-    throw new Error("deploy/Caddyfile withholds no address of the merchant landing");
-  }
-  return {
-    matches: (path) =>
-      paths.some((one) => (one.endsWith("/*") ? path.startsWith(one.slice(0, -1)) : path === one)),
-    to,
-  };
-};
 
 // The scan's and the report's pages read the scanner's settings, which name a
 // database; none is asked, since every API a browser asks here is answered by
@@ -114,19 +86,11 @@ beforeAll(async () => {
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const withheld = withheldOnLive();
-  liveEdge = createServer((request, response) => {
-    if (withheld.matches((request.url ?? "").split("?")[0] ?? "")) request.url = withheld.to;
-    app(request, response);
-  }).listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => liveEdge.once("listening", resolve));
-  liveOrigin = `http://127.0.0.1:${(liveEdge.address() as AddressInfo).port}`;
   browser = await launchChromium();
 });
 
 afterAll(async () => {
   await browser?.close();
-  await new Promise<void>((resolve) => liveEdge?.close(() => resolve()));
   await new Promise<void>((resolve) => server?.close(() => resolve()));
 });
 
@@ -363,44 +327,6 @@ describe("the merchant landing", () => {
     expect(await burger.getAttribute("aria-expanded")).toBe("false");
     expect(complaints).toEqual([]);
     await page.context().close();
-  });
-
-  it("is, behind the live channel's edge, the page that says there is none, and stays it once the browser takes over, back and forth", async () => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-    const page = await context.newPage();
-    const complaints: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
-        complaints.push(message.text());
-      }
-    });
-    page.on("pageerror", (error) => complaints.push(error.message));
-    const withheld = async () => {
-      await page.waitForLoadState("networkidle");
-      expect(new URL(page.url()).pathname).toBe("/sell");
-      expect(await page.locator("h1").first().textContent()).toBe("Page not found");
-      expect(await page.locator(".sell").count()).toBe(0);
-    };
-
-    const answered = await page.goto(`${liveOrigin}/sell`);
-    expect(answered?.status()).toBe(404);
-    await withheld();
-
-    // Going back is the router's own navigation: it asks for the landing's
-    // route and data itself, which the edge must withhold as it does the page.
-    await page.locator("a.brand").click();
-    await page.waitForURL(`${liveOrigin}/`);
-    // The address changes before the router draws the page it leads to, so
-    // the front page's heading is read once it has replaced the missing one.
-    await page.waitForFunction(
-      () => document.querySelector("h1")?.textContent !== "Page not found",
-    );
-    const home = await page.locator("h1").first().textContent();
-    await page.goBack();
-    await page.waitForFunction((left) => document.querySelector("h1")?.textContent !== left, home);
-    await withheld();
-    expect(complaints).toEqual([]);
-    await context.close();
   });
 });
 

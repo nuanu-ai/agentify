@@ -7,7 +7,9 @@
  * Every `var(--name)` in the repository's own stylesheets must have a `--name:`
  * declared in some stylesheet of the repository, or set inline from a component
  * as `"--name":`. VitePress's own `--vp-*` tokens are defined by its theme at
- * run time.
+ * run time. React Router's generated route types under `.react-router` are
+ * left alone: they hold no styles, and the route tests rewrite them while this
+ * file reads the tree, so a file listed a moment ago can be gone when read.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -16,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
-const SKIP = new Set(["node_modules", "dist", "coverage", ".git", ".claude"]);
+const SKIP = new Set(["node_modules", "dist", "coverage", ".git", ".claude", ".react-router"]);
 
 function sources(directory: string, extensions: readonly string[]): string[] {
   const found: string[] = [];

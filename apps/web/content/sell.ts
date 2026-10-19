@@ -1,8 +1,6 @@
 /**
- * Every word of the merchant landing at `/sell`, a draft whose prices nobody
- * has approved: the live channel's edge never lets a visitor reach it
- * (`deploy/Caddyfile`). A non-breaking space holds "AI agents" on one line
- * where the words would otherwise part.
+ * Every word of the merchant landing at `/sell`. A non-breaking space holds
+ * "AI agents" on one line where the words would otherwise part.
  */
 
 export const SELL_LANDING = {

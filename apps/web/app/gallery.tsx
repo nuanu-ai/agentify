@@ -695,8 +695,8 @@ const PUBLIC: GalleryState[] = [
     {
       id: "scanner-sell",
       screen: "Merchant landing with prices",
-      when: "Somebody opens /sell on the test site; the live site answers it with the missing page.",
-      cause: "The draft landing with prices, not yet offered on the live channel.",
+      when: "Somebody opens /sell.",
+      cause: "The merchant landing with prices.",
     },
     "/sell",
     "routes/sell.tsx",

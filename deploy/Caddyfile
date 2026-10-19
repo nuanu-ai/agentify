@@ -270,19 +270,6 @@
 		}
 	}
 
-	# The merchant landing at /sell is the scanner's page, and a draft: its
-	# prices are not approved, so the live channel never shows it. Only this
-	# file knows the channel, so on the live one every address of the landing
-	# is handed to the scanner as one it has no page for, and the visitor gets
-	# the scanner's page that says so. The target stays outside /sell: the
-	# browser takes the page over at /sell, and a target under it would hand the
-	# browser the landing's route along with the page that says there is none.
-	@sell_withheld {
-		path /sell /sell/* /sell.data
-		expression "{$AGENTIFY_SURFACE_MODE:sandbox}" == "live"
-	}
-	rewrite @sell_withheld /sell-not-on-this-channel
-
 	# No default: a stack that names no front page is refused at load rather than
 	# answering a bare 404.
 	import {$AGENTIFY_FRONT_PAGE}

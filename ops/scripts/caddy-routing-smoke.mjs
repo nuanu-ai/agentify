@@ -129,7 +129,7 @@ async function expectSharedAssets(baseUrl) {
   const fontPaths = [...stylesheet.matchAll(/url\(["']?(\/styles\/fonts\/[^"')]+\.woff2)/g)].map(
     (match) => match[1],
   );
-  assert.equal(fontPaths.length, 7, "the browser font inventory changed");
+  assert.equal(fontPaths.length, 6, "the browser font inventory changed");
   for (const fontPath of fontPaths) {
     const response = await fetch(`${baseUrl}${fontPath}`);
     assert.equal(response.status, 200, fontPath);
@@ -404,8 +404,8 @@ try {
     assert.equal(moved.status, 307, from);
     assert.equal(moved.headers.get("location"), to, from);
   }
-  // The merchant landing is the scanner's page at /sell on the test channel,
-  // asked for as the visitor asked; the live channel withholds it (below).
+  // The merchant landing is the scanner's page at /sell, asked for as the
+  // visitor asked, on the live channel too (below).
   for (const requestPath of ["/sell", "/sell/", "/sell.data", "/sellers"]) {
     await expectProxy(innerBase, requestPath, "scanner");
   }
@@ -469,12 +469,8 @@ try {
   });
   const liveBase = publishedBase(liveName);
   await waitFor(liveBase);
-  for (const requestPath of ["/sell", "/sell/", "/sell/pricing", "/sell.data"]) {
-    const withheld = await fetch(`${liveBase}${requestPath}`);
-    assert.equal(withheld.status, 200, requestPath);
-    const body = await withheld.json();
-    assert.equal(body.role, "scanner", requestPath);
-    assert.equal(body.path, "/sell-not-on-this-channel", requestPath);
+  for (const requestPath of ["/sell", "/sell/", "/sell.data"]) {
+    await expectProxy(liveBase, requestPath, "scanner");
   }
   // On a channel whose operator's identity is published, the part kept off it is gone.
   const liveFront = await fetch(`${liveBase}/docs/`, { headers: { accept: "text/markdown" } });
