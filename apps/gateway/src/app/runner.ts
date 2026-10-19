@@ -830,7 +830,7 @@ export class OrderRunner {
     }
 
     const outcome = await this.#runtime.facilitator.settle({
-      orderId: record.order.id,
+      paymentRef: record.paymentRef,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1129,6 +1129,15 @@ const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> 
   merchant_left: () =>
     `The seller stopped selling through Agentify after this order was paid and before its goods came, so they owe you the whole price back from their own wallet. ${UNRECORDED}`,
 };
+
+/**
+ * The sentence an order's `reason` carries where Agentify ended it, or null
+ * where it carries none.
+ */
+export function endingSentenceOf(order: Order): string | null {
+  const code = endingReasonFor(order);
+  return code === null ? null : REASON_WORDS[code](order);
+}
 
 const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
   unavailable: () =>

@@ -10,6 +10,7 @@
 import type {
   Environment,
   MerchantSelling,
+  Order,
   OrderState,
   PaymentVerificationFailure,
   TransitionRejection,
@@ -104,7 +105,7 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
-import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
+import { endingSentenceOf, OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -1257,6 +1258,7 @@ export class Gateway {
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
+      paymentRef: this.runtime.ids("pay"),
       // What the agent was promised, kept with the order so a card republished
       // since cannot change what this sale is held to. A parcel's card declares
       // none: its order is held to a shipment.
@@ -1303,19 +1305,19 @@ export class Gateway {
     fingerprint: string,
     shipTo?: ShipTo,
   ): Promise<PurchaseAttempt> {
-    const before = await this.runtime.store.orderById(orderId);
+    let before = await this.runtime.store.orderById(orderId);
     if (before === null) {
       return { step: "no_such_item" };
     }
 
-    // An order that is over with no money taken and no goods held takes no
-    // payment: verifying one could only, if refused, tell the agent to pay
-    // again for a price that is gone.
-    if (
-      NOTHING_TO_PAY_FOR.includes(before.order.state) ||
-      (before.order.state === "expired" && !before.order.heldFulfillment)
-    ) {
-      return this.#wherePurchaseStands(orderId);
+    // An order that is over with no goods held takes no payment and is not
+    // verified for one: a refusal could only tell the agent to pay again for a
+    // price that is gone. The answer names no order, because the payment has
+    // not been checked and the reference it carries can be published. A buyer
+    // who lost its first answer learns from it all the order would tell it:
+    // that nothing was charged, or that whether anything was is not known.
+    if (overWithNothingHeld(before.order)) {
+      return noPaymentTakenFor(before.order);
     }
 
     // The timer that closes an order whose price lapsed can fire late, so a
@@ -1335,24 +1337,26 @@ export class Gateway {
         at: lapsed.at,
         deadline: lapsed.kind,
       });
-      return this.#wherePurchaseStands(orderId);
+      const after = await this.runtime.store.orderById(orderId);
+      if (after === null) {
+        return { step: "no_such_item" };
+      }
+      if (overWithNothingHeld(after.order)) {
+        return noPaymentTakenFor(after.order);
+      }
+      // Another payment took the order between the read above and the lapse,
+      // so the price did not lapse on it, and this payment is checked as any
+      // payment for an order that is under way.
+      before = after;
     }
 
-    // A payment is for the address its order was priced for, checked before
-    // anything is verified: one naming another address is a different
-    // purchase, and one naming none pays for the priced one. Once Agentify's
-    // copy is erased there is nothing left to compare with.
-    if (shipTo !== undefined) {
-      const held = before.shipTo;
-      if (held === undefined) {
-        return {
-          step: "ship_to_rejected",
-          message: "this product is not shipped, so a payment for it carries no ship_to",
-        };
-      }
-      if (!("erasedAt" in held) && !sameAddress(held, shipTo)) {
-        return { step: "ship_to_changed" };
-      }
+    // An address sent for a product that is not shipped is refused at once:
+    // the card says as much to anyone.
+    if (shipTo !== undefined && before.shipTo === undefined) {
+      return {
+        step: "ship_to_rejected",
+        message: "this product is not shipped, so a payment for it carries no ship_to",
+      };
     }
 
     const price = before.order.price;
@@ -1382,7 +1386,7 @@ export class Gateway {
         : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
 
     const verified = await this.runtime.facilitator.verify({
-      orderId,
+      paymentRef: before.paymentRef,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1391,12 +1395,15 @@ export class Gateway {
 
     if (verified.verified !== true) {
       // A refusal says what to do next, since that depends on why the payment
-      // failed and nothing else tells the agent, and it says nothing was
-      // charged.
+      // failed and nothing else tells the agent, and it says whether anything
+      // was charged. On an order already paid for, the payer is most likely
+      // presenting a payment it already used, having lost the answer.
       const why =
-        verified.verified === false
-          ? `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`
-          : verified.message;
+        verified.verified === "unknown"
+          ? verified.message
+          : before.order.payment === "settled"
+            ? `nothing more was charged: this order is already paid for, and the payment layer refused this payment, saying: ${briefly(verified.message)}; a payment from the wallet that paid it that the payment layer accepts returns the order without charging it again`
+            : `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`;
       // The layer's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
       // client put in it, newlines included.
@@ -1415,6 +1422,38 @@ export class Gateway {
         // payment will not pass, though a corrected one still may.
         retryable: verified.verified === "unknown",
       };
+    }
+
+    // The owner is who the payment layer says paid, never the address the
+    // payment declares of itself. Where the layer names no payer, the
+    // payment's fingerprint stands in; it is derived from what was signed, so
+    // it is no more forgeable.
+    const owner = walletThatPaid(verified.payer) ?? fingerprint;
+
+    // A payer who is not the buyer of an order already paid for is turned
+    // away before the order tells it anything more. Verifying moves no money,
+    // so without this any wallet holding the price could try addresses
+    // against a paid parcel. The decision that counts is taken again under
+    // the order's lock below; this one only answers sooner.
+    if (before.paidBy !== null && before.paidBy !== owner) {
+      return { step: "not_this_purchase" };
+    }
+
+    // A payment is for the address its order was priced for: one naming
+    // another address is a different purchase, and one naming none pays for
+    // the priced one. It is compared only once the payment has verified and
+    // its payer may be the buyer, so a payment that is not one cannot try
+    // addresses against the order, and still before anything is claimed or
+    // charged. Once Agentify's copy is erased there is nothing left to
+    // compare with.
+    const held = before.shipTo;
+    if (
+      shipTo !== undefined &&
+      held !== undefined &&
+      !("erasedAt" in held) &&
+      !sameAddress(held, shipTo)
+    ) {
+      return { step: "ship_to_changed" };
     }
 
     // The park below waits `syncBudgetMs` from this instant, where the ceiling
@@ -1450,12 +1489,6 @@ export class Gateway {
         retryable: false,
       };
     }
-
-    // The owner is who the payment layer says paid, never the address the
-    // payment declares of itself. Where the layer names no payer, the
-    // payment's fingerprint stands in; it is derived from what was signed, so
-    // it is no more forgeable.
-    const owner = walletThatPaid(verified.payer) ?? fingerprint;
 
     // One authorisation buys one order, which ownership by payer cannot ensure
     // since the same wallet would own both. It is claimed after verification,
@@ -1559,6 +1592,16 @@ export class Gateway {
    */
   async orderById(orderId: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderById(orderId);
+  }
+
+  /**
+   * The order a payment is for, by the payment reference its challenge
+   * carried, whoever it belongs to. Only the purchase route asks: the
+   * reference names the order to the payment side, and no other route reads
+   * one.
+   */
+  async orderForPayment(paymentRef: string): Promise<StoredOrder | null> {
+    return this.runtime.store.orderByPaymentRef(paymentRef);
   }
 
   /** One of this merchant's orders. Another merchant's is not found. */
@@ -2281,11 +2324,38 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
 };
 
 /**
- * The endings in which nothing was taken and nothing is held, so a payment
- * has nothing left to buy. `expired` is one only without held goods, and is
- * asked separately.
+ * The endings in which nothing is held for the buyer, so a payment has
+ * nothing left to buy. Nothing was taken in them either, except on a
+ * `rejected` order whose charge went unanswered, where nobody knows whether
+ * it was. `expired` is one only without held goods, and is asked separately.
  */
 const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
+
+/**
+ * The refusal a payment for an order that is over gets, before anything is
+ * verified: what became of the order, in words that name no order, since
+ * whoever sent the payment has not been shown to be its buyer.
+ */
+function noPaymentTakenFor(order: Order): PurchaseAttempt {
+  if (order.payment === "outcome_unknown") {
+    return {
+      step: "payment_not_taken",
+      why: "this payment was not taken: whether an earlier payment for this order went through is not known yet, and no second one is taken while it is not; asking again later may find out",
+      retryable: true,
+    };
+  }
+  return {
+    step: "payment_not_taken",
+    why: `this payment was not taken, because this order is over. ${
+      endingSentenceOf(order) ?? "Nothing was charged for it; start a new purchase to buy it again."
+    }`,
+    retryable: false,
+  };
+}
+
+/** Whether an order is over with nothing held for its buyer, so a payment has nothing to buy. */
+const overWithNothingHeld = (order: Order): boolean =>
+  NOTHING_TO_PAY_FOR.includes(order.state) || (order.state === "expired" && !order.heldFulfillment);
 
 /**
  * Why the machine would not take a merchant's call. Only a closed order gets

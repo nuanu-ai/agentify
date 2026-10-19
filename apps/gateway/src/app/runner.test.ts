@@ -56,6 +56,7 @@ const impossible = (): StoredOrder => {
     merchantId: "mch_the_runner",
     itemId: "item_1",
     merchantItemId: "sku-1",
+    paymentRef: "pay_the_runner",
     params: {},
     priceId: null,
     delivery: null,

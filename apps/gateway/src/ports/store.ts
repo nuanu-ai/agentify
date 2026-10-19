@@ -98,6 +98,15 @@ export interface StoredOrder {
   readonly itemId: string;
   readonly merchantItemId: string;
   /**
+   * What the payment challenge names this order by, random like the order's
+   * identifier and never the same: the challenge goes to the payment
+   * facilitator, and a discovery listing can publish it, while the identifier
+   * opens the order and its goods. A payment is bound to the order whose
+   * reference it carries, and nothing answers a reference with the order's
+   * identifier or goods. Every order has one, and no two share one.
+   */
+  readonly paymentRef: string;
+  /**
    * The result the card declared when the order was made; a delivery is held
    * to this, so a later republish changes nothing for the order. Absent on a
    * parcel's order, which is held to a shipment, and on an order stored
@@ -134,11 +143,12 @@ export interface StoredOrder {
   /**
    * The order's owner: the payer the payment layer named when it verified the
    * first payment for the order (never the address a payment declares of
-   * itself), or that payment's fingerprint where the layer names none. Order
-   * ids are not secret and the payment route takes no key, so without an owner
-   * anyone holding an id could pay against, take the goods of, or close
-   * someone else's order. It is set inside the store's hold on the order, so
-   * two racing payments cannot both become the owner.
+   * itself), or that payment's fingerprint where the layer names none. A
+   * payment reference is not secret, since a listing can publish it, and the
+   * payment route takes no key, so without an owner anyone holding a
+   * reference could pay against, take the goods of, or close someone else's
+   * order. It is set inside the store's hold on the order, so two racing
+   * payments cannot both become the owner.
    */
   readonly paidBy: string | null;
   /**
@@ -676,7 +686,8 @@ export interface Store {
   // --- orders ---------------------------------------------------------------
 
   /**
-   * Writes an order that is not there yet. The record says whose it is.
+   * Writes an order that is not there yet. The record says whose it is. An
+   * identifier or a payment reference another order already has is refused.
    *
    * Given the integration its card was sold through, the write is made only
    * while its merchant still sells through that one, and answers false
@@ -694,6 +705,14 @@ export interface Store {
    * across merchants. A merchant's own read is {@link merchantOrder}.
    */
   orderById(id: string): Promise<StoredOrder | null>;
+
+  /**
+   * The order a payment is for, by the reference its challenge carried,
+   * whoever it belongs to; unscoped for the same reason as `orderById`. Only
+   * the payment route asks it: a reference is not an order's identifier, and
+   * no other route reads one.
+   */
+  orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null>;
 
   /** One of this merchant's orders. Another merchant's order is not found. */
   merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null>;

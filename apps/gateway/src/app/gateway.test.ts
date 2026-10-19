@@ -970,7 +970,11 @@ describe("the goods against the card that sold them", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const { result: _kept, ...older } = offered.order;
     const oldId = "ord_written_before_the_promise";
-    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: oldId } });
+    await harnessed.store.addOrder({
+      ...older,
+      paymentRef: harnessed.runtime.ids("pay"),
+      order: { ...older.order, id: oldId },
+    });
     await harnessed.gateway.payPurchase(oldId, "OLD", "OLD");
     await published(harnessed, { ...asyncCard, result: { license_key: { type: "string" } } });
 
@@ -1386,8 +1390,8 @@ describe("a refused payment's words, when the payment layer says a great deal", 
 describe("a price's life", () => {
   // A price holds for a fixed time, and the timer that closes an order whose
   // price has lapsed can fire late. A payment that arrives after the price's
-  // life pays for a price that no longer holds, timer or no timer: nothing is
-  // verified, nothing is claimed and nothing is charged.
+  // life pays for a price that no longer holds, timer or no timer: it is
+  // refused, and nothing is verified, claimed or charged.
   it("refuses a payment that arrives once the price has lapsed, before its timer fires", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
@@ -1398,7 +1402,7 @@ describe("a price's life", () => {
 
     const paid = await harnessed.gateway.payPurchase(orderId, "LATE", "LATE");
 
-    expect(paid.step).toBe("settled");
+    expect(paid.step).toBe("payment_not_taken");
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect(harnessed.facilitator.settles).toHaveLength(0);
@@ -1420,7 +1424,7 @@ describe("a price's life", () => {
 
     const again = await harnessed.gateway.payPurchase(orderId, "LATER", "LATER");
 
-    expect(again.step).toBe("settled");
+    expect(again.step).toBe("payment_not_taken");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
   });
 
@@ -1440,7 +1444,7 @@ describe("a price's life", () => {
 
     const paid = await harnessed.gateway.payPurchase(orderId, "AFTER", "AFTER");
 
-    expect(paid.step).toBe("settled");
+    expect(paid.step).toBe("payment_not_taken");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
   });
 

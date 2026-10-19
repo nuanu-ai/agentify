@@ -505,10 +505,11 @@ that fit the card are kept for a repeat purchase without your code being told.
 By the order's identifier: it is the same across every repeat, and your side
 answers with the earlier result under it instead of delivering a second time.
 Orders are delivered at least once, so a repeat is ordinary traffic; it does
-not mean that anything broke. On the agent's side the key is the same one: the
-order's identifier rides in the payment request we issue and comes back in the
-payment the agent signs, so a repeat names the order it repeats and we carry
-that order on from where it stopped.
+not mean that anything broke. On the agent's side we recognise a repeat by the
+payment: the payment request we issue names the order by a payment reference,
+separate from its identifier, and that reference comes back in the payment the
+agent signs, so a repeat names the order it repeats and we carry that order on
+from where it stopped.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is

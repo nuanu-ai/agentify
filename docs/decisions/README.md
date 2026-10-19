@@ -34,7 +34,7 @@ written in; the rest are in English.
 | [0006](0006-wire-version.md) | What the contract version promises and when it moves: from the first merchant Agentify does not control, every change a strict reader cannot read moves it, so an old worker stops with words instead of misreading an order. |
 | [0012](0012-discovery-declaration.md) | Every card on sale declares itself in its payment challenge for outside catalogues such as the x402 Bazaar, as a projection of the card. |
 | [0018](0018-one-envelope-one-document.md) | Every call says no in one shape — a `code`, a `message` and `retryable` — and an order is one document. |
-| [0011](0011-agent-collection-door.md) | For now, knowing an order's identifier is the proof that opens that order, which is how an agent collects goods delivered later. |
+| [0011](0011-agent-collection-door.md) | For now, knowing an order's identifier is the proof that opens that order, which is how an agent collects goods delivered later; a payment names its order by a separate reference that nothing answers with the order, so no listing can carry the identifier. |
 | [0034](0034-an-agent-knows-the-seller-by-their-site.md) | An agent knows who sells by the seller's name and the address of the shop's own site, on every card and order. |
 | [0017](0017-leniency-at-the-door.md) | The wire may accept shorter spellings, but they are opened into the one canonical shape at the door, before anything is stored or served. |
 
