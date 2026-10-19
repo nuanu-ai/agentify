@@ -189,10 +189,11 @@ on it.
 
 The pause is set on the Orders tab, in the Paused panel. It is kept in memory,
 starts as "Do not pause" every time the stand starts, and applies to every
-arrival from the moment it is set, repeats included. An order is paused at
-most once, at the point that was set when it arrived: changing the setting while
-an order is paused or still being decided sets up the next arrival and leaves
-that order as it was, so turning the pause off releases nothing already paused.
+arrival from the moment it is set, repeats included. Each arrival is paused
+at most once, at the point that was set when it arrived: changing the setting
+while an order is paused or still being decided sets up the next arrival and
+leaves that one as it was, so turning the pause off releases nothing already
+paused. A repeat of the same order is a new arrival and can be paused again.
 
 "Pause each order as it arrives" stops an order once its arrival is counted and
 before the stand does anything else with it: no record is looked up, no answer
@@ -262,8 +263,11 @@ gives up on every paused order: its handler throws, the SDK answers nothing for
 it, and a record already written stays. An order held by "Hold it and ask me" is
 given up on the same way, with nothing answered and nothing recorded, because
 nobody answering it while the stand goes away is not the merchant refusing it.
-So is an order handed over while a disconnect still waits for a delivery
-already on its way: it is given up on at once rather than held. Only the
+So is an order that would be held or paused, handed over while a disconnect
+still waits for a delivery already on its way: it is given up on at once
+rather than held. An order the stand decides outright in that wait is
+recorded and answered as usual, because the SDK runs until the delivery has
+landed. Only the
 thirty-second ceiling, reached while the stand is connected, refuses a held
 order, and that refusal is recorded like any other answer.
 

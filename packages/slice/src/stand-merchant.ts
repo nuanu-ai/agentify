@@ -113,9 +113,9 @@ export interface StandMerchant {
   /** Answers one held order. False when it is no longer being held. */
   answerHeld(orderId: string, answer: HeldAnswer): boolean;
   /**
-   * Where every order arriving from now on is paused, repeats included. An
-   * order is paused at most once, at the point set when it arrived, so
-   * changing this neither releases nor pauses again an order already arrived.
+   * Where every order arriving from now on is paused, repeats included. Each
+   * arrival is paused at most once, at the point set when it arrived, so
+   * changing this neither releases nor pauses again an arrival in progress.
    */
   readonly pause: { at: PausePoint };
   /** Orders paused at this stand, waiting to be released. */

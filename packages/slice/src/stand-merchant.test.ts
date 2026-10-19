@@ -784,7 +784,7 @@ describe("an order paused as it arrives", () => {
     ]);
   });
 
-  it("is paused once, at the point set when it arrived, whatever is set while it waits", async () => {
+  it("pauses an arrival once, at the point set when it arrived, whatever is set while it waits", async () => {
     // The promise: the pause point applies to arrivals. A tester who moves it
     // while an order is paused is setting up the next arrival; the one already
     // stopped goes on when released and is not stopped a second time.
