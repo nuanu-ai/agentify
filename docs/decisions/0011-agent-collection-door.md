@@ -1,8 +1,8 @@
 # 0011. The order identifier is the agent's proof
 
 Date: 2026-08-27
-Status: accepted for the controlled launch; for a public audience on 2026-10-19,
-awaiting the product owner's word
+Status: accepted for the controlled launch; not fit for a public audience
+until the condition under Consequences holds
 
 ## Context
 
@@ -14,10 +14,12 @@ do not, as registering would undo buying with no prior relationship.
 ## Decision
 
 Knowing the order identifier is the proof, on both channels. Whoever presents
-it is answered about that order and no other. The identifier is random,
-impractical to guess and in no catalog or listing; Agentify, the merchant and
-the payment facilitator hold it too. It is a key to one order, not proof of
-having paid for it, which comes only from the verified payer.
+it is answered about that order and no other. The identifier is random and
+impractical to guess. Agentify, the merchant and the payment facilitator hold
+it too: every payment request carries it in `accepts[].extra.order_id`, and
+the facilitator receives it with each payment it verifies and settles. It is a
+key to one order, not proof of having paid for it, which comes only from the
+verified payer.
 
 The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the same
 document the purchase returns, built field by field so that nothing reaches it
@@ -34,19 +36,21 @@ the agent that the identifier is the key to its goods, not to be shared.
 
 ## Consequences
 
-Asynchronous purchases have a collection path, and the weakness is explicit:
-anyone who obtains an identifier through a log, a proxy or an agent's store can
-read that order, though not change it, act as its payer or list other orders.
-For a parcel that includes its tracking number and link, whose carrier page may
-show the buyer's city or who signed for it (ADR-0033), and for every order the
-seller's name and site as our catalog shows them (ADR-0034).
+Anyone who obtains an identifier can read that order, though not change it,
+act as its payer or list other orders. For a parcel that includes its tracking
+number and link, whose carrier page may show the buyer's city or who signed for
+it (ADR-0033), and for every order the seller's name and site as our catalog
+shows them (ADR-0034).
 
 The product owner accepted this bearer risk for the controlled launch, which
-had no external users. The live catalogue now sells to any agent, so on
-2026-10-19 the door was revisited, weighing the goods, a parcel's shipment and
-the seller, and proposed for that audience as it stands: an identifier leaks
-only where somebody writes it down, and the agent is now told not to. Parcels
-on the live channel still wait for the rest of what ADR-0033 names.
+had no external users. It does not carry to a public audience, because a
+listing can publish identifiers. The x402 Bazaar (ADR-0012) publishes a listed
+resource's payment requirements with `extra` as the last paying request carried
+it, per-request values included, as its public listing showed on 2026-10-19;
+once an Agentify resource is listed there, some buyer's order identifier can be
+public. No Agentify resource was listed that day. Before the first one is, the
+status route must ask for something a listing never carries, and this record
+says what. Parcels on the live channel wait for that too (ADR-0033).
 
 ## Alternatives rejected
 
