@@ -38,6 +38,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "A request carrying the ChatGPT-User or Claude-User token could not be assessed.",
   agent_ua_robots_disallowed:
     "robots.txt keeps ChatGPT-User, Claude-User or both off this page, or off the address the page sends them to, so the scanner did not read it in their name.",
+  agent_ua_refusal_observed:
+    "At least one agent request received a blocked or unusable response. Another comparison could not be completed because an HTML response was truncated.",
   ai_policy_absent: "robots.txt does not state a clear policy for the supported AI crawler groups.",
   ai_policy_explicit: "robots.txt states an explicit policy for every supported AI crawler group.",
   ai_policy_partial:

@@ -1319,24 +1319,43 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           truncated = baseTruncated || Boolean(effective.markdown?.truncated);
           uncertain =
             check.summaryCode === "markdown_negotiation_partial" &&
+            !(check.evidence.non_empty === false && !effective.markdown?.truncated) &&
             /(?:^|,)\s*accept\s*(?:,|$)/i.test(effective.markdown?.headers.vary ?? "");
           break;
         case 12:
           truncated = artifacts.segment === "store" ? pagesTruncated : baseTruncated;
           uncertain = check.status === "fail" || check.status === "partial";
           break;
-        case 13:
+        case 13: {
           truncated =
             baseTruncated ||
             Boolean(
               effective.agentProbes.chatgpt?.truncated || effective.agentProbes.claude?.truncated,
             );
-          uncertain =
-            (check.evidence.chatgpt_probe_accessible === false &&
-              comparisonTruncated(effective.agentProbes.chatgpt)) ||
-            (check.evidence.claude_probe_accessible === false &&
-              comparisonTruncated(effective.agentProbes.claude));
+          const chatgptUnassessed =
+            check.evidence.chatgpt_probe_accessible === false &&
+            comparisonTruncated(effective.agentProbes.chatgpt);
+          const claudeUnassessed =
+            check.evidence.claude_probe_accessible === false &&
+            comparisonTruncated(effective.agentProbes.claude);
+          uncertain = chatgptUnassessed || claudeUnassessed;
+          const refusalObserved =
+            (check.evidence.chatgpt_probe_accessible === false && !chatgptUnassessed) ||
+            (check.evidence.claude_probe_accessible === false && !claudeUnassessed);
+          if (uncertain && refusalObserved) {
+            const evidence: CheckResult["evidence"] = { ...check.evidence, truncated: true };
+            if (chatgptUnassessed) {
+              delete evidence.chatgpt_probe_accessible;
+              evidence.chatgpt_probe_unassessed = true;
+            }
+            if (claudeUnassessed) {
+              delete evidence.claude_probe_accessible;
+              evidence.claude_probe_unassessed = true;
+            }
+            return { ...check, summaryCode: "agent_ua_refusal_observed", evidence };
+          }
           break;
+        }
         case 15:
           truncated = artifacts.segment === "store" && pagesTruncated;
           uncertain = check.status === "fail" || check.status === "partial";
