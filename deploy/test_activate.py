@@ -171,7 +171,16 @@ case "$args" in
   "image inspect -f {{.Id}} "*) echo "sha256:new-${args##*/}" ;;
   "run --rm -i --network none "*) cat > /dev/null; exit "${PREFLIGHT_EXIT:-0}" ;;
   "run -d --name agentify-scanner-check --network none --env-file "*) file="${args#*--env-file }"; cat "${file%% *}" > /dev/null ;;
-  "run --rm --env-file "*) file="${args#*--env-file }"; cat "${file%% *}" > /dev/null; exit "${FACILITATOR_KEY_EXIT:-0}" ;;
+  "run --rm --env-file "*)
+    # The facilitator key's check: the application's environment and image,
+    # never the scanner's.
+    rest="${args#*--env-file }" handed="$(cat "${rest%% *}")"
+    rest="${rest#* }" image="${rest%% *}"
+    grep -qx 'B=2' <<<"$handed" && ! grep -qx 'A=1' <<<"$handed" \
+      || { echo "docker: the facilitator key's check was handed another environment than the app's" >&2; exit 1; }
+    [[ $image == "$(sed -n 's/^AGENTIFY_APP_IMAGE=//p' /h/tree/deploy/images.env)" ]] \
+      || { echo "docker: the facilitator key's check runs $image, not the app image" >&2; exit 1; }
+    exit "${FACILITATOR_KEY_EXIT:-0}" ;;
   "inspect -f {{.State.Running}} agentify-scanner-check") echo true ;;
   "exec agentify-scanner-check "*) echo "${SCANNER_HEALTH:-200}" ;;
   "start "*) for c in ${args#start }; do sed -i 's/exited/running/' $W/containers/$c; done ;;
