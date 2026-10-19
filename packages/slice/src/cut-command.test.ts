@@ -302,6 +302,37 @@ describe("which answer is cut", () => {
     expect(up.received).toHaveLength(2);
   });
 
+  it("does not count a redirect, and its line warns that a caller following it may go around the proxy", async () => {
+    const elsewhere = "https://gateway.example/x402/itm_7/purchase";
+    const up = await upstream((n, response) => {
+      if (n === 2) {
+        plainly(200, PAID)(n, response);
+        return;
+      }
+      response.writeHead(n === 1 ? 308 : 302, { location: elsewhere });
+      response.end();
+    });
+    const { port, log } = await proxy(up.url, purchases("before-headers"));
+
+    const redirected = await call(port, "POST", "/x402/itm_7/purchase");
+    const paid = await call(port, "POST", "/x402/itm_7/purchase");
+    const unmatched = await call(port, "GET", "/x402/itm_7");
+
+    expect([redirected.status, redirected.whole, redirected.headers.location]).toEqual([
+      308,
+      true,
+      elsewhere,
+    ]);
+    expect(paid.status).toBeNull();
+    expect([unmatched.status, unmatched.headers.location]).toEqual([302, elsewhere]);
+    for (const n of [1, 3]) {
+      const line = await lineFor(log, n);
+      expect(line).toMatch(/around the proxy/);
+      expect(line).not.toContain("gateway.example");
+    }
+    expect(await lineFor(log, 2)).not.toMatch(/around the proxy/);
+  });
+
   it("matches * within one path segment and the method exactly, ignores the query string in matching, and forwards the query under the upstream's base path", async () => {
     const up = await upstream(plainly(200, PAID));
     const { port } = await proxy(`${up.url}/gateway`, purchases("before-headers"));
