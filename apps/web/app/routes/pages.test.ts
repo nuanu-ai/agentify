@@ -220,6 +220,26 @@ describe("the trust pages", () => {
   });
 });
 
+describe("the page for an address the site does not have", () => {
+  it("says so under its own title, with the site's header and footer leading on", async () => {
+    const answered = await ask("/agentic-shops", { headers: { accept: "text/html" } });
+    const html = await answered.text();
+    const head = html.slice(0, html.indexOf("</head>"));
+    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
+    const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? "";
+
+    expect(answered.status).toBe(404);
+    expect(head.match(/<title>([^<]*)<\/title>/)?.[1]).toBe("Page not found · Agentify");
+    expect(head).toContain('<meta name="robots" content="noindex"/>');
+    for (const href of ["/agentic-shop", "/docs/", "/dashboard/sign-in"]) {
+      expect(header, href).toContain(`href="${href}"`);
+    }
+    for (const href of ["/docs/", "/privacy", "/terms"]) {
+      expect(footer, href).toContain(`href="${href}"`);
+    }
+  });
+});
+
 describe("every page", () => {
   it.each(["/", "/store", "/local", "/privacy", "/terms", "/no-such-page"])(
     "is drawn with the consent banner up until the visitor chooses: %s",
