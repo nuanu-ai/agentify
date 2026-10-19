@@ -112,6 +112,46 @@ const namesNoOffer = (): string =>
   } as unknown as PaymentPayload);
 
 describe("verifying a payment", () => {
+  it("says until when the payment it verified is authorised, and nothing where the payment names no end", async () => {
+    // A card charged after its goods needs the authorisation to outlive the
+    // charge, so the end the payment was signed with is handed back with the
+    // verdict, in milliseconds as every other instant here is.
+    const signedUntil = (validBefore: string | undefined): string =>
+      encodePaymentSignatureHeader({
+        x402Version: 2,
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+        payload: {
+          signature: "0xsigned",
+          authorization: {
+            from: "0x0000000000000000000000000000000000000abc",
+            to: PAY_TO,
+            value: "80000000",
+            validAfter: "0",
+            ...(validBefore === undefined ? {} : { validBefore }),
+            nonce: "0x01",
+          },
+        },
+      });
+
+    const facilitator = new X402Facilitator(new Answering(), edge);
+
+    expect(await facilitator.verify(charge(signedUntil("1787745646")))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: 1_787_745_646_000,
+    });
+    expect(await facilitator.verify(charge(signedUntil(undefined)))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: null,
+    });
+    expect(await facilitator.verify(charge(honest()))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: null,
+    });
+  });
+
   it("checks it against the price this gateway issued, not the one the payment names", async () => {
     // The requirements handed to the facilitator are rebuilt from our own
     // order. A payment made against a price the agent chose is checked against

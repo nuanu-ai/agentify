@@ -900,6 +900,128 @@ describe("a card whose payment challenge would be too large to read", () => {
   });
 });
 
+describe("a payment whose authorisation would run out before its charge", () => {
+  // A purchase delivered in the answer is charged after its goods, up to the
+  // synchronous answer's time after the payment checks out, and the
+  // facilitator refuses an authorisation within six seconds of its end. A
+  // payment that cannot last that long is refused at the check, before the
+  // merchant makes anything and before anything is charged, and the agent pays
+  // the same order again with a fresh signature.
+  const BUYER = "0x0000000000000000000000000000000000000abc";
+
+  const priced = async (served: Served, itemId: string) => {
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+    const requirements = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (requirements === undefined) throw new Error("no payment option was offered");
+    return requirements;
+  };
+
+  const paid = (
+    served: Served,
+    itemId: string,
+    requirements: Awaited<ReturnType<typeof priced>>,
+    validUntil: number,
+    nonce: string,
+  ) =>
+    served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+      headers: {
+        [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+          x402Version: 2,
+          accepted: requirements,
+          payload: {
+            signature: `0xsigned${nonce}`,
+            authorization: {
+              from: BUYER,
+              to: requirements.payTo,
+              value: requirements.amount,
+              validAfter: "0",
+              validBefore: String(Math.floor(validUntil / 1_000)),
+              nonce: `0x${nonce}`,
+            },
+          },
+        }),
+      },
+    });
+
+  /** What a charge after the goods needs once the payment has checked out. */
+  const needed = (harnessed: Harness): number =>
+    harnessed.runtime.config.deadlines.syncResponseMs + 6_000;
+
+  it("refuses one too short for a purchase delivered in the answer, before anything is made or charged", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const requirements = await priced(served, itemId);
+    let made = 0;
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => {
+        made += 1;
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+
+    const short = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed) - 1_000,
+      "01",
+    );
+
+    expect(short.status).toBe(409);
+    const refused = (short.body as { error: { code: string; retryable: boolean } }).error;
+    expect(refused.code).toBe("payment_not_verified");
+    expect(refused.retryable).toBe(false);
+    expect(made).toBe(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    const [order] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(order?.order.state).toBe("quoted");
+
+    // The same order, paid again with an authorisation that lasts long enough.
+    const fresh = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed),
+      "02",
+    );
+    await worker.stop();
+
+    expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
+    expect((fresh.body as { status: string }).status).toBe("delivered");
+    expect(made).toBe(1);
+  });
+
+  it("takes the same short authorisation where the money moves at the purchase", async () => {
+    // A card whose goods come later is charged as the order is opened, so an
+    // authorisation that ends soon after the check is still good for it.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+    const requirements = await priced(served, itemId);
+    const worker = workUntilStopped(harnessed, { onOrder: () => ({ accepted: {} }) });
+
+    const short = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed) - 1_000,
+      "01",
+    );
+    await worker.stop();
+
+    expect(short.status, JSON.stringify(short.body)).toBe(200);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
 describe("a purchase over HTTP, from the catalog to the goods", () => {
   it("names, on each product in the catalog, the address it is bought at", async () => {
     // An agent that holds only the catalog must be able to buy from it, so the
