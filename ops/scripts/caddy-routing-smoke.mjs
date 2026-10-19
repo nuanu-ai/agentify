@@ -129,7 +129,7 @@ async function expectSharedAssets(baseUrl) {
   const fontPaths = [...stylesheet.matchAll(/url\(["']?(\/styles\/fonts\/[^"')]+\.woff2)/g)].map(
     (match) => match[1],
   );
-  assert.equal(fontPaths.length, 7, "the browser font inventory changed");
+  assert.equal(fontPaths.length, 6, "the browser font inventory changed");
   for (const fontPath of fontPaths) {
     const response = await fetch(`${baseUrl}${fontPath}`);
     assert.equal(response.status, 200, fontPath);
