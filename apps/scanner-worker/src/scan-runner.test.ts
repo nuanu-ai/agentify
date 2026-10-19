@@ -253,6 +253,23 @@ describe("bounded scan graph", () => {
     for (const agent of named) expect(sentAs(agent), agent).not.toEqual([]);
   });
 
+  it("keeps out of a site whose robots.txt names the token the documentation's page gives the scanner", async () => {
+    const page = readFileSync(new URL("../../docs/scanner/index.md", import.meta.url), "utf8");
+    const token = /the scanner answers to the token `([^`]+)`/.exec(page.replace(/\s+/g, " "))?.[1];
+    expect(token).toBeDefined();
+    const target = transport(`User-agent: *\nAllow: /\n\nUser-agent: ${token}\nDisallow: /\n`);
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.map((request) => request.split(" ").slice(0, 2).join(" "))).toEqual([
+      "GET /robots.txt",
+    ]);
+  });
+
   it("is deterministic across two identical runs except transport timing evidence", async () => {
     const run = async () => {
       const target = transport();
