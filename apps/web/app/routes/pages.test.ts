@@ -108,6 +108,25 @@ describe("the landings for a kind of business", () => {
   );
 });
 
+describe("the landings for a kind of business, to a visitor who came to sell", () => {
+  it.each(["/store", "/local"])(
+    "%s leads a visitor who came to sell from under the scan form to the page about selling",
+    async (path) => {
+      const { html } = await page(path);
+      const formAt = html.indexOf("<form");
+      const underTheForm = html.slice(formAt, html.indexOf("</section>", formAt));
+
+      expect(underTheForm).toContain('href="/agentic-shop"');
+    },
+  );
+
+  it.each(["/store", "/local"])("%s leads there in its Markdown too", async (path) => {
+    const answered = await ask(path, { headers: { accept: "text/markdown" } });
+
+    expect(await answered.text()).toContain("](https://agentify.ad/agentic-shop)");
+  });
+});
+
 describe("the owner landing's old address", () => {
   it.each([
     ["read", "/owner", "GET"],
