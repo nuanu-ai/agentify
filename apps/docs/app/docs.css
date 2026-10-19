@@ -360,6 +360,14 @@ input {
   background: var(--surface);
 }
 
+/* A label is laid out as it was measured when the diagram was drawn, not as
+   the article's paragraphs are, or it runs out of its box. */
+.doc figure.diagram p {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 /* A drawing is as wide as its column up to its own width, set on it, and
    never narrower than three quarters of that width: on a narrow screen its
    words stay readable and the figure scrolls. */

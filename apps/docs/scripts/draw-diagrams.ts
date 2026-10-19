@@ -3,22 +3,20 @@
  * pages write that has no drawing yet into `diagrams/`, and deletes the
  * drawings no page writes any more. Mermaid lays text out by measuring it in
  * a browser, so it draws in Playwright's Chromium with the site's own face
- * loaded and named in the diagram: a label measured in one face and shown in
- * another runs out of its box. What it writes is committed with the page.
+ * loaded at every weight it serves and named in the diagram: a label measured
+ * in one face and shown in another runs out of its box. What it writes is
+ * committed with the page.
  */
 
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { DIAGRAM_FAMILY, DIAGRAMS, diagramKey } from "../app/diagrams.server.js";
+import { DIAGRAM_FACE, DIAGRAM_FAMILY, DIAGRAMS, diagramKey } from "../app/diagrams.server.js";
 import { diagramSources } from "../app/markdown.server.js";
 
 const require = createRequire(import.meta.url);
 const MERMAID = require.resolve("mermaid/dist/mermaid.min.js");
-const FACE = require.resolve(
-  "@agentify/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
-);
 
 const wanted = new Map((await diagramSources()).map((source) => [diagramKey(source), source]));
 const kept = new Set(
@@ -37,12 +35,17 @@ if (missing.length > 0) {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    const face = (await readFile(FACE)).toString("base64");
+    const face = (await readFile(DIAGRAM_FACE)).toString("base64");
     await page.setContent(
-      `<!doctype html><style>@font-face{font-family:"Schibsted Grotesk";src:url(data:font/woff2;base64,${face}) format("woff2")}body{font-family:${DIAGRAM_FAMILY}}</style><body></body>`,
+      `<!doctype html><style>@font-face{font-family:"Schibsted Grotesk";font-weight:400 700;src:url(data:font/woff2;base64,${face}) format("woff2")}body{font-family:${DIAGRAM_FAMILY}}</style><body></body>`,
     );
     await page.addScriptTag({ path: MERMAID });
-    await page.evaluate(() => document.fonts.load('16px "Schibsted Grotesk"'));
+    await page.evaluate(() =>
+      Promise.all([
+        document.fonts.load('16px "Schibsted Grotesk"'),
+        document.fonts.load('bold 16px "Schibsted Grotesk"'),
+      ]),
+    );
     for (const [key, source] of missing) {
       const svg = await page.evaluate(
         async ({ key, source, family }) => {
