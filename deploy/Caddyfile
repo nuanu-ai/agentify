@@ -144,7 +144,7 @@
 		respond <<LLMS
 			# Agentify's test channel, paid in test money: the live site is https://agentify.ad
 
-			A merchant's engineer tries an integration here before selling for real. Payments are test USDC on Base Sepolia (eip155:84532), and nothing sold here is real. Everything about Agentify, buying from it included, is in the live site's llms.txt; buying here works the same way, with test money.
+			A merchant's engineer tries an integration here before selling for real. Payments are test USDC on Base Sepolia (eip155:84532): the money is not real. Everything about Agentify, buying from it included, is in the live site's llms.txt; buying here works the same way, with test money.
 
 			- [The live site's llms.txt](https://agentify.ad/llms.txt)
 			- [This channel's catalogue, as JSON]({env.AGENTIFY_PUBLIC_ORIGIN}/x402/catalog)
