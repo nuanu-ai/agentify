@@ -245,7 +245,7 @@ your handler and every loop over the open orders check it before they deliver.
 ### When a closing call does not go through
 
 `deliver`, `refuse` and `accept` hand their failures back rather than throwing
-them: `ok` is false, and one `error` beside it carries a code to branch on, a
+them, unless the client was built with no address: `ok` is false, and one `error` beside it carries a code to branch on, a
 sentence a person can read, and `retryable`. Eight codes are promised to mean
 one thing each — five sent by us, and three the tools produce when no answer
 they could read came back. The set is open beyond those eight, so a case
@@ -325,7 +325,7 @@ flowchart LR
 | `in_progress` | the purchase has not finished: priced, paid, with your handler, or taken on | once it is paid | on an asynchronous order or a parcel, delivers if your own record says the goods are ready; on a synchronous one, nothing, since your handler answers it |
 | `delivered` | the goods are the agent's and the money moved | no | — |
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
-| `rejected` | nothing was charged: your price check said there is none, a charge before the goods failed, or you refused a synchronous order | no | — |
+| `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
 | `cancelled` | you left, and the order closed with nothing charged | no | — |
 | `refund_due` | the buyer was charged and has no goods: you owe the goods or the money | yes, until it is delivered | delivers, unless you have refunded it |
@@ -362,7 +362,8 @@ for (const waiting of open) {
   if (issued !== null) {
     // On an order owing a refund this closes the debt with the goods, even
     // after you have paid the buyer back yourself, so `accessFor` has to
-    // answer null for an order you refunded.
+    // answer null for an order you refunded, and for a synchronous order
+    // still in progress, which your handler answers itself.
     await waiting.deliver({ access_url: issued.url, expires_at: issued.expiresAt })
   }
 }

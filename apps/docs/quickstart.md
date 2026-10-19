@@ -137,10 +137,11 @@ const agentify = createClient({
 })
 ```
 
-The code on this page also runs as plain JavaScript. To try it in an empty
-project, put it in a file whose name ends in `.mjs`, such as `agentify.mjs`,
-which lets Node read `import` and `await` at the top of the file, and put the
-key and the address in a file named `.env` beside it:
+The code on this page, but for the test buyer on step 6, also runs as plain
+JavaScript. To try it in an empty project, put it in a file whose name ends in
+`.mjs`, such as `agentify.mjs`, which lets Node read `import` and `await` at
+the top of the file, and put the key and the address in a file named `.env`
+beside it:
 
 ```sh
 AGENTIFY_API_KEY=csk_test_...
@@ -289,8 +290,9 @@ await order.refuse({
 ```
 
 `deliver` and `refuse` return their failures in the same envelope the publish
-does, `ok` and an `error`, rather than throwing them ([When a closing call
-does not go through](/orders#when-a-closing-call-does-not-go-through)).
+does, `ok` and an `error`, rather than throwing them, unless the client was
+built with no address ([When a closing call does not go
+through](/orders#when-a-closing-call-does-not-go-through)).
 
 ### A failure that may pass, and a repeat
 
@@ -412,8 +414,12 @@ const bought = await payingFetch(card.purchase_url, {
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ params: { email: 'you@example.com' } }),
 })
-if (!bought.ok) throw new Error(`${bought.status}: ${await bought.text()}`)
-let order = (await bought.json()) as Order
+// A refusal carries no order: print it rather than read it as one.
+const answer = (await bought.json()) as Partial<Order>
+if (typeof answer.status_url !== 'string') {
+  throw new Error(`${bought.status}: ${JSON.stringify(answer)}`)
+}
+let order = answer as Order
 
 // Goods that come later are collected at the order's own address.
 for (let tries = 0; order.status === 'in_progress' && tries < 60; tries += 1) {
