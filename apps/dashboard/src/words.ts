@@ -128,7 +128,10 @@ export type AccountReason =
   | "through_shop"
   | "unread";
 
-/** A page of the dashboard, named without its prefix, and the words that lead there. */
+/**
+ * A page of the dashboard, named without its prefix, or a whole address
+ * elsewhere, and the words that lead there.
+ */
 export interface Way {
   readonly to: string;
   readonly words: string;
@@ -137,7 +140,9 @@ export interface Way {
 /**
  * One title and one sentence each, and the page that puts it right where one
  * does. The approval says what is known, that there is none, and not that a
- * review is under way, since nothing records one; nobody sets it on a page.
+ * review is under way, since nothing records one; nobody sets it on a page,
+ * so it leads on to the test channel's own dashboard, where the first sale is
+ * made under another account.
  */
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
@@ -154,8 +159,8 @@ export const ACCOUNT_WORDS: Readonly<
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents cannot buy your cards on the live site until Agentify approves your merchant; if an Agentify operator is coordinating your pilot, ask them for the approval.",
-    fix: null,
+    says: "Agents cannot buy your cards on the live site until Agentify approves your merchant; if an Agentify operator is coordinating your pilot, ask them for the approval. Your first test sale happens on the test channel, under an account of its own.",
+    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Open the test dashboard" },
   },
   no_seller_name: {
     title: "No seller name yet",
