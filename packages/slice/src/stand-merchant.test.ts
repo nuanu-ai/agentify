@@ -691,3 +691,165 @@ describe("a stand keeping no records", () => {
     expect(gateway.answers[1]?.body).toEqual({ delivered: { licence: "the-corrected-goods" } });
   });
 });
+
+describe("an order paused as it arrives", () => {
+  it("is neither answered nor recorded until it is released, and then is both", async () => {
+    // The promise: "before the effect" means before it. A tester who crashes
+    // the stand here must find no record and no answer, or the phase they
+    // meant to hit is not the phase they hit.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const stand = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    stand.moods.delivery = { licence: "the-goods" };
+    stand.pause.at = "arrival";
+    await stand.connect(gateway.url, KEY);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.get(ORDER_ID)?.phase === "arrival");
+    await settle();
+
+    expect(gateway.answers).toEqual([]);
+    expect(await recordsIn(directory)).toEqual([]);
+    expect(await arrivalsIn(directory)).toHaveLength(1);
+
+    expect(stand.releasePaused(ORDER_ID)).toBe(true);
+    await waitUntil(() => gateway.answers.length === 1);
+
+    expect(gateway.answers[0]?.body).toEqual({ delivered: { licence: "the-goods" } });
+    expect((await recordsIn(directory)).map((one) => one.answer)).toEqual([
+      gateway.answers[0]?.body,
+    ]);
+  });
+});
+
+describe("an order paused with its answer ready", () => {
+  it("is recorded and not answered until it is released, and so is its repeat", async () => {
+    // The promise: "after the durable effect, before the acknowledgement". The
+    // record is on disk and the gateway has heard nothing, which is the state
+    // a crash here leaves behind. A repeat is paused at the same point, so two
+    // stands holding one redelivered order can both be caught there.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const stand = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    stand.moods.order = "refuse";
+    stand.pause.at = "answer_ready";
+    await stand.connect(gateway.url, KEY);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.get(ORDER_ID)?.phase === "answer_ready");
+    const records = await recordsIn(directory);
+    await settle();
+
+    expect(records.map((one) => one.answer)).toEqual([{ refused: stand.moods.refusal }]);
+    expect(gateway.answers).toEqual([]);
+
+    stand.releasePaused(ORDER_ID);
+    await waitUntil(() => gateway.answers.length === 1);
+    expect(gateway.answers[0]?.body).toEqual(records[0]?.answer);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.get(ORDER_ID)?.phase === "answer_ready");
+    await settle();
+    expect(gateway.answers).toHaveLength(1);
+
+    stand.releasePaused(ORDER_ID);
+    await waitUntil(() => gateway.answers.length === 2);
+    expect(gateway.answers[1]?.body).toEqual(records[0]?.answer);
+  });
+
+  it("makes no delivery for an order it took on until its answer is released", async () => {
+    // The promise: the gateway hears that the order was taken on before the
+    // goods arrive. A delivery scheduled while that answer was still paused
+    // would arrive for an order the gateway had never been told was taken on.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const stand = makeStandMerchant(makeFeed());
+    merchant = stand;
+    stand.moods.order = "accept_then_deliver";
+    stand.moods.deliverAfterMs = 0;
+    stand.pause.at = "answer_ready";
+    await stand.connect(gateway.url, KEY);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.has(ORDER_ID));
+    await settle();
+
+    expect(gateway.deliveries).toEqual([]);
+    expect(gateway.answers).toEqual([]);
+
+    stand.releasePaused(ORDER_ID);
+    await waitUntil(() => gateway.deliveries.length === 1);
+    expect(gateway.answers.map((one) => one.body)).toEqual([{ accepted: {} }]);
+  });
+});
+
+/** Fails, rather than waiting on, a promise that has not settled within `ms`. */
+const within = async <T>(ms: number, promise: Promise<T>): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`still waiting after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+describe("disconnecting while an order is paused", () => {
+  it("returns, and answers and records nothing for an order paused as it arrived", async () => {
+    // The promise: a disconnect lets go of a paused order by giving up on it,
+    // so the gateway sends the order again. Letting it run on would make an
+    // effect and an answer nobody released.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const feed = makeFeed();
+    const stand = makeStandMerchant(feed, { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    stand.pause.at = "arrival";
+    await stand.connect(gateway.url, KEY);
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.has(ORDER_ID));
+
+    await within(5_000, stand.disconnect());
+
+    expect(gateway.answers).toEqual([]);
+    expect(await recordsIn(directory)).toEqual([]);
+    expect(stand.paused.size).toBe(0);
+    // The SDK's word for a handler that answered nothing, so the order returns.
+    expect(
+      feed
+        .entries()
+        .some(
+          (entry) =>
+            detailOf(entry).error === "handler_failed" && detailOf(entry).subject === ORDER_ID,
+        ),
+    ).toBe(true);
+  });
+
+  it("keeps the record of an order paused with its answer ready, and answers nothing", async () => {
+    // The promise: an effect already made is not undone by a disconnect. The
+    // repeat that follows finds it.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const stand = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    stand.pause.at = "answer_ready";
+    await stand.connect(gateway.url, KEY);
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.has(ORDER_ID));
+
+    await within(5_000, stand.disconnect());
+
+    expect(gateway.answers).toEqual([]);
+    expect(await recordsIn(directory)).toHaveLength(1);
+  });
+});
