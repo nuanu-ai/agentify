@@ -41,11 +41,14 @@ You do: your integration or your shop's import publishes them, and republishes
 a card when its product or price changes. The card is the whole of what an
 agent reads before buying ([The product card](/cards)).
 
-### Will live customers come to me?
+### Will Agentify bring buyers to me?
 
-No. The buyers here are programs carrying out a person's instruction and paying
-from a budget they were given; the person does not visit your site and does not
-write to your support. The program decides from the text of the card ([Who buys
+Not by itself. Agentify publishes your cards in its own catalogue, where agents
+that read it find them, and catalogues run by other people may list them too;
+nothing guarantees that any agent buys, and how many read the catalogue today
+is not something we can tell you yet. The buyers are programs carrying out a
+person's instruction, so the person does not visit your site or write to your
+support, and the program decides from the text of the card ([Who buys
 here](/#who-buys-here)).
 
 ### How do I find out about a sale?
