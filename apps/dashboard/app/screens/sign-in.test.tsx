@@ -138,6 +138,31 @@ describe("the Google sign-in choice", () => {
   });
 });
 
+describe("the way to the privacy page", () => {
+  it("is on the sign-in page itself, where a visitor from an ad is told nothing else of the report to the ad tracker", () => {
+    const html = renderToString(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("sandbox")}
+          view={{
+            screen: "ask",
+            destination: "default",
+            googleEnabled: true,
+            clickId: "qa_click_0123456789abcdef",
+          }}
+        />
+      )),
+    );
+
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const card = document.querySelector("main");
+    const privacy = [...(card?.querySelectorAll("a") ?? [])].find(
+      (link) => link.textContent?.trim() === "Privacy",
+    );
+    expect(privacy?.getAttribute("href")).toBe("/privacy");
+  });
+});
+
 describe("what a merchant is served after asking for a link", () => {
   for (const [said, answer] of ANSWERS) {
     it(`keeps the resend on the page when ${said}`, () => {

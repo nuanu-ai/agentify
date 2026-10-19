@@ -82,6 +82,12 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
           New to Agentify? Sign in here. Once you are signed in, one button opens your seller
           dashboard.
         </p>
+        {/* The header's own Privacy link is hidden on a phone, and an ad's visitor is reported
+            to the ad tracker with nothing asked here, so the privacy page is reached from
+            the card. */}
+        <p className="quiet">
+          <a href="/privacy">Privacy</a>
+        </p>
       </div>
     </GatePage>
   );
