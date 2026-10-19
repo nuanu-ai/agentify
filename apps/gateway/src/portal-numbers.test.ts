@@ -412,7 +412,7 @@ const PINS: readonly Pin[] = [
   {
     what: "the delivery deadline a card leaves out, in the table of every time limit",
     page: "apps/docs/orders.md",
-    anchor: /your `fulfill_deadline_seconds`; without it, a (\w+) \|/,
+    anchor: /the deadline your card names; without one, a (\w+) \|/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
@@ -481,7 +481,7 @@ const PINS: readonly Pin[] = [
   {
     what: "the attempt cap, in the table of every time limit",
     page: "apps/docs/orders.md",
-    anchor: /up to (\w+) times in all/,
+    anchor: /up to (\w+) deliveries in all, within its own deadline/,
     reads: "count",
     is: redelivery.maxAttempts,
   },
@@ -502,7 +502,7 @@ const PINS: readonly Pin[] = [
   {
     what: "the same cap, in the table of failures",
     page: "apps/docs/failures.md",
-    anchor: /up to (\w+) times, while its deadline lasts/,
+    anchor: /up to (\w+) deliveries in all, while its deadline lasts/,
     reads: "count",
     is: redelivery.maxAttempts,
   },

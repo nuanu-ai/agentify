@@ -112,7 +112,7 @@ function paidAsync(): Order {
 const ENDINGS = [
   "You delivered the goods",
   "You recorded a parcel's shipment",
-  "There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode",
+  "There is none, or you refused in the synchronous mode",
   "Time ran out: the price lapsed before the payment, or no synchronous delivery arrived",
   "You left",
   "The money was charged and no delivery happened",
@@ -163,9 +163,12 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
   });
 
   it(`${ENDINGS[2]}: nothing moved, and the agent sees a refusal`, () => {
-    // Four different failures, and the row promises the agent one word for all
-    // of them. The machine keeps them apart for the merchant's own metrics;
-    // this is where they are held to the single word the page gives the buyer.
+    // Three different refusals, and the row promises the agent one word for
+    // all of them. The machine keeps them apart for the merchant's own
+    // metrics; this is where they are held to the single word the page gives
+    // the buyer. Parameters that do not fit and a payment that fails its check
+    // are refused by the gateway before the machine sees them, so they are not
+    // this row's.
     //
     // The row's other half, that a merchant's own refusal reaches the agent
     // with his code and message, is held in
@@ -176,20 +179,15 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
       at: T0 + 1,
       available: false,
     }).order;
-    const badParams = must(reach("dispatched"), {
+    const refusedTheParams = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
       code: "invalid_params",
       message: "the address does not parse",
     }).order;
-    const badPayment = must(newOrder("sync"), {
-      kind: "payment_verification_failed",
-      at: T0 + 1,
-      reason: "signature",
-    }).order;
     const refusedInSync = reach("failed");
 
-    for (const order of [noStock, badParams, badPayment, refusedInSync]) {
+    for (const order of [noStock, refusedTheParams, refusedInSync]) {
       expect(statusOf(ENDINGS[2]), `from ${order.state}`).toStrictEqual([outcomeFor(order)]);
     }
   });
