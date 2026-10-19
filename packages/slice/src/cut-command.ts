@@ -157,7 +157,12 @@ const patternOf = (path: string): RegExp =>
       .join("[^/]*")}$`,
   );
 
-const HOP_BY_HOP = [
+/**
+ * Headers that describe one connection rather than the message. A chunked
+ * `transfer-encoding` carried across would contradict the length the body is
+ * sent with on the other side, where it always travels whole.
+ */
+const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
   "proxy-authenticate",
@@ -167,19 +172,10 @@ const HOP_BY_HOP = [
   "trailer",
   "transfer-encoding",
   "upgrade",
-];
+]);
 
-/**
- * The end-to-end headers, with the framing left to whoever writes the bytes
- * next: the body is always whole in memory, so its length is set afresh.
- */
-const endToEnd = (headers: IncomingHttpHeaders): OutgoingHttpHeaders => {
-  const named = String(headers.connection ?? "")
-    .split(",")
-    .map((name) => name.trim().toLowerCase());
-  const dropped = new Set([...HOP_BY_HOP, ...named, "content-length", "host"]);
-  return Object.fromEntries(Object.entries(headers).filter(([name]) => !dropped.has(name)));
-};
+const endToEnd = (headers: IncomingHttpHeaders): OutgoingHttpHeaders =>
+  Object.fromEntries(Object.entries(headers).filter(([name]) => !HOP_BY_HOP.has(name)));
 
 const wholeBody = async (message: IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
@@ -202,15 +198,11 @@ const forward = (
 ): Promise<Answer> =>
   new Promise((resolve, reject) => {
     const send = upstream.protocol === "https:" ? httpsRequest : httpRequest;
-    const headers: OutgoingHttpHeaders = { ...endToEnd(incoming.headers), host: upstream.host };
-    if (body.length > 0 || incoming.headers["content-length"] !== undefined) {
-      headers["content-length"] = body.length;
-    }
     const options = {
       ...urlToHttpOptions(upstream),
       path: `${basePath}${incoming.url ?? "/"}`,
       method: incoming.method,
-      headers,
+      headers: { ...endToEnd(incoming.headers), host: upstream.host },
       // A fresh connection each time: a pooled one the upstream has closed
       // would turn into a reset, and a reset here reads as the upstream's.
       agent: false,
@@ -231,13 +223,8 @@ const forward = (
     outgoing.end(body);
   });
 
-const ORDER_IN_PATH = /\/orders\/([^/]+)/;
-
-const orderOf = (path: string, answer: Answer): string | null => {
-  const named = ORDER_IN_PATH.exec(path)?.[1];
-  if (named !== undefined) {
-    return named;
-  }
+/** The order an answer names; one named in the path already shows in the line. */
+const orderOf = (answer: Answer): string | null => {
   try {
     const document: unknown = JSON.parse(answer.body.toString("utf8"));
     if (typeof document === "object" && document !== null && "order_id" in document) {
@@ -344,7 +331,7 @@ export const runCut = async (
       return;
     }
 
-    const order = orderOf(path, answer);
+    const order = orderOf(answer);
     const facts = `${answer.status}, ${answer.body.length} bytes${order === null ? "" : `, order ${order}`}`;
     const matched = counted < rule.nth && method === rule.method && pattern.test(path);
     const stillArmed = "not counted, the rule is still armed";
