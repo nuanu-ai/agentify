@@ -1,12 +1,29 @@
 /**
  * Search results and link previews describe the documentation page they lead
- * to. Editorial wording may change without changing that promise.
+ * to, and a page tells a reader that prefers Markdown where its Markdown is.
+ * Editorial wording may change without changing that promise.
  */
 
-import type { LoaderFunctionArgs } from "react-router";
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { LoaderFunctionArgs, MetaDescriptor } from "react-router";
+import { afterAll, describe, expect, it } from "vitest";
+import { writeMarkdownCopies } from "./markdown-copy.js";
 import { DOCS_DESCRIPTION, PAGES } from "./pages.js";
 import { loader, meta } from "./routes/page.js";
+import { valueTemplate } from "./site-values.js";
+
+/** The head a page is served with, outside a deployment, so the site's address is Caddy's template. */
+const headOfPage = async (path: string): Promise<MetaDescriptor[]> =>
+  meta({
+    loaderData: await loader({ params: { "*": path.slice(1) } } as unknown as LoaderFunctionArgs),
+    matches: [],
+  } as unknown as Parameters<typeof meta>[0]);
+
+const valueOf = (tags: MetaDescriptor[], property: string): unknown =>
+  tags.find((tag) => "property" in tag && tag.property === property)?.content ??
+  tags.find((tag) => "name" in tag && tag.name === property)?.content;
 
 describe("documentation search metadata", () => {
   it("describes every page individually in search results and link previews", async () => {
@@ -38,5 +55,42 @@ describe("documentation search metadata", () => {
     }
     expect(new Set(descriptions).size).toBe(PAGES.length);
     expect(new Set(titles).size).toBe(PAGES.length);
+  });
+});
+
+describe("a page's Markdown", () => {
+  const built = mkdtempSync(join(tmpdir(), "agentify-docs-markdown-"));
+  afterAll(() => rmSync(built, { recursive: true, force: true }));
+
+  it("is named in every page's head at an address the build writes it to", async () => {
+    await writeMarkdownCopies(built);
+    const origin = `${valueTemplate("origin")}/docs/`;
+
+    for (const page of PAGES) {
+      const named = (await headOfPage(page.path)).find(
+        (tag) => "rel" in tag && tag.rel === "alternate" && tag.type === "text/markdown",
+      );
+      const href = String(named?.href ?? "");
+
+      expect(href.startsWith(origin), `${page.path}: ${href}`).toBe(true);
+      expect(existsSync(join(built, href.slice(origin.length))), `${page.path}: ${href}`).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe("a link to a page, unfurled", () => {
+  it("shows the picture about selling to agents for a merchant page, and the site's for a scanner page", async () => {
+    for (const page of PAGES) {
+      const tags = await headOfPage(page.path);
+      const picture = String(valueOf(tags, "og:image"));
+
+      expect(valueOf(tags, "twitter:card"), page.path).toBe("summary_large_image");
+      expect(picture, page.path).toBe(
+        `${valueTemplate("origin")}${page.site === true ? "/opengraph-image" : "/agentic-shop/opengraph-image"}`,
+      );
+      expect(valueOf(tags, "og:image:alt"), page.path).toBeTruthy();
+    }
   });
 });
