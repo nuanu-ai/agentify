@@ -79,7 +79,7 @@ function keyCaller(call: RouteCall): Caller {
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
 
   return {
     publish_card: {

@@ -20,18 +20,17 @@ import { X402Facilitator } from "./facilitator.js";
 /** The address the merchant behind these charges is paid at. */
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
-const edge = new PaymentEdge(
-  {
+const edge = new PaymentEdge({
+  payment: {
     facilitatorUrl: "https://x402.org/facilitator",
     network: "eip155:84532",
-    timeoutSeconds: 300,
     payTo: PAY_TO,
     cdpApiKeyId: null,
     cdpApiKeySecret: null,
   },
-  "https://agentify.example",
-  300,
-);
+  publicBaseUrl: "https://agentify.example",
+  deadlines: { quoteTtlMs: 300_000 },
+});
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */
 class Answering implements FacilitatorClient {

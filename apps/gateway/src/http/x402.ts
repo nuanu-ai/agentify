@@ -31,7 +31,7 @@ import type {
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { purchaseUrlOf } from "../app/addresses.js";
-import type { GatewayConfig, PaymentConfig } from "../config.js";
+import type { GatewayConfig } from "../config.js";
 import { randomIds } from "../ports/clock.js";
 
 /** The x402 version this edge speaks. */
@@ -107,15 +107,27 @@ const WIDEST = {
   serviceName: widestListingName(),
 } as const;
 
-export class PaymentEdge {
-  readonly #config: PaymentConfig;
-  readonly #baseUrl: string;
-  readonly #timeoutSeconds: number;
+/** What the payment edge reads of a gateway's configuration. */
+type EdgeConfig = Pick<GatewayConfig, "payment" | "publicBaseUrl"> & {
+  readonly deadlines: Pick<GatewayConfig["deadlines"], "quoteTtlMs">;
+};
 
-  constructor(config: PaymentConfig, baseUrl: string, timeoutSeconds: number) {
+export class PaymentEdge {
+  readonly #config: EdgeConfig;
+
+  constructor(config: EdgeConfig) {
     this.#config = config;
-    this.#baseUrl = baseUrl;
-    this.#timeoutSeconds = timeoutSeconds;
+  }
+
+  /**
+   * How long a challenge gives an agent to pay: the life of the price it
+   * names, which is also how long an unpaid order lives, so the agent knows its
+   * real window before it signs. The protocol counts whole seconds, at least
+   * one; rounding down keeps the window from promising more than the price
+   * holds.
+   */
+  #windowSeconds(): number {
+    return Math.max(1, Math.floor(this.#config.deadlines.quoteTtlMs / 1_000));
   }
 
   /**
@@ -154,7 +166,7 @@ export class PaymentEdge {
       asset: asset.asset,
       amount: atomicUnits(price.amount, asset.decimals),
       payTo,
-      maxTimeoutSeconds: this.#timeoutSeconds,
+      maxTimeoutSeconds: this.#windowSeconds(),
       extra: {
         name: asset.name,
         version: asset.version,
@@ -189,7 +201,7 @@ export class PaymentEdge {
       // The configured base, never the request's: behind the proxy the request
       // says `http://` with the caller's query string, and a catalog keys a
       // listing on this address, so two spellings would be two listings.
-      url: purchaseUrlOf({ publicBaseUrl: this.#baseUrl }, listed.itemId),
+      url: purchaseUrlOf(this.#config, listed.itemId),
       serviceName: listed.serviceName,
     });
 
@@ -248,17 +260,17 @@ export class PaymentEdge {
   }
 
   #network(): `${string}:${string}` {
-    return this.#config.network as `${string}:${string}`;
+    return this.#config.payment.network as `${string}:${string}`;
   }
 
   token(): TokenIdentity {
-    return { network: this.#config.network, asset: getDefaultAsset(this.#network()).asset };
+    return { network: this.#config.payment.network, asset: getDefaultAsset(this.#network()).asset };
   }
 }
 
 /** `widestChallengeFor` on the challenges a gateway with this configuration answers with. */
 export function widestChallengeOn(config: GatewayConfig): (card: Card) => number {
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
   return (card) => edge.widestChallengeFor(card);
 }
 

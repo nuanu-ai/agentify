@@ -63,14 +63,22 @@ by default, and the gateway does not change that. Neither Caddy configuration
 in `deploy/` sets a proxy timeout, and the merchant's worker already holds a
 poll open for twenty-five seconds through the same proxies. Node's own HTTP
 server allows a request three hundred seconds, and the gateway sets no other
-limit. The payment authorisation the agent signs stays valid for
-`PAYMENT_TIMEOUT_SECONDS` from the moment it was signed, three hundred by
-default. An agent signs inside the price's thirty-second life, the charge goes
-out at most ten seconds after the payment checked out, and the facilitator call
-that carries it is cut off after thirty, so all of it falls far inside that. On
-an order paid before its goods the purchase call does not wait on the deadline
-at all: it waits for the facilitator's answer itself, bounded by that
-thirty-second client.
+limit. On an order paid before its goods the purchase call does not wait on
+the deadline at all: it waits for the facilitator's answer itself, bounded by
+that thirty-second client.
+
+One wait is shorter than the rest. The payment challenge offers an agent the
+life of the price to pay, thirty seconds (`QUOTE_TTL_MS`), so that it knows its
+real window before it signs, and an agent's client signs its authorisation
+valid for that long from the moment it signs. The exact-EVM facilitator refuses
+an authorisation that expires within six seconds, at the check and again at
+the charge. An agent that presents its payment as soon as it has signed leaves
+a synchronous charge, sent at most ten seconds after the payment checked out,
+about fourteen seconds of room, and the transfers measured below land in under
+three. An agent that holds a signed authorisation before presenting it spends
+that room: past about fourteen seconds of holding, a merchant who takes the
+whole ten seconds sees the charge refused after the goods were made, and the
+order waits as `delivered_unpaid` for a repeat purchase to collect them.
 
 ## What was measured
 
@@ -113,13 +121,11 @@ status route the contract names from the order's identifier, which the payment
 challenge carries. Which timeouts the agents that buy here actually use is not
 known.
 
-`PAYMENT_TIMEOUT_SECONDS` is three hundred by default, and the configuration
-accepts any whole number of seconds above zero. A deployment set below about
-seventy seconds could let a synchronous charge land after the authorisation
-has expired (thirty seconds of the price's life, ten for the merchant, then up
-to thirty for the facilitator call), which fails the charge after the goods
-were delivered. No deployment overrides the default, and nothing at startup
-refuses such a value.
+How long the agents that buy here hold a signed authorisation before they
+present it is not known. A deployment that shortens `QUOTE_TTL_MS` shortens the
+authorisation with it, and nothing at startup refuses a price's life too short
+for a synchronous charge to go through inside it; no deployment overrides the
+default.
 
 Whether the two refunds owed on TEST were ever reconciled has not been
 checked. The changes to the waits do not touch orders that already exist.

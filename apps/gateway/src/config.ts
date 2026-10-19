@@ -214,6 +214,12 @@ const environmentSchema = z.object({
 
   /** How long we wait for the merchant to say what the goods cost. */
   QUOTE_RESPONSE_MS: durationMs(5_000),
+  /**
+   * How long a price holds, and with it the unpaid order it was named for. The
+   * payment challenge offers an agent this long to pay, so it is also how long
+   * the authorisation an agent signs stays valid, and a synchronous card's
+   * charge, sent after its goods, has to go through inside it.
+   */
   QUOTE_TTL_MS: durationMs(30_000),
   /**
    * How long we wait to be told whether the charge went through, on a
@@ -375,11 +381,6 @@ const environmentSchema = z.object({
     .regex(/^[^:\s]+:[^:\s]+$/, "must be a CAIP-2 chain such as eip155:84532")
     .default(DEFAULT_PAYMENT_NETWORK),
   /**
-   * How long a challenge stays payable. The payment authorisation is signed
-   * against it, so it belongs to the protocol rather than to the order machine.
-   */
-  PAYMENT_TIMEOUT_SECONDS: countAbove(300),
-  /**
    * Where the money goes. Absent until a real payment is to be taken, and held
    * to the shape of its chain when present: it goes straight into the
    * challenge, and a truncated paste would invite agents to pay nobody.
@@ -432,7 +433,6 @@ interface WorkerConfig {
 export interface PaymentConfig {
   readonly facilitatorUrl: string;
   readonly network: string;
-  readonly timeoutSeconds: number;
   readonly payTo: string | null;
   readonly cdpApiKeyId: string | null;
   readonly cdpApiKeySecret: string | null;
@@ -727,7 +727,6 @@ export function loadConfig(
     payment: {
       facilitatorUrl: environmentValues.FACILITATOR_URL,
       network,
-      timeoutSeconds: environmentValues.PAYMENT_TIMEOUT_SECONDS,
       payTo,
       cdpApiKeyId: environmentValues.CDP_API_KEY_ID ?? null,
       cdpApiKeySecret: environmentValues.CDP_API_KEY_SECRET ?? null,
