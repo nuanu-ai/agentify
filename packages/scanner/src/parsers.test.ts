@@ -44,7 +44,7 @@ Allow: /
     ]);
   });
 
-  it("uses only the most specific user-agent groups when applying rules", () => {
+  it("follows the groups naming the scanner's token, and the * group only when none does", () => {
     const specificDeny = parseRobots(`
 User-agent: *
 Allow: /
@@ -64,7 +64,43 @@ Allow: /
 `);
     expect(isPathAllowed(specificAllow, "agentify-scanner", "/public")).toBe(true);
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
+
+    // RFC 9309 merges every group that names the token.
+    const twoGroups = parseRobots(`
+User-agent: agentify-scanner
+Disallow: /a
+User-agent: *
+Disallow: /
+User-agent: agentify-scanner
+Disallow: /b
+`);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/a")).toBe(false);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/b")).toBe(false);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/c")).toBe(true);
   });
+
+  it("reads a user-agent line of * followed by other words as the group for every crawler", () => {
+    const parsed = parseRobots("User-agent: * all crawlers\nDisallow: /\n");
+    expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
+  });
+
+  it.each([
+    "agentify-scanner",
+    "Agentify-Scanner",
+    "agentify-scanner/1.0",
+    "agentify-scanner/1.0 (+https://agentify.ad/scanner)",
+  ])("a group whose user-agent line reads %s applies to the scanner", (line) => {
+    const parsed = parseRobots(`User-agent: *\nAllow: /\n\nUser-agent: ${line}\nDisallow: /\n`);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
+  });
+
+  it.each(["agentify", "scanner", "agent"])(
+    "a group naming only %s, a part of the scanner's token, leaves the scanner to the * group",
+    (line) => {
+      const parsed = parseRobots(`User-agent: *\nDisallow: /\n\nUser-agent: ${line}\nAllow: /\n`);
+      expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
+    },
+  );
 
   it("lets the longest matching rule decide, and Allow win a tie", () => {
     // The tie is Google's documented example of the least restrictive rule.

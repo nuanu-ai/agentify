@@ -159,6 +159,77 @@ describe("bounded scan graph", () => {
       ).toBe(true);
   });
 
+  it("sends no request in an AI agent's name where robots.txt keeps that agent off the page", async () => {
+    const target = transport("User-agent: *\nAllow: /\n\nUser-agent: ChatGPT-User\nDisallow: /\n");
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.filter((request) => request.includes("ChatGPT-User"))).toEqual([]);
+    expect(evaluation.checks.find((check) => check.id === 13)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "agent_ua_robots_disallowed",
+      evidence: { chatgpt_robots_disallowed: true, claude_robots_disallowed: false },
+    });
+    // The scanner itself was let in, so no check says robots.txt kept it out.
+    expect(evaluation.checks.filter((check) => check.errorCode === "robots_disallowed")).toEqual(
+      [],
+    );
+  });
+
+  it("follows no redirect in an AI agent's name to an address robots.txt keeps that agent off", async () => {
+    const target = transport(
+      "User-agent: *\nAllow: /\n\nUser-agent: Claude-User\nDisallow: /agents/\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers["user-agent"]?.startsWith("Claude-User")
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/agents/home",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/agents/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 13)?.summaryCode).toBe(
+      "agent_ua_robots_disallowed",
+    );
+  });
+
+  it("follows no redirect in an AI agent's name to an address the scanner's own group keeps it off", async () => {
+    const target = transport(
+      "User-agent: *\nAllow: /\n\nUser-agent: agentify-scanner\nDisallow: /agents/\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers["user-agent"]?.startsWith("ChatGPT-User")
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/agents/home",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/agents/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
+  });
+
   it("sends the user agents the documentation's page about the scanner names, with the channel's own address", async () => {
     // The page names the site's address as `{{origin}}`, which Caddy fills
     // from the address the scanner is given as its own.
@@ -180,6 +251,23 @@ describe("bounded scan graph", () => {
 
     expect(named).toHaveLength(2);
     for (const agent of named) expect(sentAs(agent), agent).not.toEqual([]);
+  });
+
+  it("keeps out of a site whose robots.txt names the token the documentation's page gives the scanner", async () => {
+    const page = readFileSync(new URL("../../docs/scanner/index.md", import.meta.url), "utf8");
+    const token = /the scanner answers to the token `([^`]+)`/.exec(page.replace(/\s+/g, " "))?.[1];
+    expect(token).toBeDefined();
+    const target = transport(`User-agent: *\nAllow: /\n\nUser-agent: ${token}\nDisallow: /\n`);
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.map((request) => request.split(" ").slice(0, 2).join(" "))).toEqual([
+      "GET /robots.txt",
+    ]);
   });
 
   it("is deterministic across two identical runs except transport timing evidence", async () => {
