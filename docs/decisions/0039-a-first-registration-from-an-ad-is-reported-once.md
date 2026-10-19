@@ -14,9 +14,11 @@ ad and the fact that the click led to a registration, nothing about the person.
 
 ## Decision
 
-Such a registration is reported by default, with nothing asked on screen, on
-the product owner's word of 2026-10-19 following legal advice; the privacy page
-says so.
+Such a registration is reported whatever the person's privacy choices, with
+nothing asked on screen, on the product owner's word of 2026-10-19. It rests on
+legal advice that stating the report in the privacy policy is enough, and the
+privacy page states it; the lawful ground the advice relies on is not recorded
+here.
 
 A registration is an address's first verification in the identity of ADR-0026:
 a mailed link's press that writes a missing account or verifies an unverified
@@ -52,12 +54,12 @@ given up a day after registration.
 
 ## Alternatives rejected
 
-Asking with a box on the sign-in form, which let the click be kept, and
-confirming on the link's page with two equal buttons, because the box ticked at
-a link's request is not the owner's word: the earlier form of this decision,
-withdrawn on the product owner's word above. Asking in the consent banner: a
-banner over the sign-in form, and the banner promises that optional
-measurement stays off until it is allowed. A cookie of our own, which a link
+Asking with a box on the sign-in form and confirming on the link's page: the
+advice above found the question unnecessary, it puts a decision in front of
+someone who came to sign in, and every box left unticked is a registration the
+ads are not measured by. Asking in the consent banner: a banner over the
+sign-in form, and the banner promises that optional measurement stays off until
+it is allowed, so the report would go only for those who allowed it. A cookie of our own, which a link
 opened on another device lacks. The scanner's outbox or a second sender there,
 across the boundary ADR-0026 §2 draws. Signing the click identifier, public to
 anybody who clicks the ad. Reporting from the test channel, which would count
