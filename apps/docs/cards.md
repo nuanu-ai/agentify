@@ -56,13 +56,7 @@ the point of connection that survives you publishing your cards again.
 
 A short line by which the product is told apart from its neighbours in a
 listing. It reaches the agent in our own catalogue, beside the description and
-the price.
-
-It does not reach a catalogue outside ours. Those carry one field of prose for
-a product where a card has two, and joining your headline to your description
-with punctuation of our own would be us writing your listing for you — so what
-goes out there is the description, the field a card writes for a program to
-read.
+the price; a catalogue outside ours carries the description alone.
 
 A title has to be there, it has to be more than blank space, and it is [plain
 text](#the-words-on-a-card-are-plain-text) on one line. No length is measured
@@ -223,21 +217,22 @@ know what your delivery needs; getting it right is yours.
 A card that names no fulfillment mode is synchronous, and it is stored and
 shown as though it had said so: the goods go to the agent in the answer to the
 purchase, which is what both cards above do. Where they cannot go back that
-quickly — a profile that has to be provisioned, a supplier who has to be asked
-— the card carries `fulfillment: 'async'` instead, and the agent sees the mode
-before it pays. The mode decides when the buyer is charged and how the sale
-behaves when something fails; what happens inside each of them is on [Orders
-and fulfillment modes](/orders).
+quickly, the card names another mode, and the agent sees it before it pays.
+The mode decides when the buyer is charged and how the sale behaves when
+something fails, so the product decides it:
 
-The product decides the mode. The SDK handler delivers both ways — an eSIM can
-be paid for at the moment of purchase and its profile arrives afterwards.
-Delivery by a message is not available.
+| Your product | `fulfillment` | When the buyer is charged |
+| --- | --- | --- |
+| Your API hands it over within ten seconds of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
+| It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own | at the moment of purchase |
+| A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping your price handler names |
+| A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
+| A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
+| Every order has to be accepted by hand | none yet: the confirmation mode is designed and cannot be published | — |
 
-A third mode, `'confirm'`, puts your confirmation before the delivery: you are
-asked whether you will deliver, and the buyer is charged after your yes. A card
-cannot be published in it during the pilot — the request that asks you has no
-shape on the wire yet, so a handler could not tell one from a paid order, and
-publishing such a card would sell you a mode we cannot serve.
+What happens inside each mode is on [Orders and fulfillment modes](/orders),
+and one handler can serve products in different modes, telling them apart by
+`merchant_item_id`.
 
 An asynchronous card can carry one deadline of its own,
 `fulfill_deadline_seconds`: how long you may take to deliver. It runs from the
@@ -248,17 +243,14 @@ the agent sees it before it buys.
 
 Leaving it out does not leave you off a clock. A day applies instead, the
 agent sees that day on your card in the catalog as if you had named it, and an
-order that runs past it is marked as needing a refund exactly as one past a
-number of your own would be. That day is ours to set rather than the card's,
-so naming your own is the way to keep the time yours. What happens when a
-delivery deadline runs out is in [Time ran out](/orders).
+order that runs past it owes a refund exactly as one past a number of your
+own would. That day is ours to set rather than the card's, so naming your own
+is the way to keep the time yours.
 
-A synchronous card has no such field, because how long to wait for a synchronous
-answer is set by us, the same for every product: ten seconds. That one runs
-from the moment the payment checked out rather than from the moment the agent
-first asked, so the price question and the payment check are behind it rather
-than inside it. The confirmation mode has a deadline of its own — an hour, where
-the card names none — and it arrives together with the mode.
+A synchronous card has no such field, because how long to wait for a
+synchronous answer is set by us, the same for every product: ten seconds, from
+the moment the payment checked out. Every limit, and what happens when each
+runs out, is in [Every time limit](/orders#every-time-limit).
 
 ## A parcel sent by a carrier
 
@@ -344,11 +336,8 @@ The question your price handler receives looks like this:
 <<< @/examples/quote-request/purchase.json
 
 The field `purpose` says why we are asking. Today it always reads `"purchase"`:
-there is an agent behind the question, buying right now. Its other value,
-`"poll"`, belongs to a scheduled refresh between purchases — nothing sends it
-yet, and a handler should accept it all the same. Where the two are told apart,
-an expensive stock lookup is worth spending on a purchase and worth skipping on
-a poll.
+there is an agent behind the question, buying right now. A handler should
+accept the other value, `"poll"`, all the same, though nothing sends it yet.
 
 The field `price_id` identifies this one price question, and it is good once —
 no more than one order goes through under a single `price_id`. The same
@@ -410,8 +399,8 @@ out](/orders).
 We wait five seconds for an answer, and a question unanswered by then counts as
 silence, which costs different things in different modes ([What can go
 wrong](/failures)). The seconds run from the moment we ask, not from the moment
-your worker takes the question, and the question shares the stream with
-everything else: while your worker is busy with what is ahead of it — orders,
+your process takes the question, and the question shares the stream with
+everything else: while your process is busy with what is ahead of it — orders,
 other questions, events — the question waits, and more instances shorten that
 wait. Nothing on our side holds down how often these questions go out: one
 purchase asks one question and that question is put on your stream once, so the
@@ -463,13 +452,8 @@ it may run to paragraphs. A title, and the title of a declared field, is one
 line.
 
 The characters markup is made of are not refused on their own. `Tea & coffee`,
-`AT&T`, `R&D;`, `5 < 10`, `a -> b` and an address written as
-`<jane@example.com>` are text, and they are published and shown as you wrote
-them. A tag is an angle bracket and a name, closed by a bracket straight after
-the name or after a space or a slash and whatever attributes follow; the name
-begins with a letter and carries letters and digits, joined by a colon or a
-hyphen where there is one, as in `<o:p>` — so `List<String>` is refused, while
-`List< String >`, `Map<String, Integer>` and the address are not.
+`AT&T`, `5 < 10`, `a -> b` and an address written as `<jane@example.com>` are
+text, and they are published and shown as you wrote them.
 
 A refusal names the field, what was found in it, how many times, and the
 character where the first of it begins, counted from one in the same units as a
@@ -521,7 +505,7 @@ are together, the required fields first.
 | `price` | an amount as a string, and a currency; or the two as one string | required |
 | `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none |
 | `params` | the shape of the purchase parameters | required where the delivery needs input |
-| `fulfillment` | `'sync'`, `'async'` or `'ship'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` |
+| `fulfillment` | `'sync'`, `'async'` or `'ship'` | optional; a card that names no mode is `'sync'` |
 | `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card |
 | `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there |
 | `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional |
@@ -569,12 +553,9 @@ prefer.
 | `invalid_params` | the purchase parameters are no good for the delivery |
 | `cannot_fulfill` | it cannot be delivered, for some other reason |
 
-`out_of_stock` is the one we mean to count separately, because it feeds the
-availability measure — the share of purchases that ran into missing goods,
-which we mean to hold below a limit ([why](/failures)). Nothing counts it yet.
-When something does, a "there is none" refusal sent under a code of your own
-will not reach that measure and the picture of your catalogue's availability
-will come out wrong, so the common code is worth preferring now.
+Prefer `out_of_stock` for "there is none": the share of purchases that run
+into missing goods is meant to be measured by that code, and nothing counts it
+yet ([What is not settled yet](/failures#what-is-not-settled-yet)).
 
 ## Who checks a card before it is published
 
@@ -607,15 +588,19 @@ one: the key is yours, and we find what is already published by it. So a card
 can be uploaded from a script without checking first whether we have it.
 
 An update changes what the next sale is made under, never a sale already made.
-An order keeps the result its card declared when the agent asked to buy, so
-after you republish a product with a different result, the orders already
-taken are still delivered with the goods they were sold for, and only the new
-ones with the new shape.
+An order is held to the result its card declared when the agent asked to buy,
+and the order does not carry that declaration to you. So while orders sold
+under an older result are still open, deliver to them what they were sold
+with, or leave the result as it is until they have closed: a delivery in the
+new shape is refused for them with `delivery_does_not_match_card`.
 
-Taking a card off sale is the pause in the dashboard rather than a call. Paused,
+Taking a card off sale is a pause, on the Cards screen of your dashboard or
+with a call: `POST /v0/cards/<id>/pause`, where `<id>` is the catalogue `id`
+the publish returned, takes one card off sale, and `POST /v0/selling/pause`
+stops all of them. Each is called with your key as `Authorization: Bearer
+<key>`, and the SDK has no method for either. Paused,
 the card stops being visible in the catalogues, and the orders still open
-against it play out in the ordinary way. Nothing removes a card altogether, and
-what that ought to be is not settled.
+against it play out in the ordinary way. Nothing removes a card altogether.
 
 ## What is not settled yet
 
@@ -629,6 +614,8 @@ what that ought to be is not settled.
 - The shape of the field a card declares a price check in.
 - Whether the vocabulary of recommended codes grows beyond three: we decide
   that from the refusals the pilot actually turns up.
+- How a card is removed altogether rather than paused, and how long that
+  takes.
 - The scheduled refresh of price and availability between purchases. It is
   designed — a poll's answer would take a card out of a catalogue's listing
   until the next poll, and no sale would go through on a poll's answer alone,
@@ -642,7 +629,6 @@ what that ought to be is not settled.
   something to check a request against to know that it came from us. A price
   handler has neither question — the subscription channel is authenticated when
   it connects.
-- How a card is removed altogether rather than paused, and how long that takes.
 - The smallest price the live channel can charge. Its payment service documents
   a minimum below which it does not settle a payment and does not publish the
   number, so a price of a fraction of a cent is taken at publication and may be

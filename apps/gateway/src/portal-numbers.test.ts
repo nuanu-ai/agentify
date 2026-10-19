@@ -482,13 +482,6 @@ const PINS: readonly Pin[] = [
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
-  {
-    what: "the same, on the card reference",
-    page: "apps/docs/cards.md",
-    anchor: /a deadline of its own — an (\w+), where the card names none/,
-    reads: "period",
-    is: deadlines.defaultConfirmationResponseMs,
-  },
 
   // --- how long a handler's answer is waited for before the order goes again --
   //
