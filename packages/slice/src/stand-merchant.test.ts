@@ -773,6 +773,26 @@ describe("an order paused as it arrives", () => {
       gateway.answers[0]?.body,
     ]);
   });
+
+  it("is paused once, at the point set when it arrived, whatever is set while it waits", async () => {
+    // The promise: the pause point applies to arrivals. A tester who moves it
+    // while an order is paused is setting up the next arrival; the one already
+    // stopped goes on when released and is not stopped a second time.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const stand = makeStandMerchant(makeFeed());
+    merchant = stand;
+    stand.pause.at = "arrival";
+    await stand.connect(gateway.url, KEY);
+
+    gateway.hand(anOrder());
+    await waitUntil(() => stand.paused.get(ORDER_ID)?.phase === "arrival");
+    stand.pause.at = "answer_ready";
+
+    expect(stand.releasePaused(ORDER_ID)).toBe(true);
+    await waitUntil(() => gateway.answers.length === 1);
+    expect(stand.paused.size).toBe(0);
+  });
 });
 
 describe("an order paused with its answer ready", () => {
