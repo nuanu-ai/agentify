@@ -45,7 +45,13 @@ export const AGENTIC_SHOP = {
       "Your products and services, ready for a new way to buy. An agent finds the offer, orders it and pays in USDC.",
     action: "Open your dashboard",
     howItWorks: "See how it works",
-    note: "Start in the test channel. Live publication requires approval. No AI assistant is guaranteed to recommend or buy your products.",
+    note: [
+      text("Start in the "),
+      link("test channel", "https://test.agentify.ad/dashboard/sign-in"),
+      text(
+        ". Live publication requires approval. No AI assistant is guaranteed to recommend or buy your products.",
+      ),
+    ],
     imageAlt:
       "A teal shopping bag, espresso, hotel key card, ticket and folded towel on sunlit stone.",
   },

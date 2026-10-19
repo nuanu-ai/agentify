@@ -99,7 +99,7 @@ function renderAgenticShop(): string {
     "",
     `[${hero.action}](${signIn})`,
     "",
-    hero.note,
+    words(hero.note),
     "",
     `${promise.lead} ${promise.strong} ${promise.items.join(" · ")}.`,
     "",

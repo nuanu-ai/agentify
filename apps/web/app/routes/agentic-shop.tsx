@@ -102,7 +102,9 @@ export default function AgenticShopPage() {
                 {hero.howItWorks} <Arrow />
               </a>
             </div>
-            <p className={styles.heroNote}>{hero.note}</p>
+            <p className={styles.heroNote}>
+              <Words of={hero.note} />
+            </p>
           </div>
           <div className={styles.heroVisual}>
             <img
