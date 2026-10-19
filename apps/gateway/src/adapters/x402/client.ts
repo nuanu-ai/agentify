@@ -90,29 +90,6 @@ export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorCli
   return cdpAuthenticatedClient(payment.facilitatorUrl, cdpApiKeyId, cdpApiKeySecret);
 }
 
-/**
- * Signs one request locally before the gateway starts selling, and refuses to
- * start if it cannot. A credential that is set but unusable (a truncated
- * secret) would otherwise turn every purchase into "unknown". Nothing is sent
- * to the facilitator; a client without credentials passes.
- *
- * The signer's error is dropped rather than wrapped: a refusal ends up in logs,
- * and only text written here is known not to carry key material.
- */
-export async function refuseUnlessCredentialsSign(client: HTTPFacilitatorClient): Promise<void> {
-  try {
-    await client.createAuthHeaders("verify");
-  } catch {
-    throw new Error(
-      "The gateway cannot start, the facilitator credentials do not work — the key in " +
-        "CDP_API_KEY_SECRET is not one this can sign with. Coinbase issues an Ed25519 key as " +
-        "base64 and an EC key as a PEM block; a value truncated on the way into the environment " +
-        "reads as neither, and the gateway would have started and answered every purchase with " +
-        "“nobody knows” instead",
-    );
-  }
-}
-
 const COINBASE_ANSWER_WAIT_MS = 10_000;
 
 /** The line for the log when Coinbase gave no answer about the key, saying why. */
@@ -123,8 +100,8 @@ const unconfirmed = (why: string): string =>
   "would fail at verify";
 
 /**
- * Makes the credentials sign, as `refuseUnlessCredentialsSign` does, and then
- * shows the key to Coinbase once: its facilitator is asked to verify an empty
+ * Makes the credentials sign before the gateway starts selling, and then shows
+ * the key to Coinbase once: its facilitator is asked to verify an empty
  * payment with the token a purchase's verify would carry. A 400 is what
  * Coinbase was seen to answer a key it lets through, judging the payment
  * instead; a 2xx or 422 is counted with it, as an answer given past the key
@@ -136,18 +113,33 @@ const unconfirmed = (why: string): string =>
  * log saying the key is unconfirmed. A facilitator that is not Coinbase's is
  * asked nothing, and null comes back.
  *
- * Neither the token, nor Coinbase's answer, nor what fetch threw reaches what
- * this throws or returns, and a redirect is not followed with the token.
+ * A credential that is set but cannot sign (a truncated secret), which would
+ * otherwise turn every purchase into "unknown", is refused before anything is
+ * sent, whatever the facilitator; a client without credentials signs nothing
+ * and passes. The signer's error is dropped rather than wrapped, since only
+ * text written here is known not to carry key material, and neither the
+ * token, nor Coinbase's answer, nor what fetch threw reaches what this throws
+ * or returns. A redirect is not followed with the token.
  */
 export async function refuseUnlessCoinbaseTakesTheKey(
   client: HTTPFacilitatorClient,
   post: typeof fetch,
 ): Promise<string | null> {
-  await refuseUnlessCredentialsSign(client);
+  let headers: Record<string, string>;
+  try {
+    ({ headers } = await client.createAuthHeaders("verify"));
+  } catch {
+    throw new Error(
+      "The gateway cannot start, the facilitator credentials do not work — the key in " +
+        "CDP_API_KEY_SECRET is not one this can sign with. Coinbase issues an Ed25519 key as " +
+        "base64 and an EC key as a PEM block; a value truncated on the way into the environment " +
+        "reads as neither, and the gateway would have started and answered every purchase with " +
+        "“nobody knows” instead",
+    );
+  }
   if (!isCdpFacilitator(client.url)) {
     return null;
   }
-  const { headers } = await client.createAuthHeaders("verify");
 
   let status: number;
   try {

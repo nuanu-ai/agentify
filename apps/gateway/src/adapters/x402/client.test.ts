@@ -27,7 +27,6 @@ import {
   cdpAuthenticatedClient,
   facilitatorClientFor,
   refuseUnlessCoinbaseTakesTheKey,
-  refuseUnlessCredentialsSign,
 } from "./client.js";
 
 interface ApiKey {
@@ -384,41 +383,6 @@ describe("choosing a facilitator client for a configuration", () => {
     expect((await unsigned.createAuthHeaders("verify")).headers.Authorization).toBeUndefined();
   });
 
-  it("will not start on a credential that is there but cannot sign", async () => {
-    // Being set is not the same as being usable, and the difference is a whole
-    // deployment. A truncated paste of a CDP secret passes every check that
-    // asks whether the variable exists, and then fails inside the signer on
-    // every call — so the gateway comes up healthy, takes purchases, and turns
-    // each one into "nobody knows" with nothing anywhere saying why. It costs
-    // one signature to find out, and no network: the proof is local arithmetic.
-    const client = facilitatorClientFor(
-      aPayment({
-        facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
-        cdpApiKeyId: "an-api-key",
-        cdpApiKeySecret: `${anApiKeySecret().slice(0, 20)}`,
-      }),
-    );
-
-    await expect(refuseUnlessCredentialsSign(client)).rejects.toThrow(/CDP_API_KEY_SECRET/);
-  });
-
-  it("lets a credential that can sign through, and asks nothing of one that signs nothing", async () => {
-    const signing = facilitatorClientFor(
-      aPayment({
-        facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
-        cdpApiKeyId: "an-api-key",
-        cdpApiKeySecret: anApiKeySecret(),
-      }),
-    );
-    await expect(refuseUnlessCredentialsSign(signing)).resolves.toBeUndefined();
-
-    // A facilitator that takes no credentials has none to prove, and the same
-    // check has to pass it rather than being something only CDP deployments run.
-    await expect(
-      refuseUnlessCredentialsSign(facilitatorClientFor(aPayment())),
-    ).resolves.toBeUndefined();
-  });
-
   it("will not build an unauthenticated client for a facilitator that takes no request without one", async () => {
     // The configuration refuses this deployment at startup, so nothing in the
     // running gateway reaches here. It is a second lock on the same door,
@@ -460,6 +424,26 @@ describe("showing the key to Coinbase before the gateway starts", () => {
         refuseUnlessCoinbaseTakesTheKey(coinbaseClientWith(key), coinbase.fetch),
       ).resolves.toBeNull();
     }
+  });
+
+  it("will not start on a credential that is there but cannot sign, and sends nothing", async () => {
+    // Being set is not the same as being usable, and the difference is a whole
+    // deployment. A truncated paste of a CDP secret passes every check that
+    // asks whether the variable exists, and then fails inside the signer on
+    // every call — so the gateway comes up healthy, takes purchases, and turns
+    // each one into "nobody knows" with nothing anywhere saying why. It costs
+    // one signature to find out, and Coinbase is not asked about a key that
+    // cannot sign.
+    const key = anApiKey();
+    const coinbase = await aCoinbase(key);
+
+    await expect(
+      refuseUnlessCoinbaseTakesTheKey(
+        coinbaseClientWith({ id: key.id, secret: key.secret.slice(0, 20) }),
+        coinbase.fetch,
+      ),
+    ).rejects.toThrow(/CDP_API_KEY_SECRET/);
+    expect(coinbase.arrived).toStrictEqual([]);
   });
 
   it("will not start on a key Coinbase does not know, and names both variables", async () => {
@@ -552,17 +536,20 @@ describe("showing the key to Coinbase before the gateway starts", () => {
 
   it("asks nothing of a facilitator that is not Coinbase's, credentials or no credentials", async () => {
     // Credentials go to Coinbase and nowhere else, and a facilitator that
-    // takes none has no key to prove.
+    // takes none has no key to prove: the same check passes it rather than
+    // being something only Coinbase deployments run.
     const facilitator = await aFacilitator();
-    const client = facilitatorClientFor(
+    const credentialed = facilitatorClientFor(
       aPayment({
         facilitatorUrl: facilitator.url,
         cdpApiKeyId: "an-api-key",
         cdpApiKeySecret: anApiKeySecret(),
       }),
     );
+    const bare = facilitatorClientFor(aPayment({ facilitatorUrl: facilitator.url }));
 
-    await expect(refuseUnlessCoinbaseTakesTheKey(client, fetch)).resolves.toBeNull();
+    await expect(refuseUnlessCoinbaseTakesTheKey(credentialed, fetch)).resolves.toBeNull();
+    await expect(refuseUnlessCoinbaseTakesTheKey(bare, fetch)).resolves.toBeNull();
     expect(facilitator.arrived).toStrictEqual([]);
   });
 
