@@ -549,6 +549,30 @@ describe("what the answer carries", () => {
   });
 });
 
+describe("what is kept of the answer", () => {
+  it("asks every cache to keep nothing, since whoever holds the answer holds the goods", async () => {
+    // The identifier is the only key to the order and its goods. A copy kept
+    // by a proxy, a browser or an agent's HTTP client would hand them to
+    // whoever reads that copy, so no answer of this route may be stored, and
+    // the refusal is answered alike so it tells no order apart.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, laterCard);
+    const orderId = await orderTakenOn(harnessed, served, itemId);
+    await served.call("POST", `/v0/orders/${orderId}/deliver`, {
+      body: { activation_code: "LPA:1$example.com$ACTIVATE" },
+      headers: keyOf(harnessed.merchant),
+    });
+
+    const collected = await statusOf(served, orderId);
+    const unknown = await statusOf(served, "ord_nothing_here");
+
+    expect((collected.body as AgentOrderStatus).status).toBe("delivered");
+    expect(collected.headers.get("cache-control")).toBe("no-store");
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
 describe("an identifier that names nothing", () => {
   it("answers it exactly as it answers any other, saying only that there is no such order", async () => {
     // The route tells nobody apart, so it must not tell identifiers apart
