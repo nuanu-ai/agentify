@@ -172,6 +172,7 @@ describe("bounded scan graph", () => {
     expect(evaluation.checks.find((check) => check.id === 13)).toMatchObject({
       status: "unavailable",
       summaryCode: "agent_ua_robots_disallowed",
+      evidence: { chatgpt_robots_disallowed: true, claude_robots_disallowed: false },
     });
     // The scanner itself was let in, so no check says robots.txt kept it out.
     expect(evaluation.checks.filter((check) => check.errorCode === "robots_disallowed")).toEqual(
@@ -205,8 +206,10 @@ describe("bounded scan graph", () => {
     );
   });
 
-  it("names robots.txt when it keeps the scanner off the page a request in an AI agent's name is redirected to", async () => {
-    const target = transport("User-agent: *\nDisallow: /agents/\n");
+  it("follows no redirect in an AI agent's name to an address the scanner's own group keeps it off", async () => {
+    const target = transport(
+      "User-agent: *\nAllow: /\n\nUser-agent: agentify-scanner\nDisallow: /agents/\n",
+    );
     const adapter: PinnedTransport = {
       request: async (input) =>
         input.url.pathname === "/" && input.headers["user-agent"]?.startsWith("ChatGPT-User")
@@ -224,10 +227,7 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     }).run(job);
     expect(target.paths.some((request) => request.includes("/agents/"))).toBe(false);
-    expect(evaluation.checks.find((check) => check.id === 13)).toMatchObject({
-      status: "unavailable",
-      errorCode: "robots_disallowed",
-    });
+    expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
   });
 
   it("sends the user agents the documentation's page about the scanner names, with the channel's own address", async () => {
