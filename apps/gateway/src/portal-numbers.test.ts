@@ -60,10 +60,12 @@ const PERCENT = /^\d+(?:\.\d+)?$/;
 
 /**
  * The number a captured word stands for, in the unit the configuration keeps.
- * A word it cannot read (say "8" for "eight") throws rather than skips, or the
- * pin would pass on a page saying anything at all. Case is forgiven, because a
- * sentence that opens on its number capitalises it. A percentage is read in
- * parts of a million, the unit a split's allocations add up to.
+ * Prose spells its numbers out and a drawing writes them in digits ("30 s"),
+ * and both are read. A word it cannot read (say "nine") throws rather than
+ * skips, or the pin would pass on a page saying anything at all. Case is
+ * forgiven, because a sentence that opens on its number capitalises it. A
+ * percentage is read in parts of a million, the unit a split's allocations add
+ * up to.
  */
 function quantityOf(written: string, reads: Reads): number {
   const word = written.toLowerCase();
@@ -87,7 +89,7 @@ function quantityOf(written: string, reads: Reads): number {
     return ms;
   }
 
-  const value = NUMBER_WORDS[word];
+  const value = /^\d+$/.test(word) ? Number(word) : NUMBER_WORDS[word];
   if (value === undefined) {
     throw new Error(
       `the portal now writes the number as "${written}", which this test cannot read; add it to NUMBER_WORDS or spell it the way the portal spells numbers`,
@@ -161,6 +163,79 @@ function sharesIn(what: string, where: Where, sentence: string): Pin[] {
     };
   });
 }
+
+/**
+ * The numbers the drawing of one purchase states: in its notes, in digits, and
+ * in the description a screen reader reads aloud, in words. The guide and
+ * Orders each carry a copy of the drawing, and each copy is held, so a changed
+ * deadline fails here and not only for want of a fresh drawing. A line break
+ * inside a note is written `<br/>`.
+ */
+const purchaseDrawingPins = (page: string): Pin[] => [
+  {
+    what: "how long a price question waits, in the purchase drawing",
+    page,
+    anchor: /Y-->>G: a price, or none \((\d+) s\)/,
+    reads: "seconds",
+    is: deadlines.quoteResponseMs,
+  },
+  {
+    what: "the same wait, in the purchase drawing read aloud",
+    page,
+    anchor: /Agentify asks your process the price and waits (\w+) seconds/,
+    reads: "seconds",
+    is: deadlines.quoteResponseMs,
+  },
+  {
+    what: "how long a price holds, in the purchase drawing",
+    page,
+    anchor: /Note over A,G: the price holds (\d+) s\b/,
+    reads: "seconds",
+    is: deadlines.quoteTtlMs,
+  },
+  {
+    what: "the same, in the purchase drawing read aloud",
+    page,
+    anchor: /and the price holds (\w+) seconds/,
+    reads: "seconds",
+    is: deadlines.quoteTtlMs,
+  },
+  {
+    what: "how long a synchronous hand-over waits, in the purchase drawing",
+    page,
+    anchor: /Y-->>G: the goods \((\d+) s per(?:<br\/>| )hand-over/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+  {
+    what: "how long a synchronous answer has in all, in the purchase drawing",
+    page,
+    anchor: /hand-over, (\d+) s in all(?:<br\/>| )from the payment check\)/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "the same, in the purchase drawing read aloud",
+    page,
+    anchor: /and has (\w+) seconds in all from the payment check to send back the goods/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "how long an asynchronous hand-over waits, in the purchase drawing",
+    page,
+    anchor: /Y-->>G: accepted, or the goods(?:<br\/>| )\((\d+) s per hand-over\)/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+  {
+    what: "how long each hand-over waits, in both modes of the purchase drawing read aloud",
+    page,
+    anchor: /answers each hand-over within (\w+) seconds/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+];
 
 const PINS: readonly Pin[] = [
   // --- the commission, where merchant code reads about it -------------------
@@ -493,6 +568,10 @@ const PINS: readonly Pin[] = [
     reads: "seconds",
     is: deadlines.handlerAnswerMs,
   },
+
+  // --- the purchase drawing, in the guide and in the reference --------------
+  ...purchaseDrawingPins("apps/docs/quickstart.md"),
+  ...purchaseDrawingPins("apps/docs/orders.md"),
 
   // --- how many times an order that never reached the handler is sent again --
   {
