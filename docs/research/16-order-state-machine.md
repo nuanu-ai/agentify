@@ -1,5 +1,7 @@
 # Машина состояний заказа
 
+> Historical, 2026-08-26. The order machine as first designed, without the parcel mode and several of today's states; the machine that runs is `packages/core`, and the documentation's Orders page describes it.
+
 Дизайн (Claude, 2026-08-26) недостающего куска ADR-0002: как три режима
 выдачи ложатся на одну машину состояний, когда именно двигаются деньги и
 что происходит по таймаутам. На решение владельцу продукта; после

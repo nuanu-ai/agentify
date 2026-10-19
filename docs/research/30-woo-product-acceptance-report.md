@@ -1,5 +1,7 @@
 # WooCommerce TEST product acceptance report
 
+> Historical, 2026-09-18. The run it reports ended partial; the WooCommerce connector it calls experimental is developed on equal terms with the SDK, and a merchant sells through one of the two at a time (ADR-0036).
+
 **Execution checkpoint:** 2026-09-18. The acceptance remains in progress. TEST runs
 application revision `c77dd57fa0e80a245728e005412cb992f5a9b526`. All four
 authorized signed slots are consumed. Three settled and delivered; the fourth

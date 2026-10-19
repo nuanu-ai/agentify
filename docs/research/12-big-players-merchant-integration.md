@@ -1,5 +1,7 @@
 # Как крупные платформы решают развилку push/pull
 
+> Historical, 2026-08-26. A survey of how large platforms take a merchant's catalogue, behind the push model of ADR-0002 and the long poll of ADR-0004.
+
 Проверка нашей развилки чужим опытом: мерчант выставляет нам живой
 каталог-эндпоинт, который мы читаем (pull), или мы даём management API и SDK,
 а мерчант заливает карточки и подписывается на заказы (push). Материал собран

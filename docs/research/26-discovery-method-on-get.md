@@ -1,5 +1,7 @@
 # Метод покупки в объявлении на GET-пробе: эксперимент
 
+> Historical, 2026-09-10. A pre-registered experiment, with an earlier project's identifiers; what it settled, a declaration that describes the purchase on either method, stands in ADR-0012.
+
 Примечание к архиву: прежние идентификаторы продукта в записях ниже
 обезличены как `historical-project`. Это исторические наблюдения,
 а не команды для текущего развёртывания и не повторный прогон Agentify.

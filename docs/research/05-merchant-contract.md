@@ -1,5 +1,7 @@
 # Продуктовый дизайн: контракт и UX мерчанта
 
+> Historical, 2026-08-25. A draft written before the decisions: the merchant model is ADR-0002, and money goes to the merchant's split with a 0.1% commission (ADR-0037), not straight to the merchant's wallet. The "listing pulse" it proposes, purchases Agentify would make itself to keep idle listings alive, was rejected as undeclared activity on a merchant's behalf and never built.
+
 Сессия 2026-08-25, трек A. Основа — находки спайка
 (`04-spike-bazaar-listing.md`) и ландшафт (`02-agentic-storefronts.md`).
 Статус: проработка к ADR-0002/0003, решения не приняты.

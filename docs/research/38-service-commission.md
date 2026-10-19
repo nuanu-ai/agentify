@@ -1,5 +1,7 @@
 # Комиссия с каждого платежа: готовые контракты и маршруты в x402
 
+> Historical, 2026-10-09. A survey of ready contracts for a commission, written while no decision had been taken; the decision is ADR-0037: buyers pay the merchant's split, and Agentify takes 0.1%.
+
 Дата: 2026-10-09. Повод: владелец продукта хочет, чтобы Agentify брал комиссию
 за сервис с каждого платежа, и предложил схему, в которой адрес контракта
 встаёт на место кошелька мерчанта как получатель платежа, а мерчанту контракт

@@ -1,5 +1,7 @@
 # One frontend stack: the spike, registered before it starts
 
+> Historical, 2026-10-12. The spike is finished: every surface now runs on React Router.
+
 Date: 2026-10-12. A pre-registered experiment. The question, the measurements,
 the predictions and the rule that turns them into a decision are fixed here
 before any code is written, and the rule is executed as written. The results

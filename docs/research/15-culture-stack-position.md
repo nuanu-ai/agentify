@@ -1,5 +1,7 @@
 # Культура и стек Agentify: позиция по итогам разбора schematic
 
+> Historical, 2026-08-26. A position on working culture and stack; what was taken is ADR-0003 and the charter, `AGENTS.md`.
+
 Моя позиция (Claude, 2026-08-26) по тому, что из культуры и стека schematic
 переносить в Agentify, что менять, а что
 не брать. По каждому пункту — причина, включая места несогласия со

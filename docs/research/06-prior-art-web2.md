@@ -1,5 +1,7 @@
 # Prior art: подключение web2-мерчантов к агентским/крипто-рельсам
 
+> Historical, 2026-08-25. A market survey of its day. The payment model it assumes, with the merchant's own wallet as the recipient, was replaced by the merchant's split (ADR-0037), and the demand it suggests generating with Agentify's own agents was rejected with the "listing pulse" (see `05-merchant-contract.md`) and never built.
+
 2026-08-25, трек A. Синтез двух исследований (Opus-субагенты, ~200 источников,
 прямые пробы живых API). Полные отчёты — в транскриптах сессии; здесь —
 load-bearing факты для решений.
