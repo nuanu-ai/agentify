@@ -29,7 +29,12 @@ pnpm cut --to http://localhost:8080 --method POST --path '/x402/*/purchase' --ph
 ```
 
 `--to` is the gateway's base URL, http or https, and may carry a base path,
-which is put in front of every path the caller asks for. It is refused if it
+which is put in front of every path the caller asks for. A hosted gateway is
+given by its https address: its http address answers with a redirect to
+https, the caller follows that redirect straight to the gateway, and the
+purchase is paid where the proxy never sees it. The proxy passes a redirect
+uncounted with its address unchanged, and its line warns that the caller may
+go around the proxy by following it. `--to` is refused if it
 carries a user name or a password, since the caller's own credentials travel
 in its headers and the proxy passes those on as they are. The proxy listens on
 `127.0.0.1:8788`, or on the port given with `--port`, and only on loopback. The

@@ -276,14 +276,20 @@ const orderNote = (body: Buffer, coding: string | null): string => {
 /**
  * The status, the size and the order of an answer as its line states them,
  * and the unit its size is counted in. An order named in the path already
- * shows in the line.
+ * shows in the line. A redirect is marked because the proxy passes its
+ * address unchanged, and a caller that follows one to the upstream's own
+ * address goes on without the proxy.
  */
 const factsOf = (answer: Answer): { readonly facts: string; readonly unit: string } => {
   const named = (answer.headers["content-encoding"] ?? "").trim().toLowerCase();
   const coding = named === "" || named === "identity" ? null : named;
   const unit = coding === null ? "bytes" : `encoded bytes (${coding})`;
+  const redirect =
+    answer.status >= 300 && answer.status <= 399 && answer.headers.location !== undefined
+      ? ", a redirect that may lead a caller around the proxy"
+      : "";
   return {
-    facts: `${answer.status}, ${answer.body.length} ${unit}${orderNote(answer.body, coding)}`,
+    facts: `${answer.status}, ${answer.body.length} ${unit}${orderNote(answer.body, coding)}${redirect}`,
     unit,
   };
 };
