@@ -41,7 +41,7 @@ describe("the smoke's verdict on a purchase through the gateway", () => {
     const buyer = makeBuyer({ baseUrl: booted.baseUrl, privateKey: TEST_BUYER_KEY, maxUsd: 50 });
     const listing = (await buyer.catalog()).find((card) => card.title === EUROPE_ESIM.title);
     if (listing === undefined) throw new Error("the eSIM is not in the catalog");
-    const bought = await buyer.buy(listing.id, { email: "smoke@example.com" });
+    const bought = await buyer.buy(listing, { email: "smoke@example.com" });
     return verdictOnPurchase(bought, (id) => booted.gateway.runtime.store.orderById(id));
   };
 
