@@ -335,67 +335,97 @@ const declarationWrittenOut = (value: unknown): unknown =>
 const writtenShort = <Declaration extends z.ZodType>(declaration: Declaration) =>
   z.preprocess(declarationWrittenOut, declaration);
 
-const CardFieldsSchema = z.strictObject({
-  /** The merchant's own key for this product, the one their database uses. */
-  merchant_item_id: MerchantItemIdSchema,
+const CardFieldsSchema = z
+  .strictObject({
+    /** The merchant's own key for this product, the one their database uses. */
+    merchant_item_id: MerchantItemIdSchema,
 
-  title: TitleSchema,
+    title: TitleSchema,
 
-  description: DescriptionSchema,
+    description: DescriptionSchema,
 
-  /**
-   * The price in the catalog, what the agent compares when choosing; required
-   * even on a card with a price check. Written as the two fields or as one
-   * string, and always stored as the two fields.
-   *
-   * Publishing also holds it to the price rule in `price-rule.ts`, outside this
-   * schema so that a stored card stays readable.
-   */
-  price: CardPriceSchema.meta({
-    description:
-      'Publishing refuses a price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot ("5.00", "0.001"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping: the price a purchase goes through at is the merchant\'s price handler\'s answer, which includes shipping to the buyer\'s place.',
-  }),
+    /**
+     * The price in the catalog, what the agent compares when choosing; required
+     * even on a card with a price check. Written as the two fields or as one
+     * string, and always stored as the two fields.
+     *
+     * Publishing also holds it to the price rule in `price-rule.ts`, outside this
+     * schema so that a stored card stays readable.
+     */
+    price: CardPriceSchema.meta({
+      description:
+        'Publishing refuses a price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot ("5.00", "0.001"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping: the price a purchase goes through at is the merchant\'s price handler\'s answer, which includes shipping to the buyer\'s place.',
+    }),
 
-  /** What the agent has to supply to buy. Absent when the purchase needs no input. */
-  params: writtenShort(ParamSpecSchema).optional(),
+    /** What the agent has to supply to buy. Absent when the purchase needs no input. */
+    params: writtenShort(ParamSpecSchema).optional(),
 
-  /**
-   * What the agent receives. Every card declares it except a parcel's, whose
-   * mode fixes it: the record of the parcel's shipment.
-   */
-  result: writtenShort(DeclaredResultSchema).optional(),
+    /**
+     * What the agent receives. Every card declares it except a parcel's, whose
+     * mode fixes it: the record of the parcel's shipment.
+     */
+    result: writtenShort(DeclaredResultSchema).optional(),
 
-  /**
-   * Words for an agent searching a discovery catalog. Absent on a card whose
-   * merchant named none, and never invented for them.
-   */
-  tags: TagsSchema.optional(),
+    /**
+     * Words for an agent searching a discovery catalog. Absent on a card whose
+     * merchant named none, and never invented for them.
+     */
+    tags: TagsSchema.optional(),
 
-  /**
-   * When the product reaches the agent, and so when the money moves. A card
-   * that names no mode is `sync`, and the default is filled in here so that
-   * every reader of the card sees the word.
-   */
-  fulfillment: FulfillmentSchema.default("sync"),
+    /**
+     * When the product reaches the agent, and so when the money moves. A card
+     * that names no mode is `sync`, and the default is filled in here so that
+     * every reader of the card sees the word.
+     */
+    fulfillment: FulfillmentSchema.default("sync"),
 
-  price_check: PriceCheckSchema.optional(),
+    price_check: PriceCheckSchema.optional(),
 
-  /**
-   * How long the merchant may take to answer a confirmation request, in
-   * seconds. A card that names none is held to the gateway's default.
-   */
-  confirm_deadline_seconds: z.int().positive().optional(),
+    /**
+     * How long the merchant may take to answer a confirmation request, in
+     * seconds. A card that names none is held to the gateway's default.
+     */
+    confirm_deadline_seconds: z.int().positive().optional(),
 
-  /** How long the merchant may take to deliver an order it has accepted. */
-  fulfill_deadline_seconds: z.int().positive().optional(),
+    /** How long the merchant may take to deliver an order it has accepted. */
+    fulfill_deadline_seconds: z.int().positive().optional(),
 
-  /**
-   * On a parcel's card, how long the merchant may take to hand it to a
-   * carrier, counted from the charge, at most thirty days. It has its own name
-   * because a delivery deadline would read as the time the parcel arrives.
-   */
-  ship_within_seconds: z.int().positive().max(SHIP_WITHIN_AT_MOST_SECONDS).optional(),
-});
+    /**
+     * On a parcel's card, how long the merchant may take to hand it to a
+     * carrier, counted from the charge, at most thirty days. It has its own name
+     * because a delivery deadline would read as the time the parcel arrives.
+     */
+    ship_within_seconds: z.int().positive().max(SHIP_WITHIN_AT_MOST_SECONDS).optional(),
+  })
+  .meta({
+    // Refinements keep publication errors specific; metadata carries the same mode rules to JSON Schema.
+    allOf: [
+      {
+        properties: {
+          fulfillment: { not: { const: "confirm" } },
+          confirm_deadline_seconds: false,
+        },
+      },
+      {
+        if: { properties: { fulfillment: { const: "ship" } }, required: ["fulfillment"] },
+        // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
+        then: {
+          required: ["ship_within_seconds", "price_check"],
+          properties: {
+            result: false,
+            fulfill_deadline_seconds: false,
+            params: { type: "object", not: { required: ["ship_to"] } },
+          },
+        },
+        else: { required: ["result"], properties: { ship_within_seconds: false } },
+      },
+      {
+        if: { properties: { fulfillment: { const: "sync" } }, required: ["fulfillment"] },
+        // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
+        then: { properties: { fulfill_deadline_seconds: false } },
+      },
+    ],
+  } satisfies z.core.JSONSchema.BaseSchema);
 
 /**
  * The rules between a card's fields. Every deadline is shown to the agent
@@ -512,9 +542,7 @@ const parcelRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementC
   }
 };
 
-// JSON Schema cannot say "this field only when that one has this value", and
-// zod drops the rules above from the rendered document, so they travel in the
-// description as words.
+// The mode conditions are also rendered structurally through CardFieldsSchema's metadata.
 const CARD_RULES_IN_WORDS =
   'A card cannot be published as fulfillment "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order. confirm_deadline_seconds is only allowed when fulfillment is "confirm", and fulfill_deadline_seconds only when fulfillment is "async" or "confirm" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own. result is required on every card except one whose fulfillment is "ship". A "ship" card, a parcel, names ship_within_seconds and is the only card that may; it declares no result and no fulfill_deadline_seconds, its price_check is "handler", and it asks for no ship_to among its params, because the purchase carries the address in a block of its own.';
 
@@ -598,7 +626,7 @@ const PLAIN_TEXT_IN_WORDS =
  * the merchant's whole list and the catalog page it sits on.
  */
 const StoredCardSchema = CardFieldsSchema.superRefine(cardRules).meta({
-  description: `A product in the catalog, as it is stored and as its merchant reads it back. Three rules hold beyond the shape below. ${CARD_RULES_IN_WORDS} A publish also holds the title, the description and each declared field's title to plain text; reading a card back does not, so a card stored before that rule is read back exactly as it was stored.`,
+  description: `A product in the catalog, as it is stored and as its merchant reads it back. ${CARD_RULES_IN_WORDS} The requirement for at least one result field that arrives every time and case-insensitive tag uniqueness remain runtime checks described on their fields. A publish also holds the title, the description and each declared field's title to plain text; reading a card back does not, so a card stored before that rule is read back exactly as it was stored.`,
 });
 
 /**
@@ -609,7 +637,7 @@ const StoredCardSchema = CardFieldsSchema.superRefine(cardRules).meta({
 export const CardSchema = CardFieldsSchema.superRefine(cardRules)
   .superRefine(plainWords, { when: () => true })
   .meta({
-    description: `A product in the catalog, as the merchant publishes it. Four rules are enforced beyond the shape below. ${CARD_RULES_IN_WORDS} ${PLAIN_TEXT_IN_WORDS} The shape below is the canonical card, the form every card is stored and read back in; three fields also take a shorter spelling at publication, which JSON Schema has no way to show alongside the canonical one. price may be written as one string, the amount and the currency code with a single space between them ("5.00 USD"). A field of params or result may be written as its type word alone (access_url: "string") where it carries no title and no required flag. fulfillment may be left out, and a card that leaves it out is "sync". Each of those is opened out into the form below as the card is accepted, so a card generated from this document is accepted unchanged and a card read back is always in this form.`,
+    description: `A product in the catalog, as the merchant publishes it. ${CARD_RULES_IN_WORDS} ${PLAIN_TEXT_IN_WORDS} Plain text, case-insensitive tag uniqueness and the requirement for at least one result field that arrives every time remain runtime checks described here or on their fields. This document describes the canonical card, the form every card is stored and read back in, rather than all publication spellings. price may also be written at publication as one string, the amount and the currency code with a single space between them ("5.00 USD"). A field of params or result may be written as its type word alone (access_url: "string") where it carries no title and no required flag. fulfillment may be left out, and a card that leaves it out is "sync". Each of those is opened out into the form below as the card is accepted. The canonical form requires no short-form expansion, and a card read back is always in this form.`,
   });
 
 export type Fulfillment = z.infer<typeof FulfillmentSchema>;

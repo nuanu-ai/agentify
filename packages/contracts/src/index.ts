@@ -384,11 +384,11 @@ export const jsonSchemaIdOf = (name: SchemaName): string =>
  * stamped with the contract version. It is a function so that the conversion
  * is paid for only by a caller who needs it.
  *
- * Structure crosses intact: fields, types, required keys, whether unknown keys
- * are allowed, enumerations, patterns and the branches of a union. Rules that
- * look at more than one field at a time do not, since JSON Schema cannot
- * express them; every schema with such a rule says so in its `description`, so
- * a reader is told what the document does not check.
+ * It describes parsed output, including filled defaults and expanded short
+ * forms. Fields, types, required keys, unknown-key rules, enumerations,
+ * patterns and union branches cross intact. Refinements are not translated
+ * automatically: metadata carries representable conditions, and descriptions
+ * name the remaining runtime checks.
  */
 export const toJsonSchemas = (): Record<SchemaName, JsonSchemaDocument> => {
   const documents = {} as Record<SchemaName, JsonSchemaDocument>;

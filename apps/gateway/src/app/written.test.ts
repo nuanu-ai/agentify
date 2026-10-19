@@ -46,8 +46,10 @@ function openObjectsIn(node: unknown, at: string, found: string[]): string[] {
  * The shape a check takes as input, which is the one that matters here: the
  * document is sent as it was written, not as the check would have parsed it, so
  * an object that quietly drops an unknown field still lets it out.
+ * Metadata can constrain an already closed object through conditional fragments
+ * that do not repeat its closure; this audit reads the runtime structure alone.
  */
-const asInput = (check: ZodType) => z.toJSONSchema(check, { io: "input" });
+const asInput = (check: ZodType) => z.toJSONSchema(check, { io: "input", metadata: z.registry() });
 
 /** The path to every object inside a document, the document itself included. */
 function objectsIn(node: unknown, path: readonly (string | number)[] = []): (string | number)[][] {

@@ -422,17 +422,8 @@ describe("the contract as JSON Schema", () => {
     }
   });
 
-  it("carries the rules it cannot express as structure in words instead", () => {
-    // JSON Schema cannot say "this field only when that one has this value",
-    // so the card's rules between fields are told in words, or a reader would
-    // take the document for the whole contract.
+  it("carries the result's size and the price handler as structural rules", () => {
     const card = toJsonSchemas().card;
-
-    expect(card.description).toContain("confirm_deadline_seconds");
-    expect(card.description).toContain("fulfill_deadline_seconds");
-
-    // Where a rule can be expressed as structure, it is: a result is never
-    // empty, and a price check is the handler, so a client offers no address.
     expect(card.properties?.result).toMatchObject({ minProperties: 1 });
     expect(nested(card.properties?.price_check)).toMatchObject({ const: "handler" });
   });
