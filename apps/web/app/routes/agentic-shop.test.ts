@@ -83,6 +83,24 @@ describe("the sell-to-agents page", () => {
     expect(links).not.toContain("/docs/faq");
   });
 
+  it("leads from the note under the first button, which says to start on the test channel, to the test channel's own dashboard", async () => {
+    // The button opens the dashboard of the channel that served the page; the
+    // note beside it is where an owner reads that the first sale is a test.
+    const { html } = await drawn("/agentic-shop");
+    const firstScreen = html.slice(html.indexOf("<main"), html.indexOf("</section>"));
+    const markdown = await (
+      await ask("/agentic-shop", { headers: { accept: "text/markdown" } })
+    ).text();
+    const markdownFirstScreen = markdown.slice(0, markdown.indexOf("\n## "));
+
+    expect(firstScreen).toMatch(
+      /<a\b[^>]*\bhref="https:\/\/test\.agentify\.ad\/dashboard\/sign-in"[^>]*>test channel<\/a>/,
+    );
+    expect(markdownFirstScreen).toContain(
+      "[test channel](https://test.agentify.ad/dashboard/sign-in)",
+    );
+  });
+
   it("links the site's privacy notice and invites no application", async () => {
     const { links, meta } = await drawn("/agentic-shop");
 
