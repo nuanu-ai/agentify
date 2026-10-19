@@ -12,8 +12,9 @@ wallet `0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5` (confirmed by him on
 commission-wallet` passes on both networks with that owner named. The test
 channel's commission wallet is a plain wallet the product owner named on
 2026-10-15. Every split records its network's for good. At the release the
-wallets already set move to their splits unannounced, since nobody sells on the
-live channel.
+wallets already set moved to their splits unannounced, while the pilot
+merchant's card was on sale on the live channel, so its payments went to that
+merchant's own split from then on.
 
 ## Context
 
