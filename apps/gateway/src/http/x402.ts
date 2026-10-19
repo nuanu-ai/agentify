@@ -4,17 +4,18 @@
  * middleware is not used because it verifies and settles around one request,
  * and the order machine needs the two apart.
  *
- * The order identifier travels in the requirements' `extra` and comes back
- * inside the payment. It is a hint, never an authority: a payment is checked
- * against the price on our own order.
+ * The order's payment reference travels in the requirements' `extra` and comes
+ * back inside the payment. It is a hint, never an authority: a payment is
+ * checked against the price on our own order. The order's identifier is never
+ * in the requirements, because they go to the payment facilitator and a
+ * discovery listing can publish them, and the identifier opens the order's
+ * goods.
  */
 
 import { createHash } from "node:crypto";
 import type { BazaarDeclaration, Card } from "@nuanu-ai/agentify-contracts";
 import {
-  API_ROUTES,
   bazaarDeclarationOf,
-  expandPath,
   PAYABLE_CURRENCIES,
   PAYABLE_DECIMALS,
   ServiceNameSchema,
@@ -32,7 +33,9 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import type { GatewayConfig, PaymentConfig } from "../config.js";
+import { purchaseUrlOf } from "../app/addresses.js";
+import { authorisationSecondsOf } from "../app/payment-window.js";
+import type { GatewayConfig } from "../config.js";
 import { randomIds } from "../ports/clock.js";
 
 /** The x402 version this edge speaks. */
@@ -44,7 +47,8 @@ export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
 const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 
-export const ORDER_ID_IN_EXTRA = "order_id";
+/** Where in the requirements' `extra` the order's payment reference is written. */
+export const PAYMENT_REF_IN_EXTRA = "payment_ref";
 
 /**
  * A price in the token's smallest unit, written out exactly; money never
@@ -103,27 +107,29 @@ const widestListingName = (): string => {
 const WIDEST = {
   price: { amount: `${"9".repeat(18)}.${"9".repeat(PAYABLE_DECIMALS)}`, currency: "USD" },
   itemId: randomIds("item"),
-  orderId: randomIds("ord"),
+  paymentRef: randomIds("pay"),
   payTo: `0x${"f".repeat(40)}`,
   serviceName: widestListingName(),
 } as const;
 
-export class PaymentEdge {
-  readonly #config: PaymentConfig;
-  readonly #baseUrl: string;
-  readonly #timeoutSeconds: number;
+/** What the payment edge reads of a gateway's configuration. */
+type EdgeConfig = Pick<GatewayConfig, "payment" | "publicBaseUrl"> & {
+  readonly deadlines: Pick<GatewayConfig["deadlines"], "quoteTtlMs" | "syncResponseMs">;
+};
 
-  constructor(config: PaymentConfig, baseUrl: string, timeoutSeconds: number) {
+export class PaymentEdge {
+  readonly #config: EdgeConfig;
+
+  constructor(config: EdgeConfig) {
     this.#config = config;
-    this.#baseUrl = baseUrl;
-    this.#timeoutSeconds = timeoutSeconds;
   }
 
   /**
-   * What an agent is asked to pay, to whom, and for which order. The address
-   * is the one given, unchanged: the card's merchant's recorded split for a
-   * challenge, and the order's own address at verification and at the charge,
-   * never anything from our configuration.
+   * What an agent is asked to pay, to whom, and for which order, named by its
+   * payment reference; `null` names none, for a price with no order behind
+   * it. The address is the one given, unchanged: the card's merchant's
+   * recorded split for a challenge, and the order's own address at
+   * verification and at the charge, never anything from our configuration.
    *
    * No address is refused, in every mode, never defaulted: the configured
    * address is the operator's, and standing it in would send a merchant's
@@ -132,7 +138,7 @@ export class PaymentEdge {
    */
   requirementsFor(
     price: { readonly amount: string; readonly currency: string },
-    orderId: string | null,
+    paymentRef: string | null,
     payTo: string | null,
   ): PaymentRequirements {
     if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
@@ -155,25 +161,17 @@ export class PaymentEdge {
       asset: asset.asset,
       amount: atomicUnits(price.amount, asset.decimals),
       payTo,
-      maxTimeoutSeconds: this.#timeoutSeconds,
+      // How long the signed authorisation stays valid, which is longer than the
+      // price holds: a purchase delivered in the answer is charged after its
+      // goods.
+      maxTimeoutSeconds: authorisationSecondsOf(this.#config.deadlines),
       extra: {
         name: asset.name,
         version: asset.version,
         // A challenge for a card alone, with no order behind it, names none.
-        ...(orderId === null ? {} : { [ORDER_ID_IN_EXTRA]: orderId }),
+        ...(paymentRef === null ? {} : { [PAYMENT_REF_IN_EXTRA]: paymentRef }),
       },
     };
-  }
-
-  /**
-   * The canonical address of one product, which a catalog listing is keyed on.
-   * It is built from the configured base, never from the request: behind a
-   * TLS-terminating proxy the request says `http://` and carries the caller's
-   * query string, and two spellings would be two listings. The identifier goes
-   * through the route table's substitution so it cannot add path segments.
-   */
-  resourceUrlFor(itemId: string): string {
-    return `${this.#baseUrl}${expandPath(API_ROUTES.purchase_item.path, { item_id: itemId })}`;
   }
 
   /**
@@ -187,7 +185,7 @@ export class PaymentEdge {
    */
   challengeFor(
     price: { readonly amount: string; readonly currency: string },
-    orderId: string | null,
+    paymentRef: string | null,
     listed: {
       readonly itemId: string;
       readonly card: Card;
@@ -198,7 +196,10 @@ export class PaymentEdge {
     why?: ChallengeReason,
   ): string {
     const declared = bazaarDeclarationOf(listed.card, {
-      url: this.resourceUrlFor(listed.itemId),
+      // The configured base, never the request's: behind the proxy the request
+      // says `http://` with the caller's query string, and a catalog keys a
+      // listing on this address, so two spellings would be two listings.
+      url: purchaseUrlOf(this.#config, listed.itemId),
       serviceName: listed.serviceName,
     });
 
@@ -207,7 +208,7 @@ export class PaymentEdge {
     // number it is reading.
     const said =
       listed.card.fulfillment === "ship"
-        ? [why, orderId === null ? PARCEL_LISTED : PARCEL_PRICED]
+        ? [why, paymentRef === null ? PARCEL_LISTED : PARCEL_PRICED]
             .filter((part) => part !== undefined)
             .join("; ")
         : why;
@@ -225,7 +226,7 @@ export class PaymentEdge {
         // A copy, not a cast: the contract's tags are read-only.
         ...(declared.resource.tags === undefined ? {} : { tags: [...declared.resource.tags] }),
       },
-      accepts: [this.requirementsFor(price, orderId, listed.payTo)],
+      accepts: [this.requirementsFor(price, paymentRef, listed.payTo)],
       extensions: discoveryExtensionOf(declared),
     };
     return encodePaymentRequiredHeader(challenge);
@@ -238,11 +239,11 @@ export class PaymentEdge {
    */
   widestChallengeFor(card: Card): number {
     let widest = 0;
-    for (const orderId of [null, WIDEST.orderId]) {
+    for (const paymentRef of [null, WIDEST.paymentRef]) {
       for (const why of Object.values(CHALLENGE_REASONS)) {
         const header = this.challengeFor(
           WIDEST.price,
-          orderId,
+          paymentRef,
           { itemId: WIDEST.itemId, card, serviceName: WIDEST.serviceName, payTo: WIDEST.payTo },
           why,
         );
@@ -257,17 +258,17 @@ export class PaymentEdge {
   }
 
   #network(): `${string}:${string}` {
-    return this.#config.network as `${string}:${string}`;
+    return this.#config.payment.network as `${string}:${string}`;
   }
 
   token(): TokenIdentity {
-    return { network: this.#config.network, asset: getDefaultAsset(this.#network()).asset };
+    return { network: this.#config.payment.network, asset: getDefaultAsset(this.#network()).asset };
   }
 }
 
 /** `widestChallengeFor` on the challenges a gateway with this configuration answers with. */
 export function widestChallengeOn(config: GatewayConfig): (card: Card) => number {
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
   return (card) => edge.widestChallengeFor(card);
 }
 
@@ -344,6 +345,21 @@ export function authorizationFingerprint(
   });
 }
 
+/**
+ * The instant a payment's authorisation stops being valid, in milliseconds,
+ * from the seconds the exact-EVM scheme signs it with: an EIP-3009
+ * authorisation's `validBefore`, or a Permit2 permit's `deadline`. Null where
+ * the payment names neither in a spelling read here.
+ */
+export function authorisedUntil(payload: PaymentPayload): number | null {
+  const signed = asRecord(payload.payload);
+  const seconds = asAmount(
+    asRecord(signed?.authorization)?.validBefore ??
+      asRecord(signed?.permit2Authorization)?.deadline,
+  );
+  return seconds === null ? null : Number(seconds) * 1_000;
+}
+
 export interface TokenIdentity {
   readonly network: string;
   readonly asset: string;
@@ -418,7 +434,8 @@ function stably(value: unknown): string {
 }
 
 /**
- * What an agent presented, if anything, and which order it says it is for.
+ * What an agent presented, if anything, and the payment reference it names its
+ * order by.
  * `null` means no payment; `"unreadable"` means one that would not decode,
  * which the caller answers with a fresh challenge that says so, or the agent
  * cannot tell its own encoding is at fault.
@@ -427,7 +444,7 @@ export function presentedPayment(headers: Record<string, string | string[] | und
   | {
       readonly raw: string;
       readonly payload: PaymentPayload;
-      readonly orderId: string | null;
+      readonly paymentRef: string | null;
     }
   | "unreadable"
   | null {
@@ -445,8 +462,8 @@ export function presentedPayment(headers: Record<string, string | string[] | und
     return "unreadable";
   }
 
-  const named = payload.accepted?.extra?.[ORDER_ID_IN_EXTRA];
-  return { raw: header, payload, orderId: typeof named === "string" ? named : null };
+  const named = payload.accepted?.extra?.[PAYMENT_REF_IN_EXTRA];
+  return { raw: header, payload, paymentRef: typeof named === "string" ? named : null };
 }
 
 function headerValue(

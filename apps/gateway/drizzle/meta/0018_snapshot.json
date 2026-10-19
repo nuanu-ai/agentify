@@ -1,5 +1,5 @@
 {
-  "id": "1f7c4745-ded0-44b3-8d85-2aa1285f7737",
+  "id": "a4207dbb-e0d8-4fcd-9c20-81c05fd26ace",
   "prevId": "4f3453a7-3b83-40b0-9eda-59d22696fab9",
   "version": "7",
   "dialect": "postgresql",
@@ -400,18 +400,17 @@
           "method": "btree",
           "with": {}
         },
-        "orders_unresolved_payment_idx": {
-          "name": "orders_unresolved_payment_idx",
+        "orders_payment_ref_unique": {
+          "name": "orders_payment_ref_unique",
           "columns": [
             {
-              "expression": "id",
-              "isExpression": false,
+              "expression": "(\"record\" ->> 'paymentRef')",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
-          "isUnique": false,
-          "where": "\"orders\".\"record\" -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')",
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -459,13 +458,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "retained": {
-          "name": "retained",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {

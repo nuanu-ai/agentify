@@ -318,22 +318,48 @@ input {
   max-width: 100%;
   margin: 20px 0;
   overflow-x: auto;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--text-small);
   line-height: 1.55;
 }
 
+/* Each cell draws its own right and bottom rule, and the first row and column
+   their outer ones: a collapsed rule belongs to the table and would stay
+   behind when the first column holds still. */
 .doc th,
 .doc td {
-  border: var(--hairline) solid var(--line);
+  border: 0 solid var(--line);
+  border-width: 0 var(--hairline) var(--hairline) 0;
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
 }
 
+.doc tr > :first-child {
+  border-left-width: var(--hairline);
+}
+
+.doc table > :first-child > tr:first-child > * {
+  border-top-width: var(--hairline);
+}
+
 .doc th {
   background: var(--surface-sunken);
   font-weight: 600;
+}
+
+/* The first column names the row, so it stays in view while the rest of a
+   table too wide for the column scrolls under it, painted in the page's
+   colour so the scrolled cells do not show through. */
+.doc :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.doc td:first-child {
+  background: var(--bg);
 }
 
 /* A link in a cell is told from the words beside it by more than its colour,
@@ -342,13 +368,16 @@ input {
   text-decoration: underline;
 }
 
-/* A word in a cell keeps whole; the table scrolls instead. */
+/* Code in a cell breaks only where it has a space, so a word keeps whole
+   while an example written over several words fits its column. */
 .doc :is(th, td) code {
   overflow-wrap: normal;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .doc figure.diagram {
+  /* Each figure sets its drawing's own width in its style attribute. */
+  --diagram-width: 0px;
   margin: 24px 0;
   overflow-x: auto;
   border: var(--hairline) solid var(--line);
@@ -357,9 +386,20 @@ input {
   background: var(--surface);
 }
 
+/* A label is laid out as it was measured when the diagram was drawn, not as
+   the article's paragraphs are, or it runs out of its box. */
+.doc figure.diagram p {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* A drawing is as wide as its column up to its own width, set on it, and
+   never narrower than three quarters of that width: on a narrow screen its
+   words stay readable and the figure scrolls. */
 .doc figure.diagram svg {
   display: block;
-  max-width: 100%;
+  min-width: calc(var(--diagram-width) * 0.75);
   height: auto;
   margin: 0 auto;
 }

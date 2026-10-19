@@ -1,9 +1,11 @@
 import textFont from "@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url";
+import { Fragment } from "react";
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { SiteFooter, SiteHeader } from "../../components/site-chrome";
-import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
+import { AGENTIC_SHOP, numbered } from "../../content/agentic-shop";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
+import type { RichText } from "../../content/public-editorial";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import styles from "./agentic-shop.module.css";
 
@@ -11,17 +13,16 @@ export const links = () => [
   { rel: "preload", href: textFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
 ];
 
-export const loader = () => AGENTIC_SHOP_RESEARCH;
+export const loader = () => AGENTIC_SHOP;
 
 export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
-    title: "Sell products and services to AI agents",
-    description:
-      "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
+    title: AGENTIC_SHOP.head.title,
+    description: AGENTIC_SHOP.head.description,
     canonical: "/agentic-shop",
     card: {
-      title: "Your next customer sends an agent. Be ready.",
-      description: "Your products and services, ready for a new way to buy.",
+      title: AGENTIC_SHOP.head.cardTitle,
+      description: AGENTIC_SHOP.head.cardDescription,
       image: SELL_TO_AGENTS_PICTURE,
       addressed: true,
     },
@@ -40,35 +41,46 @@ function Arrow({ diagonal = false }: { diagonal?: boolean }) {
   return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
 }
 
-const categories = [
-  [
-    "01",
-    "Products",
-    "Your catalog, ready for agent orders.",
-    "Retail · e-commerce · made to order",
-  ],
-  [
-    "02",
-    "Places to stay",
-    "Rooms and experiences, easier to book.",
-    "Hotels · villas · hospitality",
-  ],
-  [
-    "03",
-    "Food & experiences",
-    "A table, a ticket, a reason to visit.",
-    "Restaurants · activities · attractions",
-  ],
-  [
-    "04",
-    "Everyday services",
-    "Turn available time into bookable offers.",
-    "Wellness · fitness · coworking",
-  ],
-];
+/** The words alone, links read as their text. */
+const plain = (of: RichText): string =>
+  typeof of === "string" ? of : of.map((node) => node.value).join("");
+
+/** Words with the links inside them; every link leads off this page. */
+function Words({ of }: Readonly<{ of: RichText }>) {
+  if (typeof of === "string") return of;
+  return of.map((node) =>
+    node.kind === "link" ? (
+      <a href={node.href} key={`link:${node.value}`}>
+        {node.value}
+      </a>
+    ) : (
+      <Fragment key={`text:${node.value}`}>{node.value}</Fragment>
+    ),
+  );
+}
+
+/** A title's lines, the last drawn in the accent where `accent` says so. */
+function Lines({ of, accent = false }: Readonly<{ of: readonly string[]; accent?: boolean }>) {
+  return of.map((line, index) =>
+    index === of.length - 1 ? (
+      accent ? (
+        <span key={line}>{line}</span>
+      ) : (
+        line
+      )
+    ) : (
+      <Fragment key={line}>
+        {line}
+        <br />
+      </Fragment>
+    ),
+  );
+}
 
 export default function AgenticShopPage() {
-  const research = useLoaderData<typeof loader>();
+  const { hero, promise, opportunity, how, payment, loyalty, businesses, start, questions } =
+    useLoaderData<typeof loader>();
+  const { research } = opportunity;
   return (
     <>
       <SiteHeader />
@@ -76,35 +88,27 @@ export default function AgenticShopPage() {
         <section className={`container ${styles.hero}`}>
           <div>
             <p className={styles.eyebrow}>
-              <span className={styles.dot} /> Meet your next sales channel
+              <span className={styles.dot} /> {hero.eyebrow}
             </p>
             <h1>
-              Your next
-              <br />
-              customer sends
-              <br />
-              <span>an agent.</span>
+              <Lines of={hero.title} accent />
             </h1>
-            <p className={styles.heroDescription}>
-              Your products and services, ready for a new way to buy. An agent finds the offer,
-              orders it and pays.
-            </p>
+            <p className={styles.heroDescription}>{hero.description}</p>
             <div className={styles.heroActions}>
               <a className={styles.primary} href="/dashboard/sign-in">
-                Open your dashboard <Arrow diagonal />
+                {hero.action} <Arrow diagonal />
               </a>
               <a className={styles.textLink} href="#how-it-works">
-                See how it works <Arrow />
+                {hero.howItWorks} <Arrow />
               </a>
             </div>
             <p className={styles.heroNote}>
-              Start in the test channel. Live publication requires approval. No AI assistant is
-              guaranteed to recommend or buy your products.
+              <Words of={hero.note} />
             </p>
           </div>
           <div className={styles.heroVisual}>
             <img
-              alt="A teal shopping bag, espresso, hotel key card, ticket and folded towel on sunlit stone."
+              alt={hero.imageAlt}
               className={styles.heroImage}
               decoding="async"
               height={1086}
@@ -118,14 +122,13 @@ export default function AgenticShopPage() {
 
         <div className={`container ${styles.promiseStrip}`}>
           <p>
-            You run your business.
+            {promise.lead}
             <br />
-            <strong>We help open the next channel.</strong>
+            <strong>{promise.strong}</strong>
           </p>
-          <span>Your products</span>
-          <span>Your pricing</span>
-          <span>Your fulfilment terms</span>
-          <span>Supported payment</span>
+          {promise.items.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </div>
 
         <section className={styles.opportunity} id="opportunity">
@@ -133,24 +136,18 @@ export default function AgenticShopPage() {
             <div className={styles.marketGrid}>
               <div className={styles.marketCopy}>
                 <h2>
-                  The buying journey
-                  <br />
-                  is changing.
-                  <br />
-                  <span>Don’t sit this one out.</span>
+                  <Lines of={opportunity.title} accent />
                 </h2>
-                <p>
-                  Customers are already using AI to find what to buy. The next opportunity is making
-                  your business easier for their agents to order from.
-                </p>
+                <p>{opportunity.text}</p>
                 <a href="/dashboard/sign-in" className={styles.lightLink}>
-                  Open your dashboard <Arrow diagonal />
+                  {opportunity.action} <Arrow diagonal />
                 </a>
               </div>
               <div className={styles.chartCard}>
                 <div className={styles.chartHeading}>
-                  <span>AI-referred retail traffic</span>
-                  <span>U.S. · Q1 · year over year</span>
+                  {opportunity.chartHeading.map((words) => (
+                    <span key={words}>{words}</span>
+                  ))}
                 </div>
                 <div className={styles.growth}>
                   <strong>
@@ -158,15 +155,10 @@ export default function AgenticShopPage() {
                     <span>%</span>
                   </strong>
                   <p>
-                    More visits from AI sources
-                    <br />
-                    in Q1 2026 vs. Q1 2025
+                    <Lines of={opportunity.growth} />
                   </p>
                 </div>
-                <figure
-                  className={styles.chart}
-                  aria-label="Indexed AI-referred traffic: Q1 2025 equals 100; Q1 2026 equals 493, a 393 percent increase."
-                >
+                <figure className={styles.chart} aria-label={opportunity.chartLabel}>
                   <div className={styles.chartLines} aria-hidden="true">
                     <i />
                     <i />
@@ -174,24 +166,23 @@ export default function AgenticShopPage() {
                     <i />
                   </div>
                   <div className={styles.barColumn}>
-                    <span>100</span>
+                    <span>{research.traffic.baselineIndex}</span>
                     <div className={styles.barOld} />
-                    <b>Q1 2025</b>
+                    <b>{opportunity.bars[0]}</b>
                   </div>
                   <div className={styles.barColumn}>
                     <span>{research.traffic.comparisonIndex}</span>
                     <div className={styles.barNew} />
-                    <b>Q1 2026</b>
+                    <b>{opportunity.bars[1]}</b>
                   </div>
-                  <figcaption>Traffic index · Q1 2025 = 100</figcaption>
+                  <figcaption>{opportunity.chartCaption}</figcaption>
                 </figure>
                 <p className={styles.source}>
                   Source:{" "}
                   <a href={research.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    Adobe Digital Insights, April 16, 2026 <Arrow diagonal />
+                    {opportunity.source} <Arrow diagonal />
                   </a>
-                  . Measures AI-referred visits to U.S. retail sites, not autonomous purchases or
-                  x402 volume.
+                  . {opportunity.sourceScope}
                 </p>
               </div>
             </div>
@@ -201,14 +192,11 @@ export default function AgenticShopPage() {
                 <span>%</span>
               </strong>
               <p>
-                Higher conversion for AI-referred visits vs. non-AI traffic.
-                <span>
-                  U.S. retail · March 2026 · Adobe. Purchases after a visit to a retailer’s website,
-                  not checkout inside an AI chat. This does not establish demand for x402 orders.
-                </span>
+                {opportunity.conversion}
+                <span>{opportunity.conversionScope}</span>
               </p>
               <a href={research.sourceUrl} target="_blank" rel="noopener noreferrer">
-                Read the research <Arrow diagonal />
+                {opportunity.readMore} <Arrow diagonal />
               </a>
             </div>
           </div>
@@ -217,56 +205,26 @@ export default function AgenticShopPage() {
         <section id="how-it-works" className={`container ${styles.section}`}>
           <div className={styles.sectionHeading}>
             <h2>
-              A new channel.
-              <br />A familiar business.
+              <Lines of={how.title} />
             </h2>
-            <p>
-              One email link opens the dashboard. Your SDK integration publishes the offers and the
-              rules an order follows.
-            </p>
+            <p>{how.lede}</p>
           </div>
           {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
           <ol className={styles.steps} role="list">
-            <li>
-              <span className={styles.stepNumber} aria-hidden="true">
-                01
-              </span>
-              <div className={styles.stepSymbol} aria-hidden="true">
-                ↗
-              </div>
-              <h3>Open your dashboard.</h3>
-              <p>
-                Enter your email and use the one-time link. The first visit creates your merchant
-                and asks for the name buyers will see.
-              </p>
-            </li>
-            <li>
-              <span className={styles.stepNumber} aria-hidden="true">
-                02
-              </span>
-              <div className={styles.stepSymbol} aria-hidden="true">
-                ⇄
-              </div>
-              <h3>Connect your catalog.</h3>
-              <p>
-                Use the <a href="/docs/quickstart">SDK</a> to publish the offer, price and
-                fulfilment promises, or import products from a WooCommerce store, on the test
-                channel for now.
-              </p>
-            </li>
-            <li>
-              <span className={styles.stepNumber} aria-hidden="true">
-                03
-              </span>
-              <div className={styles.stepSymbol} aria-hidden="true">
-                ✓
-              </div>
-              <h3>Prove it in test.</h3>
-              <p>
-                Test publication needs the seller name and test payout wallet. Live publication uses
-                a separate wallet and also needs the operator’s approval for that merchant.
-              </p>
-            </li>
+            {how.steps.map((step, index) => (
+              <li key={step.title}>
+                <span className={styles.stepNumber} aria-hidden="true">
+                  {numbered(index)}
+                </span>
+                <div className={styles.stepSymbol} aria-hidden="true">
+                  {step.symbol}
+                </div>
+                <h3>{step.title}</h3>
+                <p>
+                  <Words of={step.text} />
+                </p>
+              </li>
+            ))}
           </ol>
         </section>
 
@@ -274,152 +232,54 @@ export default function AgenticShopPage() {
           <div className={`container ${styles.settlementGrid}`}>
             <div>
               <h2>
-                Set your payout wallet.
-                <br />
-                <span>Keep test and live distinct.</span>
+                <Lines of={payment.title} accent />
               </h2>
-              <p>
-                Buyers pay in USDC into your own payout contract, which nobody owns and nobody can
-                redirect. It sends 99.9% to the wallet in your dashboard and 0.1% to Agentify when
-                it is paid out, and you can pay it out yourself at any time. Test publication stays
-                open while live waits for approval.
-              </p>
+              <p>{payment.text}</p>
               <div className={styles.settlementLinks}>
                 <a className={styles.textLink} href="/dashboard/sign-in">
-                  Open your dashboard <Arrow />
+                  {payment.action} <Arrow />
                 </a>
-                <a
-                  className={styles.textLink}
-                  href="https://docs.cdp.coinbase.com/x402/welcome"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  About x402 <Arrow diagonal />
+                <a className={styles.textLink} href={payment.more.href}>
+                  {payment.more.label} <Arrow />
                 </a>
               </div>
             </div>
-            <section
-              className={styles.paymentDiagram}
-              aria-label="Live payment path: the customer's agent, the gateway, your payout contract, your payout wallet."
-            >
-              <div className={styles.paymentLabel}>LIVE ONLY AFTER OPERATOR APPROVAL</div>
-              <div className={styles.paymentRow}>
-                <span className={styles.nodeIcon}>01</span>
-                <div>
-                  <strong>Customer’s agent</strong>
-                  <span>Pays in USDC</span>
+            <section className={styles.paymentDiagram} aria-label={payment.path.label}>
+              <div className={styles.paymentLabel}>{payment.path.top}</div>
+              {payment.path.steps.map(([title, text], index) => (
+                <div className={styles.paymentRow} key={title}>
+                  <span className={styles.nodeIcon}>{numbered(index)}</span>
+                  <div>
+                    <strong>{title}</strong>
+                    <span>{text}</span>
+                  </div>
+                  <span aria-hidden="true">
+                    {index === payment.path.steps.length - 1 ? "✓" : "↓"}
+                  </span>
                 </div>
-                <span aria-hidden="true">↓</span>
-              </div>
-              <div className={styles.paymentRow}>
-                <span className={styles.nodeIcon}>02</span>
-                <div>
-                  <strong>The gateway</strong>
-                  <span>Checks the payment and sets it going</span>
-                </div>
-                <span aria-hidden="true">↓</span>
-              </div>
-              <div className={styles.paymentRow}>
-                <span className={styles.nodeIcon}>03</span>
-                <div>
-                  <strong>Your payout contract</strong>
-                  <span>Keeps it until it is paid out: 99.9% to your wallet, 0.1% to Agentify</span>
-                </div>
-                <span aria-hidden="true">↓</span>
-              </div>
-              <div className={styles.paymentRow}>
-                <span className={styles.nodeIcon}>04</span>
-                <div>
-                  <strong>Your payout wallet</strong>
-                  <span>The address set in your dashboard</span>
-                </div>
-                <span aria-hidden="true">✓</span>
-              </div>
-              <p>
-                Publishing needs a seller name and a payout wallet, on the test channel as well as
-                live, and live publication also needs the operator’s approval. Opening a dashboard
-                grants none of them.
-              </p>
+              ))}
             </section>
           </div>
         </section>
 
-        <section
-          className={`container ${styles.section}`}
-          id="loyalty"
-          aria-labelledby="loyalty-title"
-        >
-          <div className={styles.sectionHeading}>
-            <h2 id="loyalty-title">Reward the customer behind the agent.</h2>
-            <p>
-              Not live yet. The idea is cashback terms an agent can compare, and a record of
-              delivering what you promise.
-            </p>
-          </div>
-          {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
-          <ol className={styles.steps} role="list">
-            <li>
-              <span className={styles.stepSymbol} aria-hidden="true">
-                01
-              </span>
-              <h3>You fund the reward.</h3>
-              <p>
-                Once your merchant is verified, agree a cashback rate, budget and return rules. An
-                agent can read the offer and compare what it is worth to its customer.
-              </p>
-            </li>
-            <li>
-              <span className={styles.stepSymbol} aria-hidden="true">
-                02
-              </span>
-              <h3>Delivery unlocks it.</h3>
-              <p>
-                Cashback becomes payable to the customer only after verified delivery of the product
-                or service, under the agreed terms. Payment alone does not trigger a reward.
-              </p>
-            </li>
-            <li>
-              <span className={styles.stepSymbol} aria-hidden="true">
-                03
-              </span>
-              <h3>Reliability earns trust.</h3>
-              <p>
-                Delivery success, service quality and refund speed build a record that agents can
-                weigh alongside price and cashback.
-              </p>
-            </li>
-          </ol>
-          <div className={styles.localNote}>
-            <p>
-              <strong>A loyalty model we’re developing.</strong> Reward funding and refund reserves
-              would be accounted for separately. Program terms and availability must be agreed
-              before activation.
-            </p>
-            <a href="/dashboard/sign-in">
-              Open your dashboard <Arrow diagonal />
-            </a>
-          </div>
-        </section>
+        <div className="container" id="loyalty">
+          <p className={styles.soon}>{loyalty}</p>
+        </div>
 
         <section className={`container ${styles.section}`} id="businesses">
           <div className={styles.sectionHeading}>
             <h2>
-              If people can buy it,
-              <br />
-              let’s explore an agent offer.
+              <Lines of={businesses.title} />
             </h2>
-            <p>
-              From a digital product to a day in Bali. What matters is a process that can fulfil the
-              order.
-            </p>
+            <p>{businesses.lede}</p>
           </div>
           <div className={styles.categories}>
-            {categories.map(([number, title, description, examples]) => (
-              <article key={number}>
-                <span>{number}</span>
-                <h3>{title}</h3>
-                <p>{description}</p>
-                <small>{examples}</small>
+            {businesses.categories.map((category, index) => (
+              <article key={category.title}>
+                <span>{numbered(index)}</span>
+                <h3>{category.title}</h3>
+                <p>{category.text}</p>
+                <small>{category.examples}</small>
               </article>
             ))}
           </div>
@@ -429,47 +289,33 @@ export default function AgenticShopPage() {
           <div className={`container ${styles.entryGrid}`}>
             <div>
               <h2>
-                Start with
-                <br />
-                your email.
+                <Lines of={start.title} />
               </h2>
-              <p>
-                The one-time link signs you in or creates your dashboard. No password, no invitation
-                code, no review to pass before the test channel.
-              </p>
+              <p>{start.text}</p>
               <ul>
-                <li>Choose the seller name buyers see</li>
-                <li>
-                  Integrate through the <a href="/docs/quickstart">Agentify SDK</a>
-                </li>
-                <li>Publish and verify offers in the test channel</li>
+                {start.steps.map((step) => (
+                  <li key={plain(step)}>
+                    <Words of={step} />
+                  </li>
+                ))}
               </ul>
-              <div className={styles.entryNote}>
-                Publishing in the test channel also needs a test payout wallet. Live publication
-                needs a wallet of its own and a one-time operator approval for the merchant.
-              </div>
             </div>
             <div className={styles.entryCard}>
-              <h3>Open the door from your inbox.</h3>
-              <p>
-                Enter your email in the dashboard. The message works once and expires after one
-                hour.
-              </p>
+              <h3>{start.card.title}</h3>
+              <p>{start.card.text}</p>
               <a className={styles.primary} href="/dashboard/sign-in">
-                Open your dashboard <Arrow diagonal />
+                {start.card.action} <Arrow diagonal />
               </a>
-              <p className={styles.entryFootnote}>
-                The mailbox is the key to the dashboard. A shared mailbox means a shared dashboard.
-              </p>
+              <p className={styles.entryFootnote}>{start.card.footnote}</p>
             </div>
           </div>
         </section>
 
         <section className={`container ${styles.section}`} id="questions">
           <div className={styles.sectionHeading}>
-            <h2>Questions about selling to agents</h2>
+            <h2>{questions.title}</h2>
             <p>
-              They are answered in the <a href="/docs/faq">merchant documentation</a>.
+              <Words of={questions.text} />
             </p>
           </div>
         </section>

@@ -412,6 +412,14 @@ const started = async (standing: Standing = {}): Promise<Running> => {
 const tokenIn = (authorizeUrl: string): string =>
   new URL(authorizeUrl).searchParams.get("user_id") ?? "";
 
+const grantedBody = (token: string, permissions = "read_write") => ({
+  key_id: 2,
+  user_id: token,
+  consumer_key: "ck_a-key-from-the-shop",
+  consumer_secret: "cs_a-secret-from-the-shop",
+  key_permissions: permissions,
+});
+
 /** The banner over the page, as a merchant reads it. */
 const bannerIn = (html: string): string =>
   readable(/<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "");
@@ -520,14 +528,6 @@ describe("pressing Connect", () => {
 });
 
 describe("the keys arriving from the shop", () => {
-  const grantedBody = (token: string, permissions = "read_write") => ({
-    key_id: 2,
-    user_id: token,
-    consumer_key: "ck_a-key-from-the-shop",
-    consumer_secret: "cs_a-secret-from-the-shop",
-    key_permissions: permissions,
-  });
-
   it("connects the shop the merchant typed", async () => {
     const running = await started();
     await running.signIn();
@@ -2250,7 +2250,7 @@ describe("one integration at a time", () => {
     expect((await theCodePolls(running)).status).toBe(200);
   });
 
-  it("refuses to disconnect while an order still waits on the shop, and keeps the shop", async () => {
+  it("refuses to replace or disconnect a shop while an order still waits on it", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
@@ -2273,7 +2273,79 @@ describe("one integration at a time", () => {
     expect(refused.status).toBe(409);
     expect(readable(refused.html)).toContain(order?.order.id ?? "no order");
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
+
+    const replaced = await running.post("/woocommerce/connect", {
+      shop_url: "https://other.example.com",
+    });
+
+    expect(replaced.status).toBe(409);
+    expect(replaced.to).toBeNull();
+    expect((await running.shops.connectionOf(running.accountId))?.shopUrl).toBe(SHOP);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
     void asking;
+  });
+
+  it("requires disconnecting before connecting a different shop even with no open orders", async () => {
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    const before = await running.shops.connectionOf(running.accountId);
+
+    const replaced = await running.post("/woocommerce/connect", {
+      shop_url: "https://other.example.com",
+    });
+
+    expect(replaced.status).toBe(409);
+    expect(replaced.to).toBeNull();
+    expect(await running.shops.connectionOf(running.accountId)).toStrictEqual(before);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+
+    expect((await running.post("/woocommerce/disconnect")).status).toBe(303);
+    const connected = await running.post("/woocommerce/connect", {
+      shop_url: "https://other.example.com",
+    });
+    expect(connected.status).toBe(303);
+    expect(new URL(connected.to ?? "").origin).toBe("https://other.example.com");
+  });
+
+  it("still renews the connected shop's keys when its address is written another way", async () => {
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+
+    const renewed = await running.post("/woocommerce/connect", {
+      shop_url: "https://SHOP.example.com:443/",
+    });
+    expect(renewed.status).toBe(303);
+    const callback = await running.postJson("/woocommerce/callback", {
+      ...grantedBody(tokenIn(renewed.to ?? "")),
+      consumer_key: "ck_renewed",
+    });
+
+    expect(callback.status).toBe(200);
+    expect((await running.shops.connectionOf(running.accountId))?.consumerKey).toBe("ck_renewed");
+  });
+
+  it("refuses a stale callback for another shop and preserves the connected shop's keys", async () => {
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    const before = await running.shops.connectionOf(running.accountId);
+    await running.shops.beginGrant({
+      token: "stale-other-shop",
+      accountId: running.accountId,
+      shopUrl: "https://other.example.com",
+      startedAt: new Date(),
+      expiresAt: new Date(Date.now() + 15 * 60_000),
+    });
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody("stale-other-shop"),
+    );
+
+    expect(callback.status).toBe(401);
+    expect(await running.shops.connectionOf(running.accountId)).toStrictEqual(before);
   });
 
   it("refuses to sell through a connected shop while an order still waits on the code, and names it to be copied", async () => {

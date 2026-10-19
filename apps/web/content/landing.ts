@@ -8,10 +8,9 @@ export type LandingConfig = Readonly<{
   hero: Readonly<{ title: string; subtitle: string; cta: string }>;
   /**
    * One line under the scan form for the person who came to sell rather than
-   * to scan: a lead-in and a link to the page about selling to agents. Only
-   * the front page carries it; the segment pages leave it out.
+   * to scan: a lead-in and a link to the page about selling to agents.
    */
-  secondDoor?: Readonly<{ lead: string; label: string; href: string }>;
+  secondDoor: Readonly<{ lead: string; label: string; href: string }>;
   segmentPhase: string;
 }>;
 
@@ -57,6 +56,16 @@ export const LANDING_EXAMPLE_CHECKS = [
   { checkId: 11, name: "OAuth discovery", status: "not_applicable" },
 ] as const;
 
+/**
+ * The line for a business that arrived at a scan landing made for its kind:
+ * what the scan has to do with selling, which is nothing it waits on.
+ */
+const SELLING_APART_FROM_THE_SCAN = {
+  lead: "Selling to agents runs through Agentify and does not depend on this scan.",
+  label: "How selling to agents works",
+  href: "/agentic-shop",
+} as const;
+
 export const LANDINGS = {
   owner: {
     segment: "owner",
@@ -85,6 +94,7 @@ export const LANDINGS = {
       subtitle: "We read your public product pages. We do not place an order or test checkout.",
       cta: "Scan my store",
     },
+    secondDoor: SELLING_APART_FROM_THE_SCAN,
     segmentPhase: "Checking catalog and commerce signals",
   },
   local: {
@@ -97,6 +107,7 @@ export const LANDINGS = {
       subtitle: "We read your public pages. We do not make a booking or test open slots.",
       cta: "Scan my business",
     },
+    secondDoor: SELLING_APART_FROM_THE_SCAN,
     segmentPhase: "Checking local business signals",
   },
 } as const satisfies Record<Segment, LandingConfig>;

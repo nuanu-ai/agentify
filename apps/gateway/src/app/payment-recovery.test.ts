@@ -49,7 +49,7 @@ async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadline
     nonce: `0x${"1".repeat(64)}`,
     fromBlock: "100",
   };
-  h.facilitator.willVerify({ verified: true, payer: PAYER, recovery });
+  h.facilitator.willVerify({ verified: true, payer: PAYER, validUntil: null, recovery });
   const offered = await h.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error("no price was offered");
   return { h, recovery, orderId: offered.order.order.id };
@@ -76,7 +76,7 @@ describe("recovering a payment without another charge", () => {
     }
   });
 
-  it("reads an accepted expired authorization's unknown outcome without verifying it again", async () => {
+  it("refuses an expired original authorization without disclosing held goods or denying a possible charge", async () => {
     const { h, recovery, orderId } = await purchase("sync");
     await h.store.claimPayment("fp-original", orderId);
     await h.gateway.runner.presentVerifiedPayment(
@@ -101,26 +101,33 @@ describe("recovering a payment without another charge", () => {
     });
     h.facilitator.willRefuseVerification("price_stale", "the authorization expired");
     const retried = await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
-    expect(retried.step).toBe("settled");
-    if (retried.step !== "settled") throw new Error("the purchase status was lost");
-    expect(retried.order.order.payment).toBe("outcome_unknown");
+    expect(retried.step).toBe("payment_not_taken");
+    expect(JSON.stringify(retried)).not.toContain("nothing was charged");
+    expect(JSON.stringify(retried)).not.toContain(orderId);
+    expect(JSON.stringify(retried)).not.toContain("KEPT");
     expect(h.facilitator.verifies).toHaveLength(0);
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("lets the exact accepted payment retrieve goods after its authorization was consumed", async () => {
+  it("requires a fresh verified payment to retrieve goods after the original authorization was consumed", async () => {
     const { h, orderId } = await purchase();
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
     await h.gateway.deliverOrder(h.merchant.id, orderId, { activation_code: "BOUGHT" });
     h.facilitator.willRefuseVerification("signature", "the authorization was consumed");
     const retried = await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
-    expect(retried.step).toBe("settled");
-    if (retried.step !== "settled") throw new Error("the purchase status was lost");
-    expect(retried.delivery).toEqual({ activation_code: "BOUGHT" });
-    expect(h.facilitator.verifies).toHaveLength(1);
+    expect(retried.step).toBe("payment_not_verified");
+    expect(JSON.stringify(retried)).not.toContain("nothing was charged");
+    expect(JSON.stringify(retried)).not.toContain(orderId);
+    expect(JSON.stringify(retried)).not.toContain("BOUGHT");
+    expect(h.facilitator.verifies).toHaveLength(2);
     const forged = await h.gateway.payPurchase(orderId, "FORGED-SIGNATURE", "fp-original");
     expect(forged.step).toBe("payment_not_verified");
     expect(forged).not.toHaveProperty("delivery");
+    h.facilitator.willVerify({ verified: true, payer: PAYER, validUntil: null });
+    const fresh = await h.gateway.payPurchase(orderId, "FRESH", "fp-fresh");
+    expect(fresh.step).toBe("settled");
+    if (fresh.step !== "settled") throw new Error("the verified buyer lost its purchase");
+    expect(fresh.delivery).toEqual({ activation_code: "BOUGHT" });
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
@@ -176,6 +183,33 @@ describe("recovering a payment without another charge", () => {
     expect(refused.step).toBe("payment_not_taken");
     expect(JSON.stringify(refused)).not.toContain("nothing was charged");
     expect(refused).not.toHaveProperty("delivery");
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it("does not deny a charge completed while a refused payment was being verified", async () => {
+    const { h, recovery, orderId } = await purchase();
+    const release = h.facilitator.holdVerification();
+    h.facilitator.willRefuseVerification("signature", "the presented signature is invalid");
+    const checking = h.gateway.payPurchase(orderId, "PUBLIC-USED-PAYMENT", "fp-original");
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+    await h.store.claimPayment("fp-accepted", orderId);
+    await h.gateway.runner.presentVerifiedPayment(
+      orderId,
+      PAYER,
+      "PAYMENT",
+      recovery.payTo,
+      h.now(),
+      { recovery, fingerprint: "fp-accepted" },
+    );
+    await h.gateway.deliverOrder(h.merchant.id, orderId, { activation_code: "PRIVATE" });
+    release();
+
+    const refused = await checking;
+
+    expect(refused.step).toBe("payment_not_verified");
+    expect(JSON.stringify(refused)).not.toContain("nothing was charged");
+    expect(JSON.stringify(refused)).not.toContain(orderId);
+    expect(JSON.stringify(refused)).not.toContain("PRIVATE");
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
@@ -391,7 +425,11 @@ describe("recovering a payment without another charge", () => {
     });
     const saved = await h.store.orderById(orderId);
     if (saved === null) throw new Error("no saved order");
-    await h.store.addOrder({ ...saved, order: { ...saved.order, id: "ord_duplicate" } });
+    await h.store.addOrder({
+      ...saved,
+      paymentRef: "pay_duplicate",
+      order: { ...saved.order, id: "ord_duplicate" },
+    });
     h.runtime.facilitator.recoveryFor = async () => recovery;
     h.runtime.facilitator.reconcile = async () => ({
       settled: true,

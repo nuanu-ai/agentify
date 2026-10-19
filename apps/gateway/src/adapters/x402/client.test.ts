@@ -113,7 +113,6 @@ const NOWHERE = "http://127.0.0.1:1";
 const aPayment = (overrides: Partial<Parameters<typeof facilitatorClientFor>[0]> = {}) => ({
   facilitatorUrl: "https://x402.org/facilitator",
   network: "eip155:84532",
-  timeoutSeconds: 300,
   payTo: null,
   cdpApiKeyId: null,
   cdpApiKeySecret: null,

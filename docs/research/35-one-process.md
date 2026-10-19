@@ -180,6 +180,14 @@ dogfooding turns into" below has the detail). Merging the scanner: a
 browser-driving worker whose one call to the dashboard is about identity, not
 money, would add the crash cost for nothing.
 
+# Before the move: the survey and the plan, kept as written
+
+The design as it runs ends above. Everything from here on was written on
+2026-09-25, before the move was built, and keeps the words of that time: the
+two processes as they were, the design as proposed, the order of the move and
+what the survey did not verify. Where it disagrees with the section above, the
+section above is what runs.
+
 ## The two processes before the move
 
 Two branches changed the same files and were expected to merge before any of

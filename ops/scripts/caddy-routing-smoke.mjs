@@ -155,6 +155,58 @@ async function expectUnmarked(baseUrl, requestPath) {
   assert.deepEqual(await headersOf(requestPath), await headersOf("/elsewhere"), requestPath);
 }
 
+/**
+ * The test channel is not the site: every answer asks not to be listed, its
+ * robots.txt keeps crawlers out, and its llms.txt says on its first line that
+ * it is the test channel, paid in test money, and where the live site is.
+ */
+async function expectTestChannelUnlisted(baseUrl) {
+  for (const requestPath of ["/", "/docs/", "/x402/catalog", "/dashboard/sign-in", "/missing"]) {
+    const response = await fetch(`${baseUrl}${requestPath}`);
+    assert.match(response.headers.get("x-robots-tag") ?? "", /\bnoindex\b/, requestPath);
+  }
+
+  const robots = await fetch(`${baseUrl}/robots.txt`);
+  assert.equal(robots.status, 200);
+  assert.match(robots.headers.get("content-type") ?? "", /^text\/plain(?:;|$)/);
+  const rules = (await robots.text()).split("\n").map((line) => line.trim());
+  assert.deepEqual(
+    rules.filter((line) => line !== ""),
+    ["User-agent: *", "Disallow: /"],
+    "the test channel's robots.txt lets a crawler in",
+  );
+
+  const llms = await fetch(`${baseUrl}/llms.txt`);
+  assert.equal(llms.status, 200);
+  assert.match(llms.headers.get("content-type") ?? "", /^text\/plain(?:;|$)/);
+  const [firstLine] = (await llms.text()).split("\n");
+  assert.match(
+    firstLine ?? "",
+    /test channel/i,
+    "llms.txt does not open by naming the test channel",
+  );
+  assert.match(
+    firstLine ?? "",
+    /test money/i,
+    "llms.txt does not open by saying the money is a test",
+  );
+  assert.match(
+    firstLine ?? "",
+    /https:\/\/agentify\.ad\b/,
+    "llms.txt does not open with the live site",
+  );
+}
+
+/** The live channel's crawler answers are the scanner's own, and nothing asks not to be listed. */
+async function expectLiveChannelListed(baseUrl) {
+  for (const requestPath of ["/", "/docs/", "/x402/catalog"]) {
+    const response = await fetch(`${baseUrl}${requestPath}`);
+    assert.equal(response.headers.get("x-robots-tag"), null, requestPath);
+  }
+  await expectProxy(baseUrl, "/robots.txt", "scanner");
+  await expectProxy(baseUrl, "/llms.txt", "scanner");
+}
+
 async function expectUpstreamMissing(baseUrl, requestPath, role) {
   const response = await fetch(`${baseUrl}${requestPath}`);
   assert.equal(response.status, 404, requestPath);
@@ -320,6 +372,7 @@ try {
   }
 
   await expectSharedAssets(innerBase);
+  await expectTestChannelUnlisted(innerBase);
 
   let response = await fetch(`${innerBase}/docs`, { redirect: "manual" });
   assert.equal(response.status, 302);
@@ -478,9 +531,10 @@ try {
   assert.doesNotMatch(await liveFront.text(), /Identity not published/);
   await expectProxy(liveBase, "/sellers", "scanner");
   await expectProxy(liveBase, "/", "scanner");
+  await expectLiveChannelListed(liveBase);
 
   console.log(
-    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
+    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, keeps one trusted scanner client IP, and keeps the test channel out of search and agents' indexes",
   );
 } finally {
   for (const container of [liveName, mutatedName, innerName, edgeName]) {

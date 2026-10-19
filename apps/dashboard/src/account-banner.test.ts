@@ -97,11 +97,11 @@ describe("the account banner", () => {
     expect(reasonsOf({ ...bare, mode: "test" })).toStrictEqual(["no_payout_wallet"]);
   });
 
-  it("points at the page that puts a setting right, and at none for the approval", () => {
+  it("points at the page that puts a setting right, and from the approval to the test channel's dashboard", () => {
     const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
 
     expect(accountOf(viewer).map((note) => [note.reason, note.fix?.to ?? null])).toStrictEqual([
-      ["not_approved", null],
+      ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
       ["no_seller_name", "/settings"],
     ]);
   });

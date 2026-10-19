@@ -115,7 +115,6 @@ describe("loadConfig", () => {
     expect(config.payment).toStrictEqual({
       facilitatorUrl: "https://x402.org/facilitator",
       network: "eip155:84532",
-      timeoutSeconds: 300,
       payTo: null,
       cdpApiKeyId: null,
       cdpApiKeySecret: null,
@@ -133,7 +132,6 @@ describe("loadConfig", () => {
     expect(live.payment).toStrictEqual({
       facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
       network: "eip155:8453",
-      timeoutSeconds: 300,
       payTo: "0x0000000000000000000000000000000000000001",
       cdpApiKeyId: "key-id",
       cdpApiKeySecret: "key-secret",

@@ -29,7 +29,7 @@ import {
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
-import { PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 const parcelCard: Card = CardSchema.parse({
   merchant_item_id: "beans-1kg",
@@ -224,7 +224,7 @@ describe("buying a parcel", () => {
     expect(order?.ship_to).toStrictEqual(locality);
   });
 
-  it("refuses a payment carrying another address before it is verified, and says to start again", async () => {
+  it("refuses a verified payment carrying another address before anything is charged, and says to start again", async () => {
     const { harnessed, served, itemId } = await started();
 
     const paid = await buyOverHttp(
@@ -241,7 +241,123 @@ describe("buying a parcel", () => {
     expect(paid.status).toBe(409);
     expect((paid.body as Refused).error.code).toBe("ship_to_changed");
     expect((paid.body as Refused).error.message).toContain("new purchase");
-    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+  });
+
+  it("does not tell a payment that is not one whether an address is the one priced", async () => {
+    // The payment's reference can be published, so a payment carrying only
+    // that must not be a way to try addresses against the order.
+    const { harnessed, served, itemId } = await started();
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await worker.stop();
+    const reference = decodePaymentRequiredHeader(
+      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+    harnessed.facilitator.willRefuseVerification("signature", "that is not a payment");
+
+    const tried = async (shipTo: ShipTo) => {
+      const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {}, ship_to: shipTo },
+        headers: {
+          [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+            x402Version: 2,
+            accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: reference } } as never,
+            payload: {},
+          }),
+        },
+      });
+      return { status: answered.status, code: (answered.body as Refused).error.code };
+    };
+
+    expect(await tried({ ...address, line_one: "Jl. Pantai Nyanyi" })).toStrictEqual(
+      await tried(address),
+    );
+  });
+
+  it("does not tell a payer who is not the parcel's buyer whether an address is the one paid for", async () => {
+    // Verifying moves no money, so a wallet holding the price could sign as
+    // many payments as it likes against a paid parcel whose reference was
+    // published, and try addresses with each.
+    const { harnessed, served, itemId } = await started();
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await worker.stop();
+    const accepted = decodePaymentRequiredHeader(
+      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (accepted === undefined) throw new Error("no payment was offered");
+    const payingFrom = (from: string, nonce: string, body: unknown) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body,
+        headers: {
+          [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+            x402Version: 2,
+            accepted,
+            payload: { signature: `0xparcel-${nonce}`, authorization: { from, nonce } },
+          }),
+        },
+      });
+    const bought = await payingFrom(`0x${"a".repeat(40)}`, "0x01", { params: {} });
+    expect(bought.status).toBeLessThan(300);
+
+    const stranger = `0x${"b".repeat(40)}`;
+    const tried = async (nonce: string, shipTo: ShipTo) => {
+      const answered = await payingFrom(stranger, nonce, { params: {}, ship_to: shipTo });
+      return { status: answered.status, code: (answered.body as Refused).error.code };
+    };
+
+    expect(await tried("0x02", { ...address, line_one: "Jl. Pantai Nyanyi" })).toStrictEqual({
+      status: 409,
+      code: "not_this_purchase",
+    });
+    expect(await tried("0x03", address)).toStrictEqual({ status: 409, code: "not_this_purchase" });
+  });
+
+  it("does not disclose a paid parcel or its address to a replay of its public used authorization", async () => {
+    const { harnessed, served, itemId } = await started();
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await worker.stop();
+    const accepted = decodePaymentRequiredHeader(
+      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (accepted === undefined) throw new Error("no payment was offered");
+    const payment = encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted,
+      payload: {
+        signature: "0xused-public-signature",
+        authorization: { from: `0x${"a".repeat(40)}`, nonce: "0x01" },
+      },
+    });
+    const present = (shipTo: ShipTo) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {}, ship_to: shipTo },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    const bought = await present(address);
+    expect(bought.status).toBeLessThan(300);
+    const orderId = (bought.body as { order_id: string }).order_id;
+    harnessed.facilitator.willRefuseVerification("signature", "authorization already used");
+
+    const changed = await present({ ...address, line_one: "Jl. Pantai Nyanyi" });
+    const same = await present(address);
+
+    for (const answer of [changed, same]) {
+      expect(answer.status).toBe(409);
+      expect((answer.body as Refused).error.code).toBe("payment_not_verified");
+      expect(JSON.stringify(answer.body)).not.toContain(orderId);
+      expect(JSON.stringify(answer.body)).not.toContain(address.line_one);
+      expect(JSON.stringify(answer.body)).not.toMatch(/nothing was charged/i);
+    }
+    expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
   it("pays for the address it was priced for when the payment carries none", async () => {
@@ -645,6 +761,65 @@ describe("the shipment", () => {
     expect(status.ship_by).toBe(new Date(paidAt + 172_800_000).toISOString());
   });
 
+  it.each([
+    { status: "shipped", httpStatus: 200 },
+    { status: "refund_due", httpStatus: 409 },
+    { status: "rejected", httpStatus: 409 },
+  ])(
+    "answers a repeated $status purchase with HTTP $httpStatus without another charge",
+    async ({ status, httpStatus }) => {
+      const { harnessed, served, itemId } = await started();
+      if (status === "rejected") {
+        harnessed.facilitator.willSettle({ settled: false, reason: "the charge was refused" });
+      }
+      const body = { params: {}, ship_to: address };
+      const paid = await pricedThenPaid(harnessed, served, itemId, { priced: body, paid: body });
+      expect(paid.status).toBe(status === "rejected" ? 409 : 200);
+      const orderId = (paid.body as { order_id: string }).order_id;
+      const payment = harnessed.facilitator.settles[0]?.payment;
+      if (payment === undefined) throw new Error("no charge was attempted");
+
+      if (status === "shipped") {
+        const accepted = await served.call("POST", `/v0/orders/${orderId}/accept`, {
+          headers: asMerchant,
+          body: {},
+        });
+        expect(accepted.status).toBe(200);
+        expect((await ship(served, orderId, shipment)).status).toBe(200);
+      } else if (status === "refund_due") {
+        const refused = await served.call("POST", `/v0/orders/${orderId}/refuse`, {
+          headers: asMerchant,
+          body: { code: "out_of_stock", message: "The parcel cannot be fulfilled." },
+        });
+        expect(refused.status).toBe(200);
+      }
+
+      const beforeRepeat = await statusOf(served, orderId);
+      expect(beforeRepeat.status).toBe(status);
+      if (status === "shipped") expect(beforeRepeat.shipment).toMatchObject(shipment);
+      const receipt = await harnessed.store.receiptForOrder(orderId);
+
+      const repeated = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body,
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+
+      expect(repeated.status).toBe(httpStatus);
+      if (status === "rejected") {
+        // An order over with nothing taken is answered without the order:
+        // whoever presents its payment reference has not paid, and the buyer
+        // already holds the order from its first answer.
+        expect(repeated.body).toMatchObject({ error: { code: "payment_not_taken" } });
+        expect(JSON.stringify(repeated.body)).not.toContain(orderId);
+      } else {
+        expect(repeated.body).toStrictEqual(beforeRepeat);
+      }
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+      expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
+      expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
+    },
+  );
+
   it("answers the same shipment again as recorded, and refuses a different one", async () => {
     // A parcel cannot be sent twice safely, so a repeat is ordinary and a
     // second, different shipment is refused rather than taken in silence: a
@@ -806,7 +981,11 @@ describe("a shipment against a card republished since the sale", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const { result: _kept, ...older } = offered.order;
     const orderId = "ord_written_before_orders_kept_a_result";
-    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: orderId } });
+    await harnessed.store.addOrder({
+      ...older,
+      paymentRef: harnessed.runtime.ids("pay"),
+      order: { ...older.order, id: orderId },
+    });
     await harnessed.gateway.payPurchase(orderId, "PAYMENT-OLDER", "PAYMENT-OLDER");
     await harnessed.store.publishCard(
       harnessed.merchant.id,

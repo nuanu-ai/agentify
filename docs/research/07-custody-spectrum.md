@@ -1,5 +1,7 @@
 # Кастодиальный спектр: техническая заметка
 
+> Historical, 2026-08-25. "Direct" is no longer the current model: every payment goes to the merchant's split, which pays the merchant and Agentify's 0.1% (ADR-0037); the custody boundary stands in ADR-0019.
+
 2026-08-25, трек A. Вопрос владельца продукта: можем ли на этой же
 архитектуре позже стать custodial (только техника, без рынка/регуляторики).
 

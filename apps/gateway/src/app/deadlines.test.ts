@@ -188,6 +188,30 @@ describe("when the time runs out", () => {
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
 
+  it("collects goods already made with an authorisation too short for goods still to be made", async () => {
+    // The door refuses an authorisation that cannot outlive a charge sent
+    // after goods the merchant has yet to make. Goods already made are charged
+    // at once, so a repeat purchase collecting them is not held to that.
+    const harnessed = await started();
+    const orderId = await bought(harnessed, syncCard);
+    const first = authorisation(harnessed, BUYER, "0x01");
+    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      delivered: { access_code: "CODE-ONE" },
+    });
+    expect((await state(harnessed, orderId))?.heldFulfillment).toBe(true);
+
+    const short = authorisation(harnessed, BUYER, "0x02", harnessed.now() + 1_000);
+    const collected = await harnessed.gateway.payPurchase(
+      orderId,
+      short.payment,
+      short.fingerprint,
+    );
+
+    expect(collected.step).toBe("settled");
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
+  });
+
   it("keeps the first of two late answers in the drawer, and the buyer collects that one", async () => {
     // A late answer after a synchronous timeout is held for a repeat purchase to
     // collect, and the first one held is kept. A handler that issues a fresh code
@@ -320,6 +344,90 @@ describe("the wait for the charge", () => {
     );
     expect((await state(harnessed, orderId))?.state).toBe("delivered");
     await worker.stop();
+  });
+});
+
+describe("fulfillment after a delayed charge", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    { waitMs: 999, ending: "delivered" },
+    { waitMs: 1_000, ending: "refund_due" },
+  ])(
+    "ends as $ending after $waitMs ms of the merchant's full second",
+    async ({ waitMs, ending }) => {
+      const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "10000" });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const orderId = await bought(harnessed, { ...asyncCard, fulfill_deadline_seconds: 1 });
+      const release = harnessed.facilitator.holdSettle();
+      const requestedAt = harnessed.now();
+      const paying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await state(harnessed, orderId))?.payment).toBe("settling");
+
+      // The charge takes longer than fulfillment is allowed to take.
+      harnessed.advance(2_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      const confirmedAt = harnessed.now();
+      release();
+      await paying;
+
+      const paid = await state(harnessed, orderId);
+      expect(paid?.timestamps.settleStartedAt).toBe(requestedAt);
+      expect(paid?.timestamps.paidAt).toBe(confirmedAt);
+      const handover = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+      expect(handover.envelopes.map((envelope) => envelope.kind)).toStrictEqual(["order"]);
+      await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, { accepted: {} });
+
+      harnessed.advance(waitMs);
+      await vi.advanceTimersByTimeAsync(waitMs);
+      if (ending === "delivered") {
+        expect(
+          await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+            activation_code: "LPA:1$X",
+          }),
+        ).toStrictEqual({ ok: true, result: "delivered" });
+        expect((await harnessed.store.receiptForOrder(orderId))?.paid_at).toBe(
+          new Date(confirmedAt).toISOString(),
+        );
+      } else {
+        expect((await state(harnessed, orderId))?.closure).toStrictEqual({
+          cause: "deadline_expired",
+          deadline: "async_fulfillment",
+        });
+        expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+      }
+      expect((await state(harnessed, orderId))?.state).toBe(ending);
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    { settled: false as const, reason: "the charge was refused" },
+    { settled: "unknown" as const, reason: "the charge could not be confirmed" },
+  ])("records when the facilitator answered $settled", async (outcome) => {
+    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "10000" });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const orderId = await bought(harnessed, asyncCard);
+    harnessed.facilitator.willSettle(outcome);
+    const release = harnessed.facilitator.holdSettle();
+    const paying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await state(harnessed, orderId))?.payment).toBe("settling");
+
+    harnessed.advance(2_000);
+    await vi.advanceTimersByTimeAsync(2_000);
+    release();
+    await paying;
+
+    const recorded = await harnessed.store.orderById(orderId);
+    expect(recorded?.paymentWords).toContainEqual({
+      at: harnessed.now(),
+      about: "settle",
+      said: outcome.reason,
+    });
+    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });
 

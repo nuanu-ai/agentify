@@ -243,7 +243,7 @@ if ("missing" in filled) {
   process.exit(1);
 }
 
-const bought = await buyer.buy(card.id, filled.answers);
+const bought = await buyer.buy(card, filled.answers);
 
 console.log(`[buyer] answered ${bought.status}`);
 console.log(JSON.stringify(bought.body, null, 2));

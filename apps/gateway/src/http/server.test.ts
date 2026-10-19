@@ -6,8 +6,9 @@ import { API_ROUTES, ERROR_CODES, mountableRoutes } from "@nuanu-ai/agentify-con
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { setServiceName } from "../app/merchants.js";
+import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
+  buyOverHttp,
   type Harness,
   harness,
   type Served,
@@ -16,7 +17,7 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import { buildApp, refusal } from "./server.js";
-import { ORDER_ID_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /**
  * The files that hold every refusal this gateway sends, read as source text
@@ -489,6 +490,45 @@ describe("the payment challenge", () => {
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
+  it("asks for an authorisation that outlives the charge, even one signed as the price is named and presented as it runs out", async () => {
+    // The reference client signs an authorisation valid for maxTimeoutSeconds
+    // from the moment it signs. An agent may sign as soon as the price is named
+    // and present the payment as the price runs out, and the door then asks
+    // for what a charge after the goods needs: the synchronous answer's time,
+    // the exact-EVM facilitator's six seconds, and two for the gateway's own
+    // steps and the clocks. Two more cover the time before the check: its round
+    // trip, and the client rounding its clock down to the second. The protocol
+    // counts whole seconds, so a window configured to the millisecond is
+    // rounded up: a second short would end before the charge.
+    const environments: Record<string, string>[] = [
+      { QUOTE_TTL_MS: "30000" },
+      { QUOTE_TTL_MS: "45000" },
+      { QUOTE_TTL_MS: "30000", SYNC_RESPONSE_MS: "15000", SYNC_BUDGET_MS: "30000" },
+      { QUOTE_TTL_MS: "30500" },
+    ];
+    for (const environment of environments) {
+      const { served, harnessed } = await started(environment);
+      const { quoteTtlMs, syncResponseMs } = harnessed.runtime.config.deadlines;
+      const itemId = await publish(served, syncCard);
+
+      for (const asked of [
+        await served.call("GET", `/x402/${itemId}/purchase`),
+        await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } }),
+      ]) {
+        const challenge = decodePaymentRequiredHeader(
+          asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+        );
+        expect(challenge.accepts[0]?.maxTimeoutSeconds, JSON.stringify(environment)).toBe(
+          Math.ceil((quoteTtlMs + syncResponseMs) / 1_000) + 6 + 2 + 2,
+        );
+      }
+
+      await served.close();
+      await harnessed.stop();
+      open = null;
+    }
+  });
+
   it("asks for the smallest price the door takes, exactly", async () => {
     // The finest price publication accepts is one unit of the payment token,
     // and the challenge must ask for exactly that unit.
@@ -507,7 +547,7 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.amount).toBe("1");
   });
 
-  it("prices a POST against an order it opened, and says which order", async () => {
+  it("prices a POST against an order it opened, and names that order by its payment reference", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -519,10 +559,10 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    const named = challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA];
+    const named = challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.order.id);
+    expect(named).toBe(orders[0]?.paymentRef);
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
@@ -544,10 +584,10 @@ describe("the payment challenge", () => {
 
     expect(bought.status).toBe(402);
     const named = decodePaymentRequiredHeader(bought.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
-      .accepts[0]?.extra?.[ORDER_ID_IN_EXTRA];
+      .accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.order.id);
+    expect(named).toBe(orders[0]?.paymentRef);
   });
 
   it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
@@ -564,7 +604,7 @@ describe("the payment challenge", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    expect(challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -581,7 +621,7 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -687,7 +727,7 @@ describe("the payment challenge", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [ORDER_ID_IN_EXTRA]: "ord_from_nowhere" },
+        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
       },
       payload: {},
     });
@@ -754,7 +794,7 @@ describe("the payment challenge", () => {
     const nonsense = Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepted: { extra: { order_id: offered.order.order.id } },
+        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
       }),
       "utf8",
     ).toString("base64");
@@ -841,7 +881,7 @@ describe("a card whose payment challenge would be too large to read", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [ORDER_ID_IN_EXTRA]: "ord_from_nowhere" },
+        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
       },
       payload: {},
     });
@@ -863,7 +903,157 @@ describe("a card whose payment challenge would be too large to read", () => {
   });
 });
 
+describe("a payment whose authorisation would run out before its charge", () => {
+  // A purchase delivered in the answer is charged after its goods, up to the
+  // synchronous answer's time after the payment checks out, and the
+  // facilitator refuses an authorisation within six seconds of its end. A
+  // payment that cannot last that long is refused at the check, before the
+  // merchant makes anything and before anything is charged, and the agent pays
+  // the same order again with a fresh signature.
+  const BUYER = "0x0000000000000000000000000000000000000abc";
+
+  const priced = async (served: Served, itemId: string) => {
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+    const requirements = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (requirements === undefined) throw new Error("no payment option was offered");
+    return requirements;
+  };
+
+  const paid = (
+    served: Served,
+    itemId: string,
+    requirements: Awaited<ReturnType<typeof priced>>,
+    validUntil: number,
+    nonce: string,
+  ) =>
+    served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+      headers: {
+        [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+          x402Version: 2,
+          accepted: requirements,
+          payload: {
+            signature: `0xsigned${nonce}`,
+            authorization: {
+              from: BUYER,
+              to: requirements.payTo,
+              value: requirements.amount,
+              validAfter: "0",
+              validBefore: String(Math.floor(validUntil / 1_000)),
+              nonce: `0x${nonce}`,
+            },
+          },
+        }),
+      },
+    });
+
+  /**
+   * What a charge after the goods needs once the payment has checked out: the
+   * synchronous answer's time, the facilitator's six seconds, and two for the
+   * gateway's own steps and the clocks.
+   */
+  const needed = (harnessed: Harness): number =>
+    harnessed.runtime.config.deadlines.syncResponseMs + 6_000 + 2_000;
+
+  it("refuses one too short for a purchase delivered in the answer, before anything is made or charged", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const requirements = await priced(served, itemId);
+    let made = 0;
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => {
+        made += 1;
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+
+    const short = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed) - 1_000,
+      "01",
+    );
+
+    expect(short.status).toBe(409);
+    const refused = (short.body as { error: { code: string; retryable: boolean } }).error;
+    expect(refused.code).toBe("payment_not_verified");
+    expect(refused.retryable).toBe(false);
+    expect(made).toBe(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    const [order] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(order?.order.state).toBe("quoted");
+
+    // The same order, paid again with an authorisation that lasts long enough.
+    const fresh = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed),
+      "02",
+    );
+    await worker.stop();
+
+    expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
+    expect((fresh.body as { status: string }).status).toBe("delivered");
+    expect(made).toBe(1);
+  });
+
+  it("takes the same short authorisation where the money moves at the purchase", async () => {
+    // A card whose goods come later is charged as the order is opened, so an
+    // authorisation that ends soon after the check is still good for it.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+    const requirements = await priced(served, itemId);
+    const worker = workUntilStopped(harnessed, { onOrder: () => ({ accepted: {} }) });
+
+    const short = await paid(
+      served,
+      itemId,
+      requirements,
+      harnessed.now() + needed(harnessed) - 1_000,
+      "01",
+    );
+    await worker.stop();
+
+    expect(short.status, JSON.stringify(short.body)).toBe(200);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
 describe("a purchase over HTTP, from the catalog to the goods", () => {
+  it("names, on each product in the catalog, the address it is bought at", async () => {
+    // An agent that holds only the catalog must be able to buy from it, so the
+    // address comes whole from the gateway's configured address and is the one
+    // the payment challenge then names as the resource paid for.
+    const { served } = await started({ PUBLIC_BASE_URL: "https://agentify.ad" });
+    const itemId = await publish(served, syncCard);
+
+    const listed = await served.call("GET", "/x402/catalog");
+    const [item] = (listed.body as { items: { id: string; purchase_url?: unknown }[] }).items;
+
+    expect(item?.id).toBe(itemId);
+    expect(item?.purchase_url).toBe(`https://agentify.ad/x402/${itemId}/purchase`);
+    // The gateway under test listens on loopback, so only the path of the
+    // address it named can be called here.
+    const priced = await served.call("POST", new URL(String(item?.purchase_url)).pathname, {
+      body: { params: {} },
+    });
+    expect(priced.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.resource.url).toBe(item?.purchase_url);
+  });
+
   it("tells the agent the purchase is over when the merchant refuses", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
@@ -1053,9 +1243,9 @@ describe("whose purchase it is", () => {
   };
 
   it("hands the goods to exactly one of two racing payments and refuses the other", async () => {
-    // The order identifier is public: it is in the challenge. Synchronous goods
-    // reach only the parked call, so a second call under the same order must not
-    // take the first one's place.
+    // The order's payment reference is public: it is in the challenge.
+    // Synchronous goods reach only the parked call, so a second call under the
+    // same order must not take the first one's place.
     const { served, harnessed } = await started(RACE_TIMING);
     const itemId = await publish(served, syncCard);
 
@@ -1185,8 +1375,8 @@ describe("whose purchase it is", () => {
   });
 
   it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // An order's identifier travels in challenges, on the merchant's stream and
-    // in receipts, so holding one does not make a wallet the buyer.
+    // An order's payment reference is in every challenge for it, and a listing
+    // can publish it, so holding one does not make a wallet the buyer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1902,6 +2092,66 @@ describe("the merchant's receipts", () => {
     const { served } = await started();
 
     expect((await served.call("GET", "/v0/receipts")).status).toBe(401);
+  });
+});
+
+describe("what a declaration says the purchase answers with", () => {
+  // The promise: an agent built from the declaration a challenge carries looks
+  // for the goods where the purchase puts them. Every leaf of the example
+  // stands for its type, so what is compared is the shape: the same fields at
+  // every depth, the same status word, and goods or none in the same place.
+  const shapeOf = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object") return value === null ? null : typeof value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([name, held]) => [name, name === "status" ? held : shapeOf(held)]),
+    );
+  };
+
+  /** A seller with a site, so the site is a string in the answer as in the example. */
+  const sited = async (harnessed: Harness) =>
+    setSellerSite(harnessed.store, harnessed.merchant.id, "https://shop.example", Date.now());
+
+  const declaredOutput = async (served: Served, itemId: string): Promise<unknown> => {
+    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+    const declared = decodePaymentRequiredHeader(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
+      .extensions?.bazaar as { info: { output?: { example?: unknown } } };
+    return declared.info.output?.example;
+  };
+
+  it("declares the order with its goods, for a card delivered in the answer", async () => {
+    const { served, harnessed } = await started();
+    await sited(harnessed);
+    const itemId = await publish(served, syncCard);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    expect(bought.status).toBe(200);
+    expect((bought.body as { status: string }).status).toBe("delivered");
+    expect(shapeOf(await declaredOutput(served, itemId))).toStrictEqual(shapeOf(bought.body));
+  });
+
+  it("declares the order under way and no goods, for a card whose goods come later", async () => {
+    // The money moves at the purchase and the goods arrive at status_url; an
+    // agent that looked for them in this answer would think it paid for nothing.
+    const { served, harnessed } = await started();
+    await sited(harnessed);
+    const itemId = await publish(served, {
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+
+    expect(bought.status).toBe(200);
+    expect((bought.body as { delivered: unknown }).delivered).toBeNull();
+    expect(shapeOf(await declaredOutput(served, itemId))).toStrictEqual(shapeOf(bought.body));
   });
 });
 

@@ -21,6 +21,7 @@ const TEST_BUYER_KEY = `0x${"11".repeat(32)}`;
 
 const readable = publicCardOf(EUROPE_ESIM, {
   id: "itm_esim_eu",
+  purchase_url: "http://127.0.0.1:8080/x402/itm_esim_eu/purchase",
   as_of: "2026-10-07T09:00:00.000Z",
   seller: { name: "The pilot merchant", site: null },
 });

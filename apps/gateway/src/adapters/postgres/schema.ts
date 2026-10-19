@@ -192,6 +192,9 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
+    // The order a payment is for, found by the reference its challenge
+    // carried, and never two orders under one reference.
+    uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),
   ],
 );
 

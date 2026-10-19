@@ -98,21 +98,20 @@ class Chain implements ChainReader {
 
 describe("recovering an EIP-3009 payment from chain evidence", () => {
   it("recovers a held payment accepted without RPC after a reader is configured", async () => {
-    const edge = new PaymentEdge(
-      {
+    const edge = new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://facilitator.invalid",
         network: CONTEXT.network,
-        timeoutSeconds: 300,
         payTo: PAY_TO,
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 260_000 },
+    });
     const payment = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
       payload: {
         signature: "0x12",
         authorization: {
@@ -125,7 +124,13 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
         },
       },
     });
-    const charge = { orderId: "ord_1", amount: "80.00", currency: "USD", payTo: PAY_TO, payment };
+    const charge = {
+      paymentRef: "pay_1",
+      amount: "80.00",
+      currency: "USD",
+      payTo: PAY_TO,
+      payment,
+    };
     const client = {
       verify: async () => ({ isValid: true, payer: PAYER }),
       settle: async () => {

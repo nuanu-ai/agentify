@@ -20,7 +20,12 @@ import {
   type VerifyResponse,
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
-import { atomicUnits, type PaymentEdge } from "../../http/x402.js";
+import {
+  atomicUnits,
+  authorisedUntil,
+  PAYMENT_REF_IN_EXTRA,
+  type PaymentEdge,
+} from "../../http/x402.js";
 import type {
   Charge,
   Facilitator,
@@ -114,7 +119,12 @@ export class X402Facilitator implements Facilitator {
           message: "The facilitator named a payer different from the signed authorization.",
         };
       }
-      return { verified: true, payer: authorization.payer, recovery };
+      return {
+        verified: true,
+        payer: authorization.payer,
+        validUntil: authorisedUntil(payload),
+        recovery,
+      };
     }
     const said = answered.invalidMessage ?? answered.invalidReason ?? "no reason was given";
     return { verified: false, reason: shapeOf(answered.invalidReason), message: said };
@@ -124,12 +134,14 @@ export class X402Facilitator implements Facilitator {
     const payload = decoded(charge.payment);
     if (payload === null) {
       throw new Error(
-        `the charge on ${charge.orderId} was to be executed and the payment kept for it cannot be read`,
+        `the charge on the order paid under ${charge.paymentRef} was to be executed and the payment kept for it cannot be read`,
       );
     }
     // Throws with its own sentence, which points the reader at the merchant's
     // settings rather than at the payment.
     const requirements = savedRequirements(charge, payload);
+    const mismatch = wrongOffer(payload.accepted, requirements);
+    if (mismatch) throw new Error(mismatch);
     try {
       authorizationOf(payload, requirements);
     } catch (thrown) {
@@ -159,6 +171,7 @@ export class X402Facilitator implements Facilitator {
     try {
       const payload = decoded(charge.payment);
       if (!payload) return null;
+      // Recovery binds signed financial terms to the saved sale; an old unsigned routing hint cannot establish payment.
       return { ...authorizationOf(payload, savedRequirements(charge, payload)), fromBlock: "0" };
     } catch {
       return null;
@@ -172,7 +185,7 @@ export class X402Facilitator implements Facilitator {
    * payment".
    */
   #requirements(charge: Charge) {
-    return this.#edge.requirementsFor(charge, charge.orderId, charge.payTo);
+    return this.#edge.requirementsFor(charge, charge.paymentRef, charge.payTo);
   }
 }
 
@@ -200,15 +213,21 @@ function savedRequirements(charge: Charge, payload: PaymentPayload): PaymentRequ
     throw new Error("The saved charge uses an unsupported currency.");
   if (!payload.accepted) throw new Error("The saved payment names no offer.");
   const asset = getDefaultAsset(payload.accepted.network);
+  const amount = atomicUnits(charge.amount, asset.decimals);
+  if (
+    !sameAddress(payload.accepted.asset, asset.asset) ||
+    payload.accepted.amount !== amount ||
+    !sameAddress(payload.accepted.payTo, charge.payTo)
+  ) {
+    throw new Error("The saved payment's financial offer contradicts the recorded sale.");
+  }
   const requirements = {
     ...payload.accepted,
     asset: asset.asset,
-    amount: atomicUnits(charge.amount, asset.decimals),
+    amount,
     payTo: charge.payTo,
-    extra: { name: asset.name, version: asset.version, order_id: charge.orderId },
+    extra: { name: asset.name, version: asset.version, [PAYMENT_REF_IN_EXTRA]: charge.paymentRef },
   };
-  const mismatch = wrongOffer(payload.accepted, requirements);
-  if (mismatch) throw new Error(mismatch);
   return requirements;
 }
 
@@ -261,7 +280,7 @@ function wrongOffer(
   if (accepted.maxTimeoutSeconds !== ours.maxTimeoutSeconds) {
     return "the payment names a different timeout from the offer it was made against";
   }
-  if (accepted.extra?.order_id !== ours.extra.order_id) {
+  if (accepted.extra?.[PAYMENT_REF_IN_EXTRA] !== ours.extra[PAYMENT_REF_IN_EXTRA]) {
     return "the payment was made against a different order from the one it was presented for";
   }
   return null;

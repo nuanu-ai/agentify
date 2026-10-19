@@ -1,7 +1,7 @@
 /**
  * The page about selling to agents and the notice for the retired merchant
  * application form, drawn by the whole process and read as the HTML a browser
- * or a link preview receives.
+ * or a link preview receives, or as the Markdown a client asks for.
  */
 
 import { existsSync } from "node:fs";
@@ -71,6 +71,36 @@ describe("the sell-to-agents page", () => {
     expect(html).not.toContain("/api/v1/merchant-applications");
   });
 
+  it("leads the owner to the owner's documentation and money, the engineer to the quickstart, and a first test to the test channel's own dashboard", async () => {
+    const { html } = await drawn("/agentic-shop");
+    const main = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    const links = [...main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => match[1]);
+
+    expect(links).toContain("/docs/");
+    expect(links).toContain("/docs/money");
+    expect(links).toContain("/docs/quickstart");
+    expect(links).toContain("https://test.agentify.ad/dashboard/sign-in");
+    expect(links).not.toContain("/docs/faq");
+  });
+
+  it("leads from the note under the first button, which says to start on the test channel, to the test channel's own dashboard", async () => {
+    // The button opens the dashboard of the channel that served the page; the
+    // note beside it is where an owner reads that the first sale is a test.
+    const { html } = await drawn("/agentic-shop");
+    const firstScreen = html.slice(html.indexOf("<main"), html.indexOf("</section>"));
+    const markdown = await (
+      await ask("/agentic-shop", { headers: { accept: "text/markdown" } })
+    ).text();
+    const markdownFirstScreen = markdown.slice(0, markdown.indexOf("\n## "));
+
+    expect(firstScreen).toMatch(
+      /<a\b[^>]*\bhref="https:\/\/test\.agentify\.ad\/dashboard\/sign-in"[^>]*>test channel<\/a>/,
+    );
+    expect(markdownFirstScreen).toContain(
+      "[test channel](https://test.agentify.ad/dashboard/sign-in)",
+    );
+  });
+
   it("links the site's privacy notice and invites no application", async () => {
     const { links, meta } = await drawn("/agentic-shop");
 
@@ -120,12 +150,35 @@ describe("the sell-to-agents page", () => {
     }
   });
 
-  it("is kept by nobody, since it is no public page", async () => {
+  it("may be kept by a shared cache for an hour, as every public page may", async () => {
     const { answered } = await drawn("/agentic-shop");
 
-    expect(answered.headers.get("cache-control")).toBe(
-      "private, no-cache, no-store, max-age=0, must-revalidate",
+    expect(answered.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+    expect(answered.headers.get("vary")).toContain("Accept");
+  });
+
+  it("answers a client that asks for Markdown with the page in Markdown, every heading the page draws included", async () => {
+    const page = await drawn("/agentic-shop");
+    const answered = await ask("/agentic-shop", { headers: { accept: "text/markdown" } });
+    const markdown = await answered.text();
+    const main = page.html.slice(page.html.indexOf("<main"), page.html.indexOf("</main>"));
+    const headings = [...main.matchAll(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/g)].map((match) =>
+      (match[1] ?? "")
+        .replace(/<br\/?>/g, " ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&#x27;/g, "'")
+        .replace(/&amp;/g, "&"),
     );
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(answered.headers.get("vary")).toContain("Accept");
+    expect(markdown).toMatch(/^# \S/);
+    expect(headings.length).toBeGreaterThan(5);
+    for (const heading of headings) expect(markdown, heading).toContain(heading);
+    expect(markdown).toContain("](https://agentify.ad/dashboard/sign-in)");
+    expect(markdown).toContain("](https://agentify.ad/docs/money)");
+    expect(markdown).not.toContain("undefined");
   });
 });
 

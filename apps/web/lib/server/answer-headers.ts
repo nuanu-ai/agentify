@@ -10,7 +10,7 @@
  * and never as a public answer.
  */
 
-import { PUBLIC_PAGE_PATHS, type PublicPagePath } from "../../content/public-page-metadata";
+import { KEPT_PAGE_PATHS, type KeptPagePath } from "../../content/public-page-metadata";
 import { appendVary, isPrefetch, prefersMarkdown } from "../accept-negotiation";
 import { getPublicPageMarkdown } from "../public-markdown";
 
@@ -77,8 +77,8 @@ const placeOf = (request: Request): Readonly<{ page: string; data: boolean }> =>
   return { page: decoded, data };
 };
 
-const isPublicPage = (page: string): page is PublicPagePath =>
-  (PUBLIC_PAGE_PATHS as readonly string[]).includes(page);
+const isKeptPage = (page: string): page is KeptPagePath =>
+  (KEPT_PAGE_PATHS as readonly string[]).includes(page);
 
 const reads = (request: Request): boolean => request.method === "GET" || request.method === "HEAD";
 
@@ -89,7 +89,7 @@ const reads = (request: Request): boolean => request.method === "GET" || request
  */
 export function markdownAnswer(request: Request): Response | null {
   const { page, data } = placeOf(request);
-  if (data || !reads(request) || !isPublicPage(page) || isPrefetch(request.headers)) return null;
+  if (data || !reads(request) || !isKeptPage(page) || isPrefetch(request.headers)) return null;
   if (!prefersMarkdown(request.headers.get("accept"))) return null;
   return new Response(getPublicPageMarkdown(page), {
     status: 200,
@@ -108,7 +108,7 @@ export function withPlaceHeaders(request: Request, response: Response): Response
   for (const [place, headers] of PRIVATE_PLACES) {
     if (page === place || page.startsWith(`${place}/`)) Object.assign(set, headers);
   }
-  const kept = response.ok && reads(request) && isPublicPage(page);
+  const kept = response.ok && reads(request) && isKeptPage(page);
   if (kept && data) set["Cache-Control"] = PUBLIC_DATA_CACHE;
   if (kept && !data && !isPrefetch(request.headers)) {
     Object.assign(set, PUBLIC_PAGE);

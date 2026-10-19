@@ -32,7 +32,7 @@ import {
   useRouteLoaderData,
 } from "react-router";
 import { AnalyticsRuntime } from "../components/analytics-runtime";
-import { NotFoundPage } from "../components/not-found-page";
+import { NOT_FOUND_TITLE, NotFoundPage } from "../components/not-found-page";
 import { PublicConfigProvider } from "../components/public-config";
 import { SystemMessagePage } from "../components/system-message-page";
 import { getPublicAppConfig } from "../lib/app-config";
@@ -67,9 +67,12 @@ export const shouldRevalidate = () => false;
 export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
   loaderData === undefined
     ? [{ title: siteTitle(DISPLAY_BRAND) }]
-    : pageMeta(loaderData.app, {
-        robots: isRouteErrorResponse(error) && error.status === 404 ? "noindex" : undefined,
-      });
+    : pageMeta(
+        loaderData.app,
+        isRouteErrorResponse(error) && error.status === 404
+          ? { title: NOT_FOUND_TITLE, robots: "noindex" }
+          : {},
+      );
 
 /**
  * What every page's body carries around the page: the site's settings for the

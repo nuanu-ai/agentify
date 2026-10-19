@@ -412,10 +412,17 @@ export function authorisation(
   worked: { readonly runtime: Runtime },
   wallet: string,
   nonce: string,
+  /** When the authorisation stops being valid, in milliseconds; left out, it names no end. */
+  validUntil?: number,
 ): { readonly payment: string; readonly fingerprint: string } {
   return encoded(worked, {
     signature: aFreshSignature(),
-    authorization: { from: wallet, to: NOWHERE, nonce },
+    authorization: {
+      from: wallet,
+      to: NOWHERE,
+      nonce,
+      ...(validUntil === undefined ? {} : { validBefore: String(Math.floor(validUntil / 1_000)) }),
+    },
   });
 }
 
@@ -436,7 +443,7 @@ function encoded(
   payload: Record<string, unknown>,
 ): { readonly payment: string; readonly fingerprint: string } {
   const { config } = worked.runtime;
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
   const signed: PaymentPayload = {
     x402Version: X402_VERSION,
     // Nothing checks this offer against a merchant, and the fingerprint ignores

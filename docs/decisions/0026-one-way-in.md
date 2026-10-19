@@ -65,7 +65,8 @@ the shared process (`docs/research/35-one-process.md`) to create one (ADR-0014).
 **5. Live publication guards the shared catalogue.** `readinessOf` in core is
 used by every publication and selling path: a seller name everywhere, a payout
 wallet for settled payments (ADR-0020), and administrative approval on live.
-The commission is the price; no subscription replaces this approval. Publishing tells an integrator what is missing.
+The commission is the price; no subscription replaces this approval.
+Publishing tells an integrator what is missing.
 
 **6. Operators use the same sign-in.** `/admin` needs the account flag set only
 by `pnpm account operator`, read on every session request. The header shows its

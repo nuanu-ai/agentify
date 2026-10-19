@@ -1,5 +1,7 @@
 # Freeland — пилотный мерчант
 
+> Historical, 2026-08-25. The pilot merchant as the project first saw it; the pilot passed on 2026-09-14, and the integration model it shaped is ADR-0002.
+
 Дата: 2026-08-25.
 
 ## Что это

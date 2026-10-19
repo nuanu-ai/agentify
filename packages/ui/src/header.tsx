@@ -35,9 +35,10 @@ const MOUNTED_AT: Readonly<Record<Surface, string>> = {
   docs: "/docs",
 };
 
-type Place = Readonly<{ owner: Surface; path: string }>;
+/** A page on the origin: the surface that serves it and its path inside that surface. */
+export type Place = Readonly<{ owner: Surface; path: string }>;
 
-const HOME: Place = { owner: "scanner", path: "/" };
+export const HOME: Place = { owner: "scanner", path: "/" };
 
 const SECTIONS: readonly (Place & Readonly<{ label: string }>)[] = [
   { owner: "scanner", path: "/agentic-shop", label: "Sell to agents" },
@@ -59,11 +60,11 @@ const DASHBOARD: Readonly<Record<Surface, Place>> = {
   docs: { owner: "dashboard", path: "/sign-in" },
 };
 
-/** What every part of the header needs to draw a link: who draws it, and how it links home. */
-type Drawn = Readonly<{ surface: Surface; link: OwnLink }>;
+/** What every part of the header and the footer needs to draw a link: who draws it, and how it links home. */
+export type Drawn = Readonly<{ surface: Surface; link: OwnLink }>;
 
 /** `current` marks the link to the part of the site the page belongs to. */
-function PlaceLink({
+export function PlaceLink({
   place,
   surface,
   link: Own,
@@ -81,16 +82,6 @@ function PlaceLink({
   return (
     <a className={className} href={`${MOUNTED_AT[place.owner]}${place.path}`}>
       {children}
-    </a>
-  );
-}
-
-/** The mark and the name, a link to the front page. */
-export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
-  return (
-    <a className="brand" href={home}>
-      <BrandMark className="brand-mark" />
-      <span>Agentify</span>
     </a>
   );
 }

@@ -1,294 +1,157 @@
 # Money
 
-*The public contract is versioned; changes arrive in a new package version.*
-
-You run an online business, and you are deciding whether it is worth putting
-your goods where programs do the buying. The money side of that decision is
-collected here: where the payments arrive, at what moment the buyer is charged,
-what you are risking while that happens, and what we take.
+You run an online business, and you are deciding whether it is worth selling
+to programs that buy on a person's behalf. The money side of that decision is
+collected here: where the payments go, when your share reaches you, what you
+risk on the way, and what we take.
 
 ## Where the money arrives
 
-The buyer — a program, buying on behalf of a person — pays into your payout
-contract: a contract on Base made for your wallet, which keeps the money until
-it is paid out and then sends 99.9% to your wallet and 0.1% to Agentify.
-Nobody owns it. Neither Agentify nor anybody else can change whom it pays or
-in what shares, so a payout can only ever pay you and us, in those shares. We
-check each payment and set it going, and no account of ours holds your money
-at any point. USDC itself is issued by Circle, which can freeze USDC at any
-address, your payout contract and the shared 0xSplits warehouse it pays
-through included, for as long as the money waits there.
+```mermaid
+flowchart TB
+    accTitle: Where a buyer's payment goes
+    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: 99.9 percent to your wallet, and 0.1 percent kept in the warehouse for Agentify. A refund owed is the whole price, from your own wallet; how it reaches the buyer is not settled yet, and nothing Agentify gives you names the buyer's address.
+    B["Buyer's wallet"] -- "each sale: the whole<br/>price, in USDC" --> C["Your payout contract<br/>made from your<br/>wallet's address,<br/>with no owner"]
+    C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify when it<br/>collects its share" --> W["0xSplits warehouse"]
+    W -- "99.9%" --> Y["Your wallet"]
+    W -- "0.1%, kept there<br/>for Agentify" --> F["Agentify"]
+    Y -. "a refund owed: the<br/>whole price, from you;<br/>how it reaches the<br/>buyer is not settled" .-> R["The buyer"]
+```
 
-You can get paid out at any time. The Settings screen of your dashboard shows
-your payout contract and the one transaction that pays it out. A Coinbase
-Wallet sends it from Settings once you approve it in Coinbase's window; any
-other wallet that holds a little ETH, the currency Base charges its network
-fee in, and whose app lets you paste data into a transaction can send it too
-([Getting paid out](#getting-paid-out) says how). Either way your share
-reaches your wallet in that same transaction. The transaction carries no money
-of its own and costs only that fee. If you do not send it, your share arrives
-when Agentify collects its own, because collecting it pays out every payout
-contract, yours included; there is no fixed day for that. Until somebody pays
-it out, the money waits in the contract.
+The buyer — a program, buying on behalf of a person — pays into your payout
+contract: a smart contract on the Base network, made from your wallet's
+address, which keeps the money until it is paid out and then sends 99.9% to
+your wallet and 0.1% to Agentify. Nobody owns it. Neither Agentify nor anybody
+else can change whom it pays or in what shares, and no account of ours holds
+your money at any point. The money is USDC, which is issued by Circle, and
+Circle can freeze USDC at any address, your payout contract and the shared
+0xSplits warehouse it pays through included, for as long as the money waits
+there.
 
 A payout pays out everything that came in since the one before, so the sales
-between two payouts reach your wallet as one transfer, and that transfer comes
-from the 0xSplits warehouse, the shared contract every payout contract pays
-its shares through, rather than from a buyer. If your accounting is used to
-one line per sale, there will be one line per payout instead, and it can
-cover many sales. The payment request a buyer pays against names your payout
-contract and never your wallet, so looking for your wallet's address on a
-payment, or for one incoming transfer per sale, finds no match.
+between two payouts reach your wallet as one transfer from the 0xSplits
+warehouse rather than from a buyer. If your accounting is used to one line per
+sale, there will be one line per payout instead, covering many sales, and
+looking for your wallet's address on a buyer's payment finds nothing, because
+the payment request a buyer pays against names your payout contract.
 
 Saving your wallet costs nothing and writes nothing to the chain: the payout
 contract's address follows from your wallet, and it can receive USDC from that
 moment. The first payout puts the contract itself on the chain, and from then
 on a block explorer shows its two recipients and their shares.
 
-### If you have no wallet yet
+## Getting paid out
 
-Your wallet is an address on Base, the network these payments run on: `0x`
-followed by forty letters and digits. If your business has none, the
-dashboard's Settings make one with you. Create or connect a Coinbase Wallet
-opens Coinbase's window over the page, where you create a Coinbase Wallet or
-connect one you already have, and its address comes into the box; it is saved
-only when you press the button beside the box, as an address you typed would
-be. You manage the wallet at [wallet.coinbase.com](https://wallet.coinbase.com).
+You can get paid out at any time, from the Settings screen of your dashboard,
+which shows your payout contract and the one transaction that pays it out. A
+Coinbase Wallet sends it from Settings once you approve it; any other wallet
+that holds a little ETH for the network's fee and lets you paste data into a
+transaction can send it too. Either way your share reaches your wallet in that
+same transaction, which carries no money of its own and costs only the fee.
+[Sending a payout](/payout) is the step-by-step for whoever holds the wallet.
 
-The wallet is yours, and so is the way into it. Nothing leaves it without
-your approval in Coinbase's window, and Coinbase keeps no copy of your passkey
-or of a recovery key you create and cannot get you back in without them, so
-set up a way back while you still can get in ([how Coinbase's recovery works](https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery)).
-
-Any other wallet app that supports the Base network, such as MetaMask, works
-as well. It shows the address, which is what you enter in Settings, and a
-recovery phrase, which stays with you and is never entered anywhere at
-Agentify: whoever holds the phrase holds the money. On the test channel your
-wallet only ever receives test USDC, so it needs no money of its own.
-
-### Getting paid out
-
-With a Coinbase Wallet, Settings sends the payout for you: Pay out with
-Coinbase Wallet opens Coinbase's window, which asks you to approve the
-transaction, and nothing is sent until you do. Your share reaches your
-wallet in that same transaction. A wallet that holds nothing yet may have
-nothing to pay the fee with; then that first payout arrives when Agentify next
-pays out every payout contract.
-
-From any other wallet, the payout on your Settings screen is three values for
-a transaction you send yourself: the address it goes to, which is Multicall3, an amount of zero, and
-its data. Send it on the network the screen names, Base, or Base Sepolia on the
-test channel, and on no other. Multicall3 sits at the same address on most
-networks, so the same transaction sent on another one can go through there,
-pay nothing out and still cost that network's fee. The steps below were
-checked on 2026-10-15 by sending payouts from MetaMask on the test channel and
-on Base itself.
-
-Your wallet has to let you put data into a transaction. In MetaMask the field
-for it stays hidden until Show hex data is turned on, under Settings →
-Transactions; other wallet apps name it differently, and some do not offer it
-at all. The payout does not have to come from the wallet it pays: any wallet of
-yours whose app shows the field, and which holds a little ETH for the fee, can
-send it.
-
-On the test channel the fee is paid in test ETH on Base Sepolia, which is
-worth nothing and which a faucet, a site that hands out test currency, gives
-away. On the live channel it is paid in ETH on Base.
-
-Data pasted into a transaction from a web page is usually a warning sign,
-because that is how people are talked into signing a transaction that empties
-their wallet, and your wallet app may warn you about it. This transaction
-cannot do that: Multicall3 makes each of its calls itself, so none of them
-acts for the wallet that sent it, and the amount is zero, so the fee is all it
-takes from that wallet. Before you send it, check that the address your
-wallet is about to call is the Multicall3 address the screen shows, that the
-amount is zero, and that the data is the whole of what the screen gives, with
-nothing cut off.
-
-### Replacing your wallet
-
-A new wallet comes with a new payout contract, and the old contract goes on
-paying the old wallet. Whatever is already in it is paid out to the old wallet
-only, whoever sends the payout: if somebody else may hold that wallet's keys,
-it is theirs to collect, and if you have lost access to it, it is lost with it.
-
-On the live channel a wallet you have already saved is not replaced at once.
-Everybody who signs in to your merchant's dashboard is sent a message first,
-saying the change was asked for in the dashboard and from which account's
-session, and the new address takes effect forty-eight hours after the messages
-went out. Until then buyers pay into the old contract, and your Settings screen
-shows the waiting address, the moment it takes effect and a button that
-cancels the change. So if you can no longer trust the old wallet, replace it at
-once and pause selling for those two days.
-
-A change that cannot be announced to every account is not recorded at all: the
-dashboard says why, and your sales go on paying out where they did. A message
-about a change that was then refused is safe to ignore, because every message
-says the change takes effect only if your Settings screen shows it waiting.
-The first wallet you save applies at once, and on the live channel every
-account is sent a message about it afterwards.
-
-On the test channel every change applies at once and nothing is sent. Your
-engineer's code reads back the wallet in force with any waiting change beside
-it, and because nothing waits on the test channel, the first waiting change
-that code meets is on the live channel.
+If you never send one, your share arrives when Agentify collects its own,
+because collecting it pays out every payout contract, yours included. There is
+no fixed day for that, and until somebody pays it out, the money waits in the
+contract.
 
 ## What they pay in
 
 Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
-may write its price in USD or USDC; either way the gateway asks the buyer for
-the same number of USDC on the configured network. There is no exchange-rate
-conversion in between, so a price in any other currency is refused when the
-card is published, and so is a price check's answer written in one.
+may write its price in USD or USDC; either way the buyer is asked for the same
+number of USDC. There is no exchange-rate conversion in between, so a price in
+any other currency is refused when the card is published. The test channel
+uses Base Sepolia and test USDC, which is worth nothing; the live channel uses
+Base and real USDC. Turning USDC into money in a bank happens outside
+Agentify.
 
-These payments have one more property worth knowing in advance: the transfer is
-final. A buyer cannot reverse it the way a charge on a bank card is reversed,
-because these payments have no such mechanism at all. The case familiar from
-bank cards, where money is taken back off your account a month after the sale
-and you are left proving the goods went out, does not happen here. Whatever you
-give back, you give back yourself and by your own decision.
-
-The test channel uses Base Sepolia and test USDC. The live channel uses Base
-mainnet and real USDC. A local sandbox also describes Base Sepolia and USDC in
-its payment challenge, but its scripted settlement moves no funds and records
-no transaction on a chain. Test and sandbox receipts are marked as test; a
-live receipt is not.
-
-Who pays the network fee on a buyer's payment and how that fee sits against
-the price of the goods is still unsettled.
+These payments are final. A buyer cannot reverse one the way a charge on a bank
+card is reversed, because these payments have no such mechanism, so the case
+where money is taken back off your account a month after the sale does not
+happen here. Whatever you give back, you give back yourself and by your own
+decision.
 
 ## When the money reaches you
 
-It depends on the product, because the moment the buyer is charged does. For
-some goods the buyer is charged after you have delivered: the payment executes
-as the last step of the purchase, and if the delivery did not work out, the
-purchase simply did not happen — the buyer spent nothing and you owe nobody
-anything. For the rest the buyer is charged at the moment of purchase, ahead
-of your delivery, and then a product that was never delivered leaves a debt:
-such an order is marked as needing a refund. Either way the payment goes into
-your payout contract, and your share reaches your wallet with the payout after
-it.
+The buyer is charged either after you have delivered or at the moment of
+purchase, and you choose which product by product, in its card ([When your
+buyer is charged](/#when-your-buyer-is-charged)). Either way the payment goes
+into your payout contract, and your share reaches your wallet with the payout
+after it.
 
-Which of the two comes first is your choice, and you make it product by product
-— it is written in the card for that product, the description a catalogue shows
-a buyer, alongside its price. There is no switch for the whole shop: one
-product can be paid for after delivery and the one next to it before.
-
-Say you sell a month of access for five dollars (an example figure). If the
-access goes to the buyer in the answer to the purchase, those five dollars are
-paid into your payout contract after your side has handed it over. If
-preparing the access takes minutes or hours, the same five dollars are paid in
-at the moment of purchase and you deliver later.
-
-A third arrangement exists, for goods you hand over yourself, and it arrives
-after the pilot. Before any money moves you are asked whether you will deliver;
-until you answer yes nothing is charged, and after your yes the buyer is
-charged at once, with the delivery still ahead of it.
-
-One rule covers all three. While your answer comes before the money, your
-silence costs the buyer nothing. After the charge, that same silence leaves
-them without the goods — what that looks like in each separate failure is on
-[What can go wrong](/failures). The exact moments of charging are collected in
-a table for your engineer on [Orders and fulfillment modes](/orders).
+One rule follows from that choice. While your answer comes before the money,
+your silence costs the buyer nothing: if you do not deliver, the purchase did
+not happen. After the charge, the same silence leaves the buyer without the
+goods, and you owe them the goods or the money. What that looks like in each
+failure is on [What can go wrong](/failures).
 
 ## You delivered and the money did not arrive
 
 This is possible for goods that are paid for after your delivery. We check the
 payment first — the signature and the funds — then hand you the order, receive
-the goods and only then execute the payment. Time passes between the check and
-the execution, and in that gap the funds can leave the buyer's wallet for
-something else.
+the goods and only then execute the payment, and in that gap the funds can
+leave the buyer's wallet for something else. The order tells you whether the
+charge failed or its outcome is still unknown.
 
-What it can cost you is the price of one sale, so the only thing you have to
-weigh here is how expensive and how irreversible your delivery is. Access you
-can revoke and a parcel already on its way are worth different amounts to you.
-
-The order tells you whether payment failed or its outcome is still unknown.
-When chain verification is available, Agentify checks unknown payments
-automatically, including after a restart, without charging again. A confirmed transfer releases
+After the payment's response deadline, Agentify checks an unknown outcome
+against chain evidence without charging again. A confirmed transfer releases
 the goods already recorded; proof that the authorization expired unused or was
-cancelled allows the buyer to try payment again. No manual reconciliation or
-approval is required from you.
+cancelled allows the buyer to try payment again. If verification is unavailable
+or disabled, or the evidence conflicts, the payment stays unknown until its
+outcome can be established. Recovery resumes after a restart and requires no
+manual reconciliation or approval from you.
 
-Payments can also operate through the payment service alone. If its answer is
-lost and chain verification is unavailable, the payment stays unknown until
-evidence becomes available. Conflicting evidence also leaves it unknown.
-Taking back what you gave out then may take it from somebody who paid for it.
-That is the case to weigh when you decide how irreversible your delivery is.
-
-Putting the money first closes the case. For a product paid for ahead of the
-delivery, the charge happens at the moment of purchase and you never deliver
-anything unpaid. Which comes first is yours to choose product by product, in
-the card, and we do not set a general rule on your behalf.
+What it can cost you is the price of one sale, so the thing to weigh is how
+expensive and how irreversible your delivery is: access you can revoke and a
+parcel already on its way are worth different amounts to you. Sometimes nobody
+can say whether the buyer was charged at all, and then taking back what you
+gave out may be taking it from somebody who paid. Putting the money first
+closes the case: for a product paid for ahead of the delivery you never
+deliver anything unpaid.
 
 ## What proves a sale happened
 
-A sale that went through leaves a receipt — a record of the payment, written at
+A sale that went through leaves a receipt, a record of the payment written at
 the moment the goods are released. It shows what was bought and for how much;
-to the buyer it is proof of payment, to you it is the record a dispute is
-settled from. The price the sale went through at goes into the receipt and
-stays there unchanged even after your price has moved.
-
-A receipt carries three moments, and they are three different things. The
-payment time (`paid_at`, "Paid" in the dashboard) is when the payment went
-through. The price's `at` ("Price set") is when we fixed the price for this
-sale. The price's `as_of` ("Price as of") is when that price was true: the
-moment your price check said it held from, or, for a card sold at its own price,
-when the card was published with it. The three are seldom the same moment: in
-the synchronous mode the charge comes seconds after the goods, and on a card
-whose price is checked at the purchase the agent may take minutes between the
-price and the payment.
-
-A receipt also names the buyer's payment itself (`transaction`): the hash of
-the transfer into your payout contract reported by the payment layer or
-verified during automatic recovery, which
-the dashboard links to the chain's explorer, so a receipt can be matched to
-its payment without going by its time. That transfer goes into the contract
-and not into your wallet, which receives the payouts instead, each covering
-every sale since the payout before it.
+to the buyer it is proof of payment, and to you it is the record a dispute is
+settled from. The price the sale went through at stays on it unchanged after
+your price has moved. The Receipts screen of your dashboard lists them, and
+what each field means is on [Orders](/orders#the-receipt).
 
 An order paid for and never delivered leaves no receipt, because no goods went
-out. What you have for that case is the order itself and the event telling you
-a refund is owed.
-
-Receipts matter for repeats too. The answer to a purchase is sometimes lost on
-the way: the buyer paid and the goods did not reach them because the connection
-dropped. The agent then repeats the purchase and receives what has already been
-delivered. There is no second charge, and we do not ask you for a second
-delivery. Which key we recognise a repeat by is in [Telling a repeat
-apart](/orders).
+out; what you have for it is the order and the notice that a refund is owed.
+When the answer to a purchase is lost on the way and the agent repeats it, it
+receives what was already delivered, with no second charge and no second
+delivery asked of you.
 
 ## If the buyer did not get the goods
 
-You return the whole price of an undelivered product to the buyer yourself,
-out of your own wallet, although your payout contract pays you 99.9% of it:
-the 0.1% commission stays with Agentify. The refund has to come from you,
-because the contract pays only you and us and has no way to send a payment
-back to a buyer, and it makes no difference whether that sale has been paid
-out to you yet: what you owe the buyer is the price they paid. Our part of the
-work is to record the obligation and hand you the record — which order, for
-how much, and why it was left undelivered. That covers both the orders you did
-not manage to deliver in time and the orders still open at the moment you
-leave.
+You owe the buyer the whole price of an undelivered product, out of your own
+wallet, although your payout contract pays you 99.9% of it: the 0.1%
+commission stays with Agentify. The refund has to come from you, because the
+contract pays only you and us and has no way to send a payment back, and it
+makes no difference whether that sale has been paid out to you yet. Our part
+is to record the obligation and hand you the record — which order, for how
+much, and why it was left undelivered — for the orders you did not deliver in
+time and for the orders still open when you leave.
 
-We do not see the refund itself: it goes from your wallet to the buyer's, and
-nothing of ours is in between. A refund cannot be recorded on the order yet
-either, so an order you have paid back stays open on our side as owing a
-refund. If your engineer's code delivers the goods for it afterwards — a
-delivery that was running late, say — the order closes as delivered and the
-buyer keeps both the money and the goods. So once you have refunded an order,
-it must not be delivered, and what your engineer does to make sure of that is
-on [Orders](/orders#confirming-a-delivery-with-a-separate-call).
+Nothing Agentify gives you today names where to send that refund: the order,
+the notice that a refund is owed and the dashboard carry no address of the
+buyer's, and an undelivered order has no receipt. Your system initiates and
+executes refunds under your policy; Agentify's verified self-service recording
+of repayment is not built. Agentify has no staffed refund service and does not
+promise to reimburse the buyer from its own funds. During the pilot we take on
+only goods that can be delivered a second time, and we repeat the attempt to
+deliver up to the deadline on the card, which makes such orders rare without
+ruling them out.
 
-Until the way money travels back is settled, the pilot's rule applies — the
-one we ask about when you connect ([What we will ask you](/)): only goods that
-can be delivered a second time are paid for in advance, and we repeat the
-attempt to deliver, up to a limit, until the deadline named in the card. The
-rule narrows the case without removing it: an order that could not be
-delivered at all remains possible. Your integration receives a `refund_due`
-event, and the order stays visible as a debt. You are responsible for resolving
-it; Agentify has no staffed refund service and does not promise to reimburse
-the buyer from its own funds.
+We do not see a refund that leaves your wallet, and nothing records one on the
+order yet, so an order you have paid back stays open as owing a refund. If your
+code delivers the goods for it afterwards — a delivery that was running late,
+say — the order closes as delivered and the buyer keeps both the money and the
+goods. So once you have refunded an order, it must not be delivered; what your
+engineer does to make sure of that is on
+[Orders](/orders#confirming-a-delivery-with-a-separate-call).
 
 ## What we take
 
@@ -306,17 +169,60 @@ fee of emptying it. So a payout gives you about 99.9% of what came in and
 never more, and what the rounding leaves over is divided in a later payout.
 For the same reason there is no exact commission to read off a single order.
 
-Your share is paid out whenever somebody sends the payout transaction: you, at
-any time, with the transaction your dashboard's Settings screen gives you, or
-Agentify, when it collects its own share ([Where the money
-arrives](#where-the-money-arrives)).
+## Your wallet
+
+### If you have no wallet yet
+
+Your wallet is an address on Base, the network these payments run on: `0x`
+followed by forty letters and digits. If your business has none, the
+dashboard's Settings make one with you: Create or connect a Coinbase Wallet
+opens Coinbase's window over the page, where you create a Coinbase Wallet or
+connect one you already have, and its address comes into the box, to be saved
+when you press the button beside it. You manage that wallet at
+[wallet.coinbase.com](https://wallet.coinbase.com).
+
+The wallet is yours, and so is the way into it. Nothing leaves it without your
+approval in Coinbase's window, and Coinbase keeps no copy of your passkey or of
+a recovery key you create and cannot get you back in without them, so set up a
+way back while you still can get in ([how Coinbase's recovery works](https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery)).
+
+Any other wallet app that supports the Base network, such as MetaMask, works as
+well. It shows the address, which is what you enter in Settings, and a recovery
+phrase, which stays with you and is never entered anywhere at Agentify:
+whoever holds the phrase holds the money. On the test channel your wallet only
+ever receives test USDC, so it needs no money of its own.
+
+### Replacing your wallet
+
+A new wallet comes with a new payout contract, and the old contract goes on
+paying the old wallet. Whatever is already in it is paid out to the old wallet
+only, whoever sends the payout: if somebody else may hold that wallet's keys,
+it is theirs to collect, and if you have lost access to it, it is lost with it.
+
+On the live channel a wallet you have already saved is not replaced at once,
+because the wallet is the one setting that sends your money somewhere else,
+and a dashboard session left open on another device could ask for a change.
+Everybody who signs in to your merchant's dashboard is sent a message first,
+saying the change was asked for and from which account's session, and the new
+address takes effect forty-eight hours after the messages went out. Until then
+buyers pay into the old contract, and your Settings screen shows the waiting
+address, the moment it takes effect and a button that cancels the change,
+which also signs every other session out. So if you can no longer trust the
+old wallet, replace it at once and pause selling for those two days.
+
+A change that cannot be announced to every account is not recorded at all, and
+the dashboard says why. A message about a change that was then refused is safe
+to ignore, because every message says the change takes effect only if your
+Settings screen shows it waiting. The first wallet you save applies at once,
+and on the live channel every account is sent a message about it afterwards.
+On the test channel every change applies at once and nothing is sent.
 
 ## What is not settled yet
 
+- How you send money back for an undelivered order, where to, and how a refund
+  you sent comes to be recorded on the order. Nothing records one yet.
 - Who pays the network fee on a buyer's payment and how it sits against the
   price of the goods.
-- How you send money back for an undelivered order, and how a refund you sent
-  comes to be recorded on the order. Nothing records one yet.
 - Reconciling what came in against what was sold. Your wallet receives one
   transfer per payout, covering every sale since the payout before it, and
   nothing yet shows which sales a payout covered. A receipt follows the goods,

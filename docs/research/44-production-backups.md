@@ -37,8 +37,20 @@ WAL archiving (WAL-G or pgBackRest with `archive_timeout`): a recovery point of
 seconds, at the price of changing the database container, taking base backups
 and keeping a second restore path beside `restore.sh`. On the host a dump of
 the database takes about a second and a run 2–4 seconds (measured on
-2026-09-24, when the channel still had two databases; it has had one since); in
-a rehearsal at a hundred times the data, half a second and three
-(`00-open-questions.md`). It becomes worth that price when a dump takes more
-than about a minute, since releases wait for it, or when ten minutes of lost
-writes is too much.
+2026-09-24, when the channel still had two databases; it has had one since).
+It becomes worth that price when a dump takes more than about a minute, since
+releases wait for it, or when ten minutes of lost writes is too much.
+
+A rehearsal on a laptop the same day (Docker Desktop, PostgreSQL 17.11, restic
+0.16.4, MinIO on the same machine, so no network to the bucket) measured how
+the dump, a whole backup run and a restore rehearsal grow with the data. The
+upload to the real bucket at a hundred times the data was never measured.
+
+| Data | Databases | Dumps | Dump | Run | Restore rehearsal |
+| --- | --- | --- | --- | --- | --- |
+| as on 2026-09-24 | 17 MB | 1.2 MiB | 0.2 s | 1.7 s | 2.7 s |
+| ten times | 32 MB | 12 MiB | 0.2 s | 2.0 s | 3.1 s |
+| a hundred times | 180 MB | 122 MiB | 0.5 s | 3.0 s | 4.5 s |
+
+At a hundred times the daily prune took 3.3 seconds, and 195 snapshots took
+50 MiB in the bucket.

@@ -15,7 +15,7 @@ orders. Maintenance tools can exist without being a required step in a sale.
 | Admission to real sales | An administrator | Explicit approval of an identified merchant | Admin screen linked from `/admin`; the same idempotent grant is available at the terminal |
 | Registration, keys, seller details, pause and resume | The merchant | Their authenticated account and existing selling checks | Dashboard and relevant SDK operations |
 | Payout | The merchant or anyone sending the immutable split's payout | The contract's fixed recipients; wallet confirmation authorizes the transaction | Merchant payout screen; no Agentify signer |
-| Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Purchase protocol and internal buyer exist; a ready-to-use merchant test buyer is missing |
+| Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Quickstart step 6 runs an x402 buyer with the merchant's own test wallet and Base Sepolia faucet funds |
 | Full offboarding | The merchant | Accepted orders and refund debts remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |
 | Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; a recorded refund refuses delivery |
 | Refund | The merchant's system executes; Agentify verifies | Evidence of the full transfer to the original payer and coordination with Agentify's delivery | Recording, payer view and concurrency protection are missing; ADR-0028 |
@@ -180,10 +180,10 @@ exact transfer, rather than accepting a generic transfer for the same amount.
 Neither merchant nor admin gets a button that asserts success, failure or
 refund without evidence.
 
-The test buyer should let a merchant exercise their own product without staff
-or a shared funded wallet. The payment remains a test-chain payment from a
-wallet the buyer controls; the screen must not call a mocked payment a test
-sale. Choosing its packaging and the acquisition of test funds is still open.
+The quickstart's test buyer lets a merchant exercise their own product without
+staff or a shared funded wallet. It signs a test-chain payment with the buyer's
+own key after funding that address from Circle's Base Sepolia faucet. This is
+a documented integration path, not a dashboard purchase button or a mocked sale.
 
 Full offboarding also needs a self-service path. Pausing sales and revoking
 keys are available; neither cancels accepted orders, settles debts or deletes

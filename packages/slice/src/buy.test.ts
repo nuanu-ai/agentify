@@ -80,6 +80,7 @@ beforeEach(async () => {
             items: [
               publicCardOf(EUROPE_ESIM, {
                 id: ITEM,
+                purchase_url: `${base}/x402/${ITEM}/purchase`,
                 as_of: "2026-09-23T10:00:00.000Z",
                 seller: { name: "The pilot merchant", site: null },
               }),

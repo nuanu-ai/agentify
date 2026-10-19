@@ -19,11 +19,21 @@ describe("the site header", () => {
   });
 });
 
-describe("SiteFooter", () => {
-  it("keeps privacy choices reachable from the footer control group", () => {
+describe("the site footer", () => {
+  it("leads to selling, the documentation, the trust pages and the abuse contact, with the privacy choices", () => {
     const markup = renderToStaticMarkup(onSite(<SiteFooter />));
-    expect(markup).toContain("Privacy choices");
-    expect(markup).toContain("Data request");
-    expect(markup).toContain('href="/agentic-shop"');
+    const footer = markup.slice(markup.indexOf("<footer"));
+
+    for (const href of [
+      "/agentic-shop",
+      "/docs/",
+      "/privacy",
+      "/terms",
+      "/data-request",
+      "/docs/scanner#opt-out",
+    ]) {
+      expect(footer, href).toContain(`href="${href}"`);
+    }
+    expect(footer).toContain("Privacy choices");
   });
 });

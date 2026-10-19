@@ -362,6 +362,7 @@ describe("a card stored before the rule", () => {
   it("reaches an agent in the catalog as it was stored", () => {
     const projected = publicCardOf(stored as never, {
       id: "item_4d21bb",
+      purchase_url: "https://agentify.ad/x402/item_4d21bb/purchase",
       as_of: "2026-08-26T09:00:00Z",
       seller: { name: "Freeland", site: null },
     });

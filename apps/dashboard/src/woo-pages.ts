@@ -316,6 +316,19 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         );
       }
 
+      const connected = await shops.connectionOf(person.id);
+      if (connected !== null && new URL(connected.shopUrl).origin !== new URL(shopUrl).origin) {
+        return await drawTheShop(
+          person,
+          {
+            problem:
+              "Disconnect the connected shop before connecting another. Orders still waiting on the shop must finish first.",
+            typed,
+          },
+          409,
+        );
+      }
+
       // Minted first, so the address checked is character for character the
       // address the browser is sent to.
       const token = theStateToken();

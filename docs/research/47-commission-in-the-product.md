@@ -1,5 +1,20 @@
 # Комиссия Agentify в продукте: каждый платёж идёт на сплит мерчанта
 
+*In English, briefly.* This note, written in Russian on 2026-10-14, is the
+design for Agentify's commission and the evidence behind ADR-0037 and
+ADR-0038. Every payment goes to the merchant's own payout split, an immutable
+0xSplits v2.2 PullSplit with no owner, which pays 99.9% to the merchant's
+wallet and 0.1% to Agentify's commission wallet whenever anybody pays it out.
+The note defines its terms, then covers why the rate and the commission
+wallet live in code rather than in settings, the registry of splits and how a
+database restore treats it, how a payment flows now, paying out by hand,
+rounding, what the merchant sees in the dashboard, through the SDK and through
+WooCommerce, refunds (the merchant returns the whole price and the commission
+stays with Agentify), the two channels, every combination of them and how a
+refusal reads, what changes at ten times the volume, the commission wallet on
+Base, the checks made on Base itself before the live release and how to run
+them, and at the end the product owner's answers to the design's questions.
+
 Дата: 2026-10-14. Повод: владелец продукта решил, что Agentify берёт комиссию
 с каждого платежа, потому что без неё проекту не на что жить, и что обещания
 «деньги идут прямо в ваш кошелёк» и «мы не берём процент» исправляются, а не

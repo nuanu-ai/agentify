@@ -29,7 +29,7 @@ const signed = (payTo = PAY_TO) => ({
     to: payTo,
     value: "80000000",
     validAfter: String(NOW_SECONDS - 600),
-    validBefore: String(NOW_SECONDS + 300),
+    validBefore: String(NOW_SECONDS + 50),
     nonce: `0x${"b".repeat(64)}`,
   },
 });
@@ -50,18 +50,17 @@ const recovery = new Eip3009Recovery(() => chain);
 const facilitatorFor = (client: FacilitatorClient, paymentEdge: PaymentEdge, evidence = recovery) =>
   new X402Facilitator(client, paymentEdge, evidence, () => NOW_SECONDS * 1000);
 
-const edge = new PaymentEdge(
-  {
+const edge = new PaymentEdge({
+  payment: {
     facilitatorUrl: "https://x402.org/facilitator",
     network: "eip155:84532",
-    timeoutSeconds: 300,
     payTo: PAY_TO,
     cdpApiKeyId: null,
     cdpApiKeySecret: null,
   },
-  "https://agentify.example",
-  300,
-);
+  publicBaseUrl: "https://agentify.example",
+  deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+});
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */
 class Answering implements FacilitatorClient {
@@ -102,7 +101,7 @@ class Answering implements FacilitatorClient {
 }
 
 const charge = (payment: string): Charge => ({
-  orderId: "ord_1",
+  paymentRef: "pay_1",
   amount: "80.00",
   currency: "USD",
   payment,
@@ -114,20 +113,29 @@ const honest = (overrides: Partial<PaymentRequirements> = {}): string =>
   encodePaymentSignatureHeader({
     x402Version: 2,
     accepted: {
-      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
       ...overrides,
     },
     payload: signed(),
   });
 
-/**
- * A payment made against a different order of ours, correct in every other
- * respect: same price, same asset, same chain, same address.
- */
-const forOrder = (orderId: string): string =>
+/** A charge for the order paid under `paymentRef`, presenting `payment`. */
+const againstReference = (paymentRef: string, payment: string): Charge => ({
+  paymentRef,
+  amount: "80.00",
+  currency: "USD",
+  payment,
+  payTo: PAY_TO,
+});
+
+/** A payment right in every respect but how its offer names the order, which `named` says. */
+const paidNaming = (named: Record<string, unknown>): string =>
   encodePaymentSignatureHeader({
     x402Version: 2,
-    accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, orderId, PAY_TO),
+    accepted: {
+      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, null, PAY_TO),
+      extra: { name: "USDC", version: "2", ...named },
+    },
     payload: signed(),
   });
 
@@ -148,6 +156,7 @@ describe("verifying a payment", () => {
     expect(answered).toStrictEqual({
       verified: true,
       payer: PAYER,
+      validUntil: (NOW_SECONDS + 50) * 1000,
       recovery: {
         kind: "evm-exact-eip3009",
         network: "eip155:84532",
@@ -156,7 +165,7 @@ describe("verifying a payment", () => {
         payTo: PAY_TO,
         amount: "80000000",
         validAfter: String(NOW_SECONDS - 600),
-        validBefore: String(NOW_SECONDS + 300),
+        validBefore: String(NOW_SECONDS + 50),
         nonce: signed().authorization.nonce,
         fromBlock: "0",
       },
@@ -173,7 +182,7 @@ describe("verifying a payment", () => {
         charge(
           encodePaymentSignatureHeader({
             x402Version: 2,
-            accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+            accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
             payload: payment,
           }),
         ),
@@ -190,7 +199,7 @@ describe("verifying a payment", () => {
     const client = new Answering();
     const payment = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
       payload: { signature: "0x12", permit2Authorization: {} },
     });
     const facilitator = facilitatorFor(client, edge);
@@ -205,14 +214,14 @@ describe("verifying a payment", () => {
   it("allows backdated validAfter but refuses an authorization that remains usable beyond the offered timeout", async () => {
     const payload = {
       ...signed(),
-      authorization: { ...signed().authorization, validBefore: String(NOW_SECONDS + 331) },
+      authorization: { ...signed().authorization, validBefore: String(NOW_SECONDS + 81) },
     };
     const client = new Answering();
     const answered = await facilitatorFor(client, edge).verify(
       charge(
         encodePaymentSignatureHeader({
           x402Version: 2,
-          accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+          accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
           payload,
         }),
       ),
@@ -229,7 +238,7 @@ describe("verifying a payment", () => {
     async (signature) => {
       const payment = encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
         payload: { ...signed(), signature },
       });
       expect(await facilitatorFor(new Answering(), edge).verify(charge(payment))).toMatchObject({
@@ -247,7 +256,7 @@ describe("verifying a payment", () => {
       };
       const payment = encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
         payload,
       });
       expect(await facilitatorFor(new Answering(), edge).verify(charge(payment))).toMatchObject({
@@ -256,14 +265,14 @@ describe("verifying a payment", () => {
     },
   );
 
-  it.each([{ scheme: "upto" }, { extra: { assetTransferMethod: "permit2", order_id: "ord_1" } }])(
-    "refuses an incompatible accepted method %j",
-    async (overrides) => {
-      expect(
-        await facilitatorFor(new Answering(), edge).verify(charge(honest(overrides))),
-      ).toMatchObject({ verified: false });
-    },
-  );
+  it.each([
+    { scheme: "upto" },
+    { extra: { assetTransferMethod: "permit2", payment_ref: "pay_1" } },
+  ])("refuses an incompatible accepted method %j", async (overrides) => {
+    expect(
+      await facilitatorFor(new Answering(), edge).verify(charge(honest(overrides))),
+    ).toMatchObject({ verified: false });
+  });
 
   it("refuses an unsigned timeout that differs from the offer before accepting goods", async () => {
     const client = new Answering();
@@ -335,18 +344,17 @@ describe("verifying a payment", () => {
   });
 
   it("reconstructs an old payment from its saved offer rather than the deployment's current chain", async () => {
-    const different = new PaymentEdge(
-      {
+    const different = new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://x402.org/facilitator",
         network: "eip155:8453",
-        timeoutSeconds: 300,
         payTo: PAY_TO,
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
     expect(
       await facilitatorFor(new Answering(), different).recoveryFor(charge(honest())),
     ).toMatchObject({
@@ -356,10 +364,41 @@ describe("verifying a payment", () => {
     });
   });
 
+  it("recovers historical signed terms without accepting an obsolete unsigned order identifier", async () => {
+    const payment = honest({
+      extra: { name: "USDC", version: "2", order_id: "old_secret_order_id" },
+    });
+    const client = new Answering();
+    const facilitator = facilitatorFor(client, edge);
+    expect(await facilitator.verify(charge(payment))).toMatchObject({ verified: false });
+    expect(await facilitator.recoveryFor(charge(payment))).toMatchObject({
+      payer: PAYER,
+      payTo: PAY_TO,
+      amount: "80000000",
+      nonce: signed().authorization.nonce,
+      fromBlock: "0",
+    });
+    expect(client.asked).toHaveLength(0);
+    expect(await facilitator.recoveryFor({ ...charge(payment), amount: "81.00" })).toBeNull();
+  });
+
+  it.each([
+    { asset: "0x00000000000000000000000000000000000000ff" },
+    { amount: "81000000" },
+    { payTo: "0x00000000000000000000000000000000000000ff" },
+    { network: "eip155:8453" as const },
+  ])(
+    "does not reconstruct a historical payment whose saved financial offer contradicts its sale: %j",
+    async (overrides) => {
+      const payment = honest({ ...overrides, extra: { order_id: "old_secret_order_id" } });
+      expect(await facilitatorFor(new Answering(), edge).recoveryFor(charge(payment))).toBeNull();
+    },
+  );
+
   it.each([{}, { name: "wrong token", version: "999" }])(
     "settles an accepted payment with its canonical domain despite unsigned extra %j",
     async (extra) => {
-      const payment = honest({ extra: { ...extra, order_id: "ord_1" } });
+      const payment = honest({ extra: { ...extra, payment_ref: "pay_1" } });
       const client = new Answering();
       const originalSettle = client.settle.bind(client);
       client.settle = async (payload, requirements) => {
@@ -428,7 +467,7 @@ describe("verifying a payment", () => {
           x402Version: 2,
           accepted: edge.requirementsFor(
             { amount: "80.00", currency: "USD" },
-            "ord_1",
+            "pay_1",
             inLowerCase,
           ),
           payload: signed(inLowerCase),
@@ -445,7 +484,7 @@ describe("verifying a payment", () => {
     // The token's address is an address too, and arrives from the same
     // libraries. A payment echoing it in the other spelling is the same
     // payment.
-    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO);
+    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
     expect(
       await facilitatorFor(new Answering(), edge).verify(
         charge(honest({ asset: ours.asset.toUpperCase().replace("0X", "0x") })),
@@ -472,13 +511,13 @@ describe("verifying a payment", () => {
     const theirs = "0x27b1fdb04752bbc536007a920d24acb045561c26";
     const paidToThem = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", theirs),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", theirs),
       payload: signed(theirs),
     });
     const client = new Answering();
 
     const answered = await facilitatorFor(client, edge).verify({
-      orderId: "ord_1",
+      paymentRef: "pay_1",
       amount: "80.00",
       currency: "USD",
       payment: paidToThem,
@@ -505,7 +544,7 @@ describe("verifying a payment", () => {
     const paidTo = (payTo: string): string =>
       encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", payTo),
         payload: signed(payTo),
       });
     const against = (payment: string, payTo: string): Charge => ({ ...charge(payment), payTo });
@@ -578,22 +617,38 @@ describe("verifying a payment", () => {
     expect(wrongChain.asked).toStrictEqual([]);
   });
 
-  it("refuses a payment signed for one order and presented on another", async () => {
+  it("refuses a payment made against another order's reference, or naming its order any other way", async () => {
     // Two orders of ours at the same price make one offer indistinguishable
-    // from the other everywhere except in the order it names. What stops one
-    // signed authorisation from buying both is the claim taken on the payment
-    // before any of this runs, not this branch; what this branch stops is a
-    // payment for somebody else's order being carried to the facilitator as
-    // though it were for this one.
+    // from the other everywhere except in the reference it carries. What stops
+    // one signed authorisation from buying both is the claim taken on the
+    // payment before any of this runs, not this branch; what this branch stops
+    // is a payment for somebody else's order being carried to the facilitator
+    // as though it were for this one. A payment naming an order by its
+    // identifier names no reference, so it is not this order's either.
     const client = new Answering();
-    const answered = await facilitatorFor(client, edge).verify(charge(forOrder("ord_2")));
+    const facilitator = facilitatorFor(client, edge);
 
-    expect(answered).toStrictEqual({
-      verified: false,
-      reason: "price_stale",
-      message: "the payment was made against a different order from the one it was presented for",
-    });
+    for (const named of [{ payment_ref: "pay_2" }, { order_id: "ord_1" }, {}]) {
+      expect(await facilitator.verify(againstReference("pay_1", paidNaming(named)))).toStrictEqual({
+        verified: false,
+        reason: "price_stale",
+        message: "the payment was made against a different order from the one it was presented for",
+      });
+    }
     expect(client.asked).toStrictEqual([]);
+  });
+
+  it("names the order to the facilitator by its payment reference alone, at the check and the charge", async () => {
+    const client = new Answering();
+    const facilitator = facilitatorFor(client, edge);
+    const charge = againstReference("pay_1", paidNaming({ payment_ref: "pay_1" }));
+
+    expect(await facilitator.verify(charge)).toMatchObject({ verified: true });
+    expect(await facilitator.settle(charge)).toStrictEqual({ settled: true, transaction: "0xtx" });
+    expect(client.asked.map((asked) => asked.requirements.extra)).toStrictEqual([
+      { name: "USDC", version: "2", payment_ref: "pay_1" },
+      { name: "USDC", version: "2", payment_ref: "pay_1" },
+    ]);
   });
 
   it("refuses a payment that names no offer to check against", async () => {

@@ -1,5 +1,7 @@
 # Stryker вместо ручной мутации: спайк на core
 
+> Historical, 2026-09-11. Stryker was not taken as a step of the hand-over ritual and the manual mutation check stayed; Stryker later became the triage command `pnpm mutate`.
+
 Дата: 2026-09-11. Повод: владелец продукта предложил взять StrykerJS вместо
 ручной мутационной самопроверки из ритуала сдачи (`CLAUDE.md`, раздел Code),
 чтобы мутации не придумывал автор. Ветка `spike/stryker` удалена после спайка.

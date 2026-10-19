@@ -1,5 +1,7 @@
 # Проба: подключение WooCommerce без плагина
 
+> Historical, 2026-09-14. A probe of connecting WooCommerce without a plugin, with an earlier project's identifiers; the connector built from it is ADR-0023, and the spike branch it names was not kept.
+
 Примечание к архиву: прежние идентификаторы продукта в записях ниже
 обезличены как `historical-project`. Это исторические наблюдения,
 а не команды для текущего развёртывания и не повторный прогон Agentify.
