@@ -304,19 +304,19 @@ describe("which answer is cut", () => {
 
   it("does not count a redirect, and its line warns that a caller following it may go around the proxy", async () => {
     const elsewhere = "https://gateway.example/x402/itm_7/purchase";
+    const statuses = [308, 200, 302, 304, 404];
     const up = await upstream((n, response) => {
-      if (n === 2) {
-        plainly(200, PAID)(n, response);
-        return;
-      }
-      response.writeHead(n === 1 ? 308 : 302, { location: elsewhere });
-      response.end();
+      const status = statuses[n - 1] ?? 500;
+      response.writeHead(status, status === 304 ? {} : { location: elsewhere });
+      response.end(status === 200 ? PAID : "");
     });
     const { port, log } = await proxy(up.url, purchases("before-headers"));
 
     const redirected = await call(port, "POST", "/x402/itm_7/purchase");
     const paid = await call(port, "POST", "/x402/itm_7/purchase");
     const unmatched = await call(port, "GET", "/x402/itm_7");
+    await call(port, "GET", "/x402/itm_7");
+    await call(port, "GET", "/x402/itm_7");
 
     expect([redirected.status, redirected.whole, redirected.headers.location]).toEqual([
       308,
@@ -330,7 +330,11 @@ describe("which answer is cut", () => {
       expect(line).toMatch(/around the proxy/);
       expect(line).not.toContain("gateway.example");
     }
-    expect(await lineFor(log, 2)).not.toMatch(/around the proxy/);
+    // A 2xx or a 4xx that names an address, and a 3xx that names none, are no
+    // redirect a caller can follow.
+    for (const n of [2, 4, 5]) {
+      expect(await lineFor(log, n)).not.toMatch(/around the proxy/);
+    }
   });
 
   it("matches * within one path segment and the method exactly, ignores the query string in matching, and forwards the query under the upstream's base path", async () => {
