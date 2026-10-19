@@ -738,6 +738,40 @@ describe("a diagram or a table on a narrow or a wide screen", () => {
     await page.context().close();
   });
 
+  it("keeps the column that names each row in sight on a phone while a wide table scrolls sideways", async () => {
+    const { page } = await visit("/docs/failures", PHONE, true);
+    const table = page.locator(".doc table").first();
+    const wide = await table.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+    expect(wide, "the table on this page no longer scrolls on a phone").toBe(true);
+
+    const seen = await table.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      const tableLeft = element.getBoundingClientRect().left;
+      return [...element.querySelectorAll("tbody tr")].map((row) => {
+        const name = row.firstElementChild as HTMLElement;
+        // Brought below the header that holds the page's bar, where a point
+        // on the row can be asked what is drawn there.
+        window.scrollBy(0, name.getBoundingClientRect().top - 300);
+        const box = name.getBoundingClientRect();
+        const atItsMiddle = document.elementFromPoint(box.left + 4, box.top + box.height / 2);
+        return {
+          row: name.textContent ?? "",
+          inPlace: Math.abs(box.left - tableLeft) <= 1,
+          onTop: atItsMiddle !== null && name.contains(atItsMiddle),
+          // A cell with no colour of its own lets the cells scrolled under it
+          // show through its words.
+          opaque: getComputedStyle(name).backgroundColor !== "rgba(0, 0, 0, 0)",
+        };
+      });
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const { row, ...held } of seen) {
+      expect({ row, ...held }).toEqual({ row, inPlace: true, onTop: true, opaque: true });
+    }
+    await page.context().close();
+  });
+
   it.each(["/docs/orders", "/docs/money"])(
     "draws every label of a diagram on %s whole inside its box",
     async (address) => {
