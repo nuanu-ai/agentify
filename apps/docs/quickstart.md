@@ -12,8 +12,34 @@ orders and gives out the goods for them. A business that sells from a
 WooCommerce shop has another route, without code, described on [Selling
 through a WooCommerce shop](/woocommerce).
 
-This is one purchase, from the catalogue to the goods, with your process in
-it; each step below builds one part of it.
+## The words used below
+
+- Card — the description of a product in the catalogue that an agent decides
+  from and buys through; its fields are in the [card reference](/cards).
+- Order — the object that appears on our side after a purchase and arrives on
+  yours; its whole life is on [Orders and fulfillment modes](/orders).
+- Handler — your code, which receives orders and carries out the delivery, and
+  your process, the program that runs it beside your API.
+- Idempotency key — a string that is the same across every repeat of one order.
+  Ours is the order's identifier, and your side answers with the earlier result
+  under it instead of delivering a second time.
+- Fulfillment mode — whether the goods arrive in the answer to the purchase or
+  later, which decides when the buyer is charged. Three modes can be published:
+  synchronous, asynchronous, and a parcel on the test channel only
+  ([the modes](/orders#fulfillment-modes)).
+- Price check — the question of how much a product costs and whether it is
+  there, which we ask at the moment of purchase about products whose price
+  moves. A price handler answers it, in your process beside the order handler.
+- Facilitator — the service that verifies the buyer's signed payment and
+  executes the charge; who is who in a sale is on [Connecting to
+  Agentify](/#who-is-who).
+- Pilot — the period Agentify runs in now, defined on [Connecting to
+  Agentify](/#who-is-who); some rules hold only during it.
+
+## One purchase, from the catalogue to the goods
+
+Your process takes part in each purchase as drawn here, and each step below
+builds one part of it.
 
 ```mermaid
 ---
@@ -56,30 +82,6 @@ sequenceDiagram
         G-->>A: the goods, or shipped
     end
 ```
-
-## The words used below
-
-- Card — the description of a product in the catalogue that an agent decides
-  from and buys through; its fields are in the [card reference](/cards).
-- Order — the object that appears on our side after a purchase and arrives on
-  yours; its whole life is on [Orders and fulfillment modes](/orders).
-- Handler — your code, which receives orders and carries out the delivery, and
-  your process, the program that runs it beside your API.
-- Idempotency key — a string that is the same across every repeat of one order.
-  Ours is the order's identifier, and your side answers with the earlier result
-  under it instead of delivering a second time.
-- Fulfillment mode — whether the goods arrive in the answer to the purchase or
-  later, which decides when the buyer is charged. Three modes can be published:
-  synchronous, asynchronous, and a parcel on the test channel only
-  ([the modes](/orders#fulfillment-modes)).
-- Price check — the question of how much a product costs and whether it is
-  there, which we ask at the moment of purchase about products whose price
-  moves. A price handler answers it, in your process beside the order handler.
-- Facilitator — the service that verifies the buyer's signed payment and
-  executes the charge; who is who in a sale is on [Connecting to
-  Agentify](/#who-is-who).
-- Pilot — the period Agentify runs in now, defined on [Connecting to
-  Agentify](/#who-is-who); some rules hold only during it.
 
 ## 1. Make the merchant account ready
 
