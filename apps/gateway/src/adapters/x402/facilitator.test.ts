@@ -29,7 +29,7 @@ const edge = new PaymentEdge({
     cdpApiKeySecret: null,
   },
   publicBaseUrl: "https://agentify.example",
-  deadlines: { quoteTtlMs: 300_000 },
+  deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
 });
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */

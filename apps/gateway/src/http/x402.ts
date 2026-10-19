@@ -31,6 +31,7 @@ import type {
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { purchaseUrlOf } from "../app/addresses.js";
+import { authorisationSecondsOf } from "../app/payment-window.js";
 import type { GatewayConfig } from "../config.js";
 import { randomIds } from "../ports/clock.js";
 
@@ -109,7 +110,7 @@ const WIDEST = {
 
 /** What the payment edge reads of a gateway's configuration. */
 type EdgeConfig = Pick<GatewayConfig, "payment" | "publicBaseUrl"> & {
-  readonly deadlines: Pick<GatewayConfig["deadlines"], "quoteTtlMs">;
+  readonly deadlines: Pick<GatewayConfig["deadlines"], "quoteTtlMs" | "syncResponseMs">;
 };
 
 export class PaymentEdge {
@@ -117,18 +118,6 @@ export class PaymentEdge {
 
   constructor(config: EdgeConfig) {
     this.#config = config;
-  }
-
-  /**
-   * How long a challenge gives an agent to pay: the life of the price it
-   * names, which on every card that can be published is also how long the
-   * unpaid order lives. The x402 reference client counts it from the moment
-   * it signs, on its own clock, and signs its authorisation valid for that
-   * long. The protocol counts whole seconds and wants at least one; a price
-   * that lives a second or more is rounded down.
-   */
-  #windowSeconds(): number {
-    return Math.max(1, Math.floor(this.#config.deadlines.quoteTtlMs / 1_000));
   }
 
   /**
@@ -167,7 +156,10 @@ export class PaymentEdge {
       asset: asset.asset,
       amount: atomicUnits(price.amount, asset.decimals),
       payTo,
-      maxTimeoutSeconds: this.#windowSeconds(),
+      // How long the signed authorisation stays valid, which is longer than the
+      // price holds: a purchase delivered in the answer is charged after its
+      // goods.
+      maxTimeoutSeconds: authorisationSecondsOf(this.#config.deadlines),
       extra: {
         name: asset.name,
         version: asset.version,

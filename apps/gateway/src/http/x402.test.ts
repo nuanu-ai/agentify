@@ -77,7 +77,7 @@ describe("what an agent is asked to pay", () => {
         cdpApiKeySecret: null,
       },
       publicBaseUrl: "https://agentify.example",
-      deadlines: { quoteTtlMs: 300_000 },
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
     });
 
   it("names the network's own asset, the seller's address and the order it is for", () => {
@@ -93,7 +93,7 @@ describe("what an agent is asked to pay", () => {
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       amount: "80000000",
       payTo: SELLERS_SPLIT,
-      maxTimeoutSeconds: 300,
+      maxTimeoutSeconds: 46,
       extra: { name: "USDC", version: "2", order_id: "ord_1" },
     });
   });
@@ -428,7 +428,7 @@ describe("the discovery declaration a challenge carries", () => {
         cdpApiKeySecret: null,
       },
       publicBaseUrl: "https://agentify.example",
-      deadlines: { quoteTtlMs: 300_000 },
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
     });
 
   const challenge = (listed: { serviceName: string | null }) =>
@@ -586,7 +586,7 @@ describe("a parcel's challenge", () => {
       cdpApiKeySecret: null,
     },
     publicBaseUrl: "https://agentify.example",
-    deadlines: { quoteTtlMs: 300_000 },
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
   });
   const listed = {
     itemId: "itm_parcel",
@@ -626,7 +626,7 @@ describe("a card's challenge at its widest", () => {
       cdpApiKeySecret: null,
     },
     publicBaseUrl: "https://agentify.example",
-    deadlines: { quoteTtlMs: 300_000 },
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
   });
   const cards = [
     CardSchema.parse({
@@ -758,7 +758,7 @@ describe("the shape a live validation once accepted", () => {
         cdpApiKeySecret: null,
       },
       publicBaseUrl: "https://agentify.example",
-      deadlines: { quoteTtlMs: 300_000 },
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
     });
     const decoded = decodePaymentRequiredHeader(
       edge.challengeFor({ amount: "2.00", currency: "USD" }, null, {

@@ -67,23 +67,24 @@ limit. On an order paid before its goods the purchase call does not wait on
 the deadline at all: it waits for the facilitator's answer itself, bounded by
 that thirty-second client.
 
-One wait is shorter than the rest. The payment challenge offers an agent the
-life of the price to pay, thirty seconds (`QUOTE_TTL_MS`), so that it knows its
-real window before it signs, and an agent's client signs its authorisation
-valid for that long from the moment it signs. The exact-EVM facilitator refuses
-an authorisation that expires within six seconds, at the check and again at
-the charge. An agent that presents its payment as soon as it has signed leaves
-a synchronous charge, sent at most ten seconds after the payment checked out,
-about fourteen seconds of room, and the transfers measured below land in under
-three. An agent that holds a signed authorisation before presenting it spends
-that room: past about fourteen seconds of holding, a merchant who takes the
-whole ten seconds sees the charge refused after the goods were made, and the
-order waits as `delivered_unpaid` for a repeat purchase to collect them. The
-authorisation's end is reckoned on the agent's own clock, so a client whose
-clock runs slow spends the same room. The six-second rule was read in the
-open-source facilitator code (`@x402/evm` 2.23.0) in this repository; that the
-hosted facilitator the test channel settles through runs it is assumed, and
-whether the CDP facilitator on the live chain applies it has not been checked.
+The authorisation an agent signs has to outlive the charge as well. The x402
+reference client signs one valid for the challenge's `maxTimeoutSeconds`,
+counted on its own clock from the moment it signs, and the exact-EVM
+facilitator refuses an authorisation that ends within six seconds, at the check
+and again at the charge. A synchronous charge goes out up to ten seconds after
+the payment checked out. So the challenge asks for the price's life (thirty
+seconds, `QUOTE_TTL_MS`), the merchant's ten and the facilitator's six
+together, forty-six seconds, worked out in
+`apps/gateway/src/app/payment-window.ts`: an authorisation signed as the price
+runs out and sent at once is still good
+when the charge goes out, and the transfers measured below land in under three
+seconds. The price itself still lapses after thirty seconds, so the number is
+not a time to pay in. An agent that holds a signed authorisation, or whose
+clock runs slow, can still arrive with less than the charge needs. The
+six-second rule was read in the open-source facilitator code (`@x402/evm`
+2.23.0) in this repository; that the hosted facilitator the test channel
+settles through runs it is assumed, and whether the CDP facilitator on the live
+chain applies it has not been checked.
 
 ## What was measured
 
@@ -127,10 +128,7 @@ challenge carries. Which timeouts the agents that buy here actually use is not
 known.
 
 How long the agents that buy here hold a signed authorisation before they
-present it is not known. A deployment that shortens `QUOTE_TTL_MS` shortens the
-authorisation with it, and nothing at startup refuses a price's life too short
-for a synchronous charge to go through inside it; no deployment overrides the
-default.
+present it, and how far their clocks run, is not known.
 
 Whether the two refunds owed on TEST were ever reconciled has not been
 checked. The changes to the waits do not touch orders that already exist.
