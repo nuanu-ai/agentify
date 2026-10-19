@@ -902,3 +902,25 @@ describe("releasing a paused order from a terminal", () => {
     await waitUntil(() => redelivering.answers.length === 1, 10_000);
   }, 30_000);
 });
+
+describe("a pause point the stand does not know", () => {
+  it("is refused in words that name it, and pauses nothing", async () => {
+    // The promise: a mistyped point is told it set nothing, rather than being
+    // answered as though orders would now pause while none does. A terminal
+    // reads the body, so the refusal names what was typed there too.
+    const redelivering = await redeliveringGateway();
+    const stand = await standProcess({});
+    await stand.connectTo(redelivering.url);
+
+    const mistyped = await stand.fromTerminal({ action: "pause_at", at: "answer-ready" });
+    expect(mistyped.status).toBe(303);
+    expect(await mistyped.text()).toContain("answer-ready");
+    const page = await stand.page("/orders");
+    expect(page).toContain('class="said-back problem"');
+    expect(page).toContain('<option value="none" selected>');
+
+    redelivering.handOver();
+    await waitUntil(() => redelivering.answers.length === 1, 10_000);
+    expect(offersToRelease(await stand.page("/orders"))).toBe(false);
+  }, 30_000);
+});
