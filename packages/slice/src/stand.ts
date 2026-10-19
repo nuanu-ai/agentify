@@ -893,7 +893,9 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
     case "pause_at": {
       const at = form.get("at") ?? "";
       if (!PAUSE_POINTS.includes(at as PausePoint))
-        throw new Error("That pause is not one the stand knows.");
+        throw new Error(
+          `Nothing was set: the stand knows no pause point named "${at}". It takes ${PAUSE_POINTS.join(", ")}.`,
+        );
       merchant.pause.at = at as PausePoint;
       say(
         at === "none"
