@@ -176,7 +176,9 @@ the same order both need a buyer that keeps the challenge and the signed
 payment header it sent. The proxy never logs that header. The pauses belong to the stand, our own SDK merchant. They hold the
 handler's answer to an order, not the later deliver call of an order taken on
 earlier, and they say nothing about a newcomer's merchant or the WooCommerce
-connector, whose faults stay with the rows marked missing. A stand keeping
+connector, whose faults stay with the rows marked missing. The stand keeps no
+shipping address and has no shipment path, so F-02, which needs the merchant's
+durable copy of an address, cannot run on it. A stand keeping
 records answers a repeated order with what it recorded, so it cannot model a
 merchant who corrects their goods on a repeat; run those variants without
 records. Both instruments have been exercised against local servers only, not
