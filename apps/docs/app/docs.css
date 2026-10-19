@@ -318,22 +318,48 @@ input {
   max-width: 100%;
   margin: 20px 0;
   overflow-x: auto;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--text-small);
   line-height: 1.55;
 }
 
+/* Each cell draws its own right and bottom rule, and the first row and column
+   their outer ones: a collapsed rule belongs to the table and would stay
+   behind when the first column holds still. */
 .doc th,
 .doc td {
-  border: var(--hairline) solid var(--line);
+  border: 0 solid var(--line);
+  border-width: 0 var(--hairline) var(--hairline) 0;
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
 }
 
+.doc tr > :first-child {
+  border-left-width: var(--hairline);
+}
+
+.doc table > :first-child > tr:first-child > * {
+  border-top-width: var(--hairline);
+}
+
 .doc th {
   background: var(--surface-sunken);
   font-weight: 600;
+}
+
+/* The first column names the row, so it stays in view while the rest of a
+   table too wide for the column scrolls under it, painted in the page's
+   colour so the scrolled cells do not show through. */
+.doc :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.doc td:first-child {
+  background: var(--bg);
 }
 
 /* A link in a cell is told from the words beside it by more than its colour,
