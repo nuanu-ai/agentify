@@ -331,13 +331,6 @@ const PINS: readonly Pin[] = [
     is: deadlines.quoteResponseMs,
   },
   {
-    what: "the same wait, said again where the page says whose setting it is",
-    page: "apps/docs/failures.md",
-    anchor: /(\w+) seconds is what the system you are connecting to allows/,
-    reads: "seconds",
-    is: deadlines.quoteResponseMs,
-  },
-  {
     what: "the same wait, on the page a price handler is written from",
     page: "apps/docs/cards.md",
     anchor: /We wait (\w+) seconds for an answer/,
@@ -381,13 +374,6 @@ const PINS: readonly Pin[] = [
     what: "the same, said again where the page says whose seconds they are",
     page: "apps/docs/quickstart.md",
     anchor: /they are the (\w+) seconds your handler has/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the same, on the page about what goes wrong",
-    page: "apps/docs/failures.md",
-    anchor: /(\w+) seconds, counted from the moment the payment checked out/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
@@ -486,13 +472,6 @@ const PINS: readonly Pin[] = [
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
-    what: "the same, in the worked case of a delivery that never arrived",
-    page: "apps/docs/failures.md",
-    anchor: /so the (\w+) we hold it to is the one running/,
-    reads: "period",
-    is: deadlines.defaultAsyncFulfillmentMs,
-  },
-  {
     // The agent's side of the same number: how long an order whose goods come
     // later can run before the merchant owes a refund, said where the agent
     // reads about the route it collects them on.
@@ -545,13 +524,6 @@ const PINS: readonly Pin[] = [
     reads: "seconds",
     is: deadlines.handlerAnswerMs,
   },
-  {
-    what: "the same wait, on the page about a handler that crashed",
-    page: "apps/docs/failures.md",
-    anchor: /after (\w+) seconds without an answer we send the order again/,
-    reads: "seconds",
-    is: deadlines.handlerAnswerMs,
-  },
 
   // --- how many times an order that never reached the handler is sent again --
   {
@@ -576,9 +548,9 @@ const PINS: readonly Pin[] = [
     is: redelivery.maxAttempts,
   },
   {
-    what: "the same cap, on the page about a handler that threw",
+    what: "the same cap, in the table of failures",
     page: "apps/docs/failures.md",
-    anchor: /until we have tried (\w+) times/,
+    anchor: /up to (\w+) times, while its deadline lasts/,
     reads: "count",
     is: redelivery.maxAttempts,
   },
@@ -612,7 +584,7 @@ describe("every number the portal names is the number this gateway ships", () =>
   });
 
   it("grows the pause between attempts, which is the one claim carrying no number", () => {
-    // failures.md: "we repeat the delivery, after a pause that grows with each
+    // failures.md: "the order comes again after a pause that grows with each
     // attempt". The configuration accepts a factor of one, a flat retry that
     // puts every attempt inside a couple of seconds, and the sentence would
     // then describe nothing that happens.

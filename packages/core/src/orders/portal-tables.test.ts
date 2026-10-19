@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createOrder } from "./create.js";
 import { deadlines } from "./deadlines.js";
-import { createInput, must, newOrder, reach, T0, walk } from "./fixtures.js";
+import { must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
 import { endingReasonFor, outcomeFor } from "./outcome.js";
@@ -97,13 +96,6 @@ function wordsIn(page: string, heading: string, row: string, column: string): re
   const cells = rows.find((each) => each[0] === row);
   if (cells === undefined) throw new Error(`the table under "${heading}" has no row "${row}"`);
   return [...(cells[at] ?? "").matchAll(/`([a-z_.]+)`/g)].map((found) => found[1] ?? "");
-}
-
-function headings(page: string): readonly string[] {
-  return page
-    .split("\n")
-    .filter((line) => line.startsWith("## "))
-    .map((line) => line.slice(3));
 }
 
 function paidAsync(): Order {
@@ -453,53 +445,44 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
   });
 });
 
-// --- apps/docs/failures.md -----------------------------------------------------
+// --- apps/docs/failures.md, "Every failure, mode by mode" --------------------
 
 const FAILURES = [
   "The price check is silent",
-  "You could not deliver",
-  "The handler crashed without answering",
-  "No answer about the delivery",
-  "An order arrived twice",
-  "The buyer paid and the answer was lost",
+  "You refused",
+  "Your handler threw, or your process fell over",
+  "No answer by the deadline",
+  "The same order arrived twice",
+  "The answer to the agent was lost",
   "The goods ran out",
-  "Your side went quiet for a long time",
+  "The charge failed after your delivery",
+  "Nobody knows whether the charge went through",
 ] as const;
 
-describe("apps/docs/failures.md", () => {
-  it(`${FAILURES[0]}: the sale goes on where the money is still ahead of it`, () => {
-    const sync = must(newOrder("sync", { priceCheck: "merchant" }), {
-      kind: "quote_silent",
-      at: T0 + 1,
-    }).order;
-    const confirm = must(newOrder("confirm", { priceCheck: "merchant" }), {
-      kind: "quote_silent",
-      at: T0 + 1,
-    }).order;
-    const async = must(newOrder("async", { priceCheck: "merchant" }), {
-      kind: "quote_silent",
-      at: T0 + 1,
-    }).order;
+function priceCheckedParcel(): Order {
+  return newOrder("async", {
+    mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+    priceCheck: "merchant",
+  });
+}
 
-    // Two of the three sales go on and the third does not, which is the whole
-    // row: where the merchant's live answer still stands between the price and
-    // the charge, a second of silence does not cancel a sale that can be made
-    // honestly at the card's own price.
-    expect(outcomeFor(sync)).toBe("in_progress");
-    expect(outcomeFor(confirm)).toBe("in_progress");
-    expect(outcomeFor(async)).toBe("rejected");
+describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
+  it(`${FAILURES[0]}: the sale goes on where the money is still ahead of it`, () => {
+    const silent = (order: Order) => must(order, { kind: "quote_silent", at: T0 + 1 }).order;
+
+    // The synchronous sale goes on and the two that charge at purchase do
+    // not, which is the whole row: where the merchant's live answer still
+    // stands between the price and the charge, a second of silence does not
+    // cancel a sale that can be made honestly at the card's own price.
+    expect(outcomeFor(silent(newOrder("sync", { priceCheck: "merchant" })))).toBe("in_progress");
+    expect(outcomeFor(silent(newOrder("async", { priceCheck: "merchant" })))).toBe("rejected");
+    expect(outcomeFor(silent(priceCheckedParcel()))).toBe("rejected");
   });
 
-  it(`${FAILURES[1]}: what a refusal costs depends on when it arrives`, () => {
+  it(`${FAILURES[1]}: what a refusal costs depends on whether the money moved`, () => {
     const inSync = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
-      code: "cannot_fulfill",
-      message: "no",
-    }).order;
-    const atConfirmation = must(reach("awaiting_confirmation"), {
-      kind: "handler_refused",
-      at: T0 + 2,
       code: "cannot_fulfill",
       message: "no",
     }).order;
@@ -510,11 +493,7 @@ describe("apps/docs/failures.md", () => {
       message: "no",
     }).order;
 
-    // The same refusal, three places, and the row is about what each one
-    // costs: before the charge the purchase simply did not happen, and after
-    // it the buyer is owed his money back.
     expect(outcomeFor(inSync)).toBe("rejected");
-    expect(outcomeFor(atConfirmation)).toBe("declined");
     expect(outcomeFor(afterTheCharge)).toBe("refund_due");
   });
 
@@ -572,7 +551,7 @@ describe("apps/docs/failures.md", () => {
     expect(outcomeFor(order)).toBe("delivered");
   });
 
-  it(`${FAILURES[6]}: said in time, the buyer's money does not move`, () => {
+  it(`${FAILURES[6]}: said in the price check, the buyer's money does not move`, () => {
     const { order } = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_answered",
       at: T0 + 1,
@@ -582,15 +561,30 @@ describe("apps/docs/failures.md", () => {
     expect(outcomeFor(order)).toBe("rejected");
   });
 
-  it(`${FAILURES[7]}: the automatic stop is the same pause, switched on for you`, () => {
-    // Both halves of the row: no new orders are taken, and the ones already
-    // taken play out in the ordinary way.
-    const paused = createOrder(createInput("async", { selling: "paused" }));
-    expect(paused.ok).toBe(false);
+  it(`${FAILURES[7]}: the buyer paid nothing, and a repeat that pays takes the goods`, () => {
+    const unpaid = must(reach("fulfilled"), { kind: "payment_settle_failed", at: T0 + 5 }).order;
 
-    const delivered = must(paidAsync(), { kind: "deliver_called", at: T0 + 60 });
+    expect(outcomeFor(unpaid)).toBe("delivered_unpaid");
+  });
 
-    expect(outcomeFor(delivered.order)).toBe("delivered");
+  it(`${FAILURES[8]}: the word says nobody knows, before the goods and after them`, () => {
+    const afterTheGoods = must(reach("fulfilled"), {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "settle_response",
+    }).order;
+    const beforeTheGoods = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
+    ]);
+
+    expect(outcomeFor(afterTheGoods)).toBe("payment_unresolved");
+    expect(outcomeFor(beforeTheGoods)).toBe("payment_unresolved");
+
+    // "and owes a refund if the charge reports in later"
+    const late = must(beforeTheGoods, { kind: "payment_settled", at: T0 + 1_000_000 }).order;
+
+    expect(outcomeFor(late)).toBe("refund_due");
   });
 });
 
@@ -609,11 +603,7 @@ describe("the portal and this machine cannot drift apart quietly", () => {
     expect(tableRows(ORDERS_PAGE, "Events on the same subscription")).toStrictEqual([...EVENTS]);
   });
 
-  it("has exactly the encoded failure scenarios", () => {
-    // The portal's own open-questions section is not a scenario, so it is the
-    // one heading this list excludes.
-    expect(headings(FAILURES_PAGE).filter((h) => h !== "What is not settled yet")).toStrictEqual([
-      ...FAILURES,
-    ]);
+  it('has exactly the encoded rows in "Every failure, mode by mode"', () => {
+    expect(tableRows(FAILURES_PAGE, "Every failure, mode by mode")).toStrictEqual([...FAILURES]);
   });
 });
