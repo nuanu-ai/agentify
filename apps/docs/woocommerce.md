@@ -42,6 +42,12 @@ arrive, it cannot tell whether you declined, closed the approval screen, or
 the shop's request failed, and you press Connect again; where WooCommerce
 showed an error, it has already removed the key from that attempt.
 
+Your account is connected to one shop at a time. Connecting the same shop again
+renews its keys. To connect a different shop, [disconnect](#disconnecting) the
+one that is connected first, which waits for the orders still waiting on it to
+end. A shop is known by its address, so a shop that has moved to a new address
+counts as a different shop.
+
 To revoke the keys in the shop yourself, open WooCommerce → Settings →
 Advanced → REST API.
 
