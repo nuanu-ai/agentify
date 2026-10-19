@@ -239,7 +239,10 @@ export const makeStandMerchant = (
   const moods = defaultMoods();
   const taken = new Map<string, LiveOrder>();
   const held = new Map<string, HeldOrder>();
-  const answering = new Map<string, (answer: HeldAnswer | typeof RAN_OUT) => void>();
+  const answering = new Map<
+    string,
+    { answer: (chosen: HeldAnswer) => void; abandon: (why: Error) => void }
+  >();
   const pause: { at: PausePoint } = { at: "none" };
   const paused = new Map<string, PausedOrder>();
   const unpausing = new Map<string, { release: () => void; abandon: (why: Error) => void }>();
@@ -249,8 +252,8 @@ export const makeStandMerchant = (
   let address: string | null = null;
   let stoppedBecause: string | null = null;
   // Set for as long as a disconnect is under way. A handler that reaches a
-  // pause then gives up at once, because the disconnect is waiting for every
-  // handler in flight to finish and a fresh pause would never be released.
+  // pause or a hold then gives up at once, because the disconnect is waiting
+  // for every handler in flight to finish and nobody would release it.
   let disconnecting = false;
 
   const connectedClient = (): AgentifyClient => {
@@ -383,8 +386,19 @@ export const makeStandMerchant = (
     await Promise.all([...session.inFlight]);
   };
 
-  /** Holds one order open until a person answers, the ceiling runs out, or the stand disconnects. */
+  /** Why a waiting handler gives up: it throws this, so the SDK answers nothing for it. */
+  const abandonment = (orderId: string, waiting: string): Error =>
+    new Error(
+      `The stand disconnected while order ${orderId} was ${waiting}, so its handler answers nothing.`,
+    );
+
+  /**
+   * Holds one order open until a person answers or the ceiling runs out. A
+   * disconnect gives up on it instead: nobody answered because the stand went
+   * away, which is not the merchant refusing, so nothing is answered or recorded.
+   */
   const askAbout = async (order: LiveOrder): Promise<HeldAnswer | typeof RAN_OUT> => {
+    if (disconnecting) throw abandonment(order.id, "held for a person to answer");
     held.set(order.id, {
       id: order.id,
       merchantItemId: order.merchant_item_id,
@@ -397,27 +411,25 @@ export const makeStandMerchant = (
       params: order.params,
     });
 
-    const answer = await new Promise<HeldAnswer | typeof RAN_OUT>((resolve) => {
-      const ceiling = setTimeout(() => {
-        answering.delete(order.id);
-        resolve(RAN_OUT);
-      }, ASK_CEILING_MS);
-      answering.set(order.id, (chosen) => {
-        clearTimeout(ceiling);
-        answering.delete(order.id);
-        resolve(chosen);
+    try {
+      return await new Promise<HeldAnswer | typeof RAN_OUT>((resolve, reject) => {
+        const ceiling = setTimeout(() => resolve(RAN_OUT), ASK_CEILING_MS);
+        answering.set(order.id, {
+          answer: (chosen) => {
+            clearTimeout(ceiling);
+            resolve(chosen);
+          },
+          abandon: (why) => {
+            clearTimeout(ceiling);
+            reject(why);
+          },
+        });
       });
-    });
-
-    held.delete(order.id);
-    return answer;
+    } finally {
+      held.delete(order.id);
+      answering.delete(order.id);
+    }
   };
-
-  /** Why a paused handler gives up: it throws this, so the SDK answers nothing for it. */
-  const abandonment = (orderId: string): Error =>
-    new Error(
-      `The stand disconnected while order ${orderId} was paused, so its handler answers nothing.`,
-    );
 
   /**
    * Stops one order at `phase` when the stand is set to pause there, until it
@@ -431,7 +443,7 @@ export const makeStandMerchant = (
     answer?: HandlerAnswer,
   ): Promise<void> => {
     if (pause.at !== phase) return;
-    if (disconnecting) throw abandonment(order.id);
+    if (disconnecting) throw abandonment(order.id, "paused");
     paused.set(order.id, {
       id: order.id,
       merchantItemId: order.merchant_item_id,
@@ -468,7 +480,7 @@ export const makeStandMerchant = (
         "The stand is disconnecting while this order is paused, so the handler gives up on it and answers nothing.",
         { order_id: orderId, phase: paused.get(orderId)?.phase },
       );
-      abandon(abandonment(orderId));
+      abandon(abandonment(orderId, "paused"));
     }
   };
 
@@ -664,13 +676,16 @@ export const makeStandMerchant = (
     });
   };
 
-  /** Lets every held order go, so a disconnect never leaves the worker blocked. */
-  const releaseHeld = (): void => {
-    for (const [orderId, resolve] of [...answering]) {
-      answering.delete(orderId);
-      resolve(RAN_OUT);
+  /** Gives up on every order held for a person, so a disconnect never waits on an answer. */
+  const abandonHeld = (): void => {
+    for (const [orderId, { abandon }] of [...answering]) {
+      feed.write(
+        "merchant",
+        "The stand is disconnecting while this order is held for you, so the handler gives up on it and answers nothing.",
+        { order_id: orderId },
+      );
+      abandon(abandonment(orderId, "held for a person to answer"));
     }
-    held.clear();
   };
 
   return {
@@ -691,10 +706,10 @@ export const makeStandMerchant = (
     connected: () => address,
     stopped: () => stoppedBecause,
     answerHeld(orderId, answer) {
-      const resolve = answering.get(orderId);
-      if (resolve === undefined) return false;
+      const waiting = answering.get(orderId);
+      if (waiting === undefined) return false;
       feed.write("stand", "You answered a held order.", { order_id: orderId, answer });
-      resolve(answer);
+      waiting.answer(answer);
       return true;
     },
     async orders(open) {
@@ -768,7 +783,7 @@ export const makeStandMerchant = (
       results.clear();
       disconnecting = true;
       abandonPaused();
-      releaseHeld();
+      abandonHeld();
       await stopDeliveries();
       if (stopping !== undefined) {
         await stopping.stop();
