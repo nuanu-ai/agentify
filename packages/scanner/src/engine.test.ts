@@ -286,6 +286,176 @@ describe("what the checks read from the markup real sites write", () => {
   });
 });
 
+describe("a scan of a truncated HTML response", () => {
+  const plain = "<html><head><title>Store</title></head><body><h1>Store</h1>";
+  const productData = (evaluation: ReturnType<typeof evaluateScan>) =>
+    evaluation.checks.filter(({ id }) => [5, 6, 15].includes(id));
+
+  it.each(["base", "representative"] as const)(
+    "does not call product data absent beyond the unread part of the %s page",
+    (page) => {
+      const input = withBase(plain);
+      input[page] = artifact(`https://example.com/${page}`, plain, { truncated: true });
+      const evaluation = evaluateScan(input);
+
+      for (const checked of productData(evaluation)) {
+        expect(checked).toMatchObject({
+          status: "unavailable",
+          earnedWeight: 0,
+          errorCode: "html_truncated",
+          evidence: { truncated: true },
+        });
+        expect(checked.fixCode).toBeUndefined();
+        expect(evaluation.findings.negativeCheckIds).not.toContain(checked.id);
+      }
+      expect(evaluation.score.coverage).toBeLessThan(1);
+      expect(evaluation.score.terminalStatus).toBe("partial");
+      if (page === "base") {
+        expect(evaluation.checks.find(({ id }) => id === 14)).toMatchObject({
+          status: "fail",
+          evidence: { truncated: true },
+        });
+      }
+    },
+  );
+
+  it.each(["base", "representative"] as const)(
+    "credits complete product data already read from a truncated %s page",
+    (page) => {
+      const input = withBase(plain);
+      input[page] = artifact(`https://example.com/${page}`, html, { truncated: true });
+      for (const checked of productData(evaluateScan(input))) {
+        expect(checked.status).toBe("pass");
+        expect(checked.earnedWeight).toBe(checked.applicableWeight);
+        expect(checked.evidence.truncated).toBe(true);
+      }
+    },
+  );
+
+  it("uses a complete product page even when the home page was cut short", () => {
+    const input = withBase(plain);
+    input.base = artifact("https://example.com/", plain, { truncated: true });
+    input.representative = artifact("https://example.com/products/widget", html);
+    expect(productData(evaluateScan(input)).map(({ status }) => status)).toEqual([
+      "pass",
+      "pass",
+      "pass",
+    ]);
+  });
+
+  it.each([
+    { "@type": "Organization", name: "Fixture Store", url: "https://example.com/" },
+    { "@type": "Product", name: "Widget" },
+  ])(
+    "keeps observed JSON-LD but does not infer missing product facts from a prefix: %j",
+    (node) => {
+      const input = withBase(plain);
+      input.base = artifact(
+        "https://example.com/",
+        `${plain}<script type="application/ld+json">${JSON.stringify(node)}</script>`,
+        { truncated: true },
+      );
+      const evaluated = productData(evaluateScan(input));
+      expect(evaluated.find(({ id }) => id === 5)?.status).toBe("pass");
+      for (const id of node["@type"] === "Product" ? [15] : [6, 15]) {
+        const checked = evaluated.find((candidate) => candidate.id === id);
+        expect(checked).toMatchObject({ status: "unavailable", errorCode: "html_truncated" });
+        expect(checked?.fixCode).toBeUndefined();
+      }
+      if (node["@type"] === "Product") {
+        expect(evaluated.find(({ id }) => id === 6)).toMatchObject({
+          status: "partial",
+          evidence: { required_missing: expect.arrayContaining(["image", "offers.price"]) },
+        });
+      }
+    },
+  );
+
+  it("does not call a JSON-LD block invalid when the read stopped inside it", () => {
+    const input = withBase(plain);
+    input.base = artifact(
+      "https://example.com/",
+      `${plain}<script type="application/ld+json">{"@type":"Product","name":"Widget`,
+      { truncated: true },
+    );
+    expect(productData(evaluateScan(input)).map(({ status }) => status)).toEqual([
+      "unavailable",
+      "unavailable",
+      "unavailable",
+    ]);
+  });
+
+  it("records a malformed block without claiming there is no valid block in the unread tail", () => {
+    const input = withBase(plain);
+    input.base = artifact(
+      "https://example.com/",
+      `${plain}<script type="application/ld+json">{"@type":</script>`,
+      { truncated: true },
+    );
+    expect(productData(evaluateScan(input)).find(({ id }) => id === 5)).toMatchObject({
+      status: "unavailable",
+      evidence: { invalid_script_count: 1 },
+    });
+  });
+
+  it("still reports missing product data when the whole page was read", () => {
+    const input = withBase(`${plain}</body></html>`);
+    const evaluation = evaluateScan(input);
+    expect(productData(evaluation).map(({ status }) => status)).toEqual(["fail", "fail", "fail"]);
+    expect(evaluation.checks.find(({ id }) => id === 14)?.status).toBe("pass");
+  });
+
+  it.each([7, 12, 13, 18])(
+    "does not infer missing HTML content for check %i from a prefix",
+    (id) => {
+      const input = withBase(plain);
+      input.base = artifact("https://example.com/", plain, { truncated: true });
+      const checked = check(input, id);
+      expect(checked).toMatchObject({ status: "unavailable", errorCode: "html_truncated" });
+      expect(checked?.applicableWeight).toBeGreaterThan(0);
+      expect(checked?.fixCode).toBeUndefined();
+    },
+  );
+
+  it("keeps sufficient content and successful comparisons already proved by the prefix", () => {
+    const input = withBase(html);
+    input.base = artifact("https://example.com/", html, { truncated: true });
+    input.markdown = artifact("https://example.com/", visibleText(html), {
+      headers: { "content-type": "text/markdown", vary: "Accept" },
+    });
+    for (const id of [7, 12, 13, 18]) {
+      expect(check(input, id)).toMatchObject({ status: "pass", evidence: { truncated: true } });
+    }
+  });
+
+  it("keeps a proven Markdown header error even when its body was truncated", () => {
+    const input = makeArtifacts("store");
+    input.markdown = artifact("https://example.com/", "# Store", {
+      headers: { "content-type": "text/markdown", vary: "Accept-Encoding" },
+      truncated: true,
+    });
+    expect(check(input, 7)?.status).toBe("partial");
+  });
+
+  it("keeps proven user-agent refusals even when the plain response was truncated", () => {
+    const input = withBase(plain);
+    input.base = artifact("https://example.com/", plain, { truncated: true });
+    input.agentProbes = {
+      chatgpt: artifact("https://example.com/", "Forbidden", { status: 403 }),
+      claude: artifact("https://example.com/", "Forbidden", { status: 403 }),
+    };
+    expect(check(input, 13)?.status).toBe("fail");
+  });
+
+  it("keeps malformed language alternatives already found in a prefix", () => {
+    const input = withBase(plain);
+    input.base = artifact("https://example.com/", html.replace('hreflang="de"', 'hreflang="?"'), {
+      truncated: true,
+    });
+    expect(check(input, 18)?.status).toBe("partial");
+  });
+});
+
 describe("a scan of pages as large as the fetch admits", () => {
   // What the checks and the fingerprint read themselves, at the sizes the
   // fetch admits: a feed link and an Open Graph type in a page of up to 2 MiB,
