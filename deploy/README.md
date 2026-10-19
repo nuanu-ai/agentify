@@ -1,5 +1,8 @@
 # Releasing and operating Agentify
 
+Host log collection and telemetry have their own
+[operating procedure](observability/README.md), independent of application releases.
+
 This is the runbook for putting a revision of this repository on one of its
 two channels, publishing the SDK, finding out what a channel runs, recovering
 when a release goes wrong, and the operator's commands on a running channel.
