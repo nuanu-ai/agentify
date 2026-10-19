@@ -490,14 +490,14 @@ describe("the payment challenge", () => {
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
-  it("asks for an authorisation that outlives the charge, even one signed as the price runs out", async () => {
-    // A purchase delivered in the answer is charged after its goods, up to the
-    // synchronous answer's time after its payment checks out, and the exact-EVM
-    // facilitator refuses an authorisation within six seconds of its end. The
-    // reference client signs one valid for maxTimeoutSeconds from the moment
-    // it signs, so the challenge asks for the price's whole life, the answer's
-    // time and the six seconds: signed at the price's last moment and sent at
-    // once, the authorisation is still good when the charge goes out.
+  it("asks for an authorisation that outlives the charge, even one signed as the price is named and presented as it runs out", async () => {
+    // The reference client signs an authorisation valid for maxTimeoutSeconds
+    // from the moment it signs. An agent may sign as soon as the price is named
+    // and present the payment as the price runs out, and the door then asks
+    // for what a charge after the goods needs: the synchronous answer's time,
+    // the exact-EVM facilitator's six seconds, and two for the gateway's own
+    // steps and the clocks. Two more cover the time before the check: its round
+    // trip, and the client rounding its clock down to the second.
     const environments: Record<string, string>[] = [
       { QUOTE_TTL_MS: "30000" },
       { QUOTE_TTL_MS: "45000" },
@@ -516,7 +516,7 @@ describe("the payment challenge", () => {
           asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
         );
         expect(challenge.accepts[0]?.maxTimeoutSeconds, JSON.stringify(environment)).toBe(
-          (quoteTtlMs + syncResponseMs) / 1_000 + 6,
+          (quoteTtlMs + syncResponseMs) / 1_000 + 6 + 2 + 2,
         );
       }
 
@@ -948,9 +948,13 @@ describe("a payment whose authorisation would run out before its charge", () => 
       },
     });
 
-  /** What a charge after the goods needs once the payment has checked out. */
+  /**
+   * What a charge after the goods needs once the payment has checked out: the
+   * synchronous answer's time, the facilitator's six seconds, and two for the
+   * gateway's own steps and the clocks.
+   */
   const needed = (harnessed: Harness): number =>
-    harnessed.runtime.config.deadlines.syncResponseMs + 6_000;
+    harnessed.runtime.config.deadlines.syncResponseMs + 6_000 + 2_000;
 
   it("refuses one too short for a purchase delivered in the answer, before anything is made or charged", async () => {
     const { served, harnessed } = await started();

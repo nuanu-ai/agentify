@@ -150,6 +150,26 @@ describe("verifying a payment", () => {
       payer: "0xpayer",
       validUntil: null,
     });
+
+    // A payment by Permit2, which the exact-EVM scheme also takes, names its
+    // end as the permit's deadline.
+    const permitted = encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      payload: {
+        signature: "0xsigned",
+        permit2Authorization: {
+          from: "0x0000000000000000000000000000000000000abc",
+          deadline: "1787745650",
+          nonce: "1",
+        },
+      },
+    });
+    expect(await facilitator.verify(charge(permitted))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: 1_787_745_650_000,
+    });
   });
 
   it("checks it against the price this gateway issued, not the one the payment names", async () => {
