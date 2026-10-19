@@ -760,10 +760,12 @@ if (databaseUrl === null) {
       expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
       expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
-    it("lets a buyer pay again for an order written before payment references, by the one the migration gave it", async () => {
+    it("charges an order written before payment references under the one the migration gave it", async () => {
       // The order is made, paid and left unpaid by a failed charge as today,
       // then put back as it was written before references existed, and the
-      // migration's own statement gives it one.
+      // migration's own statement gives it one. Its buyer was never given
+      // that reference, so the payment for it here is presented directly, as
+      // the purchase would once the reference had found the order.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "paid-again-after-the-migration" },
@@ -822,6 +824,7 @@ if (databaseUrl === null) {
         if (paid.step !== "settled") throw new Error("the order was not paid again");
         expect(paid.order.order.state).toBe("delivered");
         expect(paid.delivery).toStrictEqual({ access_code: "SESAME" });
+        expect(facilitator.settles.at(-1)?.paymentRef).toBe(given);
       } finally {
         facilitator.willSettle();
       }

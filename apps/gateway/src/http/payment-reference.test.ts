@@ -17,7 +17,7 @@ import type {
   SupportedResponse,
   VerifyResponse,
 } from "@x402/core/types";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
@@ -182,6 +182,7 @@ const started = async (overrides: Record<string, string> = {}) => {
 };
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await open?.served.close();
   await open?.harnessed.stop();
   open = null;
@@ -228,6 +229,24 @@ const reaching = async (harnessed: Harness, orderId: string, state: string) => {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`the order never reached ${state}`);
+};
+
+/**
+ * A refusal says what became of the order in the words its status gives,
+ * read here by its identifier as its buyer would.
+ */
+const expectToSayWhatBecameOf = async (
+  body: unknown,
+  served: Served,
+  orderId: string,
+  expected: { readonly retryable: boolean },
+) => {
+  const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+  const reason = (status.body as { reason?: { message: string } }).reason?.message;
+  expect(typeof reason).toBe("string");
+  const { error } = body as { error: { message: string; retryable: boolean } };
+  expect(error.message).toContain(reason);
+  expect(error.retryable).toBe(expected.retryable);
 };
 
 describe("the order's identifier on the payment side", () => {
@@ -427,7 +446,7 @@ describe("a payer whose answer was lost", () => {
 
     expect(again.status).toBe(409);
     expect((again.body as { error: { message: string } }).error.message).not.toMatch(
-      /nothing was charged/,
+      /nothing was charged/i,
     );
     const fresh = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
     expect(fresh.status).toBe(200);
@@ -451,6 +470,31 @@ describe("the reference of an order that ended before a payment was taken", () =
     expectNoOrderIn(answered.body, orderId);
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+    await expectToSayWhatBecameOf(answered.body, served, orderId, { retryable: false });
+  });
+
+  it("does not tell a payment that came after the price lapsed that nothing was charged when another took the order first", async () => {
+    // The price's timer can fire late, and the order is read before the lapse
+    // is applied; a payment can take it in between.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
+    const orderId = opened?.order.id ?? "";
+    harnessed.advance(60_000);
+    const runner = harnessed.gateway.runner;
+    const apply = runner.apply.bind(runner);
+    vi.spyOn(runner, "apply").mockImplementationOnce(async (id, event, facts) => {
+      await runner.presentVerifiedPayment(id, BUYER, "the buyer's payment", null, harnessed.now());
+      return apply(id, event, facts);
+    });
+
+    const answered = await present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02"));
+
+    expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("settled");
+    expect(answered.status).toBe(409);
+    expect((answered.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
+    expect(JSON.stringify(answered.body)).not.toMatch(/nothing was charged/i);
   });
 
   it("hands back no order for a synchronous purchase whose seller ran out of time, and its buyer still collects", async () => {
@@ -474,6 +518,7 @@ describe("the reference of an order that ended before a payment was taken", () =
     expect(answered.status).toBe(409);
     expectNoOrderIn(answered.body, orderId);
     expect(harnessed.facilitator.verifies).toHaveLength(checked);
+    await expectToSayWhatBecameOf(answered.body, served, orderId, { retryable: false });
 
     // The seller's goods arrive late and are held; the buyer pays again from
     // the same wallet and collects them.
@@ -515,5 +560,10 @@ describe("the reference of an order that ended before a payment was taken", () =
     expect(answered.status).toBe(409);
     expectNoOrderIn(answered.body, orderId);
     expect(harnessed.facilitator.verifies).toHaveLength(checked);
+    // Nobody knows whether money moved, so the answer does not say none did,
+    // and asking again may find out.
+    const { error } = answered.body as { error: { message: string; retryable: boolean } };
+    expect(error.message).not.toMatch(/nothing was charged/i);
+    expect(error.retryable).toBe(true);
   });
 });

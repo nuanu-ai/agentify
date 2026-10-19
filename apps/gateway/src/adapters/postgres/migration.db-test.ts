@@ -1109,8 +1109,7 @@ if (databaseUrl === null) {
   describe("the migration that gives every order a payment reference", () => {
     // A payment names its order by a reference kept in the order's document.
     // Every order written before references existed is given one, so every
-    // order has one and an order still waiting for its buyer to pay again can
-    // be found by it.
+    // order has one, and every later charge for it carries one.
     const url = databaseUrl;
     let connected: ReturnType<typeof connect>;
     let pool: Pool;
@@ -1162,7 +1161,12 @@ if (databaseUrl === null) {
     });
 
     /** An order as the version before this migration wrote it, with no reference. */
-    const writtenBefore = async (id: string, state: string, open: boolean) => {
+    const writtenBefore = async (
+      id: string,
+      state: string,
+      open: boolean,
+      extra: Record<string, unknown> = {},
+    ) => {
       const record = {
         order: { id, state },
         merchantId: "mch_old",
@@ -1170,6 +1174,7 @@ if (databaseUrl === null) {
         merchantItemId: "sku-1",
         payment: "PAYMENT",
         paidBy: "0x1111111111111111111111111111111111111111",
+        ...extra,
       };
       await pool.query(
         `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
@@ -1201,6 +1206,16 @@ if (databaseUrl === null) {
       const { paymentRef: _first, ...firstRest } = first;
       const { paymentRef: _second, ...secondRest } = second;
       expect([firstRest, secondRest]).toStrictEqual([unpaid, done]);
+    });
+
+    it("leaves a reference already written alone, and gives one where the key holds null", async () => {
+      await writtenBefore("ord_kept", "delivered", false, { paymentRef: "pay_kept" });
+      await writtenBefore("ord_null", "delivered", false, { paymentRef: null });
+
+      await run("0018_order_payment_ref.sql");
+
+      expect((await recordOf("ord_kept")).paymentRef).toBe("pay_kept");
+      expect((await recordOf("ord_null")).paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
     });
 
     it("finds a migrated order by the reference it was given", async () => {
