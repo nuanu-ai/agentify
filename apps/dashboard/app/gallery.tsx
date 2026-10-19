@@ -2650,7 +2650,7 @@ const PROBLEMS: GalleryState[] = [
 const LIVE_SALES: GalleryState[] = [
   at(
     {
-      id: "admin-live-sales",
+      id: "dashboard-admin-live-sales",
       screen: "Live sales approval",
       when: "An administrator opens the live sales screen from Admin.",
       cause: "Their current session has the administrative flag; no seller has been selected.",
@@ -2670,7 +2670,7 @@ const LIVE_SALES: GalleryState[] = [
   ),
   at(
     {
-      id: "admin-live-sales-confirm",
+      id: "dashboard-admin-live-sales-confirm",
       screen: "Live sales approval",
       when: "An administrator has found the merchant to approve.",
       cause:
