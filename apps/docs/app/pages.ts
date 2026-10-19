@@ -35,6 +35,12 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
     description:
       "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and refunds for merchant orders.",
   },
+  "/payout": {
+    file: "payout.md",
+    title: "Sending a payout from your payout contract",
+    description:
+      "Pay out what has accumulated in your Agentify payout contract, with a Coinbase Wallet or any wallet that can send a transaction with data.",
+  },
   "/woocommerce": {
     file: "woocommerce.md",
     title: "WooCommerce connector: importing, parcels and disconnecting",
