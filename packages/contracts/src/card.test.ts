@@ -305,6 +305,7 @@ describe("the card an agent reads", () => {
   const published = CardSchema.parse({ ...syncCard, price_check: "handler" });
   const issued = {
     id: "itm_4d21bb",
+    purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
     as_of: "2026-08-26T09:00:00Z",
     seller: { name: "Freeland", site: "https://freeland.example" },
   };
@@ -325,10 +326,33 @@ describe("the card an agent reads", () => {
       "params",
       "price",
       "price_checked_at_purchase",
+      "purchase_url",
       "result",
       "seller",
       "title",
     ]);
+  });
+
+  it("names where the product is bought, as an address an agent can call as it stands", () => {
+    // An agent that found the product in the catalog holds only this card. A
+    // path needs a host it was never told, and an address in another scheme is
+    // not one an HTTP client can call.
+    expect(publicCard.purchase_url).toBe(issued.purchase_url);
+    for (const purchase_url of [
+      "/x402/itm_4d21bb/purchase",
+      "agentify.ad/x402/itm_4d21bb/purchase",
+      "ftp://agentify.ad/x402/itm_4d21bb/purchase",
+    ]) {
+      expect(errorOf(PublicCardSchema, { ...publicCard, purchase_url }), purchase_url).toContain(
+        "purchase_url",
+      );
+    }
+    expect(
+      PublicCardSchema.safeParse({
+        ...publicCard,
+        purchase_url: "http://localhost:8080/x402/itm_4d21bb/purchase",
+      }).success,
+    ).toBe(true);
   });
 
   it("names who sells, in the words the merchant gave", () => {
@@ -380,6 +404,7 @@ describe("the card an agent reads", () => {
 
   for (const field of [
     "id",
+    "purchase_url",
     "title",
     "description",
     "price",

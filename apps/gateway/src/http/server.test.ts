@@ -864,6 +864,30 @@ describe("a card whose payment challenge would be too large to read", () => {
 });
 
 describe("a purchase over HTTP, from the catalog to the goods", () => {
+  it("names, on each product in the catalog, the address it is bought at", async () => {
+    // An agent that holds only the catalog must be able to buy from it, so the
+    // address comes whole from the gateway's configured address and is the one
+    // the payment challenge then names as the resource paid for.
+    const { served } = await started({ PUBLIC_BASE_URL: "https://agentify.ad" });
+    const itemId = await publish(served, syncCard);
+
+    const listed = await served.call("GET", "/x402/catalog");
+    const [item] = (listed.body as { items: { id: string; purchase_url?: unknown }[] }).items;
+
+    expect(item?.id).toBe(itemId);
+    expect(item?.purchase_url).toBe(`https://agentify.ad/x402/${itemId}/purchase`);
+    // The gateway under test listens on loopback, so only the path of the
+    // address it named can be called here.
+    const priced = await served.call("POST", new URL(String(item?.purchase_url)).pathname, {
+      body: { params: {} },
+    });
+    expect(priced.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.resource.url).toBe(item?.purchase_url);
+  });
+
   it("tells the agent the purchase is over when the merchant refuses", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
