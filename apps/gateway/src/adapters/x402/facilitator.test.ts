@@ -210,7 +210,7 @@ describe("verifying a payment", () => {
       payTo: checksummed,
     });
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     // And what the facilitator is asked about is still our own spelling: the
     // agent's copy is evidence of nothing, and the requirements are rebuilt.
     expect(client.asked[0]?.requirements.payTo).toBe(checksummed);
@@ -223,7 +223,7 @@ describe("verifying a payment", () => {
       await new X402Facilitator(new Answering(), edge).verify(
         charge(honest({ asset: ours.asset.toUpperCase().replace("0X", "0x") })),
       ),
-    ).toStrictEqual({ verified: true, payer: "0xpayer" });
+    ).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     // The rule is one address in two spellings, not "addresses need not match":
     // another address is still refused, whatever case it is written in.
     expect(
@@ -259,7 +259,7 @@ describe("verifying a payment", () => {
       payTo: theirs,
     });
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     expect(client.asked[0]?.requirements.payTo).toBe(theirs);
     // And the same payment on a charge naming a different merchant's address is
     // refused, which is what makes the assertion above about this merchant
@@ -328,7 +328,7 @@ describe("verifying a payment", () => {
         against(paidTo(nowSplit.toLowerCase()), nowSplit),
       );
 
-      expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+      expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
       expect(client.asked[0]?.requirements.payTo).toBe(nowSplit);
     });
   });
@@ -390,7 +390,7 @@ describe("verifying a payment", () => {
     const client = new Answering();
     const answered = await new X402Facilitator(client, edge).verify(charge(honest()));
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     expect(client.asked[0]?.requirements.amount).toBe("80000000");
   });
 

@@ -97,6 +97,7 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
+import { validityNeededAfterCheckMs } from "./payment-window.js";
 import {
   journal,
   recordMissingSplits,
@@ -1426,6 +1427,24 @@ export class Gateway {
     // deciding when the park ends; the agent is then told "in progress", which
     // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
+
+    // A purchase delivered in the answer is charged after its goods, so its
+    // authorisation has to outlast the merchant's answer and the facilitator's
+    // margin at the charge. One that would not is refused here, before the
+    // claim and before the merchant is asked for anything, or the goods would
+    // be made for a charge the facilitator then refuses.
+    const needed = validityNeededAfterCheckMs(this.runtime.config.deadlines);
+    if (
+      before.order.mode.settle === "after_fulfillment" &&
+      verified.validUntil !== null &&
+      verified.validUntil < checkedOutAt + needed
+    ) {
+      return {
+        step: "payment_not_verified",
+        why: `nothing was charged and nothing was made: this payment's authorisation ends too soon for a purchase delivered in the answer, which is charged after its goods, up to ${needed / 1_000} seconds after the payment is checked; sign the payment again and send it at once`,
+        retryable: false,
+      };
+    }
 
     // The owner is who the payment layer says paid, never the address the
     // payment declares of itself. Where the layer names no payer, the

@@ -80,7 +80,10 @@ runs out and sent at once is still good
 when the charge goes out, and the transfers measured below land in under three
 seconds. The price itself still lapses after thirty seconds, so the number is
 not a time to pay in. An agent that holds a signed authorisation, or whose
-clock runs slow, can still arrive with less than the charge needs. The
+clock runs slow, can still arrive with less than the charge needs; on a card
+charged after its goods the gateway then refuses the payment at the check, as
+`payment_not_verified`, before anything is made or charged, and the agent pays
+the same order again with a fresh signature. The
 six-second rule was read in the open-source facilitator code (`@x402/evm`
 2.23.0) in this repository; that the hosted facilitator the test channel
 settles through runs it is assumed, and whether the CDP facilitator on the live

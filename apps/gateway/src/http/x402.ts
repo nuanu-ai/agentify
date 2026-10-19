@@ -327,6 +327,22 @@ export function paymentFingerprint(payload: PaymentPayload, token: TokenIdentity
   return digestOf({ ...chain, by: "payload", payload: canonical(signed) });
 }
 
+/**
+ * The instant a payment's authorisation stops being valid, in milliseconds:
+ * the exact-EVM scheme's `authorization.validBefore`, which is in seconds.
+ * Null where the payment names none, and where it names one too far off to be
+ * an instant, which no charge outlives anyway.
+ */
+export function authorisedUntil(payload: PaymentPayload): number | null {
+  const signed = asRecord(payload.payload);
+  const seconds = asAmount(asRecord(signed?.authorization)?.validBefore);
+  if (seconds === null) {
+    return null;
+  }
+  const until = Number(seconds) * 1_000;
+  return Number.isSafeInteger(until) ? until : null;
+}
+
 export interface TokenIdentity {
   readonly network: string;
   readonly asset: string;
