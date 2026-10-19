@@ -539,6 +539,11 @@ export class MemoryStore implements Store {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
+    if ([...this.#orders.values()].some((held) => held.paymentRef === record.paymentRef)) {
+      throw new Error(
+        `the order ${record.order.id} names a payment reference another order already has`,
+      );
+    }
     if (through !== undefined && this.#merchants.get(record.merchantId)?.integration !== through) {
       return false;
     }
@@ -548,6 +553,10 @@ export class MemoryStore implements Store {
 
   async orderById(id: string): Promise<StoredOrder | null> {
     return this.#orders.get(id) ?? null;
+  }
+
+  async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
+    return [...this.#orders.values()].find((record) => record.paymentRef === paymentRef) ?? null;
   }
 
   async merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null> {

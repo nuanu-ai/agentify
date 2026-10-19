@@ -98,6 +98,16 @@ export interface StoredOrder {
   readonly itemId: string;
   readonly merchantItemId: string;
   /**
+   * What the payment challenge names this order by, random like the order's
+   * identifier and never the same: the challenge goes to the payment
+   * facilitator, and a discovery listing can publish it, while the identifier
+   * opens the order and its goods. A payment is bound to the order whose
+   * reference it carries, and the reference opens nothing else. No two orders
+   * share one. An order written before references were issued has none, and
+   * no payment finds it.
+   */
+  readonly paymentRef: string;
+  /**
    * The result the card declared when the order was made; a delivery is held
    * to this, so a later republish changes nothing for the order. Absent on a
    * parcel's order, which is held to a shipment, and on an order stored
@@ -676,7 +686,8 @@ export interface Store {
   // --- orders ---------------------------------------------------------------
 
   /**
-   * Writes an order that is not there yet. The record says whose it is.
+   * Writes an order that is not there yet. The record says whose it is. An
+   * identifier or a payment reference another order already has is refused.
    *
    * Given the integration its card was sold through, the write is made only
    * while its merchant still sells through that one, and answers false
@@ -694,6 +705,14 @@ export interface Store {
    * across merchants. A merchant's own read is {@link merchantOrder}.
    */
   orderById(id: string): Promise<StoredOrder | null>;
+
+  /**
+   * The order a payment is for, by the reference its challenge carried,
+   * whoever it belongs to; unscoped for the same reason as `orderById`. Only
+   * the payment route asks it: a reference is not an order's identifier and
+   * opens nothing else.
+   */
+  orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null>;
 
   /** One of this merchant's orders. Another merchant's order is not found. */
   merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null>;

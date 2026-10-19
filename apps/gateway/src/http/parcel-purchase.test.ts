@@ -806,7 +806,11 @@ describe("a shipment against a card republished since the sale", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const { result: _kept, ...older } = offered.order;
     const orderId = "ord_written_before_orders_kept_a_result";
-    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: orderId } });
+    await harnessed.store.addOrder({
+      ...older,
+      paymentRef: harnessed.runtime.ids("pay"),
+      order: { ...older.order, id: orderId },
+    });
     await harnessed.gateway.payPurchase(orderId, "PAYMENT-OLDER", "PAYMENT-OLDER");
     await harnessed.store.publishCard(
       harnessed.merchant.id,

@@ -1257,6 +1257,7 @@ export class Gateway {
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
+      paymentRef: this.runtime.ids("pay"),
       // What the agent was promised, kept with the order so a card republished
       // since cannot change what this sale is held to. A parcel's card declares
       // none: its order is held to a shipment.

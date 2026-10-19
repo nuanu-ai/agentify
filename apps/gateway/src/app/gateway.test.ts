@@ -970,7 +970,11 @@ describe("the goods against the card that sold them", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const { result: _kept, ...older } = offered.order;
     const oldId = "ord_written_before_the_promise";
-    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: oldId } });
+    await harnessed.store.addOrder({
+      ...older,
+      paymentRef: harnessed.runtime.ids("pay"),
+      order: { ...older.order, id: oldId },
+    });
     await harnessed.gateway.payPurchase(oldId, "OLD", "OLD");
     await published(harnessed, { ...asyncCard, result: { license_key: { type: "string" } } });
 

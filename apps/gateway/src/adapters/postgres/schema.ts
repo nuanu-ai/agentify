@@ -189,6 +189,9 @@ export const orders = pgTable(
     // asks of every split it might cover; without it each question reads
     // every document of that merchant's.
     index("orders_pay_to_idx").on(table.merchantId, sql`lower(${table.record} ->> 'payTo')`),
+    // The order a payment is for, found by the reference its challenge
+    // carried, and never two orders under one reference.
+    uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),
   ],
 );
 

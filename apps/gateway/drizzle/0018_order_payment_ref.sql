@@ -1,0 +1,15 @@
+-- The order a payment is for, found by its payment reference.
+--
+-- A payment challenge names its order by a reference kept inside the order's
+-- document, never by the order's identifier: the challenge reaches the payment
+-- facilitator and can be published by a discovery listing, while the
+-- identifier opens the order and its goods. A paid request is matched to its
+-- order by the reference it carries back, and this index is how that lookup
+-- avoids reading every document, and why no two orders can share a reference.
+--
+-- It changes no row. An order written before references were issued has no
+-- such key, reads as null here, and is found by no payment; null is not unique
+-- to Postgres, so those orders do not collide. It is built in the migration's
+-- transaction and holds writes to orders while it is built, which on today's
+-- tables is a moment.
+CREATE UNIQUE INDEX "orders_payment_ref_unique" ON "orders" USING btree (("record" ->> 'paymentRef'));
