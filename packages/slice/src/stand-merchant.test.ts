@@ -5,7 +5,7 @@
  * reason that is not on it.
  */
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { type FileHandle, mkdtemp, open, readdir, readFile, rm } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -569,6 +569,13 @@ const arrivalsIn = async (directory: string): Promise<Record<string, unknown>[]>
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 };
 
+/**
+ * What a records directory holds besides its arrivals and its records: a file
+ * a tester counting effects would have to know to leave out.
+ */
+const strayFilesIn = async (directory: string): Promise<string[]> =>
+  (await readdir(directory)).filter((name) => name !== "arrivals.jsonl" && !name.endsWith(".json"));
+
 /** Long enough for an answer or a delivery that should not happen to arrive anyway. */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -686,6 +693,9 @@ describe("two stands on one records directory", () => {
     expect(firstGateway.answers[0]?.body).toEqual(records[0]?.answer);
     expect(secondGateway.answers[0]?.body).toEqual(records[0]?.answer);
     expect(await arrivalsIn(directory)).toHaveLength(2);
+    // Neither stand left behind the file it wrote its record under before
+    // linking it, the winner's nor the loser's.
+    expect(await strayFilesIn(directory)).toEqual([]);
   });
 
   it("make one delivery between them for an order both took on", async () => {
@@ -1079,5 +1089,41 @@ describe("disconnecting while an order is paused", () => {
         .filter((one) => one.order_id === ORDER_ID)
         .map((one) => one.answer),
     ).toEqual([{ refused: stand.moods.refusal }]);
+  });
+});
+
+describe("a stand whose record cannot be written", () => {
+  it("answers nothing, and leaves only the arrival in the records directory", async () => {
+    // The promise: the directory holds the arrivals and one record per
+    // answered order, and nothing else, so a tester counting files counts
+    // effects; and an order whose record did not land is not answered, since
+    // the record is what goes before the answer. A disk failing the write is
+    // played by a flush that fails.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const feed = makeFeed();
+    merchant = makeStandMerchant(feed, { records: keepRecordsIn(directory, 8701) });
+    await merchant.connect(gateway.url, KEY);
+
+    const probe = await open(directory, "r");
+    const handles = Object.getPrototypeOf(probe) as FileHandle;
+    await probe.close();
+    const failing = vi
+      .spyOn(handles, "sync")
+      .mockRejectedValueOnce(
+        Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }),
+      );
+    try {
+      gateway.hand(anOrder());
+      await waitUntil(() => handlerFailedOn(feed, ORDER_ID));
+    } finally {
+      failing.mockRestore();
+    }
+
+    expect(gateway.answers).toEqual([]);
+    expect(await recordsIn(directory)).toEqual([]);
+    expect(await arrivalsIn(directory)).toHaveLength(1);
+    expect(await strayFilesIn(directory)).toEqual([]);
   });
 });
