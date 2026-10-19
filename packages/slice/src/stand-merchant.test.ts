@@ -437,9 +437,13 @@ interface Posted {
  */
 const handingGateway = async (): Promise<{
   url: string;
-  hand: (order: Order) => void;
+  /** Hands these orders over together, in the batch the next poll answers with. */
+  hand: (...orders: Order[]) => void;
   answers: Posted[];
+  /** Every delivery received, counted as it arrives and before it is answered. */
   deliveries: Posted[];
+  /** Leaves every delivery unanswered from now until the returned call lets them through. */
+  holdDeliveries: () => () => void;
   close: () => Promise<void>;
 }> => {
   const parked = new Set<ServerResponse>();
@@ -447,6 +451,8 @@ const handingGateway = async (): Promise<{
   const answers: Posted[] = [];
   const deliveries: Posted[] = [];
   let envelopes = 0;
+  let deliveriesHeld: Promise<void> = Promise.resolve();
+  let letDeliveriesThrough = (): void => {};
 
   const handOut = (response: ServerResponse): void => {
     parked.delete(response);
@@ -474,7 +480,10 @@ const handingGateway = async (): Promise<{
       body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
     };
     if (call === "answer") answers.push(posted);
-    if (call === "deliver") deliveries.push(posted);
+    if (call === "deliver") {
+      deliveries.push(posted);
+      await deliveriesHeld;
+    }
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ ok: true, result: "delivered" }));
   });
@@ -483,20 +492,29 @@ const handingGateway = async (): Promise<{
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
-    hand: (order) => {
-      envelopes += 1;
-      queued.push({
-        kind: "order",
-        id: `envelope-${envelopes}`,
-        sent_at: "2026-10-19T00:00:00Z",
-        payload: order,
-      });
+    hand: (...orders) => {
+      for (const order of orders) {
+        envelopes += 1;
+        queued.push({
+          kind: "order",
+          id: `envelope-${envelopes}`,
+          sent_at: "2026-10-19T00:00:00Z",
+          payload: order,
+        });
+      }
       const waiting = [...parked][0];
       if (waiting !== undefined) handOut(waiting);
     },
     answers,
     deliveries,
+    holdDeliveries: () => {
+      deliveriesHeld = new Promise((resolve) => {
+        letDeliveriesThrough = resolve;
+      });
+      return () => letDeliveriesThrough();
+    },
     close: async () => {
+      letDeliveriesThrough();
       for (const waiting of [...parked]) handOut(waiting);
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) => {
@@ -512,8 +530,8 @@ const handingGateway = async (): Promise<{
  */
 const ORDER_ID = "order/../../escaped: with spaces & *stars*";
 
-const anOrder = (): Order => ({
-  id: ORDER_ID,
+const anOrder = (id = ORDER_ID): Order => ({
+  id,
   merchant_item_id: "the-item-ordered",
   params: {},
   price: {
@@ -832,6 +850,33 @@ describe("disconnecting while an order is paused", () => {
             detailOf(entry).error === "handler_failed" && detailOf(entry).subject === ORDER_ID,
         ),
     ).toBe(true);
+  });
+
+  it("returns when the next order of a batch reaches a pause while it waits on a delivery", async () => {
+    // The promise: a disconnect never waits on a pause nobody can release. It
+    // does wait for a delivery already on its way, and meanwhile the worker
+    // goes on to the next order of the batch it was handed; that order has to
+    // give up at once rather than pause behind the disconnect.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const stand = makeStandMerchant(makeFeed());
+    merchant = stand;
+    stand.moods.order = "accept_then_deliver";
+    stand.moods.deliverAfterMs = 0;
+    const letDeliveriesThrough = gateway.holdDeliveries();
+    await stand.connect(gateway.url, KEY);
+    gateway.hand(anOrder("an-order-whose-delivery-is-on-its-way"));
+    await waitUntil(() => gateway.deliveries.length === 1);
+
+    stand.pause.at = "arrival";
+    gateway.hand(anOrder(), anOrder("the-next-order-in-the-same-batch"));
+    await waitUntil(() => stand.paused.has(ORDER_ID));
+    const disconnecting = stand.disconnect();
+    await settle();
+    letDeliveriesThrough();
+
+    await within(5_000, disconnecting);
+    expect(stand.paused.size).toBe(0);
   });
 
   it("keeps the record of an order paused with its answer ready, and answers nothing", async () => {
