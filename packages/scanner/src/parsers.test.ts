@@ -66,6 +66,24 @@ Allow: /
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
   });
 
+  it.each([
+    "agentify-scanner",
+    "Agentify-Scanner",
+    "agentify-scanner/1.0",
+    "agentify-scanner/1.0 (+https://agentify.ad/scanner)",
+  ])("a group whose user-agent line reads %s applies to the scanner", (line) => {
+    const parsed = parseRobots(`User-agent: *\nAllow: /\n\nUser-agent: ${line}\nDisallow: /\n`);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
+  });
+
+  it.each(["agentify", "scanner", "agent"])(
+    "a group naming only %s, a part of the scanner's token, leaves the scanner to the * group",
+    (line) => {
+      const parsed = parseRobots(`User-agent: *\nDisallow: /\n\nUser-agent: ${line}\nAllow: /\n`);
+      expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
+    },
+  );
+
   it("lets the longest matching rule decide, and Allow win a tie", () => {
     // The tie is Google's documented example of the least restrictive rule.
     const tie = parseRobots("User-agent: *\nAllow: /folder\nDisallow: /folder\n");
