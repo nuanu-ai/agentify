@@ -12,8 +12,8 @@ exist and collects them later from `GET /x402/orders/:order_id/status`, so that
 route needs a rule for who may ask. Merchants have keys; buyers deliberately
 do not, as registering would undo buying with no prior relationship. The
 payment requirements reach the payment facilitator at every verification and
-charge, and the x402 Bazaar (ADR-0012) publishes a listed resource's with
-`extra` as the last paying request carried it.
+charge, and the x402 Bazaar (ADR-0012) publishes a listed resource's
+requirements with `extra` as the last paying request carried it.
 
 ## Decision
 
