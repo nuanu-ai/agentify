@@ -35,14 +35,17 @@ import {
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
+import { type WooRecoveryView, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
 import {
   type CatalogueRead,
   catalogueOf,
   inspectProductInTheShop,
   PRODUCTS_AT_MOST,
   type ProductInspection,
+  type ShopKeys,
+  type WooOrderLookup,
 } from "./woo-shop.js";
-import type { WooConnection, WooShops } from "./woo-shops.js";
+import type { WooShops } from "./woo-shops.js";
 import {
   type ImportOutcome,
   type ShopAnswer,
@@ -62,13 +65,17 @@ import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 export interface ShopCalls {
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
   readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
-  readonly inspectProduct: (
-    keys: WooConnection,
-    merchantItemId: string,
-  ) => Promise<ProductInspection>;
+  readonly inspectProduct: (keys: ShopKeys, merchantItemId: string) => Promise<ProductInspection>;
+  readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
 }
 
 export interface WooPages {
+  recovery(person: Person, orderId: string): Promise<Outcome<WooRecoveryView>>;
+  recover(person: Person, orderId: string, form: FormData): Promise<Outcome<WooRecoveryView>>;
+  recoveryLinks(
+    person: Person,
+    orderIds: readonly string[],
+  ): Promise<Readonly<Record<string, string>>>;
   /** The shop screen, with what its address carried. */
   shop(person: Person, query: URLSearchParams): Promise<Outcome<WooShopView>>;
   connect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
@@ -187,6 +194,13 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
   const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
+  const recovery = wooRecoveryPagesFor({
+    shops,
+    gatewayFor: parts.clientFor,
+    inspectProduct,
+    ...(parts.shop?.readOrder === undefined ? {} : { readOrder: parts.shop.readOrder }),
+    now: () => new Date(),
+  });
 
   /**
    * Only called behind the gate that sends an account with no merchant to the
@@ -253,6 +267,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   };
 
   return {
+    recovery: recovery.page,
+    recover: recovery.recover,
+    async recoveryLinks(person, orderIds) {
+      if (person.merchant === null) return {};
+      const ids = await shops.recoverableOrders(person.id, orderIds);
+      return Object.fromEntries(
+        ids.map((id) => [id, `${base}/integrations/woocommerce/recover/${encodeURIComponent(id)}`]),
+      );
+    },
     stateOf: async (accountId) => await shopStateOf(shops, accountId),
 
     async shop(person, query) {

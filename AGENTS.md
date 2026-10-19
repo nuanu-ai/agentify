@@ -63,6 +63,14 @@ that a payment or refund happened. Administrative and maintenance access must
 not become a required staffed step in an ordinary sale. Unverified financial
 outcomes remain unknown (the product owner, 2026-10-19).
 
+The merchant owns stock, fulfilment, cancellation and refund policy. Obligations
+on accepted Agentify sales still hold, including the whole price when a refund
+is owed. A shop connector adapts and validates the shop's evidence against
+existing contracts; the core and public SDK do not acquire shop-specific
+business rules. The merchant's system initiates and executes refunds;
+Agentify's role is to supply sale facts, verify repayment evidence, record the
+outcome and coordinate its own delivery (the product owner, 2026-10-19).
+
 ## Git
 - Main branch: `main`. Every change is made on a branch and reaches `main`
   through a pull request with a review; nobody pushes to `main` directly.

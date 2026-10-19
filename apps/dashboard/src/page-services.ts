@@ -1007,18 +1007,38 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (!open.ok) return problemOf(open);
         if (!owed.ok) return problemOf(owed);
         if (!paidInto.ok) return problemOf(paidInto);
-        return {
-          kind: "view",
-          view: ordersView(
-            viewing(person).mode,
-            cards.document,
-            orders.document,
-            open.document,
-            query,
-            owed.document,
-            paidInto.document,
-          ),
-        };
+        const view = ordersView(
+          viewing(person).mode,
+          cards.document,
+          orders.document,
+          open.document,
+          query,
+          owed.document,
+          paidInto.document,
+        );
+        if (parts.woo !== null && view.needsYou.rows.length > 0) {
+          const links = await parts.woo.recoveryLinks(
+            person,
+            view.needsYou.rows.map((row) => row.id),
+          );
+          return {
+            kind: "view",
+            view: {
+              ...view,
+              needsYou: {
+                ...view.needsYou,
+                rows: view.needsYou.rows.map((row) => ({
+                  ...row,
+                  rest:
+                    links[row.id] === undefined
+                      ? row.rest
+                      : { href: links[row.id] as string, words: "Recover WooCommerce delivery" },
+                })),
+              },
+            },
+          };
+        }
+        return { kind: "view", view };
       },
 
       async receipts(person) {

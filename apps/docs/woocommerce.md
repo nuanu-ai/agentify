@@ -116,6 +116,31 @@ These rules decide whether you keep the money for a parcel.
 
 What a refund owed means for your money is on [Money](/money#if-the-buyer-did-not-get-the-goods).
 
+## Recovering a download
+
+If a paid download is still owed, your Orders screen offers **Recover
+WooCommerce delivery** where the connector has a saved sale it can verify.
+The recovery page shows the Agentify order ID, product code, whole price and
+the shop the sale came from. Test purchases keep their test mark.
+
+When the shop's creation response was not received, find the existing order in
+that same shop with this Agentify order ID as its Transaction ID. Enter its
+**WooCommerce order ID**: the internal numeric ID in the order's URL, which can
+differ from the order number shown to customers. **Link order and deliver
+download** checks that exact order and product against the saved sale, then
+delivers the download. It does not search for another order or create one.
+
+When the shop order and download are already saved, **Retry delivery** sends
+that same download to Agentify. You can retry even after disconnecting the
+shop or switching to your own code. If a response was lost, reload the page:
+it shows the saved binding and says whether Agentify confirms delivery. An
+unavailable check leaves the result unresolved; it is not proof that nothing
+was recorded. A different shop order cannot replace a saved binding.
+
+Recovery does not send or record a refund. If you already refunded the buyer,
+do not deliver the download. A parcel and a download refused before a shop
+order was created have no recovery action on this page.
+
 ## Disconnecting
 
 Disconnecting removes the keys your shop gave Agentify and switches you back

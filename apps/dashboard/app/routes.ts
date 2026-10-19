@@ -50,6 +50,7 @@ export default [
       route("keys", "routes/keys.tsx"),
       route("keys/:key_id/disable", "routes/keys-disable.ts"),
       route("woocommerce", "routes/woocommerce.tsx"),
+      route("integrations/woocommerce/recover/:order_id", "routes/woocommerce-recovery.tsx"),
       layout("routes/woocommerce-presses.tsx", [
         route("woocommerce/connect", "routes/woocommerce-connect.tsx"),
         route("woocommerce/import", "routes/woocommerce-import.tsx"),

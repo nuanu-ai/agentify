@@ -1,0 +1,45 @@
+.facts {
+  display: grid;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.facts > div {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .facts > div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+}
+.panel {
+  padding: 24px;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: var(--space-block);
+  padding: 20px 0 24px;
+}
+
+.form :global(.field) {
+  width: 100%;
+}
+
+.form > button {
+  max-width: 100%;
+}

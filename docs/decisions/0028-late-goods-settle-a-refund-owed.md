@@ -23,7 +23,9 @@ of its own. A recorded refund makes the order `refunded`, which is final, and
 later delivery is refused. A transfer that Agentify has not recorded does not
 stop delivery; the public contract must say so.
 
-Refunds belong to merchant self-service. Agentify neither signs a merchant's
+Refunds belong to merchant self-service. The merchant's system initiates and
+executes them; Agentify supplies the sale's payment facts, verifies repayment
+evidence and coordinates its own delivery. Agentify neither signs a merchant's
 transfer nor keeps their key. A seller or administrator saying "refunded" is
 not proof: a refund may close an order only after the system verifies payment
 back to the original payer, on the sale's network and in its asset, for the

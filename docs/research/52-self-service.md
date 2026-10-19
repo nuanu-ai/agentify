@@ -18,11 +18,31 @@ orders. Maintenance tools can exist without being a required step in a sale.
 | Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Purchase protocol and internal buyer exist; a ready-to-use merchant test buyer is missing |
 | Full offboarding | The merchant | Accepted orders and refund debts remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |
 | Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; a recorded refund refuses delivery |
-| Refund | The merchant, with system verification | Evidence of the full transfer to the original payer and protection against concurrent delivery | Recording, payer view and concurrency protection are missing; ADR-0028 |
+| Refund | The merchant's system executes; Agentify verifies | Evidence of the full transfer to the original payer and coordination with Agentify's delivery | Recording, payer view and concurrency protection are missing; ADR-0028 |
 | Silent payment | Automatic reconciliation, with evidence supplied if needed | Proof bound to the original payment attempt | Status is honest and a second settle is forbidden; verified recovery is missing; ADR-0027 |
-| WooCommerce recovery | The merchant, with system checks | The original shop and sale match exactly; an uncertain creation is never repeated blindly | Maintenance command exists; authenticated merchant screen is missing; ADR-0023 |
+| WooCommerce recovery | The merchant, with system checks | The original shop and sale match exactly; an uncertain creation is never repeated blindly | Authenticated page from the merchant's Orders links an existing download order or retries its saved delivery; no shop creation action; ADR-0023 |
 
-## First change
+## The shop's responsibility
+
+The merchant owns stock, fulfillment and the policy for cancellations and
+refunds. Obligations on accepted Agentify sales still hold, including the whole
+price when a refund is owed. The connector validates the shop's evidence and
+translates it into Agentify's existing purchase and delivery contracts. The
+recovery action attaches the exact existing shop order to its sale; it does
+not create a shop order again or decide what the shop should do. This applies
+the connector boundary in ADR-0023 and the unchanged public contract and SDK in
+ADR-0036: WooCommerce-specific rules do not become business decisions in
+Agentify's core or SDK.
+
+The merchant's system decides and executes refunds, including stopping its own
+fulfillment. Agentify is responsible for reliable debt and payment facts,
+repayment verification, recording the result and coordinating its own delivery.
+The dashboard is for showing the debt, verified result or unresolved outcome;
+verified refund recording is still missing. The merchant's returns workflow
+and payment execution belong in their system. A WooCommerce order marked
+refunded does not establish that the original payer received USDC.
+
+## Admission to real sales
 
 The admin screen finds a merchant through the account's normalized email,
 shows their name and identifier, and asks for explicit confirmation before
@@ -33,27 +53,65 @@ remain in force, including the live restriction on WooCommerce and parcels.
 A lost write response is shown as unknown; reading the merchant again recovers
 the status, and a repeated approval preserves the original approval time.
 
-## Remaining work in order
+## WooCommerce recovery
 
-The first payment change is the refund flow. A design must cover the moment
-before a wallet transfer, a late delivery racing it, a submitted transaction
-whose result cannot be read, and recovery after a browser or process restart.
-Verification must bind the exact network, token, original payer, whole price
-and sale; one transfer cannot discharge several debts. Transferring first and
-reporting a hash afterwards leaves the double-outcome race open. Unknown payer
-must remain an explicit limitation rather than an editable recipient guessed
-by the merchant. These checks are not implemented by the admin approval screen.
+The merchant opens an authenticated recovery page from their own Orders. The
+owner is checked before recovery details are disclosed or the shop is called.
+For a download whose shop-order creation is uncertain (`create_unknown`), the
+merchant supplies the exact existing WooCommerce order ID. The connector uses
+the shared sale and product checks before binding that order and attempting
+delivery. The page offers no shop creation action. Parcels and refusals before
+shop creation are unavailable here; address erasure and live-channel gates
+remain in force.
+
+A recorded shop order and delivery (`placed`) can retry the saved delivery
+after the shop is disconnected or the merchant switches to their own SDK
+integration. An unknown delivery result retains the shop-order binding and
+remains unresolved. Confirmed delivery removes the action. These operations
+reuse the connector's existing contracts and add no shop-specific core or SDK
+states.
+
+## Remaining work
+
+Verified refund recording needs a complete integration design under ADR-0028.
+It must bind the original payer, sale's network and token, whole price and
+unique evidence to that sale. Unknown payer and unavailable evidence remain
+unresolved. A merchant or shop status cannot substitute for payment evidence.
+
+The gateway keeps the verified payer, the original payment payload and the
+facilitator's settlement transaction. Where the facilitator named no payer,
+the stored owner is a payment fingerprint, not an address to refund. The saved
+x402 version 2 payload can carry the sale's network, token and amount: these
+were checked against the gateway's own requirements at verification. A refund
+must validate that saved context against the order and the original settlement;
+it cannot infer old terms from today's deployment settings. Missing or
+inconsistent evidence makes a sale ineligible until its payment is established.
+
+A reservation must precede the merchant's repayment and durably block Agentify
+from releasing or recording late goods. It cannot cancel an already-running
+merchant handler, a shop email or other external fulfillment in flight. A lost
+transfer response and a restart need recoverable evidence; accepting a hash
+afterwards does not justify another debit or resolve concurrent delivery.
+
+A plain transfer matching sender, recipient and amount proves movement, but
+does not identify the refund it was intended for. Verification needs an exact
+successful transfer, a defined finality rule and permanent evidence uniqueness
+across orders and merchants, committed atomically with the recorded outcome.
+The existing payment claims are swept by age, and the gateway has no chain
+reader. Both gaps remain. An unavailable network or a timeout establishes
+neither repayment nor permission to restore Agentify's delivery.
+
+USDC's EIP-3009 authorization is one possible evidence protocol for a merchant
+integration: its signed sender, recipient, amount, validity and one-use nonce
+could bind an attempt to a sale and support safe resubmission. Installed
+libraries contain its types for Base and Base Sepolia, but this protocol is
+unchosen and unimplemented. No refund wallet journey in Agentify's dashboard
+follows from that possibility ([EIP-3009](https://eips.ethereum.org/EIPS/eip-3009)).
 
 Silent charges need a separate proof of the original authorization's outcome;
 a generic transfer matching an amount and address is not enough. This work must
 preserve the prohibition on a second charge. Neither merchant nor admin gets
 a button that asserts success, failure or refund without evidence.
-
-WooCommerce recovery can reuse its existing sale checks behind a merchant
-account gate. The owner must be checked before reading a recovery record or
-calling a shop. An uncertain create can bind an exact shop order after checking
-its contents; it cannot search by guess or make a fresh order. Parcel recovery
-continues to respect address erasure and the live-channel gates.
 
 The test buyer should let a merchant exercise their own product without staff
 or a shared funded wallet. The payment remains a test-chain payment from a

@@ -227,6 +227,36 @@ export const wooShopsContract = (
     });
   });
 
+  describe(`${name}: merchant recovery links`, () => {
+    it("only lists this account's requested download recoveries without exposing sale or credential data", async () => {
+      await using(async (shops, accounts) => {
+        await shops.claimOrder(accounts.one, "ord_unknown", FACTS, NOW);
+        await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_placed",
+          { id: "13", number: "WOO-13", permission: PERMISSION },
+          NOW,
+        );
+        await shops.claimOrder(accounts.one, "ord_hidden", FACTS, NOW);
+        await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
+        await shops.claimOrder(accounts.one, "ord_parcel", { ...FACTS, kind: "parcel" }, NOW);
+        await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
+
+        expect(
+          await shops.recoverableOrders(accounts.one, [
+            "ord_unknown",
+            "ord_placed",
+            "ord_foreign",
+            "ord_parcel",
+            "ord_refused",
+            "ord_missing",
+          ]),
+        ).toEqual(["ord_placed", "ord_unknown"]);
+        expect(await shops.recoverableOrders(accounts.one, [])).toEqual([]);
+      });
+    });
+  });
+
   describe(`${name}: a connected shop`, () => {
     const keys = {
       consumerKey: "ck_abc",

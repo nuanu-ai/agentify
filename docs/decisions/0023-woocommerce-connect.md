@@ -75,10 +75,15 @@ create binds only an order id the merchant supplies, read back and matched on
 every fact of the sale. A mismatch stays a refund owed, and so does a parcel's,
 whose address is gone by then.
 
-The recovery rules are implemented in a private maintenance command. A
-merchant's self-service route is not built. It must authenticate the owner
-before reading the recovery record or calling the shop; no staffed recovery
-queue is part of the service (the product owner, 2026-10-19).
+The merchant's Orders screen offers recovery for their own download debts.
+The authenticated account must own the saved sale before its details are
+disclosed or a gateway or shop call runs. The merchant supplies the exact
+existing shop order ID, or retries a download already saved; this screen never
+creates a shop order. A confirmed delivery ends the recovery, while an unknown
+result keeps its saved binding visible for another read or retry. Parcels and
+pre-create refusals have no recovery action here. The private maintenance
+command retains its creation rule; no staffed recovery queue is part of the
+service (the product owner, 2026-10-19).
 
 ## Consequences
 
