@@ -437,6 +437,49 @@ describe("a scan of a truncated HTML response", () => {
     expect(check(input, 7)?.status).toBe("partial");
   });
 
+  it("keeps an unusably short complete Markdown response despite truncated HTML", () => {
+    const input = withBase(plain);
+    input.base = artifact("https://example.com/", plain, { truncated: true });
+    input.markdown = artifact("https://example.com/", "# x", {
+      headers: { "content-type": "text/markdown", vary: "Accept" },
+    });
+    expect(check(input, 7)).toMatchObject({
+      status: "partial",
+      evidence: { non_empty: false },
+      fixCode: "repair_markdown_negotiation",
+    });
+  });
+
+  it("does not judge a short Markdown prefix as the whole representation", () => {
+    const input = makeArtifacts("store");
+    input.markdown = artifact("https://example.com/", "# x", {
+      headers: { "content-type": "text/markdown", vary: "Accept" },
+      truncated: true,
+    });
+    expect(check(input, 7)).toMatchObject({ status: "unavailable", errorCode: "html_truncated" });
+  });
+
+  it.each([
+    { status: 403, body: "Forbidden", baseTruncated: false },
+    { status: 200, body: '<div id="px-captcha"></div>', baseTruncated: true },
+  ])("keeps a proven agent refusal while the other comparison is unknown: %j", (refusal) => {
+    const input = makeArtifacts("store");
+    input.base = artifact("https://example.com/", html, { truncated: refusal.baseTruncated });
+    input.agentProbes = {
+      chatgpt: artifact("https://example.com/", refusal.body, { status: refusal.status }),
+      claude: artifact("https://example.com/", plain, { truncated: !refusal.baseTruncated }),
+    };
+    const checked = check(input, 13);
+    expect(checked).toMatchObject({
+      status: "fail",
+      summaryCode: "agent_ua_refusal_observed",
+      evidence: { chatgpt_probe_accessible: false, claude_probe_unassessed: true, truncated: true },
+      fixCode: "allow_agent_user_agents",
+    });
+    expect(checked?.evidence.claude_probe_accessible).toBeUndefined();
+    expect(evaluateScan(input).findings.negativeCheckIds).toContain(13);
+  });
+
   it("keeps proven user-agent refusals even when the plain response was truncated", () => {
     const input = withBase(plain);
     input.base = artifact("https://example.com/", plain, { truncated: true });
