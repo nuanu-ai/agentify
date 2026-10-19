@@ -33,6 +33,7 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import {
+  CHALLENGE_REASONS,
   PAYMENT_REF_IN_EXTRA,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
@@ -172,8 +173,8 @@ async function aGatewayPayingThrough(network: FacilitatorClient) {
 
 let open: { harnessed: Harness; served: Served } | null = null;
 
-const started = async () => {
-  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO });
+const started = async (overrides: Record<string, string> = {}) => {
+  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -242,25 +243,28 @@ describe("the order's identifier on the payment side", () => {
 
 describe("a payment reference", () => {
   it("binds a payment to the order whose challenge carried it", async () => {
-    // Two orders for one card are open at once; the payment is for the second.
+    // Two orders for one card are open at once, and the payment is for the
+    // older one: a gateway binding to the newest open order would pay the
+    // other.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
+    const first = await challengeFor(served, itemId);
+    const [older] = await harnessed.store.orders(harnessed.merchant.id);
     await challengeFor(served, itemId);
-    const [first] = await harnessed.store.orders(harnessed.merchant.id);
-    const second = await challengeFor(served, itemId);
+    const newer = (await harnessed.store.orders(harnessed.merchant.id)).find(
+      (held) => held.order.id !== older?.order.id,
+    );
 
-    const bought = await present(served, itemId, paymentAgainst(second, BUYER, "0x01"));
+    const bought = await present(served, itemId, paymentAgainst(first, BUYER, "0x01"));
 
     expect(bought.status).toBe(200);
-    const paidFor = (bought.body as { order_id: string }).order_id;
-    expect(paidFor).not.toBe(first?.order.id);
-    expect((await harnessed.store.orderById(paidFor))?.paymentRef).toBe(referenceIn(second));
-    expect((await harnessed.store.orderById(first?.order.id ?? ""))?.order.state).toBe("quoted");
+    expect((bought.body as { order_id: string }).order_id).toBe(older?.order.id);
+    expect((await harnessed.store.orderById(newer?.order.id ?? ""))?.order.state).toBe("quoted");
   });
 
   it("is the only thing a payment is bound by: one naming its order's identifier pays nothing", async () => {
-    // No fallback to the identifier, whether a payment names the order the
-    // old way or puts the identifier where the reference goes: either is a
+    // No fallback to the identifier, whether a payment names the order under
+    // `order_id` or puts the identifier where the reference goes: either is a
     // payment for no order, and gets a fresh price.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
@@ -287,7 +291,7 @@ describe("a payment reference", () => {
       expect(answered.status, JSON.stringify(named)).toBe(402);
       expect(
         decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").error,
-      ).toMatch(/did not name an order this gateway is holding/);
+      ).toBe(CHALLENGE_REASONS.noHeldOrder);
     }
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect((await harnessed.store.orderById(opened.order.id))?.order.state).toBe("quoted");
