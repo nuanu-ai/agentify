@@ -63,14 +63,14 @@ that carries the order, and that answer passes uncounted too. The unpaid first
 call of a purchase is answered with a 402 challenge; it passes through
 untouched and is not counted, which is why the rule above cuts the paid answer
 that follows it and not the challenge. `--nth` picks which counted answer is
-cut, the first by default. Other answers are not
-counted either, and the log says why each time: an answer shorter than two
-bytes, which has no middle to cut midway; an answer whose caller had already
-left by the time it was complete, or left while the cut midway was still being
-written to it, since the cut never reached anyone; and an upstream that could
-not be reached or broke off its answer, which the caller receives as a 502
-naming the upstream and the network code, unless the caller has left too, in
-which case the line says that no 502 was sent.
+cut, the first by default. Other answers are not counted either, and the log
+says why each time: an answer shorter than two bytes, or an answer to HEAD,
+which has no body at all, since neither has a middle to cut midway; an answer
+whose caller had already left by the time it was complete, or left while the
+cut midway was still being written to it, since the cut never reached anyone;
+and an upstream that could not be reached or broke off its answer, which the
+caller receives as a 502 naming the upstream and the network code, unless the
+caller has left too, in which case the line says that no 502 was sent.
 
 The phase decides what the caller sees. With `before-headers` the proxy writes
 nothing and closes the connection, so the caller has no status at all; curl
@@ -80,7 +80,9 @@ of the body, and closes the connection once those bytes are sent; curl reports
 the transfer closed with bytes remaining. A rule cuts once. After the cut, the
 proxy passes everything through, as it does for every request the rule does
 not match, with the status, the headers and the body unchanged except that the
-headers describing the connection are dropped and the length is restated.
+headers describing the connection are dropped and the length is restated; an
+answer to HEAD keeps the length the gateway gave, since it describes a body
+that such an answer never carries.
 
 The log is one line per request on standard output: the time, a sequence
 number, the method, the path without its query string, the upstream's status,

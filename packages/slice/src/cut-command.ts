@@ -294,11 +294,19 @@ const factsOf = (answer: Answer): { readonly facts: string; readonly unit: strin
   };
 };
 
-const passThrough = (response: ServerResponse, answer: Answer): void => {
-  response.writeHead(answer.status, answer.statusMessage, {
-    ...endToEnd(answer.headers),
-    "content-length": answer.body.length,
-  });
+/**
+ * Sends the answer whole with its length restated for the body as sent. An
+ * answer to HEAD keeps the length the upstream gave, which describes a body
+ * such an answer never carries.
+ */
+const passThrough = (response: ServerResponse, answer: Answer, method: string): void => {
+  response.writeHead(
+    answer.status,
+    answer.statusMessage,
+    method === "HEAD"
+      ? endToEnd(answer.headers)
+      : { ...endToEnd(answer.headers), "content-length": answer.body.length },
+  );
   response.end(answer.body);
 };
 
@@ -410,19 +418,19 @@ export const runCut = async (
       return;
     }
     if (!matched) {
-      passThrough(response, answer);
+      passThrough(response, answer, method);
       log(`${facts}: passed through`);
       return;
     }
     if (answer.status < 200 || answer.status > 299) {
-      passThrough(response, answer);
+      passThrough(response, answer, method);
       log(
         `${facts}: matched; passed through, not counted: only 2xx answers are counted, and the rule is still armed`,
       );
       return;
     }
     if (rule.phase === "mid-body" && answer.body.length < 2) {
-      passThrough(response, answer);
+      passThrough(response, answer, method);
       log(
         `${facts}: matched, but an answer under 2 bytes has no middle to cut; passed through, ${stillArmed}`,
       );
@@ -430,7 +438,7 @@ export const runCut = async (
     }
     counted += 1;
     if (counted < rule.nth) {
-      passThrough(response, answer);
+      passThrough(response, answer, method);
       log(`${facts}: matched, ${counted} of ${rule.nth}; passed through`);
       return;
     }
