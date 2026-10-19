@@ -1,9 +1,13 @@
 /**
  * The merchant half of the stand, on the SDK a merchant actually uses.
  *
- * It keeps only the answer the handler is set to give, the orders it has taken
- * on for a later delivery, and the ones it is holding while it waits for a
- * person. The feed records what crossed this boundary; it neither replaces the
+ * In memory it keeps only the answer the handler is set to give, the orders it
+ * has taken on for a later delivery, the ones it is holding while it waits for
+ * a person to choose their answer, and the ones paused, their path already
+ * decided, until somebody releases them. Given a records directory, it keeps
+ * there what a merchant's own code has to keep: every arrival counted, and one
+ * record per order of the answer it got, written before that answer is sent
+ * and sent again to every repeat. The feed records what crossed this boundary; it neither replaces the
  * gateway's journal nor teaches the merchant key to any observer.
  *
  * Everything a merchant's code can do here goes through the SDK, and that is
@@ -30,6 +34,7 @@ import {
 import type { ParamSpec } from "@nuanu-ai/agentify-contracts";
 import { filledFrom } from "./stand-goods.js";
 import type { Feed } from "./stand-log.js";
+import type { Recorded, StandRecords } from "./stand-records.js";
 
 export type OrderMood =
   | "deliver"
@@ -64,6 +69,22 @@ export interface HeldOrder {
   readonly since: number;
 }
 
+/**
+ * Where the stand stops every order whose path is already decided, until
+ * somebody releases it: as it arrives, before anything is done with it, or
+ * with its answer ready — decided and, with records kept, recorded — before
+ * that answer goes back.
+ */
+export type PausePoint = "none" | "arrival" | "answer_ready";
+
+/** An order stopped at a pause point, waiting to be released. */
+export interface PausedOrder {
+  readonly id: string;
+  readonly merchantItemId: string;
+  readonly phase: Exclude<PausePoint, "none">;
+  readonly since: number;
+}
+
 export interface StandMerchant {
   readonly moods: Moods;
   connected(): string | null;
@@ -91,6 +112,16 @@ export interface StandMerchant {
   readonly held: ReadonlyMap<string, HeldOrder>;
   /** Answers one held order. False when it is no longer being held. */
   answerHeld(orderId: string, answer: HeldAnswer): boolean;
+  /**
+   * Where every order arriving from now on is paused, repeats included. Each
+   * arrival is paused at most once, at the point set when it arrived, so
+   * changing this neither releases nor pauses again an arrival in progress.
+   */
+  readonly pause: { at: PausePoint };
+  /** Orders paused at this stand, waiting to be released. */
+  readonly paused: ReadonlyMap<string, PausedOrder>;
+  /** Lets one paused order go on. False when that order is not paused here. */
+  releasePaused(orderId: string): boolean;
   /** Delivers an order taken on earlier, named by its own identifier. */
   deliverOwed(orderId: string, merchantItemId: string): Promise<void>;
   /** Refuses an order taken on earlier, named by its own identifier. */
@@ -177,29 +208,54 @@ const makeDeliverySession = (): DeliverySession => ({
   inFlight: new Set(),
 });
 
-/**
- * Makes a merchant whose handler decisions are changed directly by the stand page.
- *
- * `closedOnItsOwn` is called when an order stops being owed anything without
- * the page having asked for it — a delivery this side had promised and then
- * made from a timer, and any event the gateway sends about an order. Those are
- * the moments nobody pressed anything for, so they are the moments a console
- * drawn from a press goes stale on. The calls the page makes itself need no
- * telling: whoever pressed the button reads the orders back after it.
- */
+/** What the handler settled on for one order, before any of it goes back. */
+interface Decision {
+  readonly answer: HandlerAnswer;
+  /** The feed's line for the moment this answer goes back to the gateway. */
+  readonly said: string;
+  readonly detail: Record<string, unknown>;
+  /** Whether the goods are promised for later, from a timer on this side. */
+  readonly deliversLater: boolean;
+}
+
+interface StandMerchantOptions {
+  /**
+   * Called when an order stops being owed anything without the page having
+   * asked for it — a delivery this side had promised and then made from a
+   * timer, and any event the gateway sends about an order. Those are the
+   * moments nobody pressed anything for, so they are the moments a console
+   * drawn from a press goes stale on. The calls the page makes itself need no
+   * telling: whoever pressed the button reads the orders back after it.
+   */
+  readonly closedOnItsOwn?: () => void;
+  /** Where this merchant keeps its arrivals and its one effect per order, if anywhere. */
+  readonly records?: StandRecords;
+}
+
+/** Makes a merchant whose handler decisions are changed directly by the stand page. */
 export const makeStandMerchant = (
   feed: Feed,
-  closedOnItsOwn: () => void = () => {},
+  { closedOnItsOwn = () => {}, records }: StandMerchantOptions = {},
 ): StandMerchant => {
   const moods = defaultMoods();
   const taken = new Map<string, LiveOrder>();
   const held = new Map<string, HeldOrder>();
-  const answering = new Map<string, (answer: HeldAnswer | typeof RAN_OUT) => void>();
+  const answering = new Map<
+    string,
+    { answer: (chosen: HeldAnswer) => void; abandon: (why: Error) => void }
+  >();
+  const pause: { at: PausePoint } = { at: "none" };
+  const paused = new Map<string, PausedOrder>();
+  const unpausing = new Map<string, { release: () => void; abandon: (why: Error) => void }>();
   const results = new Map<string, ParamSpec>();
   let deliverySession = makeDeliverySession();
   let client: AgentifyClient | undefined;
   let address: string | null = null;
   let stoppedBecause: string | null = null;
+  // Set for as long as a disconnect is under way. A handler that reaches a
+  // pause or a hold then gives up at once, because the disconnect is waiting
+  // for every handler in flight to finish and nobody would release it.
+  let disconnecting = false;
 
   const connectedClient = (): AgentifyClient => {
     if (client === undefined) {
@@ -331,8 +387,17 @@ export const makeStandMerchant = (
     await Promise.all([...session.inFlight]);
   };
 
-  /** Holds one order open until a person answers, the ceiling runs out, or the stand disconnects. */
+  /** Why a waiting handler gives up: it throws this, so the SDK answers nothing for it. */
+  const abandonment = (orderId: string, what: string): Error =>
+    new Error(`Order ${orderId} ${what}, so its handler answers nothing.`);
+
+  /**
+   * Holds one order open until a person answers or the ceiling runs out. A
+   * disconnect gives up on it instead: nobody answered because the stand went
+   * away, which is not the merchant refusing, so nothing is answered or recorded.
+   */
   const askAbout = async (order: LiveOrder): Promise<HeldAnswer | typeof RAN_OUT> => {
+    if (disconnecting) throw abandonment(order.id, "arrived while the stand was disconnecting");
     held.set(order.id, {
       id: order.id,
       merchantItemId: order.merchant_item_id,
@@ -345,73 +410,198 @@ export const makeStandMerchant = (
       params: order.params,
     });
 
-    const answer = await new Promise<HeldAnswer | typeof RAN_OUT>((resolve) => {
-      const ceiling = setTimeout(() => {
-        answering.delete(order.id);
-        resolve(RAN_OUT);
-      }, ASK_CEILING_MS);
-      answering.set(order.id, (chosen) => {
-        clearTimeout(ceiling);
-        answering.delete(order.id);
-        resolve(chosen);
+    try {
+      return await new Promise<HeldAnswer | typeof RAN_OUT>((resolve, reject) => {
+        const ceiling = setTimeout(() => resolve(RAN_OUT), ASK_CEILING_MS);
+        answering.set(order.id, {
+          answer: (chosen) => {
+            clearTimeout(ceiling);
+            resolve(chosen);
+          },
+          abandon: (why) => {
+            clearTimeout(ceiling);
+            reject(why);
+          },
+        });
       });
-    });
+    } finally {
+      held.delete(order.id);
+      answering.delete(order.id);
+    }
+  };
 
-    held.delete(order.id);
-    return answer;
+  /**
+   * Stops one order at `phase` when `pauseAt`, the point set as it arrived,
+   * is that phase, until it is released or the stand disconnects. There is no
+   * ceiling: the worker dispatches serially, so everything else this process
+   * would be handed waits behind a paused order, and that is the point of
+   * pausing it.
+   */
+  const pausedIfAsked = async (
+    order: LiveOrder,
+    pauseAt: PausePoint,
+    phase: PausedOrder["phase"],
+    answer?: HandlerAnswer,
+  ): Promise<void> => {
+    if (pauseAt !== phase) return;
+    if (disconnecting) throw abandonment(order.id, "arrived while the stand was disconnecting");
+    paused.set(order.id, {
+      id: order.id,
+      merchantItemId: order.merchant_item_id,
+      phase,
+      since: Date.now(),
+    });
+    feed.write(
+      "merchant",
+      phase === "arrival"
+        ? "The stand paused this order as it arrived, before doing anything with it. It waits until you release it."
+        : `The stand paused this order with its answer ${records === undefined ? "ready" : "recorded"} and not yet sent. It waits until you release it.`,
+      {
+        order_id: order.id,
+        merchant_item_id: order.merchant_item_id,
+        phase,
+        ...(answer === undefined ? {} : { answer }),
+      },
+    );
+    try {
+      await new Promise<void>((release, abandon) => {
+        unpausing.set(order.id, { release, abandon });
+      });
+    } finally {
+      paused.delete(order.id);
+      unpausing.delete(order.id);
+    }
+  };
+
+  /** Gives up on every paused order, so a disconnect never waits on a release. */
+  const abandonPaused = (): void => {
+    for (const [orderId, { abandon }] of [...unpausing]) {
+      feed.write(
+        "merchant",
+        "The stand is disconnecting while this order is paused, so the handler gives up on it and answers nothing.",
+        { order_id: orderId, phase: paused.get(orderId)?.phase },
+      );
+      abandon(abandonment(orderId, "was paused when the stand disconnected"));
+    }
   };
 
   /** Every handler answer but the one that asks a person first. */
-  const decide = async (order: LiveOrder, mood: DecidedMood): Promise<HandlerAnswer> => {
+  const decide = async (order: LiveOrder, mood: DecidedMood): Promise<Decision> => {
     switch (mood) {
       case "deliver": {
         const delivery = deliveryFor(order.merchant_item_id);
-        const answer = order.delivered(delivery);
-        writeOrderAnswer("The handler delivered the goods.", order, { delivery });
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered the goods.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
       case "accept_then_deliver": {
-        taken.set(order.id, order);
         const answer = order.accepted();
-        writeOrderAnswer("The handler accepted the order and promised the goods later.", order, {
+        return {
           answer,
-        });
-        deliverLater(order);
-        return answer;
+          said: "The handler accepted the order and promised the goods later.",
+          detail: { answer },
+          deliversLater: true,
+        };
       }
       case "accept_and_say_nothing": {
-        taken.set(order.id, order);
         const answer = order.accepted();
-        writeOrderAnswer("The handler accepted the order and will never deliver it.", order, {
+        return {
           answer,
-        });
-        return answer;
+          said: "The handler accepted the order and will never deliver it.",
+          detail: { answer },
+          deliversLater: false,
+        };
       }
-      case "refuse": {
-        const answer = order.refused(moods.refusal);
-        writeOrderAnswer("The handler refused the order.", order, { refusal: moods.refusal });
-        return answer;
-      }
+      case "refuse":
+        return {
+          answer: order.refused(moods.refusal),
+          said: "The handler refused the order.",
+          detail: { refusal: moods.refusal },
+          deliversLater: false,
+        };
       case "say_nothing": {
         await wait(SILENCE_PAST_DEADLINES_MS);
         const delivery = deliveryFor(order.merchant_item_id);
-        const answer = order.delivered(delivery);
-        writeOrderAnswer(
-          "The handler delivered, long past the deadline the card promised.",
-          order,
-          { delivery },
-        );
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered, long past the deadline the card promised.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
       case "answer_wrong_shape": {
         const delivery = { a_field_this_card_never_declared: "wrong-shape" };
-        const answer = order.delivered(delivery);
-        writeOrderAnswer("The handler delivered a shape the card never declared.", order, {
-          delivery,
-        });
-        return answer;
+        return {
+          answer: order.delivered(delivery),
+          said: "The handler delivered a shape the card never declared.",
+          detail: { delivery },
+          deliversLater: false,
+        };
       }
     }
+  };
+
+  /** What the handler's mood makes of one order, asking a person first where it is set to. */
+  const decided = async (order: LiveOrder): Promise<Decision> => {
+    if (moods.order !== "ask_me") {
+      return decide(order, moods.order);
+    }
+    const answered = await askAbout(order);
+    if (answered === RAN_OUT) {
+      return {
+        answer: order.refused(NOBODY_ANSWERED),
+        said: "Nobody at the console answered, so the handler refused.",
+        detail: { refusal: NOBODY_ANSWERED },
+        deliversLater: false,
+      };
+    }
+    return decide(order, HELD_MEANS[answered]);
+  };
+
+  /** An answer this order already has, which goes back as it is and promises nothing more. */
+  const fromRecord = (recorded: Recorded, said: string): Decision => ({
+    answer: recorded.answer,
+    said,
+    detail: { answer: recorded.answer, recorded_by: { port: recorded.port, pid: recorded.pid } },
+    deliversLater: false,
+  });
+
+  /**
+   * What goes back for one order: with records kept, the effect it already
+   * has, or the one decided now and recorded before anything is sent.
+   */
+  const answerFor = async (order: LiveOrder): Promise<Decision> => {
+    if (records === undefined) return decided(order);
+    const earlier = await records.find(order.id);
+    if (earlier !== null) {
+      return fromRecord(earlier, "The handler answered a repeat with the answer it recorded.");
+    }
+    const decision = await decided(order);
+    const kept = await records.keep(order, decision.answer);
+    if (kept.first) {
+      feed.write("merchant", "The handler recorded its answer before sending it.", {
+        order_id: order.id,
+        merchant_item_id: order.merchant_item_id,
+        records: records.directory,
+      });
+      return decision;
+    }
+    feed.write(
+      "merchant",
+      "Another stand recorded this order first, so this one sends that stand's answer instead of its own.",
+      {
+        order_id: order.id,
+        decided: decision.answer,
+        recorded_by: { port: kept.recorded.port, pid: kept.recorded.pid },
+      },
+    );
+    return fromRecord(
+      kept.recorded,
+      "The handler answered with the answer another stand recorded.",
+    );
   };
 
   const register = (fresh: AgentifyClient): void => {
@@ -421,18 +611,20 @@ export const makeStandMerchant = (
         merchant_item_id: order.merchant_item_id,
         params: order.params,
       });
-      if (moods.order !== "ask_me") {
-        return decide(order, moods.order);
+      const pauseAt = pause.at;
+      await records?.arrived(order);
+      await pausedIfAsked(order, pauseAt, "arrival");
+      const decision = await answerFor(order);
+      await pausedIfAsked(order, pauseAt, "answer_ready", decision.answer);
+      // Only now, with the answer about to go back: a delivery promised from a
+      // timer started before a pause could reach the gateway ahead of the
+      // answer that took the order on.
+      if (decision.deliversLater) {
+        taken.set(order.id, order);
+        deliverLater(order);
       }
-      const answered = await askAbout(order);
-      if (answered === RAN_OUT) {
-        const answer = order.refused(NOBODY_ANSWERED);
-        writeOrderAnswer("Nobody at the console answered, so the handler refused.", order, {
-          refusal: NOBODY_ANSWERED,
-        });
-        return answer;
-      }
-      return decide(order, HELD_MEANS[answered]);
+      writeOrderAnswer(decision.said, order, decision.detail);
+      return decision.answer;
     });
 
     fresh.on("quote", async (question) => {
@@ -486,25 +678,40 @@ export const makeStandMerchant = (
     });
   };
 
-  /** Lets every held order go, so a disconnect never leaves the worker blocked. */
-  const releaseHeld = (): void => {
-    for (const [orderId, resolve] of [...answering]) {
-      answering.delete(orderId);
-      resolve(RAN_OUT);
+  /** Gives up on every order held for a person, so a disconnect never waits on an answer. */
+  const abandonHeld = (): void => {
+    for (const [orderId, { abandon }] of [...answering]) {
+      feed.write(
+        "merchant",
+        "The stand is disconnecting while this order is held for you, so the handler gives up on it and answers nothing.",
+        { order_id: orderId },
+      );
+      abandon(abandonment(orderId, "was held for a person to answer when the stand disconnected"));
     }
-    held.clear();
   };
 
   return {
     moods,
     held,
+    pause,
+    paused,
+    releasePaused(orderId) {
+      const waiting = unpausing.get(orderId);
+      if (waiting === undefined) return false;
+      feed.write("stand", "You released a paused order.", {
+        order_id: orderId,
+        phase: paused.get(orderId)?.phase,
+      });
+      waiting.release();
+      return true;
+    },
     connected: () => address,
     stopped: () => stoppedBecause,
     answerHeld(orderId, answer) {
-      const resolve = answering.get(orderId);
-      if (resolve === undefined) return false;
+      const waiting = answering.get(orderId);
+      if (waiting === undefined) return false;
       feed.write("stand", "You answered a held order.", { order_id: orderId, answer });
-      resolve(answer);
+      waiting.answer(answer);
       return true;
     },
     async orders(open) {
@@ -556,6 +763,7 @@ export const makeStandMerchant = (
     },
     async connect(baseUrl, apiKey) {
       await this.disconnect();
+      disconnecting = false;
       deliverySession = makeDeliverySession();
       stoppedBecause = null;
       const fresh = createClient({ baseUrl, apiKey });
@@ -575,7 +783,9 @@ export const makeStandMerchant = (
       address = null;
       taken.clear();
       results.clear();
-      releaseHeld();
+      disconnecting = true;
+      abandonPaused();
+      abandonHeld();
       await stopDeliveries();
       if (stopping !== undefined) {
         await stopping.stop();

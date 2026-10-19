@@ -61,8 +61,12 @@ read its payment evidence, and private durable records surviving a session resta
 Verify these capabilities without buying an Agentify product. Give the buyer
 its normal tool instructions and credentials through their secure mechanism,
 never repository access or hints about the target item. A budget in the prompt
-alone is not the spending guard. Record the client/tool versions and capabilities
-before the run, not after seeing a failure.
+alone is not the spending guard. The simplest total limit that a tool enforces
+is the wallet itself: fund the buyer's signer with exactly the run's total
+budget in test USDC, which it cannot exceed whatever it decides; an x402 buyer
+signs an authorisation and pays no gas. The per-purchase limit comes from the
+client's own maximum-payment setting. Record the client/tool versions and
+capabilities before the run, not after seeing a failure.
 
 A missing declared tool capability blocks that variant. A product response that
 the declared ordinary client cannot read is a product finding. Keep the failed
@@ -76,6 +80,38 @@ questions: “What do you believe happened?” and “What do you expect that ac
 to do?” Save the answer and the next action. Assistance is recorded, and a
 successful coached retry does not replace the first result. Time and hesitation
 are evidence; no invented speed threshold decides whether a screen is clear.
+
+### When the participants are AI agents
+
+An organising agent may run this protocol and hand each role to a subagent.
+Everything above still holds, but an agent's context leaks more easily than a
+person's, and three things need care.
+
+The organising agent has read this protocol, so any brief it writes in its own
+words risks carrying the answer. It passes each participant the brief from the
+list above verbatim, with the run's real product requirements, budget and
+disclosable information filled in, and nothing else: no scenario table,
+expected result, story identifier, catalogue ID or summary of what to look
+for. A brief that hints at the answer makes the attempt an assisted one, and
+it is recorded as assisted rather than as an independent first attempt.
+
+The roles that stand for outsiders, which are the merchant, the engineer, the
+buyer and the returning merchant, work in a directory that does not contain
+this repository and are told not to look for it. Each has only the equipment
+its real counterpart has: the engineer a terminal, the npm registry and the
+public documentation site; the buyer the declared buyer environment below; the
+merchant and the returning merchant a browser with the public site and the
+dashboard. For every participant, record the model, its reasoning effort, its
+tools, the exact brief and what its working directory held.
+
+What an agent's attempt measures depends on the role. An engineer's AI coding
+assistant working only from the npm package and the public documentation is a
+genuine DX measurement, because that is how many outside engineers now
+integrate. An AI buyer is the AX measurement itself, since the buyers this
+product serves are agents. A person's understanding of a screen is only
+approximated by an agent reading it: report that result as an agent's reading,
+and keep the verdict on human screen comprehension "not measured" until a
+person who took no part in the work has read those screens.
 
 ## Preparation and boundaries
 
@@ -112,7 +148,7 @@ organiser receives simulated support escalations.
 | Environment | What it proves | What it cannot prove |
 | --- | --- | --- |
 | Disposable Compose stack with Postgres, started as described in the root README | Public routes, SDK, dashboard, persistence, real database races, controlled crashes | Valid signatures, actual transfers, external discovery or mail delivery |
-| Test channel with published npm package and controlled merchant/shop | Email and browser/provider round trips, Base Sepolia settlement, actual download permissions, public ingress | Mainnet acceptance or a real carrier delivering a parcel |
+| Test channel with published npm package and controlled merchant/shop | Email and browser/provider round trips, Base Sepolia settlement through Coinbase's facilitator as on the live channel, Coinbase's testnet catalogue, actual download permissions, public ingress | Mainnet acceptance, the mainnet catalogue or a real carrier delivering a parcel |
 | Isolated provider/fault setup | A precisely observed interruption, late response or malformed provider answer | That the real provider produces it with a particular frequency |
 | Live channel | Public promises and, with explicit approval, non-spending account/wallet rules in G | No payment, payout or wallet change is implicit in reviewing this plan |
 
@@ -149,18 +185,40 @@ Two worker processes of one merchant share its stream. The sandbox accepts
 artificial payments and proves nothing about signatures.
 Additional equipment required for certain rows is named explicitly:
 
-| Instrument | Required capability and evidence |
-| --- | --- |
-| Response-cutting proxy | Forward the request, observe upstream commitment/response, then drop the downstream response before headers or midway through its body once; log correlation and phase without secrets; restore pass-through afterwards |
-| Merchant barriers | Hold before effect, after durable effect and before acknowledgement; release a named order deliberately, rather than hoping a sleep hit a race |
-| Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model |
-| Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count |
-| Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state |
+| Instrument | Required capability and evidence | In the repository |
+| --- | --- | --- |
+| Response-cutting proxy | Forward the request, observe upstream commitment/response, then drop the downstream response before headers or midway through its body once; log correlation and phase without secrets; restore pass-through afterwards | Exists: `pnpm cut`, described in the [slice README](../../packages/slice/README.md). One cut per run, chosen by method, path pattern and the Nth matching answer the server finished with a 2xx status |
+| Merchant barriers | Hold before effect, after durable effect and before acknowledgement; release a named order deliberately, rather than hoping a sleep hit a race | Exists in the stand: a pause when an order arrives and a pause when its answer is ready, each released by order ID, with durable per-order records when the stand is started with `STAND_RECORDS_DIR`; same README |
+| Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model | Missing |
+| Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count | Missing |
+| Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state | Missing |
 
-These capabilities are requirements for the run, not tools claimed to exist.
-If one is missing, mark its variants blocked and name the smallest missing
-capability. Killing curl after two seconds does not prove a server committed.
-An in-memory event permutation does not prove a Postgres interleaving.
+These capabilities are requirements for the run. The first two exist as the
+third column names them; the other three do not. Mark the variants that need a
+missing capability blocked and name the smallest capability that is missing.
+Killing curl after two seconds does not prove a server committed. An in-memory event permutation does not prove a Postgres
+interleaving.
+
+The two existing instruments have limits that decide which variants they can
+carry. The proxy arms one cut per run, and arming another means restarting it;
+a restart drops whatever is in flight through it, which is itself an unplanned
+cut, so stop the caller first. It cannot pick a poll answer by what it
+carries, which is the smallest capability still missing for J-07's lost-event
+variant. Losing a purchase answer is half of J-01; the other half resends to
+the same order, and no buyer here can. The buy command and the stand sign a
+fresh payment every time, and the stand lets go of the challenge once it has
+signed it, so repeating the exact payment and signing a fresh authorisation for
+the same order both need a buyer that keeps the challenge and the signed
+payment header it sent. The proxy never logs that header. The pauses belong to the stand, our own SDK merchant. They hold the
+handler's answer to an order, not the later deliver call of an order taken on
+earlier, and they say nothing about a newcomer's merchant or the WooCommerce
+connector, whose faults stay with the rows marked missing. The stand keeps no
+shipping address and has no shipment path, so F-02, which needs the merchant's
+durable copy of an address, cannot run on it. A stand keeping
+records answers a repeated order with what it recorded, so it cannot model a
+merchant who corrects their goods on a repeat; run those variants without
+records. Both instruments have been exercised against local servers only, not
+yet against the test channel.
 
 ### What must agree after a sale
 
@@ -211,7 +269,7 @@ connection path continues in H; writing SDK code is not a prerequisite.
 | A-01 / P1 | Arrive at the public site with an actual product and decide whether to connect. Explain eligible goods, who delivers, price/commission, payout timing, refunds and how to stop. | The participant finds the selling path and understands its limits. Record differences between their interpretation, the visible promise and the contract. Scanner completion is not mistaken for a connected shop or ownership verification. |
 | A-02 / P1 | Sign in, create the merchant, configure what is missing and choose the integration, using only what the product offers. Include a person without a wallet. | Each screen makes the current account, environment, incomplete work and next action understandable. No secret or chain knowledge is presumed without an explanation at the point it is needed. Choosing not to complete a setting is distinct from having completed it. |
 | A-03 / P1 | Outside the checkout, install the published SDK and connect the real test merchant system using the public quickstart. Make one ordinary configuration mistake: missing key or wrong channel. Correct it from the SDK error. | Printed commands run under the stated runtime. The error identifies the setting, consequence and safe correction without exposing secrets or requiring source inspection. Record every undocumented edit and team intervention. A dependency inventory alone does not pass this story. |
-| A-04 / P0 | Publish a real supported product and fulfil the first test purchase. Read or use the actual entitlement/file outside the merchant process. | The buyer gets what the card promised, one merchant effect and one receipt exist, and the transfer reaches the recorded split. The merchant understands why their wallet may still show no payout. Publishing alone or returning a placeholder is insufficient. |
+| A-04 / P0 | Publish a real supported product and fulfil the first test purchase, which the merchant or engineer makes themselves on the test channel with an ordinary x402 client. Read or use the actual entitlement/file outside the merchant process. | Needing a team member to start the purchase is assistance. The buyer gets what the card promised, one merchant effect and one receipt exist, and the transfer reaches the recorded split. The merchant understands why their wallet may still show no payout. Publishing alone or returning a placeholder is insufficient. |
 | A-05 / P0 | Publish a real product fulfilled later; accept, persist the work, close the laptop/process and complete it from another process with the saved ID. | The engineer understands acceptance versus delivery, durable storage and replay before going unattended. The same order completes once, with its original result and deadline. If the selected merchant has no such product, record this variant as outside its scope and run the contract rehearsal separately. |
 | A-06 / P1 | Prepare to leave the integration running tomorrow, rotate the key and recover after the gateway is briefly unavailable. | The engineer can explain hosting, which process stays up, duplicate handling and how to find work after a missed event. The process resumes after a transient failure; revoked credentials are recognisable as a permanent problem. A private team recipe is assistance, not successful self-service. |
 
@@ -425,7 +483,9 @@ that distinction in the overall verdict. Passing other blocks does not waive it.
 
 Use a public canonical resource for a real controlled product, a second product
 of that merchant and a fresh agent. Record the actual facilitator, chain and
-split. A payment through x402.org is not a CDP Bazaar experiment. The current
+split. A payment through x402.org is not a CDP Bazaar experiment. Both channels
+settle through Coinbase's facilitator, so L runs on the test channel with
+Base Sepolia. The current
 [Coinbase seller guide](https://docs.cdp.coinbase.com/x402/seller/get-discovered),
 checked on 2026-10-18, describes CDP testnet discovery; verify the deployment's
 route rather than silently changing its facilitator or moving to mainnet.
@@ -503,7 +563,11 @@ story rather than every permutation of the same cause.
 ## Run selection and completion
 
 Start with independent A, U and B attempts before teaching participants.
-Establish one verified SDK sale and one verified Woo download sale, then
+A fresh participant's first attempt is spent only on a path with no blocker
+already known: when an earlier review has found a dead end there, record it as
+a known finding and run the independent attempt once its fix reaches the test
+channel. Stories that need an instrument the run lacks wait for it rather than
+being run without their fault. Establish one verified SDK sale and one verified Woo download sale, then
 exercise failures and recovery. Start L's bounded observation after its
 prerequisites and perform independent work while it waits. K is a separate
 handover to a fresh reader. Scanner identity/privacy is required when that
