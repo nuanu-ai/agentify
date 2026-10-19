@@ -6,7 +6,7 @@ import { API_ROUTES, ERROR_CODES, mountableRoutes } from "@nuanu-ai/agentify-con
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { setServiceName } from "../app/merchants.js";
+import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
   buyOverHttp,
   type Harness,
@@ -1944,6 +1944,10 @@ describe("what a declaration says the purchase answers with", () => {
     );
   };
 
+  /** A seller with a site, so the site is a string in the answer as in the example. */
+  const sited = async (harnessed: Harness) =>
+    setSellerSite(harnessed.store, harnessed.merchant.id, "https://shop.example", Date.now());
+
   const declaredOutput = async (served: Served, itemId: string): Promise<unknown> => {
     const probed = await served.call("GET", `/x402/${itemId}/purchase`);
     const declared = decodePaymentRequiredHeader(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
@@ -1953,6 +1957,7 @@ describe("what a declaration says the purchase answers with", () => {
 
   it("declares the order with its goods, for a card delivered in the answer", async () => {
     const { served, harnessed } = await started();
+    await sited(harnessed);
     const itemId = await publish(served, syncCard);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
@@ -1968,6 +1973,7 @@ describe("what a declaration says the purchase answers with", () => {
     // The money moves at the purchase and the goods arrive at status_url; an
     // agent that looked for them in this answer would think it paid for nothing.
     const { served, harnessed } = await started();
+    await sited(harnessed);
     const itemId = await publish(served, {
       ...syncCard,
       fulfillment: "async",

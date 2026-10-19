@@ -5,28 +5,31 @@ Status: accepted (the product owner)
 
 ## Context
 
-The product is exposed on the x402 Bazaar, a discovery catalog that lists an
+Every card is declared for the x402 Bazaar, a discovery catalog that lists an
 endpoint once its payment challenge carries a discovery declaration and a
 payment to it settles through the CDP facilitator, so the live chain settles
-there (ADR-0020). Why this catalog, and what the pilot expects of it, is in
-`docs/research/04-spike-bazaar-listing.md`. A card already holds almost
-everything a declaration wants.
+there (ADR-0020). Declaring is not being listed: on 2026-10-19 the catalog
+listed no Agentify resource. Why this catalog, and what the pilot expects of
+it, is in `docs/research/04-spike-bazaar-listing.md`. A card already holds
+almost everything a declaration wants.
 
 ## Decision
 
 The declaration is a projection of a card, `bazaarDeclarationOf` in
 `packages/contracts/src/card.ts`, beside the projection an agent reads in our
 own catalog: the resource block, an example purchase body, the JSON Schema that
-body is held to, and an example of what the agent receives. A parcel's body and
-schema carry `ship_to`, and its example output is a recorded shipment. Examples
-stand for each declared type and carry no invented data. The wire format is
-assembled at the edge by the protocol's own library, never by hand, and
-`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §1 keeps
-the contracts package, on which the merchant SDK depends, to zod. The resource
-address is pinned from `PUBLIC_BASE_URL` and the route table, never read off the
-request, which behind our reverse proxy arrives as `http://` with the caller's
-query string: a catalog keys a listing on the address, and two spellings would
-be two listings for one product.
+body is held to, and an example of what the paid purchase answers: the order
+document (ADR-0018), with the goods under `delivered` on a card delivered in
+the answer and none on any other, whose goods come later at its `status_url`.
+A parcel's body and schema carry `ship_to`. Examples stand for each declared
+type and carry no invented data. The wire format is assembled at the edge by
+the protocol's own library, never by hand, and `@x402/extensions` is the
+gateway's dependency alone, since ADR-0003 §1 keeps the contracts package, on
+which the merchant SDK depends, to zod. The resource address is pinned from
+`PUBLIC_BASE_URL` and the route table, never read off the request, which behind
+our reverse proxy arrives as `http://` with the caller's query string: a
+catalog keys a listing on the address, and two spellings would be two listings
+for one product.
 
 The listing name belongs to the merchant and the tags to the card, since a name
 per card would show one seller as several. The merchant sets the name in the

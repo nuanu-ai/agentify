@@ -918,8 +918,9 @@ export interface BazaarDeclaration {
   /** The JSON Schema that body is held to, derived from the card's `params`. */
   readonly inputSchema: Record<string, unknown>;
   /**
-   * An example of what arrives on delivery, derived from the card's `result`,
-   * or for a parcel the record of its shipment.
+   * An example of what a paid purchase answers with: the order document, with
+   * the goods the card's `result` declares under `delivered` where they come in
+   * the answer, and otherwise an order under way with none.
    */
   readonly output: { readonly example: Record<string, unknown> };
 }
@@ -979,15 +980,46 @@ const LISTED_SHIP_TO: ShipTo = {
 };
 
 /**
- * A recorded shipment, in a listing's example output, written as every other
- * example here is: each field standing for what goes there, and the instant
- * at the start of the clock rather than a date that looks like one somebody
- * shipped on.
+ * The instant a listing's examples stand on: the start of the clock, rather
+ * than a date that looks like one something happened on.
  */
-const LISTED_SHIPMENT = {
-  carrier: "string",
-  tracking_number: "string",
-  shipped_at: "1970-01-01T00:00:00Z",
+const LISTED_INSTANT = "1970-01-01T00:00:00Z";
+
+/**
+ * What every order document carries, in a listing's example output, written as
+ * every other example here is: each field standing for what goes there.
+ */
+const LISTED_ORDER = {
+  order_id: "string",
+  status_url: "string",
+  price: { amount: "string", currency: "string", at: LISTED_INSTANT, as_of: LISTED_INSTANT },
+  test: false,
+  seller: { name: "string", site: "string" },
+};
+
+/**
+ * What a paid purchase of this card answers with: the order document the
+ * status route also serves. Goods that come in the answer are under
+ * `delivered`; on every other card the order is under way with none, and they
+ * are collected at its `status_url`. A parcel's order names the instant it has
+ * to be with a carrier by and no shipment yet.
+ */
+const listedAnswerOf = (card: Card): Record<string, unknown> => {
+  switch (card.fulfillment) {
+    case "sync":
+      return { ...LISTED_ORDER, status: "delivered", delivered: exampleOf(card.result ?? {}) };
+    case "ship":
+      return {
+        ...LISTED_ORDER,
+        status: "in_progress",
+        delivered: null,
+        shipment: null,
+        ship_by: LISTED_INSTANT,
+      };
+    case "async":
+    case "confirm":
+      return { ...LISTED_ORDER, status: "in_progress", delivered: null };
+  }
 };
 
 /**
@@ -1013,9 +1045,7 @@ export const bazaarDeclarationOf = (
     ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
   },
   inputSchema: purchaseBodySchemaOf(card),
-  // What the agent is finally handed: the goods the card declared, or for a
-  // parcel the record of its shipment.
-  output: { example: card.result === undefined ? LISTED_SHIPMENT : exampleOf(card.result) },
+  output: { example: listedAnswerOf(card) },
 });
 
 /**
