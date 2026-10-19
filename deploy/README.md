@@ -1,10 +1,11 @@
-# Releasing Agentify
+# Releasing and operating Agentify
 
 This is the runbook for putting a revision of this repository on one of its
-two channels, finding out what a channel runs, and recovering when a release
-goes wrong. It assumes nothing beyond shell access to the hosts and a checkout
-of this repository; every command below is meant to be typed as written, with
-the values in angle brackets filled in.
+two channels, publishing the SDK, finding out what a channel runs, recovering
+when a release goes wrong, and the operator's commands on a running channel.
+It assumes nothing beyond shell access to the hosts and a checkout of this
+repository; every command below is meant to be typed as written, with the
+values in angle brackets filled in.
 
 ## Where things are
 
@@ -16,6 +17,22 @@ operator's own SSH configuration defines: `agentify-test` for TEST and
 the mesh client has to be connected before `ssh agentify` answers. The
 repository holds no address of either host, and it should stay that way,
 because it is public.
+
+| Channel | Address | What runs there | How a revision gets there |
+| --- | --- | --- | --- |
+| TEST | `test.agentify.ad` | any commit that was the head of a pushed branch | the `deploy-test` tag moved to it; the host's timer releases it within a minute of its images being built ("Releasing to test") |
+| PRODUCTION | `agentify.ad` | a commit of `main` tagged `app-v<release>` | a person runs `agentify-release app-v<release>` on the host once the tag is pushed ("Releasing to production") |
+
+The servers pull rather than being pushed to (ADR-0016), and the same
+`app-v*` tag that production takes publishes the SDK and its contracts to npm.
+
+```mermaid
+flowchart LR
+    B[branch] -- pull request and review --> M[main]
+    B -. move deploy-test .-> T[test.agentify.ad]
+    M -- tag app-v*, then agentify-release --> P[agentify.ad]
+    M -- tag app-v* --> N[npm: the SDK and the contracts]
+```
 
 On each host a channel is one Compose project, `agentify`, so a container is
 `agentify-<service>-1` on either host, and its data is one PostgreSQL database,
@@ -102,8 +119,9 @@ and nothing in GitHub can reach a host.
 The card check spends nothing: a GET on a purchase address is always answered
 with the challenge and never read for payment. It reads the catalog as the one
 document the catalog is, since paging is not designed yet, and it asks every
-card in turn, so it takes a request per card. What the checks leave out is
-recorded in `docs/research/00-open-questions.md`.
+card in turn, so it takes a request per card. What the checks leave out,
+compared with the release this one replaced, is in
+`docs/research/52-release-delivery.md`.
 
 On PRODUCTION the name has to be an `app-v*` tag, the image build has to be a
 push to `main`, `main`'s CI run for the commit has to have succeeded, and the
@@ -135,8 +153,13 @@ It is reviewed and merged like any other. The merge commit is the new head of
 `main`, which is what matters here: `ci.yml` runs on it and `images.yml` builds
 its images, and a commit that was never the head of a push to `main` has
 neither and cannot be released. Wait until both runs are green on that commit
-in the Actions tab; `docs/research/22-sdk-release.md` also describes a dry run
-of the npm publication, which is worth doing before the tag.
+in the Actions tab.
+
+Then try the npm publication without publishing anything: in GitHub Actions,
+run **Publish Agentify SDK** from `main` by hand, with the tag you are about to
+create as `release_tag` and `dry_run` left on. It takes `main`'s head, resolves
+the versions the tag would publish, and runs the gates and `pnpm outside` as
+the real run will, so a refusal shows before the tag that cannot be moved.
 
 The tag is the acceptance, and only repository administrators can create an
 `app-v*` tag; once pushed, a release tag can be neither moved nor deleted.
@@ -148,9 +171,9 @@ git tag app-v<X.Y.Z> origin/main
 git push origin app-v<X.Y.Z>
 ```
 
-Pushing the tag publishes the SDK and the contracts to npm (`publish-sdk.yml`)
-and nothing else, so production gets the same revision only when a person runs
-the release, which belongs right after the tag:
+Pushing the tag publishes the SDK and the contracts to npm (below) and nothing
+else, so production gets the same revision only when a person runs the
+release, which belongs right after the tag:
 
 ```sh
 ssh -t agentify sudo agentify-release app-v<X.Y.Z>
@@ -186,16 +209,49 @@ again, or read it afterwards, with:
 ssh -t agentify sudo journalctl -u agentify-release-production.service -f
 ```
 
-The releases timed on a host so far are TEST's. On 2026-09-23 its timer
-released a revision in 1 minute 50 seconds from moving the tag to the verified
-line: the pull took 12 seconds and activation 30, with about 22 seconds of
-downtime, and the card check covered the 3 cards then on sale. On 2026-09-24
-activation took 33 seconds, the database's container stayed as it was, and
-the card check again covered 3 cards. The pull is the part that varies, and it
-happens before anything stops: it took 12 minutes 53 seconds on 2026-09-23 and
-9 minutes 37 seconds on 2026-09-24, both times held up by scanner images that
-GHCR served slowly, for a reason not found yet. On PRODUCTION the dumps, and
-so the downtime, grow with the data.
+A release on TEST has taken about two minutes from moving the tag to the
+verified line, with about twenty seconds of downtime. The pull of the images is
+the part that varies, up to a quarter of an hour, and it happens before
+anything stops. On PRODUCTION the dumps, and so the downtime, grow with the
+data. The measured releases are in `docs/research/52-release-delivery.md`.
+
+### What the tag publishes on npm
+
+Pushing an `app-v*` tag starts `.github/workflows/publish-sdk.yml`, which
+publishes `@nuanu-ai/agentify-contracts` and `@nuanu-ai/agentify` at the
+versions their manifests carry, whichever of the two the registry does not
+hold yet, under the dist-tag `latest`. The number in the tag is the
+application's and says nothing about the packages' versions, so a tag whose
+package versions are already public publishes nothing.
+
+The workflow refuses a tag that is not `app-v*`, a tagged commit that is not on
+`main`, a package version that is not a stable `x.y.z` or is still `0.0.0`, and
+a workspace whose publishable packages are anything but those two. It waits up
+to 25 minutes for `ci.yml` to succeed on the push of that exact commit to
+`main`, runs the gates and `pnpm outside` again, and publishes through npm
+Trusted Publishing, with provenance and no stored token. A green run is not
+the evidence by itself: its last step reads both versions back from the
+registry, checks that `latest` names them, and installs and imports them in an
+empty directory. A run that fails after publishing is run again from the
+Actions tab; it finds nothing left to publish and checks again.
+
+npm attaches a trusted publisher only to a package name that already exists,
+so a new package name needs one publication by hand before the workflow can
+take it over, and the workflow refuses while a name is missing. An owner of
+the `nuanu-ai` npm organization, with two-factor authentication, publishes the
+tarball `pnpm pack` makes from the exact commit after its CI succeeded (a
+plain `npm publish` from the package's directory would publish the source
+manifest, with its `workspace:*` ranges), and then trusts the workflow:
+
+```sh
+npm trust github <package> --repo nuanu-ai/agentify --file publish-sdk.yml --allow-publish --yes
+npm trust list <package>
+```
+
+No npm token is kept in the repository or in GitHub; the short-lived session
+of an interactive `npm login` is enough for that one publication. The two
+packages went through this once, and their earlier releases are the
+`sdk-v0.1.0` to `sdk-v0.2.5` tags.
 
 ## Releasing to test
 
@@ -757,6 +813,42 @@ ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head
 The scanner's header then shows them an Admin link, on the next page they
 open, without signing in again. `account list` says who is an operator, and
 `account operator you@example.com --off` takes the flag away.
+
+## Approving a merchant for live sales
+
+A merchant publishes on PRODUCTION only once the operator has approved them,
+once, and that is an application command rather than a release. From an
+operator's checkout:
+
+```sh
+pnpm approve <email>
+```
+
+It reaches PRODUCTION over SSH through the `agentify` alias, resolves the
+merchant of that address's dashboard account inside the running application
+and records the approval; it says so when the approval already exists or the
+account is unknown. Approval publishes nothing and supplies no missing seller
+name or payout wallet, and TEST never needs it. When SSH does not complete,
+the outcome is unknown, and running the same command again shows it.
+
+## Starting an address over on TEST
+
+An address that has signed in on TEST can be made new again, so it signs in
+as if for the first time. From an operator's checkout:
+
+```sh
+pnpm forget <email>
+```
+
+It reaches TEST over SSH through the `agentify-test` alias and removes that
+address's dashboard account together with the merchant it names, the
+merchant's keys and cards, and the wait before the address's next sign-in
+link. It refuses, and says why, when the merchant has an order or a receipt,
+when another account names the same merchant, or when no account has the
+address; on a deployment whose payment network is live it refuses before it
+reads anything. An operator flag goes with the account, and a WooCommerce
+connection it drops keeps its key in that shop until somebody revokes it
+there.
 
 ## The Woo acceptance route on TEST
 
