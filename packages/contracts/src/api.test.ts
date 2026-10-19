@@ -573,6 +573,25 @@ describe("the status an agent reads", () => {
     ).toBe(false);
   });
 
+  it("lists, for a generated client to switch on, why a refund is owed beside why an order ended", () => {
+    // An agent holding refund_due branches on why it is owed; a word known
+    // only to the gateway would reach a generated client as any string at all.
+    const reason = toJsonSchemas().agent_order_status.properties?.reason as
+      | { properties: { code: { anyOf: { enum?: string[] }[] } } }
+      | undefined;
+    const listed = reason?.properties.code.anyOf.flatMap((branch) => branch.enum ?? []);
+
+    expect(listed).toStrictEqual(
+      expect.arrayContaining(["deadline_passed", "refused", "merchant_left", "price_expired"]),
+    );
+    const owing = {
+      ...status,
+      status: "refund_due",
+      reason: { code: "deadline_passed", message: "The seller owes you the price." },
+    };
+    expect(AgentOrderStatusSchema.parse(owing)).toStrictEqual(owing);
+  });
+
   it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
     // The shop's own site is where an agent takes a parcel that did not
     // arrive, a return or the terms of the sale.

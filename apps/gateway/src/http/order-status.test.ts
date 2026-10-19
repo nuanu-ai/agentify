@@ -18,7 +18,7 @@ import {
   type Delivery,
   expandPath,
 } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buyOverHttp,
   type Harness,
@@ -383,6 +383,104 @@ describe("a refusal the merchant made", () => {
     expect(delivered.refusal).toBeUndefined();
     expect(expired.status).toBe("expired");
     expect(expired.refusal).toBeUndefined();
+  });
+});
+
+describe("an order that owes a refund", () => {
+  // `refund_due` alone reads as "a refund is on its way". The agent has to be
+  // told why the money is owed, in the words the merchant's own event uses,
+  // and in a sentence that nothing here will say when it has been paid back.
+  const owingOf = async (served: Served, orderId: string): Promise<AgentOrderStatus> => {
+    let read: AgentOrderStatus | undefined;
+    await vi.waitFor(
+      async () => {
+        const answered = await statusOf(served, orderId);
+        expect(answered.status).toBe(200);
+        read = answered.body as AgentOrderStatus;
+        expect(read.status).toBe("refund_due");
+      },
+      { timeout: 2_000, interval: 5 },
+    );
+    if (read === undefined) throw new Error("the order was never read");
+    return read;
+  };
+
+  it("says the time for the goods ran out after the money moved", async () => {
+    const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });
+    const itemId = await publish(served, {
+      ...laterCard,
+      fulfill_deadline_seconds: undefined,
+    } as Card);
+    const orderId = await orderTakenOn(harnessed, served, itemId);
+
+    const owing = await owingOf(served, orderId);
+
+    expect(owing.reason?.code).toBe("deadline_passed");
+    expect(owing.reason?.message).toMatch(/\S/);
+    expect(owing.refusal).toBeUndefined();
+  });
+
+  it("says the merchant refused after the money moved, beside the merchant's own words", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, laterCard);
+    const orderId = await orderTakenOn(harnessed, served, itemId);
+    const refused = await served.call("POST", `/v0/orders/${orderId}/refuse`, {
+      body: { code: "out_of_stock", message: "the last eSIM went to somebody else" },
+      headers: keyOf(harnessed.merchant),
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(200);
+
+    const owing = await owingOf(served, orderId);
+
+    expect(owing.reason?.code).toBe("refused");
+    expect(owing.reason?.message).toMatch(/\S/);
+    expect(owing.refusal).toStrictEqual({
+      code: "out_of_stock",
+      message: "the last eSIM went to somebody else",
+    });
+  });
+
+  it("says the merchant left after the money moved", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, laterCard);
+    const orderId = await orderTakenOn(harnessed, served, itemId);
+    await harnessed.gateway.runner.apply(orderId, {
+      kind: "merchant_departed",
+      at: harnessed.now(),
+    });
+
+    const owing = await owingOf(served, orderId);
+
+    expect(owing.reason?.code).toBe("merchant_left");
+    expect(owing.reason?.message).toMatch(/\S/);
+  });
+
+  it("gives each way of coming to owe a sentence of its own", async () => {
+    // One sentence for all three would tell an agent waiting on a late
+    // delivery the same thing as one whose seller has gone.
+    const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });
+    const lateItem = await publish(served, {
+      ...laterCard,
+      merchant_item_id: "esim-late",
+      fulfill_deadline_seconds: undefined,
+    } as Card);
+    const keptItem = await publish(served, laterCard);
+    const late = await orderTakenOn(harnessed, served, lateItem);
+    const refused = await orderTakenOn(harnessed, served, keptItem);
+    await served.call("POST", `/v0/orders/${refused}/refuse`, {
+      body: { code: "out_of_stock", message: "none left" },
+      headers: keyOf(harnessed.merchant),
+    });
+    const left = await orderTakenOn(harnessed, served, keptItem);
+    await harnessed.gateway.runner.apply(left, { kind: "merchant_departed", at: harnessed.now() });
+
+    const sentences = await Promise.all(
+      [late, refused, left].map(
+        async (orderId) => (await owingOf(served, orderId)).reason?.message,
+      ),
+    );
+
+    expect(new Set(sentences).size).toBe(3);
   });
 });
 
