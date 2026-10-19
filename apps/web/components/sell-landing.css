@@ -1222,24 +1222,6 @@ html:has(.sell) {
   border-color: #595954;
   background: transparent;
 }
-.sell .colophon {
-  padding: 32px max(var(--gutter), calc((100vw - var(--wide)) / 2));
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  gap: 28px;
-  align-items: center;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
-  color: var(--muted);
-}
-.sell .colophon__links {
-  display: flex;
-  gap: 20px;
-}
-.sell .wordmark--footer .wordmark__mark {
-  width: 30px;
-  height: 30px;
-}
 @media (max-width: 1000px) {
   .sell .masthead__links {
     display: none;
@@ -1271,12 +1253,6 @@ html:has(.sell) {
   }
   .sell .final-cta > div:last-child {
     width: min(100%, 390px);
-  }
-  .sell .colophon {
-    grid-template-columns: 1fr 1fr;
-  }
-  .sell .colophon > p {
-    display: none;
   }
 }
 @media (max-width: 680px) {
@@ -1384,13 +1360,6 @@ html:has(.sell) {
   }
   .sell .final-cta h2 {
     font-size: 32px;
-  }
-  .sell .colophon {
-    grid-template-columns: 1fr;
-    padding-inline: 18px;
-  }
-  .sell .colophon__links {
-    flex-wrap: wrap;
   }
   .sell .masthead__nav .button {
     min-height: 36px;

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import type { ConsentedClick } from "./dashboard-entry.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { cookieHeader, type GoogleProfile, googleExchange } from "./testing/google.js";
@@ -49,7 +48,7 @@ function setup(
   );
   const google = googleExchange();
   vi.stubGlobal("fetch", google.fetch);
-  const start = async (profile: Partial<GoogleProfile> = {}, click?: ConsentedClick) => {
+  const start = async (profile: Partial<GoogleProfile> = {}, click?: string) => {
     const began = await identity.startGoogle("settings", click);
     if (began.status !== "redirect") throw new Error("Google must be available");
     return {
@@ -58,7 +57,7 @@ function setup(
       cookie: cookieHeader(began.setCookies),
     };
   };
-  const login = async (profile: Partial<GoogleProfile> = {}, click?: ConsentedClick) => {
+  const login = async (profile: Partial<GoogleProfile> = {}, click?: string) => {
     const flow = await start(profile, click);
     return await identity.finishGoogle(flow.query, flow.cookie);
   };
@@ -337,34 +336,32 @@ describe("Google dashboard identity", () => {
  * Synthetic: each passes the partner click identifier's pattern and was never
  * issued by any tracker.
  */
-const CLICK = {
-  id: "qa_click_0123456789abcdef",
-  consentedAt: "2026-10-15T09:30:00.000Z",
-  wording: "registration-consent-1",
-} as const;
+const CLICK = "qa_click_0123456789abcdef";
 
 const registrationsIn = (rows: MemoryRows) => rows.dashboard_registration_postbacks ?? [];
 
-describe("the registration a consented Google sign-in leaves for the tracker", () => {
-  it("leaves one pending registration with the click, the consent time and the wording when a consented Google sign-in makes a new address's account", async () => {
+describe("the registration a Google sign-in started with an ad's click leaves for the tracker", () => {
+  it("leaves one pending registration holding the click, and nothing else of the sign-in, when the Google sign-in makes a new address's account", async () => {
     const { login, rows } = setup({ registrationPostback: reporting.registrationPostback });
     const before = Date.now();
 
     const opened = await login({}, CLICK);
 
-    if (opened.status !== "opened") throw new Error("the consented Google sign-in did not open");
+    if (opened.status !== "opened") throw new Error("the Google sign-in did not open");
     expect(opened.person).toMatchObject({ email: "person@gmail.com", confirmed: true });
-    const [registration, ...more] = registrationsIn(rows);
-    expect(more).toStrictEqual([]);
-    expect(registration).toMatchObject({
-      accountId: opened.person.id,
-      clickId: CLICK.id,
-      consentedAt: new Date(CLICK.consentedAt),
-      consentWording: CLICK.wording,
-      state: "pending",
-      attempts: 0,
-      settledAt: null,
-    });
+    expect(registrationsIn(rows)).toStrictEqual([
+      {
+        accountId: opened.person.id,
+        clickId: CLICK,
+        state: "pending",
+        attempts: 0,
+        nextAttemptAt: expect.any(Date),
+        lastOutcome: null,
+        createdAt: expect.any(Date),
+        settledAt: null,
+      },
+    ]);
+    const [registration] = registrationsIn(rows);
     // Due at once: nothing about a new registration is worth waiting for.
     const due = new Date(registration?.nextAttemptAt as Date).getTime();
     expect(due).toBeGreaterThanOrEqual(before);
@@ -437,7 +434,7 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
   });
 
   it.each(["cancelled", "unverified-email", "foreign-state", "outage"])(
-    "writes nothing for a consented Google sign-in whose callback is refused: %s",
+    "writes nothing for a Google sign-in with a click whose callback is refused: %s",
     async (kind) => {
       const { start, identity, rows, google } = setup({
         registrationPostback: reporting.registrationPostback,
@@ -472,7 +469,7 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
     foreign.query.set("state", "other-browser");
     const elsewhere = await start({}, CLICK);
     const another = await start({}, CLICK);
-    const unticked = await start({ email_verified: false });
+    const withoutClick = await start({ email_verified: false });
 
     const answers = {
       cancelled: await identity.finishGoogle(cancelled.query, cancelled.cookie),
@@ -480,25 +477,25 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
       foreign: await identity.finishGoogle(foreign.query, foreign.cookie),
       // The state is a real sign-in's, held to the cookie of another browser.
       elsewhere: await identity.finishGoogle(elsewhere.query, another.cookie),
-      unticked: await identity.finishGoogle(unticked.query, unticked.cookie),
+      withoutClick: await identity.finishGoogle(withoutClick.query, withoutClick.cookie),
     };
 
     expect(answers.cancelled).toMatchObject({
       status: "refused",
       reason: "cancelled",
-      click: CLICK,
+      clickId: CLICK,
     });
     expect(answers.unverified).toMatchObject({
       status: "refused",
       reason: "email-unverified",
-      click: CLICK,
+      clickId: CLICK,
     });
-    for (const answer of [answers.foreign, answers.elsewhere, answers.unticked]) {
+    for (const answer of [answers.foreign, answers.elsewhere, answers.withoutClick]) {
       expect(answer.status).toBe("refused");
-      expect(answer).not.toHaveProperty("click");
+      expect(answer).not.toHaveProperty("clickId");
     }
     for (const answer of Object.values(answers)) {
-      expect(answer.setCookies.map(decodeURIComponent).join("\n")).not.toContain(CLICK.id);
+      expect(answer.setCookies.map(decodeURIComponent).join("\n")).not.toContain(CLICK);
     }
     expect(rows.dashboard_accounts).toStrictEqual([]);
     expect(registrationsIn(rows)).toStrictEqual([]);
@@ -514,7 +511,7 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
     const answer = await off.identity.finishGoogle(flow.query, flow.cookie);
 
     expect(answer).toMatchObject({ status: "refused", reason: "cancelled" });
-    expect(answer).not.toHaveProperty("click");
+    expect(answer).not.toHaveProperty("clickId");
   });
 
   it("keeps the click out of every cookie and out of the address the browser is sent to Google with", async () => {
@@ -530,14 +527,12 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
     const seen = [flow.began.location, ...flow.began.setCookies, ...finished.setCookies]
       .map(decodeURIComponent)
       .join("\n");
-    for (const part of [CLICK.id, CLICK.consentedAt, CLICK.wording]) {
-      expect(seen).not.toContain(part);
-    }
+    expect(seen).not.toContain(CLICK);
   });
 
   it("signs in and writes nothing for a click that comes back from the state unreadable", async () => {
-    // A state row holding a click this file would not have written is no
-    // consent to tell anybody anything.
+    // A state row holding a click this file would not have written was not
+    // written by it, and reports nothing.
     const { start, identity, rows } = setup({
       registrationPostback: reporting.registrationPostback,
     });
@@ -545,10 +540,10 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
     const stored = rows.dashboard_verifications?.find(
       (row) => row.identifier === flow.query.get("state"),
     );
-    if (stored === undefined || !String(stored.value).includes(CLICK.id)) {
+    if (stored === undefined || !String(stored.value).includes(CLICK)) {
       throw new Error("the started sign-in's state does not hold its click");
     }
-    stored.value = String(stored.value).replaceAll(CLICK.id, "too-short");
+    stored.value = String(stored.value).replaceAll(CLICK, "too-short");
 
     expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
       status: "opened",
@@ -560,9 +555,9 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
   it("refuses to start a Google sign-in with a click it could not read back, and keeps no state", async () => {
     const { identity, rows } = setup({ registrationPostback: reporting.registrationPostback });
 
-    expect(
-      await identity.startGoogle("settings", { ...CLICK, consentedAt: "yesterday" }),
-    ).toStrictEqual({ status: "unavailable" });
+    expect(await identity.startGoogle("settings", "too-short")).toStrictEqual({
+      status: "unavailable",
+    });
 
     expect(rows.dashboard_verifications).toStrictEqual([]);
   });

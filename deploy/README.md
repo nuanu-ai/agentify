@@ -706,10 +706,9 @@ PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
 all of them visible ASCII: no space, line break or typographic dash. With the
 switch on, the dashboard tells the tracker once, at
 `https://aisamuraihub.com/postback`, that a person its ad sent made their
-first account, for each person who ticked the box the sign-in page offers to a
-visitor arriving from the tracker's landing page and then either confirmed it
-on the link's page when signing in or signed in with Google; the tracker's
-click identifier is all it sends.
+first account: every visitor arriving from the tracker's landing page whose
+sign-in, by a mailed link or with Google, is their address's first, with
+nothing asked on screen; the tracker's click identifier is all it sends.
 Each outcome is one line in the application's log, such as
 `registration report delivered: http_200`, naming no person and no click. With
 the switch on and no such key the application refuses to start; with it off the

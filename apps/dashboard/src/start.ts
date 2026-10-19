@@ -2,7 +2,7 @@
  * Starts the dashboard inside the process it shares with the gateway: its
  * listeners, the scanner's route where its secret is set, the WooCommerce
  * worker, which fills paid orders for merchants who connected a shop instead of
- * writing code, and the loop that reports consented registrations to the ad
+ * writing code, and the loop that reports registrations from ads to the ad
  * tracker. The worker does not start on the live channel, where the connector
  * is not offered. The reports' loop starts everywhere: switched on it reports,
  * and switched off it only gives up what is left pending a day on.

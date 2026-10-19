@@ -1,7 +1,7 @@
 export { Badge, type BadgeTone } from "./badge.js";
 export { Button } from "./button.js";
 export { Field } from "./field.js";
-export { Footer } from "./footer.js";
+export { Footer, SiteFooter } from "./footer.js";
 export {
   type Section,
   SectionNav,

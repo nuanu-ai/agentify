@@ -229,10 +229,9 @@ services:
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET-}"
       # Off unless the host's file turns it on. On, the dashboard tells the ad
-      # tracker once that a person its ad sent signed up, for each who ticked the
-      # box on the sign-in page and then confirmed it on the link's page or
-      # signed in with Google, with the tracker's key of at least sixteen visible
-      # ASCII characters.
+      # tracker once that a person its ad sent signed up, for each whose sign-in
+      # from the ad is their address's first, with the tracker's key of at least
+      # sixteen visible ASCII characters.
       # It refuses to start with the switch on and no such key, and on the test
       # channel at all. Off, the key is not read, so it may wait in the file
       # ahead of the switch. A laptop that tries it runs the application outside

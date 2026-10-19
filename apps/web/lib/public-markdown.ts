@@ -1,3 +1,4 @@
+import { AGENTIC_SHOP, numbered } from "../content/agentic-shop";
 import {
   LANDING_EXAMPLE_CHECKS,
   LANDING_SHARED_CONTENT,
@@ -9,7 +10,7 @@ import {
   type PublicEditorialPath,
   type RichText,
 } from "../content/public-editorial";
-import type { PublicPagePath } from "../content/public-page-metadata";
+import type { KeptPagePath } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
 
 function absoluteHref(href: string, baseUrl: string): string {
@@ -59,12 +60,8 @@ function renderLanding(config: LandingConfig): string {
     config.hero.subtitle,
     "",
     ...LANDING_SHARED_CONTENT.assurances.map((item) => `- ${item}`),
-    ...(config.secondDoor
-      ? [
-          "",
-          `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
-        ]
-      : []),
+    "",
+    `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
     "",
   ];
 
@@ -86,7 +83,83 @@ function renderLanding(config: LandingConfig): string {
   return output.join("\n");
 }
 
-export function getPublicPageMarkdown(path: PublicPagePath): string {
+/** The page about selling to agents, from the words the page draws. */
+function renderAgenticShop(): string {
+  const { baseUrl } = getPublicAppConfig();
+  const whole = (href: string): string => absoluteHref(href, baseUrl);
+  const words = (content: RichText): string => richTextToMarkdown(content, baseUrl);
+  const { hero, promise, opportunity, how, payment, loyalty, businesses, start, questions } =
+    AGENTIC_SHOP;
+  const { research } = opportunity;
+  const signIn = whole("/dashboard/sign-in");
+  return [
+    `# ${hero.title.join(" ")}`,
+    "",
+    hero.description,
+    "",
+    `[${hero.action}](${signIn})`,
+    "",
+    hero.note,
+    "",
+    `${promise.lead} ${promise.strong} ${promise.items.join(" · ")}.`,
+    "",
+    `## ${opportunity.title.join(" ")}`,
+    "",
+    opportunity.text,
+    "",
+    `- +${research.traffic.growthPercent}%: ${opportunity.growth.join(" ")} (${opportunity.chartHeading.join(", ")}). ${opportunity.sourceScope}`,
+    `- +${research.conversion.relativeLiftPercent}%: ${opportunity.conversion} ${opportunity.conversionScope}`,
+    "",
+    `Source: [${opportunity.source}](${research.sourceUrl}).`,
+    "",
+    `## ${how.title.join(" ")}`,
+    "",
+    how.lede,
+    "",
+    ...how.steps.flatMap((step, index) => [
+      `### ${numbered(index)} · ${step.title}`,
+      "",
+      words(step.text),
+      "",
+    ]),
+    `## ${payment.title.join(" ")}`,
+    "",
+    payment.text,
+    "",
+    ...payment.path.steps.map(([title, text], index) => `${index + 1}. ${title}: ${text}`),
+    "",
+    `[${payment.more.label}](${whole(payment.more.href)})`,
+    "",
+    loyalty,
+    "",
+    `## ${businesses.title.join(" ")}`,
+    "",
+    businesses.lede,
+    "",
+    ...businesses.categories.map(
+      (category) => `- ${category.title}: ${category.text} (${category.examples})`,
+    ),
+    "",
+    `## ${start.title.join(" ")}`,
+    "",
+    start.text,
+    "",
+    ...start.steps.map((step) => `- ${words(step)}`),
+    "",
+    `### ${start.card.title}`,
+    "",
+    `${start.card.text} [${start.card.action}](${signIn})`,
+    "",
+    start.card.footnote,
+    "",
+    `## ${questions.title}`,
+    "",
+    words(questions.text),
+    "",
+  ].join("\n");
+}
+
+export function getPublicPageMarkdown(path: KeptPagePath): string {
   switch (path) {
     case "/":
       return renderLanding(LANDINGS.owner);
@@ -97,5 +170,7 @@ export function getPublicPageMarkdown(path: PublicPagePath): string {
     case "/privacy":
     case "/terms":
       return renderEditorial(path);
+    case "/agentic-shop":
+      return renderAgenticShop();
   }
 }
