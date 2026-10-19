@@ -9,8 +9,9 @@
  * may be cut. One rule per run: the nth matching 2xx answer is dropped before
  * its headers or midway through its body, and from then on everything passes.
  *
- * The log never prints headers, bodies or query strings: merchant keys and
- * payment signatures travel in headers, goods and addresses in bodies.
+ * Apart from the name of a content coding, the log never prints headers,
+ * bodies or query strings: merchant keys and payment signatures travel in
+ * headers, goods and addresses in bodies.
  */
 
 import {
@@ -24,6 +25,7 @@ import {
 import { request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import { urlToHttpOptions } from "node:url";
+import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } from "node:zlib";
 
 const PHASES = ["before-headers", "mid-body"] as const;
 type Phase = (typeof PHASES)[number];
@@ -223,10 +225,22 @@ const forward = (
     outgoing.end(body);
   });
 
-/** The order an answer names; one named in the path already shows in the line. */
-const orderOf = (answer: Answer): string | null => {
+const codeOf = (error: unknown): string => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === undefined ? "no error code" : String(code);
+};
+
+const DECODERS = new Map<string, (body: Buffer) => Buffer>([
+  ["gzip", gunzipSync],
+  ["deflate", inflateSync],
+  ["br", brotliDecompressSync],
+  ["zstd", zstdDecompressSync],
+]);
+
+/** The order a JSON body names in a top-level `order_id`, or null when it names none. */
+const orderIn = (body: Buffer): string | null => {
   try {
-    const document: unknown = JSON.parse(answer.body.toString("utf8"));
+    const document: unknown = JSON.parse(body.toString("utf8"));
     if (typeof document === "object" && document !== null && "order_id" in document) {
       return typeof document.order_id === "string" ? document.order_id : null;
     }
@@ -234,6 +248,44 @@ const orderOf = (answer: Answer): string | null => {
     // Not JSON, or not readable as JSON: there is no order to name.
   }
   return null;
+};
+
+/**
+ * What the line says of the order an answer names. The order is read from a
+ * decoded copy, since the bytes forwarded stay as the upstream encoded them,
+ * and a copy that cannot be made is said to be so: "not read" must not look
+ * like an answer that names no order. An empty body has nothing to decode.
+ */
+const orderNote = (body: Buffer, coding: string | null): string => {
+  let plain = body;
+  if (coding !== null && body.length > 0) {
+    const decode = DECODERS.get(coding);
+    if (decode === undefined) {
+      return `, order not read because the proxy does not decode ${coding}`;
+    }
+    try {
+      plain = decode(body);
+    } catch (error) {
+      return `, order not read because the body did not decode as ${coding} (${codeOf(error)})`;
+    }
+  }
+  const order = orderIn(plain);
+  return order === null ? "" : `, order ${order}`;
+};
+
+/**
+ * The status, the size and the order of an answer as its line states them,
+ * and the unit its size is counted in. An order named in the path already
+ * shows in the line.
+ */
+const factsOf = (answer: Answer): { readonly facts: string; readonly unit: string } => {
+  const named = (answer.headers["content-encoding"] ?? "").trim().toLowerCase();
+  const coding = named === "" || named === "identity" ? null : named;
+  const unit = coding === null ? "bytes" : `encoded bytes (${coding})`;
+  return {
+    facts: `${answer.status}, ${answer.body.length} ${unit}${orderNote(answer.body, coding)}`,
+    unit,
+  };
 };
 
 const passThrough = (response: ServerResponse, answer: Answer): void => {
@@ -262,11 +314,6 @@ const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<nu
       resolve(half);
     });
   });
-};
-
-const codeOf = (error: unknown): string => {
-  const code = (error as { code?: unknown } | null)?.code;
-  return code === undefined ? "no error code" : String(code);
 };
 
 const listen = (
@@ -331,8 +378,7 @@ export const runCut = async (
       return;
     }
 
-    const order = orderOf(answer);
-    const facts = `${answer.status}, ${answer.body.length} bytes${order === null ? "" : `, order ${order}`}`;
+    const { facts, unit } = factsOf(answer);
     const matched = counted < rule.nth && method === rule.method && pattern.test(path);
     const stillArmed = "not counted, the rule is still armed";
 
@@ -371,7 +417,7 @@ export const runCut = async (
     log(
       rule.phase === "before-headers"
         ? `${facts}: matched, ${counted} of ${rule.nth}; CUT before-headers, nothing sent, connection closed`
-        : `${facts}: matched, ${counted} of ${rule.nth}; CUT mid-body, sent the status, the headers and ${sent} of ${answer.body.length} body bytes, then closed the connection`,
+        : `${facts}: matched, ${counted} of ${rule.nth}; CUT mid-body, sent the status, the headers and ${sent} of the body's ${answer.body.length} ${unit}, then closed the connection`,
     );
     stamped("the rule is spent: everything passes through from here on; a restart arms it again");
   };

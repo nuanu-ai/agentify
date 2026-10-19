@@ -75,9 +75,18 @@ headers describing the connection are dropped and the length is restated.
 The log is one line per request on standard output: the time, a sequence
 number, the method, the path without its query string, the upstream's status,
 the size of the body, and the order a JSON answer names in a top-level
-`order_id`. The line for the cut adds the phase and how many body bytes reached
-the caller, and the line after it says that the rule is spent. The log never
-prints a header, a body or a query string, because merchant keys and payment
+`order_id`. The reverse proxy in front of the gateway compresses larger JSON
+answers for a caller that accepts it, and the fetch in the SDK and in the buyer
+does accept it, so many answers arrive encoded. The proxy forwards those bytes
+as they came; the line
+then names the coding and counts the encoded bytes, and reads the order from a
+decoded copy when the coding is gzip, deflate, br or zstd. When it cannot read
+the order, because the coding is another one or the body does not decode, the
+line says that the order was not read and why, so a line that names no order
+is always one whose answer names none. The line for the cut adds the phase and
+how many body bytes reached the caller, and the line after it says that the
+rule is spent. Apart from the name of a content coding, the log never prints a
+header, a body or a query string, because merchant keys and payment
 signatures travel in headers and goods and buyers' addresses in bodies. Order
 ids do appear, in the paths and in that field, and an order id is a buyer's
 proof of purchase: knowing it is enough to read the order and collect its
