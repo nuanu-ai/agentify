@@ -645,6 +645,57 @@ describe("the shipment", () => {
     expect(status.ship_by).toBe(new Date(paidAt + 172_800_000).toISOString());
   });
 
+  it.each([
+    { status: "shipped", httpStatus: 200 },
+    { status: "refund_due", httpStatus: 409 },
+    { status: "rejected", httpStatus: 409 },
+  ])(
+    "answers a repeated $status purchase with HTTP $httpStatus without another charge",
+    async ({ status, httpStatus }) => {
+      const { harnessed, served, itemId } = await started();
+      if (status === "rejected") {
+        harnessed.facilitator.willSettle({ settled: false, reason: "the charge was refused" });
+      }
+      const body = { params: {}, ship_to: address };
+      const paid = await pricedThenPaid(harnessed, served, itemId, { priced: body, paid: body });
+      expect(paid.status).toBe(status === "rejected" ? 409 : 200);
+      const orderId = (paid.body as { order_id: string }).order_id;
+      const payment = harnessed.facilitator.settles[0]?.payment;
+      if (payment === undefined) throw new Error("no charge was attempted");
+
+      if (status === "shipped") {
+        const accepted = await served.call("POST", `/v0/orders/${orderId}/accept`, {
+          headers: asMerchant,
+          body: {},
+        });
+        expect(accepted.status).toBe(200);
+        expect((await ship(served, orderId, shipment)).status).toBe(200);
+      } else if (status === "refund_due") {
+        const refused = await served.call("POST", `/v0/orders/${orderId}/refuse`, {
+          headers: asMerchant,
+          body: { code: "out_of_stock", message: "The parcel cannot be fulfilled." },
+        });
+        expect(refused.status).toBe(200);
+      }
+
+      const beforeRepeat = await statusOf(served, orderId);
+      expect(beforeRepeat.status).toBe(status);
+      if (status === "shipped") expect(beforeRepeat.shipment).toMatchObject(shipment);
+      const receipt = await harnessed.store.receiptForOrder(orderId);
+
+      const repeated = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body,
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+
+      expect(repeated.status).toBe(httpStatus);
+      expect(repeated.body).toStrictEqual(beforeRepeat);
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+      expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
+      expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
+    },
+  );
+
   it("answers the same shipment again as recorded, and refuses a different one", async () => {
     // A parcel cannot be sent twice safely, so a repeat is ordinary and a
     // second, different shipment is refused rather than taken in silence: a
