@@ -332,29 +332,25 @@ describe("the chain and the facilitator together", () => {
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/FACILITATOR_URL/));
   });
 
-  it("refuses the live channel on the public facilitator", () => {
-    const wrong = withEnv(
-      PRODUCTION_CHANNEL,
-      "app",
-      "FACILITATOR_URL",
-      "https://x402.org/facilitator",
-    );
-    expect(problemsWith("production", wrong)).toContainEqual(
-      expect.stringMatching(/FACILITATOR_URL/),
-    );
+  // The test channel settles through the same facilitator as the live one, so
+  // what passes there passes the facilitator live buyers meet, and its catalogue.
+  it.each([
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
+  ] as const)("refuses %s on the public facilitator", (channel, config) => {
+    const wrong = withEnv(config, "app", "FACILITATOR_URL", "https://x402.org/facilitator");
+    expect(problemsWith(channel, wrong)).toContainEqual(expect.stringMatching(/FACILITATOR_URL/));
   });
 
-  it("refuses the live channel with either credential missing", () => {
+  it.each([
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
+  ] as const)("refuses %s with either credential missing or empty", (channel, config) => {
     for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(PRODUCTION_CHANNEL, "app", name, null);
-      expect(problemsWith("production", wrong)).toContainEqual(expect.stringMatching(name));
-    }
-  });
-
-  it("refuses the test channel with either live credential set", () => {
-    for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(TEST_CHANNEL, "app", name, `synthetic-${name.toLowerCase()}`);
-      expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(name));
+      for (const value of [null, ""]) {
+        const wrong = withEnv(config, "app", name, value);
+        expect(problemsWith(channel, wrong)).toContainEqual(expect.stringMatching(name));
+      }
     }
   });
 
@@ -691,10 +687,9 @@ describe("the release entry point", () => {
     expectNoFixtureSecrets(stderr, TEST_CHANNEL);
   });
 
-  it("reports every test-channel live credential without printing either value", () => {
-    const withId = withEnv(TEST_CHANNEL, "app", "CDP_API_KEY_ID", "synthetic-live-key-id");
+  it("reports a test channel on the wrong facilitator without printing its credentials", () => {
     const wrong = withEnv(
-      withEnv(withId, "app", "CDP_API_KEY_SECRET", "synthetic-live-key-secret"),
+      withEnv(TEST_CHANNEL, "app", "FACILITATOR_URL", "https://x402.org/facilitator"),
       "app",
       "COOKIE_SECURE",
       "false",
@@ -703,8 +698,7 @@ describe("the release entry point", () => {
     const stderr = result.stderr ?? "";
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
-    expect(stderr).toContain("CDP_API_KEY_ID");
-    expect(stderr).toContain("CDP_API_KEY_SECRET");
+    expect(stderr).toContain("FACILITATOR_URL");
     expect(stderr).toContain("COOKIE_SECURE");
     expectNoFixtureSecrets(stderr, wrong);
   });
