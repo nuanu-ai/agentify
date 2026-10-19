@@ -184,10 +184,11 @@ function fences(md: MarkdownIt, highlighter: Highlighter): void {
     if (lang === "mermaid") {
       const drawing = drawingOf(token.content);
       // The drawing's own width, which the stylesheet keeps a narrow screen
-      // from shrinking it far below.
+      // from shrinking it far below. The figure then scrolls sideways, so it
+      // takes focus like a table does: a keyboard has to be able to scroll it.
       const width = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+)/.exec(drawing)?.[1];
       const style = width === undefined ? "" : ` style="--diagram-width: ${width}px"`;
-      return `<figure class="diagram"${style}>${drawing}</figure>\n`;
+      return `<figure class="diagram" tabindex="0"${style}>${drawing}</figure>\n`;
     }
     // The theme's background is dropped: the block's frame is the page's.
     const code = highlighter
