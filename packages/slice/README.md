@@ -1,11 +1,15 @@
 # @agentify/slice
 
 This package is the repository's own test equipment, not a product surface:
-nothing in it is published, and no merchant or agent ever runs it. It holds the
-mock merchant and the buyer behind the offline gate, the `buy` and `smoke`
-commands, the stand, and the proxy described below, all of which drive the
-real gateway and the real SDK from the outside so that a test sees what a
-merchant or an agent would.
+nothing in it is published, and nothing a merchant integrates against lives
+here. It holds the vertical slice that `pnpm test` walks end to end through a
+real gateway booted in memory, the `buy` and `smoke` commands that walk a
+purchase against a running gateway or a test network, the stand — a local
+console, started with `pnpm stand`, where one person sits in turn in each of
+the three seats of a purchase: the merchant who publishes, the agent who buys,
+and the merchant's code answering orders — and the two fault instruments
+described below. All of them drive the real gateway and the real SDK from the
+outside, so that a test sees what a merchant or an agent would.
 
 ## Cutting an answer after the server committed it
 
@@ -90,3 +94,155 @@ Arming the rule again means restarting the proxy. Stop the caller first: a
 restart drops whatever is in flight through the proxy at that moment, such as
 an SDK worker's poll that the gateway holds open, and that is itself a cut
 nobody planned.
+
+## Pausing the stand's merchant
+
+Some stories in the manual test plan
+([docs/research/42-manual-test-plan.md](../../docs/research/42-manual-test-plan.md),
+the instrument it calls merchant barriers) need the merchant to stop at a known
+moment of an order: a crash before the merchant's effect, a crash after its
+durable effect and before the gateway has been told, two merchant processes
+holding the same order that the gateway sent twice. A sleep placed in the hope
+of hitting that moment proves nothing about whether it was hit. The stand's
+merchant can instead keep durable records and stop every order at one of two
+points until a tester releases it by its identifier.
+
+### Starting the stand with records
+
+Records are kept only when the stand is started with a directory for them:
+
+```sh
+STAND_RECORDS_DIR=/tmp/stand-records pnpm stand
+```
+
+The variable can also go in `.env.stand` beside `STAND_BUYER_KEY`. A relative
+path is resolved from `packages/slice`, where the command runs, so an absolute
+one is the safer habit. The directory is created if it is missing, and the
+start line names it together with the stand's process identifier:
+
+```
+Agentify stand: http://127.0.0.1:8787 — process 81696, keeping records in /tmp/stand-records
+```
+
+Two kinds of thing are written there, and they are counted apart on purpose.
+Every order the SDK hands to the handler appends a line to `arrivals.jsonl`
+with the order identifier, the merchant's item identifier, the time, and the
+port and process identifier of the stand that received it. Every order the
+handler answers gets one file holding the answer that goes back, with the same
+identifying fields, and that file is the merchant's effect. It is named by the
+SHA-256 of the order identifier, because an identifier may hold any printable
+character and a slash in a file name is a path. The file is written whole and
+flushed under a temporary name and then linked to its own name; a link refuses
+a name that already exists, so the first stand to record an order keeps it,
+and nobody ever reads a record half-written.
+
+An order may arrive many times and has one effect. An arrival whose order
+already has a record is answered with the recorded answer: what the handler is
+set to answer now is not consulted, nothing new is recorded, and no delivery is
+scheduled for it. Started without `STAND_RECORDS_DIR`, the stand writes nothing
+and remembers nothing, and its start line says so.
+
+### The two pause points
+
+The pause is set on the Orders tab, in the Paused panel. It is kept in memory,
+starts as "Do not pause" every time the stand starts, and applies to every
+arrival from the moment it is set, repeats included. Turning it off releases
+nothing already paused.
+
+"Pause each order as it arrives" stops an order once its arrival is counted and
+before the stand does anything else with it: no record is looked up, no answer
+decided, nothing written. That is the plan's "before effect". "Pause each order
+with its answer ready" stops an order once its answer is decided and, with
+records kept, recorded, and before that answer goes back to the gateway. That
+is the plan's "after the durable effect, before acknowledgement": the record is
+on disk and the gateway has heard nothing.
+
+A pause is not one of the handler's answers. The answer chosen above it on the
+same tab ("Deliver at once", "Refuse with the code below" and the rest) still
+decides what the order gets, and the pause only stops the order at one point on
+that path. That makes it a different thing from "Hold it and ask me", which
+holds an order so that a person can choose its answer and gives up after thirty
+seconds. A pause has no ceiling: it holds until the order is released, until
+the stand disconnects, or until the process dies.
+
+### Releasing a paused order
+
+Every paused order is listed in the Paused panel with its identifier, its item,
+the point it is paused at and since when, beside a Release button. The same
+release works from a terminal, because the stand accepts a form post that
+carries no Origin header:
+
+```sh
+curl -d action=release_pause -d order_id=<order id> http://127.0.0.1:8787/orders
+```
+
+The stand answers every post with a redirect for the browser, and the body of
+that redirect carries what the stand said back, so curl prints either that the
+order was released or why nothing was. An identifier that is not paused at this
+stand releases nothing and is answered in those words.
+
+### Crashing in a phase, and running two stands
+
+The Paused panel shows the stand's process identifier, as the start line does,
+and `kill -9 <pid>` stops the stand exactly where its order is paused. Crashed
+while an order is paused as it arrived, the stand leaves neither a record nor an
+answer, and the gateway can send the order again. Crashed with the answer ready,
+it leaves the record while the gateway still has heard nothing, so a stand
+started again on the same directory answers the repeat with the recorded
+answer, whatever it is now set to answer.
+
+An order taken on with "Accept, then deliver after the delay" and crashed before
+its answer went back has no delivery scheduled anywhere after the restart. The
+repeat is answered from the record, which promises nothing new, and the order
+waits in the Owed panel for a delivery by hand. That is the merchant's recovery
+gap the plan asks to be looked at, and the stand does not paper over it.
+
+Two stands of one merchant share its stream of orders. A second one started
+with another `STAND_PORT` and the same `STAND_RECORDS_DIR`, and connected with
+the same merchant key, shares one effect per order with the first. With both
+set to pause with the answer ready, the stand handed the order first records
+its answer and stops; a few seconds later the gateway sends the order again, the
+other stand receives it, finds the record and stops with the same answer, and
+the two hold one order the gateway sent twice, with one record between them.
+Releasing or crashing either of them then plays out the plan's story of two
+instances holding a redelivered order.
+
+Disconnecting, connecting to another gateway, or stopping the stand with Ctrl-C
+gives up on every paused order: its handler throws, the SDK answers nothing for
+it, and a record already written stays.
+
+### What a long pause meets
+
+Three clocks run while an order is paused, and a pause outlasts all of them.
+The gateway waits about three seconds for one hand-over before sending the
+order again; a synchronous order's goods are due ten seconds after the payment;
+and the agent is promised an answer within twenty. While a stand's handler is
+paused, that stand takes nothing else, because the SDK hands orders to its
+handler one at a time. The repeat therefore goes to another stand of the same
+merchant if one is polling. With none, it waits behind the paused order, and
+the gateway does not hand out an order that has moved on since its repeat was
+queued, so once the released answer has closed the order nothing more arrives.
+Every repeat counts toward the order's attempts, and an order is sent again
+only while it has attempts left and its deadline allows.
+
+A synchronous order paused past its ten seconds is over by the time it is
+released, and its late answer is told that the purchase has closed. An
+asynchronous order is held to its card's own delivery deadline instead, which
+makes it the one to pause for long.
+
+### Stories to run without records
+
+A stand that keeps records answers every repeat with what it recorded, as a
+merchant's own code should. It therefore cannot play a merchant who answers a
+repeat differently: goods corrected after the gateway refused them, a different
+delivery on a repeat, a shape the card never declared replaced by the right one.
+Those stories run on a stand started without `STAND_RECORDS_DIR`.
+
+### What is not paused
+
+Only the handler's answer to an order is paused. The later delivery of an order
+taken on earlier, whether it comes from the stand's own timer or from "Deliver
+now" in the Owed panel, goes out without a pause, and so does a refusal sent
+from the Owed panel. Price questions and order events are not paused either.
+Nothing in the SDK or the gateway changes when the stand pauses: the pause
+lives entirely in the stand's merchant.
