@@ -490,17 +490,22 @@ describe("the payment challenge", () => {
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
-  it("gives an agent the life of the price as its time to pay, before it signs", async () => {
-    // An unpaid order closes when its price runs out. A challenge that offered
-    // longer would let an agent ask its owner, sign and pay after the order was
-    // gone, and learn so only from the refusal.
-    for (const [lives, seconds] of [
-      ["30000", 30],
-      ["45000", 45],
-    ] as const) {
-      const { served, harnessed } = await started({
-        QUOTE_TTL_MS: lives,
-      });
+  it("asks for an authorisation that outlives the charge, even one signed as the price runs out", async () => {
+    // A purchase delivered in the answer is charged after its goods, up to the
+    // synchronous answer's time after its payment checks out, and the exact-EVM
+    // facilitator refuses an authorisation within six seconds of its end. The
+    // reference client signs one valid for maxTimeoutSeconds from the moment
+    // it signs, so the challenge asks for the price's whole life, the answer's
+    // time and the six seconds: signed at the price's last moment and sent at
+    // once, the authorisation is still good when the charge goes out.
+    const environments: Record<string, string>[] = [
+      { QUOTE_TTL_MS: "30000" },
+      { QUOTE_TTL_MS: "45000" },
+      { QUOTE_TTL_MS: "30000", SYNC_RESPONSE_MS: "15000", SYNC_BUDGET_MS: "30000" },
+    ];
+    for (const environment of environments) {
+      const { served, harnessed } = await started(environment);
+      const { quoteTtlMs, syncResponseMs } = harnessed.runtime.config.deadlines;
       const itemId = await publish(served, syncCard);
 
       for (const asked of [
@@ -510,9 +515,10 @@ describe("the payment challenge", () => {
         const challenge = decodePaymentRequiredHeader(
           asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
         );
-        expect(challenge.accepts[0]?.maxTimeoutSeconds, lives).toBe(seconds);
+        expect(challenge.accepts[0]?.maxTimeoutSeconds, JSON.stringify(environment)).toBe(
+          (quoteTtlMs + syncResponseMs) / 1_000 + 6,
+        );
       }
-      expect(harnessed.runtime.config.deadlines.quoteTtlMs).toBe(seconds * 1_000);
 
       await served.close();
       await harnessed.stop();
