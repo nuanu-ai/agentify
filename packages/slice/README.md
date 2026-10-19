@@ -180,12 +180,19 @@ set to answer now is not consulted, nothing new is recorded, and no delivery is
 scheduled for it. Started without `STAND_RECORDS_DIR`, the stand writes nothing
 and remembers nothing, and its start line says so.
 
+A record holds the answer and nothing of a parcel. The stand keeps no shipping
+address and has no path for recording a shipment, so the parcel stories that
+need the merchant's durable copy of an address, F-02 in the plan, cannot be run
+on it.
+
 ### The two pause points
 
 The pause is set on the Orders tab, in the Paused panel. It is kept in memory,
 starts as "Do not pause" every time the stand starts, and applies to every
-arrival from the moment it is set, repeats included. Turning it off releases
-nothing already paused.
+arrival from the moment it is set, repeats included. An order is paused at
+most once, at the point that was set when it arrived: changing the setting while
+an order is paused or still being decided sets up the next arrival and leaves
+that order as it was, so turning the pause off releases nothing already paused.
 
 "Pause each order as it arrives" stops an order once its arrival is counted and
 before the stand does anything else with it: no record is looked up, no answer
@@ -214,10 +221,15 @@ carries no Origin header:
 curl -d action=release_pause -d order_id=<order id> http://127.0.0.1:8787/orders
 ```
 
-The stand answers every post with a redirect for the browser, and the body of
-that redirect carries what the stand said back, so curl prints either that the
-order was released or why nothing was. An identifier that is not paused at this
-stand releases nothing and is answered in those words.
+A post the stand runs is answered with a redirect for the browser, a 303, and
+the body of that redirect carries what the stand said back, so curl prints
+either that the order was released or why nothing was. An identifier that is
+not paused at this stand releases nothing and is answered in those words, under
+the same 303. A script therefore reads the body to learn whether anything was
+released, since the status is the same either way and `curl -f` cannot tell the
+two apart. A post the stand does not run is answered otherwise: 403 when its
+Origin header names a page other than this stand's own, 400 when its body could
+not be read, and 503 while the stand is shutting down.
 
 ### Crashing in a phase, and running two stands
 
@@ -247,7 +259,13 @@ instances holding a redelivered order.
 
 Disconnecting, connecting to another gateway, or stopping the stand with Ctrl-C
 gives up on every paused order: its handler throws, the SDK answers nothing for
-it, and a record already written stays.
+it, and a record already written stays. An order held by "Hold it and ask me" is
+given up on the same way, with nothing answered and nothing recorded, because
+nobody answering it while the stand goes away is not the merchant refusing it.
+So is an order handed over while a disconnect still waits for a delivery
+already on its way: it is given up on at once rather than held. Only the
+thirty-second ceiling, reached while the stand is connected, refuses a held
+order, and that refusal is recorded like any other answer.
 
 ### What a long pause meets
 
@@ -259,12 +277,23 @@ paused, that stand takes nothing else, because the SDK hands orders to its
 handler one at a time. The repeat therefore goes to another stand of the same
 merchant if one is polling. With none, it waits behind the paused order, and
 the gateway does not hand out an order that has moved on since its repeat was
-queued, so once the released answer has closed the order nothing more arrives.
-Every repeat counts toward the order's attempts, and an order is sent again
-only while it has attempts left and its deadline allows.
+queued, so once a released delivery or refusal has closed the order nothing
+more arrives for it. Taking the order on does not close it, and a repeat
+queued before the order was taken on is still handed over after it. With
+one stand on "Accept, then deliver" and the pause left at "Pause each order with its answer ready",
+the order therefore comes back and is paused again: answered from its record
+when records are kept, and decided afresh when they are not. Every repeat
+counts toward the order's attempts, and an order is sent again only while it
+has attempts left and its deadline allows.
 
 A synchronous order paused past its ten seconds is over by the time it is
-released, and its late answer is told that the purchase has closed. An
+released. When its late goods arrive the gateway answers that the purchase has
+already closed, and on the wire that answer is a success: the SDK reports only
+answers that did not get through or were refused, and the stand does not log
+what the gateway said back, so the log shows the handler delivering and nothing
+after it. The order's own status is where the outcome shows: read the Orders
+panel again after the release, and the order reads expired. A late refusal is
+itself refused as an order already closed, and that the log does show. An
 asynchronous order is held to its card's own delivery deadline instead, which
 makes it the one to pause for long.
 
