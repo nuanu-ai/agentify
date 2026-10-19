@@ -1441,7 +1441,7 @@ export class Gateway {
     ) {
       return {
         step: "payment_not_verified",
-        why: `nothing was charged and nothing was made: this payment's authorisation ends too soon for a purchase delivered in the answer, which is charged after its goods, up to ${needed / 1_000} seconds after the payment is checked; sign the payment again and send it at once`,
+        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; sign the payment again and send it at once`,
         retryable: false,
       };
     }
