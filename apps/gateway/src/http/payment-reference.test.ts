@@ -204,6 +204,31 @@ const present = (served: Served, itemId: string, payment: string) =>
     headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
   });
 
+/** A payment that is not one, carrying only the reference, as anyone who read it could send. */
+const onlyTheReference = (challenge: string): string =>
+  encodePaymentSignatureHeader({
+    x402Version: 2,
+    accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: referenceIn(challenge) } } as never,
+    payload: {},
+  });
+
+/** Neither the order's identifier nor the address built from it is in an answer. */
+const expectNoOrderIn = (body: unknown, orderId: string) => {
+  const text = JSON.stringify(body);
+  expect(text).not.toContain(orderId);
+  expect(text).not.toContain("status_url");
+  expect(text).not.toContain("/x402/orders/");
+};
+
+/** Waits, briefly, for an order to reach a state a timer moves it to. */
+const reaching = async (harnessed: Harness, orderId: string, state: string) => {
+  for (let tries = 0; tries < 200; tries += 1) {
+    if ((await harnessed.store.orderById(orderId))?.order.state === state) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`the order never reached ${state}`);
+};
+
 describe("the order's identifier on the payment side", () => {
   it.each([
     ["delivered in the answer", syncCard],
@@ -329,25 +354,51 @@ describe("a payment reference", () => {
     );
   });
 
-  it("of an order already paid is refused to another payer, in words that name no order", async () => {
-    // A listing can publish the reference of a paid order. Holding it buys
-    // nothing and learns nothing: the order stays its payer's.
-    const { harnessed, served } = await started();
-    const itemId = await publish(harnessed, asyncCard);
-    const challenge = await challengeFor(served, itemId);
-    expect(typeof referenceIn(challenge)).toBe("string");
-    const bought = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
-    expect(bought.status).toBe(200);
-    const orderId = (bought.body as { order_id: string }).order_id;
+  it.each([
+    ["in progress", asyncCard, undefined, "paid"],
+    ["delivered on the call", syncCard, { delivered: { access_code: "SESAME" } }, "delivered"],
+    [
+      "owing a refund",
+      asyncCard,
+      { refused: { code: "out_of_stock", message: "gone" } },
+      "refund_due",
+    ],
+  ] as const)(
+    "of a paid order %s is refused to another payer and to a payment that is not one, in words that name no order",
+    async (_case, card, answer, state) => {
+      // A listing publishes the reference of a request that was charged, so
+      // mostly of an order delivered or owing a refund. Holding it buys nothing
+      // and learns nothing: the order stays its payer's.
+      const { harnessed, served } = await started();
+      const itemId = await publish(harnessed, card);
+      const worker =
+        answer === undefined ? null : workUntilStopped(harnessed, { onOrder: () => answer });
+      try {
+        const challenge = await challengeFor(served, itemId);
+        expect(typeof referenceIn(challenge)).toBe("string");
+        const bought = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+        expect(bought.status).toBe(200);
+        const orderId = (bought.body as { order_id: string }).order_id;
+        await reaching(harnessed, orderId, state);
+        const charged = harnessed.facilitator.settles.length;
 
-    const stranger = await present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02"));
+        const stranger = await present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02"));
+        const notOne = await present(served, itemId, onlyTheReference(challenge));
 
-    expect(stranger.status).toBe(409);
-    expect((stranger.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
-    expect(JSON.stringify(stranger.body)).not.toContain(orderId);
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect((await harnessed.store.orderById(orderId))?.paidBy?.toLowerCase()).toBe(BUYER);
-  });
+        expect(stranger.status).toBe(409);
+        expect((stranger.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
+        expect(notOne.status).toBe(409);
+        for (const answered of [stranger, notOne]) {
+          expectNoOrderIn(answered.body, orderId);
+          expect(JSON.stringify(answered.body)).not.toContain("SESAME");
+        }
+        expect(harnessed.facilitator.settles).toHaveLength(charged);
+        expect((await harnessed.store.orderById(orderId))?.paidBy?.toLowerCase()).toBe(BUYER);
+      } finally {
+        await worker?.stop();
+      }
+    },
+  );
 });
 
 describe("a payer whose answer was lost", () => {
@@ -385,31 +436,6 @@ describe("a payer whose answer was lost", () => {
 });
 
 describe("the reference of an order that ended before a payment was taken", () => {
-  /** A payment that is not one, carrying only the reference, as anyone who read it could send. */
-  const onlyTheReference = (challenge: string): string =>
-    encodePaymentSignatureHeader({
-      x402Version: 2,
-      accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: referenceIn(challenge) } } as never,
-      payload: {},
-    });
-
-  /** Neither the order's identifier nor the address built from it is in an answer. */
-  const expectNoOrderIn = (body: unknown, orderId: string) => {
-    const text = JSON.stringify(body);
-    expect(text).not.toContain(orderId);
-    expect(text).not.toContain("status_url");
-    expect(text).not.toContain("/x402/orders/");
-  };
-
-  /** Waits, briefly, for an order to reach a state a timer moves it to. */
-  const reaching = async (harnessed: Harness, orderId: string, state: string) => {
-    for (let tries = 0; tries < 200; tries += 1) {
-      if ((await harnessed.store.orderById(orderId))?.order.state === state) return;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    throw new Error(`the order never reached ${state}`);
-  };
-
   it("hands back no order for a price that lapsed, and asks the facilitator nothing", async () => {
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
