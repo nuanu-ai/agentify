@@ -671,7 +671,9 @@ the key, and the gateway does not start and activation stops nothing, with
 words that name `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` and the likely
 causes, which Coinbase's answer does not tell apart: the key was revoked or
 deleted, the key has an IP allowlist that does not include the host's public
-address, or the account or project the key belongs to is restricted. Any other
+address, the account or project the key belongs to is restricted, or the
+host's clock is off by more than about two minutes, which makes every token
+Coinbase receives look expired or not yet valid. Any other
 answer, or none within ten seconds, says nothing about the key, and an outage
 at Coinbase must not keep a channel down, so both go on with one line in the
 log saying the key is unconfirmed; a key Coinbase refuses would then show only

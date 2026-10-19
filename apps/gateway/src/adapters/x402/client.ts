@@ -174,8 +174,10 @@ export async function refuseUnlessCoinbaseTakesTheKey(
         "an empty payment with the key CDP_API_KEY_ID names, signed with CDP_API_KEY_SECRET, it " +
         `answered HTTP ${status}. Likely causes, though the answer does not say which: the key ` +
         "was revoked or deleted; the key has an IP allowlist that does not include this server's " +
-        "public address; or the account or the project the key belongs to is restricted. " +
-        "Started anyway, the gateway would take purchases and fail every one of them at verify",
+        "public address; the account or the project the key belongs to is restricted; or this " +
+        "host's clock is off by more than about two minutes, so that every token Coinbase " +
+        "receives looks expired or not yet valid. Started anyway, the gateway would take " +
+        "purchases and fail every one of them at verify",
     );
   }
   if ((status >= 200 && status < 300) || status === 400 || status === 422) {
