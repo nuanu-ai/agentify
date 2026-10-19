@@ -432,11 +432,12 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
  * payment stands in for authorisation.
  *
  * `order_id`: knowing an order's identifier stands in for a key. That rests on
- * the identifier being random and long enough not to be guessed, not on it
- * being secret: it travels in the payment challenge and to the merchant, and
- * anyone who obtains it can read that order. So the document behind this door
- * carries only what the buyer is owed, and a gateway must answer an
- * identifier that names no order exactly as any other unknown one.
+ * the identifier being random and long enough not to be guessed, not on its
+ * being kept from the parties to the sale: it travels in the payment challenge
+ * and to the merchant. Anyone else who obtains it can read that order, so the
+ * agent is told to keep it to itself, the document behind this door carries
+ * only what the buyer is owed, and a gateway must answer an identifier that
+ * names no order exactly as any other unknown one.
  *
  * `undecided`: no door has been chosen. A gateway must not mount such a route;
  * see `mountableRoutes`.

@@ -216,9 +216,10 @@ const environmentSchema = z.object({
   QUOTE_RESPONSE_MS: durationMs(5_000),
   /**
    * How long a price holds, and with it the unpaid order it was named for. The
-   * payment challenge offers an agent this long to pay, so it is also how long
-   * the authorisation an agent signs stays valid, and a synchronous card's
-   * charge, sent after its goods, has to go through inside it.
+   * payment challenge offers an agent this long to pay, and an agent's client
+   * signs its authorisation valid for this long, so a synchronous card's
+   * charge, sent after its goods, has to go out while that authorisation is
+   * still valid.
    */
   QUOTE_TTL_MS: durationMs(30_000),
   /**

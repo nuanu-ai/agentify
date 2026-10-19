@@ -1,14 +1,15 @@
 # 0011. The order identifier is the agent's proof
 
 Date: 2026-08-27
-Status: accepted for the controlled launch; for a public audience on 2026-10-19
+Status: accepted for the controlled launch; for a public audience on 2026-10-19,
+awaiting the product owner's word
 
 ## Context
 
 An agent that buys an asynchronous product receives an order before the goods
 exist and collects them later from `GET /x402/orders/:order_id/status`, so that
-route needs a rule for who may ask. Merchants have keys; buyers deliberately do
-not, since registering first would undo buying with no prior relationship.
+route needs a rule for who may ask. Merchants have keys; buyers deliberately
+do not, as registering would undo buying with no prior relationship.
 
 ## Decision
 
@@ -28,8 +29,8 @@ blur the next step. It leaves out the merchant's product key, the parameters
 and address the buyer sent, and every other order. Every identifier that names
 no order gets the same `no_such_order`, so probing learns nothing. Every answer
 of the route tells caches to keep nothing (`Cache-Control: no-store`), and the
-order document and the site's `llms.txt` tell the agent that the identifier is
-the key to its goods and is not to be shared.
+contract's description of the order document and the site's `llms.txt` tell
+the agent that the identifier is the key to its goods, not to be shared.
 
 ## Consequences
 
@@ -54,7 +55,6 @@ asynchronous product that an agent cannot collect. Giving buyers accounts and
 keys turns buying into signing up, while the product exists so that an agent
 with a budget can buy without a relationship first.
 
-Making the agent prove control of the paying address, which x402's
-Sign-In-With-X allows, remains the long-term direction. It is not taken now:
-it asks every buyer's client for a second signature the purchase does not
-need, and which clients can give one is not known.
+Proving control of the paying address with x402's Sign-In-With-X remains the
+long-term direction; not now, as it asks every buyer's client for a second
+signature, and which clients can give one is not known.

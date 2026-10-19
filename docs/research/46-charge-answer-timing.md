@@ -78,7 +78,12 @@ about fourteen seconds of room, and the transfers measured below land in under
 three. An agent that holds a signed authorisation before presenting it spends
 that room: past about fourteen seconds of holding, a merchant who takes the
 whole ten seconds sees the charge refused after the goods were made, and the
-order waits as `delivered_unpaid` for a repeat purchase to collect them.
+order waits as `delivered_unpaid` for a repeat purchase to collect them. The
+authorisation's end is reckoned on the agent's own clock, so a client whose
+clock runs slow spends the same room. The six-second rule is that of the
+open-source facilitator (`@x402/evm` 2.23.0) the test channel settles through;
+whether the CDP facilitator on the live chain applies the same rule has not
+been checked.
 
 ## What was measured
 

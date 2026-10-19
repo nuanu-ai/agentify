@@ -9,9 +9,10 @@ Every card is declared for the x402 Bazaar, a discovery catalog that lists an
 endpoint once its payment challenge carries a discovery declaration and a
 payment to it settles through the CDP facilitator, so the live chain settles
 there (ADR-0020). Declaring is not being listed: on 2026-10-19 the catalog
-listed no Agentify resource. Why this catalog, and what the pilot expects of
-it, is in `docs/research/04-spike-bazaar-listing.md`. A card already holds
-almost everything a declaration wants.
+listed no Agentify resource, which `pnpm smoke:listing` asks. Why this
+catalog, and what the pilot expects of it, is in
+`docs/research/04-spike-bazaar-listing.md`. A card already holds almost
+everything a declaration wants.
 
 ## Decision
 
