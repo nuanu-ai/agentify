@@ -116,6 +116,43 @@
 	# native form POST, so the dashboard can keep rejecting cross-origin submits.
 	@dashboard_link path /dashboard/sign-in/open
 
+	# The test channel is not the site. Every answer it gives asks search
+	# engines and AI assistants not to list it, its robots.txt keeps crawlers
+	# out, and its llms.txt opens by saying what it is and where the live site
+	# is, so neither a crawler nor an agent takes it for agentify.ad. Decided by
+	# the surface mode, as the documentation's notice is.
+	@test_channel expression `{env.AGENTIFY_SURFACE_MODE} == "test"`
+	header @test_channel X-Robots-Tag noindex
+	@test_robots {
+		path /robots.txt
+		expression `{env.AGENTIFY_SURFACE_MODE} == "test"`
+	}
+	handle @test_robots {
+		header Content-Type "text/plain; charset=utf-8"
+		respond <<ROBOTS
+			User-agent: *
+			Disallow: /
+
+			ROBOTS 200
+	}
+	@test_llms {
+		path /llms.txt
+		expression `{env.AGENTIFY_SURFACE_MODE} == "test"`
+	}
+	handle @test_llms {
+		header Content-Type "text/plain; charset=utf-8"
+		respond <<LLMS
+			# Agentify's test channel, paid in test money: the live site is https://agentify.ad
+
+			A merchant's engineer tries an integration here before selling for real. Payments are test USDC on Base Sepolia (eip155:84532), and nothing sold here is real. Everything about Agentify, buying from it included, is in the live site's llms.txt; buying here works the same way, with test money.
+
+			- [The live site's llms.txt](https://agentify.ad/llms.txt)
+			- [This channel's catalogue, as JSON]({env.AGENTIFY_PUBLIC_ORIGIN}/x402/catalog)
+			- [This channel's documentation]({env.AGENTIFY_PUBLIC_ORIGIN}/docs/)
+
+			LLMS 200
+	}
+
 	import shared_assets
 
 	# The gateway, at both prefixes of the contract's route table, with the path
