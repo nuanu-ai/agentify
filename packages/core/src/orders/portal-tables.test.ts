@@ -5,7 +5,7 @@ import { deadlines } from "./deadlines.js";
 import { createInput, must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
-import { outcomeFor } from "./outcome.js";
+import { endingReasonFor, outcomeFor } from "./outcome.js";
 
 /**
  * The portal's tables are the contract the merchant reads, so their rows are
@@ -28,7 +28,9 @@ import { outcomeFor } from "./outcome.js";
  * a refund, the rest is checked in `machine.test.ts` and not in this file.
  *
  * The parser is deliberately tiny: it finds a section by its heading, takes the
- * first table in it and returns one named column.
+ * first table in it and returns its first column, or the words in backticks of
+ * one named column. "How an order can end" promises the status each situation
+ * reads, and every scenario there holds the machine's word to that column.
  */
 
 const ORDERS_PAGE = readFileSync(
@@ -50,15 +52,15 @@ function section(page: string, heading: string): string {
 }
 
 /**
- * The first cell of every data row of the first table in a section: what each
- * row is about, which is what the scenarios above are named by.
+ * Every data row of the first table in a section, each as its cells, the
+ * header's cells first.
  */
-function tableRows(page: string, heading: string): readonly string[] {
+function tableOf(page: string, heading: string): readonly (readonly string[])[] {
   const lines = section(page, heading).split("\n");
   const first = lines.findIndex((line) => line.startsWith("|"));
   if (first === -1) throw new Error(`the section "${heading}" has no table`);
 
-  const rows: string[] = [];
+  const rows: string[][] = [];
   for (const line of lines.slice(first)) {
     if (!line.startsWith("|")) break;
     // A row is bounded by a pipe at each end, so splitting it leaves an empty
@@ -68,9 +70,33 @@ function tableRows(page: string, heading: string): readonly string[] {
       .slice(1, -1)
       .map((piece) => piece.trim());
     if (/^:?-+:?$/.test(cells[0] ?? "")) continue;
-    rows.push(cells[0] ?? "");
+    rows.push(cells);
   }
-  return rows.slice(1);
+  return rows;
+}
+
+/**
+ * The first cell of every data row of the first table in a section: what each
+ * row is about, which is what the scenarios above are named by.
+ */
+function tableRows(page: string, heading: string): readonly string[] {
+  return tableOf(page, heading)
+    .slice(1)
+    .map((cells) => cells[0] ?? "");
+}
+
+/**
+ * The words in backticks in one column of one row, found by the row's first
+ * cell and the column's heading: the status words the page promises for a
+ * situation, which the scenario then holds the machine to.
+ */
+function wordsIn(page: string, heading: string, row: string, column: string): readonly string[] {
+  const [header = [], ...rows] = tableOf(page, heading);
+  const at = header.indexOf(column);
+  if (at === -1) throw new Error(`the table under "${heading}" has no column ${column}`);
+  const cells = rows.find((each) => each[0] === row);
+  if (cells === undefined) throw new Error(`the table under "${heading}" has no row "${row}"`);
+  return [...(cells[at] ?? "").matchAll(/`([a-z_.]+)`/g)].map((found) => found[1] ?? "");
 }
 
 function headings(page: string): readonly string[] {
@@ -95,44 +121,52 @@ const ENDINGS = [
   "You delivered the goods",
   "You recorded a parcel's shipment",
   "There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode",
-  'You answered "I will not deliver" to a request to confirm',
-  "Time ran out: no confirmation, no payment or no synchronous delivery arrived",
+  "Time ran out: the price lapsed before the payment, or no synchronous delivery arrived",
   "You left",
   "The money was charged and no delivery happened",
   "You delivered synchronously and the payment did not execute",
-  "The payment network did not say whether the money was charged",
+  "The facilitator did not say whether the money was charged",
 ] as const;
+
+/** The status words the page promises for one of its endings. */
+const statusOf = (ending: (typeof ENDINGS)[number]): readonly string[] =>
+  wordsIn(ORDERS_PAGE, "How an order can end", ending, "`status`");
+
+function paidParcel(): Order {
+  return walk(
+    newOrder("async", {
+      mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+      priceCheck: "merchant",
+    }),
+    [
+      {
+        kind: "quote_answered",
+        at: T0 + 1,
+        available: true,
+        price: { amount: "21.00", currency: "USD", asOf: T0 },
+      },
+      { kind: "payment_verified", at: T0 + 2 },
+      { kind: "payment_settled", at: T0 + 3 },
+      { kind: "order_dispatched", at: T0 + 4 },
+      { kind: "handler_accepted", at: T0 + 5 },
+    ],
+  );
+}
 
 describe('apps/docs/orders.md, "How an order can end"', () => {
   it(`${ENDINGS[0]}: the money is the merchant's, the agent has goods and a receipt`, () => {
     const { order } = must(paidAsync(), { kind: "deliver_called", at: T0 + 60 });
 
+    expect(statusOf(ENDINGS[0])).toStrictEqual([outcomeFor(order)]);
     expect(outcomeFor(order)).toBe("delivered");
   });
 
   it(`${ENDINGS[1]}: the money is the merchant's, and the agent is told the parcel shipped`, () => {
     // Not "delivered": nothing reached the agent, and the shipment is the last
     // thing anybody here knows about the parcel.
-    const parcel = walk(
-      newOrder("async", {
-        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
-        priceCheck: "merchant",
-      }),
-      [
-        {
-          kind: "quote_answered",
-          at: T0 + 1,
-          available: true,
-          price: { amount: "21.00", currency: "USD", asOf: T0 },
-        },
-        { kind: "payment_verified", at: T0 + 2 },
-        { kind: "payment_settled", at: T0 + 3 },
-        { kind: "order_dispatched", at: T0 + 4 },
-        { kind: "handler_accepted", at: T0 + 5 },
-      ],
-    );
-    const { order } = must(parcel, { kind: "deliver_called", at: T0 + 60 });
+    const { order } = must(paidParcel(), { kind: "deliver_called", at: T0 + 60 });
 
+    expect(statusOf(ENDINGS[1])).toStrictEqual([outcomeFor(order)]);
     expect(outcomeFor(order)).toBe("shipped");
   });
 
@@ -164,24 +198,15 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     const refusedInSync = reach("failed");
 
     for (const order of [noStock, badParams, badPayment, refusedInSync]) {
-      expect(outcomeFor(order), `from ${order.state}`).toBe("rejected");
+      expect(statusOf(ENDINGS[2]), `from ${order.state}`).toStrictEqual([outcomeFor(order)]);
     }
   });
 
-  it(`${ENDINGS[3]}: a refusal, and nothing was charged`, () => {
-    expect(outcomeFor(reach("declined"))).toBe("declined");
-  });
-
-  it(`${ENDINGS[4]}: the order is closed on time and nothing moved`, () => {
-    const noConfirmation = must(reach("awaiting_confirmation"), {
+  it(`${ENDINGS[3]}: the order is closed on time and nothing moved`, () => {
+    const priceLapsed = must(newOrder("sync"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
-      deadline: "confirmation_response",
-    }).order;
-    const noPayment = must(reach("confirmed"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "payment_after_confirmation",
+      deadline: "quote_expiry",
     }).order;
     const noSyncGoods = must(reach("dispatched"), {
       kind: "deadline_expired",
@@ -189,27 +214,27 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
       deadline: "sync_response",
     }).order;
 
-    for (const order of [noConfirmation, noPayment, noSyncGoods]) {
-      expect(outcomeFor(order)).toBe("expired");
+    for (const order of [priceLapsed, noSyncGoods]) {
+      expect(statusOf(ENDINGS[3]), `from ${order.state}`).toStrictEqual([outcomeFor(order)]);
     }
   });
 
-  it(`${ENDINGS[5]}: what was not delivered comes back to the buyer`, () => {
+  it(`${ENDINGS[4]}: what was not delivered comes back to the buyer`, () => {
     const free = must(reach("dispatched"), { kind: "merchant_departed", at: T0 + 5 }).order;
     const charged = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 }).order;
 
-    expect(outcomeFor(free)).toBe("cancelled");
-    // The money did move on this one, so the same departure has to reach the
-    // agent as a different word: closing it as though nobody owed anything
+    // The money did move on the second, so the same departure has to reach
+    // the agent as a different word: closing it as though nobody owed anything
     // would lose the buyer's money.
+    expect(statusOf(ENDINGS[4])).toStrictEqual([outcomeFor(free), outcomeFor(charged)]);
     expect(outcomeFor(charged)).toBe("refund_due");
   });
 
-  it(`${ENDINGS[6]}: the money is the merchant's and the order waits for a refund`, () => {
-    expect(outcomeFor(reach("refund_due"))).toBe("refund_due");
+  it(`${ENDINGS[5]}: the money is the merchant's and the order waits for a refund`, () => {
+    expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(reach("refund_due"))]);
   });
 
-  it(`${ENDINGS[8]}: the agent is told the outcome is unknown, not that he was refused`, () => {
+  it(`${ENDINGS[7]}: the agent is told the outcome is unknown, not that he was refused`, () => {
     // The row promises "the outcome of the payment is not known", not
     // "refused". To an agent deciding whether to buy the same thing elsewhere
     // these are different answers, and the machine may not give the cheaper one
@@ -219,7 +244,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
 
-    expect(outcomeFor(unresolved)).toBe("payment_unresolved");
+    expect(statusOf(ENDINGS[7])).toStrictEqual([outcomeFor(unresolved)]);
     expect(outcomeFor(unresolved)).not.toBe("rejected");
 
     // And the row's promise that a repeat with the same key is safe: it costs
@@ -231,10 +256,10 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(repeated.effects).toStrictEqual([]);
   });
 
-  it(`${ENDINGS[7]}: the money never came, and a repeat drives the payment home`, () => {
+  it(`${ENDINGS[6]}: the money never came, and a repeat drives the payment home`, () => {
     const order = reach("delivered_unpaid");
 
-    expect(outcomeFor(order)).toBe("delivered_unpaid");
+    expect(statusOf(ENDINGS[6])).toStrictEqual([outcomeFor(order)]);
 
     const closed = walk(order, [
       { kind: "purchase_repeated", at: T0 + 6 },
@@ -245,7 +270,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(closed)).toBe("delivered");
   });
 
-  it(`${ENDINGS[7]}: where the charge went unanswered instead, the repeat waits`, () => {
+  it(`${ENDINGS[6]}: where the charge went unanswered instead, the repeat waits`, () => {
     // The other half of the portal's "You delivered and the payment did not
     // execute". The same merchant event carries both, so the page sends the
     // merchant to the order's own word to tell them apart, and the two words
@@ -257,40 +282,59 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     });
 
     // The word the page tells him to read: not `delivered_unpaid`, which is
-    // the paragraph above this one and the paragraph with the repeat in it,
-    // and not `in_progress`, which is an order still waiting on him.
-    expect(outcomeFor(order)).toBe("payment_unresolved");
+    // the paragraph with the repeat in it, and not `in_progress`, which is an
+    // order still waiting on him.
+    expect(statusOf(ENDINGS[7])).toStrictEqual([outcomeFor(order)]);
 
-    // "A repeat is refused there": no second charge goes out on a guess about
-    // the first.
+    // "A repeat purchase is refused": no second charge goes out on a guess
+    // about the first.
     expect(transition(order, { kind: "purchase_repeated", at: T0 + 1_000_000 }).ok).toBe(false);
 
-    // "If a late answer does arrive and it says the money moved, the order
-    // closes as delivered and the agent gets its goods."
+    // "If a late answer says the money moved, the order closes as delivered
+    // and the agent gets its goods."
     const paid = must(order, { kind: "payment_settled", at: T0 + 2_000_000 });
 
     expect(outcomeFor(paid.order)).toBe("delivered");
 
-    // "Until an answer that the money moved is recorded, the order can sit
-    // there": no clock is left running on it. The page promises the merchant
-    // nothing on our side will close this order on a guess about the charge,
-    // and a deadline that expired here would be exactly that guess.
+    // No clock is left running on it. The page promises the merchant nothing
+    // on our side will close this order on a guess about the charge, and a
+    // deadline that expired here would be exactly that guess.
     expect(deadlines(order)).toStrictEqual([]);
   });
 });
 
-// --- apps/docs/orders.md, "Time ran out" --------------------------------------
+// --- apps/docs/orders.md, "Every time limit" ----------------------------------
 
-const TIMEOUTS = [
-  "The agent has the price and is thinking",
-  "A request asking whether you will deliver has arrived",
-  "The agent owes payment for a confirmed order",
-  "You are delivering a synchronous order",
-  "You are delivering an asynchronous order",
+const TIME_LIMITS = [
+  "Your price handler's answer",
+  "The price an order was given",
+  "Each hand-over of an order to your process",
+  "The goods of a synchronous order",
+  "The facilitator's answer about the charge",
+  "The delivery of an asynchronous order",
+  "The shipment of a parcel",
 ] as const;
 
-describe('apps/docs/orders.md, "Time ran out"', () => {
-  it(`${TIMEOUTS[0]}: the price stops holding`, () => {
+describe('apps/docs/orders.md, "Every time limit"', () => {
+  it(`${TIME_LIMITS[0]}: a synchronous card sells at its own price, the others are refused`, () => {
+    const silent = (order: Order) => must(order, { kind: "quote_silent", at: T0 + 1 }).order;
+    const sync = silent(newOrder("sync", { priceCheck: "merchant" }));
+    const async = silent(newOrder("async", { priceCheck: "merchant" }));
+    const parcel = silent(
+      newOrder("async", {
+        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        priceCheck: "merchant",
+      }),
+    );
+
+    expect(outcomeFor(sync)).toBe("in_progress");
+    for (const refused of [async, parcel]) {
+      expect(outcomeFor(refused)).toBe("rejected");
+      expect(endingReasonFor(refused)).toBe("price_check_unanswered");
+    }
+  });
+
+  it(`${TIME_LIMITS[1]}: the price stops holding and the agent asks again`, () => {
     const { order } = must(newOrder("sync"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -298,29 +342,19 @@ describe('apps/docs/orders.md, "Time ran out"', () => {
     });
 
     expect(outcomeFor(order)).toBe("expired");
+    expect(endingReasonFor(order)).toBe("price_expired");
   });
 
-  it(`${TIMEOUTS[1]}: the order closes and the buyer's money never moved`, () => {
-    const { order } = must(reach("awaiting_confirmation"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "confirmation_response",
-    });
+  it(`${TIME_LIMITS[2]}: the order comes again rather than closing`, () => {
+    // An answer that did not come back is not an answer, so the agent is not
+    // told his purchase failed: it is still going, and the order goes back to
+    // the merchant.
+    const { order } = must(reach("dispatched"), { kind: "handler_undelivered", at: T0 + 4 });
 
-    expect(outcomeFor(order)).toBe("expired");
+    expect(outcomeFor(order)).toBe("in_progress");
   });
 
-  it(`${TIMEOUTS[2]}: the order closes, the merchant is free and is told so`, () => {
-    const { order } = must(reach("confirmed"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "payment_after_confirmation",
-    });
-
-    expect(outcomeFor(order)).toBe("expired");
-  });
-
-  it(`${TIMEOUTS[3]}: the purchase did not happen, and late goods are not lost`, () => {
+  it(`${TIME_LIMITS[3]}: nothing is charged, and late goods are not lost`, () => {
     const closed = must(reach("dispatched"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -328,6 +362,7 @@ describe('apps/docs/orders.md, "Time ran out"', () => {
     }).order;
 
     expect(outcomeFor(closed)).toBe("expired");
+    expect(endingReasonFor(closed)).toBe("merchant_timed_out");
 
     // The second half of the row, and the one the agent is promised: goods
     // that arrive after the deadline are not thrown away, and a repeat of the
@@ -342,8 +377,33 @@ describe('apps/docs/orders.md, "Time ran out"', () => {
     expect(outcomeFor(picked)).toBe("delivered");
   });
 
-  it(`${TIMEOUTS[4]}: the money is already the merchant's and a refund is owed`, () => {
+  it(`${TIME_LIMITS[4]}: nobody can say whether the buyer was charged`, () => {
+    const afterTheGoods = must(reach("fulfilled"), {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "settle_response",
+    }).order;
+    const beforeTheGoods = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
+    ]);
+
+    expect(outcomeFor(afterTheGoods)).toBe("payment_unresolved");
+    expect(outcomeFor(beforeTheGoods)).toBe("payment_unresolved");
+  });
+
+  it(`${TIME_LIMITS[5]}: the money is already the merchant's and a refund is owed`, () => {
     const { order } = must(paidAsync(), {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "async_fulfillment",
+    });
+
+    expect(outcomeFor(order)).toBe("refund_due");
+  });
+
+  it(`${TIME_LIMITS[6]}: a parcel not shipped in time owes a refund as well`, () => {
+    const { order } = must(paidParcel(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
@@ -357,9 +417,14 @@ describe('apps/docs/orders.md, "Time ran out"', () => {
 
 const EVENTS = [
   "An order was marked as needing a refund",
-  "A confirmed order was not paid for",
   "A payment did not execute after a synchronous delivery",
 ] as const;
+
+/** The event the page says a situation arrives as, which the machine has to emit. */
+const sentAs = (event: (typeof EVENTS)[number]) => ({
+  kind: "emit_merchant_event",
+  event: wordsIn(ORDERS_PAGE, "Events on the same subscription", event, "`type`")[0],
+});
 
 describe('apps/docs/orders.md, "Events on the same subscription"', () => {
   it(`${EVENTS[0]}: sent when the goods did not come in time`, () => {
@@ -369,7 +434,7 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
       deadline: "async_fulfillment",
     });
 
-    expect(effects).toContainEqual({ kind: "emit_merchant_event", event: "order.refund_due" });
+    expect(effects).toContainEqual(sentAs(EVENTS[0]));
   });
 
   it(`${EVENTS[0]}: sent when the merchant left with the money and the goods undelivered`, () => {
@@ -378,29 +443,13 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
     // is owed the same notice by the same event.
     const { effects } = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 });
 
-    expect(effects).toContainEqual({ kind: "emit_merchant_event", event: "order.refund_due" });
+    expect(effects).toContainEqual(sentAs(EVENTS[0]));
   });
 
-  it(`${EVENTS[1]}: sent when the agent did not pay in his time`, () => {
-    const { effects } = must(reach("confirmed"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "payment_after_confirmation",
-    });
-
-    expect(effects).toContainEqual({
-      kind: "emit_merchant_event",
-      event: "order.unpaid_after_confirmation",
-    });
-  });
-
-  it(`${EVENTS[2]}: sent when the goods went out and the money did not arrive`, () => {
+  it(`${EVENTS[1]}: sent when the goods went out and the money did not arrive`, () => {
     const { effects } = must(reach("fulfilled"), { kind: "payment_settle_failed", at: T0 + 5 });
 
-    expect(effects).toContainEqual({
-      kind: "emit_merchant_event",
-      event: "order.payment_failed_after_delivery",
-    });
+    expect(effects).toContainEqual(sentAs(EVENTS[1]));
   });
 });
 
@@ -552,8 +601,8 @@ describe("the portal and this machine cannot drift apart quietly", () => {
     expect(tableRows(ORDERS_PAGE, "How an order can end")).toStrictEqual([...ENDINGS]);
   });
 
-  it('has exactly the encoded rows in "Time ran out"', () => {
-    expect(tableRows(ORDERS_PAGE, "Time ran out")).toStrictEqual([...TIMEOUTS]);
+  it('has exactly the encoded rows in "Every time limit"', () => {
+    expect(tableRows(ORDERS_PAGE, "Every time limit")).toStrictEqual([...TIME_LIMITS]);
   });
 
   it('has exactly the encoded rows in "Events on the same subscription"', () => {
