@@ -194,7 +194,7 @@ const purchases = (phase: string, more: readonly string[] = []) => [
 describe("a cut before the headers", () => {
   it("lands after the upstream finished its answer, leaves the caller with no status, and lets the next identical request through whole", async () => {
     const up = await upstream(inTwoParts(200, PAID));
-    const { port } = await proxy(up.url, purchases("before-headers"));
+    const { port, log } = await proxy(up.url, purchases("before-headers"));
 
     const cut = await call(port, "POST", "/x402/itm_7/purchase", { body: PURCHASE });
     up.events.push("caller left without an answer");
@@ -210,6 +210,9 @@ describe("a cut before the headers", () => {
     expect(next.whole).toBe(true);
     expect(next.body.toString("utf8")).toBe(PAID);
     expect(up.received).toHaveLength(2);
+    expect(await lineFor(log, 1)).toContain("CUT before-headers");
+    expect(log.some((line) => line.includes("the rule is spent"))).toBe(true);
+    expect(await lineFor(log, 2)).toContain("passed through");
   });
 });
 
