@@ -1417,12 +1417,28 @@ export class Gateway {
       };
     }
 
+    // The owner is who the payment layer says paid, never the address the
+    // payment declares of itself. Where the layer names no payer, the
+    // payment's fingerprint stands in; it is derived from what was signed, so
+    // it is no more forgeable.
+    const owner = walletThatPaid(verified.payer) ?? fingerprint;
+
+    // A payer who is not the buyer of an order already paid for is turned
+    // away before the order tells it anything more. Verifying moves no money,
+    // so without this any wallet holding the price could try addresses
+    // against a paid parcel. The decision that counts is taken again under
+    // the order's lock below; this one only answers sooner.
+    if (before.paidBy !== null && before.paidBy !== owner) {
+      return { step: "not_this_purchase" };
+    }
+
     // A payment is for the address its order was priced for: one naming
     // another address is a different purchase, and one naming none pays for
-    // the priced one. It is compared only once the payment has verified, so a
-    // payment that is not one cannot try addresses against the order, and
-    // still before anything is claimed or charged. Once Agentify's copy is
-    // erased there is nothing left to compare with.
+    // the priced one. It is compared only once the payment has verified and
+    // its payer may be the buyer, so a payment that is not one cannot try
+    // addresses against the order, and still before anything is claimed or
+    // charged. Once Agentify's copy is erased there is nothing left to
+    // compare with.
     const held = before.shipTo;
     if (
       shipTo !== undefined &&
@@ -1466,12 +1482,6 @@ export class Gateway {
         retryable: false,
       };
     }
-
-    // The owner is who the payment layer says paid, never the address the
-    // payment declares of itself. Where the layer names no payer, the
-    // payment's fingerprint stands in; it is derived from what was signed, so
-    // it is no more forgeable.
-    const owner = walletThatPaid(verified.payer) ?? fingerprint;
 
     // One authorisation buys one order, which ownership by payer cannot ensure
     // since the same wallet would own both. It is claimed after verification,
