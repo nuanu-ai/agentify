@@ -687,6 +687,39 @@ describe("two stands on one records directory", () => {
     expect(secondGateway.answers[0]?.body).toEqual(records[0]?.answer);
     expect(await arrivalsIn(directory)).toHaveLength(2);
   });
+
+  it("make one delivery between them for an order both took on", async () => {
+    // The promise: the delivery that follows an order taken on is part of its
+    // one effect, so only the stand whose record stands promises it. The one
+    // that lost the race answers with the winner's record and schedules
+    // nothing, or two stands both on "Accept, then deliver" deliver twice.
+    const directory = await recordsDirectory();
+    const firstGateway = await handingGateway();
+    const secondGateway = await handingGateway();
+    const first = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    const second = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8702) });
+    merchant = first;
+    shutting.push(() => second.disconnect(), firstGateway.close, secondGateway.close);
+    for (const stand of [first, second]) {
+      stand.moods.order = "ask_me";
+      stand.moods.deliverAfterMs = 0;
+    }
+    await first.connect(firstGateway.url, KEY);
+    await second.connect(secondGateway.url, KEY);
+
+    firstGateway.hand(anOrder());
+    secondGateway.hand(anOrder());
+    await waitUntil(() => first.held.has(ORDER_ID) && second.held.has(ORDER_ID));
+
+    first.answerHeld(ORDER_ID, "accept");
+    await waitUntil(() => firstGateway.deliveries.length === 1);
+    second.answerHeld(ORDER_ID, "accept");
+    await waitUntil(() => secondGateway.answers.length === 1);
+    await settle();
+
+    expect(secondGateway.answers[0]?.body).toEqual({ accepted: {} });
+    expect(firstGateway.deliveries.length + secondGateway.deliveries.length).toBe(1);
+  });
 });
 
 describe("a stand keeping no records", () => {
