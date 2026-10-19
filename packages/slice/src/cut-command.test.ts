@@ -8,6 +8,7 @@
 
 import { spawn } from "node:child_process";
 import {
+  Agent,
   createServer,
   request as httpRequest,
   type IncomingHttpHeaders,
@@ -114,11 +115,15 @@ const call = (
   port: number,
   method: string,
   path: string,
-  { headers = {}, body = "" }: { headers?: Record<string, string>; body?: string } = {},
+  {
+    headers = {},
+    body = "",
+    agent = false,
+  }: { headers?: Record<string, string>; body?: string; agent?: Agent | false } = {},
 ): Promise<Reply> =>
   new Promise((resolve) => {
     let answered = false;
-    const request = httpRequest({ host: "127.0.0.1", port, method, path, headers, agent: false });
+    const request = httpRequest({ host: "127.0.0.1", port, method, path, headers, agent });
     request.on("error", (error: NodeJS.ErrnoException) => {
       if (!answered) {
         resolve({
@@ -212,7 +217,7 @@ describe("a cut midway through the body", () => {
   it("gives the caller the status, the headers and exactly half the bytes, then ends early; the next request passes whole", async () => {
     const goods = "g".repeat(1001);
     const up = await upstream(inTwoParts(200, goods, { "x-upstream-says": "kept" }));
-    const { port } = await proxy(up.url, purchases("mid-body"));
+    const { port, log } = await proxy(up.url, purchases("mid-body"));
 
     const cut = await call(port, "POST", "/x402/itm_7/purchase", { body: PURCHASE });
     up.events.push("caller saw the end");
@@ -223,6 +228,9 @@ describe("a cut midway through the body", () => {
     expect(cut.body.toString("utf8")).toBe("g".repeat(500));
     expect(cut.whole).toBe(false);
     expect(up.events).toEqual(["upstream finished #1", "caller saw the end"]);
+    const line = await lineFor(log, 1);
+    expect(line).toContain("CUT mid-body");
+    expect(line).toContain("500 of the body's 1001 bytes");
 
     const next = await call(port, "POST", "/x402/itm_7/purchase", { body: PURCHASE });
 
@@ -231,8 +239,8 @@ describe("a cut midway through the body", () => {
     expect(next.body.toString("utf8")).toBe(goods);
   });
 
-  it("passes an empty and a one-byte answer whole and uncounted, and cuts the next one that has a middle", async () => {
-    const bodies = ["", "x", '{"ok":true}'];
+  it("passes an empty and a one-byte answer whole and uncounted, and cuts a two-byte one after its first byte", async () => {
+    const bodies = ["", "x", "{}"];
     const up = await upstream((n, response) => plainly(200, bodies[n - 1] ?? "")(n, response));
     const { port } = await proxy(up.url, purchases("mid-body"));
 
@@ -242,7 +250,23 @@ describe("a cut midway through the body", () => {
 
     expect([empty.whole, empty.body.length]).toEqual([true, 0]);
     expect([oneByte.whole, oneByte.body.toString("utf8")]).toEqual([true, "x"]);
-    expect([cut.whole, cut.body.toString("utf8")]).toEqual([false, '{"ok"']);
+    expect([cut.whole, cut.body.toString("utf8")]).toEqual([false, "{"]);
+  });
+
+  it("ends the answer at once for a caller that keeps its connection alive, as the SDK's fetch does", async () => {
+    const keepAlive = new Agent({ keepAlive: true });
+    running.push({ close: async () => keepAlive.destroy() });
+    const up = await upstream(plainly(200, PAID));
+    const { port } = await proxy(up.url, purchases("mid-body"));
+
+    const began = performance.now();
+    const cut = await call(port, "POST", "/x402/itm_7/purchase", { agent: keepAlive });
+    const waited = performance.now() - began;
+
+    expect(cut.whole).toBe(false);
+    // The proxy's server keeps an idle connection open for five seconds, and an
+    // end that waited for that is the connection timing out, not the cut.
+    expect(waited).toBeLessThan(2_000);
   });
 });
 
@@ -412,9 +436,10 @@ describe("which answer is cut", () => {
 describe("what passes between the caller and the upstream", () => {
   it("carries request and response headers to their ends, and the log names the phase and the order but no header value, body or query", async () => {
     const sold = '{"order_id":"ord_from_answer","goods":"BODY-MARKER-OUT"}';
+    const handled = '{"ok":true,"result":"delivered","note":"BODY-MARKER-OUT"}';
     const answers = [
       plainly(200, sold, { "payment-response": "SECRET-SETTLEMENT" }),
-      plainly(200, '{"ok":true,"result":"delivered","note":"BODY-MARKER-OUT"}'),
+      plainly(200, handled),
     ];
     const up = await upstream((n, response) => answers[n - 1]?.(n, response));
     const { port, log } = await proxy(up.url, [
@@ -449,9 +474,13 @@ describe("what passes between the caller and the upstream", () => {
 
     const printed = log.join("\n");
     expect(printed).not.toMatch(/SECRET|BODY-MARKER|token=/);
-    expect(printed).toContain("ord_from_answer");
-    expect(printed).toContain("ord_from_path");
-    expect(printed).toContain("mid-body");
+    expect(await lineFor(log, 1)).toContain("ord_from_answer");
+    const cutLine = await lineFor(log, 2);
+    expect(cutLine).toContain("ord_from_path");
+    expect(cutLine).toContain("CUT mid-body");
+    expect(cutLine).toContain(
+      `${Math.floor(handled.length / 2)} of the body's ${handled.length} bytes`,
+    );
     expect(log[0]).toContain(`127.0.0.1:${port}`);
     expect(log[0]).toContain(up.url);
     expect(log[0]).toContain("POST /v0/orders/*/answer");
