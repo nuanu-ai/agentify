@@ -539,7 +539,12 @@ export class MemoryStore implements Store {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
-    if ([...this.#orders.values()].some((held) => held.paymentRef === record.paymentRef)) {
+    // An order written before references were issued has none, as on
+    // Postgres, where a missing reference is shared with no other order.
+    if (
+      record.paymentRef !== undefined &&
+      [...this.#orders.values()].some((held) => held.paymentRef === record.paymentRef)
+    ) {
       throw new Error(
         `the order ${record.order.id} names a payment reference another order already has`,
       );
