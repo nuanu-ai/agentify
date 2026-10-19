@@ -388,10 +388,8 @@ export const makeStandMerchant = (
   };
 
   /** Why a waiting handler gives up: it throws this, so the SDK answers nothing for it. */
-  const abandonment = (orderId: string, waiting: string): Error =>
-    new Error(
-      `The stand disconnected while order ${orderId} was ${waiting}, so its handler answers nothing.`,
-    );
+  const abandonment = (orderId: string, what: string): Error =>
+    new Error(`Order ${orderId} ${what}, so its handler answers nothing.`);
 
   /**
    * Holds one order open until a person answers or the ceiling runs out. A
@@ -399,7 +397,7 @@ export const makeStandMerchant = (
    * away, which is not the merchant refusing, so nothing is answered or recorded.
    */
   const askAbout = async (order: LiveOrder): Promise<HeldAnswer | typeof RAN_OUT> => {
-    if (disconnecting) throw abandonment(order.id, "held for a person to answer");
+    if (disconnecting) throw abandonment(order.id, "arrived while the stand was disconnecting");
     held.set(order.id, {
       id: order.id,
       merchantItemId: order.merchant_item_id,
@@ -446,7 +444,7 @@ export const makeStandMerchant = (
     answer?: HandlerAnswer,
   ): Promise<void> => {
     if (pauseAt !== phase) return;
-    if (disconnecting) throw abandonment(order.id, "paused");
+    if (disconnecting) throw abandonment(order.id, "arrived while the stand was disconnecting");
     paused.set(order.id, {
       id: order.id,
       merchantItemId: order.merchant_item_id,
@@ -483,7 +481,7 @@ export const makeStandMerchant = (
         "The stand is disconnecting while this order is paused, so the handler gives up on it and answers nothing.",
         { order_id: orderId, phase: paused.get(orderId)?.phase },
       );
-      abandon(abandonment(orderId, "paused"));
+      abandon(abandonment(orderId, "was paused when the stand disconnected"));
     }
   };
 
@@ -688,7 +686,7 @@ export const makeStandMerchant = (
         "The stand is disconnecting while this order is held for you, so the handler gives up on it and answers nothing.",
         { order_id: orderId },
       );
-      abandon(abandonment(orderId, "held for a person to answer"));
+      abandon(abandonment(orderId, "was held for a person to answer when the stand disconnected"));
     }
   };
 
