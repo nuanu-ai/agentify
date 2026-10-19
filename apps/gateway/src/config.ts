@@ -374,6 +374,14 @@ const environmentSchema = z.object({
     .string()
     .regex(/^[^:\s]+:[^:\s]+$/, "must be a CAIP-2 chain such as eip155:84532")
     .default(DEFAULT_PAYMENT_NETWORK),
+  /** An optional read-only chain provider; absent means facilitator-only payments. */
+  PAYMENT_RPC_URL: emptyIsAbsent(
+    z.string().refine((value) => {
+      if (!isHttpUrl(value)) return false;
+      const url = new URL(value);
+      return url.username === "" && url.password === "" && url.hash === "";
+    }, "must be an http(s) RPC address without user information or a fragment"),
+  ),
   /**
    * How long a challenge stays payable. The payment authorisation is signed
    * against it, so it belongs to the protocol rather than to the order machine.
@@ -432,6 +440,7 @@ interface WorkerConfig {
 export interface PaymentConfig {
   readonly facilitatorUrl: string;
   readonly network: string;
+  readonly rpcUrl?: string;
   readonly timeoutSeconds: number;
   readonly payTo: string | null;
   readonly cdpApiKeyId: string | null;
@@ -727,6 +736,9 @@ export function loadConfig(
     payment: {
       facilitatorUrl: environmentValues.FACILITATOR_URL,
       network,
+      ...(environmentValues.PAYMENT_RPC_URL === undefined
+        ? {}
+        : { rpcUrl: environmentValues.PAYMENT_RPC_URL }),
       timeoutSeconds: environmentValues.PAYMENT_TIMEOUT_SECONDS,
       payTo,
       cdpApiKeyId: environmentValues.CDP_API_KEY_ID ?? null,

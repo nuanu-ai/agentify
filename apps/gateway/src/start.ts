@@ -11,6 +11,7 @@ import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
+import { recoveryOn } from "./adapters/x402/recovery.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import { RefusedToStart } from "./app/recorded-splits.js";
@@ -51,7 +52,11 @@ async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<F
   if (unconfirmed !== null) {
     console.warn(`[gateway] ${unconfirmed}`);
   }
-  return new X402Facilitator(client, edge);
+  return new X402Facilitator(
+    client,
+    edge,
+    recoveryOn(config.payment.network, config.payment.rpcUrl),
+  );
 }
 
 /**

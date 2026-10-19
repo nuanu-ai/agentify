@@ -2432,12 +2432,7 @@ describe("the merchant's calls", () => {
 });
 
 describe("the claims on payments", () => {
-  it("forgets the ones too old to be guarding anything, and keeps the rest", async () => {
-    // A claim covers the window between a payment being verified and the charge
-    // being executed; after that the token itself refuses the same
-    // authorisation. They cannot be kept forever — the route that makes them
-    // takes no key — and they cannot be thrown away early either, or the guard
-    // is off for every payment presented since the last sweep.
+  it("keeps accepted authorizations bound to their purchases after the retention window", async () => {
     const harnessed = await started({ CLAIM_RETENTION_MS: "60000" });
     const itemId = await published(harnessed, asyncCard);
 
@@ -2451,17 +2446,17 @@ describe("the claims on payments", () => {
     if (fresh.step !== "pay") throw new Error("no price was offered");
     await harnessed.gateway.payPurchase(fresh.order.order.id, "FRESH", "FRESH");
 
-    expect(await harnessed.gateway.forgetOldClaims()).toBe(1);
+    expect(await harnessed.gateway.forgetOldClaims()).toBe(0);
 
-    // The old payment is nobody's again; the fresh one is still spoken for.
+    // Age cannot make either accepted authorization available to a second order.
     const takingOld = await harnessed.gateway.beginPurchase(itemId, {});
     const takingFresh = await harnessed.gateway.beginPurchase(itemId, {});
     if (takingOld.step !== "pay" || takingFresh.step !== "pay") {
       throw new Error("no price was offered");
     }
-    expect(
-      (await harnessed.gateway.payPurchase(takingOld.order.order.id, "OLD", "OLD")).step,
-    ).not.toBe("payment_already_spent");
+    expect((await harnessed.gateway.payPurchase(takingOld.order.order.id, "OLD", "OLD")).step).toBe(
+      "payment_already_spent",
+    );
     expect(
       (await harnessed.gateway.payPurchase(takingFresh.order.order.id, "FRESH", "FRESH")).step,
     ).toBe("payment_already_spent");

@@ -491,9 +491,9 @@ One of them you can see coming: an order you delivered synchronously whose
 payment did not execute reads `delivered_unpaid`, which is why the loop above
 skips it. An order whose goods are made and whose charge is still running
 reads `in_progress`, for as long as that charge is actually in flight. An
-order whose charge was asked for and never answered reads `payment_unresolved`,
-not `in_progress`: nothing is still asking, and that word is not an order
-waiting for you. The loop skips it for the same reason it skips
+order whose charge was asked for and never answered reads `payment_unresolved`.
+When chain verification is available, Agentify checks its evidence automatically; it is not an order
+waiting for your handler. The loop skips it for the same reason it skips
 `delivered_unpaid`. Delivering against it answers success and keeps nothing
 of what you sent.
 
@@ -548,10 +548,10 @@ the same way one that went down does, and it has no restart to prompt it.
 | --- | --- |
 | An order was marked as needing a refund | you did not deliver in time, you refused after the charge, you left with a paid order still open, or a charge we had given up on reported in late |
 | A confirmed order was not paid for | you answered that you would deliver and the agent did not pay in its own time; you are free |
-| A payment did not execute after a synchronous delivery | you delivered, and the charge either failed or went unanswered |
+| A payment did not execute after a synchronous delivery | you delivered, and the charge either failed or its outcome is unknown; read the order before acting |
 
 The last cause of a refund is the one that will not match your own record: a
-charge we had written off as never having happened reports in afterwards, and
+charge whose outcome was unknown is confirmed after its deadline, and
 the buyer is owed the money back through no fault of yours. That event carries
 a short reason beside the sum, and the reasons are three where the causes above
 are four: a refusal has its own word and a departure has its own, while both the
@@ -571,9 +571,9 @@ to you, so there is no need to go looking for such cases by reconciling
 transfers. Like every event it is sent once and can be lost on the way
 ([Events on the same subscription](#events-on-the-same-subscription)), and what
 survives that is the order itself: it stays open on your side, and the list of
-open orders shows it whether the event arrived or not. For the agent the
-purchase did not happen: we hand the goods over after the payment executes, so
-it received neither the goods nor a charge.
+open orders shows it whether the event arrived or not. We release the goods
+to the agent after payment is established. A confirmed failure means the buyer
+was not charged; an unknown outcome does not.
 
 Two situations reach you through that one event, and they part on what the
 payment network finally said. The order carries the word that tells them apart,
@@ -588,12 +588,17 @@ Where the payment network was asked and never answered, nobody can say whether
 the buyer was charged, and we do not pretend to. A repeat is refused there,
 because a second charge on top of a first one nobody has heard from would be
 spending the buyer's money on a guess about the first. The order reads
-`payment_unresolved`, and nothing on our side asks the payment network again.
-If a late answer is recorded and it says the money moved, the order closes as
-delivered and the agent gets its goods. A failure is not recorded while the
-order is still open: that would allow a second charge on a guess about the
-first. Until an answer that the money moved is recorded, the order can sit
-there, and a repeat purchase is refused.
+`payment_unresolved`. When chain verification is available, Agentify checks
+the original authorization without submitting another charge. If the transfer is
+confirmed, the order closes as delivered and the agent gets its saved goods.
+If the authorization is proven cancelled, or expired without being used, the
+order becomes `delivered_unpaid` and the same buyer can retry with a fresh
+authorization. An unavailable network, missing evidence or a transaction hash
+alone proves neither outcome; the order stays unresolved and another payment
+is refused. Recovery resumes after a restart or reconnection to the chain and
+requires no manual approval from you or Agentify. Payments can operate through
+the facilitator alone; without chain verification, a lost result stays unknown
+until a late answer or verified recovery arrives.
 
 In both cases the goods are already recorded on our side, so there is nothing
 to deliver again: a second delivery is answered as a success and nothing it
@@ -607,9 +612,11 @@ Most orders close with a delivery, a refusal or a deadline, and the agent sees
 which. Three rare cases leave the money unsettled: the money was charged and no
 delivery happened; you delivered and the payment did not execute; or the
 payment network never said whether the charge went through. The first two keep
-the order open. The third closes it on the guess that the money did not move —
-and if the charge reports in afterwards saying that it did, that closed order
-becomes a refund you owe.
+the order open. A prepaid order whose payment deadline passes stays unresolved
+for the buyer until its payment outcome is established. If the transfer is confirmed
+after that deadline, the order becomes a refund you owe; it does not start a
+new fulfillment. Synchronous goods already recorded can still be released
+when their payment is confirmed.
 
 | Situation | Where the money is | What the agent sees |
 | --- | --- | --- |
@@ -621,7 +628,7 @@ becomes a refund you owe.
 | You left | for what was not delivered, [you send it back](/money) | an unpaid order is closed; a paid one waits for your refund |
 | The money was charged and no delivery happened | in your payout contract | the order is waiting for a refund |
 | You delivered synchronously and the payment did not execute | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
-| The payment network did not say whether the money was charged | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
+| The payment network did not say whether the money was charged | unknown until the original payment is confirmed or disproved | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
 A pause closes no orders: cards stop selling, and the orders already taken on
 play out in the ordinary way. Only leaving closes the ones that are open.

@@ -102,7 +102,7 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
-import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
+import { OrderRunner, RECONCILE_PAYMENTS, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -386,6 +386,7 @@ export class Gateway {
     // queue is first created. A lock wedged for good shows only as the sweep's
     // "did nothing" log line, every day.
     await this.runtime.queue.everyDay(SWEEP_EFFECTS, () => this.runner.sweep());
+    await this.runtime.queue.everyMinute(RECONCILE_PAYMENTS, () => this.runner.reconcilePayments());
   }
 
   /** One reminder, turned into one event and nothing more. */
@@ -1305,6 +1306,26 @@ export class Gateway {
       return { step: "no_such_item" };
     }
 
+    // A payment is for the address its order was priced for, checked before
+    // anything is verified: one naming another address is a different
+    // purchase, and one naming none pays for the priced one. Once Agentify's
+    // copy is erased there is nothing left to compare with.
+    if (shipTo !== undefined) {
+      const held = before.shipTo;
+      if (held === undefined) {
+        return {
+          step: "ship_to_rejected",
+          message: "this product is not shipped, so a payment for it carries no ship_to",
+        };
+      }
+      if (!("erasedAt" in held) && !sameAddress(held, shipTo)) {
+        return { step: "ship_to_changed" };
+      }
+    }
+
+    const repeated = await this.#acceptedPaymentRepeat(before, payment);
+    if (repeated !== null) return repeated;
+
     // An order that is over with no money taken and no goods held takes no
     // payment: verifying one could only, if refused, tell the agent to pay
     // again for a price that is gone.
@@ -1333,23 +1354,6 @@ export class Gateway {
         deadline: lapsed.kind,
       });
       return this.#wherePurchaseStands(orderId);
-    }
-
-    // A payment is for the address its order was priced for, checked before
-    // anything is verified: one naming another address is a different
-    // purchase, and one naming none pays for the priced one. Once Agentify's
-    // copy is erased there is nothing left to compare with.
-    if (shipTo !== undefined) {
-      const held = before.shipTo;
-      if (held === undefined) {
-        return {
-          step: "ship_to_rejected",
-          message: "this product is not shipped, so a payment for it carries no ship_to",
-        };
-      }
-      if (!("erasedAt" in held) && !sameAddress(held, shipTo)) {
-        return { step: "ship_to_changed" };
-      }
     }
 
     const price = before.order.price;
@@ -1385,6 +1389,11 @@ export class Gateway {
       payment,
       payTo,
     });
+
+    const current = await this.runtime.store.orderById(orderId);
+    if (current === null) return { step: "no_such_item" };
+    const acceptedWhileChecking = await this.#acceptedPaymentRepeat(current, payment);
+    if (acceptedWhileChecking !== null) return acceptedWhileChecking;
 
     if (verified.verified !== true) {
       // A refusal says what to do next, since that depends on why the payment
@@ -1425,10 +1434,9 @@ export class Gateway {
     // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
 
-    // The owner is who the payment layer says paid, never the address the
-    // payment declares of itself. Where the layer names no payer, the
-    // payment's fingerprint stands in; it is derived from what was signed, so
-    // it is no more forgeable.
+    // The verifier binds this payer to the checked authorization. An unchecked
+    // address in a payment cannot establish ownership. Adapters without a
+    // verified payer use the payment fingerprint instead.
     const owner = walletThatPaid(verified.payer) ?? fingerprint;
 
     // One authorisation buys one order, which ownership by payer cannot ensure
@@ -1465,6 +1473,7 @@ export class Gateway {
       payment,
       payTo,
       this.runtime.clock(),
+      { fingerprint, ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }) },
     );
 
     // These two turned the payment away before it spent anything, so the claim
@@ -1503,6 +1512,24 @@ export class Gateway {
     }
 
     return this.#wherePurchaseStands(orderId);
+  }
+
+  /** A saved accepted payment remains a purchase credential after its authorization expires. */
+  async #acceptedPaymentRepeat(
+    record: StoredOrder,
+    payment: string,
+  ): Promise<PurchaseAttempt | null> {
+    if (record.paidBy !== null && record.payment !== null && record.payment === payment) {
+      return this.#wherePurchaseStands(record.order.id);
+    }
+    if (record.order.payment === "settling" || record.order.payment === "outcome_unknown") {
+      return {
+        step: "payment_not_taken",
+        why: "A charge on this order has not reported back. Its outcome remains unresolved, so no second payment is accepted.",
+        retryable: true,
+      };
+    }
+    return null;
   }
 
   /**

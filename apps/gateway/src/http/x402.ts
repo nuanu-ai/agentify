@@ -320,7 +320,7 @@ export function paymentFingerprint(payload: PaymentPayload, token: TokenIdentity
   const payer = asHex(authorization?.from);
   const nonce = asHex(authorization?.nonce);
   if (payer !== null && nonce !== null) {
-    return digestOf({ ...chain, by: "authorization", payer, nonce });
+    return authorizationFingerprint({ ...token, payer, nonce });
   }
 
   const signature = asHex(signed.signature);
@@ -329,6 +329,19 @@ export function paymentFingerprint(payload: PaymentPayload, token: TokenIdentity
   }
 
   return digestOf({ ...chain, by: "payload", payload: canonical(signed) });
+}
+
+/** The token's one-use authorization identity, shared by submission and recovery. */
+export function authorizationFingerprint(
+  authorization: TokenIdentity & { readonly payer: string; readonly nonce: string },
+): string {
+  return digestOf({
+    network: authorization.network.toLowerCase(),
+    asset: authorization.asset.toLowerCase(),
+    by: "authorization",
+    payer: authorization.payer.toLowerCase(),
+    nonce: authorization.nonce.toLowerCase(),
+  });
 }
 
 export interface TokenIdentity {

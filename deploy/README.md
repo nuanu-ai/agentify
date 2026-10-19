@@ -651,6 +651,33 @@ other service holds it or it opens any other door. TEST adds
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`.
 
+The channel overlays use free public Base RPC for background payment recovery:
+`https://sepolia.base.org` on TEST and `https://mainnet.base.org` on PRODUCTION.
+`AGENTIFY_PAYMENT_RPC_URL` replaces that address; setting it explicitly to an
+empty value disables chain checks. The gateway receives it as `PAYMENT_RPC_URL`.
+Local Compose and the standalone gateway have no default RPC.
+
+RPC is read only and is called for unanswered payments after their response
+deadline, never for ordinary verification or settlement. Recovery checks
+finalized blocks, USDC authorization state, logs and receipts. The endpoint
+must support `eth_chainId`, `eth_getBlockByNumber`, `eth_call`, `eth_getLogs`
+and `eth_getTransactionReceipt`; historical state reads speed up old payment
+recovery but are not required. The URL can contain a provider key and belongs
+in the protected environment file, never in a public diagnostic or PR.
+
+With RPC disabled, payments use the facilitator's verification and settlement.
+Its confirmed answer completes the payment as usual; a lost or pending answer
+remains unresolved and forbids a second charge. Enabling RPC later starts
+checking those saved attempts without submitting again.
+
+An unavailable configured RPC also leaves ordinary facilitator payments
+available. Missing recovery evidence keeps an existing payment unresolved;
+the scheduled checks resume when the provider answers. The public Base RPCs
+are rate limited, so recovery has no guaranteed completion time. If their limits
+prevent recovery, this same setting can select a provider with enough capacity.
+Changing the endpoint must preserve its network and access to saved payment
+history. This setting changes no merchant SDK configuration.
+
 Both channels settle through Coinbase's facilitator, so a payment that passes
 on TEST has met the facilitator live buyers meet, and a TEST product can enter
 Coinbase's testnet catalogue. Each channel holds its own Coinbase secret API

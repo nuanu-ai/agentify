@@ -1,55 +1,72 @@
-# 0027. A silent charge remains unresolved without payment evidence
+# 0027. A silent charge is recovered from payment evidence
 
 Date: 2026-09-22
-Status: accepted (self-service boundary: the product owner, 2026-10-19).
-Automatic reconciliation is not built. The existing `report-payment`
-maintenance command records an unchecked assertion and is not a self-service
-or supported customer recovery path.
+Status: accepted (automatic recovery: the product owner, 2026-10-19).
 
 ## Context
 
-A settle that times out may have moved money. The facilitator client can
-verify, settle and list what it supports; it cannot query the outcome of an
-already submitted charge. Asking it to settle again risks another charge.
-Agentify has no person assigned to investigate these orders.
+A settle that times out may have moved money. The facilitator has no outcome
+lookup for an already submitted charge; settling again is not a safe lookup.
+Agentify has no person assigned to investigate these orders. Recovery uses
+chain evidence when available, without making RPC availability a condition
+for ordinary facilitator payments (the product owner, 2026-10-19).
 
 ## Decision
 
-The public status of a charge with an unknown outcome is `payment_unresolved`,
-whether or not the order is still open. The system never treats silence as
-proof of success or failure and never repeats a settle to find out.
+Real payments use x402 version 2, exact USDC on Base or Base Sepolia, and an
+EIP-3009 transfer authorization. Unsupported methods, including Permit2, are
+refused before verification or submission. The signed recipient and amount
+must match the order. The authorization's expiry is bounded by the offered
+payment timeout with clock-skew allowance. Smart-wallet signatures are allowed.
 
-Recovery must use evidence that can be checked against the original payment
-attempt: its network, asset, payer, recipient, amount and payment authorization.
-A transaction hash alone, an administrator's permission, or a merchant's claim
-is insufficient. Missing evidence and a failed lookup leave the outcome
-unknown. A failure may not be recorded where it would permit a second charge
-without proof that the first cannot execute.
+Acceptance permanently reserves the network, token, payer and authorization
+nonce for this order, atomically with its saved payment. Before submission the
+order stores an attempt identifier and recovery terms. Ordinary verification
+and settlement make no RPC requests. Recovery searches from genesis when no
+transaction hint exists; neither restarts nor recovery submit again.
 
-Any recovery must serialize with the original settle result. A deadline can
-mark the outcome unknown while the original call is still in flight. Evidence
-from a previous attempt cannot resolve the current one. The payment-layer
-header is reserved for that layer's answer. A receipt needs an observed payment
-time; a person submitting evidence does not supply one by pressing a button.
+An indeterminate result is `payment_unresolved`, including on closed orders.
+Pending, unfamiliar and contradictory failure responses remain unknown. Only
+an established refusal before broadcast can immediately establish nonpayment.
+A configured RPC enables background checks after the response deadline, including
+closed orders. The channel defaults to its free public Base RPC; an explicit
+empty address disables it. Without RPC or during an outage, verified facilitator
+payments continue; a lost result stays unknown
+until a late answer or verified recovery arrives. Connecting RPC later checks
+the saved attempts. RPC errors and missing evidence never establish failure.
 
-`open=true` is the list a restarted merchant worker walks. An order that was
-priced and never paid, and never reached the handler, is not on it. Its buyer
-status remains `in_progress`. An unresolved payment is not work that a merchant
-handler should retry as another charge.
+Success requires a successful receipt in a canonical finalized block, with the
+canonical USDC token's `AuthorizationUsed(payer, nonce)` immediately followed
+by its `Transfer(payer, recipient, amount)` at the next full-receipt log index.
+Circle's implementation emits these together without an intervening external
+call. The evidence establishes this reserved nonce's exact financial effect;
+it does not identify signature bytes or distinguish identical authorizations
+sharing that nonce. Conflicting evidence cannot settle an order.
 
-## Implementation boundary
+A finalized cancellation, or an unused nonce in a finalized block at or after
+the authorization's expiry, proves it cannot execute. A reverted transaction,
+an elapsed local timer or an unsuccessful search does not. A lost hash is
+recovered by nonce events, with bounded scans and a durable cursor. Older
+records use their saved payment terms and reserve their nonce before recovery;
+missing or conflicting context stays unresolved. Historical state reads can
+locate an old consumed nonce; unavailable history leaves the scan progressing.
 
-`report-payment` can assert success without reading the chain. It waits for
-the current settle call to return and refuses a failure on an open order, but
-those guards do not prove money moved. It marks the assertion in the payment
-record and supplies neither a payment-layer receipt nor an observed payment
-time. It stays a privileged maintenance tool, outside merchant and admin web
-flows; nobody is promised that a person will run it. Replacing it with verified
-reconciliation is open in `docs/research/52-self-service.md`.
+The original answer and recovery share one conditional completion under the
+order lock. It checks the attempt and applies any due settlement deadline
+before the result. State, receipt and merchant messages commit together.
+Synchronous goods already held are released once. A payment discovered after
+a prepaid order's deadline creates its refund obligation without dispatching
+new fulfillment. Refund policy and execution remain the merchant's business.
+
+A recovered receipt uses the transaction block's time. Chain evidence is kept
+separate from the facilitator's answer and cannot manufacture its payment
+response header. No merchant, administrator or maintenance command may declare
+success or failure without verification.
 
 ## Alternatives rejected
 
-A second settle; a success or failure button without verification; a customer
-support queue as the required way out; and a receipt stamped with the time
-somebody inspected the order. Each converts uncertainty into a claim on which
-someone else's agent can move money.
+A second settle; unchecked outcome buttons; staffed reconciliation; an
+inspection-time receipt; and interpreting an unavailable RPC as nonpayment.
+Public RPC has no recovery-time guarantee. Facilitator payments stay available
+when RPC cannot answer; unresolved results are retained, never guessed. Details
+and acceptance evidence live in `../research/52-self-service.md`.

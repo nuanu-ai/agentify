@@ -112,6 +112,9 @@ export interface Queue {
    */
   everyDay(name: string, work: () => Promise<unknown>): Promise<void>;
 
+  /** Rechecks persisted payment attempts; duplicate jobs must be harmless. */
+  everyMinute(name: string, work: () => Promise<unknown>): Promise<void>;
+
   start(): Promise<void>;
   stop(): Promise<void>;
 }

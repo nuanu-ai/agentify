@@ -127,6 +127,13 @@
       "when": 1791986642973,
       "tag": "0017_order_pay_to_index",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792417038861,
+      "tag": "0018_payment_recovery",
+      "breakpoints": true
     }
   ]
 }

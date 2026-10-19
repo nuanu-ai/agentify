@@ -1,9 +1,9 @@
 /**
  * The gateway's application for a command run beside a gateway that is already
- * up, such as `report-payment`. Its queue writes and does not consume, because
+ * up, such as WooCommerce recovery. Its queue writes and does not consume, because
  * a second consumer on the reminders queue would take deadlines away from the
- * gateway that applies them. It never asks the facilitator, since a command
- * records what was learned elsewhere, and it announces nothing. A command that
+ * gateway that applies them. It never asks the facilitator or announces a
+ * payout change. A command that
  * only reads, such as `payout`, opens one with no queue at all.
  */
 
@@ -39,6 +39,7 @@ const noQueue: Queue = {
     throw new Error(ONLY_READS);
   },
   everyDay: () => Promise.reject(new Error(ONLY_READS)),
+  everyMinute: () => Promise.reject(new Error(ONLY_READS)),
   start: () => Promise.reject(new Error(ONLY_READS)),
   stop: () => Promise.resolve(),
 };

@@ -752,6 +752,31 @@ export class PostgresStore implements Store {
     return rows.map((row) => row.record);
   }
 
+  async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    const rows = await this.#db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          sql`${orders.id} > ${afterId}`,
+          sql`${orders.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`,
+        ),
+      )
+      .orderBy(orders.id)
+      .limit(limit);
+    return rows.map((row) => row.record);
+  }
+
+  async paymentOrders(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    const rows = await this.#db
+      .select()
+      .from(orders)
+      .where(and(sql`${orders.id} > ${afterId}`, sql`${orders.record} ->> 'payment' is not null`))
+      .orderBy(orders.id)
+      .limit(limit);
+    return rows.map((row) => row.record);
+  }
+
   async runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>> {
     // A session advisory lock on one connection held for the whole run: the
     // unlock must go out on the session that took the lock, and a transaction
@@ -863,6 +888,21 @@ export class PostgresStore implements Store {
       // included.
       for (const write of decided.alongside ?? []) {
         switch (write.kind) {
+          case "retain_payment": {
+            const retained = await tx
+              .update(paymentClaims)
+              .set({ retained: true })
+              .where(
+                and(
+                  eq(paymentClaims.fingerprint, write.fingerprint),
+                  eq(paymentClaims.orderId, write.orderId),
+                ),
+              )
+              .returning({ fingerprint: paymentClaims.fingerprint });
+            if (retained.length !== 1)
+              throw new Error("the payment claim no longer belongs to this order");
+            break;
+          }
           case "receipt":
             await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
             break;
@@ -930,13 +970,19 @@ export class PostgresStore implements Store {
     // A claim another order holds is never released by this one.
     await this.#db
       .delete(paymentClaims)
-      .where(and(eq(paymentClaims.fingerprint, fingerprint), eq(paymentClaims.orderId, orderId)));
+      .where(
+        and(
+          eq(paymentClaims.fingerprint, fingerprint),
+          eq(paymentClaims.orderId, orderId),
+          eq(paymentClaims.retained, false),
+        ),
+      );
   }
 
   async forgetClaimsBefore(instant: number): Promise<number> {
     const gone = await this.#db
       .delete(paymentClaims)
-      .where(lt(paymentClaims.claimedAt, new Date(instant)))
+      .where(and(lt(paymentClaims.claimedAt, new Date(instant)), eq(paymentClaims.retained, false)))
       .returning({ fingerprint: paymentClaims.fingerprint });
     return gone.length;
   }

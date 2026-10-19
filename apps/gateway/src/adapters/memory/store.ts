@@ -99,7 +99,8 @@ export class MemoryStore implements Store {
   readonly #orders = new Map<string, StoredOrder>();
   readonly #receipts = new Map<string, { merchantId: string; receipt: Receipt }>();
   /** Which order owns which payment, so no payment is spent on two. */
-  readonly #paymentClaims = new Map<string, { orderId: string; at: number }>();
+  #paymentLock: Promise<unknown> = Promise.resolve();
+  readonly #paymentClaims = new Map<string, { orderId: string; at: number; retained?: boolean }>();
   /** Every split recorded, frozen, in the order recorded. */
   readonly #splits: RecordedPayoutSplit[] = [];
   /** The tail of the queue of decisions waiting on each order. */
@@ -592,24 +593,29 @@ export class MemoryStore implements Store {
       const alongside = [...(decided.alongside ?? [])].sort(
         (one, other) => rankOf(one) - rankOf(other),
       );
-      const arrivals: (() => void)[] = [];
-      for (const write of alongside) {
-        arrivals.push(await this.#takeWithTheOrder(write));
-      }
+      const write = async (): Promise<OrderLookup<T>> => {
+        const arrivals: (() => void)[] = [];
+        for (const write of alongside) {
+          arrivals.push(await this.#takeWithTheOrder(write));
+        }
 
-      if (decided.save !== undefined) {
-        // The merchant comes from the order that was read, not from the save,
-        // as the Postgres adapter takes it from the row: no decision may change
-        // whose sale it is.
-        this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
-      }
+        if (decided.save !== undefined) {
+          // The merchant comes from the order that was read, not from the save,
+          // as the Postgres adapter takes it from the row: no decision may change
+          // whose sale it is.
+          this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
+        }
 
-      // None of these can refuse, which is what makes the order safe to have
-      // written first.
-      for (const arrive of arrivals) {
-        arrive();
-      }
-      return { found: true, result: decided.result };
+        // None of these can refuse, which is what makes the order safe to have
+        // written first.
+        for (const arrive of arrivals) {
+          arrive();
+        }
+        return { found: true, result: decided.result };
+      };
+      return alongside.some((write) => write.kind === "retain_payment")
+        ? this.#withPaymentClaims(write)
+        : write();
     });
 
     // The chain must not break on a failed decision, or every later decision
@@ -623,6 +629,24 @@ export class MemoryStore implements Store {
 
   async openOrders(): Promise<readonly StoredOrder[]> {
     return [...this.#orders.values()].filter((record) => isOpen(record.order.state));
+  }
+
+  async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    return [...this.#orders.values()]
+      .filter(
+        (record) =>
+          record.order.id > afterId &&
+          (record.order.payment === "settling" || record.order.payment === "outcome_unknown"),
+      )
+      .sort((one, other) => (one.order.id < other.order.id ? -1 : 1))
+      .slice(0, limit);
+  }
+
+  async paymentOrders(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    return [...this.#orders.values()]
+      .filter((record) => record.order.id > afterId && record.payment !== null)
+      .sort((one, other) => (one.order.id < other.order.id ? -1 : 1))
+      .slice(0, limit);
   }
 
   async runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>> {
@@ -654,6 +678,14 @@ export class MemoryStore implements Store {
    */
   async #takeWithTheOrder(write: WithTheOrder): Promise<() => void> {
     switch (write.kind) {
+      case "retain_payment": {
+        const claim = this.#paymentClaims.get(write.fingerprint);
+        if (claim?.orderId !== write.orderId)
+          throw new Error("the payment claim no longer belongs to this order");
+        return () => {
+          claim.retained = true;
+        };
+      }
       case "receipt":
         await this.putReceipt(write.merchantId, write.receipt);
         return () => {};
@@ -667,33 +699,48 @@ export class MemoryStore implements Store {
   // --- payments -------------------------------------------------------------
 
   async claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim> {
-    const held = this.#paymentClaims.get(fingerprint);
-    if (held === undefined) {
-      this.#paymentClaims.set(fingerprint, { orderId, at: this.#now() });
-      return { claimed: true };
-    }
-    // The same order presenting the same payment again is an ordinary retry,
-    // and it still owns it.
-    return held.orderId === orderId ? { claimed: true } : { claimed: false, heldBy: held.orderId };
+    return this.#withPaymentClaims(() => {
+      const held = this.#paymentClaims.get(fingerprint);
+      if (held === undefined) {
+        this.#paymentClaims.set(fingerprint, { orderId, at: this.#now() });
+        return { claimed: true };
+      }
+      // The same order presenting the same payment again is an ordinary retry,
+      // and it still owns it.
+      return held.orderId === orderId
+        ? { claimed: true }
+        : { claimed: false, heldBy: held.orderId };
+    });
   }
 
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {
     // Only the holder lets go, so this can never hand one buyer's signature to
     // another.
-    if (this.#paymentClaims.get(fingerprint)?.orderId === orderId) {
-      this.#paymentClaims.delete(fingerprint);
-    }
+    await this.#withPaymentClaims(() => {
+      const claim = this.#paymentClaims.get(fingerprint);
+      if (claim?.orderId === orderId && !claim.retained) {
+        this.#paymentClaims.delete(fingerprint);
+      }
+    });
   }
 
   async forgetClaimsBefore(instant: number): Promise<number> {
-    let gone = 0;
-    for (const [fingerprint, claim] of [...this.#paymentClaims]) {
-      if (claim.at < instant) {
-        this.#paymentClaims.delete(fingerprint);
-        gone += 1;
+    return this.#withPaymentClaims(() => {
+      let gone = 0;
+      for (const [fingerprint, claim] of [...this.#paymentClaims]) {
+        if (claim.at < instant && !claim.retained) {
+          this.#paymentClaims.delete(fingerprint);
+          gone += 1;
+        }
       }
-    }
-    return gone;
+      return gone;
+    });
+  }
+
+  #withPaymentClaims<T>(work: () => T | Promise<T>): Promise<T> {
+    const pending = this.#paymentLock.then(work);
+    this.#paymentLock = pending.catch(() => undefined);
+    return pending;
   }
 
   // --- receipts -------------------------------------------------------------

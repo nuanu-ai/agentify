@@ -1729,6 +1729,113 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     });
 
     describe("a payment", () => {
+      it("rolls claim retention back when another write in the order transaction fails", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted"));
+        await store.claimPayment("fp-rollback", "ord_1");
+        await expect(
+          store.withOrder("ord_1", (found) => ({
+            save: { ...found, order: { ...found.order, state: "delivered" } },
+            alongside: [
+              { kind: "retain_payment", fingerprint: "fp-rollback", orderId: "ord_1" },
+              { kind: "retain_payment", fingerprint: "fp-missing", orderId: "ord_1" },
+            ],
+            result: null,
+          })),
+        ).rejects.toThrow("claim");
+        await store.releaseClaim("fp-rollback", "ord_1");
+        expect(await store.claimPayment("fp-rollback", "ord_2")).toEqual({ claimed: true });
+        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      });
+
+      it("refuses acceptance if another order obtained the claim before its transaction retained it", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted"));
+        await store.claimPayment("fp-racing", "ord_1");
+        let release: () => void = () => undefined;
+        let entered: () => void = () => undefined;
+        const waiting = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const read = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const accepting = store.withOrder("ord_1", async (found) => {
+          entered();
+          await waiting;
+          return {
+            save: { ...found, order: { ...found.order, state: "delivered" as const } },
+            alongside: [
+              { kind: "retain_payment" as const, fingerprint: "fp-racing", orderId: "ord_1" },
+            ],
+            result: null,
+          };
+        });
+        await read;
+        await store.releaseClaim("fp-racing", "ord_1");
+        expect(await store.claimPayment("fp-racing", "ord_2")).toEqual({ claimed: true });
+        release();
+        await expect(accepting).rejects.toThrow("claim");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      });
+
+      it("keeps an accepted authorization bound to its order after pruning and release", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted"));
+        await store.claimPayment("fp-retained", "ord_1");
+        await store.withOrder("ord_1", (found) => ({
+          save: found,
+          alongside: [{ kind: "retain_payment", fingerprint: "fp-retained", orderId: "ord_1" }],
+          result: null,
+        }));
+        await store.releaseClaim("fp-retained", "ord_1");
+        await store.forgetClaimsBefore(Date.now() + 60_000);
+        expect(await store.claimPayment("fp-retained", "ord_2")).toEqual({
+          claimed: false,
+          heldBy: "ord_1",
+        });
+      });
+
+      it("does not write an order whose payment claim no longer belongs to it", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted"));
+        await store.claimPayment("fp-other", "ord_2");
+        await expect(
+          store.withOrder("ord_1", (found) => ({
+            save: { ...found, order: { ...found.order, state: "delivered" } },
+            alongside: [{ kind: "retain_payment", fingerprint: "fp-other", orderId: "ord_1" }],
+            result: null,
+          })),
+        ).rejects.toThrow("claim");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      });
+
+      it("finds unanswered charges in bounded order including purchases closed on silence", async () => {
+        const store = await twoMerchants();
+        for (const [id, state, payment] of [
+          ["ord_a", "rejected", "outcome_unknown"],
+          ["ord_b", "quoted", "settling"],
+          ["ord_c", "delivered", "settled"],
+        ] as const) {
+          const record = anOrder(id, state);
+          await store.addOrder({
+            ...record,
+            payment: "SAVED",
+            order: { ...record.order, payment },
+          });
+        }
+        expect((await store.unresolvedPayments("", 1)).map((record) => record.order.id)).toEqual([
+          "ord_a",
+        ]);
+        expect(
+          (await store.unresolvedPayments("ord_a", 1)).map((record) => record.order.id),
+        ).toEqual(["ord_b"]);
+        expect(await store.unresolvedPayments("ord_b", 1)).toEqual([]);
+        expect((await store.paymentOrders("ord_b", 1)).map((record) => record.order.id)).toEqual([
+          "ord_c",
+        ]);
+      });
+
       it("belongs to the first order that presented it, and to no other", async () => {
         // The replay guard: a signed payment does not name its purchase, so
         // without this one signature pays for two orders at the same price.

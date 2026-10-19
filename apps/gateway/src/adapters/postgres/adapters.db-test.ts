@@ -1268,6 +1268,55 @@ if (databaseUrl === null) {
         await queue.draw(A, 100, 0);
       });
 
+      it("commits recovered late payment and its debt event together without a fulfillment handover", async () => {
+        const card = await store.publishCard(
+          A,
+          { ...asyncCard, merchant_item_id: "recovered-late", fulfill_deadline_seconds: 1 },
+          now,
+        );
+        const offered = await gateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const orderId = offered.order.order.id;
+        facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+        try {
+          await gateway.runner.presentVerifiedPayment(
+            orderId,
+            "payer",
+            "authorization",
+            PAID_AT,
+            now,
+          );
+          const attempt = (await store.orderById(orderId))?.paymentAttempt;
+          if (attempt === undefined) throw new Error("no submitted attempt");
+          const executedAt = now;
+          now += 2000;
+          const proof = { settled: true as const, transaction: `0x${"a".repeat(64)}`, executedAt };
+          const publish = queue.publishWithin.bind(queue);
+          queue.publishWithin = async () => {
+            throw new Error("debt event write interrupted");
+          };
+          try {
+            await expect(
+              gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain"),
+            ).rejects.toThrow();
+            expect((await store.orderById(orderId))?.order.payment).toBe("settling");
+            expect((await store.orderById(orderId))?.paymentAttempt?.completion).toBeNull();
+            expect(await queue.draw(A, 100, 0)).toEqual([]);
+          } finally {
+            queue.publishWithin = publish;
+          }
+          await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
+          await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
+          expect((await store.orderById(orderId))?.order.state).toBe("refund_due");
+          expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
+            "order_event",
+          ]);
+          expect(await store.receiptForOrder(orderId)).toBeNull();
+        } finally {
+          facilitator.willSettle();
+        }
+      });
+
       it("is a no-op on the second run once the first has been acted on", async () => {
         // Two of the three arms are no-ops on a second run for a reason in the
         // orders themselves: an order with a receipt is not missing one, and an

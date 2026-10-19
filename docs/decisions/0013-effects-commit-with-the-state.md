@@ -23,7 +23,9 @@ statement, so the job is inserted inside the store's transaction and commits or
 rolls back with the order. The store's port names three such writes: an
 envelope on a merchant's stream (a hand-over, a redelivery, a merchant event);
 a receipt, our own row keyed by its order; and the deletion of the envelopes
-that carry a parcel's address (ADR-0032). A fourth is a decision, not a detail.
+that carry a parcel's address (ADR-0032). Acceptance also retains the payment
+authorization's ownership in that transaction, so it can never pay another
+order after recovery or a restart (ADR-0027).
 The other effects, such as a call to the facilitator, run after the commit and
 outside the row lock: their result is the next event about the same order,
 which under the lock would wait for a lock only it could release.
@@ -35,8 +37,8 @@ litter is not worth a longer hold on the row.
 
 A daily sweep asks the orders what they are still owed, rather than keeping a
 second record of intent: a `paid` order with nothing on its merchant's stream
-is handed over again, a `delivered` order with no receipt gets one unless an
-operator recorded its settlement (ADR-0027), and a passed deadline on an order
+is handed over again, a `delivered` order with payment evidence and no receipt
+gets one (ADR-0027), and a passed deadline on an order
 still in its state is armed again. An effect may be swept only when its
 receiver is promised a repeat and the repeat costs the order nothing that
 belongs to a real failure. A receipt and a reminder pass

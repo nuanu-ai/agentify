@@ -51,14 +51,23 @@ import {
   type Seller,
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
+import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
 import { asTimestamp } from "../ports/clock.js";
+import type {
+  PaymentRecoveryContext,
+  PaymentRecoveryOutcome,
+  SettleOutcome,
+} from "../ports/facilitator.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
   Integration,
   MerchantScope,
   OrderChange,
+  PaymentAttempt,
+  PaymentCompletion,
   PaymentWord,
   StoredOrder,
   WithTheOrder,
@@ -69,14 +78,18 @@ import type { WrittenOrderStatus } from "./written.js";
 
 /** The queue's name for the daily sweep of what an order is still owed. */
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
+export const RECONCILE_PAYMENTS = "agentify_reconcile_payments";
+
+function hasObservedPayment(record: StoredOrder): boolean {
+  const completion = record.paymentAttempt?.completion;
+  return completion?.settled === true && completion.executedAt !== null;
+}
 
 /**
- * The mark on a settle word meaning this gateway did not observe the charge:
- * the operator command writes it, and the sweep does not invent a receipt for
- * it. It is a phrase in the word rather than a separate flag, so there is one
- * record and not two that can disagree.
+ * Saved assertion-only settlements carry this marker without payment evidence.
+ * The sweep must not invent an execution time or receipt for those records.
  */
-export const UNOBSERVED_SETTLE = "the facilitator was not asked";
+const UNOBSERVED_SETTLE = "the facilitator was not asked";
 
 /**
  * What is written about the purchase alongside the order. Every fact lands in
@@ -236,7 +249,7 @@ export class OrderRunner {
     if (!(await this.#runtime.store.addOrder(record, through))) {
       return null;
     }
-    await this.#run(record, effects, at);
+    await this.#run(record, effects);
     return record;
   }
 
@@ -260,10 +273,18 @@ export class OrderRunner {
     facts: OrderFacts = {},
     scope?: MerchantScope,
     whileWaitingOn?: string,
+    completion?: { readonly attemptId: string; readonly result: PaymentCompletion },
   ): Promise<Applied> {
     const decided = await this.#runtime.store.withOrder(
       orderId,
       async (found): Promise<OrderChange<Decided>> => {
+        if (
+          completion !== undefined &&
+          (found.paymentAttempt?.id !== completion.attemptId ||
+            found.paymentAttempt.completion !== null)
+        ) {
+          return { result: { kind: "moved_on" } };
+        }
         if (whileWaitingOn !== undefined && found.openDeliveryId !== whileWaitingOn) {
           // Somebody else got here first. Nothing is written, not even the
           // cleared hand-over: it would erase the hand-over the order now waits
@@ -271,25 +292,81 @@ export class OrderRunner {
           return { result: { kind: "moved_on" } };
         }
 
+        let before = found.order;
+        const elapsedEffects: Effect[] = [];
+        if (
+          completion !== undefined &&
+          before.state !== "fulfilled" &&
+          before.state !== "delivered_unpaid"
+        ) {
+          const elapsed = deadlines(before).find(
+            (deadline) =>
+              deadline.kind === "settle_response" && deadline.at <= this.#runtime.clock(),
+          );
+          if (elapsed !== undefined) {
+            const expired = transition(before, {
+              kind: "deadline_expired",
+              deadline: elapsed.kind,
+              at: elapsed.at,
+            });
+            if (expired.ok) {
+              before = expired.order;
+              elapsedEffects.push(...expired.effects);
+            }
+          }
+        }
         const known: StoredOrder = {
           ...found,
+          order: before,
+          ...(completion === undefined || found.paymentAttempt === undefined
+            ? {}
+            : { paymentAttempt: { ...found.paymentAttempt, completion: completion.result } }),
           ...(facts.settlement === undefined ? {} : { settlement: facts.settlement }),
           ...(facts.paymentWord === undefined ? {} : this.#alsoSaid(found, facts.paymentWord)),
           ...(facts.priceId === undefined ? {} : { priceId: facts.priceId }),
           ...(facts.openDeliveryId === undefined ? {} : { openDeliveryId: facts.openDeliveryId }),
         };
 
-        const moved = transition(known.order, event);
+        const changed = transition(known.order, event);
+        let moved = changed.ok
+          ? { ...changed, effects: [...elapsedEffects, ...changed.effects] }
+          : changed;
         if (!moved.ok) {
           // Nothing is written for a refused event, not even its facts: an
           // event with no meaning here leaves no trace of having been believed.
           return { result: { kind: "decided", moved, known } };
         }
 
+        let effectsAt = completion?.result.source === "chain" ? this.#runtime.clock() : event.at;
+        const overdueGoods =
+          completion?.result.settled && moved.order.state === "paid"
+            ? fulfillmentDeadline(moved.order).find(
+                (deadline) => deadline.at <= this.#runtime.clock(),
+              )
+            : undefined;
+        if (overdueGoods !== undefined) {
+          const expired = transition(moved.order, {
+            kind: "deadline_expired",
+            deadline: overdueGoods.kind,
+            at: overdueGoods.at,
+          });
+          if (expired.ok) {
+            moved = {
+              ...expired,
+              effects: [
+                ...moved.effects.filter((effect) => effect.kind !== "dispatch_order"),
+                ...expired.effects,
+              ],
+            };
+            effectsAt = overdueGoods.at;
+          }
+        }
+
         refuseToWriteAnImpossibleOrder(moved.order);
         const next: StoredOrder = {
           ...known,
           order: moved.order,
+          ...this.#paymentIntent(known, moved.effects, event.at),
           ...goodsToKeep(found, facts.delivery, moved.effects),
           ...addressToKeep(moved.effects, this.#runtime.clock()),
         };
@@ -304,7 +381,7 @@ export class OrderRunner {
         return {
           save: next,
           // The effects that must not be lost go in with the order.
-          alongside: this.#writesWithTheOrder(next, known.order, moved.effects, event.at),
+          alongside: this.#writesWithTheOrder(next, known.order, moved.effects, effectsAt),
           result: { kind: "decided", moved, known: next },
         };
       },
@@ -323,7 +400,7 @@ export class OrderRunner {
       return { outcome: "refused", rejection: moved.rejection };
     }
 
-    const answer = await this.#run(known, moved.effects.filter(carriedOutAfterwards), event.at);
+    const answer = await this.#run(known, moved.effects.filter(carriedOutAfterwards));
     this.#wakeTheAgent(known);
 
     return { outcome: "moved", order: known, effects: moved.effects, answer };
@@ -353,6 +430,7 @@ export class OrderRunner {
     payment: string,
     payTo: string | null,
     at: number,
+    verified?: { readonly recovery?: PaymentRecoveryContext; readonly fingerprint: string },
   ): Promise<PresentResult> {
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
@@ -385,8 +463,13 @@ export class OrderRunner {
           effects.push(...moved.effects);
         }
 
-        const next: StoredOrder = {
-          ...found,
+        const {
+          paymentRecovery: _previousRecovery,
+          paymentAttempt: _previousAttempt,
+          ...prior
+        } = found;
+        const accepted: StoredOrder = {
+          ...prior,
           order,
           payment,
           // The address this payment was checked against. The charge runs
@@ -395,8 +478,13 @@ export class OrderRunner {
           // where the payer signed for.
           payTo,
           paidBy: owner,
+          ...(verified?.recovery === undefined
+            ? {}
+            : { paymentRecovery: { ...verified.recovery } }),
+          ...(verified === undefined ? {} : { paymentFingerprint: verified.fingerprint }),
           ...this.#alsoSaid(found, word),
         };
+        const next: StoredOrder = { ...accepted, ...this.#paymentIntent(accepted, effects, at) };
         // A verified payment never ends a parcel's need for its address, so
         // nothing here erases it; should the machine change that, this stops
         // the write rather than keep an address past its time.
@@ -407,7 +495,12 @@ export class OrderRunner {
         await this.#arm(deadlines(found.order), deadlines(order), orderId);
         return {
           save: next,
-          alongside: this.#writesWithTheOrder(next, found.order, effects, at),
+          alongside: [
+            ...this.#writesWithTheOrder(next, found.order, effects, at),
+            ...(verified === undefined
+              ? []
+              : [{ kind: "retain_payment" as const, fingerprint: verified.fingerprint, orderId }]),
+          ],
           result: { kind: "took", known: next, effects },
         };
       },
@@ -427,7 +520,7 @@ export class OrderRunner {
     const runnable = result.effects.filter(
       (effect) => effect.kind !== "verify_payment" && carriedOutAfterwards(effect),
     );
-    const answer = await this.#run(result.known, runnable, at);
+    const answer = await this.#run(result.known, runnable);
     this.#wakeTheAgent(result.known);
     return { kind: "took", order: result.known, answer };
   }
@@ -486,14 +579,12 @@ export class OrderRunner {
     }
 
     for (const record of await this.#runtime.store.deliveredWithoutReceipt()) {
-      // A settlement the operator recorded has no observed execution time, so
-      // it has no receipt, and writing one now would date a proof from
-      // whenever the sweep ran. A late answer from the facilitator carries its
-      // own transaction and is receipted on arrival, without this phrase.
+      // An asserted settlement has no observed execution time. Writing its
+      // receipt here would falsely date payment to the time of this sweep.
       const asserted = record.paymentWords.some(
         (word) => word.about === "settle" && word.said.includes(UNOBSERVED_SETTLE),
       );
-      if (asserted) {
+      if (asserted && !hasObservedPayment(record)) {
         continue;
       }
       try {
@@ -694,12 +785,13 @@ export class OrderRunner {
           break;
 
         case "issue_receipt":
-          // A receipt's paid_at is when the payment executed. A late answer
-          // from the facilitator carries its transaction and is owed a receipt;
-          // an operator settling an unknown outcome writes no settlement, and a
-          // receipt for it would prove a payment nobody here saw, so neither
-          // this nor the sweep writes one.
-          if (before.payment === "outcome_unknown" && record.settlement === null) {
+          // An unknown payment needs a facilitator answer or observed chain
+          // execution before a receipt can claim that money moved.
+          if (
+            before.payment === "outcome_unknown" &&
+            record.settlement === null &&
+            !hasObservedPayment(record)
+          ) {
             break;
           }
           writes.push({
@@ -739,11 +831,7 @@ export class OrderRunner {
   }
 
   /** Carries out the effects that were not written down, and hands back the answer the merchant is owed. */
-  async #run(
-    record: StoredOrder,
-    effects: readonly Effect[],
-    at: number,
-  ): Promise<MerchantAnswer | null> {
+  async #run(record: StoredOrder, effects: readonly Effect[]): Promise<MerchantAnswer | null> {
     let answer: MerchantAnswer | null = null;
 
     for (const effect of effects) {
@@ -762,7 +850,7 @@ export class OrderRunner {
           break;
 
         case "execute_payment":
-          await this.#settle(record, at);
+          await this.#settle(record);
           break;
 
         case "dispatch_order":
@@ -820,7 +908,7 @@ export class OrderRunner {
     return answer;
   }
 
-  async #settle(record: StoredOrder, at: number): Promise<void> {
+  async #settle(record: StoredOrder): Promise<void> {
     const payment = record.payment;
     const price = record.order.price;
     if (payment === null || price === null) {
@@ -840,48 +928,226 @@ export class OrderRunner {
       payTo: record.payTo,
     });
 
-    if (outcome.settled === true) {
-      await this.apply(
-        record.order.id,
-        { kind: "payment_settled", at },
-        {
-          settlement: { transaction: outcome.transaction },
-          paymentWord: { at, about: "settle", said: `went through as ${outcome.transaction}` },
-        },
-      );
-      return;
-    }
-    if (outcome.settled === false) {
-      await this.apply(
-        record.order.id,
-        { kind: "payment_settle_failed", at },
-        { paymentWord: { at, about: "settle", said: outcome.reason } },
-      );
-      return;
-    }
-
-    // The charge was asked for and nothing came back. No event and above all no
-    // second charge: the machine's settle clock is already running and only it
-    // declares the silence, in words that keep "nobody knows" apart from "it
-    // did not go through". Nothing asks again, because the facilitator offers
-    // no way to ask what became of a sent charge; the words written here are
-    // what the operator who later records the outcome has to go on.
-    await this.#writeDown(record.order.id, { at, about: "settle", said: outcome.reason });
+    if (record.paymentAttempt === undefined)
+      throw new Error("a charge has no durable payment attempt");
+    await this.completePaymentAttempt(
+      record.order.id,
+      record.paymentAttempt.id,
+      outcome,
+      "facilitator",
+    );
   }
 
-  /**
-   * Records something the payment layer said, without telling the machine. The
-   * words go on the order and not in the log, because they can quote the
-   * payment. The line comes first, so a write that then fails still leaves the
-   * unanswered charge in the log.
-   */
-  async #writeDown(orderId: string, word: PaymentWord): Promise<void> {
-    console.error(
-      `[gateway] ${orderId}: the payment layer left the ${word.about} unanswered; what it said is written to the order, not to this log`,
+  #paymentIntent(
+    record: StoredOrder,
+    effects: readonly Effect[],
+    at: number,
+  ): Pick<StoredOrder, "paymentAttempt"> {
+    if (!effects.some((effect) => effect.kind === "execute_payment")) return {};
+    return {
+      paymentAttempt: {
+        id: this.#runtime.ids("pay"),
+        startedAt: at,
+        ...(record.paymentRecovery === undefined
+          ? {}
+          : { recovery: { ...record.paymentRecovery } }),
+        completion: null,
+      },
+    };
+  }
+
+  /** Applies an answer only to the submitted attempt it names. Recovery never submits a charge. */
+  async completePaymentAttempt(
+    orderId: string,
+    attemptId: string,
+    outcome: SettleOutcome | PaymentRecoveryOutcome,
+    source: "facilitator" | "chain",
+    at = this.#runtime.clock(),
+  ): Promise<Applied> {
+    if (outcome.settled === "unknown") {
+      const recorded = await this.#runtime.store.withOrder(
+        orderId,
+        (found): OrderChange<boolean> => {
+          const attempt = found.paymentAttempt;
+          if (attempt?.id !== attemptId || attempt.completion !== null) return { result: false };
+          const progressed = "nextBlock" in outcome ? outcome.nextBlock : undefined;
+          const nextBlock =
+            progressed !== undefined && /^\d+$/.test(progressed)
+              ? attempt.nextBlock === undefined || BigInt(progressed) > BigInt(attempt.nextBlock)
+                ? progressed
+                : attempt.nextBlock
+              : attempt.nextBlock;
+          const transaction = "transaction" in outcome ? outcome.transaction : undefined;
+          return {
+            save: {
+              ...found,
+              paymentAttempt: {
+                ...attempt,
+                ...(nextBlock === undefined ? {} : { nextBlock }),
+                ...(transaction === undefined ? {} : { transaction }),
+              },
+              ...this.#alsoSaid(found, { at, about: "settle", said: outcome.reason }),
+            },
+            result: true,
+          };
+        },
+      );
+      if (recorded.found && recorded.result && source === "facilitator") {
+        console.error(
+          `[gateway] ${orderId}: the payment layer left the settle unanswered; its words are kept on the order`,
+        );
+      }
+      return !recorded.found ? { outcome: "no_such_order" } : { outcome: "moved_on" };
+    }
+    const result: PaymentCompletion = outcome.settled
+      ? {
+          settled: true,
+          transaction: outcome.transaction,
+          executedAt: "executedAt" in outcome ? outcome.executedAt : null,
+          source,
+        }
+      : { settled: false, reason: outcome.reason, source };
+    return this.apply(
+      orderId,
+      {
+        kind: outcome.settled ? "payment_settled" : "payment_settle_failed",
+        at: outcome.settled && "executedAt" in outcome ? outcome.executedAt : at,
+      },
+      {
+        ...(outcome.settled && source === "facilitator"
+          ? { settlement: { transaction: outcome.transaction } }
+          : {}),
+        paymentWord: {
+          at,
+          about: "settle",
+          said: outcome.settled ? `${source} confirmed ${outcome.transaction}` : outcome.reason,
+        },
+      },
+      undefined,
+      undefined,
+      { attemptId, result },
     );
-    await this.#runtime.store.withOrder(orderId, (found): OrderChange<null> => {
-      return { save: { ...found, ...this.#alsoSaid(found, word) }, result: null };
+  }
+
+  /** Revisits persisted unanswered attempts, including purchases already closed on a timeout. */
+  async reconcilePayments(): Promise<void> {
+    const reconcile = this.#runtime.facilitator.reconcile;
+    if (reconcile === undefined) return;
+    await this.#runtime.store.runAlone(RECONCILE_PAYMENTS, async () => {
+      let afterId = "";
+      for (;;) {
+        const records = await this.#runtime.store.unresolvedPayments(afterId, 100);
+        if (records.length === 0) return;
+        for (const record of records) {
+          afterId = record.order.id;
+          if (
+            record.order.payment === "settling" &&
+            deadlines(record.order).some(
+              (deadline) =>
+                deadline.kind === "settle_response" && deadline.at > this.#runtime.clock(),
+            )
+          )
+            continue;
+          try {
+            const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
+            if (attempt?.recovery === undefined || attempt.completion !== null) continue;
+            const outcome = await reconcile.call(this.#runtime.facilitator, {
+              context: attempt.recovery,
+              ...(attempt.transaction === undefined ? {} : { transaction: attempt.transaction }),
+              ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
+            });
+            await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+          } catch (thrown) {
+            console.error(
+              `[gateway] payment recovery could not inspect ${record.order.id}: ${failureNamed(thrown)}`,
+            );
+          }
+        }
+      }
     });
+  }
+
+  async #recoverAttempt(record: StoredOrder): Promise<PaymentAttempt | undefined> {
+    const recoveryFor = this.#runtime.facilitator.recoveryFor;
+    const price = record.order.price;
+    if (
+      recoveryFor === undefined ||
+      record.payment === null ||
+      record.payTo === null ||
+      price === null
+    )
+      return undefined;
+    const recovery = await recoveryFor.call(this.#runtime.facilitator, {
+      orderId: record.order.id,
+      payment: record.payment,
+      payTo: record.payTo,
+      amount: price.amount,
+      currency: price.currency,
+    });
+    if (recovery === null || record.paidBy?.toLowerCase() !== recovery.payer.toLowerCase())
+      return undefined;
+    const fingerprint = authorizationFingerprint(recovery);
+    if (await this.#authorizationIsAmbiguous(record.order.id, recovery, fingerprint))
+      return undefined;
+    const claim = await this.#runtime.store.claimPayment(fingerprint, record.order.id);
+    if (!claim.claimed) return undefined;
+    const recovered = await this.#runtime.store.withOrder(
+      record.order.id,
+      (found): OrderChange<PaymentAttempt | undefined> => {
+        if (found.paymentAttempt !== undefined) return { result: found.paymentAttempt };
+        if (
+          found.payment !== record.payment ||
+          (found.order.payment !== "settling" && found.order.payment !== "outcome_unknown")
+        )
+          return { result: undefined };
+        const attempt: PaymentAttempt = {
+          id: this.#runtime.ids("pay"),
+          startedAt: found.order.timestamps.settleStartedAt ?? found.order.timestamps.createdAt,
+          recovery: { ...recovery },
+          completion: null,
+        };
+        return {
+          save: {
+            ...found,
+            paymentRecovery: recovery,
+            paymentFingerprint: fingerprint,
+            paymentAttempt: attempt,
+          },
+          alongside: [{ kind: "retain_payment", fingerprint, orderId: found.order.id }],
+          result: attempt,
+        };
+      },
+    );
+    return recovered.found ? recovered.result : undefined;
+  }
+
+  async #authorizationIsAmbiguous(
+    orderId: string,
+    recovery: PaymentRecoveryContext,
+    fingerprint: string,
+  ): Promise<boolean> {
+    // Old accepted claims were pruned by age. Check saved authorizations before attributing their money.
+    let afterId = "";
+    for (;;) {
+      const records = await this.#runtime.store.paymentOrders(afterId, 100);
+      if (records.length === 0) return false;
+      for (const record of records) {
+        afterId = record.order.id;
+        if (record.order.id === orderId || record.payment === null) continue;
+        if (record.paymentFingerprint === fingerprint) return true;
+        try {
+          const payload = decodePaymentSignatureHeader(record.payment);
+          if (
+            payload.accepted?.network.toLowerCase() !== recovery.network.toLowerCase() ||
+            payload.accepted?.asset.toLowerCase() !== recovery.asset.toLowerCase()
+          )
+            continue;
+          if (paymentFingerprint(payload, recovery) === fingerprint) return true;
+        } catch {
+          /* An unreadable saved authorization supplies no matching evidence. */
+        }
+      }
+    }
   }
 
   /**
@@ -920,7 +1186,17 @@ export class OrderRunner {
     // instant the order carries. Stamping the moment somebody asked would be a
     // claim about a payment nobody made then.
     const moneyMovedNow = before.payment !== "settled" && record.order.payment === "settled";
-    const paidAt = moneyMovedNow ? at : (record.order.timestamps.paidAt ?? at);
+    const completion = record.paymentAttempt?.completion;
+    const paidAt =
+      completion?.settled && completion.executedAt !== null
+        ? completion.executedAt
+        : moneyMovedNow
+          ? at
+          : (record.order.timestamps.paidAt ?? at);
+    const transaction =
+      completion?.settled && completion.executedAt !== null
+        ? completion.transaction
+        : record.settlement?.transaction;
 
     // The merchant comes from the order, not through the card: a card can be
     // republished or taken off sale, and a receipt names who made the sale
@@ -940,9 +1216,7 @@ export class OrderRunner {
       outcome: receiptOutcomeOf(record.order),
       // An empty transaction is left off: the contract refuses one, and a
       // single refused receipt would break the merchant's whole list.
-      ...(record.settlement === null || record.settlement.transaction.trim() === ""
-        ? {}
-        : { transaction: record.settlement.transaction }),
+      ...(transaction === undefined || transaction.trim() === "" ? {} : { transaction }),
       test: record.order.test,
     };
   }

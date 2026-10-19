@@ -3,14 +3,12 @@
  * requirements handed to it are always rebuilt from our own order, never taken
  * from the payment, so a payment against a price the agent invented fails.
  *
- * A silence is not a no, and a no is not a silence: a 4xx carrying the
- * facilitator's verdict is that verdict, and everything else (a 5xx, a
- * timeout, no connection) is "unknown". A verification failure's reason is a
- * best fit among three codes; the facilitator's own string is kept in the
- * message.
+ * A settlement failure may describe an unconfirmed broadcast. Only a known
+ * pre-broadcast refusal proves nonpayment; other failures stay unknown.
  */
 
 import type { PaymentVerificationFailure } from "@agentify/core";
+import { PAYABLE_CURRENCIES } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { FacilitatorClient } from "@x402/core/server";
 import {
@@ -21,16 +19,35 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import type { PaymentEdge } from "../../http/x402.js";
-import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
+import { getDefaultAsset } from "@x402/evm";
+import { atomicUnits, type PaymentEdge } from "../../http/x402.js";
+import type {
+  Charge,
+  Facilitator,
+  PaymentRecoveryContext,
+  PaymentRecoveryOutcome,
+  PaymentRecoveryRequest,
+  SettleOutcome,
+  VerifyOutcome,
+} from "../../ports/facilitator.js";
+import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
 
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
   readonly #edge: PaymentEdge;
+  readonly #now: () => number;
+  readonly reconcile?: (request: PaymentRecoveryRequest) => Promise<PaymentRecoveryOutcome>;
 
-  constructor(client: FacilitatorClient, edge: PaymentEdge) {
+  constructor(
+    client: FacilitatorClient,
+    edge: PaymentEdge,
+    recovery?: Eip3009Recovery,
+    now = Date.now,
+  ) {
     this.#client = client;
     this.#edge = edge;
+    if (recovery) this.reconcile = (request) => recovery.reconcile(request);
+    this.#now = now;
   }
 
   async verify(charge: Charge): Promise<VerifyOutcome> {
@@ -60,6 +77,24 @@ export class X402Facilitator implements Facilitator {
       return { verified: false, reason: "price_stale", message: mismatch };
     }
 
+    let authorization: ReturnType<typeof authorizationOf>;
+    try {
+      authorization = authorizationOf(payload, requirements);
+      const now = BigInt(Math.floor(this.#now() / 1000));
+      const expires = BigInt(authorization.validBefore);
+      if (expires <= now || expires > now + BigInt(requirements.maxTimeoutSeconds + 30)) {
+        return {
+          verified: false,
+          reason: "price_stale",
+          message:
+            "The signed authorization must expire within the offered payment timeout, allowing 30 seconds of clock skew.",
+        };
+      }
+    } catch (thrown) {
+      return { verified: false, reason: "signature", message: describe(thrown) };
+    }
+    const recovery: PaymentRecoveryContext = { ...authorization, fromBlock: "0" };
+
     let answered: VerifyResponse;
     try {
       answered = await this.#client.verify(payload, requirements);
@@ -73,7 +108,13 @@ export class X402Facilitator implements Facilitator {
     }
 
     if (answered.isValid) {
-      return { verified: true, payer: answered.payer ?? null };
+      if (answered.payer && !sameAddress(answered.payer, authorization.payer)) {
+        return {
+          verified: "unknown",
+          message: "The facilitator named a payer different from the signed authorization.",
+        };
+      }
+      return { verified: true, payer: authorization.payer, recovery };
     }
     const said = answered.invalidMessage ?? answered.invalidReason ?? "no reason was given";
     return { verified: false, reason: shapeOf(answered.invalidReason), message: said };
@@ -88,20 +129,19 @@ export class X402Facilitator implements Facilitator {
     }
     // Throws with its own sentence, which points the reader at the merchant's
     // settings rather than at the payment.
-    const requirements = this.#requirements(charge);
+    const requirements = savedRequirements(charge, payload);
+    try {
+      authorizationOf(payload, requirements);
+    } catch (thrown) {
+      return { settled: false, reason: describe(thrown) };
+    }
 
     let answered: SettleResponse;
     try {
       answered = await this.#client.settle(payload, requirements);
     } catch (thrown) {
-      // Turned away (for example `self_send_not_allowed`, a payer paying
-      // himself): the request was refused before anything ran, so no money
-      // moved.
-      if (thrown instanceof SettleError && refused(thrown.statusCode)) {
-        return {
-          settled: false,
-          reason: thrown.errorMessage ?? thrown.errorReason ?? "no reason was given",
-        };
+      if (thrown instanceof SettleError) {
+        return settlementFailure(thrown);
       }
       // A timeout or an internal failure may have completed the settlement
       // before it stopped answering. Nothing is claimed and no second charge is
@@ -112,10 +152,17 @@ export class X402Facilitator implements Facilitator {
     if (answered.success) {
       return { settled: true, transaction: answered.transaction };
     }
-    return {
-      settled: false,
-      reason: answered.errorMessage ?? answered.errorReason ?? "no reason was given",
-    };
+    return settlementFailure(answered);
+  }
+
+  async recoveryFor(charge: Charge): Promise<PaymentRecoveryContext | null> {
+    try {
+      const payload = decoded(charge.payment);
+      if (!payload) return null;
+      return { ...authorizationOf(payload, savedRequirements(charge, payload)), fromBlock: "0" };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -127,6 +174,42 @@ export class X402Facilitator implements Facilitator {
   #requirements(charge: Charge) {
     return this.#edge.requirementsFor(charge, charge.orderId, charge.payTo);
   }
+}
+
+function settlementFailure(
+  response: Pick<SettleResponse, "transaction" | "errorReason" | "errorMessage">,
+): SettleOutcome {
+  // These checks return before broadcast; a hash contradicts that evidence.
+  const refusedBeforeBroadcast =
+    !response.transaction &&
+    (response.errorReason === "invalid_exact_evm_payload_authorization_value_mismatch" ||
+      response.errorReason === "invalid_exact_evm_recipient_mismatch");
+  return {
+    settled: refusedBeforeBroadcast ? false : "unknown",
+    reason: response.errorMessage ?? response.errorReason ?? "no reason was given",
+    ...(!refusedBeforeBroadcast && response.transaction
+      ? { transaction: response.transaction }
+      : {}),
+  };
+}
+
+function savedRequirements(charge: Charge, payload: PaymentPayload): PaymentRequirements {
+  if (typeof charge.payTo !== "string")
+    throw new Error("There is nowhere to send the money recorded for this order.");
+  if (!PAYABLE_CURRENCIES.includes(charge.currency.toUpperCase()))
+    throw new Error("The saved charge uses an unsupported currency.");
+  if (!payload.accepted) throw new Error("The saved payment names no offer.");
+  const asset = getDefaultAsset(payload.accepted.network);
+  const requirements = {
+    ...payload.accepted,
+    asset: asset.asset,
+    amount: atomicUnits(charge.amount, asset.decimals),
+    payTo: charge.payTo,
+    extra: { name: asset.name, version: asset.version, order_id: charge.orderId },
+  };
+  const mismatch = wrongOffer(payload.accepted, requirements);
+  if (mismatch) throw new Error(mismatch);
+  return requirements;
 }
 
 function decoded(payment: string): PaymentPayload | null {
@@ -150,6 +233,7 @@ function wrongOffer(
         asset?: string;
         network?: string;
         payTo?: string;
+        maxTimeoutSeconds?: number;
         extra?: Record<string, unknown>;
       }
     | undefined,
@@ -158,6 +242,7 @@ function wrongOffer(
     asset: string;
     network: string;
     payTo: string;
+    maxTimeoutSeconds: number;
     extra: Record<string, unknown>;
   },
 ): string | null {
@@ -172,6 +257,9 @@ function wrongOffer(
   }
   if (!sameAddress(accepted.payTo, ours.payTo)) {
     return "the payment was made out to a different address from the one asked for";
+  }
+  if (accepted.maxTimeoutSeconds !== ours.maxTimeoutSeconds) {
+    return "the payment names a different timeout from the offer it was made against";
   }
   if (accepted.extra?.order_id !== ours.extra.order_id) {
     return "the payment was made against a different order from the one it was presented for";
@@ -204,10 +292,9 @@ function shapeOf(reason: string | undefined): PaymentVerificationFailure {
 }
 
 /**
- * Whether a status carries the facilitator's own decision: a 4xx declines the
- * request before anything moved, a 5xx may fail after. Only a body shaped as a
- * verdict reaches here, so a proxy's error page or an empty 429 stays a
- * silence.
+ * Whether a verification status carries the facilitator's own decision. Only
+ * a body shaped as a verdict reaches here, so a proxy's error page or an empty
+ * 429 stays a silence. Verification submits no payment.
  *
  * This line is inferred from what the statuses mean, not measured against a
  * real facilitator. If one answers a definite refusal with a 5xx, it is read

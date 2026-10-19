@@ -1104,4 +1104,57 @@ if (databaseUrl === null) {
       ).resolves.toBeDefined();
     });
   });
+
+  describe("the migration retaining accepted payment authorizations", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 18)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("keeps accepted claims while leaving unaccepted and orphan claims pruneable", async () => {
+      await pool.query(
+        "insert into merchants (id, name, selling, created_at, updated_at) values ('mch_recovery', 'Recovery', 'open', now(), now())",
+      );
+      for (const [id, payment] of [
+        ["ord_accepted", "SAVED-AUTHORIZATION"],
+        ["ord_unpaid", null],
+      ]) {
+        await pool.query(
+          "insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record, created_at, updated_at) values ($1, 'rejected', false, 'mch_recovery', 'item_1', 'sku-1', $2, now(), now())",
+          [id, JSON.stringify({ payment })],
+        );
+      }
+      await pool.query(
+        "insert into payment_claims (fingerprint, order_id, claimed_at) values ('fp-accepted', 'ord_accepted', now()), ('fp-unpaid', 'ord_unpaid', now()), ('fp-orphan', 'ord_missing', now())",
+      );
+      for (const statement of await statementsOf("0018_payment_recovery.sql"))
+        await pool.query(statement);
+      expect(
+        (await pool.query("select fingerprint, retained from payment_claims order by fingerprint"))
+          .rows,
+      ).toEqual([
+        { fingerprint: "fp-accepted", retained: true },
+        { fingerprint: "fp-orphan", retained: false },
+        { fingerprint: "fp-unpaid", retained: false },
+      ]);
+      expect(
+        (
+          await pool.query(
+            "select record ->> 'payment' as payment from orders where id = 'ord_accepted'",
+          )
+        ).rows,
+      ).toEqual([{ payment: "SAVED-AUTHORIZATION" }]);
+    });
+  });
 }

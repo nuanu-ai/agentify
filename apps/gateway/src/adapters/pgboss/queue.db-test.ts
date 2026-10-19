@@ -43,6 +43,7 @@ const SCHEMAS = [
   "pgboss_envelope_delay",
   "pgboss_envelope_left",
   "pgboss_every_day",
+  "pgboss_every_minute",
   "pgboss_queue_names",
   "pgboss_queue_settings",
   "pgboss_holds_order",
@@ -577,6 +578,23 @@ if (databaseUrl === null) {
         ran += 1;
       });
       expect(await boss.getSchedules("agentify_a_daily_sweep")).toHaveLength(1);
+    }, 60_000);
+
+    it("runs persisted payment recovery every minute and replaces its schedule on restart", async () => {
+      const { boss, queue } = await labQueue("pgboss_every_minute");
+      let ran = 0;
+      await queue.everyMinute("agentify_recovery_test", async () => {
+        ran += 1;
+      });
+      await boss.send("agentify_recovery_test", {});
+      await vi.waitFor(() => expect(ran).toBe(1), { timeout: 25_000, interval: 100 });
+      expect(
+        (await boss.getSchedules("agentify_recovery_test")).map((schedule) => schedule.cron),
+      ).toEqual(["* * * * *"]);
+      await queue.everyMinute("agentify_recovery_test", async () => {
+        ran += 1;
+      });
+      expect(await boss.getSchedules("agentify_recovery_test")).toHaveLength(1);
     }, 60_000);
   });
 }

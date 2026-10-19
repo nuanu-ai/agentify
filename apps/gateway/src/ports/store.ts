@@ -20,6 +20,26 @@ import type {
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import type { PayoutSplit } from "../split/parameters.js";
+import type { PaymentRecoveryContext } from "./facilitator.js";
+
+export type PaymentCompletion =
+  | {
+      readonly settled: true;
+      readonly transaction: string;
+      readonly executedAt: number | null;
+      readonly source: "facilitator" | "chain";
+    }
+  | { readonly settled: false; readonly reason: string; readonly source: "facilitator" | "chain" };
+
+/** One submitted charge. A callback and chain recovery must complete this same identity. */
+export interface PaymentAttempt {
+  readonly id: string;
+  readonly startedAt: number;
+  readonly recovery?: PaymentRecoveryContext;
+  readonly transaction?: string;
+  readonly nextBlock?: string;
+  readonly completion: PaymentCompletion | null;
+}
 
 /**
  * How a merchant's products reach Agentify and their orders are filled: their
@@ -122,6 +142,10 @@ export interface StoredOrder {
   readonly delivery: Delivery | null;
   /** What the agent presented to pay with, verbatim, until the charge is done. */
   readonly payment: string | null;
+  /** Immutable token and authorization terms established during verification. */
+  readonly paymentRecovery?: PaymentRecoveryContext;
+  readonly paymentFingerprint?: string;
+  readonly paymentAttempt?: PaymentAttempt;
   /**
    * The address the payment was verified against: the merchant's split as
    * recorded then, or, on an order verified before payments went to splits,
@@ -132,9 +156,8 @@ export interface StoredOrder {
    */
   readonly payTo: string | null;
   /**
-   * The order's owner: the payer the payment layer named when it verified the
-   * first payment for the order (never the address a payment declares of
-   * itself), or that payment's fingerprint where the layer names none. Order
+   * The order's owner: the payer bound to the first verified authorization,
+   * or that payment's fingerprint where the adapter supplies no verified payer. Order
    * ids are not secret and the payment route takes no key, so without an owner
    * anyone holding an id could pay against, take the goods of, or close
    * someone else's order. It is set inside the store's hold on the order, so
@@ -149,9 +172,8 @@ export interface StoredOrder {
    */
   readonly settlement: { readonly transaction: string } | null;
   /**
-   * Everything the payment layer has said about this order, in its own words
-   * and in order. The machine keeps only a coarse verdict, and this is what an
-   * operator reconciles a charge that went quiet from.
+   * Bounded diagnostics from verification, settlement and recovery. They are
+   * never proof of payment or the identity of an attempt.
    */
   readonly paymentWords: readonly PaymentWord[];
   /**
@@ -187,6 +209,7 @@ export interface PaymentWord {
  * delivered at most once and must never be sent a second time.
  */
 export type WithTheOrder =
+  | { readonly kind: "retain_payment"; readonly fingerprint: string; readonly orderId: string }
   | {
       readonly kind: "envelope";
       readonly merchantId: string;
@@ -709,6 +732,12 @@ export interface Store {
    */
   openOrders(): Promise<readonly StoredOrder[]>;
 
+  /** Unanswered charges, including closed purchases, in bounded identifier order. */
+  unresolvedPayments(afterId?: string, limit?: number): Promise<readonly StoredOrder[]>;
+
+  /** Saved authorizations, bounded, for detecting ambiguous ownership before old charges are recovered. */
+  paymentOrders(afterId?: string, limit?: number): Promise<readonly StoredOrder[]>;
+
   /**
    * Runs `work` only if nothing anywhere in the gateway is running the work
    * called `name`, and otherwise returns at once without running it. The sweep
@@ -767,10 +796,8 @@ export interface Store {
   releaseClaim(fingerprint: string, orderId: string): Promise<void>;
 
   /**
-   * Forgets claims older than an instant and returns how many went. Anyone can
-   * make claims without a key, so the table must be pruned; a claim only
-   * matters between verification and charge, after which the token itself
-   * refuses a second use.
+   * Forgets unaccepted claims older than an instant. Accepted authorizations
+   * remain tied to their order permanently, including when their charge is unknown.
    */
   forgetClaimsBefore(instant: number): Promise<number>;
 

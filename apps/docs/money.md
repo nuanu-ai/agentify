@@ -203,14 +203,18 @@ What it can cost you is the price of one sale, so the only thing you have to
 weigh here is how expensive and how irreversible your delivery is. Access you
 can revoke and a parcel already on its way are worth different amounts to you.
 
-You hear about such a case from us: we tell you the money did not arrive. There
-is no need to reconcile the payments against what you delivered by hand.
+The order tells you whether payment failed or its outcome is still unknown.
+When chain verification is available, Agentify checks unknown payments
+automatically, including after a restart, without charging again. A confirmed transfer releases
+the goods already recorded; proof that the authorization expired unused or was
+cancelled allows the buyer to try payment again. No manual reconciliation or
+approval is required from you.
 
-Sometimes that is the whole of what anybody knows. Where the payment network
-was asked and never answered, nobody can say whether the buyer was charged, and
-the case can stay that way — so taking back what you gave out may be taking it
-from somebody who paid for it. That is the case to weigh when you decide how
-irreversible a delivery of yours should be.
+Payments can also operate through the payment service alone. If its answer is
+lost and chain verification is unavailable, the payment stays unknown until
+evidence becomes available. Conflicting evidence also leaves it unknown.
+Taking back what you gave out then may take it from somebody who paid for it.
+That is the case to weigh when you decide how irreversible your delivery is.
 
 Putting the money first closes the case. For a product paid for ahead of the
 delivery, the charge happens at the moment of purchase and you never deliver
@@ -236,7 +240,8 @@ whose price is checked at the purchase the agent may take minutes between the
 price and the payment.
 
 A receipt also names the buyer's payment itself (`transaction`): the hash of
-the transfer into your payout contract that the payment layer reported, which
+the transfer into your payout contract reported by the payment layer or
+verified during automatic recovery, which
 the dashboard links to the chain's explorer, so a receipt can be matched to
 its payment without going by its time. That transfer goes into the contract
 and not into your wallet, which receives the payouts instead, each covering

@@ -140,6 +140,25 @@ describe("loadConfig", () => {
     });
   });
 
+  it("accepts a dedicated payment RPC without changing the payment network", () => {
+    const rpcUrl = "https://rpc.example.com/base/key-for-tests";
+    const config = loadConfig({ ...required, PAYMENT_RPC_URL: rpcUrl });
+    expect(config.payment.rpcUrl).toBe(rpcUrl);
+    expect(config.payment.network).toBe("eip155:84532");
+    expect(loadConfig({ ...required, PAYMENT_RPC_URL: "" }).payment.rpcUrl).toBeUndefined();
+  });
+
+  it.each([
+    "not-a-url",
+    "file:///tmp/key-for-tests",
+    "https://user:key-for-tests@rpc.example.com",
+    "https://rpc.example.com/#key-for-tests",
+  ])("refuses unusable payment RPC configuration without echoing its credential: %s", (rpcUrl) => {
+    const refused = refusalFor({ ...required, PAYMENT_RPC_URL: rpcUrl });
+    expect(refused).toContain("PAYMENT_RPC_URL");
+    expect(refused).not.toContain("key-for-tests");
+  });
+
   it("takes one address that means the sandbox, and tells it from a real one", () => {
     // One field holds one value, so a deployment cannot name a real
     // facilitator and the sandbox at once; there is no separate flag to be
