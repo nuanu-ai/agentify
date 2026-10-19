@@ -25,17 +25,19 @@ export const ORDER_STATUSES = Object.freeze([
   "shipped",
   /**
    * Closed, and the buyer's money is known not to have moved: the product was
-   * gone, the parameters did not fit, the payment failed its check, the charge
-   * came back failed, or a synchronous handler refused. On a parcel, "gone" can
-   * also mean the merchant does not ship to that place or the address lacks
-   * what their carrier needs.
+   * gone, the merchant's price check gave no price the purchase could use, the
+   * charge came back failed, or a synchronous handler refused. On a parcel,
+   * "gone" can also mean the merchant does not ship to that place or the
+   * address lacks what their carrier needs. Parameters that do not fit the
+   * card, and a payment that fails its check, are refused on the call itself
+   * and end no order this way: the first opens none, and after the second the
+   * order stays open until its price runs out and then reads `expired`.
    *
    * Where the merchant refused, the agent's status document carries their
    * `refusal` beside this word: a short code to branch on and a sentence to
    * show. Where Agentify ended the order, it carries a `reason` from
    * `ORDER_ENDING_REASONS` instead, never beside the merchant's words, so that
-   * no merchant is credited with words they did not write. A payment that
-   * failed its check carries neither.
+   * no merchant is credited with words they did not write.
    */
   "rejected",
   /**
@@ -59,7 +61,8 @@ export const ORDER_STATUSES = Object.freeze([
    * The money moved and the goods have not come: the merchant owes the buyer
    * the goods or the money back. Not an ending, and it carries no deadline of
    * its own. Goods the merchant delivers after it still reach the buyer, settle
-   * the debt and make the order `delivered`.
+   * the debt and make the order `delivered`. The agent's status document always
+   * says why it is owed, under `reason`.
    *
    * It does not say whether the money has already gone back. The merchant pays
    * back the whole price from their own wallet, although their payout contract

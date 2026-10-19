@@ -259,6 +259,8 @@ const framed = (tab: Tab, { account = [] }: Partial<FrameView> = {}, at: string 
 
 const banner = () => screen.queryByRole("region", { name: "About your account" });
 
+const TEST_DASHBOARD = "https://test.agentify.ad/dashboard/sign-in";
+
 describe("the banner about the account", () => {
   const LIVE: Viewer = {
     base: "",
@@ -277,7 +279,7 @@ describe("the banner about the account", () => {
     expect(banner()).toBeNull();
   });
 
-  it("says each reason with its title and sentence, and leads to the page that puts it right", async () => {
+  it("says each reason with its title and sentence, and the way on from it", async () => {
     framed("orders", { account: accountOf({ ...LIVE, sellerName: null, liveApproval: false }) });
     await screen.findByText("The screen");
     const drawn = banner();
@@ -286,12 +288,41 @@ describe("the banner about the account", () => {
     expect(within(drawn).getByText("Not approved for live sales yet")).toBeTruthy();
     expect(within(drawn).getByText("No seller name yet")).toBeTruthy();
     expect(drawn.textContent).toContain("until you choose the name buyers see");
-    // The approval is nobody's to set on a page, so it leads nowhere.
+    // The approval is nobody's to set on a page, so it leads on to the test
+    // channel, where the first sale is made, and not to a page of this one.
     expect(
       within(drawn)
         .getAllByRole("link")
         .map((link) => [link.textContent, link.getAttribute("href")]),
-    ).toStrictEqual([["Choose it in Settings", "/settings"]]);
+    ).toStrictEqual([
+      ["Open the test dashboard", TEST_DASHBOARD],
+      ["Choose it in Settings", "/settings"],
+    ]);
+  });
+
+  it("leads a live merchant not yet approved to the test channel's own dashboard, and nobody else", async () => {
+    // A merchant who signed up on the live site makes the first sale on the
+    // test channel, which is another dashboard and another account.
+    const toTheTest = () =>
+      banner() === null
+        ? []
+        : within(banner() as HTMLElement)
+            .queryAllByRole("link")
+            .filter((link) => link.getAttribute("href") === TEST_DASHBOARD);
+
+    framed("cards", { account: accountOf({ ...LIVE, liveApproval: false }) });
+    await screen.findByText("The screen");
+    expect(toTheTest()).toHaveLength(1);
+
+    for (const viewer of [
+      LIVE,
+      { ...LIVE, mode: "test", liveApproval: false, sellerName: null },
+    ] satisfies Viewer[]) {
+      cleanup();
+      framed("cards", { account: accountOf(viewer) });
+      await screen.findByText("The screen");
+      expect(toTheTest(), JSON.stringify(viewer)).toStrictEqual([]);
+    }
   });
 
   it("leaves out the way to the page it is drawn on", async () => {

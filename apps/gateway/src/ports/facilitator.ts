@@ -15,7 +15,12 @@ import type { PaymentVerificationFailure } from "@agentify/core";
  * verbatim and not parsed here: its contents belong to the payment protocol.
  */
 export interface Charge {
-  readonly orderId: string;
+  /**
+   * The order's payment reference, the one name for the order the payment
+   * layer is given: what it is sent can be published by a discovery listing,
+   * and the order's identifier opens its goods.
+   */
+  readonly paymentRef: string;
   readonly amount: string;
   readonly currency: string;
   readonly payment: string;
@@ -34,7 +39,16 @@ export interface Charge {
 }
 
 export type VerifyOutcome =
-  | { readonly verified: true; readonly payer: string | null }
+  | {
+      readonly verified: true;
+      readonly payer: string | null;
+      /**
+       * The instant the payment's authorisation stops being valid, as the
+       * payment it verified was signed with, or null where the payment names
+       * none this gateway can read.
+       */
+      readonly validUntil: number | null;
+    }
   | {
       readonly verified: false;
       readonly reason: PaymentVerificationFailure;

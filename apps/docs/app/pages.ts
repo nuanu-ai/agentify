@@ -35,6 +35,12 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
     description:
       "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and refunds for merchant orders.",
   },
+  "/payout": {
+    file: "payout.md",
+    title: "Sending a payout from your payout contract",
+    description:
+      "Pay out what has accumulated in your Agentify payout contract, with a Coinbase Wallet or any wallet that can send a transaction with data.",
+  },
   "/woocommerce": {
     file: "woocommerce.md",
     title: "WooCommerce connector: importing, parcels and disconnecting",
@@ -88,6 +94,13 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
 /** What the documentation says of itself where a page says nothing of its own. */
 export const DOCS_DESCRIPTION =
   "Selling to AI agents with Agentify: connecting, cards, money and what can go wrong.";
+
+/**
+ * Where the build writes a page's Markdown beside the page, which is also its
+ * address under `/docs`: `/money` as `money.md`, the front page as `index.md`.
+ */
+export const markdownFileOf = (path: string): string =>
+  path === "/" ? "index.md" : `${path.slice(1)}.md`;
 
 /** The address the build draws the page for a missing one at, which Caddy answers with. */
 export const NOT_FOUND_PATH = "/404";

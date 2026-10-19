@@ -21,7 +21,7 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import type { PaymentEdge } from "../../http/x402.js";
+import { authorisedUntil, PAYMENT_REF_IN_EXTRA, type PaymentEdge } from "../../http/x402.js";
 import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
 
 export class X402Facilitator implements Facilitator {
@@ -73,7 +73,13 @@ export class X402Facilitator implements Facilitator {
     }
 
     if (answered.isValid) {
-      return { verified: true, payer: answered.payer ?? null };
+      // The end comes from the payment the facilitator has just checked the
+      // signature of, so it is the one the payer signed.
+      return {
+        verified: true,
+        payer: answered.payer ?? null,
+        validUntil: authorisedUntil(payload),
+      };
     }
     const said = answered.invalidMessage ?? answered.invalidReason ?? "no reason was given";
     return { verified: false, reason: shapeOf(answered.invalidReason), message: said };
@@ -83,7 +89,7 @@ export class X402Facilitator implements Facilitator {
     const payload = decoded(charge.payment);
     if (payload === null) {
       throw new Error(
-        `the charge on ${charge.orderId} was to be executed and the payment kept for it cannot be read`,
+        `the charge on the order paid under ${charge.paymentRef} was to be executed and the payment kept for it cannot be read`,
       );
     }
     // Throws with its own sentence, which points the reader at the merchant's
@@ -125,7 +131,7 @@ export class X402Facilitator implements Facilitator {
    * payment".
    */
   #requirements(charge: Charge) {
-    return this.#edge.requirementsFor(charge, charge.orderId, charge.payTo);
+    return this.#edge.requirementsFor(charge, charge.paymentRef, charge.payTo);
   }
 }
 
@@ -173,7 +179,7 @@ function wrongOffer(
   if (!sameAddress(accepted.payTo, ours.payTo)) {
     return "the payment was made out to a different address from the one asked for";
   }
-  if (accepted.extra?.order_id !== ours.extra.order_id) {
+  if (accepted.extra?.[PAYMENT_REF_IN_EXTRA] !== ours.extra[PAYMENT_REF_IN_EXTRA]) {
     return "the payment was made against a different order from the one it was presented for";
   }
   return null;

@@ -1,7 +1,5 @@
 # Selling through a WooCommerce shop
 
-*The public contract is versioned; changes arrive in a new package version.*
-
 You run a WooCommerce shop and want buyers — programs buying on a person's
 behalf — to buy from it without anybody writing code. The WooCommerce page of
 your dashboard connects the shop, imports its products as cards, and from then
@@ -27,6 +25,21 @@ Such a product becomes one of two kinds of card:
 Every other product stays in your shop untouched, and the import names it with
 the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
+
+At every purchase the connector asks your shop for the product's price, and
+for a parcel the shipping rate, and your shop has four seconds to answer. A
+shop slower than that loses that sale before any payment, and only the
+connector's own log, which your dashboard does not show, records why.
+
+The buyer gets a download through Agentify: once your shop has created the
+order, the order the buyer reads from us carries your shop's private download
+address for the file, the file's name and the order's number in your shop, and
+the file itself comes from your shop at that address.
+
+Each order is created in your shop with your own dashboard email as the
+customer's, so the shop's customer emails — the confirmation, the download
+link — come to you and never to the buyer, and the shop's reports name you as
+the customer of every sale.
 
 ## Connecting your shop
 
@@ -62,7 +75,8 @@ The switch is refused while your code is still working on an order. Each such
 order has to end first: delivered or refused by your code, paid or left unpaid
 by its buyer, or closed when its time runs out. The dashboard names those
 orders, pausing all sales on Cards keeps new ones from arriving meanwhile, and
-you press Connect again once they have ended.
+you press Connect again once they have ended. Selling then stays paused after
+the switch, the shop's cards included, until you resume it on Cards.
 
 If you pressed Connect and never approved, you sell through a shop that is not
 connected, and nothing sells. The WooCommerce page offers the way back to your

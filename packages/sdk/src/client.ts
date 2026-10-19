@@ -281,7 +281,6 @@ export interface AgentifyClient {
   start(): Promise<void>;
 
   /**
-  /**
    * Stops the subscription and waits for it to finish. Safe to call twice,
    * and on a client that was never started. Handlers stay registered.
    *
@@ -456,6 +455,22 @@ const assertEveryKindIsRegistered = (kind: never): never => {
   throw new TypeError(`on() has no place to put a handler for ${JSON.stringify(kind)}`);
 };
 
+/**
+ * Builds the client a merchant's code publishes cards and answers orders with,
+ * against one gateway: `https://test.agentify.ad` while building,
+ * `https://agentify.ad` once live, named in `baseUrl`.
+ *
+ * Building it calls nothing. It throws a `TypeError` at once when `apiKey` is
+ * missing or blank and when `baseUrl` is given but is not an http or https
+ * address. Left without `baseUrl`, it is still built, and every call that has to
+ * reach the gateway throws a `TypeError` naming both addresses, since there is
+ * no default to fall back on. Whether the key opens that gateway is learned at
+ * the first call.
+ *
+ * Returns the client: `catalog.publish` for cards, `orders` to read and close
+ * orders, `on` to register handlers, and `start` and `stop` for the
+ * subscription that brings orders, price questions and order events in.
+ */
 export const createClient = (options: ClientOptions): AgentifyClient => {
   const gateway: Gateway = {
     apiKey: keyOf(options.apiKey),

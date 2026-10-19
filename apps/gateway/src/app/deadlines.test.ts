@@ -188,6 +188,30 @@ describe("when the time runs out", () => {
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
 
+  it("collects goods already made with an authorisation too short for goods still to be made", async () => {
+    // The door refuses an authorisation that cannot outlive a charge sent
+    // after goods the merchant has yet to make. Goods already made are charged
+    // at once, so a repeat purchase collecting them is not held to that.
+    const harnessed = await started();
+    const orderId = await bought(harnessed, syncCard);
+    const first = authorisation(harnessed, BUYER, "0x01");
+    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      delivered: { access_code: "CODE-ONE" },
+    });
+    expect((await state(harnessed, orderId))?.heldFulfillment).toBe(true);
+
+    const short = authorisation(harnessed, BUYER, "0x02", harnessed.now() + 1_000);
+    const collected = await harnessed.gateway.payPurchase(
+      orderId,
+      short.payment,
+      short.fingerprint,
+    );
+
+    expect(collected.step).toBe("settled");
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
+  });
+
   it("keeps the first of two late answers in the drawer, and the buyer collects that one", async () => {
     // A late answer after a synchronous timeout is held for a repeat purchase to
     // collect, and the first one held is kept. A handler that issues a fresh code

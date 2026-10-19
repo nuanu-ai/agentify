@@ -6,6 +6,7 @@
 
 import type { PaymentVerificationFailure } from "@agentify/core";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
+import { authorisedUntil } from "../../http/x402.js";
 import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
 
 /**
@@ -29,6 +30,15 @@ const scriptedPayer = (payment: string): string | null => {
 
   const from = (signed as { authorization?: { from?: unknown } } | undefined)?.authorization?.from;
   return typeof from === "string" ? from : null;
+};
+
+/** When the presented payment's authorisation ends, read as the real adapter reads it. */
+const scriptedEnd = (payment: string): number | null => {
+  try {
+    return authorisedUntil(decodePaymentSignatureHeader(payment));
+  } catch {
+    return null;
+  }
 };
 
 export class ScriptedFacilitator implements Facilitator {
@@ -92,6 +102,7 @@ export class ScriptedFacilitator implements Facilitator {
     return next(this.#verifyOutcomes, this.verifies.length, {
       verified: true,
       payer: scriptedPayer(charge.payment),
+      validUntil: scriptedEnd(charge.payment),
     });
   }
 

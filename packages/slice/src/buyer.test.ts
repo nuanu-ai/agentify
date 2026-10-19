@@ -1,17 +1,16 @@
 /**
  * The staple that holds a stranger's agent to our own contract.
  *
- * `buyer.ts` writes its addresses out as strings and reads answers field by
- * field on purpose: it stands in for an agent that has the portal and no
- * package of ours. The cost is drift. Rename an address in `API_ROUTES` and
- * nothing tells the buyer, and a 404 inside a poll for goods reads as an order
- * that never arrived rather than as a bug.
+ * `buyer.ts` writes one address out as a string, the catalogue's, and reads
+ * answers field by field on purpose: it stands in for an agent that has the
+ * portal and no package of ours. The cost is drift. Rename the catalogue's
+ * address in `API_ROUTES` and nothing tells the buyer.
  *
  * So the contract is imported here, in the test, and the buyer is driven
  * against a loopback server that records the request line; what went on the
  * wire is compared with the table, which catches a rename on either side. The
- * status address, which the buyer does not write, is compared with the address
- * the purchase answer named.
+ * purchase and status addresses, which the buyer does not write, are compared
+ * with the addresses the catalogue and the purchase answer named.
  *
  * This file also holds the one distinction no gateway can be made to
  * demonstrate: an answer that arrived and made no sense, against a call that
@@ -52,6 +51,20 @@ const ITEM_WITH_NO_ADDRESS = "itm_answered_without_an_address";
  * second server, on a port of its own, that is not where this buyer buys.
  */
 const ITEM_COLLECTED_ELSEWHERE = "itm_collected_on_another_origin";
+
+/**
+ * Where this server's catalogue says a product is bought: an address on this
+ * same server and deliberately not the contract's purchase route, so a buyer
+ * that built the route from the identifier is caught buying somewhere it was
+ * never told.
+ */
+const namedByTheCatalogue = (itemId: string): string =>
+  `/where/the/catalogue/said/${itemId}/purchase`;
+
+/** A product as the catalogue lists it, as far as buying it goes. */
+const listed = (itemId: string): { readonly purchase_url: string } => ({
+  purchase_url: `${baseUrl}${namedByTheCatalogue(itemId)}`,
+});
 
 /**
  * The address of an order's status on the server `base` names, spelled by the
@@ -176,7 +189,7 @@ const theOne = (): Asked => {
   return one;
 };
 
-describe("the addresses this buyer writes by hand", () => {
+describe("the addresses this buyer calls", () => {
   it("reads the catalog where the contract publishes it", async () => {
     await buyer.catalog();
 
@@ -185,13 +198,16 @@ describe("the addresses this buyer writes by hand", () => {
     expect(one.path).toBe(API_ROUTES.list_catalog.path);
   });
 
-  it("buys at the purchase address, and asks it for a challenge on the method the contract allows", async () => {
+  it("buys at the address the catalogue named, and asks it for a challenge on the method the contract allows", async () => {
+    // An agent holding only the catalogue cannot spell the purchase route from
+    // an identifier, and neither does this buyer: it buys where the product's
+    // purchase_url says.
     const itemId = "itm_9f2c4a";
 
-    await buyer.buy(itemId, { email: "buyer@example.com" });
+    await buyer.buy(listed(itemId), { email: "buyer@example.com" });
     const bought = theOne();
     expect(bought.method).toBe(API_ROUTES.purchase_item.method);
-    expect(bought.path).toBe(expandPath(API_ROUTES.purchase_item.path, { item_id: itemId }));
+    expect(bought.path).toBe(namedByTheCatalogue(itemId));
 
     // The unpaid read of the price is a GET at the same address, and the table
     // is where that permission lives — a paywall bound to one method makes the
@@ -199,7 +215,7 @@ describe("the addresses this buyer writes by hand", () => {
     asked.length = 0;
     // No challenge is answered here, so the buyer refuses rather than inventing
     // one; the request it made on the way is what this test is about.
-    await expect(buyer.challenge(itemId)).rejects.toThrow(/PAYMENT-REQUIRED/i);
+    await expect(buyer.challenge(listed(itemId))).rejects.toThrow(/PAYMENT-REQUIRED/i);
     const priced = theOne();
     expect(API_ROUTES.purchase_item.also_answers_on).toContain(priced.method);
     expect(priced.path).toBe(bought.path);
@@ -211,7 +227,7 @@ describe("the addresses this buyer writes by hand", () => {
     // an order identifier, and neither does this one: it asks where the answer
     // to its own purchase said to ask, and a gateway that named the wrong place
     // is a gateway whose orders this buyer cannot collect.
-    const bought = await buyer.buy("itm_9f2c4a", { email: "buyer@example.com" });
+    const bought = await buyer.buy(listed("itm_9f2c4a"), { email: "buyer@example.com" });
 
     expect(bought.statusUrl).toBe(`${baseUrl}${NAMED_BY_THE_ANSWER}`);
 
@@ -230,7 +246,7 @@ describe("the addresses this buyer writes by hand", () => {
     // names an origin the buyer was never pointed at; a buyer that kept its
     // own origin and borrowed only the path would knock on the wrong server
     // and read its refusal as news about a paid order.
-    const bought = await buyer.buy(ITEM_COLLECTED_ELSEWHERE, {});
+    const bought = await buyer.buy(listed(ITEM_COLLECTED_ELSEWHERE), {});
 
     expect(bought.statusUrl).toBe(`${elsewhereUrl}${NAMED_BY_THE_ANSWER}`);
 
@@ -248,20 +264,9 @@ describe("the addresses this buyer writes by hand", () => {
     // answer and an address is not, and the only honest thing to hand the
     // caller is that there is no address — an address built here from the
     // identifier would be a guess, and it would look exactly like being told.
-    const bought = await buyer.buy(ITEM_WITH_NO_ADDRESS, {});
+    const bought = await buyer.buy(listed(ITEM_WITH_NO_ADDRESS), {});
 
     expect(bought.statusUrl).toBeNull();
-  });
-
-  it("writes an identifier into an address the way the contract writes it", async () => {
-    // An identifier in this contract may hold a slash or a space, and one
-    // concatenated in raw becomes two path segments and a different route. Both
-    // sides encode; this is the assertion that they encode alike.
-    const itemId = "SKU 100/1";
-
-    await buyer.buy(itemId, {});
-
-    expect(theOne().path).toBe(expandPath(API_ROUTES.purchase_item.path, { item_id: itemId }));
   });
 });
 
@@ -309,7 +314,7 @@ describe("what this buyer never sends", () => {
     // not supposed to have, and nothing else here would notice the status route
     // ending up behind the merchant's door.
     await buyer.catalog();
-    await buyer.buy("itm_9f2c4a", {});
+    await buyer.buy(listed("itm_9f2c4a"), {});
     await buyer.status(statusAt(baseUrl, "ord_7c1e05"));
 
     expect(asked).toHaveLength(3);

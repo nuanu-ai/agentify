@@ -1,5 +1,7 @@
 # Спайк: путь листинга витрины в x402 Bazaar
 
+> Historical, 2026-08-25. A spike of the x402 Bazaar listing path, with an earlier project's identifiers; what stands of it is in ADR-0006, ADR-0012 and ADR-0020, and its closing section was the retired ADR-0001.
+
 Примечание к архиву: прежние идентификаторы продукта в записях ниже
 обезличены как `historical-project`. Это исторические наблюдения,
 а не команды для текущего развёртывания и не повторный прогон Agentify.

@@ -1,18 +1,16 @@
 # The first test sale
 
-*The public contract is versioned; changes arrive in a new package version.*
+*This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You are the one writing code here: the business has an API, and you want to
-keep the delivery in your own hands. Below is the path from an empty project to
-a test sale that your side runs end to end — the card, the order, the delivery,
-the receipt. The first buyer is the operator-run sandbox program described in
-step 6. You do not rewrite the shop to get there: a handler appears beside it,
-a process that takes paid orders and gives out the goods for them.
-
-This page is the route through the SDK. A business that sells from a
-WooCommerce shop has the other route, which connects the shop in the dashboard
-without code, and [Connecting to Agentify](/) describes it for the owner of the
-business.
+keep the delivery in your own hands. This page walks from an empty project to
+a test sale you make yourself on the test channel, where the money is not
+real: you publish a card, your handler takes the order and delivers, the buyer
+receives the goods, and a receipt is written. You do not rewrite the shop to
+get there: a handler appears beside it, in a process of yours that takes paid
+orders and gives out the goods for them. A business that sells from a
+WooCommerce shop has another route, without code, described on [Selling
+through a WooCommerce shop](/woocommerce).
 
 ## The words used below
 
@@ -20,91 +18,117 @@ business.
   from and buys through; its fields are in the [card reference](/cards).
 - Order — the object that appears on our side after a purchase and arrives on
   yours; its whole life is on [Orders and fulfillment modes](/orders).
-- Handler — your code, which receives orders and carries out the delivery.
+- Handler — your code, which receives orders and carries out the delivery, and
+  your process, the program that runs it beside your API.
 - Idempotency key — a string that is the same across every repeat of one order.
   Ours is the order's identifier, and your side answers with the earlier result
   under it instead of delivering a second time.
 - Fulfillment mode — whether the goods arrive in the answer to the purchase or
-  later. The mode decides when the buyer is charged ([Three fulfillment
-  modes](/orders)).
+  later, which decides when the buyer is charged. Three modes can be published:
+  synchronous, asynchronous, and a parcel on the test channel only
+  ([the modes](/orders#fulfillment-modes)).
 - Price check — the question of how much a product costs and whether it is
   there, which we ask at the moment of purchase about products whose price
-  moves. A price handler answers it, standing in your process beside the order
-  handler.
-- Delivery result — what the agent receives once the delivery has gone through:
-  a link, a key, a set of fields. Its shape is declared in the card.
+  moves. A price handler answers it, in your process beside the order handler.
+- Facilitator — the service that verifies the buyer's signed payment and
+  executes the charge; who is who in a sale is on [Connecting to
+  Agentify](/#who-is-who).
+- Pilot — the period Agentify runs in now, defined on [Connecting to
+  Agentify](/#who-is-who); some rules hold only during it.
 
-::: warning The public surface is versioned
-The package name is `@nuanu-ai/agentify`. Use the examples for the version you
-installed. Function or field changes arrive in a new package version, and the
-test channel can speak them before it is released. During the pilot the
-contract version does not move with each of them, so keep the package current:
-a release older than the gateway can read a word it does not know as a
-failure.
-:::
+## One purchase, from the catalogue to the goods
+
+Your process takes part in each purchase as drawn here, and each step below
+builds one part of it.
+
+```mermaid
+---
+config:
+  sequence:
+    width: 120
+    actorMargin: 30
+---
+sequenceDiagram
+    accTitle: One purchase, from the catalogue to the goods
+    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits five seconds; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds thirty seconds. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, which answers each hand-over within three seconds and has ten seconds in all from the payment check to send back the goods; the facilitator then executes the charge into your payout contract and the agent receives the goods. A refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within three seconds, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a refund owed.
+    participant A as Buyer's agent
+    participant G as Agentify
+    participant Y as Your process
+    participant F as Facilitator
+    A->>G: reads the catalogue,<br/>asks to buy one card
+    opt a price check (a parcel always has one)
+        G->>Y: the price question
+        Y-->>G: a price, or none (5 s)
+        Note over G,Y: none: refused on any card<br/>silence: refused on async<br/>or ship, while a sync card<br/>sells at its own price
+    end
+    G-->>A: 402: the price, payable<br/>to your payout contract
+    Note over A,G: the price holds 30 s
+    A->>G: the same call,<br/>with a signed payment
+    G->>F: verify the payment
+    alt sync
+        G->>Y: the order
+        Y-->>G: the goods (3 s per<br/>hand-over, 10 s in all<br/>from the payment check)
+        G->>F: charge, into your<br/>payout contract
+        G-->>A: the goods
+        Note over G,Y: a refusal or silence:<br/>nothing is charged<br/>a failed charge:<br/>delivered_unpaid
+    else async or ship
+        G->>F: charge, into your<br/>payout contract
+        G-->>A: the order, no goods yet
+        G->>Y: the order
+        Y-->>G: accepted, or the goods<br/>(3 s per hand-over)
+        Y->>G: deliver, or a parcel's<br/>shipment, by the deadline
+        Note over G,Y: a refusal or a missed<br/>deadline: refund_due
+        A->>G: reads the order again
+        G-->>A: the goods, or shipped
+    end
+```
 
 ## 1. Make the merchant account ready
 
-Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in) and enter
-your email address. Open the link in the message and press the confirmation
+Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in), enter
+your email address, open the link in the message and press the confirmation
 button. The dashboard then offers one button, "Open my seller dashboard"; its
-press creates your merchant and asks for the seller name buyers will see.
-That is the only way to get a merchant. Returning merchants reach their
-existing dashboard with the same email-and-link flow.
+press creates your merchant and asks for the seller name buyers will see. A
+returning merchant reaches the same dashboard the same way.
 
-The test channel settles test USDC on Base Sepolia. Save the Base wallet where
-your share of those payments should arrive in the dashboard's Settings before
-publishing; if your business has no wallet yet,
-[Money](/money#if-you-have-no-wallet-yet) says how to get one. The live channel
-is a separate account at `https://agentify.ad`: it uses Base mainnet and real
-USDC, and likewise refuses to publish a card until that account has a payout
-wallet and the operator has approved that merchant for live sales. Until then,
-publication lists each missing prerequisite and the merchant's products cannot
-start new live purchases. Operator approval is not required on the test
-channel. A local scripted sandbox moves no funds, so it does not require a
-merchant wallet either.
+In Settings, save the wallet where your share of the sales arrives: an address
+on Base, `0x` followed by forty letters and digits. On the test channel it only
+ever receives test USDC on Base Sepolia, so it needs no money of its own; if
+your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
+how to get one. The wallet is set there and nowhere else: no key and no call
+can change it.
 
-The payout wallet is set in the dashboard, on the Settings screen, and nowhere
-else. The keys you issue operate your shop, but none of them can change where
-its money goes, so a copy of a key in a server's environment cannot send your
-sales anywhere else: no call your code can reach sets the wallet. Your code
-can still read it with `GET /v0/payout-wallet`. On the live channel the answer
-also carries a change still waiting to take effect, under `pending` with its
-`takes_effect_at`; on the test channel a change applies at once, so `pending`
-is always null there, and the first waiting change your code meets is on the
-live channel ([Replacing your wallet](/money#replacing-your-wallet)).
+Then open API Keys, press "Issue a key", give it a name of at most 100
+characters that tells it from the next one, and copy it: the secret is shown
+once. Keep it with your other secrets and out of source control.
 
-Buyers do not pay that wallet directly. Every payment request names your
-payout contract for it, a split contract of the 0xSplits protocol with no owner
-that pays 99.9% to `payout_wallet` and 0.1% to Agentify whenever somebody sends
-its payout, so the wallet receives one transfer per payout rather than one per
-sale ([Where the money arrives](/money#where-the-money-arrives)).
+Any key you issue can do everything your code can: publish cards, read orders
+and receipts, take a card or all selling off sale and put it back, set your
+seller name and site, and issue and revoke other keys. None of them can change
+the wallet. So if a key leaks, revoke it on API Keys together with every key
+you did not create yourself, and issue a fresh one for your code.
 
-Once the seller name and wallet are set, open API Keys, press "Issue a key",
-name it so you can distinguish it from the next one — one line of at most 100
-characters — and copy it. The secret is shown once. Keep it with your other
-secrets; do not put it in source control.
+This step worked if Settings shows your seller name and your wallet and you
+hold a key that starts with `csk_test_`.
 
-Every key on that page is one you asked for, and your code is what calls with
-it. The dashboard calls with none of them, so revoking a key on that page stops
-a caller and never closes the browser session you are reading it in.
-
-## 2. Install the tools
-
-Everything your side needs is in one package. Its dependency tree is short and
-listed outright: our contracts package, and zod, the library that validates
-data. Nothing beyond those arrives in your project.
+## 2. Install the package and build a client
 
 ```sh
 npm install @nuanu-ai/agentify
 ```
 
-Release tags publish this package to the public npm registry. A stable release
-is installed through npm's default `latest` channel. Stage 0 does not publish
-prerelease versions.
+It runs on Node.js 24 or later. The release this page describes is named at
+its top, and what changed between releases is in the
+[changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md).
+Keep the package current: the test channel can speak a change before it is
+released, and during the pilot the contract's version does not move with each
+change, so a release older than Agentify can read a word it does not know as a
+failure.
 
-The client needs two things from you: a key, which you keep wherever you keep
-the rest of your secrets, and the address to call.
+The client needs a key and the address of the channel, and nothing after the
+address: it adds the rest of the path itself. The test channel is
+`https://test.agentify.ad`, and a key made on one channel does not open the
+other.
 
 ```ts
 import { createClient } from '@nuanu-ai/agentify'
@@ -115,46 +139,30 @@ const agentify = createClient({
 })
 ```
 
-The address is the environment you are working in:
-`https://test.agentify.ad` while you are building, and
-`https://agentify.ad` when you go live. Give the client the address and
-nothing after it; it adds the rest of the path itself. A key made in one
-environment does not open the other, and a key you issued on the test address
-starts with `csk_test_` so you can see at a glance which one you are holding.
-
-The code on this page also runs as plain JavaScript. To try the client above in
-an empty project, put it in a file whose name ends in `.mjs`, such as
-`agentify.mjs`, which lets Node read `import` and `await` at the top of the
-file. Put the key and the address in a file named `.env` beside it, one per
-line:
+The code on this page, but for the test buyer on step 6, also runs as plain
+JavaScript. To try it in an empty project, put it in a file whose name ends in
+`.mjs`, such as `agentify.mjs`, which lets Node read `import` and `await` at
+the top of the file, and put the key and the address in a file named `.env`
+beside it:
 
 ```sh
 AGENTIFY_API_KEY=csk_test_...
 AGENTIFY_URL=https://test.agentify.ad
 ```
 
-and run it with Node 24 or later, which the package declares it needs:
-
-```sh
-node --env-file=.env agentify.mjs
-```
-
-The steps below are pieces you add to that file, not one program to paste
-whole. The synchronous and the asynchronous handler are alternatives: register
-one handler for orders and call `start()` once. `grantAccess`,
+Run it with `node --env-file=.env agentify.mjs`. The steps below are pieces you
+add to that file, not one program to paste whole: `grantAccess`,
 `startProvisioning` and `currentPriceOf` stand for your own code that makes the
 goods and knows the price, and `savedId`, `url` and `order` in the later
 snippets stand for values your code holds at that point.
 
-This step worked if the client was built. Whether the key and address belong
-together is answered by the first call that reaches us, and that call is on the
-next step.
+This step worked if the client was built. A client built wrong is a
+`TypeError`: with no key or with an address that is not an address at the line
+that builds it, and with no address at all at its first call. Whether the key
+and the address belong together is answered by the first call that reaches us,
+on the next step.
 
-## 3. Describe the product with a card
-
-You upload the card yourself, with a call. What is wrong with it comes back in
-that same call's answer, so the edit loop is short: fixing and calling again
-ten times in a row costs nothing.
+## 3. Publish one card
 
 ```ts
 const published = await agentify.catalog.publish({
@@ -174,133 +182,53 @@ if (!published.ok) {
 }
 ```
 
-Two fields there are written short and one is missing, and all three are
-deliberate. A price goes as one string, the amount and the currency code with a
-space between them, or as the two fields written out. A declared field that
-needs no title and no `required` mark goes as its type word — `email` above
-needs both, so it is written out. And a card that names no fulfillment mode is
-synchronous, which is what this one is. The [card reference](/cards) starts
-from a card with no purchase parameter on it at all and adds a field at a time,
-each under the need for it; the long spelling of all three is there, and what
-you write is opened out into it when the card arrives.
+`merchant_item_id` is your own key for the product: an order arrives carrying
+it, and publishing again under it updates the card rather than adding a second
+one, so publishing can live in a script you run as often as you like. `params`
+is what the agent has to give at purchase, and `result` is what it receives,
+which your handler will return exactly. The card names no mode, so it is
+synchronous. The [card reference](/cards) has every field, the short and long
+spellings used here, and which mode a product takes.
 
-An invalid card raises no exception. Every answer to this call carries `ok`,
-and it is either true or false: true means the card was accepted and our
-catalogue `id` is there beside it, false means the answer carries an `error`
-instead. The error has a code to branch on — `card_rejected` where we would not
-publish the card — a sentence you can print, and `problems`: the findings
-standing between this card and the catalogue, each with a code, words a person
-can act on, and the path to the field it is about where it is about one. That
-list is never empty.
+This step worked if `published.ok` is true and `published.id` holds the card's
+catalogue identifier, which the test purchase on step 6 buys by. If `ok` is
+false, `error.problems` lists everything standing between the card and the
+catalogue in one answer, each finding with a code, words a person can act on
+and the path to the field where there is one. Four findings are about your
+merchant rather than the card: `no_seller_name`, `no_payout_wallet`,
+`no_seller_site` on a parcel's card, and `no_operator_approval` on the live
+channel ([who checks a card](/cards#who-checks-a-card-before-it-is-published)).
+Fixing what they name, not sending the card again, changes the answer.
 
-Not every finding is about the card. A name for buyers to read that you have
-not set, a wallet for your share of the sales, or, on the live channel, the
-operator's approval that has not been given yet: each arrives in the same list,
-so one answer names everything you have to fix instead of handing it to you a
-round trip at a time. A parcel's card asks one more: the site of your shop.
-These four have codes of their own for a program to branch on —
-`no_seller_name`, `no_payout_wallet`, `no_operator_approval` and
-`no_seller_site`, each with an empty path, because no field of the card is at
-fault — and the package exports them as `MERCHANT_FINDINGS`. The name and the
-site you set yourself, with `POST /v0/seller-name` or in the dashboard's
-settings; the wallet in the dashboard's settings alone, since no call your code
-can make sets it; and the approval is the operator's decision. The error's `message` names
-the missing settings in words as well. No call answers this in advance: the
-publish is where your code learns what your merchant still lacks. Sending the
-same card again gets the same refusal, and the error says as much: its
-`retryable` flag is false, because what changes the answer is fixing what the
-findings name.
-
-Beside the name you can give the address of your shop's own website, in the same
-settings or with the same call: `POST /v0/seller-name` with `seller_site` — the
-name, the site or both, and a field you leave out stays as it was. The site is
-the https address of your shop and nothing after it, written as your browser
-shows it, such as `https://yourshop.com`. Every agent reads your name and your
-site beside each of your cards and on the status of each order, as where to take
-what an order cannot answer — goods that did not arrive, a return, your terms —
-and is told that you gave them and we did not check them. Either can be changed
-and neither can be removed once given. The name is plain text: HTML tags and
-codes such as `&amp;` are refused, and an ampersand written as text passes.
-
-A call that fails for some other reason — a key we do not accept, an address
-that does not answer — does throw, as an `AgentifyError`. It carries a `code`.
-Where we refused the call in words, that word is the code: a key we will not
-take arrives as `not_authorised`, not as something about the network. Where no
-answer arrived, or none these tools could read, it is one of the three words
-they use for that. It is the same vocabulary either way, and the same one the
-returned errors carry. It also carries `retryable`, answering the same question
-it answers on a returned error, and `route`, the name of the call it happened
-on, so a `catch` can tell what happened without reading the sentence. A client
-built wrong — no key, an address that is not an address — is a `TypeError` at
-the line that is wrong, before anything leaves your process.
-
-The field `merchant_item_id` is your own identifier for the product, the same
-one it has in your database. We issue our catalogue `id` beside it, but your
-key stays with the card for good, and it is what ties an arriving order to your
-product without a lookup table. It is also how we recognise the card when it is
-published again: a second call with the same `merchant_item_id` updates the
-card that is already there instead of creating a duplicate, so publishing can
-live in a script and be run as often as you like.
-
-The field `result` describes what the agent receives on delivery. The agent
-reads that declaration before paying and decides from it whether the purchase
-suits it; your handler then returns JSON exactly to it, and we pass that on
-unchanged.
-
-A price in the card is required in every case: it is what the agent sees in the
-catalogue while it is choosing. If your price is worked out on the fly — from a
-rate, from a supplier's cost, from what is available at that minute — you add a
-price check to the card and answer it in code on the next step, and the sale
-then goes through at the price your answer named. What a check that stays
-silent costs is on [What can go wrong](/failures), and the fields of the
-question and of the answer are in the [card reference](/cards).
-
-The field `fulfillment` declares the mode, and a card that leaves it out is
-synchronous. With `'sync'` the goods go to the agent in the answer to the
-purchase; with `'async'` they go later, and a card that sells that way names the
-mode. Which of the two your product takes decides which handler you write on
-the next step. There is a third mode as well, and it cannot be published during
-the pilot. That one, and the reason a product rather than a channel picks its
-mode, are in the [card reference](/cards).
-
-The step is done when the call has returned a catalogue `id`. Publication is
-the act that puts the card in this Agentify environment's own catalogue, as
-long as the merchant and card are selling. The test purchase below proves that
-the product can be bought and delivered; it does not publish the card. Whether
-an external discovery catalogue indexes the paid resource is a different
-measurement, described on step 7.
+A call that fails for another reason — a key we do not accept, an address that
+does not answer — throws an `AgentifyError` with a `code`, such as
+`not_authorised`, a `retryable` flag and the `route` it happened on.
 
 ## 4. Take an order and deliver the goods
 
-We hold the orders in a queue on our side, and you take them from it with a
-subscription. You do not have to accept incoming connections: your side opens
-the subscription, so neither a public address nor an open port is needed. It
-goes out over ordinary HTTPS to the address you gave the client on step 2 — a
-request we hold open until something arrives — so what your outbound rules have
-to allow is that one host.
+Your process takes orders from a queue on our side through a subscription it
+opens itself, over ordinary HTTPS to the address you gave the client, so it
+needs no public address and no open port. You declare what it answers with
+`on`, once for each kind of message — orders, price questions, events about
+orders — and then open the subscription with `start`. Register one handler for
+orders, either the synchronous or the asynchronous kind below, and call
+`start()` once.
 
-You declare what your process answers with `on`, once for each kind of message,
-and then open the subscription with `start`. Three kinds travel down that one
-connection — orders, price questions, and events about orders — so one
-subscription is all you need.
+Register `agentify.on('problem', ...)` as well. It is where the tools tell you
+what did not get through: a poll that failed, a handler that threw, an answer
+we would not take, a message nobody handles. Without it those go to the
+console, including the one that matters most: when Agentify speaks a version
+of the contract your tools do not, the subscription stops and your process
+stays up without selling.
 
-There is a fourth registration, and nothing on the wire carries it.
-`agentify.on('problem', ...)` is where the tools tell you what did not get
-through: a poll that failed, a handler that threw, an answer we would not take,
-a message that arrived with no handler registered for it. Register it. Without
-it those go to the console and nowhere else, and one of them matters more than
-the rest — when our side speaks a version of the contract your tools do not,
-the subscription stops. Your process stays up and stops selling, and this is
-the only thing that says so.
+While a WooCommerce shop connected in the dashboard sells for you, your
+process receives no orders and every poll is refused with words that say so,
+because a merchant sells through one of the two at a time.
 
-Your code receives no orders at all while you sell through a WooCommerce shop
-connected in the dashboard, because a merchant sells through one of the two at
-a time. Every poll then fails with a refusal that says so, and the problem
-handler hears it; disconnecting the shop in the dashboard brings your code's
-cards back, with selling stopped until you start it again.
+### A synchronous handler
 
-In the synchronous mode the handler returns the result straight away, either
-the delivery or a refusal. Both answers are built on the order itself:
+The card above is synchronous: the handler returns the delivery, or a refusal,
+built on the order itself, and we send that answer for you.
 
 ```ts
 agentify.on('order', async (order) => {
@@ -321,19 +249,19 @@ agentify.on('order', async (order) => {
 await agentify.start()
 ```
 
-The answer is whatever the handler returned. We send it ourselves, and there is
-no separate call for replying: a forgotten reply would be an order nobody
-delivered, and a returned value cannot be forgotten.
+Answer within three seconds of receiving the order where you can: a handler
+still working after three seconds has the same order sent again, possibly to
+another instance, and a synchronous sale is lost ten seconds after the payment
+check, when nothing has been charged ([Every time
+limit](/orders#every-time-limit)). A refusal and its message reach the agent
+word for word, so write the message for a stranger.
 
-The worker's first log line says which gateway it started against and whether
-the money there is real — it reads that from your own key. Glance at it once
-before trusting a green run: a test key rehearses, a live key sells.
+### An asynchronous handler
 
-In the asynchronous mode the handler answers at once that the order is
-accepted, and confirms the delivery itself with a separate call, later and from
-anywhere in your code. Write the order's `id` into your own record of the job —
-the row or the queue task the delivery is driven from — and make that call
-against the identifier you saved:
+A card with `fulfillment: 'async'` is charged at the moment of purchase, and
+its goods come later. The handler starts the work and answers at once that the
+order is taken on; write the order's `id` into your own record of the job and
+deliver against it when the work is done, from anywhere in your code.
 
 ```ts
 agentify.on('order', async (order) => {
@@ -349,48 +277,12 @@ await agentify.orders.forId(savedId).deliver({ access_url: url })
 ```
 
 Return `accepted` within three seconds, which is how long we wait for a
-handler's answer: a handler still working after that has the order sent again
-([What a handler can answer](/orders#what-a-handler-can-answer)). The wait
-starts when we hand the order to your worker, which is handed one at a time, so
-it covers your handler and the trip there and back, and nothing else. That is
-why the handler starts the work and answers, and the delivery happens outside
-it. `accepted()` takes nothing. Until `deliver` is called the order
-counts as accepted, and the delivery deadline named in your card is running on
-it — it started when the buyer was charged, at the moment of purchase, before
-the order reached you. A card that names none is held to a day.
+handler's answer. The delivery deadline on your card is already running, from
+the charge at purchase. A card that names none is held to a day.
 
-A synchronous card carries no such field: how long to wait for a synchronous
-answer is set by us, as one number for everybody, and it is ten seconds. The
-clock starts when the payment checked out, so they are the ten seconds your
-handler has, less the trip the order makes to reach you and the trip your answer
-makes coming back: the price question is asked and answered on the call before
-the payment, and the check itself runs before the ten begin. They are not the
-agent's whole wait: the charge executes after your answer, and the twenty
-seconds we promise the agent for a synchronous purchase cover your answer and
-that charge together. The twenty start where your ten do, when the payment
-checked out, so the check sits on top of them rather than inside — the agent
-waits for the check, and then for the twenty. Both numbers are ours to set
-rather than the card's, and both are what the system you are connecting to runs
-with ([Time ran out](/orders)).
-
-The order your handler was given carries that same `deliver` call, and inside
-the handler it is the shorter thing to write. Between the handler and the
-delivery, though, your process can restart, be deployed over, or hand the job to
-another instance, and the object survives none of those; the identifier in your
-own record survives all three, and `agentify.orders.forId` turns it back into an
-order that can be delivered against. If your own record is gone as well, the
-open orders can be read back from us — [Finding out where an order
-stands](/orders).
-
-The call `deliver` is idempotent by the order's identifier. Call it twice and
-the second call succeeds as well, marked as already delivered, and no second
-delivery appears. `ok` is true in both cases, so you do not have to branch on
-the word inside it. Repeating the call after a dropped connection is therefore
-safe. What such a repeat has to carry is on [Telling a repeat
-apart](/orders#telling-a-repeat-apart).
-
-If the delivery did not work out and you have already taken the order on, say
-so at once, without waiting for your deadline:
+If the delivery cannot be made after you took the order on, say so at once
+rather than wait out the deadline; the buyer has paid, so the order then owes
+a refund:
 
 ```ts
 await order.refuse({
@@ -399,65 +291,31 @@ await order.refuse({
 })
 ```
 
-The buyer has already been charged for an asynchronous order, so a refusal like
-this marks the order as needing a refund, and the buyer hears about the debt
-straight away. Refusing earlier is cheaper for everybody: what happens to the
-money on a refusal in each mode is in the table of modes on [Orders and
-fulfillment modes](/orders), and the refusal codes are in the [card
-reference](/cards).
+`deliver` and `refuse` return their failures in the same envelope the publish
+does, `ok` and an `error`, rather than throwing them, unless the client was
+built with no address ([When a closing call does not go
+through](/orders#when-a-closing-call-does-not-go-through)).
 
-Failures of `deliver` and `refuse` are returned rather than thrown, in the same
-envelope the publish call answers in: `ok` is false and one `error` beside it
-carries a code, a sentence and a flag saying whether repeating the call could
-change the outcome. Which codes arrive when, and what each of them means for
-your next move, is on [When a closing call does not go
-through](/orders#when-a-closing-call-does-not-go-through).
+### A failure that may pass, and a repeat
 
-We read a refusal as a final "this cannot be delivered", so express a temporary
-failure on your side by throwing rather than by refusing. The order then counts
-as never having reached you and comes again, after a delay ([The handler
-crashed without answering](/failures)). What you threw goes to your problem
-handler and no further — the agent never sees it.
+A refusal is final. For a failure that may pass — a supplier that did not
+answer, a database that was down — throw instead: the order counts as never
+having reached you and comes again after a delay, and what you threw goes to
+your problem handler and never to the agent.
 
-A refusal is the opposite, and the difference matters for what you write in one:
-the code and the message you refuse with reach the buyer's agent unchanged, with
-the order's status. The code is what it branches on and the message is what it
-shows a person, so neither is a place for an internal note.
+Orders are delivered at least once, so the same order can reach your handler
+again: after a network break, after your process restarted, after a retry of
+ours. Pass `order.id` on as the idempotency key of your own delivery system and
+answer a repeat with the result you gave the first time ([Telling a repeat
+apart](/orders#telling-a-repeat-apart)). After a restart, the orders still
+open can be read back from us ([Finding out where an order
+stands](/orders#finding-out-where-an-order-stands)).
 
-Besides the purchase parameters, the order carries the sale price — the amount,
-the currency, the moment that price was fixed for this sale and the `as_of` of
-the price it was worked out from — and a `test` flag that tells a test order
-from a live one. What an order is made of in full is in [What an order is made
-of](/orders).
+### Answering the price question
 
-Orders are delivered at least once, which means the same order can reach your
-handler again: after a network break, after your process restarted, after a
-retry of ours. Pass the idempotency key on into your own delivery system and
-answer with the earlier result under it. If your API already takes a key like
-that, ours is the one to give it.
-
-One delivery of an order goes to one instance of the handler. Run three
-processes and three subscriptions divide the stream between them, and each
-delivery lands in one of them. A handler slower than our wait for its answer can
-have the same order delivered again to another instance while it is still
-working on it ([Running the handler in several
-instances](/orders#running-the-handler-in-several-instances)). Within one
-instance the orders are worked through one at a time, and no parameter takes
-several at once.
-
-We remember where the orders stand as well, so after a restart you do not have
-to rebuild the picture from your own database alone: the open orders can be
-read back from us — [Finding out where an order stands](/orders).
-
-The subscription is the default, and the model has two more ways of receiving
-an order beside it: a request to an address of yours, for a side that already
-has the infrastructure for incoming traffic, and a cursor that pulls orders in
-batches. Both work with the same order object, so moving between them does not
-mean rewriting the delivery. Neither is open during the pilot.
-
-If a product's price is worked out on the fly, the price question comes down
-the same channel. You put the price handler — the one you register under
-`on('quote', …)` — beside the order handler, in the same process:
+A card with `price_check: 'handler'` is sold at the price your price handler
+names at the moment of purchase. It answers in the same process, down the same
+subscription:
 
 ```ts
 agentify.on('quote', async (q) => {
@@ -474,133 +332,159 @@ agentify.on('quote', async (q) => {
 })
 ```
 
-The answer that there is none carries no price, and we do not begin a purchase
-on it.
+The last argument, `as_of`, is the moment the answer is true for; left out, it
+is the moment of the answer itself, so name the moment your cache was filled
+when you answer from one. An answer of none starts no purchase. What a silent
+price handler costs in each mode is on [What can go wrong](/failures).
 
-Both calls take `as_of` as their last argument — the moment the answer is true
-for. It separates "went and looked" from "handed over what was in the cache",
-it is meant to tell us how far the answer can be trusted — nothing compares it
-against a threshold yet — and it goes into the record of the sale. In the
-example above it is named where the price came from a lookup that carries its
-own timestamp, and left out where the handler has just been and confirmed there
-is none: an `as_of` left out is the moment of the answer itself. So if you take
-the price from a cache, name the moment that cache was filled; left to the
-default, the answer claims more freshness than you have.
+This step worked if the process starts, its first log line names the test
+channel and says the money there is not real, and your problem handler stays
+quiet. The first order reaches it on step 6.
 
-This is the one way the price is asked: the same channel the orders use, and
-nothing of yours facing outward. A price hook — an https address of yours that
-we would call instead — is designed and not called yet, so a card that names an
-address is refused at publication. The fields of the question and of the answer
-are described in the [card reference](/cards).
-
-Success here is modest: the process starts, holds the connection, and your
-problem handler stays quiet. The first order reaches it on step 6.
-
-## 5. Check the card
-
-The check we ship is what goes in front of every publish from here on. Calling
-us is the short loop while you are fixing one card by hand; once publishing
-lives in a script or in your build, running the check first is what keeps a card
-that cannot be published from getting as far as the call. It reads a card the
-way we read it at publication and reports what the contract can see from the
-card alone: a result that promises nothing, a deadline on a card whose mode
-never uses one, a field of the wrong shape. What it cannot see is your delivery,
-so a purchase parameter your delivery needs and the card does not name goes
-through unremarked. That one is yours to catch.
+## 5. Check the card offline
 
 ```sh
 npm exec --offline --package=@nuanu-ai/agentify -- agentify verify card.json
 ```
 
-Run it from the project where you installed `@nuanu-ai/agentify`. Naming the
-scoped package and requiring offline resolution makes npm use that local
-installation; it cannot substitute the unrelated unscoped `agentify` package
-from the registry if the command is missing.
+The check reads a card file the way we read it at publication and reports what
+the contract can see from the card alone, without a key, an address or a
+running handler. Run it from the project where you installed the package, so
+npm uses that installation and never an unrelated package of the same short
+name, and name the card files: called bare, it refuses and says why. The same
+check is exported as `checkCard`, for cards assembled in code.
 
-Name the card files. The command does not go looking for them: it takes no key
-and no address, so it cannot ask us what you have published, and nothing says
-where you keep the files you publish from — called bare, it refuses and prints
-those reasons rather than checking nothing quietly. It raises no order and it
-does not need your handler running.
-
-The same check is also a function the package exports, which takes a card you
-have already parsed and hands its findings back in the shape a refused publish
-carries them in. That is the one to call where the cards are assembled in code
-rather than kept in files.
-
-There is no silent "invalid": every finding is explained in words, and all but
-one point at a field — a file that is not JSON at all is a finding about the
-card as a whole. A card whose shape is wrong is not then checked against the
-rules that compare one field with another, so a short list of findings is not a
-promise that one round of fixes is enough.
-
-The command answers `0` when every card it was given is complete as far as the
-contract can tell, `1` when a card has findings, and `2` when it was called with
+It answers `0` when every card it was given is complete as far as the contract
+can tell, `1` when a card has findings, and `2` when it was called with
 something it cannot work from, so a build script can stop on anything but `0`.
+What it cannot see is your delivery: a purchase parameter your delivery needs
+and the card does not name goes through unremarked, and whether your handler
+holds against a repeat is proved by the purchase on the next step.
 
-The other half of checking yourself is not this command's, and it is the half
-worth more. Whether your handler holds against repeats — whether a second
-delivery appears when the same order arrives twice — cannot be checked from a
-card file, because nothing on our surface raises a test order to try it
-against. The check says so in its own output and claims nothing about your
-side. Holding against repeats is yours to prove against your own delivery
-system, with a test purchase, and what has to hold is that a second order
-produces no second delivery and no fresh goods — the buyer keeps what the first
-delivery carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
+## 6. Make your first test purchase
 
-## 6. Walk a test purchase
+You make the first purchase yourself, buying your own card on the test channel
+with an ordinary x402 client, the payment protocol agents pay with. The buyer
+needs a wallet of its own: a fresh private key you keep for test purchases and
+nothing else, holding test USDC on Base Sepolia. It needs no ETH, because the
+payment is an authorisation the buyer signs and the facilitator executes.
 
-The first purchase of your product on the configured test channel is made by
-our sandbox buyer rather than by a live agent — a program that walks the whole
-path: it finds the card, asks the price, pays and takes delivery. It pays with
-test funds, and afterwards the whole test path can be seen working.
+Install the x402 client and the library that signs with the key:
 
-An Agentify operator starts this purchase. If an operator is already
-coordinating your pilot, give them the catalogue ID and keep the handler running
-while they start it with you watching. There is no public request path for an
-unassigned self-signup yet. The order carries `test: true`, because the test
-address settles on a test chain — the flag follows the chain the payment
-settled on and not the key you called with.
+```sh
+npm install @x402/core @x402/evm @x402/fetch viem
+```
 
-It all came together if the order reached your handler, the sandbox buyer
-received the goods, and the purchase left a receipt behind it.
+Make the buyer's key with that library, in the same directory. The command
+prints a fresh private key, as the line `.env` takes, and the address it
+controls:
 
-## 7. Prove the sale; measure external discovery separately
+```sh
+node --input-type=module -e "
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+const key = generatePrivateKey()
+console.log('BUYER_PRIVATE_KEY=' + key)
+console.log('address:', privateKeyToAccount(key).address)
+"
+```
 
-The publish call on step 3 puts the card into that Agentify channel's own
-catalogue before this purchase. The purchase is the proof that an agent can
-buy it: the order reaches your handler, the buyer receives the declared goods,
-and the sale leaves a receipt.
+Then open [Circle's faucet](https://faucet.circle.com), choose USDC and Base
+Sepolia, and paste the address: the faucet sends test USDC to it, and that is
+all the buyer needs.
 
-A settled payment is also the event an external discovery catalogue such as
-Coinbase Bazaar may index. That is a different surface from Agentify's own
-catalogue, and indexing is not established merely because the purchase or the
-receipt succeeded. We measure it and report "settled, not yet listed" when the
-settlement is known but no external listing has appeared; whether a testnet
-settlement is eligible remains an open question.
+Now buy the card by the catalogue identifier step 3 returned, with the
+purchase parameters the card asks for, and read the order until it has
+finished. The program below is TypeScript whose types Node 24 can simply
+erase, so save it as `buyer.mts` and run it with
+`node --env-file=.env buyer.mts`, with two more lines in `.env`, the first of
+them the one the command above printed:
 
-Publication on the live channel is a separate act with that environment's key.
-Passing the test-channel purchase copies neither a card nor its evidence into
-the live environment. Your integration republishes the same product key when
-its card or price changes. External catalogues and exchange formats are
-separate from that SDK path and carry no promise of automatic listing.
+```sh
+BUYER_PRIVATE_KEY=0x...
+ITEM_ID=item_...
+```
+
+
+```ts
+import { x402Client } from '@x402/core/client'
+import { registerExactEvmScheme } from '@x402/evm/exact/client'
+import { wrapFetchWithPayment } from '@x402/fetch'
+import { privateKeyToAccount } from 'viem/accounts'
+
+// The buyer's wallet, holding test USDC and nothing else.
+const buyer = privateKeyToAccount(process.env.BUYER_PRIVATE_KEY as `0x${string}`)
+const client = new x402Client()
+registerExactEvmScheme(client, { signer: buyer })
+client.setSpendControls({ maxAmountPerPayment: '$10' })
+const payingFetch = wrapFetchWithPayment(fetch, client)
+
+// What this program reads of the catalogue and of an order.
+type Catalogue = { items: { id: string; purchase_url: string }[] }
+type Order = { status: string; status_url: string; delivered: unknown }
+
+// Your card in the test channel's catalogue, by the id step 3 returned.
+const listed = await fetch('https://test.agentify.ad/x402/catalog')
+const catalogue = (await listed.json()) as Catalogue
+const card = catalogue.items.find((item) => item.id === process.env.ITEM_ID)
+if (card === undefined) throw new Error('the card is not in the test catalogue')
+
+const bought = await payingFetch(card.purchase_url, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ params: { email: 'you@example.com' } }),
+})
+// A refusal carries no order: print it rather than read it as one.
+const answer = (await bought.json()) as Partial<Order>
+if (typeof answer.status_url !== 'string') {
+  throw new Error(`${bought.status}: ${JSON.stringify(answer)}`)
+}
+let order = answer as Order
+
+// Goods that come later are collected at the order's own address.
+for (let tries = 0; order.status === 'in_progress' && tries < 60; tries += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 5_000))
+  order = (await (await fetch(order.status_url)).json()) as Order
+}
+
+console.log(order.status, order.delivered)
+```
+
+The purchase is a POST of the card's purchase parameters, `{"params":{}}` for
+a card that asks for none, to the purchase address the catalogue gives for
+the card. The client meets the 402 that names the price and your payout
+contract, signs the payment and sends the same call again, and the answer is
+the order: `status` says where it stands, `delivered` holds the goods once
+they are the buyer's, and `status_url` is where it is read again.
+
+It all came together if the order reached your handler, the buyer received the
+goods — `delivered` here, with the `access_url` your handler returned — and the
+purchase left a receipt on the Receipts screen of your dashboard. The order
+carries `test: true`, because the test channel settles on a test chain.
+
+## 7. Go live
+
+The live channel is a separate account at `https://agentify.ad`, signed in to
+the same way, with a wallet that receives real USDC on Base and a key that
+starts with `csk_live_`. Nothing is copied from the test channel: your code
+publishes its cards again with the live key and points the client at the live
+address. Live publication also waits for an Agentify operator to approve your
+merchant once; until then publishing lists `no_operator_approval`, and nothing
+of yours sells live. A parcel's card is refused live (`not_sold_yet`). What
+changes between the two channels is in one table on [Connecting to
+Agentify](/#how-to-start).
 
 ## What is not settled yet
 
+- A public way to ask for the operator's approval of the live channel.
 - How to take orders outside Node. The subscription's wire protocol is not
   documented for external consumers; the ready-made tools are for Node only.
-- Whether one instance of the handler will be able to work on several orders
-  at once.
-- The surface of the other order transports: the request to an address of
-  yours, and the cursor that pulls batches.
+- The other ways of receiving orders, which are designed and not open: a
+  request to an address of yours, and a cursor that pulls orders in batches.
 - When we start calling a price hook, an https address of yours asked instead
   of your price handler, and what your side will check its requests against to
   know that they came from us.
-- The half of the check that would send one order twice and watch for a second
-  delivery. Nothing on our surface raises that order to send, so this check
-  still cannot exercise your delivery system's idempotency from outside.
-- A way to have the test purchase started without an operator. There is no
-  public channel for an unassigned self-signup to ask for it, and no command of
-  your own starts it.
+- A check that sends one order twice and watches for a second delivery, so
+  that holding against repeats could be proved without a purchase.
 - Whether an external discovery catalogue lists a product whose sale settled
-  on a test chain.
+  on a test chain. Publication puts the card in Agentify's own catalogue, and
+  no other listing follows from it or from a completed purchase.

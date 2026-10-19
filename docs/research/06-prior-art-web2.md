@@ -1,5 +1,7 @@
 # Prior art: подключение web2-мерчантов к агентским/крипто-рельсам
 
+> Historical, 2026-08-25. A market survey of its day. The payment model it assumes, with the merchant's own wallet as the recipient, was replaced by the merchant's split (ADR-0037), and the demand it suggests generating with Agentify's own agents was rejected with the "listing pulse" (see `05-merchant-contract.md`) and never built.
+
 2026-08-25, трек A. Синтез двух исследований (Opus-субагенты, ~200 источников,
 прямые пробы живых API). Полные отчёты — в транскриптах сессии; здесь —
 load-bearing факты для решений.
@@ -102,30 +104,6 @@ Bitrefill запрет перепродажи. Redemption всё равно ру
 Уже существует платный сервис «bazaar-keepalive» ($190/год) — ровно наш
 «пульс листинга». Операционная обязанность из 05-merchant-contract.md — вещь,
 за которую рынок уже платит.
-
-## 9. Регуляторная линия (US) — где проходит граница нашей модели
-
-- FinCEN (FIN-2019-G001): **CVC payment processor = money transmitter** —
-  «принял крипту пользователя и заплатил третьему лицу-мерчанту» требует
-  MSB-регистрации + ~49 штатных лицензий. Paxful (10 лет, масштаб) умер в
-  ноябре 2025 от «unsustainable compliance remediation costs» после
-  unregistered-MSB энфорсмента.
-- **Наша конструкция другая по построению**: Agentify не принимает и не
-  передаёт средства — `payTo` = кошелёк мерчанта, settle делает фасилитатор,
-  деньги идут agent→merchant напрямую. Non-custodial здесь не только UX
-  (минутный onboarding), но и регуляторная стратегия. Требует юр-проверки
-  перед продакшеном, но линия «никогда не касаться денег» — архитектурный
-  инвариант №1.
-- Redemption-последняя миля закрывается для «серых» агентов: Amazon
-  перечисляет GPTBot/ClaudeBot/PerplexityBot поимённо в robots.txt
-  (Disallow: /), Ninth Circuit 2026-08-04 отменил injunction Amazon v.
-  Perplexity узко («браузер пользователя ≠ CFAA-доступ»), ToS-энфорсмент
-  остался; Cloudflare шипит классификацию агентов и AI Labyrinth. Индустрия
-  сходится к **идентифицированным авторизованным** агентам — consent-first
-  Agentify по ветру, а не против.
-- UX-жемчужина: SKILL.md Bitrefill (v3.2.0) содержит слой «языка для
-  пользователя» — агенту запрещено говорить «x402», «MCP», «invoice».
-  Сложность прячут даже на уровне словаря. Перенять.
 
 ## Что это меняет в наших планах
 

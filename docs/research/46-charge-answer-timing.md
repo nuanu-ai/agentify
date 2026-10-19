@@ -63,14 +63,39 @@ by default, and the gateway does not change that. Neither Caddy configuration
 in `deploy/` sets a proxy timeout, and the merchant's worker already holds a
 poll open for twenty-five seconds through the same proxies. Node's own HTTP
 server allows a request three hundred seconds, and the gateway sets no other
-limit. The payment authorisation the agent signs stays valid for
-`PAYMENT_TIMEOUT_SECONDS` from the moment it was signed, three hundred by
-default. An agent signs inside the price's thirty-second life, the charge goes
-out at most ten seconds after the payment checked out, and the facilitator call
-that carries it is cut off after thirty, so all of it falls far inside that. On
-an order paid before its goods the purchase call does not wait on the deadline
-at all: it waits for the facilitator's answer itself, bounded by that
-thirty-second client.
+limit. On an order paid before its goods the purchase call does not wait on
+the deadline at all: it waits for the facilitator's answer itself, bounded by
+that thirty-second client.
+
+The authorisation an agent signs has to outlive the charge as well. The x402
+reference client signs one valid for the challenge's `maxTimeoutSeconds`,
+counted on its own clock, rounded down to the second, from the moment it
+signs, and the exact-EVM facilitator refuses an authorisation that ends within
+six seconds, at the check and again at the charge. A synchronous charge goes
+out once the merchant has answered, up to ten seconds after the order is
+marked paid, which is a moment after the check, and then once the answer is
+written. So at the check the gateway asks for the merchant's ten seconds, the
+facilitator's six and two more for its own steps and the difference between
+clocks, eighteen in all, and the challenge asks for the price's life on top
+(thirty seconds, `QUOTE_TTL_MS`) and two more for the check's round trip and
+the client's rounding: fifty seconds, worked out in
+`apps/gateway/src/app/payment-window.ts`. The price's life is there for an
+agent that signs as soon as the price is named and presents the payment as it
+runs out; one that signs and sends at once needs only the eighteen. The two
+allowances are chosen, not measured, and the transfers measured below land in
+under three seconds. The price itself still lapses after thirty seconds, so
+the number is not a time to pay in. An agent that holds a signed authorisation
+past the price's life, whose clock runs slow, or whose check takes longer than
+the allowance can still arrive with less than the charge needs; where the
+goods are still to be made the gateway then refuses the payment at the check,
+as `payment_not_verified`, before anything is made or charged, and the agent
+pays the same order again with a fresh signature while the price holds. A
+repeat purchase that collects goods already made is charged at once and is not
+held to the eighteen seconds. The six-second rule was read in the open-source
+facilitator code (`@x402/evm` 2.23.0) in this repository; whether the hosted
+facilitators the channels settle through keep the same margin has not been
+checked, and a check of the payment alone, with authorisations that end five
+and seven seconds after it, would answer that without moving money.
 
 ## What was measured
 
@@ -113,13 +138,8 @@ status route the contract names from the order's identifier, which the payment
 challenge carries. Which timeouts the agents that buy here actually use is not
 known.
 
-`PAYMENT_TIMEOUT_SECONDS` is three hundred by default, and the configuration
-accepts any whole number of seconds above zero. A deployment set below about
-seventy seconds could let a synchronous charge land after the authorisation
-has expired (thirty seconds of the price's life, ten for the merchant, then up
-to thirty for the facilitator call), which fails the charge after the goods
-were delivered. No deployment overrides the default, and nothing at startup
-refuses such a value.
+How long the agents that buy here hold a signed authorisation before they
+present it, and how far their clocks run, is not known.
 
 Whether the two refunds owed on TEST were ever reconciled has not been
 checked. The changes to the waits do not touch orders that already exist.

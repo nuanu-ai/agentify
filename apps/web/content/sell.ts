@@ -7,14 +7,14 @@ export const SELL_LANDING = {
   head: {
     title: "Agentify — sell products and services to AI agents",
     description:
-      "Publish physical products, digital products, and services for AI agents, take orders, and get paid out to your own wallet.",
+      "Publish digital products and services for AI agents, and physical products on the test channel for now, take orders, and get paid out in USDC to your own crypto wallet.",
     cardTitle: "Agentify — sell to AI agents",
     cardDescription: "Catalog, orders, and payouts for agentic commerce.",
   },
   hero: {
     eyebrow: "A new sales channel for products and services",
     title: "AI agents find and buy your products",
-    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents and takes the order. The buyer pays into your own payout contract, which sends 99.9% to your wallet and 0.1% to Agentify when it is paid out. You keep your site and your store as they are.",
+    lede: "Connect your catalog of digital products and services once, and physical products on the test channel for now. Agentify shows them to AI agents and takes the order. The buyer pays in USDC, a digital dollar, into your own payout contract, made for your crypto wallet; the contract sends 99.9% to your wallet and 0.1% to Agentify when it is paid out. You keep your site and your store as they are.",
     action: "Connect your catalog",
     howItWorks: "How it works",
     facts: ["You connect your catalog", "An agent buys", "You get paid"],
@@ -42,7 +42,7 @@ export const SELL_LANDING = {
   journey: {
     eyebrow: "How a sale works",
     title: "From adding a product to getting paid",
-    lede: "All you bring is your catalog. Agentify handles the rest: it turns your products into cards for AI agents, takes orders, and checks payments.",
+    lede: "You bring your catalog and fulfill the orders. Agentify handles the rest: it turns your products into cards for AI agents, takes orders, and checks payments.",
     steps: [
       {
         title: "Bring your products to Agentify",
@@ -70,7 +70,7 @@ export const SELL_LANDING = {
       ["What is for sale", "Title and description"],
       ["How much it costs", "The product price"],
       ["What the buyer provides", "For example, an email or shipping destination"],
-      ["How the order is fulfilled", "Immediately, later, after confirmation, or by shipment"],
+      ["How the order is fulfilled", "Immediately, later, or by shipment"],
     ],
     after: "With the SDK, you set these fields in code, as in the example.",
     link: "See every card field in the docs →",
@@ -201,8 +201,8 @@ export const SELL_LANDING = {
       columns: ["Product", "Price", "Delivery", "State"],
       rows: [
         ["Monthly service access", "access-monthly", "5.00 USD", "Immediate", "On sale"],
-        ["Specialty coffee", "coffee-250g", "12.00 USD", "By parcel", "On sale"],
-        ["30-minute consultation", "consult-30", "30.00 USD", "After you confirm", "Paused by you"],
+        ["Brewing guide, PDF", "brew-guide-pdf", "9.00 USD", "Immediate", "On sale"],
+        ["30-minute consultation", "consult-30", "30.00 USD", "Later", "Paused by you"],
       ],
       note: "A pause takes a card off sale; orders you have already accepted play out as usual.",
     },
@@ -217,7 +217,7 @@ export const SELL_LANDING = {
       ],
       [
         "What products can I connect?",
-        "Physical products, digital products, and services can all be connected. Each card tells the agent what it is buying, what information the order needs, and whether fulfillment is immediate, later, confirmed by you, or shipped.",
+        "Digital products and services can be connected. Physical products, shipped as a parcel, sell on the test channel only for now. Each card tells the agent what it is buying, what information the order needs, and whether fulfillment is immediate, later, or shipped.",
       ],
       [
         "Can I set a price in another currency?",
@@ -247,7 +247,6 @@ export const SELL_LANDING = {
     signIn: "Sign in",
     signUp: "Sign up",
   },
-  footer: { line: "Sales infrastructure for AI agents.", copyright: "© 2026 Agentify" },
 };
 
 export type SellLanding = typeof SELL_LANDING;

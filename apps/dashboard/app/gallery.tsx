@@ -1257,6 +1257,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-first-on-live",
+      screen: "Cards",
+      when: "A merchant who has just signed up on the live site opens the dashboard for the first time.",
+      cause:
+        "No cards, no payout wallet and no approval yet, so the banner names both and leads to the test channel's dashboard, where the first sale is made.",
+    },
+    cardsView(cardsOf("open", []), ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live", { liveApproval: false, payout: { wallet: null } })) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-none-without-name",
       screen: "Cards",
       when: "A new merchant skipped choosing a seller name and opens Cards.",

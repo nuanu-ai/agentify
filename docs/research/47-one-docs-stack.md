@@ -1,5 +1,7 @@
 # One documentation on the one stack: the spike, registered before it starts
 
+> Historical, 2026-10-14. The spike is finished: the documentation is drawn by React Router in `apps/docs`, and VitePress is gone.
+
 Date: 2026-10-14. A pre-registered experiment. The candidates, the
 measurements, the predictions and the rule that turns them into a decision are
 fixed here before any code is written, and the rule is executed as written.

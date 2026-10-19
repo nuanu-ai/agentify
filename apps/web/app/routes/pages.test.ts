@@ -108,6 +108,25 @@ describe("the landings for a kind of business", () => {
   );
 });
 
+describe("the landings for a kind of business, to a visitor who came to sell", () => {
+  it.each(["/store", "/local"])(
+    "%s leads a visitor who came to sell from under the scan form to the page about selling",
+    async (path) => {
+      const { html } = await page(path);
+      const formAt = html.indexOf("<form");
+      const underTheForm = html.slice(formAt, html.indexOf("</section>", formAt));
+
+      expect(underTheForm).toContain('href="/agentic-shop"');
+    },
+  );
+
+  it.each(["/store", "/local"])("%s leads there in its Markdown too", async (path) => {
+    const answered = await ask(path, { headers: { accept: "text/markdown" } });
+
+    expect(await answered.text()).toContain("](https://agentify.ad/agentic-shop)");
+  });
+});
+
 describe("the owner landing's old address", () => {
   it.each([
     ["read", "/owner", "GET"],
@@ -217,6 +236,26 @@ describe("the trust pages", () => {
   it("asks every crawler to index the terms and follow them, and no other trust page", async () => {
     expect((await page("/terms")).meta("robots")).toBe("index, follow");
     expect((await page("/privacy")).meta("robots")).toBeUndefined();
+  });
+});
+
+describe("the page for an address the site does not have", () => {
+  it("says so under its own title, with the site's header and footer leading on", async () => {
+    const answered = await ask("/agentic-shops", { headers: { accept: "text/html" } });
+    const html = await answered.text();
+    const head = html.slice(0, html.indexOf("</head>"));
+    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
+    const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? "";
+
+    expect(answered.status).toBe(404);
+    expect(head.match(/<title>([^<]*)<\/title>/)?.[1]).toBe("Page not found · Agentify");
+    expect(head).toContain('<meta name="robots" content="noindex"/>');
+    for (const href of ["/agentic-shop", "/docs/", "/dashboard/sign-in"]) {
+      expect(header, href).toContain(`href="${href}"`);
+    }
+    for (const href of ["/docs/", "/privacy", "/terms"]) {
+      expect(footer, href).toContain(`href="${href}"`);
+    }
   });
 });
 

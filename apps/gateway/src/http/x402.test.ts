@@ -68,23 +68,22 @@ const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 describe("what an agent is asked to pay", () => {
   /** A gateway with an address of its own configured, and a facilitator that settles for real. */
   const edge = (payTo: string | null, facilitatorUrl = "https://x402.org/facilitator") =>
-    new PaymentEdge(
-      {
+    new PaymentEdge({
+      payment: {
         facilitatorUrl,
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo,
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
 
   it("names the network's own asset, the seller's address and the order it is for", () => {
     const asked = edge(null).requirementsFor(
       { amount: "80.00", currency: "USD" },
-      "ord_1",
+      "pay_1",
       SELLERS_SPLIT,
     );
 
@@ -94,8 +93,8 @@ describe("what an agent is asked to pay", () => {
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       amount: "80000000",
       payTo: SELLERS_SPLIT,
-      maxTimeoutSeconds: 300,
-      extra: { name: "USDC", version: "2", order_id: "ord_1" },
+      maxTimeoutSeconds: 50,
+      extra: { name: "USDC", version: "2", payment_ref: "pay_1" },
     });
   });
 
@@ -110,7 +109,7 @@ describe("what an agent is asked to pay", () => {
     for (const given of [SELLERS_SPLIT, A_WALLET]) {
       const asked = edge(ours).requirementsFor(
         { amount: "80.00", currency: "USD" },
-        "ord_1",
+        "pay_1",
         given,
       );
       expect(asked.payTo).toBe(given);
@@ -160,7 +159,7 @@ describe("what an agent is asked to pay", () => {
     // Nobody has decided where a rate would come from, and a charge based on one
     // we made up would be the clearest possible claim beyond the evidence.
     expect(() =>
-      edge(null).requirementsFor({ amount: "80.00", currency: "EUR" }, "ord_1", SELLERS_SPLIT),
+      edge(null).requirementsFor({ amount: "80.00", currency: "EUR" }, "pay_1", SELLERS_SPLIT),
     ).toThrowError(/will not invent a rate/);
   });
 });
@@ -327,7 +326,7 @@ describe("one payment, one fingerprint", () => {
         amount: "999",
         payTo: "0xsomebody-else",
         maxTimeoutSeconds: 1,
-        extra: { order_id: "another_order" },
+        extra: { payment_ref: "another_order" },
       },
     };
 
@@ -420,18 +419,17 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   const edge = () =>
-    new PaymentEdge(
-      {
+    new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://x402.org/facilitator",
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
 
   const challenge = (listed: { serviceName: string | null }) =>
     decodePaymentRequiredHeader(
@@ -514,7 +512,9 @@ describe("the discovery declaration a challenge carries", () => {
     expect(info.input.method).toBe("POST");
     expect(info.input.bodyType).toBe("json");
     expect(info.input.body).toStrictEqual({ params: { email: "string" } });
-    expect(info.output?.example).toStrictEqual({ access_url: "string" });
+    expect((info.output?.example as { delivered?: unknown } | undefined)?.delivered).toStrictEqual({
+      access_url: "string",
+    });
   });
 
   it("holds together against its own schema", () => {
@@ -548,11 +548,11 @@ describe("the discovery declaration a challenge carries", () => {
     expect(twice()).toBe(twice());
   });
 
-  it("still says which order it is for", () => {
-    // The order identifier travels in `extra` beside the declaration; it is
-    // what a payment names.
+  it("still names the order it is for, by its payment reference", () => {
+    // The reference travels in `extra` beside the declaration; it is what a
+    // payment names its order by.
     const forOrder = decodePaymentRequiredHeader(
-      edge().challengeFor({ amount: "5.00", currency: "USD" }, "ord_1", {
+      edge().challengeFor({ amount: "5.00", currency: "USD" }, "pay_1", {
         itemId: "itm_4d21bb",
         card,
         serviceName: null,
@@ -560,7 +560,7 @@ describe("the discovery declaration a challenge carries", () => {
       }),
     );
 
-    expect(forOrder.accepts[0]?.extra?.order_id).toBe("ord_1");
+    expect(forOrder.accepts[0]?.extra?.payment_ref).toBe("pay_1");
   });
 });
 
@@ -577,18 +577,17 @@ describe("a parcel's challenge", () => {
     ship_within_seconds: 172_800,
     price_check: "handler",
   });
-  const edge = new PaymentEdge(
-    {
+  const edge = new PaymentEdge({
+    payment: {
       facilitatorUrl: "https://x402.org/facilitator",
       network: "eip155:84532",
-      timeoutSeconds: 300,
       payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
       cdpApiKeyId: null,
       cdpApiKeySecret: null,
     },
-    "https://agentify.example",
-    300,
-  );
+    publicBaseUrl: "https://agentify.example",
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+  });
   const listed = {
     itemId: "itm_parcel",
     card: parcel,
@@ -607,7 +606,7 @@ describe("a parcel's challenge", () => {
 
   it("says the amount asked includes shipping once the purchase names an address", () => {
     const { error } = decodePaymentRequiredHeader(
-      edge.challengeFor({ amount: "21.00", currency: "USD" }, "ord_1", listed, "payment required"),
+      edge.challengeFor({ amount: "21.00", currency: "USD" }, "pay_1", listed, "payment required"),
     );
 
     expect(error).toContain("includes shipping");
@@ -618,18 +617,17 @@ describe("a card's challenge at its widest", () => {
   // Publishing refuses a card by this measure, so it must never fall short of a
   // challenge the card is answered with later, whatever its merchant is renamed
   // to, its order is priced at, or the reason the challenge gives.
-  const edge = new PaymentEdge(
-    {
+  const edge = new PaymentEdge({
+    payment: {
       facilitatorUrl: "https://x402.org/facilitator",
       network: "eip155:84532",
-      timeoutSeconds: 300,
       payTo: null,
       cdpApiKeyId: null,
       cdpApiKeySecret: null,
     },
-    "https://agentify.example",
-    300,
-  );
+    publicBaseUrl: "https://agentify.example",
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+  });
   const cards = [
     CardSchema.parse({
       merchant_item_id: "room-101",
@@ -660,11 +658,11 @@ describe("a card's challenge at its widest", () => {
     expect(AmountSchema.safeParse(`9${WIDEST_AMOUNT}`).success).toBe(false);
     for (const card of cards) {
       const answered = Object.values(CHALLENGE_REASONS).flatMap((why) =>
-        [null, randomIds("ord")].map(
-          (orderId) =>
+        [null, randomIds("pay")].map(
+          (paymentRef) =>
             edge.challengeFor(
               { amount: WIDEST_AMOUNT, currency: "USD" },
-              orderId,
+              paymentRef,
               {
                 itemId: randomIds("item"),
                 card,
@@ -751,18 +749,17 @@ describe("the shape a live validation once accepted", () => {
       },
       fulfillment: "sync",
     });
-    const edge = new PaymentEdge(
-      {
+    const edge = new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://x402.org/facilitator",
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
     const decoded = decodePaymentRequiredHeader(
       edge.challengeFor({ amount: "2.00", currency: "USD" }, null, {
         itemId: "itm_1",

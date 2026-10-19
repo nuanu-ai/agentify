@@ -186,7 +186,7 @@ export async function startGateway(
     throw new Error(`the gateway will not start: ${cramped}`);
   }
   const { db, pool } = connect(config.databaseUrl);
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
   const queue = queueOn(config.databaseUrl, {
     pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
     reminders: {

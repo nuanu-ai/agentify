@@ -9,12 +9,12 @@
  */
 
 import {
-  Footer,
   HeaderMenu,
   OnItsWay,
   type Section,
   SectionNav,
   SignedIn,
+  SiteFooter,
   WorkHeader,
 } from "@agentify/ui";
 import type { ReactNode } from "react";
@@ -40,12 +40,6 @@ const TABS: readonly (readonly [Tab, string])[] = [
   ["keys", "API keys"],
   ["settings", "Settings"],
 ];
-
-const FOOT = [
-  { href: "/docs/", label: "Documentation" },
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
-] as const;
 
 /**
  * `heading` is the bar's words where they are not the window's title, and
@@ -138,7 +132,7 @@ export function Frame({
           </main>
         </div>
       </div>
-      <Footer links={FOOT} />
+      <SiteFooter surface="dashboard" link={Link} />
     </div>
   );
 }

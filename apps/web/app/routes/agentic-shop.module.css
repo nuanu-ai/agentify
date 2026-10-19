@@ -485,11 +485,6 @@
   color: var(--accent);
   font-size: 1.25rem;
 }
-.paymentDiagram > p {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-top: 18px;
-}
 .categories {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -525,30 +520,12 @@
   color: var(--muted);
   margin-top: 25px;
 }
-.localNote {
-  display: flex;
-  align-items: center;
-  gap: 25px;
-  margin-top: 30px;
+/* What is not live yet, in one line and no more room than that. */
+.soon {
   padding: 25px 0;
   border-bottom: 1px solid var(--line);
-}
-.localNote p {
   font-size: 0.875rem;
   color: var(--fg-2);
-  max-width: 770px;
-}
-.localNote strong {
-  display: block;
-  font-size: 1rem;
-  color: var(--fg);
-  margin-bottom: 4px;
-}
-.localNote > a {
-  margin-left: auto;
-  font-size: 0.875rem;
-  white-space: nowrap;
-  color: var(--accent);
 }
 .entry {
   background: var(--shop-dark);
@@ -589,14 +566,6 @@
   position: absolute;
   left: 0;
   color: var(--shop-mint);
-}
-.entryNote {
-  font-size: 0.875rem;
-  color: var(--shop-muted);
-  border-top: 1px solid var(--shop-line);
-  padding-top: 25px;
-  margin-top: 40px;
-  max-width: 400px;
 }
 .entryCard {
   background: var(--bg);
@@ -781,17 +750,6 @@
   .categories {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .localNote {
-    flex-wrap: wrap;
-    gap: 12px 20px;
-  }
-  .localNote p {
-    flex: 1;
-    min-width: 240px;
-  }
-  .localNote > a {
-    margin-left: 0;
-  }
   .entryGrid {
     grid-template-columns: 1fr;
     gap: 35px;
@@ -804,10 +762,6 @@
   }
   .entry ul {
     margin: 25px 0;
-  }
-  .entryNote {
-    margin-top: 28px;
-    max-width: 620px;
   }
   .opportunity,
   .entry,
@@ -968,13 +922,6 @@
   .categories small {
     font-size: 0.75rem;
   }
-  .localNote p {
-    font-size: 0.875rem;
-    min-width: 210px;
-  }
-  .localNote strong {
-    font-size: 0.9375rem;
-  }
   .entry h2 {
     font-size: 3.125rem;
     margin: 22px 0;
@@ -984,9 +931,6 @@
   }
   .entry li {
     font-size: 0.9375rem;
-  }
-  .entryNote {
-    font-size: 0.875rem;
   }
   .entryCard {
     padding: 25px 20px;

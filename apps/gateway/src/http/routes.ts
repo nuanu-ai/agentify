@@ -79,7 +79,7 @@ function keyCaller(call: RouteCall): Caller {
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
 
   return {
     publish_card: {
@@ -326,6 +326,10 @@ async function orderStatus(
   gateway: Gateway,
   { params, response }: RouteCall,
 ): Promise<RouteAnswer> {
+  // The answer can carry the goods, and whoever holds a copy holds them, so no
+  // cache on the way may keep one. The refusal says the same, or the header
+  // alone would tell an order from a guess.
+  response.setHeader("Cache-Control", "no-store");
   const record = await gateway.orderById(params.order_id ?? "");
   if (record === null) {
     return refusedWith(response, NO_SUCH_ORDER);
@@ -455,9 +459,10 @@ const isEmptyDocument = (body: unknown): boolean =>
  * anything.
  *
  * A POST with the purchase document and no payment opens and prices an order
- * and answers with the challenge. With a payment it drives the order the
- * payment names; a payment naming an order we do not hold gets a fresh
- * challenge, so the agent pays against a price we actually issued.
+ * and answers with the challenge. With a payment it drives the order whose
+ * payment reference the payment carries; a payment naming no order we hold
+ * by its reference gets a fresh challenge, so the agent pays against a price
+ * we actually issued.
  */
 async function purchase(
   gateway: Gateway,
@@ -500,8 +505,8 @@ async function purchase(
 
   const held = hold(PurchaseRequestSchema, body);
 
-  if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
-    const named = await gateway.orderById(presented.orderId);
+  if (presented !== null && presented !== "unreadable" && presented.paymentRef !== null) {
+    const named = await gateway.orderForPayment(presented.paymentRef);
     if (named !== null) {
       // A paid request's body is read only for an address sent again, which
       // must be the one the order was priced for. A malformed one is refused,
@@ -525,7 +530,7 @@ async function purchase(
         edge,
         response,
         await gateway.payPurchase(
-          presented.orderId,
+          named.order.id,
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
           held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
@@ -603,7 +608,8 @@ async function answerPurchase(
       return written(response, UNPROCESSABLE, refusal("ship_to_does_not_fit", attempt.message));
 
     case "ship_to_changed":
-      // Decided before the payment was checked, so nothing was taken.
+      // Decided once the payment was checked and before anything was claimed
+      // or charged, so nothing was taken.
       return written(
         response,
         CONFLICT,
@@ -631,9 +637,10 @@ async function answerPurchase(
       );
 
     case "not_this_purchase":
-      // The order already belongs to another payer. Its identifier travels in
-      // challenges, streams and receipts, so holding it proves nothing; the
-      // wording says nothing about how far along the order is.
+      // The order already belongs to another payer. Its payment reference is
+      // in every challenge for it and a listing can publish it, so holding it
+      // proves nothing; the wording names no order and says nothing about how
+      // far along it is.
       return written(
         response,
         CONFLICT,
@@ -649,9 +656,10 @@ async function answerPurchase(
       );
 
     case "payment_not_taken":
-      // For example an order whose charge never reported back: a second charge
-      // would spend the buyer's money on a guess. Whether a retry can succeed
-      // is the order machine's to say, not this handler's.
+      // For example an order whose charge never reported back, where a second
+      // charge would spend the buyer's money on a guess, or an order that is
+      // over. Whether a retry can succeed is the gateway's to say, not this
+      // handler's.
       return written(
         response,
         CONFLICT,
@@ -676,7 +684,7 @@ async function answerPurchase(
         PAYMENT_REQUIRED_HEADER,
         edge.challengeFor(
           price,
-          attempt.order.order.id,
+          attempt.order.paymentRef,
           {
             itemId: offered.stored.id,
             card: offered.stored.card,

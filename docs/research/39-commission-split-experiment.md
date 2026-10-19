@@ -1,5 +1,7 @@
 # Комиссия через PullSplit: опыт с x402.org и Coinbase в Base Sepolia
 
+> Historical, 2026-10-09. The pre-registered experiment on Base Sepolia behind ADR-0037; the design it fed is `47-commission-in-the-product.md`.
+
 Дата: 2026-10-09. Опыт исполняет предсказания и правило решения из раздела
 «Предрегистрированный опыт в Base Sepolia» [записки 38](38-service-commission.md).
 Пункты 1–4 и проверки выполнены в предыдущей сессии, пункт 5 — в этой;

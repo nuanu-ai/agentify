@@ -355,7 +355,7 @@ async function main(): Promise<void> {
           "the smoke's card is not in the catalog it was published to",
         );
       }
-      const [asked] = (await shopper.challenge(listing.id)).accepts;
+      const [asked] = (await shopper.challenge(listing)).accepts;
       if (
         asked === undefined ||
         asked.network !== SMOKE_NETWORK ||
@@ -380,7 +380,7 @@ async function main(): Promise<void> {
           split: inForce,
           buyer,
           payment: async () => {
-            const bought = await shopper.buy(listing.id, { email: "smoke@example.com" });
+            const bought = await shopper.buy(listing, { email: "smoke@example.com" });
             const verdict = await verdictOnPurchase(bought, (id) => store.orderById(id));
             switch (verdict.kind) {
               case "settled":

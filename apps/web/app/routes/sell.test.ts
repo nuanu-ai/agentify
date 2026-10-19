@@ -67,6 +67,15 @@ describe("the merchant landing", () => {
     }
     expect(html).not.toMatch(/<form\b/);
   });
+
+  it("leads from the site's footer to the privacy notice and the terms, as every public page does", async () => {
+    const html = await (await ask("/sell")).text();
+    const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? "";
+
+    for (const href of ["/privacy", "/terms", "/docs/", "/agentic-shop"]) {
+      expect(footer, href).toContain(`href="${href}"`);
+    }
+  });
 });
 
 describe("the pricing the landing shows", () => {

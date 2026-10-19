@@ -31,6 +31,7 @@ import {
   SellerSchema,
 } from "./card.js";
 import { WorkerEnvelopeSchema } from "./envelope.js";
+import { RefundDueReasonSchema } from "./events.js";
 import { AcceptanceSchema, DeliverySchema, HandlerAnswerSchema, RefusalSchema } from "./handler.js";
 import {
   DisabledKeySchema,
@@ -250,13 +251,14 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  *
  * It carries what the buyer is owed and nothing more: no merchant account, no
  * merchant's key for the product, none of the parameters the buyer sent.
- * Anyone holding an order's identifier can read it.
+ * Anyone holding an order's identifier, or the `status_url` built from it, can
+ * read it and the goods in it, so neither is to be shared.
  *
  * `price` and `delivered` are required and nullable, so that "none yet" is a
  * stated fact rather than a missing field. `refusal` is present only where a
- * merchant's refusal ended the order, and `reason` only where Agentify ended
- * it and the status word alone would not say what to do next. A payment that
- * failed its check arrives as a bare `rejected`, with neither.
+ * merchant's refusal ended the order. `reason` is present where Agentify ended
+ * it and the status word alone would not say what to do next, and on every
+ * order owing a refund, to say why it is owed.
  */
 export const AgentOrderStatusSchema = z
   .looseObject({
@@ -342,21 +344,26 @@ export const AgentOrderStatusSchema = z
     refusal: RefusalSchema.loose().optional(),
 
     /**
-     * Why the order ended, where Agentify and not the merchant decided it and
-     * the status word alone covers endings that call for different next steps:
-     * `rejected` for a product that is gone, a price check that went
-     * unanswered or a charge that did not go through; `expired` for a price
-     * that ran out before payment or a merchant who did not answer a
-     * synchronous purchase in time.
+     * Agentify's own word on where the order stands, where the status word
+     * alone covers situations that call for different next steps. On
+     * `rejected` and `expired` it is why Agentify ended the order: a product
+     * that is gone, a price check that went unanswered or a charge that did
+     * not go through; a price that ran out before payment or a merchant who
+     * did not answer a synchronous purchase in time. On `refund_due`, always
+     * present, it is why the refund is owed, in the words of the merchant's own
+     * `order.refund_due` event: the merchant refused after the money moved,
+     * a deadline passed (the time for the goods after the money moved, or
+     * Agentify's wait for word of a charge later reported to have gone
+     * through), or the merchant left.
      *
      * A code to branch on and a sentence saying what to do next. These are
-     * Agentify's words, so they never sit beside a merchant's `refusal`. The
-     * code is an open word like `status`. Absent wherever the status needs
-     * nothing added.
+     * Agentify's words, so they stand beside a merchant's `refusal` only on
+     * `refund_due`, to say what that refusal left owed. The code is an open
+     * word like `status`. Absent wherever the status needs nothing added.
      */
     reason: z
       .looseObject({
-        code: z.union([OrderEndingReasonSchema, OpenWordSchema]),
+        code: z.union([OrderEndingReasonSchema, RefundDueReasonSchema, OpenWordSchema]),
         message: z.string().regex(/\S/, "a reason carries a sentence a reader can act on"),
       })
       .optional(),
@@ -370,7 +377,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. A parcel\'s order also carries "shipment", its merchant\'s record of handing it to a carrier and null until then, and "ship_by", the instant it has to be with a carrier by and null until it is paid; no other order carries either. On a parcel "delivered" stays null, because nothing reached the agent: its status reads "shipped" once the shipment is recorded, and that is the last word Agentify has about it. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped. "reason" is the other voice: where Agentify and not the merchant ended the order and the status word alone — "rejected" or "expired" — would blur what to do next, it names why in a code to branch on — "unavailable", "price_check_unanswered", "payment_not_settled", "price_expired", "merchant_timed_out", and more may be added — and a sentence saying what to do next. It never stands beside a merchant\'s "refusal". A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer. "status" is a word whose known values are listed beside it, and more may be added: a word a reader does not know is not an ending it knows, so it asks again later and does not buy again on its strength. This document and every part inside it may also gain fields; a reader ignores the ones it does not know.',
+      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. order_id, and the status_url built from it, are the only key to this order and its goods: anyone who holds either can read them, so they are not to be shared, and every answer of the status route tells caches to keep nothing. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. A parcel\'s order also carries "shipment", its merchant\'s record of handing it to a carrier and null until then, and "ship_by", the instant it has to be with a carrier by and null until it is paid; no other order carries either. On a parcel "delivered" stays null, because nothing reached the agent: its status reads "shipped" once the shipment is recorded, and that is the last word Agentify has about it. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped. "reason" is the other voice: where Agentify and not the merchant ended the order and the status word alone — "rejected" or "expired" — would blur what to do next, it names why in a code to branch on — "unavailable", "price_check_unanswered", "payment_not_settled", "price_expired", "merchant_timed_out", and more may be added — and a sentence saying what to do next. Every "refund_due" carries one too, naming why the refund is owed in the words of the merchant\'s own refund event — "refused", "deadline_passed" (the time for the goods ran out, or a charge Agentify had stopped waiting for went through) or "merchant_left" — and a sentence saying that nothing here records a refund, so the status does not change once the buyer is paid back. It stands beside a merchant\'s "refusal" only there, to say what the refusal left owed. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer. "status" is a word whose known values are listed beside it, and more may be added: a word a reader does not know is not an ending it knows, so it asks again later and does not buy again on its strength. This document and every part inside it may also gain fields; a reader ignores the ones it does not know.',
   });
 
 /**
@@ -425,11 +432,14 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
  * payment stands in for authorisation.
  *
  * `order_id`: knowing an order's identifier stands in for a key. That rests on
- * the identifier being random and long enough not to be guessed, not on it
- * being secret: it travels in the payment challenge and to the merchant, and
- * anyone who obtains it can read that order. So the document behind this door
- * carries only what the buyer is owed, and a gateway must answer an
- * identifier that names no order exactly as any other unknown one.
+ * the identifier being random and long enough not to be guessed, and on its
+ * going only to the agent that bought and to the merchant: the payment
+ * challenge, which reaches the payment facilitator and which a discovery
+ * listing can publish, names the order by a separate payment reference that
+ * no route but the purchase reads. Anyone else who obtains the identifier can
+ * read that order, so the agent is told to keep it to itself, the document
+ * behind this door carries only what the buyer is owed, and a gateway must
+ * answer an identifier that names no order exactly as any other unknown one.
  *
  * `undecided`: no door has been chosen. A gateway must not mount such a route;
  * see `mountableRoutes`.
@@ -793,7 +803,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/catalog",
     auth: "none",
     description:
-      "Products offered for sale, as an agent reads them. Each is the projection of a published card: our catalog identifier rather than the merchant's own key, and nothing about how the merchant's price is asked for beyond the fact that it will be asked again.",
+      "Products offered for sale, as an agent reads them. Each is the projection of a published card: our catalog identifier rather than the merchant's own key, the whole address it is bought at, and nothing about how the merchant's price is asked for beyond the fact that it will be asked again.",
     response: { document: CatalogPageSchema },
   },
 
@@ -802,7 +812,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/:item_id/purchase",
     auth: "none",
     description:
-      "Buying one product. The payment is what stands in for authorisation, so there is no key on this call. It begins with the payment exchange of the x402 protocol: a call with no payment on it is answered with a challenge, which travels in a header and carries no document. What a paid purchase is answered with is the state of the order it made — the same document the status route answers with, whatever the card's mode and whether the purchase ended in the goods or in something else, so an agent that bought and an agent that came back later read one shape. That document names, in status_url, the whole address where the order is read again, which is where goods that come later are collected. No receipt of ours is in it: a receipt is the merchant's record of the sale and is read behind the merchant's key. What an agent is told about its own money is the price and the word for whether that money was real, and, where the payment executed as the last step of this exchange, the settlement the payment layer signs into a header on this answer — a card whose money moves as the order is opened has already spent that step, so no settlement comes back here and the two fields are the whole of it. The address answers on GET as well as on POST, because that is how the validators and crawlers that list a paid resource ask for it. An unpaid call that carries no document — a GET, or a POST with nothing or with an empty document — is answered with the challenge and never a purchase, and a GET is never read for payment; the challenge describes the purchase, which is a POST with a JSON body. An unpaid POST that carries that document is answered with the price of the very order it opened, and a document of some other shape is refused with the fields that are wrong. A product that is not on sale answers neither method with a challenge: it is refused, so that a catalog built from these challenges never carries a product nobody can buy.",
+      "Buying one product. The payment is what stands in for authorisation, so there is no key on this call. It begins with the payment exchange of the x402 protocol: a call with no payment on it is answered with a challenge, which travels in a header and carries no document. What a paid purchase is answered with is the state of the order it made — the same document the status route answers with, whatever the card's mode and whether the purchase ended in the goods or in something else, so an agent that bought and an agent that came back later read one shape. That document names, in status_url, the whole address where the order is read again, which is where goods that come later are collected. No receipt of ours is in it: a receipt is the merchant's record of the sale and is read behind the merchant's key. What an agent is told about its own money is the price and the word for whether that money was real, and, where the payment executed as the last step of this exchange, the settlement the payment layer signs into a header on this answer — a card whose money moves as the order is opened has already spent that step, so no settlement comes back here and the two fields are the whole of it. The address answers on GET as well as on POST, because that is how the validators and crawlers that list a paid resource ask for it. An unpaid call that carries no document — a GET, or a POST with nothing or with an empty document — is answered with the challenge and never a purchase, and a GET is never read for payment; the challenge describes the purchase, which is a POST with a JSON body. The price a challenge names holds for thirty seconds, and the order opened for it lapses with it. The challenge's maxTimeoutSeconds is longer, because it is how long the signed authorisation has to stay valid for a purchase delivered in the answer to be charged after its goods; it is not a time to pay in, so sign and present the payment at once. Where the goods are still to be made, a payment for such a purchase whose authorisation would end before that charge, with a margin for what cannot be counted exactly, is refused as payment_not_verified, before anything is made or charged, and the same order can be paid again with a fresh signature while its price holds. An unpaid POST that carries that document is answered with the price of the very order it opened, and a document of some other shape is refused with the fields that are wrong. That challenge names the order by a payment reference in its payment requirements, extra.payment_ref, which comes back with the payment and binds it to that order; it is not the order's identifier, which comes in the purchase's answer and never in the payment request, and nothing but this call reads it. A payment for an order that is already over with nothing held for it is refused as payment_not_taken, saying what became of the order in words that name no order. A payer whose answer was lost signs the same challenge again from the same wallet: an order under way, delivered or owing a refund is answered with the order, with no second charge, while one that ended with nothing charged, or whose payment's outcome is not known yet, is refused in words that say so. A product that is not on sale answers neither method with a challenge: it is refused, so that a catalog built from these challenges never carries a product nobody can buy.",
     request: PurchaseRequestSchema,
     also_answers_on: ["GET"],
     response: { document: AgentOrderStatusSchema },
@@ -813,7 +823,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/orders/:order_id/status",
     auth: "order_id",
     description:
-      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Every answer that carries the order document names this address in status_url, whole and ready to call, the purchase's own answer included. An order whose goods come later is owed them by the delivery deadline its card carried when the order was opened, counted from its payment: fulfill_deadline_seconds where the card names one, and a day where it names none. An order still without goods at that deadline becomes refund_due, and a paid order the merchant refuses or leaves behind becomes it sooner: the merchant owes the buyer the goods or the money back. That is not an ending, and it carries no further deadline. Goods the merchant delivers after it still appear here and settle the debt, and the order becomes delivered. Nor does refund_due say whether the money has come back: the merchant returns the whole price from their own wallet, the gateway has no way yet to record that they did, and until it has one no order moves on to refunded — a buyer already paid back still reads refund_due here. So an agent holding refund_due can still collect goods here, nothing here tells it when to stop asking, and its own wallet is where a refund shows. Knowing the order's identifier is the proof, so this call takes no key: an agent has no account and no registration, and the identifier is handed only to the parties to the sale — the agent that bought, its merchant and Agentify — and appears in no catalog or listing. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
+      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Every answer that carries the order document names this address in status_url, whole and ready to call, the purchase's own answer included. An order whose goods come later is owed them by the delivery deadline its card carried when the order was opened, counted from its payment: fulfill_deadline_seconds where the card names one, and a day where it names none. An order still without goods at that deadline becomes refund_due, and a paid order the merchant refuses or leaves behind becomes it sooner: the merchant owes the buyer the goods or the money back. That is not an ending, and it carries no further deadline. Goods the merchant delivers after it still appear here and settle the debt, and the order becomes delivered. Nor does refund_due say whether the money has come back: the merchant returns the whole price from their own wallet, the gateway has no way yet to record that they did, and until it has one no order moves on to refunded — a buyer already paid back still reads refund_due here. So an agent holding refund_due can still collect goods here, nothing here tells it when to stop asking, and its own wallet is where a refund shows. Knowing the order's identifier is the proof, so this call takes no key: an agent has no account and no registration, and the identifier comes to the agent that bought in the purchase's answer, never in the payment request, and to its merchant. The payment requirements, which the payment facilitator that checks and executes the payment receives and a discovery catalogue that lists the product from them can publish, carry a separate payment reference instead, and this call answers that reference as it answers an unknown identifier. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
     response: { document: AgentOrderStatusSchema },
   },
 }) satisfies Readonly<Record<string, RouteDefinition>>;

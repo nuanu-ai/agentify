@@ -1,4 +1,4 @@
-import { SignedIn, SiteHeader } from "@agentify/ui";
+import { SignedIn, SiteFooter, SiteHeader } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Chrome } from "../answer.js";
@@ -6,8 +6,9 @@ import { SurfaceNote } from "./surface-note.js";
 
 /**
  * A page outside the dashboard's frame: the ones in front of the gate, and
- * those that say a page could not be drawn. One card under the site header,
- * which names who is signed in wherever the gate has said so.
+ * those that say a page could not be drawn. One card between the site header,
+ * which names who is signed in wherever the gate has said so, and the site
+ * footer.
  */
 export function GatePage({
   chrome,
@@ -31,6 +32,7 @@ export function GatePage({
       <main className="gate" id="main">
         {children}
       </main>
+      <SiteFooter surface="dashboard" link={Link} />
     </div>
   );
 }

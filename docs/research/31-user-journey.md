@@ -1,5 +1,7 @@
 # The path through one site: scanner, cabinet, documentation
 
+> Historical, 2026-09-21. A design note on screens and flows of its day; the "cabinet" it names is the dashboard at `/dashboard`, and sign-in is ADR-0026.
+
 Date: 2026-09-21. A design note about screens and flows, rewritten freely;
 not a decision. Written on the product owner's approval of the same day,
 which accepted the four changes below, and revised after an adversarial

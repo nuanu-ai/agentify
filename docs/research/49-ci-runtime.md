@@ -1,5 +1,7 @@
 # CI runtime measurements
 
+> Historical, 2026-10-15. The measurements behind the jobs of `.github/workflows/ci.yml` on that day; the jobs have changed since.
+
 The changes aim to reduce waiting for CI while keeping every check. Measure each
 step separately before attributing a speedup to it. Each step is a separate
 commit, so the gallery change and the job split can be measured independently.

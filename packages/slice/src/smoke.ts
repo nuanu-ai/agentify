@@ -179,7 +179,7 @@ export async function verdictOnPurchase(
 
 /** The real facilitator, built from the loaded config exactly as production does. */
 export function realFacilitator(config: GatewayConfig): Facilitator {
-  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const edge = new PaymentEdge(config);
   const { cdpApiKeyId, cdpApiKeySecret } = config.payment;
   const client = new HTTPFacilitatorClient({
     url: config.payment.facilitatorUrl,
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
 
     // Read the real challenge without paying: it names the amount, the asset and
     // the address a payment would go to.
-    const challenge = await buyer.challenge(listing.id);
+    const challenge = await buyer.challenge(listing);
     const requirement = challenge.accepts[0];
     if (requirement === undefined) {
       die("the payment challenge carried no payment options");
@@ -352,7 +352,7 @@ async function main(): Promise<void> {
 
     // --- the one real paid call (only under --confirm) ----------------------
     say("--confirm: signing and settling one real testnet payment now.");
-    const bought = await buyer.buy(listing.id, { email: "smoke@example.com" });
+    const bought = await buyer.buy(listing, { email: "smoke@example.com" });
     say(`HTTP ${bought.status}`);
     say(`resource answered: ${JSON.stringify(bought.body)}`);
     if (bought.settlement !== null) {

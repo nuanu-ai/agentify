@@ -19,6 +19,7 @@
  */
 
 import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
@@ -40,7 +41,13 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/network
 import { payoutSplitFor } from "../../split/parameters.js";
 import { startGateway } from "../../start.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import { countedIds, loggedWhile, testConfig, workUntilStopped } from "../../testing/harness.js";
+import {
+  authorisation,
+  countedIds,
+  loggedWhile,
+  testConfig,
+  workUntilStopped,
+} from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
@@ -753,6 +760,76 @@ if (databaseUrl === null) {
       expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
       expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
+    it("charges an order written before payment references under the one the migration gave it", async () => {
+      // The order is made, paid and left unpaid by a failed charge as today,
+      // then put back as it was written before references existed, and the
+      // migration's own statement gives it one. Its buyer was never given
+      // that reference, so the payment for it here is presented directly, as
+      // the purchase would once the reference had found the order.
+      const published = await store.publishCard(
+        A,
+        { ...syncCard, merchant_item_id: "paid-again-after-the-migration" },
+        now,
+      );
+      const offered = await gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      const orderId = offered.order.order.id;
+      const wallet = `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}`;
+      const earlier = facilitator.settles.length;
+      facilitator.willSettle(
+        ...Array.from(
+          { length: earlier },
+          () => ({ settled: true, transaction: "0xearlier" }) as const,
+        ),
+        { settled: false, reason: "the transfer reverted" },
+        { settled: true, transaction: "0xagain" },
+      );
+      try {
+        const worker = workUntilStopped(
+          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
+          { onOrder: () => ({ delivered: { access_code: "SESAME" } }) },
+        );
+        const first = authorisation(gateway, wallet, "0x01");
+        await gateway.payPurchase(orderId, first.payment, first.fingerprint);
+        await worker.stop();
+        expect((await store.orderById(orderId))?.order.state).toBe("delivered_unpaid");
+
+        await pool.query("update orders set record = record - 'paymentRef' where id = $1", [
+          orderId,
+        ]);
+        const migration = await readFile(
+          join(
+            dirname(fileURLToPath(import.meta.url)),
+            "..",
+            "..",
+            "..",
+            "drizzle",
+            "0018_order_payment_ref.sql",
+          ),
+          "utf8",
+        );
+        const backfill = migration
+          .split("--> statement-breakpoint")
+          .map((statement) => statement.trim())
+          .find((statement) => /^UPDATE/m.test(statement.replace(/^--.*$/gm, "").trim()));
+        if (backfill === undefined) throw new Error("the migration gives no order a reference");
+        await pool.query(backfill);
+
+        const given = (await store.orderById(orderId))?.paymentRef ?? "";
+        expect((await gateway.orderForPayment(given))?.order.id).toBe(orderId);
+        const again = authorisation(gateway, wallet, "0x02");
+        const paid = await gateway.payPurchase(orderId, again.payment, again.fingerprint);
+
+        expect(paid.step).toBe("settled");
+        if (paid.step !== "settled") throw new Error("the order was not paid again");
+        expect(paid.order.order.state).toBe("delivered");
+        expect(paid.delivery).toStrictEqual({ access_code: "SESAME" });
+        expect(facilitator.settles.at(-1)?.paymentRef).toBe(given);
+      } finally {
+        facilitator.willSettle();
+      }
+    }, 30_000);
+
     /**
      * The effects that must not be lost, against the database where the losing
      * would happen. The envelope is a row pg-boss owns, written on our

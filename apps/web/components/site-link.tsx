@@ -9,7 +9,7 @@ import {
   useResolvedPath,
 } from "react-router";
 
-import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
+import { KEPT_PAGE_PATHS } from "../content/public-page-metadata";
 
 /** How long the pointer rests on a link before its page is fetched, as React Router waits. */
 const REST_MS = 100;
@@ -39,7 +39,7 @@ export function SiteLink({
   const navigation = useNavigation();
   const target = useResolvedPath(to);
   const going = navigation.state === "loading" && navigation.location.pathname === target.pathname;
-  const keeps = (PUBLIC_PAGE_PATHS as readonly string[]).includes(target.pathname);
+  const keeps = (KEPT_PAGE_PATHS as readonly string[]).includes(target.pathname);
   const stylesheetsOf = useStylesheets();
   const [ahead, setAhead] = useState<readonly string[]>([]);
   const resting = useRef<number | undefined>(undefined);

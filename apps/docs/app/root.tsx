@@ -20,7 +20,7 @@ import "@agentify/visual/consent.css";
 import "./docs.css";
 
 import { ConsentBanner, KeptChoiceScript, PrivacyChoicesButton } from "@agentify/consent";
-import { Footer, SiteHeader, SiteMenu } from "@agentify/ui";
+import { SiteFooter, SiteHeader, SiteMenu } from "@agentify/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import {
   isRouteErrorResponse,
@@ -93,13 +93,6 @@ function MenuContents() {
   );
 }
 
-const FOOT_LINKS = [
-  { href: "/docs/", label: "Documentation" },
-  { href: "/docs/scanner", label: "Scanner" },
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
-];
-
 /** What every page's body carries around the page: the header, the part Caddy fills and the foot. */
 export function DocsBody({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");
@@ -112,9 +105,9 @@ export function DocsBody({ children }: Readonly<{ children: ReactNode }>) {
       />
       {site === undefined ? null : <Served built={site.served} />}
       {children}
-      <Footer links={FOOT_LINKS}>
+      <SiteFooter surface="docs" link={OwnLink}>
         <PrivacyChoicesButton className="foot-action" />
-      </Footer>
+      </SiteFooter>
       <ConsentBanner brand="Agentify" />
       {site === undefined ? null : <Measured built={site.served} />}
     </>

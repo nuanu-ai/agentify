@@ -14,12 +14,16 @@
  * in the harness below with the shapes the examples imply; they are the
  * harness's assumptions, not promises of the documentation. One fence on the
  * cards page is the `result` block of a card on its own and is compiled as
- * that field. The count of fences per page is asserted, so a new example
- * cannot slip past: when it fails, decide how the new fence is compiled.
+ * that field. The quickstart's test purchase is a buyer's program rather than
+ * a merchant's, written against the x402 client a merchant installs to buy
+ * their own card; it is compiled against the same release of that client the
+ * repository's own test buyer uses. The count of fences per page is asserted,
+ * so a new example cannot slip past: when it fails, decide how the new fence is
+ * compiled.
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,7 +101,7 @@ interface Page {
 }
 
 const PAGES: readonly Page[] = [
-  { file: "apps/docs/quickstart.md", fences: 6 },
+  { file: "apps/docs/quickstart.md", fences: 7 },
   { file: "apps/docs/orders.md", fences: 4 },
   { file: "apps/docs/cards.md", fences: 2, pieces: { 0: asCardResult } },
   { file: README, fences: 3 },
@@ -155,13 +159,18 @@ interface Compilation {
  * resolves `@nuanu-ai/agentify` to this package's source, carries a
  * `package.json` marking the files as modules (two examples await at the top
  * level), names the type roots outright (the files sit outside the
- * repository), and allows unused locals, since an example is an excerpt.
+ * repository), and allows unused locals, since an example is an excerpt. The
+ * buyer's packages are found where the repository's test buyer installs them.
  */
 const compile = (examples: readonly Example[]): Compilation => {
   const directory = mkdtempSync(join(tmpdir(), "agentify-fences-"));
 
   try {
     writeFileSync(join(directory, "package.json"), JSON.stringify({ type: "module" }));
+    symlinkSync(
+      join(repoRoot, "packages", "slice", "node_modules"),
+      join(directory, "node_modules"),
+    );
     writeFileSync(join(directory, "harness.d.ts"), HARNESS);
     writeFileSync(
       join(directory, "tsconfig.json"),

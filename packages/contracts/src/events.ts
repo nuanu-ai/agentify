@@ -21,8 +21,10 @@ export const ORDER_EVENT_TYPES = Object.freeze({
 
 /**
  * How an order came to owe a refund: the merchant refused after the money had
- * moved, their delivery deadline passed, or they left and their open orders
- * closed with them.
+ * moved, a deadline passed, or they left and their open orders closed with
+ * them. `deadline_passed` is the merchant's delivery deadline after the money
+ * moved, or Agentify's wait for word of a charge that was later reported to
+ * have gone through, on an order the merchant was never sent.
  */
 export const RefundDueReasonSchema = z.enum(["refused", "deadline_passed", "merchant_left"]);
 

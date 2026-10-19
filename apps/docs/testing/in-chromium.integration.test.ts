@@ -218,7 +218,10 @@ describe("a page of the documentation in Chromium", () => {
       const other = address === "/docs/money" ? "/docs/faq" : "/docs/money";
 
       await contents(page)
-        .getByRole("link", { name: other === "/docs/faq" ? "Common questions" : "Money" })
+        .getByRole("link", {
+          name: other === "/docs/faq" ? "Common questions" : "Money",
+          exact: true,
+        })
         .click();
       await drawn(page, other);
       expect(await stayed(page)).toBe(true);
@@ -286,7 +289,7 @@ describe("a page of the documentation in Chromium", () => {
   it("draws every diagram of the orders page as a named, described picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 
-    expect(await page.locator("figure.diagram svg").count()).toBe(3);
+    expect(await page.locator("figure.diagram svg").count()).toBe(2);
     for (const diagram of await page.locator("figure.diagram svg").all()) {
       const accessible = await diagram.evaluate((element) => {
         const texts = (attribute: string, tag: string) => {
@@ -708,6 +711,107 @@ describe("on a phone", () => {
     await page.getByRole("combobox").waitFor();
     await page.context().close();
   });
+});
+
+describe("a diagram or a table on a narrow or a wide screen", () => {
+  const PHONE = { width: 375, height: 812 };
+
+  it("draws a diagram on a phone at three quarters of its own size or more, its figure scrolling rather than the page", async () => {
+    const { page } = await visit("/docs/orders", PHONE, true);
+    const scales = await page
+      .locator("figure.diagram svg")
+      .evaluateAll((pictures) =>
+        pictures.map(
+          (picture) =>
+            picture.getBoundingClientRect().width /
+            (picture as SVGSVGElement).viewBox.baseVal.width,
+        ),
+      );
+
+    expect(scales.length).toBeGreaterThan(0);
+    for (const scale of scales) expect(scale).toBeGreaterThanOrEqual(0.74);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    await page.context().close();
+  });
+
+  it("keeps the column that names each row in sight on a phone while a wide table scrolls sideways", async () => {
+    const { page } = await visit("/docs/failures", PHONE, true);
+    const table = page.locator(".doc table").first();
+    const wide = await table.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+    expect(wide, "the table on this page no longer scrolls on a phone").toBe(true);
+
+    const seen = await table.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      const tableLeft = element.getBoundingClientRect().left;
+      return [...element.querySelectorAll("tbody tr")].map((row) => {
+        const name = row.firstElementChild as HTMLElement;
+        // Brought below the header that holds the page's bar, where a point
+        // on the row can be asked what is drawn there.
+        window.scrollBy(0, name.getBoundingClientRect().top - 300);
+        const box = name.getBoundingClientRect();
+        const atItsMiddle = document.elementFromPoint(box.left + 4, box.top + box.height / 2);
+        return {
+          row: name.textContent ?? "",
+          inPlace: Math.abs(box.left - tableLeft) <= 1,
+          onTop: atItsMiddle !== null && name.contains(atItsMiddle),
+          // A cell with no colour of its own lets the cells scrolled under it
+          // show through its words.
+          opaque: getComputedStyle(name).backgroundColor !== "rgba(0, 0, 0, 0)",
+        };
+      });
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const { row, ...held } of seen) {
+      expect({ row, ...held }).toEqual({ row, inPlace: true, onTop: true, opaque: true });
+    }
+    await page.context().close();
+  });
+
+  it.each(["/docs/orders", "/docs/money"])(
+    "draws every label of a diagram on %s whole inside its box",
+    async (address) => {
+      const { page } = await visit(address, { width: 1440, height: 900 });
+      await page.evaluate(() => document.fonts.ready);
+      const cut = await page.locator("figure.diagram foreignObject").evaluateAll((boxes) =>
+        boxes
+          .filter((box) => {
+            const label = box.firstElementChild as HTMLElement | null;
+            const drawn = box.getBoundingClientRect();
+            const wanted = label?.getBoundingClientRect();
+            return (
+              wanted !== undefined &&
+              (wanted.width > drawn.width + 1 || wanted.height > drawn.height + 1)
+            );
+          })
+          .map((box) => box.textContent ?? ""),
+      );
+
+      expect(cut).toEqual([]);
+      await page.context().close();
+    },
+  );
+
+  it.each(DOCS_PAGES.filter((entry) => !entry.path.startsWith("/scanner")))(
+    "fits every table of $path into the column on a wide screen",
+    async (entry) => {
+      const { page } = await visit(docsAddress(entry.path), { width: 1440, height: 900 });
+      const wider = await page
+        .locator(".doc table")
+        .evaluateAll((tables) =>
+          tables
+            .filter((table) => table.scrollWidth > table.clientWidth + 1)
+            .map((table) => table.querySelector("th")?.textContent ?? "a table"),
+        );
+
+      expect(wider).toEqual([]);
+      await page.context().close();
+    },
+  );
 });
 
 describe("on a tablet", () => {

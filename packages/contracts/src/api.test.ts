@@ -60,7 +60,12 @@ const publicCard = publicCardOf(
     result: { access_url: { type: "string", title: "Ссылка для входа" } },
     fulfillment: "sync",
   }),
-  { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z", seller: { name: "Freeland", site: null } },
+  {
+    id: "itm_4d21bb",
+    purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
+    as_of: "2026-08-26T09:00:00Z",
+    seller: { name: "Freeland", site: null },
+  },
 );
 
 const orderEnvelope = {
@@ -566,6 +571,25 @@ describe("the status an agent reads", () => {
         reason: { code: "price_expired", message: " " },
       }).success,
     ).toBe(false);
+  });
+
+  it("lists, for a generated client to switch on, why a refund is owed beside why an order ended", () => {
+    // An agent holding refund_due branches on why it is owed; a word known
+    // only to the gateway would reach a generated client as any string at all.
+    const reason = toJsonSchemas().agent_order_status.properties?.reason as
+      | { properties: { code: { anyOf: { enum?: string[] }[] } } }
+      | undefined;
+    const listed = reason?.properties.code.anyOf.flatMap((branch) => branch.enum ?? []);
+
+    expect(listed).toStrictEqual(
+      expect.arrayContaining(["deadline_passed", "refused", "merchant_left", "price_expired"]),
+    );
+    const owing = {
+      ...status,
+      status: "refund_due",
+      reason: { code: "deadline_passed", message: "The seller owes you the price." },
+    };
+    expect(AgentOrderStatusSchema.parse(owing)).toStrictEqual(owing);
   });
 
   it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {

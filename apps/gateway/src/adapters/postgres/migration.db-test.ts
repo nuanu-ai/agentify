@@ -331,10 +331,11 @@ if (databaseUrl === null) {
      */
     const chargedTo = (payTo: unknown): string =>
       new PaymentEdge(
-        testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000009" }).payment,
-        "https://agentify.example",
-        300,
-      ).requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo as string | null)
+        testConfig({
+          PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000009",
+          PUBLIC_BASE_URL: "https://agentify.example",
+        }),
+      ).requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", payTo as string | null)
         .payTo;
 
     beforeAll(async () => {
@@ -1102,6 +1103,129 @@ if (databaseUrl === null) {
       await expect(
         row("0x4444444444444444444444444444444444444444", "mch_third", wallet.toLowerCase()),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe("the migration that gives every order a payment reference", () => {
+    // A payment names its order by a reference kept in the order's document.
+    // Every order written before references existed is given one, so every
+    // order has one, and every later charge for it carries one.
+    const url = databaseUrl;
+    let connected: ReturnType<typeof connect>;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      connected = connect(url);
+      pool = connected.pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+        "0013_delete_dashboard_keys.sql",
+        "0014_one_integration.sql",
+        "0015_payout_splits.sql",
+        "0016_payout_split_wallet_any_spelling.sql",
+        "0017_order_pay_to_index.sql",
+      ]) {
+        await run(file);
+      }
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at)
+         values ('mch_old', 'Old', 'open', now(), now())`,
+      );
+    });
+
+    /** An order as the version before this migration wrote it, with no reference. */
+    const writtenBefore = async (
+      id: string,
+      state: string,
+      open: boolean,
+      extra: Record<string, unknown> = {},
+    ) => {
+      const record = {
+        order: { id, state },
+        merchantId: "mch_old",
+        itemId: "item_1",
+        merchantItemId: "sku-1",
+        payment: "PAYMENT",
+        paidBy: "0x1111111111111111111111111111111111111111",
+        ...extra,
+      };
+      await pool.query(
+        `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
+           created_at, updated_at)
+         values ($1, $2, $3, 'mch_old', 'item_1', 'sku-1', $4, now(), now())`,
+        [id, state, open, JSON.stringify(record)],
+      );
+      return record;
+    };
+
+    const recordOf = async (id: string): Promise<Record<string, unknown>> => {
+      const { rows } = await pool.query<{ record: Record<string, unknown> }>(
+        "select record from orders where id = $1",
+        [id],
+      );
+      return rows[0]?.record ?? {};
+    };
+
+    it("gives every order written before it a reference of its own, and changes nothing else", async () => {
+      const unpaid = await writtenBefore("ord_unpaid", "delivered_unpaid", true);
+      const done = await writtenBefore("ord_done", "delivered", false);
+
+      await run("0018_order_payment_ref.sql");
+
+      const [first, second] = [await recordOf("ord_unpaid"), await recordOf("ord_done")];
+      expect(first.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
+      expect(second.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
+      expect(first.paymentRef).not.toBe(second.paymentRef);
+      const { paymentRef: _first, ...firstRest } = first;
+      const { paymentRef: _second, ...secondRest } = second;
+      expect([firstRest, secondRest]).toStrictEqual([unpaid, done]);
+    });
+
+    it("leaves a reference already written alone, and gives one where the key holds null", async () => {
+      await writtenBefore("ord_kept", "delivered", false, { paymentRef: "pay_kept" });
+      await writtenBefore("ord_null", "delivered", false, { paymentRef: null });
+
+      await run("0018_order_payment_ref.sql");
+
+      expect((await recordOf("ord_kept")).paymentRef).toBe("pay_kept");
+      expect((await recordOf("ord_null")).paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
+    });
+
+    it("finds a migrated order by the reference it was given", async () => {
+      await writtenBefore("ord_unpaid", "delivered_unpaid", true);
+
+      await run("0018_order_payment_ref.sql");
+
+      const given = (await recordOf("ord_unpaid")).paymentRef;
+      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
+      expect((await store.orderByPaymentRef(String(given)))?.order.id).toBe("ord_unpaid");
     });
   });
 }

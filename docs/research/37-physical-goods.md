@@ -89,17 +89,16 @@ shop's own site.
 
 ## How the scope was narrowed
 
-Physical goods were in the first hypothesis — «виртуальные или физические
-товары и услуги» (`01-hypothesis.md`) — and the first merchant contract offered
+Physical goods were in the project's first hypothesis, which named virtual
+and physical goods and services alike, and the first merchant contract offered
 three ways to hand over goods: the merchant's API, a paid order in the
 merchant's shop, a message the merchant confirms by hand
 (`05-merchant-contract.md`). Freeland was chosen as the pilot precisely because
-it has «ни логистики, ни склада» (`03-freeland-pilot.md`). The adversarial
-review of the vision found that a physical product has no address mechanics at
-all (`09-adversarial-review.md`); the second vision moved physical goods behind
-«механики адреса» and sketched the delivery token that ADR-0032 rejects
-(`08-product-vision-stories.md`). The open question stayed open
-(`00-open-questions.md`) until ADR-0032. The WooCommerce connector imports only
+it has «ни логистики, ни склада» (`03-freeland-pilot.md`). A review of the
+first product vision found that a physical product has no address mechanics at
+all, and the second vision moved physical goods behind address mechanics and
+sketched the delivery token that ADR-0032 rejects; both drafts are in git
+history. The question stayed open until ADR-0032. The WooCommerce connector imports only
 virtual, downloadable products and refuses the rest with «Only virtual products
 can be delivered to an agent without a shipping address»
 (`apps/dashboard/src/woo-catalog.ts`, ADR-0023).

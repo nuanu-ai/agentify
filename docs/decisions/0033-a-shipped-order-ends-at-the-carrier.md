@@ -47,8 +47,10 @@ When a merchant admits a parcel lost, ADR-0028's command records a refund, and
 the order moves from `delivered` to `refunded`, the only way out of `delivered`
 and for parcels only, with the receipt reading the refund. Neither is built, so
 the live channel refuses a `ship` card with words until that command and
-ADR-0028's view of the payer run there, the dashboard tells a merchant how to
-report a refund, and ADR-0011 rules on who may read a parcel's tracking.
+ADR-0028's view of the payer run there and the dashboard tells a merchant how
+to report a refund. Who may read a parcel's tracking is ADR-0011's rule: the
+holder of the order identifier, which no payment requirement or listing
+carries.
 
 ## Consequences
 

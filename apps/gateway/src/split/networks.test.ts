@@ -50,7 +50,7 @@ const tokenOn = (network: string): string => {
   const config = loadConfig(
     network === "eip155:8453" ? LIVE : { DATABASE_URL, PAYMENT_NETWORK: network },
   );
-  return new PaymentEdge(config.payment, config.publicBaseUrl, 300).token().asset;
+  return new PaymentEdge(config).token().asset;
 };
 
 describe("the payout split table in the code", () => {

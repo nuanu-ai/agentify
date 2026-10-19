@@ -1,5 +1,7 @@
 # Public page Lighthouse measurements
 
+> Historical, 2026-10-15. Lighthouse scores of the public pages on that day; the pages have changed since.
+
 ## Method fixed before measurement
 
 The candidate starts at `1c8ab4e8`. The target is the public scanner pages
