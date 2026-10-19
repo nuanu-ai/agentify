@@ -37,7 +37,8 @@ or a sequence of clicks.
 - Merchant: “Make this existing product available to agents. Explain what
   selling it will cost and what you will need to keep running.”
 - Engineer: “Connect this existing merchant system using the published SDK
-  and public guide, and fulfil one test purchase with its actual goods.”
+  and public guide, and complete one test purchase of its actual goods, from
+  the purchase to the buyer holding them.”
 - Buyer: “Find and buy a product meeting these requirements, within this
   budget, then give me the result.” Requirements come from the real product
   chosen for the run, including its limits and the information the buyer may
@@ -142,11 +143,13 @@ but before local recording. A claim file followed by a separate log append
 does not close that gap. Without provider evidence, report an unknown external
 outcome, not “exactly once”.
 
-The existing stand, buy command and local sandbox can exercise ordinary orders.
-Connecting the stand also starts a worker for that merchant: use a separate
-operator merchant so it cannot take the newcomer's or connector's orders.
-Two worker processes of one merchant share its stream. The sandbox accepts
-artificial payments and proves nothing about signatures.
+The stand and the buy command exercise ordinary orders on the local stack,
+whose sandbox facilitator accepts artificial payments and proves nothing about
+signatures. The sandbox is the organiser's equipment: no merchant page offers
+it, and a merchant's first sale happens on the test channel. Connecting the
+stand also starts a merchant process for that merchant: use a separate operator
+merchant so it cannot take the newcomer's or connector's orders. Two processes
+of one merchant share its stream.
 Additional equipment required for certain rows is named explicitly:
 
 | Instrument | Required capability and evidence |
@@ -206,10 +209,17 @@ Run the independent briefs first, on the test channel. The organiser uses
 these rows to evaluate the attempt afterwards. For WooCommerce, the owner's
 connection path continues in H; writing SDK code is not a prerequisite.
 
+The first test purchase is the merchant's own. The quickstart's sixth step
+has them buy their own card on the test channel with any x402 version 2
+client, paying test USDC from Circle's faucet with a fresh key that needs no
+ETH. Nobody at Agentify starts that purchase; an operator's only part is
+approving the live channel once (G-01). Record which client the participant
+chose and whether they found the step on their own.
+
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
-| A-01 / P1 | Arrive at the public site with an actual product and decide whether to connect. Explain eligible goods, who delivers, price/commission, payout timing, refunds and how to stop. | The participant finds the selling path and understands its limits. Record differences between their interpretation, the visible promise and the contract. Scanner completion is not mistaken for a connected shop or ownership verification. |
-| A-02 / P1 | Sign in, create the merchant, configure what is missing and choose the integration, using only what the product offers. Include a person without a wallet. | Each screen makes the current account, environment, incomplete work and next action understandable. No secret or chain knowledge is presumed without an explanation at the point it is needed. Choosing not to complete a setting is distinct from having completed it. |
+| A-01 / P1 | Arrive at the public site with an actual product and decide whether to connect, from /agentic-shop and the owner's documentation pages. Explain eligible goods, who delivers, who checks and executes the payment, when the buyer is charged for this product, price/commission, payout timing, refunds, what changes between the test and live channels and how to stop. | The participant finds the selling path and understands its limits. Record differences between their interpretation, the visible promise and the contract, and which of the owner page's tables (who is who, when the buyer is charged, test to live) and Money's drawing they relied on. Scanner completion is not mistaken for a connected shop or ownership verification. |
+| A-02 / P1 | Sign in, create the merchant, configure what is missing and choose the integration, using only what the product offers. Include a person without a wallet. Start once from the main button of /agentic-shop on agentify.ad, which opens the live dashboard and so needs G's approval for a live account, and once from its “test channel” link. | Each screen makes the current account, environment, incomplete work and next action understandable. No secret or chain knowledge is presumed without an explanation at the point it is needed. Choosing not to complete a setting is distinct from having completed it. The person ends up in the account they meant to create and can say that the test and live channels are separate accounts; one who lands on live first is led to the test dashboard (G-01). |
 | A-03 / P1 | Outside the checkout, install the published SDK and connect the real test merchant system using the public quickstart. Make one ordinary configuration mistake: missing key or wrong channel. Correct it from the SDK error. | Printed commands run under the stated runtime. The error identifies the setting, consequence and safe correction without exposing secrets or requiring source inspection. Record every undocumented edit and team intervention. A dependency inventory alone does not pass this story. |
 | A-04 / P0 | Publish a real supported product and fulfil the first test purchase. Read or use the actual entitlement/file outside the merchant process. | The buyer gets what the card promised, one merchant effect and one receipt exist, and the transfer reaches the recorded split. The merchant understands why their wallet may still show no payout. Publishing alone or returning a placeholder is insufficient. |
 | A-05 / P0 | Publish a real product fulfilled later; accept, persist the work, close the laptop/process and complete it from another process with the saved ID. | The engineer understands acceptance versus delivery, durable storage and replay before going unattended. The same order completes once, with its original result and deadline. If the selected merchant has no such product, record this variant as outside its scope and run the contract rehearsal separately. |
@@ -334,7 +344,7 @@ remote requests and faults privately.
 
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
-| H-01 / P1 | Connect the controlled shop, import its supported downloads and unsupported gift experiences, import again, then reimport with one supported card deliberately paused. Buy an active download. | Reasons explain why an experience cannot be delivered as a file. Reimport does not duplicate cards or undo the owner's pause. Retrieve the native download in a clean client and compare its name/bytes with the actual product; one Woo order, one Agentify receipt and one payment exist. |
+| H-01 / P1 | Connect the controlled shop, import its supported downloads and unsupported gift experiences, import again, then reimport with one supported card deliberately paused. The owner then makes the first test purchase of an active download themselves, from public guidance alone. | Reasons explain why an experience cannot be delivered as a file. Reimport does not duplicate cards or undo the owner's pause. The documentation shows that purchase as an engineer's program: record how an owner with no engineer makes it, and every help they needed. Retrieve the native download in a clean client and compare its name/bytes with the actual product; one Woo order, one Agentify receipt and one payment exist. |
 | H-02 / P1 | Paste a wrong shop address, decline the shop grant, close the browser during approval or return after session expiry. Start another grant before an old callback arrives. | No false “connected” result; the owner can see and recover the actual integration state. An old callback cannot replace the newer connection or reconnect after return to SDK. Use Postgres for the callback race, and inspect the shop holding the keys. |
 | H-03 / P0 | Start with one active and one individually paused SDK card. Connect Woo, including an abandoned grant. Attempt SDK publish/poll. Return to SDK, restart its worker, then deliberately resume sales. | Only one integration sells. SDK poll/publish fail intelligibly while Woo owns the stream. Return is possible even without a completed shop connection; code sales remain globally paused until resumed, and the individually paused card stays paused. Existing keys may still read and close eligible old work. |
 | H-04 / P0 | Try switching in each direction while an unpaid quote, first answer, accepted delivery or unshipped parcel remains open. Race Connect/Disconnect with purchase creation. Then try with only refund debt. | Blocking orders are named. Either the old integration keeps the created order and blocks the switch, or the switch wins and the old-path new purchase is refused before money. No orphaned work. Debt alone does not block switching, but remains discoverable and owed. |
@@ -479,7 +489,7 @@ replace actual mail/provider evidence; record them separately.
 
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
-| G-01 / P1 | Open live settings and attempt publication before operator approval; probe Woo/parcel entry points. | Real-money context is understandable. Missing approval and unsupported live paths refuse before sale and give a discoverable next step. A test rehearsal has not silently enabled live sales. |
+| G-01 / P1 | Open live settings and attempt publication before operator approval; probe Woo/parcel entry points. Reach the live dashboard from /agentic-shop's main button as a newcomer who has not yet sold on the test channel. | Real-money context is understandable. Missing approval and unsupported live paths refuse before sale and give a discoverable next step. A test rehearsal has not silently enabled live sales. While the merchant is not approved, the live dashboard says the first test sale happens on the test channel, under an account of its own, and links that dashboard; an approved merchant and the test channel show no such line. No public way to ask for the approval exists, and the pages say so: record how the newcomer tries to get it and what happens. |
 | G-02 / P0 | Set the first controlled wallet, request a replacement, request it again, replace the pending value and cancel from one of two sessions. | Announcements and the 48-hour replacement delay follow the current wallet rule. Cancellation preserves the correct wallet and invalidates the other sessions as promised. The screen makes current versus future recipient unambiguous. |
 | G-03 / P0 | In an isolated live-mode setup fail one wallet announcement and race two replacements; test immediately before/after the effective time using its controllable clock. | No unannounced replacement commits; overtaken writes do not silently win. Reads/challenges use the wallet actually in force. Actual live mail delivery and local clock simulation are separately evidenced; never accelerate a shared host's clock. |
 
