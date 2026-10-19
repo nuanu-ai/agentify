@@ -398,7 +398,7 @@ describe("which answer is cut", () => {
     expect(next.status).toBeNull();
   });
 
-  it("does not spend the cut on a caller that reset its connection as the upstream finished, before the proxy heard it close", async () => {
+  it("does not spend the cut on a caller that reset its connection as the upstream finished, and says nothing was sent though the proxy had not yet heard it close", async () => {
     let caller: Socket | undefined;
     const up = await upstream(async (n, response) => {
       if (n > 1) {
@@ -434,6 +434,7 @@ describe("which answer is cut", () => {
 
     const next = await call(port, "POST", "/x402/itm_7/purchase");
 
+    expect(left).toMatch(/had left before the answer was whole, so nothing was sent/);
     expect(left).toMatch(/not counted, the rule is still armed/);
     expect(next.whole).toBe(false);
     expect(await lineFor(log, 2)).toContain("CUT mid-body");
