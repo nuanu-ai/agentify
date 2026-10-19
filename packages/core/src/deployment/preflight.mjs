@@ -124,11 +124,21 @@ export function problemsWith(channel, resolved) {
   equal("app", "PAYMENT_NETWORK", app.PAYMENT_NETWORK, wanted.network);
   equal("app", "FACILITATOR_URL", app.FACILITATOR_URL, wanted.facilitator);
 
+  // Activation hands the application's environment to the checks it runs
+  // before the stop one line per variable, so a secret with a line break in it
+  // could never get through them.
   for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
     if ((app[name] ?? "") === "") {
       problems.push(
         `app: ${name} is not set, and the ${channel} channel settles through a facilitator ` +
           "that takes no request without credentials",
+      );
+    } else if (name === "CDP_API_KEY_SECRET" && /[\r\n]/.test(String(app[name]))) {
+      problems.push(
+        "app: CDP_API_KEY_SECRET holds a line break — the channel's Coinbase key must be an " +
+          "Ed25519 secret API key, whose secret is one line, and a secret on more than one line, " +
+          "as an EC key's PEM block is, cannot be handed to the checks activation runs before " +
+          "it stops anything",
       );
     }
   }

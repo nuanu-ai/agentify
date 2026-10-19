@@ -655,7 +655,9 @@ Coinbase's testnet catalogue. Each channel holds its own Coinbase secret API
 key, an Ed25519 one, whose secret is a single line: a key leaked from TEST is
 revoked without touching PRODUCTION, so production's key never goes onto the
 test host. The preflight cannot tell the two keys apart and checks only that
-both halves are present.
+both halves are present and that the secret holds no line break: activation
+hands the application's environment to its checks one line per variable, so
+an EC key, whose secret is a PEM block on several lines, is refused there.
 
 Whether Coinbase takes the key is asked of Coinbase itself, once at the
 gateway's start and once by activation before it stops the old release: its
