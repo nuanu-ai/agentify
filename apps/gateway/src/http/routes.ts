@@ -690,8 +690,8 @@ async function answerPurchase(
     }
 
     // Both remaining steps answer with the agent's order status document; the
-    // status code is 200 where the purchase is going through or delivered and
-    // 409 where it is not.
+    // status code is 200 where the purchase is going through, delivered or
+    // shipped, and 409 otherwise.
     case "under_way":
       // A synchronous purchase that comes back without the goods is 409, not
       // 200: the agent's wait is over and it holds nothing, typically because
@@ -722,7 +722,7 @@ async function answerPurchase(
       }
 
       return {
-        status: outcomeFor(attempt.order.order) === "delivered" ? OK : CONFLICT,
+        status: ["delivered", "shipped"].includes(outcomeFor(attempt.order.order)) ? OK : CONFLICT,
         document: agentOrderStatusOf(
           attempt.order,
           seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
