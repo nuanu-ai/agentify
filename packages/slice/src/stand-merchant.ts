@@ -75,10 +75,10 @@ export interface HeldOrder {
  * with its answer ready — decided and, with records kept, recorded — before
  * that answer goes back.
  */
-type PausePoint = "none" | "arrival" | "answer_ready";
+export type PausePoint = "none" | "arrival" | "answer_ready";
 
 /** An order stopped at a pause point, waiting to be released. */
-interface PausedOrder {
+export interface PausedOrder {
   readonly id: string;
   readonly merchantItemId: string;
   readonly phase: Exclude<PausePoint, "none">;

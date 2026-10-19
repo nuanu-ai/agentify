@@ -60,6 +60,7 @@ import {
   type HeldAnswer,
   makeStandMerchant,
   type OrderMood,
+  type PausePoint,
   type QuoteMood,
 } from "./stand-merchant.js";
 import {
@@ -70,6 +71,7 @@ import {
   type SaidBack,
   type Tab,
 } from "./stand-page.js";
+import { keepRecordsIn } from "./stand-records.js";
 import { templateNamed } from "./stand-templates.js";
 
 const BUYER_CEILING_USD = 50;
@@ -82,6 +84,17 @@ if (!/^0x[0-9a-fA-F]{64}$/.test(buyerKey)) {
   throw new Error("STAND_BUYER_KEY must be 0x followed by 64 hexadecimal characters.");
 }
 
+const port = Number.parseInt(process.env.STAND_PORT ?? "8787", 10);
+if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("STAND_PORT must be a port number between 1 and 65535.");
+}
+
+const recordsDirectory = process.env.STAND_RECORDS_DIR;
+const records =
+  recordsDirectory === undefined || recordsDirectory === ""
+    ? undefined
+    : keepRecordsIn(resolve(recordsDirectory), port);
+
 const feed = makeFeed();
 // The merchant side closes orders without being asked from the page: a delivery
 // it promised and then made from a timer, and the events the gateway sends. The
@@ -92,6 +105,7 @@ const merchant = makeStandMerchant(feed, {
   closedOnItsOwn: () => {
     refreshOrders();
   },
+  records,
 });
 
 let apiKey: string | null = null;
@@ -134,11 +148,6 @@ interface Exchange {
 }
 
 let exchange: Exchange | null = null;
-
-const port = Number.parseInt(process.env.STAND_PORT ?? "8787", 10);
-if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
-  throw new Error("STAND_PORT must be a port number between 1 and 65535.");
-}
 
 /* --- saying things ------------------------------------------------------ */
 
@@ -520,6 +529,7 @@ const ORDER_MOODS: readonly OrderMood[] = [
 ];
 const QUOTE_MOODS: readonly QuoteMood[] = ["price", "unavailable", "say_nothing"];
 const HELD_ANSWERS: readonly HeldAnswer[] = ["deliver", "accept", "refuse", "say_nothing"];
+const PAUSE_POINTS: readonly PausePoint[] = ["none", "arrival", "answer_ready"];
 
 const setMoods = (form: URLSearchParams): void => {
   const order = form.get("order");
@@ -880,6 +890,31 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
       return;
     }
 
+    case "pause_at": {
+      const at = form.get("at") ?? "";
+      if (!PAUSE_POINTS.includes(at as PausePoint))
+        throw new Error("That pause is not one the stand knows.");
+      merchant.pause.at = at as PausePoint;
+      say(
+        at === "none"
+          ? "Orders are no longer paused. An order already paused stays paused until you release it."
+          : `Every order from now on, repeats included, is paused ${at === "arrival" ? "as it arrives" : "with its answer ready"}.`,
+      );
+      return;
+    }
+
+    case "release_pause": {
+      const orderId = form.get("order_id") ?? "";
+      if (!merchant.releasePaused(orderId))
+        throw new Error(
+          orderId === ""
+            ? "Nothing was released: name the paused order in order_id."
+            : `Nothing was released: no order named ${orderId} is paused at this stand.`,
+        );
+      say(`Released ${orderId}. Its handler goes on from where it was paused.`);
+      return;
+    }
+
     case "deliver_owed":
     case "refuse_owed": {
       const orderId = form.get("order_id") ?? "";
@@ -921,13 +956,17 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
   }
 };
 
-const queueAction = (form: URLSearchParams): Promise<boolean> => {
+/** Runs one action after those before it, and says whether it ran and what it said back. */
+const queueAction = (
+  form: URLSearchParams,
+): Promise<{ readonly ran: boolean; readonly saidBack: SaidBack | null }> => {
   const queued = actionTail.then(async () => {
-    if (shuttingDown) return false;
+    if (shuttingDown) return { ran: false, saidBack: null };
+    const before = said;
     try {
       await doAction(form);
     } catch (error) {
-      if (shuttingDown) return false;
+      if (shuttingDown) return { ran: false, saidBack: null };
       recordActionError(error);
     }
     // Every line the action wrote to the log stirred the open pages while it was
@@ -938,7 +977,7 @@ const queueAction = (form: URLSearchParams): Promise<boolean> => {
     // what makes the console settle on what is true rather than on whichever
     // line arrived last.
     if (!shuttingDown) stir();
-    return !shuttingDown;
+    return { ran: !shuttingDown, saidBack: said === before ? null : said };
   });
   actionTail = queued.then(() => undefined);
   return queued;
@@ -1043,6 +1082,7 @@ const drawTab = (tab: Tab): string =>
       order: merchant.moods.order,
       quote: merchant.moods.quote,
       held: merchant.held.size,
+      pauseAt: merchant.pause.at,
     },
     cards,
     selling,
@@ -1055,6 +1095,8 @@ const drawTab = (tab: Tab): string =>
     moods: merchant.moods,
     goodsDraft,
     held: [...merchant.held.values()],
+    paused: [...merchant.paused.values()],
+    stand: { pid: process.pid, records: records?.directory ?? null },
     owed: owed.map((one) => ({ id: one.id, merchantItemId: one.merchant_item_id })),
     orders,
     ordersRead,
@@ -1131,15 +1173,21 @@ const server = createServer(async (request, response) => {
       sayUnavailable(response);
       return;
     }
-    const ran = await queueAction(form);
+    const { ran, saidBack } = await queueAction(form);
     if (!ran || shuttingDown) {
       sayUnavailable(response);
       return;
     }
+    // What the action said back travels in the body too. A browser follows the
+    // redirect and reads it on the page; a post from a terminal does not follow
+    // it, and prints the body.
     if (!response.writableEnded && !response.destroyed)
       response
-        .writeHead(303, { location: TABS[url.pathname] === undefined ? "/" : url.pathname })
-        .end();
+        .writeHead(303, {
+          location: TABS[url.pathname] === undefined ? "/" : url.pathname,
+          "content-type": "text/plain; charset=utf-8",
+        })
+        .end(saidBack === null ? "" : `${saidBack.words}\n`);
     return;
   }
 
@@ -1171,7 +1219,15 @@ server.on("error", (error: NodeJS.ErrnoException) => {
   process.exitCode = 1;
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`Agentify stand: http://127.0.0.1:${port}`));
+server.listen(port, "127.0.0.1", () =>
+  console.log(
+    `Agentify stand: http://127.0.0.1:${port} — process ${process.pid}, ${
+      records === undefined
+        ? "keeping no records (STAND_RECORDS_DIR names a directory for them)"
+        : `keeping records in ${records.directory}`
+    }`,
+  ),
+);
 
 const shutdown = async (): Promise<void> => {
   if (shuttingDown) return;

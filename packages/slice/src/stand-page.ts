@@ -31,7 +31,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { ChallengeView } from "./stand-buyer.js";
 import type { Entry } from "./stand-log.js";
-import type { HeldOrder, OrderMood, QuoteMood } from "./stand-merchant.js";
+import type { HeldOrder, OrderMood, PausedOrder, PausePoint, QuoteMood } from "./stand-merchant.js";
 import { TEMPLATES } from "./stand-templates.js";
 
 export type Tab = "catalogue" | "agent" | "orders";
@@ -72,6 +72,7 @@ interface Standing {
   readonly order: OrderMood;
   readonly quote: QuoteMood;
   readonly held: number;
+  readonly pauseAt: PausePoint;
 }
 
 /** How the last action ended, and whether it ended badly. */
@@ -116,6 +117,9 @@ export interface PageState {
   readonly moods: PageMoods;
   readonly goodsDraft: string;
   readonly held: readonly HeldOrder[];
+  readonly paused: readonly PausedOrder[];
+  /** The process a tester kills to crash the stand, and where it keeps records, if anywhere. */
+  readonly stand: { readonly pid: number; readonly records: string | null };
   readonly owed: readonly { readonly id: string; readonly merchantItemId: string }[];
   readonly orders: readonly OrderWithStatus[];
   readonly ordersRead: boolean;
@@ -190,6 +194,12 @@ const QUOTE_CHOICES: readonly Choice<QuoteMood>[] = [
   { value: "price", label: "Answer the price below" },
   { value: "unavailable", label: "Say the price is unavailable" },
   { value: "say_nothing", label: "Answer only after the deadline" },
+];
+
+const PAUSE_CHOICES: readonly Choice<PausePoint>[] = [
+  { value: "none", label: "Do not pause" },
+  { value: "arrival", label: "Pause each order as it arrives" },
+  { value: "answer_ready", label: "Pause each order with its answer ready" },
 ];
 
 const labelOf = <T extends string>(choices: readonly Choice<T>[], value: T): string =>
@@ -347,7 +357,7 @@ const exchangePanel = (view: ExchangeView): string => {
     </div>`
       : "";
   const waiting = view.waiting
-    ? `<div class="beat now"><span class="who">agent</span><div class="said"><div class="waiting"><span class="pulse"></span>The call has not answered yet. A synchronous purchase waits for the handler; if the handler is holding, it is on the Orders tab.</div></div></div>`
+    ? `<div class="beat now"><span class="who">agent</span><div class="said"><div class="waiting"><span class="pulse"></span>The call has not answered yet. A synchronous purchase waits for the handler; if the handler is holding the order or the stand has paused it, it is on the Orders tab.</div></div></div>`
     : "";
   return `<section class="panel">
   <header>
@@ -438,6 +448,40 @@ const heldMail = (one: HeldOrder): string => {
 </div>`;
 };
 
+const pausedRow = (one: PausedOrder, recording: boolean): string => `<tr>
+  <td>
+    <div class="under mono">${escaped(one.id)}</div>
+    <div class="under">${escaped(one.merchantItemId)}</div>
+  </td>
+  <td>${dot("busy", one.phase === "arrival" ? "arrived, nothing done yet" : recording ? "answer recorded, not sent" : "answer ready, not sent")}</td>
+  <td><span class="mono">${escaped(new Date(one.since).toISOString().slice(11, 19))}</span> <span class="under" data-since="${escaped(one.since)}">for <b>0.0 s</b></span></td>
+  <td class="ctl"><div class="actions">${form("release_pause", hidden("order_id", one.id), "Release", true)}</div></td>
+</tr>`;
+
+const pausedPanel = (state: PageState): string => `<section class="panel">
+  <header>
+    <h2>Paused</h2>
+    <div class="side">process <span class="mono">${escaped(state.stand.pid)}</span> · ${state.stand.records === null ? "no records kept" : `records in <span class="mono">${escaped(state.stand.records)}</span>`}</div>
+  </header>
+  <div class="body">
+    <form method="post" class="decisions">
+      ${hidden("action", "pause_at")}
+      ${field("Every order from now on, repeats included", select("at", PAUSE_CHOICES, state.standing.pauseAt))}
+    </form>
+  </div>
+  ${
+    state.paused.length === 0
+      ? '<p class="empty">Nothing is paused.</p>'
+      : `<div class="scroller"><table>
+<thead><tr><th>Order</th><th>Where</th><th>Since</th><th></th></tr></thead>
+<tbody>${state.paused.map((one) => pausedRow(one, state.stand.records !== null)).join("")}</tbody>
+</table></div>`
+  }
+  <div class="body">
+    <p>A pause is not an answer: the answer above still decides the order, and the pause stops it at one point until you release it. While one is paused nothing else reaches this process, and the gateway, hearing nothing, sends the order again. <code>kill -9 ${escaped(state.stand.pid)}</code> crashes the stand in the phase its order is paused at.</p>
+  </div>
+</section>`;
+
 /**
  * What an order's own word means, in the tone a screen paints it.
  *
@@ -524,6 +568,7 @@ const ordersTab = (state: PageState): string => {
       : `<div class="inbox">${state.held.map(heldMail).join("")}</div>`
   }
 </section>
+${pausedPanel(state)}
 <section class="panel">
   <header><h2>Owed</h2><div class="side">${route("list_orders")} · open=true</div></header>
   ${owed}
@@ -763,7 +808,7 @@ const gate = (said: SaidBack | null): string =>
   );
 
 const standingLine = (standing: Standing): string =>
-  `orders: <b>${escaped(labelOf(ORDER_CHOICES, standing.order).toLowerCase())}</b> · price desk: <b>${escaped(labelOf(QUOTE_CHOICES, standing.quote).toLowerCase())}</b>`;
+  `orders: <b>${escaped(labelOf(ORDER_CHOICES, standing.order).toLowerCase())}</b> · price desk: <b>${escaped(labelOf(QUOTE_CHOICES, standing.quote).toLowerCase())}</b>${standing.pauseAt === "none" ? "" : ` · <b>${escaped(labelOf(PAUSE_CHOICES, standing.pauseAt).toLowerCase())}</b>`}`;
 
 const BODIES: Readonly<Record<Tab, (state: PageState) => string>> = {
   catalogue: catalogueTab,
@@ -856,10 +901,10 @@ new EventSource("/feed").onmessage = (event) => {
 for (const box of document.querySelectorAll(".decisions .applies")) {
   box.addEventListener("change", () => box.form.submit());
 }
-// How long a held order has been held. Ticking, because the number it is racing
-// is the order's own deadline — ten seconds from the payment — and a figure
-// rendered once would always read 0.0.
-const clocks = document.querySelectorAll(".held-for[data-since]");
+// How long a held or paused order has been waiting. Ticking, because the number
+// it is racing is the order's own deadline — ten seconds from the payment — and
+// a figure rendered once would always read 0.0.
+const clocks = document.querySelectorAll("[data-since]");
 if (clocks.length > 0) {
   const tick = () => {
     for (const clock of clocks) {
