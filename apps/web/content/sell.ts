@@ -201,7 +201,7 @@ export const SELL_LANDING = {
       columns: ["Product", "Price", "Delivery", "State"],
       rows: [
         ["Monthly service access", "access-monthly", "5.00 USD", "Immediate", "On sale"],
-        ["Specialty coffee", "coffee-250g", "12.00 USD", "By parcel", "On sale"],
+        ["Brewing guide, PDF", "brew-guide-pdf", "9.00 USD", "Immediate", "On sale"],
         ["30-minute consultation", "consult-30", "30.00 USD", "Later", "Paused by you"],
       ],
       note: "A pause takes a card off sale; orders you have already accepted play out as usual.",
