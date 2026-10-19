@@ -1046,7 +1046,8 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     case "payment_settle_failed":
       // Possible only where the money is executed last: between the
       // verification and the execution the funds went somewhere else, or the
-      // authorisation the agent signed ran out before the charge was sent.
+      // authorisation the agent signed was too close to running out when the
+      // charge was sent.
       return order.payment === "settling"
         ? ok({ ...order, state: "delivered_unpaid", payment: "settle_failed", closure: null }, [
             { kind: "emit_merchant_event", event: "order.payment_failed_after_delivery" },

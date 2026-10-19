@@ -122,10 +122,10 @@ export class PaymentEdge {
   /**
    * How long a challenge gives an agent to pay: the life of the price it
    * names, which on every card that can be published is also how long the
-   * unpaid order lives. An agent's client counts it from the moment it signs,
-   * on its own clock, and signs its authorisation valid for that long. The
-   * protocol counts whole seconds and wants at least one; a price that lives
-   * a second or more is rounded down.
+   * unpaid order lives. The x402 reference client counts it from the moment
+   * it signs, on its own clock, and signs its authorisation valid for that
+   * long. The protocol counts whole seconds and wants at least one; a price
+   * that lives a second or more is rounded down.
    */
   #windowSeconds(): number {
     return Math.max(1, Math.floor(this.#config.deadlines.quoteTtlMs / 1_000));

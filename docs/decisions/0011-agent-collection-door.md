@@ -15,8 +15,8 @@ do not, as registering would undo buying with no prior relationship.
 
 Knowing the order identifier is the proof, on both channels. Whoever presents
 it is answered about that order and no other. The identifier is random,
-impractical to guess and in no catalog or listing; Agentify and the merchant
-hold it too, as parties to the sale. It is a key to one order, not proof of
+impractical to guess and in no catalog or listing; Agentify, the merchant and
+the payment facilitator hold it too. It is a key to one order, not proof of
 having paid for it, which comes only from the verified payer.
 
 The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the same
@@ -44,7 +44,7 @@ seller's name and site as our catalog shows them (ADR-0034).
 The product owner accepted this bearer risk for the controlled launch, which
 had no external users. The live catalogue now sells to any agent, so on
 2026-10-19 the door was revisited, weighing the goods, a parcel's shipment and
-the seller, and accepted for that audience as it stands: an identifier leaks
+the seller, and proposed for that audience as it stands: an identifier leaks
 only where somebody writes it down, and the agent is now told not to. Parcels
 on the live channel still wait for the rest of what ADR-0033 names.
 

@@ -500,8 +500,6 @@ describe("the payment challenge", () => {
     ] as const) {
       const { served, harnessed } = await started({
         QUOTE_TTL_MS: lives,
-        // Named to show that no other setting moves the window.
-        PAYMENT_TIMEOUT_SECONDS: "300",
       });
       const itemId = await publish(served, syncCard);
 
