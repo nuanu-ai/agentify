@@ -82,16 +82,17 @@ of how an order can end is in [How an order can end](/orders).
 
 ### Can I leave altogether?
 
-Leaving is designed, and nothing on our surface does it yet — during the pilot
-it is arranged with us. The cards come out of the catalogues, the orders nobody
-paid for close, and the money for anything paid for and not delivered you send
-back to the buyers yourself, the whole price, from your own wallet. Neither
-your money nor your goods are left with us: what is still in your payout
-contract can be paid out at any time, and only to your wallet and to us. One
-thing does remain: the key to your API, if we were the ones writing and running
-the handler. Revoke it, and our side can no longer reach yours. The obligation
-to refund, and what is still unchosen in its mechanics, is described on
-[Money](/money).
+Full offboarding is not available yet, and there is no staffed process to
+arrange it. You can pause all sales in the dashboard now. That stops new
+purchases; it does not cancel orders already accepted or settle what you owe
+buyers. Fulfill or refund those orders before disabling the integration they
+need. You can revoke your Agentify API keys in the dashboard and revoke a
+connected shop's credentials in WooCommerce when they are no longer needed.
+These controls do not delete your account or its records.
+
+Money still in your payout contract can be paid out at any time to its fixed
+recipients, including after you pause selling. Refund obligations and the
+current limits on recording a refund are described on [Money](/money).
 
 ### The buyer is unhappy — who settles the dispute?
 

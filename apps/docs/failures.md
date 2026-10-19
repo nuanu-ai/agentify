@@ -199,8 +199,9 @@ done](/faq).
 An automatic stop is designed, and it is the defence against the worst case,
 where buyers go on paying for goods nobody delivers: your cards would come off
 sale and the orders already taken on would play out, exactly as a pause you set
-by hand does. Nothing builds that yet, so during the pilot we watch for the
-case with you rather than instead of you.
+by hand does. Nothing builds that yet. Monitor your orders and pause sales
+when your integration cannot deliver; Agentify does not provide a staffed
+service that watches these failures for you.
 
 ## What is not settled yet
 

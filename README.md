@@ -384,12 +384,14 @@ procedure, including the one-time bootstrap of the package names, is
 operator's side of both channels is the
 [release runbook](deploy/README.md).
 
-Switching a merchant on for live sales is an application command rather than a
-deployment: `pnpm approve <email>` from the operator's checkout reaches the
-production host over SSH, resolves the dashboard account's merchant and records
-its one-time approval, and it says so when the approval already exists or the
-account is unknown. Approval publishes nothing and supplies no missing seller
-name or payout wallet; the test channel never needs it.
+An administrator admits an existing merchant to live sales from `/admin` →
+**Manage live sales approval**: find their account email, check the seller name
+and merchant ID, then confirm real sales. `pnpm approve <email>` grants the same
+permission through the production host over SSH. Both preserve an existing
+approval. Approval publishes nothing, supplies no missing seller name or payout
+wallet, and bypasses no other selling guard; the test channel never needs it.
+Agentify has no staffed order or refund service; the self-service boundaries and
+remaining gaps are in [`docs/research/52-self-service.md`](docs/research/52-self-service.md).
 
 Starting an address over is a command for the test deployment only:
 `pnpm forget <email>` from the operator's checkout reaches the test host over

@@ -71,9 +71,14 @@ download; a placed parcel is followed until it ships or the shop ends it. A
 private command for one order, not a public route or SDK method, closes a
 download's paid failures: a pre-create refusal may create once after the
 merchant reconnects the same shop and the product still qualifies; an unknown
-create binds only an order id an operator supplies, read back and matched on
+create binds only an order id the merchant supplies, read back and matched on
 every fact of the sale. A mismatch stays a refund owed, and so does a parcel's,
 whose address is gone by then.
+
+The recovery rules are implemented in a private maintenance command. A
+merchant's self-service route is not built. It must authenticate the owner
+before reading the recovery record or calling the shop; no staffed recovery
+queue is part of the service (the product owner, 2026-10-19).
 
 ## Consequences
 

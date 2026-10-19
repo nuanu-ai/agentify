@@ -55,6 +55,14 @@ words at the door fix it. Automation earns trust by being reliable; a knob
 that can silently take a deployment down is a defect in the knob, not in the
 operator.
 
+## Product operation
+Agentify has no staffed purchase or refund service. Merchant onboarding,
+fulfilment and recovery should be self-service wherever their safety can be
+verified. Human approval admits a merchant to live sales; it does not establish
+that a payment or refund happened. Administrative and maintenance access must
+not become a required staffed step in an ordinary sale. Unverified financial
+outcomes remain unknown (the product owner, 2026-10-19).
+
 ## Git
 - Main branch: `main`. Every change is made on a branch and reaches `main`
   through a pull request with a review; nobody pushes to `main` directly.

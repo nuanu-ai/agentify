@@ -280,9 +280,10 @@ one we ask about when you connect ([What we will ask you](/)): only goods that
 can be delivered a second time are paid for in advance, and we repeat the
 attempt to deliver, up to a limit, until the deadline named in the card. The
 rule narrows the case without removing it: an order that could not be
-delivered at all remains possible. We tell you about every such order
-separately, and during the pilot there are few of them — but not none, and
-each one is dealt with by hand.
+delivered at all remains possible. Your integration receives a `refund_due`
+event, and the order stays visible as a debt. You are responsible for resolving
+it; Agentify has no staffed refund service and does not promise to reimburse
+the buyer from its own funds.
 
 ## What we take
 

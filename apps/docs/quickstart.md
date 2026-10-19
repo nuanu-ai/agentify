@@ -4,9 +4,9 @@
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to
-a test sale that your side runs end to end — the card, the order, the delivery,
-the receipt. The first buyer is the operator-run sandbox program described in
-step 6. You do not rewrite the shop to get there: a handler appears beside it,
+a test sale — the card, the order, the delivery and the receipt. Step 6 needs a
+buyer using test funds; a ready-to-use test buyer in the dashboard or SDK is
+not available yet. You do not rewrite the shop to get there: a handler appears beside it,
 a process that takes paid orders and gives out the goods for them.
 
 This page is the route through the SDK. A business that sells from a
@@ -550,19 +550,17 @@ delivery carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
 
 ## 6. Walk a test purchase
 
-The first purchase of your product on the configured test channel is made by
-our sandbox buyer rather than by a live agent — a program that walks the whole
-path: it finds the card, asks the price, pays and takes delivery. It pays with
-test funds, and afterwards the whole test path can be seen working.
+A buyer using the test channel must find the card, ask the price, pay with test
+funds and receive the goods while your handler runs. The dashboard and SDK do
+not yet include a ready-to-use test buyer. Agentify has no staffed service that
+starts purchases for you, so completing this step requires your own buyer or
+agent that supports the payment protocol. Independent onboarding is incomplete
+until that buyer is available.
 
-An Agentify operator starts this purchase. If an operator is already
-coordinating your pilot, give them the catalogue ID and keep the handler running
-while they start it with you watching. There is no public request path for an
-unassigned self-signup yet. The order carries `test: true`, because the test
-address settles on a test chain — the flag follows the chain the payment
-settled on and not the key you called with.
+The order carries `test: true` because the test address settles on a test chain.
+The flag follows the chain the payment settled on, not the key you called with.
 
-It all came together if the order reached your handler, the sandbox buyer
+It all came together if the order reached your handler, the buyer
 received the goods, and the purchase left a receipt behind it.
 
 ## 7. Prove the sale; measure external discovery separately
@@ -599,8 +597,7 @@ separate from that SDK path and carry no promise of automatic listing.
 - The half of the check that would send one order twice and watch for a second
   delivery. Nothing on our surface raises that order to send, so this check
   still cannot exercise your delivery system's idempotency from outside.
-- A way to have the test purchase started without an operator. There is no
-  public channel for an unassigned self-signup to ask for it, and no command of
-  your own starts it.
+- A ready-to-use test buyer for a merchant to complete step 6 independently,
+  without writing a buyer or arranging an external agent.
 - Whether an external discovery catalogue lists a product whose sale settled
   on a test chain.

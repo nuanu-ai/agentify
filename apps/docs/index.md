@@ -92,16 +92,16 @@ That account is not the key your code sends us, so ending someone's session
 does not touch your integration. It carries a pause on each card and one button
 that stops selling altogether. Paused, a card stops selling and disappears from
 the catalogues, while the orders already taken on play out in the ordinary way.
-Leaving is the other thing, and it does not tidy everything away either: the
-orders nobody paid for close, and the ones paid for and not delivered become
-money you send back.
+Full offboarding is not available yet. Pausing and revoking keys do not cancel
+accepted orders, settle debts or delete your account; [the available
+controls](/faq#can-i-leave-altogether) are described in the FAQ.
 
 We also mean to stop selling without your asking, when your side stops
 answering or answers too often that the goods are gone — to the buyer that
 looks like a promise the catalogue did not keep. That stop is designed and not
 built: nothing today counts your refusals or takes your cards off sale on its
-own, so during the pilot the switch is the one in your hands, and we watch the
-rest with you. What it will look like when it exists is on [What can go
+own. Monitor your orders and use the pause when your integration cannot
+deliver; Agentify does not provide a staffed monitoring service. What it will look like when it exists is on [What can go
 wrong](/failures).
 
 Short answers — what this costs, what happens about refunds, who settles a
@@ -142,11 +142,11 @@ applies at once, and on the live channel you are sent a message about it too,
 so a wallet somebody else set is not news you find on a screen. On the test
 channel every change applies at once and nothing is sent.
 
-The first test purchase is started by an Agentify operator. If an operator is
-already coordinating your pilot, give them the catalogue ID and keep your
-handler running while they start it. There is no public request path for an
-unassigned self-signup yet. Operator approval opens live publication after the
-review.
+A test purchase needs a buyer using the test channel and test funds, with your
+handler running. Agentify does not yet provide a ready-to-use test buyer in
+your dashboard or SDK; there is no staffed purchase service to request one
+from. This is a gap in independent onboarding. Administrative approval of live
+sales is a separate decision and does not perform a test purchase for you.
 
 ## What is not settled yet
 

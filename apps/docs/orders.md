@@ -116,8 +116,8 @@ pointed at your shop's site.
 
 A parcel not shipped by its deadline leaves you owing a refund, as goods not
 delivered in time do, and a shipment recorded late still closes that debt. A
-parcel you admit lost cannot be refunded through Agentify yet: the operator's
-command that records such a refund is not built. That is why a parcel sells on
+parcel you admit lost cannot be refunded through Agentify yet: verified
+self-service recording of such a refund is not built. That is why a parcel sells on
 the test channel only, where the money is not real.
 
 ### With confirmation

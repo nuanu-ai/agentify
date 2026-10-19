@@ -119,24 +119,16 @@ reported races a late delivery, and the buyer may end up with both.
 
 ## The numbers
 
-The operator steps in after three business days, and the buyer holds the goods
-or the money within fourteen calendar days of the deadline. The first number
-follows eBay; the second follows the EU directive and agrees with
-Cryptorefills. The operator applies them by hand, with no timer, because there
-are few merchants and the charter moves a rule into a machine only after it has
-slipped past people. Business days are the operator's measure alone. Agents are
-told nothing about either number today. The agent's order carries neither the
-deadline nor the time of payment. If agents are ever told, it is an absolute
-time they can read. An agent has no time zone to count business days in. At
-pilot prices of a few dollars, paying the buyer back from Agentify's own funds
-as a last resort costs less than a buyer left with neither goods nor money.
+The time limits in the examples above belong to those services. Agentify has
+no staffed refund service and does not adopt a three-business-day intervention
+or fourteen-day goods-or-money guarantee. It promises no refund from its own
+funds. The product owner's rule is merchant self-service with verifiable
+payment evidence; ADR-0028 records it.
 
 ## Still open
 
-A merchant who signed themselves up has no way to reach the operator today.
-Until the cabinet names one, such a merchant can report a refund only after the
-operator has contacted them. An order whose payer was never named can be closed
-only with goods, and the fourteen days cannot be kept for it.
-Whether and when agents are told the fourteen days depends on the system
-keeping them. When the timeline moves into the machine, a mail to the merchant
-about the debt comes with it.
+The merchant needs the original payer and a way to refund without racing a late
+delivery. Recording a transfer must verify its network, asset, recipient,
+amount and unique use for this sale. Unknown payer and unavailable evidence
+cannot be resolved by guessing or by asking a nonexistent support desk. The
+implementation inventory is in `52-self-service.md`.

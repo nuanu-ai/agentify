@@ -43,10 +43,10 @@ place and nobody's home. `ship` and `shipped` join the storefront's open
 vocabularies (ADR-0006 §5), and the contract version does not move, as no
 merchant outside our control runs a published SDK yet (ADR-0006 §2).
 
-When a merchant admits a parcel lost, ADR-0028's command records a refund, and
+When a merchant admits a parcel lost, ADR-0028's verified self-service flow records a refund, and
 the order moves from `delivered` to `refunded`, the only way out of `delivered`
 and for parcels only, with the receipt reading the refund. Neither is built, so
-the live channel refuses a `ship` card with words until that command and
+the live channel refuses a `ship` card with words until that flow and
 ADR-0028's view of the payer run there, the dashboard tells a merchant how to
 report a refund, and ADR-0011 rules on who may read a parcel's tracking.
 
