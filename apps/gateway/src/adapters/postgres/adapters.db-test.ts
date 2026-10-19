@@ -1671,8 +1671,9 @@ if (databaseUrl === null) {
 
         /**
          * A CDP API key of the shape the signer takes, made here and never
-         * written down. It opens nothing: a start only signs with it, and
-         * nothing here speaks to Coinbase.
+         * written down. It opens nothing: a start signs with it and shows it
+         * to the stand-in for Coinbase below, and nothing here speaks to
+         * Coinbase.
          */
         const anApiKeySecret = (): string => {
           const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -1691,14 +1692,25 @@ if (databaseUrl === null) {
             CDP_API_KEY_SECRET: anApiKeySecret(),
           });
 
-        /** A registry holding nothing of the test chain, and a merchant paid at W1. */
+        /**
+         * A registry holding nothing of the test chain, and a merchant paid at
+         * W1. A start asks Coinbase whether it takes the key, and the answer
+         * here is the one Coinbase gives a key it knows: the empty payment
+         * turned down as a bad request.
+         */
         beforeEach(async () => {
           await pool.query(EMPTY_EVERY_TABLE);
           await store.addMerchant({ id: MERCHANT, name: "On Base" }, now);
           await pool.query("update merchants set payout_wallet = $1 where id = $2", [W1, MERCHANT]);
+          vi.stubGlobal(
+            "fetch",
+            async () =>
+              new Response(JSON.stringify({ errorType: "invalid_request" }), { status: 400 }),
+          );
         });
 
         afterEach(async () => {
+          vi.unstubAllGlobals();
           await pool.query("drop schema if exists pgboss cascade");
         });
 
