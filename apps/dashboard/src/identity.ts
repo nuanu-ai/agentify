@@ -1334,8 +1334,9 @@ function claimFrom(value: string): LinkClaim | null {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * A row holding anything outside the closed set was not written by this file
- * and opens nothing.
+ * A field holding a value outside its closed set means the row was not written
+ * by this file, and it opens nothing; a field this file does not read is
+ * passed over, so a link asked for before a release still opens after it.
  */
 function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;

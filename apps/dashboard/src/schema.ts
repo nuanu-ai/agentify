@@ -137,7 +137,7 @@ export const credentials = pgTable(
  * Dashboard and report links store the SHA-256 base64url token hash and their
  * claim here; the raw token appears only in the delivered link. Better Auth
  * also keeps one-time OAuth state here with its PKCE verifier, destination and
- * any ad click the person consented to have kept.
+ * the ad click the sign-in page was opened with.
  * Starting either flow creates no person.
  */
 export const verifications = pgTable(
