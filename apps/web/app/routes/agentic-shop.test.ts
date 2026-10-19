@@ -71,6 +71,18 @@ describe("the sell-to-agents page", () => {
     expect(html).not.toContain("/api/v1/merchant-applications");
   });
 
+  it("leads the owner to the owner's documentation and money, the engineer to the quickstart, and a first test to the test channel's own dashboard", async () => {
+    const { html } = await drawn("/agentic-shop");
+    const main = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    const links = [...main.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => match[1]);
+
+    expect(links).toContain("/docs/");
+    expect(links).toContain("/docs/money");
+    expect(links).toContain("/docs/quickstart");
+    expect(links).toContain("https://test.agentify.ad/dashboard/sign-in");
+    expect(links).not.toContain("/docs/faq");
+  });
+
   it("links the site's privacy notice and invites no application", async () => {
     const { links, meta } = await drawn("/agentic-shop");
 
