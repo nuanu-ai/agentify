@@ -456,8 +456,8 @@ describe("an order that owes a refund", () => {
   });
 
   it("says the charge was reported after the purchase was closed, not that goods came late", async () => {
-    // A charge that went silent closes the purchase before the merchant is
-    // sent anything. If it later turns out to have gone through, the buyer is
+    // A charge that went silent closes the purchase before the order is sent
+    // to the merchant. If it later turns out to have gone through, the buyer is
     // owed the price, but no time for any goods ever ran: the sentence for
     // goods that came late would describe a purchase that did not happen.
     const { served, harnessed } = await started({

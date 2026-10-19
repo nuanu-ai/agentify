@@ -1122,7 +1122,7 @@ const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> 
   // on its silence; the sentence must not tell that buyer their goods were late.
   deadline_passed: (order) =>
     order.closure?.cause === "payment_outcome_unknown"
-      ? `This purchase was closed while its payment went unanswered, before the seller was asked for anything, and the payment was later found to have gone through. The seller owes you the whole price back from their own wallet. ${UNRECORDED}`
+      ? `This purchase was closed while its payment went unanswered, before the order was sent to the seller, and the payment was later reported to have gone through. The seller owes you the whole price back from their own wallet, unless goods they deliver anyway appear here first. ${UNRECORDED}`
       : order.mode.parcel === true
         ? `This parcel was paid for and not handed to a carrier in time, so the seller owes you the whole price back from their own wallet, unless a shipment they still record appears here first. ${UNRECORDED}`
         : `This order was paid and its time ran out before the goods came, so the seller owes you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
