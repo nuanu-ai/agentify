@@ -258,8 +258,7 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  * stated fact rather than a missing field. `refusal` is present only where a
  * merchant's refusal ended the order. `reason` is present where Agentify ended
  * it and the status word alone would not say what to do next, and on every
- * order owing a refund, to say why it is owed. A payment that failed its check
- * arrives as a bare `rejected`, with neither.
+ * order owing a refund, to say why it is owed.
  */
 export const AgentOrderStatusSchema = z
   .looseObject({
