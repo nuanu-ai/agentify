@@ -30,40 +30,12 @@ const usePressed = (): boolean => useNavigation().state === "submitting";
 
 type AskView = Extract<SignInView, { screen: "ask" }>;
 
-const AddressField = ({ view }: Readonly<{ view: AskView }>) => (
-  <Field
-    label="Email address"
-    id="email"
-    name="email"
-    type="email"
-    autoComplete="email"
-    autoCapitalize="off"
-    spellCheck={false}
-    autoFocus
-    required
-    defaultValue={view.email ?? ""}
-    {...(view.problem === undefined ? {} : { error: view.problem })}
-  />
-);
-
 /** Named by its words; the "G" beside them says nothing a screen reader needs. */
 const GoogleButton = () => (
   <button className={`button button-secondary ${styles.google}`} type="submit">
     <img src={googleMark} alt="" width="20" height="20" />
     Sign in with Google
   </button>
-);
-
-const SignInNotes = () => (
-  <>
-    <p className="quiet">
-      Each email sign-in link opens once and expires an hour after it is sent, so there is nothing
-      to keep and no password to remember.
-    </p>
-    <p className="quiet">
-      New to Agentify? Sign in here. Once you are signed in, one button opens your seller dashboard.
-    </p>
-  </>
 );
 
 export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: AskView }>) {
@@ -75,7 +47,19 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
         {view.reason === undefined ? null : <p>{view.reason}</p>}
         <p>Enter your email address and we will send you a sign-in link.</p>
         <Form method="post" action="/sign-in">
-          <AddressField view={view} />
+          <Field
+            label="Email address"
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            autoFocus
+            required
+            defaultValue={view.email ?? ""}
+            {...(view.problem === undefined ? {} : { error: view.problem })}
+          />
           <Destination destination={view.destination} />
           <Click clickId={view.clickId} />
           <Button pending={pressed}>Send me a sign-in link</Button>
@@ -90,7 +74,14 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
             </Form>
           </>
         ) : null}
-        <SignInNotes />
+        <p className="quiet">
+          Each email sign-in link opens once and expires an hour after it is sent, so there is
+          nothing to keep and no password to remember.
+        </p>
+        <p className="quiet">
+          New to Agentify? Sign in here. Once you are signed in, one button opens your seller
+          dashboard.
+        </p>
       </div>
     </GatePage>
   );
