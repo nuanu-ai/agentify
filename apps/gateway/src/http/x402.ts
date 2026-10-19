@@ -12,9 +12,7 @@
 import { createHash } from "node:crypto";
 import type { BazaarDeclaration, Card } from "@nuanu-ai/agentify-contracts";
 import {
-  API_ROUTES,
   bazaarDeclarationOf,
-  expandPath,
   PAYABLE_CURRENCIES,
   PAYABLE_DECIMALS,
   ServiceNameSchema,
@@ -32,6 +30,7 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { purchaseUrlOf } from "../app/addresses.js";
 import type { GatewayConfig, PaymentConfig } from "../config.js";
 import { randomIds } from "../ports/clock.js";
 
@@ -166,17 +165,6 @@ export class PaymentEdge {
   }
 
   /**
-   * The canonical address of one product, which a catalog listing is keyed on.
-   * It is built from the configured base, never from the request: behind a
-   * TLS-terminating proxy the request says `http://` and carries the caller's
-   * query string, and two spellings would be two listings. The identifier goes
-   * through the route table's substitution so it cannot add path segments.
-   */
-  resourceUrlFor(itemId: string): string {
-    return `${this.#baseUrl}${expandPath(API_ROUTES.purchase_item.path, { item_id: itemId })}`;
-  }
-
-  /**
    * The whole challenge, as the header carries it, including the discovery
    * declaration that lets an agent find and buy the product.
    *
@@ -198,7 +186,10 @@ export class PaymentEdge {
     why?: ChallengeReason,
   ): string {
     const declared = bazaarDeclarationOf(listed.card, {
-      url: this.resourceUrlFor(listed.itemId),
+      // The configured base, never the request's: behind the proxy the request
+      // says `http://` with the caller's query string, and a catalog keys a
+      // listing on this address, so two spellings would be two listings.
+      url: purchaseUrlOf({ publicBaseUrl: this.#baseUrl }, listed.itemId),
       serviceName: listed.serviceName,
     });
 

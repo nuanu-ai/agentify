@@ -107,6 +107,7 @@ const card: Card = {
 
 const shown = publicCardOf(CardSchema.parse(card), {
   id: "itm_4d21bb",
+  purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
   as_of: "2026-10-07T09:00:00Z",
   seller: { name: "Freeland", site: "https://freeland.example" },
 });

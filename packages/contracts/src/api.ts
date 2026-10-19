@@ -793,7 +793,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/catalog",
     auth: "none",
     description:
-      "Products offered for sale, as an agent reads them. Each is the projection of a published card: our catalog identifier rather than the merchant's own key, and nothing about how the merchant's price is asked for beyond the fact that it will be asked again.",
+      "Products offered for sale, as an agent reads them. Each is the projection of a published card: our catalog identifier rather than the merchant's own key, the whole address it is bought at, and nothing about how the merchant's price is asked for beyond the fact that it will be asked again.",
     response: { document: CatalogPageSchema },
   },
 

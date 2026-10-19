@@ -39,9 +39,7 @@ import {
   transition,
 } from "@agentify/core";
 import {
-  API_ROUTES,
   type Delivery,
-  expandPath,
   localityOf,
   type Order as OrderDocument,
   type Receipt,
@@ -63,6 +61,7 @@ import type {
   StoredOrder,
   WithTheOrder,
 } from "../ports/store.js";
+import { statusUrlOf } from "./addresses.js";
 import type { Runtime } from "./runtime.js";
 import { purchaseOf, Waiting } from "./waiting.js";
 import type { WrittenOrderStatus } from "./written.js";
@@ -1046,15 +1045,7 @@ export function agentOrderStatusOf(
 
   return {
     order_id: record.order.id,
-    // The configured base, not the request's: behind the proxy that ends the
-    // agent's TLS the request says plain http, and its host and forwarding
-    // headers are whatever the proxy or caller wrote, so an address built from
-    // them could send a paid order's identifier anywhere. The identifier goes
-    // through the route table's substitution, since it may hold a character
-    // that would split the path.
-    status_url: `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, {
-      order_id: record.order.id,
-    })}`,
+    status_url: statusUrlOf(config, record.order.id),
     status,
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.

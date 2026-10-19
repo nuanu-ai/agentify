@@ -480,6 +480,7 @@ describe("the card an agent reads", () => {
       "params",
       "price",
       "price_checked_at_purchase",
+      "purchase_url",
       "result",
       "seller",
       "title",
@@ -1042,6 +1043,7 @@ describe("the description a listing carries", () => {
     const onTheWayOut = errorOf(PublicCardSchema, {
       ...publicCardOf(CardSchema.parse(syncCard), {
         id: "itm_4d21bb",
+        purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
         as_of: "2026-08-26T09:00:00Z",
         seller: { name: "Freeland", site: null },
       }),
@@ -1089,6 +1091,7 @@ describe("a card written short", () => {
 
   const issued = {
     id: "itm_9f2c4a",
+    purchase_url: "https://agentify.ad/x402/itm_9f2c4a/purchase",
     as_of: "2026-08-26T10:00:00Z",
     seller: { name: "Freeland", site: null },
   };
@@ -1365,6 +1368,7 @@ describe("a card for a parcel", () => {
   it("is shown to an agent with its time to ship and without a result", () => {
     const shown = publicCardOf(CardSchema.parse(parcelCard), {
       id: "itm_beans",
+      purchase_url: "https://agentify.ad/x402/itm_beans/purchase",
       as_of: "2026-10-09T09:00:00Z",
       seller: { name: "A roastery", site: "https://roastery.example" },
     });
@@ -1376,6 +1380,7 @@ describe("a card for a parcel", () => {
       "id",
       "price",
       "price_checked_at_purchase",
+      "purchase_url",
       "seller",
       "ship_within_seconds",
       "title",

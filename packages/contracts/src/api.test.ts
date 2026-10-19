@@ -60,7 +60,12 @@ const publicCard = publicCardOf(
     result: { access_url: { type: "string", title: "Ссылка для входа" } },
     fulfillment: "sync",
   }),
-  { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z", seller: { name: "Freeland", site: null } },
+  {
+    id: "itm_4d21bb",
+    purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
+    as_of: "2026-08-26T09:00:00Z",
+    seller: { name: "Freeland", site: null },
+  },
 );
 
 const orderEnvelope = {

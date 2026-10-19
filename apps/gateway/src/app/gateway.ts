@@ -87,6 +87,7 @@ import type {
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
 import type { NotAPayoutWallet } from "../split/wallet-rule.js";
+import { purchaseUrlOf } from "./addresses.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -528,6 +529,7 @@ export class Gateway {
         .map((entry) =>
           publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
+            purchase_url: purchaseUrlOf(this.runtime.config, entry.card.id),
             as_of: asTimestamp(entry.card.asOf),
             seller: { name: entry.serviceName, site: entry.sellerSite },
           }),
