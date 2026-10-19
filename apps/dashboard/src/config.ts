@@ -143,8 +143,8 @@ const environmentSchema = z.object({
   MAIL_FROM: emptyIsAbsent(z.string().min(1)),
 
   /**
-   * Whether a registration made through a consented ad click is reported to
-   * the ad tracker. The key and the receiver are held to their rules only once
+   * Whether a first registration an ad click brought is reported to the ad
+   * tracker. The key and the receiver are held to their rules only once
    * this is on: a host keeps one environment file for every service, and a key
    * written there ahead of the switch must not stop the process.
    */
@@ -203,7 +203,7 @@ export interface DashboardConfig {
   readonly mailApiKey: string | null;
   readonly mailFrom: string;
   /**
-   * Where a consented registration is reported and the key it is reported
+   * Where a registration an ad brought is reported and the key it is reported
    * with, or null where nothing is reported. The key is never printed.
    */
   readonly registrationPostback: Readonly<{ endpoint: string; key: string }> | null;

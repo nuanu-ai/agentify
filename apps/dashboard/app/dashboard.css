@@ -926,42 +926,6 @@ form.inline {
   margin-top: 20px;
 }
 
-/* The box a visitor an ad sent may tick: the box beside its sentence, in the
-   size and weight of a note under a field, so it reads as a choice about the
-   sign-in and not as a second thing to fill in. It stands a field's distance
-   from the address and from the button under it. Written against the gate,
-   whose rule for labels would otherwise stack the two. */
-.gate .consent {
-  margin: 20px 0;
-  font-size: var(--text-small);
-  color: var(--muted);
-}
-
-.gate .consent label {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-tight);
-  margin: 0;
-  font-size: inherit;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-/* Under the sentence, not under the box. */
-.gate .consent > a {
-  display: inline-block;
-  margin: 4px 0 0 calc(18px + var(--space-tight));
-}
-
-/* Centred on the sentence's first line. */
-.gate .consent input {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin: calc((1lh - 18px) / 2) 0 0;
-  accent-color: var(--accent);
-}
-
 @media (max-width: 760px) {
   .gate-card {
     padding: 28px 22px;
@@ -982,11 +946,6 @@ form.inline {
 .gate .button {
   margin-top: 12px;
   width: 100%;
-}
-
-/* The consent block keeps a field's distance below itself. */
-.gate .consent + .button {
-  margin-top: 0;
 }
 
 /* The fail colour on a sentence, for two things a merchant must not read past:

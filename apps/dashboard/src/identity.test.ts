@@ -330,47 +330,38 @@ describe("dashboard magic links", () => {
  * Synthetic: each passes the partner click identifier's pattern and was never
  * issued by any tracker.
  */
-const CLICK = {
-  id: "qa_click_0123456789abcdef",
-  consentedAt: "2026-10-15T09:30:00.000Z",
-  wording: "registration-consent-1",
-} as const;
-const ANOTHER_CLICK = {
-  id: "qa_click_fedcba9876543210",
-  consentedAt: "2026-10-15T09:31:00.000Z",
-  wording: "registration-consent-1",
-} as const;
+const CLICK = "qa_click_0123456789abcdef";
+const ANOTHER_CLICK = "qa_click_fedcba9876543210";
 const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
 const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 
-/** The owner's yes on the link's page to telling the tracker. */
-const TELLING = { tellTracker: true } as const;
-
 const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
   rows.dashboard_registration_postbacks ?? [];
 
-describe("the registration a consented link leaves for the tracker", () => {
-  it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
+describe("the registration a link asked for with an ad's click leaves for the tracker", () => {
+  it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const pressedAt = Date.now();
 
-    const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
 
-    if (opened.status !== "opened") throw new Error("the consented link did not open");
+    if (opened.status !== "opened") throw new Error("the link did not open");
     expect(opened.person).toMatchObject({ email: "person@example.com", confirmed: true });
-    expect(registrationsIn(rows)).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([
+      {
+        accountId: opened.person.id,
+        clickId: CLICK,
+        state: "pending",
+        attempts: 0,
+        nextAttemptAt: expect.any(Date),
+        lastOutcome: null,
+        createdAt: expect.any(Date),
+        settledAt: null,
+      },
+    ]);
     const registration = registrationsIn(rows)[0];
-    expect(registration).toMatchObject({
-      accountId: opened.person.id,
-      clickId: CLICK.id,
-      consentedAt: new Date(CLICK.consentedAt),
-      consentWording: CLICK.wording,
-      state: "pending",
-      attempts: 0,
-      settledAt: null,
-    });
     // Due at once: nothing about a new registration is worth waiting for.
     const due = new Date(registration?.nextAttemptAt as Date).getTime();
     expect(due).toBeGreaterThanOrEqual(pressedAt);
@@ -384,54 +375,10 @@ describe("the registration a consented link leaves for the tracker", () => {
     await on.identity.requestLink("person@example.com", "default", CLICK);
     const off = memoryIdentity("accepted", config, on.rows);
 
-    const opened = await off.identity.openLink(tokenIn(on.messages[0] as Message), TELLING);
+    const opened = await off.identity.openLink(tokenIn(on.messages[0] as Message));
 
     expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
     expect(registrationsIn(on.rows)).toStrictEqual([]);
-  });
-
-  it("writes no registration, and still signs in, when the owner presses without telling the tracker", async () => {
-    // Anybody can ask for a link for any address; the box ticked then is not
-    // the owner's word until the owner says yes on the link's page.
-    for (const choice of [undefined, { tellTracker: false }]) {
-      const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-      await identity.requestLink("person@example.com", "default", CLICK);
-
-      const opened = await identity.openLink(tokenIn(messages[0] as Message), choice);
-
-      expect(opened, JSON.stringify(choice)).toMatchObject({
-        status: "opened",
-        person: { email: "person@example.com", confirmed: true },
-      });
-      expect(registrationsIn(rows), JSON.stringify(choice)).toStrictEqual([]);
-    }
-  });
-
-  it("says on the link's page whether its press would tell the tracker, and only where it would", async () => {
-    const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
-    const off = memoryIdentity("accepted", config, rows);
-    const landing = async (at: number) =>
-      await identity.landingOf(tokenIn(messages[at] as Message));
-
-    await identity.requestLink("person@example.com", "default", CLICK);
-    await identity.requestLink("plain@example.com", "default");
-    await store.make("seeded@example.com", "mer_made");
-    await identity.requestLink("seeded@example.com", "default", CLICK);
-
-    expect(await landing(0)).toStrictEqual({ email: "person@example.com", tellsTracker: true });
-    expect(await landing(1)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
-    // An account the operator made is not verified, so its first press registers.
-    expect(await landing(2)).toStrictEqual({ email: "seeded@example.com", tellsTracker: true });
-    expect(await off.identity.landingOf(tokenIn(messages[0] as Message))).toStrictEqual({
-      email: "person@example.com",
-      tellsTracker: false,
-    });
-
-    // An address already verified registers nothing, so its page asks nothing.
-    await identity.openLink(tokenIn(messages[1] as Message));
-    rewindLinkSends(rows);
-    await identity.requestLink("plain@example.com", "default", CLICK);
-    expect(await landing(3)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
   });
 
   it("refuses to send a link carrying a click it could not read back, and sends or counts nothing", async () => {
@@ -440,7 +387,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
 
     await expect(
-      identity.requestLink("person@example.com", "default", { ...CLICK, id: "too-short" }),
+      identity.requestLink("person@example.com", "default", "too-short"),
     ).rejects.toThrow();
 
     expect(messages).toHaveLength(0);
@@ -452,9 +399,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default");
 
-    await expect(
-      identity.openLink(tokenIn(messages[0] as Message), TELLING),
-    ).resolves.toMatchObject({
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
       person: { confirmed: true },
     });
@@ -463,16 +408,14 @@ describe("the registration a consented link leaves for the tracker", () => {
     expect(registrationsIn(rows)).toStrictEqual([]);
   });
 
-  it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
+  it("writes no registration for an address that already has a verified account, even with a fresh click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default");
-    await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+    await identity.openLink(tokenIn(messages[0] as Message));
     rewindLinkSends(rows);
     await identity.requestLink("person@example.com", "default", CLICK);
 
-    await expect(
-      identity.openLink(tokenIn(messages[1] as Message), TELLING),
-    ).resolves.toMatchObject({
+    await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
       status: "opened",
     });
 
@@ -486,14 +429,12 @@ describe("the registration a consented link leaves for the tracker", () => {
     if (made === null) throw new Error("the account was not made");
     await identity.requestLink("person@example.com", "default", CLICK);
 
-    await expect(
-      identity.openLink(tokenIn(messages[0] as Message), TELLING),
-    ).resolves.toMatchObject({
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
       person: { id: made.id, confirmed: true, merchant: { id: "mer_made" } },
     });
 
-    expect(registrationsIn(rows)).toMatchObject([{ accountId: made.id, clickId: CLICK.id }]);
+    expect(registrationsIn(rows)).toMatchObject([{ accountId: made.id, clickId: CLICK }]);
     expect(registrationsIn(rows)).toHaveLength(1);
   });
 
@@ -505,7 +446,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     verification.expiresAt = new Date(Date.now() - 1000);
 
     for (const token of ["short", "A".repeat(32), tokenIn(messages[0] as Message)]) {
-      await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
     }
 
     expect(rows.dashboard_accounts).toHaveLength(0);
@@ -513,24 +454,23 @@ describe("the registration a consented link leaves for the tracker", () => {
     expect(registrationsIn(rows)).toStrictEqual([]);
   });
 
-  it("leaves one registration when the same consented link is opened twice", async () => {
+  it("leaves one registration when the same link is opened twice", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const token = tokenIn(messages[0] as Message);
 
-    await expect(identity.openLink(token, TELLING)).resolves.toMatchObject({ status: "opened" });
-    await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
+    await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+    await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
 
     expect(registrationsIn(rows)).toHaveLength(1);
   });
 
-  it("writes nothing when the landing page reads a consented link", async () => {
+  it("writes nothing when the landing page reads a link asked for with a click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
 
     expect(await identity.landingOf(tokenIn(messages[0] as Message))).toStrictEqual({
       email: "person@example.com",
-      tellsTracker: true,
     });
 
     expect(rows.dashboard_accounts).toHaveLength(0);
@@ -547,7 +487,7 @@ describe("the registration a consented link leaves for the tracker", () => {
       request: REQUEST,
     });
 
-    await expect(store.openLink(tokenIn(messages[0] as Message), TELLING)).resolves.toMatchObject({
+    await expect(store.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
       person: { confirmed: true },
     });
@@ -559,8 +499,8 @@ describe("the registration a consented link leaves for the tracker", () => {
   it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
-    const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
-    if (opened.status !== "opened") throw new Error("the consented link did not open");
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+    if (opened.status !== "opened") throw new Error("the link did not open");
     const before = structuredClone(registrationsIn(rows));
 
     await expect(
@@ -574,9 +514,9 @@ describe("the registration a consented link leaves for the tracker", () => {
   it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
     const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
-    await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+    await identity.openLink(tokenIn(messages[0] as Message));
     await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
-    const bystander = await identity.openLink(tokenIn(messages[1] as Message), TELLING);
+    const bystander = await identity.openLink(tokenIn(messages[1] as Message));
     if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
     expect(registrationsIn(rows)).toHaveLength(2);
 
@@ -589,7 +529,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     ).resolves.toStrictEqual({ status: "deleted" });
 
     expect(registrationsIn(rows)).toMatchObject([
-      { accountId: bystander.person.id, clickId: ANOTHER_CLICK.id },
+      { accountId: bystander.person.id, clickId: ANOTHER_CLICK },
     ]);
     expect(registrationsIn(rows)).toHaveLength(1);
   });
@@ -605,9 +545,7 @@ describe("the registration a consented link leaves for the tracker", () => {
       request: null,
     });
 
-    await expect(
-      identity.openLink(tokenIn(messages[0] as Message), TELLING),
-    ).resolves.toMatchObject({
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
       destination: "settings",
     });
@@ -625,26 +563,18 @@ describe("the registration a consented link leaves for the tracker", () => {
     const dashboard = { email: "person@example.com", destination: "default", request: null };
 
     for (const claim of [
-      { ...dashboard, click: { ...CLICK, id: "too-short" } },
-      { ...dashboard, click: { ...CLICK, id: "qa click 0123456789abcdef" } },
-      { ...dashboard, click: { ...CLICK, id: 1234567890123456 } },
-      { ...dashboard, click: { ...CLICK, also: "settings" } },
-      { ...dashboard, click: { id: CLICK.id, consentedAt: CLICK.consentedAt } },
-      { ...dashboard, click: { id: CLICK.id, wording: CLICK.wording } },
-      { ...dashboard, click: { ...CLICK, consentedAt: "yesterday" } },
-      { ...dashboard, click: { ...CLICK, consentedAt: "2026-10-15" } },
-      { ...dashboard, click: { ...CLICK, consentedAt: 1_789_465_800_000 } },
-      { ...dashboard, click: { ...CLICK, wording: "" } },
-      { ...dashboard, click: { ...CLICK, wording: "x".repeat(1000) } },
-      { ...dashboard, click: { ...CLICK, wording: 1 } },
-      { ...dashboard, click: CLICK.id },
-      { ...dashboard, click: null },
-      { ...dashboard, click: [CLICK.id, CLICK.consentedAt, CLICK.wording] },
+      { ...dashboard, clickId: "too-short" },
+      { ...dashboard, clickId: "qa click 0123456789abcdef" },
+      { ...dashboard, clickId: "a".repeat(65) },
+      { ...dashboard, clickId: 1234567890123456 },
+      { ...dashboard, clickId: { id: CLICK } },
+      { ...dashboard, clickId: [CLICK] },
+      { ...dashboard, clickId: null },
       {
         email: "person@example.com",
         destination: { report: SCAN },
         request: REQUEST,
-        click: CLICK,
+        clickId: CLICK,
       },
     ]) {
       // Read afresh, as above: each call replaces the stored rows.
@@ -652,11 +582,9 @@ describe("the registration a consented link leaves for the tracker", () => {
       if (verification === undefined) throw new Error("the link was not stored");
       verification.value = JSON.stringify(claim);
 
-      await expect(identity.openLink(token, TELLING), JSON.stringify(claim)).resolves.toStrictEqual(
-        {
-          status: "refused",
-        },
-      );
+      await expect(identity.openLink(token), JSON.stringify(claim)).resolves.toStrictEqual({
+        status: "refused",
+      });
       expect(await identity.landingOf(token)).toBeNull();
       expect(rows.dashboard_verifications).toHaveLength(1);
       expect(rows.dashboard_accounts).toHaveLength(0);
@@ -673,9 +601,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     if (made === null) throw new Error("the account was not made");
     const planted = {
       accountId: made.id,
-      clickId: ANOTHER_CLICK.id,
-      consentedAt: new Date(ANOTHER_CLICK.consentedAt),
-      consentWording: ANOTHER_CLICK.wording,
+      clickId: ANOTHER_CLICK,
       state: "pending",
       attempts: 0,
       nextAttemptAt: new Date(),
@@ -686,7 +612,7 @@ describe("the registration a consented link leaves for the tracker", () => {
     rows.dashboard_registration_postbacks = [planted];
     await identity.requestLink("person@example.com", "default", CLICK);
 
-    await expect(identity.openLink(tokenIn(messages[0] as Message), TELLING)).rejects.toThrow();
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
 
     expect(await store.byId(made.id)).toMatchObject({ confirmed: false });
     expect(rows.dashboard_sessions).toHaveLength(0);

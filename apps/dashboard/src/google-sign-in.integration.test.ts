@@ -10,7 +10,6 @@ import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, BrowserContext } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { ADS_CONSENT } from "./ads-consent.js";
 import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
 import { builtPages } from "./pages.js";
@@ -207,7 +206,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
   };
 
   for (const javaScriptEnabled of [true, false]) {
-    it(`tells the tracker of the sign-up the visitor ticked the box for, keeping the click out of cookies and Google's address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+    it(`tells the tracker of the sign-up an ad brought, asking nothing and keeping the click out of cookies and Google's address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
       const email = `ad-${javaScriptEnabled ? "script" : "plain"}@gmail.com`;
       const context = await browser.newContext({ javaScriptEnabled });
       try {
@@ -216,7 +215,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
         await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`, {
           waitUntil: "domcontentloaded",
         });
-        await page.getByLabel(ADS_CONSENT.sentence).check();
+        expect(await page.getByRole("checkbox").count()).toBe(0);
         // Nothing is typed into the address: the Google press needs none.
         await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
         await page.getByRole("link", { name: "Continue to Agentify" }).waitFor();
@@ -235,37 +234,19 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
     });
   }
 
-  it("tells the tracker nothing of a Google sign-up whose visitor left the box unticked", async () => {
-    const email = "ad-unticked@gmail.com";
-    const context = await browser.newContext();
-    try {
-      await consentFor(context, { sub: email, email });
-      const page = await context.newPage();
-      await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`);
-      await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
-      await page.getByRole("link", { name: "Continue to Agentify" }).click();
-      await page.waitForURL(`${origin}/dashboard/merchant`);
-
-      expect((await identity.byEmail(email))?.confirmed).toBe(true);
-      expect(await registrationOf(email)).toStrictEqual([]);
-    } finally {
-      await context.close();
-    }
-  });
-
-  it("offers the box again, ticked, on the page a cancelled Google sign-in returns to, from which a link can be asked for", async () => {
+  it("carries the click on the page a cancelled Google sign-in returns to, from which a link can be asked for", async () => {
     const context = await browser.newContext();
     try {
       await consentFor(context, {}, "cancel");
       const page = await context.newPage();
       await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`);
-      await page.getByLabel(ADS_CONSENT.sentence).check();
       await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
       await page.getByRole("link", { name: "Continue to Agentify" }).click();
       await page.waitForURL(/\/sign-in\/google\/callback\?/);
 
-      expect(await page.getByLabel(ADS_CONSENT.sentence).isChecked()).toBe(true);
-      expect(await page.locator('input[name="clickid"]').inputValue()).toBe(CLICK);
+      expect(
+        await page.locator('form[action="/dashboard/sign-in"] input[name="clickid"]').inputValue(),
+      ).toBe(CLICK);
       expect(JSON.stringify(await context.cookies())).not.toContain(CLICK);
       await page.getByLabel("Email address").fill("cancelled-google@example.com");
       await page.getByRole("button", { name: "Send me a sign-in link" }).click();

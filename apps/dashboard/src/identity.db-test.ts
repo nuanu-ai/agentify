@@ -921,28 +921,15 @@ if (databaseUrl === null) {
    * Synthetic: each passes the partner click identifier's pattern and was never
    * issued by any tracker.
    */
-  const CLICK = {
-    id: "qa_click_0123456789abcdef",
-    consentedAt: "2026-10-15T09:30:00.000Z",
-    wording: "registration-consent-1",
-  } as const;
-  const ANOTHER_CLICK = {
-    id: "qa_click_fedcba9876543210",
-    consentedAt: "2026-10-15T09:31:00.000Z",
-    wording: "registration-consent-1",
-  } as const;
+  const CLICK = "qa_click_0123456789abcdef";
+  const ANOTHER_CLICK = "qa_click_fedcba9876543210";
   const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
   const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
   const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 
   async function registrations(): Promise<Record<string, unknown>[]> {
-    return (
-      await pool.query(
-        `select account_id, click_id, consented_at, consent_wording, state, attempts,
-                next_attempt_at, last_outcome, created_at, settled_at
-           from dashboard_registration_postbacks order by account_id`,
-      )
-    ).rows;
+    return (await pool.query(`select * from dashboard_registration_postbacks order by account_id`))
+      .rows;
   }
 
   /**
@@ -965,32 +952,27 @@ if (databaseUrl === null) {
       .rows[0]?.count as number;
   }
 
-  /** The owner's yes on the link's page to telling the tracker. */
-  const TELLING = { tellTracker: true } as const;
-
-  describe("the registration a consented link leaves for the tracker, on PostgreSQL", () => {
+  describe("the registration a link asked for with an ad's click leaves for the tracker, on PostgreSQL", () => {
     beforeEach(async () => {
       await emptyEverything();
       await migrateEverything();
     });
 
-    it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
+    it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       const pressedAt = Date.now();
 
-      const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
 
-      if (opened.status !== "opened") throw new Error("the consented link did not open");
+      if (opened.status !== "opened") throw new Error("the link did not open");
       expect(opened.person).toMatchObject({ email: "person@example.com", confirmed: true });
       const stored = await registrations();
       expect(stored).toStrictEqual([
         {
           account_id: opened.person.id,
-          click_id: CLICK.id,
-          consented_at: new Date(CLICK.consentedAt),
-          consent_wording: CLICK.wording,
+          click_id: CLICK,
           state: "pending",
           attempts: 0,
           next_attempt_at: expect.any(Date),
@@ -1009,53 +991,10 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       await reportingOn(messages).requestLink("person@example.com", "default", CLICK);
 
-      const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message), TELLING);
+      const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message));
 
       expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
       expect(await registrations()).toStrictEqual([]);
-    });
-
-    it("writes no registration, and still signs in, when the owner presses without telling the tracker", async () => {
-      for (const choice of [undefined, { tellTracker: false }]) {
-        await emptyEverything();
-        await migrateEverything();
-        const messages: Message[] = [];
-        const identity = reportingOn(messages);
-        await identity.requestLink("person@example.com", "default", CLICK);
-
-        const opened = await identity.openLink(tokenIn(messages[0] as Message), choice);
-
-        expect(opened, JSON.stringify(choice)).toMatchObject({
-          status: "opened",
-          person: { email: "person@example.com", confirmed: true },
-        });
-        expect(await registrations(), JSON.stringify(choice)).toStrictEqual([]);
-      }
-    });
-
-    it("says on the link's page whether its press would tell the tracker, and only where it would", async () => {
-      const messages: Message[] = [];
-      const identity = reportingOn(messages);
-      const landing = async (at: number) =>
-        await identity.landingOf(tokenIn(messages[at] as Message));
-
-      await identity.requestLink("person@example.com", "default", CLICK);
-      await identity.requestLink("plain@example.com", "default");
-      await identity.make("seeded@example.com", MERCHANT);
-      await identity.requestLink("seeded@example.com", "default", CLICK);
-
-      expect(await landing(0)).toStrictEqual({ email: "person@example.com", tellsTracker: true });
-      expect(await landing(1)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
-      expect(await landing(2)).toStrictEqual({ email: "seeded@example.com", tellsTracker: true });
-      expect(await identityOn([]).landingOf(tokenIn(messages[0] as Message))).toStrictEqual({
-        email: "person@example.com",
-        tellsTracker: false,
-      });
-
-      await identity.openLink(tokenIn(messages[1] as Message));
-      await rewindLinkSends();
-      await identity.requestLink("plain@example.com", "default", CLICK);
-      expect(await landing(3)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
     });
 
     it("leaves no registration when the link was asked for without a click", async () => {
@@ -1063,9 +1002,7 @@ if (databaseUrl === null) {
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
 
-      await expect(
-        identity.openLink(tokenIn(messages[0] as Message), TELLING),
-      ).resolves.toMatchObject({
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -1073,17 +1010,15 @@ if (databaseUrl === null) {
       expect(await registrations()).toStrictEqual([]);
     });
 
-    it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
+    it("writes no registration for an address that already has a verified account, even with a fresh click", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
-      await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+      await identity.openLink(tokenIn(messages[0] as Message));
       await rewindLinkSends();
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(
-        identity.openLink(tokenIn(messages[1] as Message), TELLING),
-      ).resolves.toMatchObject({
+      await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -1098,14 +1033,12 @@ if (databaseUrl === null) {
       if (made === null) throw new Error("the account was not made");
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(
-        identity.openLink(tokenIn(messages[0] as Message), TELLING),
-      ).resolves.toMatchObject({
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
         person: { id: made.id, confirmed: true, merchant: { id: MERCHANT } },
       });
 
-      expect(await registrations()).toMatchObject([{ account_id: made.id, click_id: CLICK.id }]);
+      expect(await registrations()).toMatchObject([{ account_id: made.id, click_id: CLICK }]);
       expect(await countIn("dashboard_registration_postbacks")).toBe(1);
     });
 
@@ -1115,26 +1048,23 @@ if (databaseUrl === null) {
       await identity.requestLink("person@example.com", "default", CLICK);
       const token = tokenIn(messages[0] as Message);
 
-      expect(await identity.landingOf(token)).toStrictEqual({
-        email: "person@example.com",
-        tellsTracker: true,
-      });
-      await expect(identity.openLink("short", TELLING)).resolves.toStrictEqual({
+      expect(await identity.landingOf(token)).toStrictEqual({ email: "person@example.com" });
+      await expect(identity.openLink("short")).resolves.toStrictEqual({
         status: "refused",
       });
-      await expect(identity.openLink("A".repeat(32), TELLING)).resolves.toStrictEqual({
+      await expect(identity.openLink("A".repeat(32))).resolves.toStrictEqual({
         status: "refused",
       });
       await pool.query(
         "update dashboard_verifications set expires_at = now() - interval '1 second'",
       );
-      await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
       expect(await countIn("dashboard_accounts")).toBe(0);
       expect(await registrations()).toStrictEqual([]);
 
       await pool.query("update dashboard_verifications set expires_at = now() + interval '1 hour'");
-      await expect(identity.openLink(token, TELLING)).resolves.toMatchObject({ status: "opened" });
-      await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
       expect(await countIn("dashboard_registration_postbacks")).toBe(1);
     });
 
@@ -1148,9 +1078,7 @@ if (databaseUrl === null) {
         request: REQUEST,
       });
 
-      await expect(
-        identity.openLink(tokenIn(messages[0] as Message), TELLING),
-      ).resolves.toMatchObject({
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -1180,7 +1108,7 @@ if (databaseUrl === null) {
           for each row execute function fail_dashboard_insert()
         `);
 
-        await expect(identity.openLink(token, TELLING)).rejects.toThrow();
+        await expect(identity.openLink(token)).rejects.toThrow();
 
         expect(await countIn("dashboard_accounts")).toBe(0);
         expect(await countIn("dashboard_sessions")).toBe(0);
@@ -1188,14 +1116,14 @@ if (databaseUrl === null) {
         expect(await countIn("dashboard_verifications")).toBe(1);
         await pool.query(`drop trigger fail_dashboard_insert on ${table}`);
         await pool.query("drop function fail_dashboard_insert()");
-        await expect(identity.openLink(token, TELLING)).resolves.toMatchObject({
+        await expect(identity.openLink(token)).resolves.toMatchObject({
           status: "opened",
         });
-        expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
+        expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
       },
     );
 
-    it("makes one account and one registration when the same consented link is pressed twice at once", async () => {
+    it("makes one account and one registration when the same link is pressed twice at once", async () => {
       const messages: Message[] = [];
       const one = reportingOn(messages);
       const two = reportingOn(messages);
@@ -1203,18 +1131,15 @@ if (databaseUrl === null) {
       const token = tokenIn(messages[0] as Message);
       await slowAccountInserts();
 
-      const [first, second] = await Promise.all([
-        one.openLink(token, TELLING),
-        two.openLink(token, TELLING),
-      ]);
+      const [first, second] = await Promise.all([one.openLink(token), two.openLink(token)]);
 
       expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
       expect(await countIn("dashboard_accounts")).toBe(1);
-      expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
+      expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
       expect(await countIn("dashboard_registration_postbacks")).toBe(1);
     });
 
-    it("makes one account and one registration when two consented links for one new address are opened at once", async () => {
+    it("makes one account and one registration when two links with clicks for one new address are opened at once", async () => {
       const messages: Message[] = [];
       const one = reportingOn(messages);
       const two = reportingOn(messages);
@@ -1224,18 +1149,18 @@ if (databaseUrl === null) {
       await slowAccountInserts();
 
       const [first, second] = await Promise.all([
-        one.openLink(tokenIn(messages[0] as Message), TELLING),
-        two.openLink(tokenIn(messages[1] as Message), TELLING),
+        one.openLink(tokenIn(messages[0] as Message)),
+        two.openLink(tokenIn(messages[1] as Message)),
       ]);
 
       if (first.status !== "opened" || second.status !== "opened") {
-        throw new Error("both consented links should open");
+        throw new Error("both links should open");
       }
       expect(second.person.id).toBe(first.person.id);
       expect(await countIn("dashboard_accounts")).toBe(1);
       const stored = await registrations();
       expect(stored).toHaveLength(1);
-      expect([CLICK.id, ANOTHER_CLICK.id]).toContain(stored[0]?.click_id);
+      expect([CLICK, ANOTHER_CLICK]).toContain(stored[0]?.click_id);
       expect(stored[0]?.account_id).toBe(first.person.id);
     });
 
@@ -1243,8 +1168,8 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
-      const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
-      if (opened.status !== "opened") throw new Error("the consented link did not open");
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      if (opened.status !== "opened") throw new Error("the link did not open");
       const before = await registrations();
 
       await expect(
@@ -1259,9 +1184,9 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
-      await identity.openLink(tokenIn(messages[0] as Message), TELLING);
+      await identity.openLink(tokenIn(messages[0] as Message));
       await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
-      const bystander = await identity.openLink(tokenIn(messages[1] as Message), TELLING);
+      const bystander = await identity.openLink(tokenIn(messages[1] as Message));
       if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
       expect(await countIn("dashboard_registration_postbacks")).toBe(2);
 
@@ -1274,7 +1199,7 @@ if (databaseUrl === null) {
       ).resolves.toStrictEqual({ status: "deleted" });
 
       expect(await registrations()).toMatchObject([
-        { account_id: bystander.person.id, click_id: ANOTHER_CLICK.id },
+        { account_id: bystander.person.id, click_id: ANOTHER_CLICK },
       ]);
       expect(await countIn("dashboard_registration_postbacks")).toBe(1);
     });
@@ -1287,9 +1212,7 @@ if (databaseUrl === null) {
         JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
       ]);
 
-      await expect(
-        identity.openLink(tokenIn(messages[0] as Message), TELLING),
-      ).resolves.toMatchObject({
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
         destination: "settings",
       });
@@ -1306,23 +1229,19 @@ if (databaseUrl === null) {
       const dashboard = { email: "person@example.com", destination: "default", request: null };
 
       for (const claim of [
-        { ...dashboard, click: { ...CLICK, id: "too-short" } },
-        { ...dashboard, click: { ...CLICK, also: "settings" } },
-        { ...dashboard, click: { ...CLICK, consentedAt: "yesterday" } },
-        { ...dashboard, click: { ...CLICK, wording: "" } },
+        { ...dashboard, clickId: "too-short" },
+        { ...dashboard, clickId: { id: CLICK } },
+        { ...dashboard, clickId: null },
         {
           email: "person@example.com",
           destination: { report: SCAN },
           request: REQUEST,
-          click: CLICK,
+          clickId: CLICK,
         },
       ]) {
         await pool.query("update dashboard_verifications set value = $1", [JSON.stringify(claim)]);
 
-        await expect(
-          identity.openLink(token, TELLING),
-          JSON.stringify(claim),
-        ).resolves.toStrictEqual({
+        await expect(identity.openLink(token), JSON.stringify(claim)).resolves.toStrictEqual({
           status: "refused",
         });
         expect(await countIn("dashboard_verifications")).toBe(1);
@@ -1341,15 +1260,14 @@ if (databaseUrl === null) {
       if (made === null) throw new Error("the account was not made");
       await pool.query(
         `insert into dashboard_registration_postbacks
-           (account_id, click_id, consented_at, consent_wording, state, attempts,
-            next_attempt_at, created_at)
-         values ($1, $2, $3, $4, 'pending', 0, now(), now())`,
-        [made.id, ANOTHER_CLICK.id, ANOTHER_CLICK.consentedAt, ANOTHER_CLICK.wording],
+           (account_id, click_id, state, attempts, next_attempt_at, created_at)
+         values ($1, $2, 'pending', 0, now(), now())`,
+        [made.id, ANOTHER_CLICK],
       );
       const planted = await registrations();
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message), TELLING)).rejects.toThrow();
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
 
       expect(await identity.byId(made.id)).toMatchObject({ confirmed: false });
       expect(await countIn("dashboard_sessions")).toBe(0);
@@ -1393,24 +1311,19 @@ if (databaseUrl === null) {
         const insert = (columns: string) =>
           pool.query(
             `insert into dashboard_registration_postbacks
-             (account_id, consented_at, consent_wording, attempts, created_at,
-              click_id, state, next_attempt_at, settled_at)
-           values ('acc_checked', now(), 'registration-consent-1', 0, now(), ${columns})`,
+             (account_id, attempts, created_at, click_id, state, next_attempt_at, settled_at)
+           values ('acc_checked', 0, now(), ${columns})`,
           );
 
         await expect(insert(values)).rejects.toMatchObject({ code: "23514", constraint });
 
-        // The consent stays as evidence once the click id has gone with a final
-        // state.
         await insert("null, 'delivered', null, now()");
-        expect(await registrations()).toMatchObject([
-          { click_id: null, state: "delivered", consent_wording: "registration-consent-1" },
-        ]);
+        expect(await registrations()).toMatchObject([{ click_id: null, state: "delivered" }]);
       },
     );
   });
 
-  describe("the registration a consented Google sign-in leaves for the tracker, on PostgreSQL", () => {
+  describe("the registration a Google sign-in started with an ad's click leaves for the tracker, on PostgreSQL", () => {
     beforeEach(async () => {
       await emptyEverything();
       await migrateEverything();
@@ -1441,10 +1354,7 @@ if (databaseUrl === null) {
           },
         },
       );
-      const start = async (
-        click?: typeof CLICK | typeof ANOTHER_CLICK,
-        profile: Partial<GoogleProfile> = {},
-      ) => {
+      const start = async (click?: string, profile: Partial<GoogleProfile> = {}) => {
         const began = await identity.startGoogle("settings", click);
         if (began.status !== "redirect") throw new Error("Google must start");
         return {
@@ -1455,21 +1365,19 @@ if (databaseUrl === null) {
       return { identity, start };
     }
 
-    it("leaves one pending registration with the click when a consented Google sign-in makes a new address's account", async () => {
+    it("leaves one pending registration holding the click, and nothing else of the sign-in, when the Google sign-in makes a new address's account", async () => {
       const { identity, start } = reportingGoogle();
       const flow = await start(CLICK);
       const before = Date.now();
 
       const opened = await identity.finishGoogle(flow.query, flow.cookie);
 
-      if (opened.status !== "opened") throw new Error("the consented Google sign-in did not open");
+      if (opened.status !== "opened") throw new Error("the Google sign-in did not open");
       const stored = await registrations();
       expect(stored).toStrictEqual([
         {
           account_id: opened.person.id,
-          click_id: CLICK.id,
-          consented_at: new Date(CLICK.consentedAt),
-          consent_wording: CLICK.wording,
+          click_id: CLICK,
           state: "pending",
           attempts: 0,
           next_attempt_at: expect.any(Date),
@@ -1500,7 +1408,7 @@ if (databaseUrl === null) {
       expect(await registrations()).toStrictEqual([]);
     });
 
-    it("makes one account and one registration when two consented Google callbacks for one new person race", async () => {
+    it("makes one account and one registration when two Google callbacks with clicks for one new person race", async () => {
       const { identity, start } = reportingGoogle();
       const first = await start(CLICK);
       const second = await start(ANOTHER_CLICK);
@@ -1515,7 +1423,7 @@ if (databaseUrl === null) {
       expect(await countIn("dashboard_accounts")).toBe(1);
       const stored = await registrations();
       expect(stored).toHaveLength(1);
-      expect([CLICK.id, ANOTHER_CLICK.id]).toContain(stored[0]?.click_id);
+      expect([CLICK, ANOTHER_CLICK]).toContain(stored[0]?.click_id);
     });
 
     it("rolls the Google person, binding and session back when the registration cannot be written", async () => {

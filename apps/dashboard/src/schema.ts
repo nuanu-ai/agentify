@@ -137,7 +137,7 @@ export const credentials = pgTable(
  * Dashboard and report links store the SHA-256 base64url token hash and their
  * claim here; the raw token appears only in the delivered link. Better Auth
  * also keeps one-time OAuth state here with its PKCE verifier, destination and
- * any ad click the person consented to have kept.
+ * the ad click the sign-in page was opened with.
  * Starting either flow creates no person.
  */
 export const verifications = pgTable(
@@ -218,17 +218,14 @@ export const reportDeletionTombstones = pgTable(
 /**
  * The one registration the dashboard reports to the ad tracker whose click
  * brought the person, so there is at most one per account. It is written in
- * the transaction that makes the address's first verified account: where a
- * link asked for with the box ticked is pressed and the address's owner said
- * yes on the link's page, or where a Google sign-in started with the box
- * ticked comes back. What is reported is the click id and the fact that a
+ * the transaction that makes the address's first verified account, where a
+ * link asked for with the click is pressed or a Google sign-in started with it
+ * comes back. What is reported is the click id and the fact that a
  * registration happened, nothing about the person.
  *
  * The click id is kept only while the report is pending and is erased once the
- * row is final; the moment of the tick and the version of the sentences agreed
- * to stay, because the link's claim or the sign-in's state that held them is
- * deleted when it is spent, and the row's creation is the moment of the
- * sign-in. The row goes with the account.
+ * row is final; what stays is the report's state and dates, the row's creation
+ * being the moment of the sign-in. The row goes with the account.
  */
 export const registrationPostbacks = pgTable(
   "dashboard_registration_postbacks",
@@ -237,8 +234,6 @@ export const registrationPostbacks = pgTable(
       .primaryKey()
       .references(() => accounts.id, { onDelete: "cascade" }),
     clickId: text("click_id"),
-    consentedAt: moment("consented_at"),
-    consentWording: text("consent_wording").notNull(),
     state: text("state").notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),

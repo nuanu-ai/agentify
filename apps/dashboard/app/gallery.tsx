@@ -648,7 +648,7 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody presses the button on a landing page they reached through a paid ad.",
       cause:
-        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the one box is offered, unticked, and goes with whichever way in is pressed.",
+        "The address carries the ad tracker's click identifier and the report to the tracker is switched on. The page is the one without it, and both ways in carry the click, which is reported if this sign-in makes the address's first account.",
     },
     {
       path: "/sign-in?clickid=qa_click_0123456789abcdef",
@@ -656,7 +656,7 @@ const SIGNING_IN: GalleryState[] = [
       loaded: {
         "routes/sign-in": {
           ...askViewOf(new URLSearchParams(), GOOGLE_ON),
-          click: { id: "qa_click_0123456789abcdef", consented: false },
+          clickId: "qa_click_0123456789abcdef",
         },
       },
     },
@@ -748,23 +748,6 @@ const SIGNING_IN: GalleryState[] = [
   ),
   signIn(
     {
-      id: "dashboard-sign-in-link-sent-from-an-ad",
-      screen: "Sign in",
-      when: "Somebody an ad sent asks for a sign-in link with the ad tracker's box ticked.",
-      cause:
-        "The link went out; another link is asked for with the box as this page shows it, ticked as it was left.",
-    },
-    "/sign-in?clickid=qa_click_0123456789abcdef",
-    {
-      screen: "requested",
-      email: WHO,
-      destination: "default",
-      answer: { sent: true, seconds: 60 },
-      click: { id: "qa_click_0123456789abcdef", consented: true },
-    },
-  ),
-  signIn(
-    {
       id: "dashboard-sign-in-last-link-this-hour",
       screen: "Sign in",
       when: "Somebody asks for their third link within an hour.",
@@ -834,28 +817,6 @@ const SIGNING_IN: GalleryState[] = [
           screen: "open",
           token: "the token from the email",
           email: WHO,
-          tellsTracker: false,
-        },
-      },
-    },
-  ),
-  at(
-    {
-      id: "dashboard-link-open-from-an-ad",
-      screen: "The emailed sign-in link",
-      when: "Somebody opens a sign-in link that was asked for with the ad tracker's box ticked.",
-      cause:
-        "The press would make the address's first account and the report to the tracker is switched on, so the page asks the address's owner before telling it.",
-    },
-    {
-      path: "/sign-in/open?token=…",
-      mode: "live",
-      loaded: {
-        "routes/sign-in-open": {
-          screen: "open",
-          token: "the token from the email",
-          email: WHO,
-          tellsTracker: true,
         },
       },
     },
