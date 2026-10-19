@@ -29,4 +29,24 @@ describe("llms.txt", () => {
     ]);
     expect(body).not.toMatch(/MCP|guarantee|certified/i);
   });
+
+  it("tells an agent how to buy from the catalogue, in the names the wire uses", () => {
+    // The catalogue lists products and prices. An agent that cannot find how
+    // to buy one, what answers its payment and what to keep to itself leaves,
+    // or guesses; these are the names it has to act on.
+    process.env.APP_BASE_URL = "https://agentify.ad";
+    const selling = buildLlmsText().split("## Selling to agents")[1] ?? "";
+
+    for (const name of [
+      "purchase_url",
+      '{"params":',
+      "PAYMENT-REQUIRED",
+      "PAYMENT-SIGNATURE",
+      "status_url",
+      "delivered",
+      "order_id",
+    ]) {
+      expect(selling, name).toContain(name);
+    }
+  });
 });

@@ -68,18 +68,17 @@ const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 describe("what an agent is asked to pay", () => {
   /** A gateway with an address of its own configured, and a facilitator that settles for real. */
   const edge = (payTo: string | null, facilitatorUrl = "https://x402.org/facilitator") =>
-    new PaymentEdge(
-      {
+    new PaymentEdge({
+      payment: {
         facilitatorUrl,
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo,
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
 
   it("names the network's own asset, the seller's address and the order it is for", () => {
     const asked = edge(null).requirementsFor(
@@ -94,7 +93,7 @@ describe("what an agent is asked to pay", () => {
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       amount: "80000000",
       payTo: SELLERS_SPLIT,
-      maxTimeoutSeconds: 300,
+      maxTimeoutSeconds: 50,
       extra: { name: "USDC", version: "2", order_id: "ord_1" },
     });
   });
@@ -420,18 +419,17 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   const edge = () =>
-    new PaymentEdge(
-      {
+    new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://x402.org/facilitator",
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
 
   const challenge = (listed: { serviceName: string | null }) =>
     decodePaymentRequiredHeader(
@@ -514,7 +512,9 @@ describe("the discovery declaration a challenge carries", () => {
     expect(info.input.method).toBe("POST");
     expect(info.input.bodyType).toBe("json");
     expect(info.input.body).toStrictEqual({ params: { email: "string" } });
-    expect(info.output?.example).toStrictEqual({ access_url: "string" });
+    expect((info.output?.example as { delivered?: unknown } | undefined)?.delivered).toStrictEqual({
+      access_url: "string",
+    });
   });
 
   it("holds together against its own schema", () => {
@@ -577,18 +577,17 @@ describe("a parcel's challenge", () => {
     ship_within_seconds: 172_800,
     price_check: "handler",
   });
-  const edge = new PaymentEdge(
-    {
+  const edge = new PaymentEdge({
+    payment: {
       facilitatorUrl: "https://x402.org/facilitator",
       network: "eip155:84532",
-      timeoutSeconds: 300,
       payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
       cdpApiKeyId: null,
       cdpApiKeySecret: null,
     },
-    "https://agentify.example",
-    300,
-  );
+    publicBaseUrl: "https://agentify.example",
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+  });
   const listed = {
     itemId: "itm_parcel",
     card: parcel,
@@ -618,18 +617,17 @@ describe("a card's challenge at its widest", () => {
   // Publishing refuses a card by this measure, so it must never fall short of a
   // challenge the card is answered with later, whatever its merchant is renamed
   // to, its order is priced at, or the reason the challenge gives.
-  const edge = new PaymentEdge(
-    {
+  const edge = new PaymentEdge({
+    payment: {
       facilitatorUrl: "https://x402.org/facilitator",
       network: "eip155:84532",
-      timeoutSeconds: 300,
       payTo: null,
       cdpApiKeyId: null,
       cdpApiKeySecret: null,
     },
-    "https://agentify.example",
-    300,
-  );
+    publicBaseUrl: "https://agentify.example",
+    deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+  });
   const cards = [
     CardSchema.parse({
       merchant_item_id: "room-101",
@@ -751,18 +749,17 @@ describe("the shape a live validation once accepted", () => {
       },
       fulfillment: "sync",
     });
-    const edge = new PaymentEdge(
-      {
+    const edge = new PaymentEdge({
+      payment: {
         facilitatorUrl: "https://x402.org/facilitator",
         network: "eip155:84532",
-        timeoutSeconds: 300,
         payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://agentify.example",
-      300,
-    );
+      publicBaseUrl: "https://agentify.example",
+      deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+    });
     const decoded = decodePaymentRequiredHeader(
       edge.challengeFor({ amount: "2.00", currency: "USD" }, null, {
         itemId: "itm_1",

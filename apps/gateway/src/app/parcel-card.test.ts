@@ -125,6 +125,7 @@ describe("a card for a parcel", () => {
   it("is a card this gateway can show an agent, once it may", () => {
     const shown = publicCardOf(parcelCard, {
       id: "itm_beans",
+      purchase_url: "https://agentify.ad/x402/itm_beans/purchase",
       as_of: "2026-10-09T09:00:00.000Z",
       seller: { name: "A roastery", site: "https://roastery.example" },
     });

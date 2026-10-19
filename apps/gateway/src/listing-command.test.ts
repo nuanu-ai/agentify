@@ -24,6 +24,7 @@ import {
 
 const card = (id: string): PublicCard => ({
   id,
+  purchase_url: `https://agentify.example/x402/${id}/purchase`,
   title: "A room for the night",
   description: "One night in room 101",
   price: { amount: "80.00", currency: "USD" },

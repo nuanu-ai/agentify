@@ -20,18 +20,17 @@ import { X402Facilitator } from "./facilitator.js";
 /** The address the merchant behind these charges is paid at. */
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
-const edge = new PaymentEdge(
-  {
+const edge = new PaymentEdge({
+  payment: {
     facilitatorUrl: "https://x402.org/facilitator",
     network: "eip155:84532",
-    timeoutSeconds: 300,
     payTo: PAY_TO,
     cdpApiKeyId: null,
     cdpApiKeySecret: null,
   },
-  "https://agentify.example",
-  300,
-);
+  publicBaseUrl: "https://agentify.example",
+  deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+});
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */
 class Answering implements FacilitatorClient {
@@ -113,6 +112,66 @@ const namesNoOffer = (): string =>
   } as unknown as PaymentPayload);
 
 describe("verifying a payment", () => {
+  it("says until when the payment it verified is authorised, and nothing where the payment names no end", async () => {
+    // A card charged after its goods needs the authorisation to outlive the
+    // charge, so the end the payment was signed with is handed back with the
+    // verdict, in milliseconds as every other instant here is.
+    const signedUntil = (validBefore: string | undefined): string =>
+      encodePaymentSignatureHeader({
+        x402Version: 2,
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+        payload: {
+          signature: "0xsigned",
+          authorization: {
+            from: "0x0000000000000000000000000000000000000abc",
+            to: PAY_TO,
+            value: "80000000",
+            validAfter: "0",
+            ...(validBefore === undefined ? {} : { validBefore }),
+            nonce: "0x01",
+          },
+        },
+      });
+
+    const facilitator = new X402Facilitator(new Answering(), edge);
+
+    expect(await facilitator.verify(charge(signedUntil("1787745646")))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: 1_787_745_646_000,
+    });
+    expect(await facilitator.verify(charge(signedUntil(undefined)))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: null,
+    });
+    expect(await facilitator.verify(charge(honest()))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: null,
+    });
+
+    // A payment by Permit2, which the exact-EVM scheme also takes, names its
+    // end as the permit's deadline.
+    const permitted = encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      payload: {
+        signature: "0xsigned",
+        permit2Authorization: {
+          from: "0x0000000000000000000000000000000000000abc",
+          deadline: "1787745650",
+          nonce: "1",
+        },
+      },
+    });
+    expect(await facilitator.verify(charge(permitted))).toStrictEqual({
+      verified: true,
+      payer: "0xpayer",
+      validUntil: 1_787_745_650_000,
+    });
+  });
+
   it("checks it against the price this gateway issued, not the one the payment names", async () => {
     // The requirements handed to the facilitator are rebuilt from our own
     // order. A payment made against a price the agent chose is checked against
@@ -171,7 +230,7 @@ describe("verifying a payment", () => {
       payTo: checksummed,
     });
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     // And what the facilitator is asked about is still our own spelling: the
     // agent's copy is evidence of nothing, and the requirements are rebuilt.
     expect(client.asked[0]?.requirements.payTo).toBe(checksummed);
@@ -184,7 +243,7 @@ describe("verifying a payment", () => {
       await new X402Facilitator(new Answering(), edge).verify(
         charge(honest({ asset: ours.asset.toUpperCase().replace("0X", "0x") })),
       ),
-    ).toStrictEqual({ verified: true, payer: "0xpayer" });
+    ).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     // The rule is one address in two spellings, not "addresses need not match":
     // another address is still refused, whatever case it is written in.
     expect(
@@ -220,7 +279,7 @@ describe("verifying a payment", () => {
       payTo: theirs,
     });
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     expect(client.asked[0]?.requirements.payTo).toBe(theirs);
     // And the same payment on a charge naming a different merchant's address is
     // refused, which is what makes the assertion above about this merchant
@@ -289,7 +348,7 @@ describe("verifying a payment", () => {
         against(paidTo(nowSplit.toLowerCase()), nowSplit),
       );
 
-      expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+      expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
       expect(client.asked[0]?.requirements.payTo).toBe(nowSplit);
     });
   });
@@ -351,7 +410,7 @@ describe("verifying a payment", () => {
     const client = new Answering();
     const answered = await new X402Facilitator(client, edge).verify(charge(honest()));
 
-    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+    expect(answered).toStrictEqual({ verified: true, payer: "0xpayer", validUntil: null });
     expect(client.asked[0]?.requirements.amount).toBe("80000000");
   });
 

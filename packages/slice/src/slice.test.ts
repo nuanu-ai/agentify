@@ -102,7 +102,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The buyer walks the whole exchange: unpaid → 402 with the challenge →
     // signed payment → the goods themselves.
-    const bought = await buyer.buy(rented.id, { area_code: "415" });
+    const bought = await buyer.buy(rented, { area_code: "415" });
 
     expect(bought.status).toBe(200);
 
@@ -153,7 +153,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(esim.price.amount).toBe("8.00");
 
     // The purchase: the money moves at the buy, buyer → merchant, once.
-    const bought = await buyer.buy(esim.id, { email: "buyer@example.com" });
+    const bought = await buyer.buy(esim, { email: "buyer@example.com" });
 
     expect(bought.status).toBe(200);
     expect(facilitator.verifies).toHaveLength(1);
@@ -237,7 +237,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     const esim = catalog.find((card) => card.title === EUROPE_ESIM.title);
     if (esim === undefined) throw new Error("the eSIM is not in the catalog");
 
-    const bought = await buyer.buy(esim.id, { email: "buyer@example.com" });
+    const bought = await buyer.buy(esim, { email: "buyer@example.com" });
     expect(bought.status).toBe(200);
     const answered = AgentOrderStatusSchema.parse(bought.body);
     const orderId = answered.order_id;
@@ -312,11 +312,11 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     const walked: { what: string; bought: unknown; collected: unknown }[] = [];
 
-    for (const [what, itemId, params] of [
-      ["a synchronous sale, delivered on the call", rented.id, { area_code: "415" }],
-      ["an asynchronous sale, still running", esim.id, { email: "buyer@example.com" }],
+    for (const [what, card, params] of [
+      ["a synchronous sale, delivered on the call", rented, { area_code: "415" }],
+      ["an asynchronous sale, still running", esim, { email: "buyer@example.com" }],
     ] as const) {
-      const bought = await buyer.buy(itemId, params);
+      const bought = await buyer.buy(card, params);
       expect(bought.status, `${what}: ${JSON.stringify(bought.body)}`).toBe(200);
 
       const purchased = fields(bought.body);
@@ -358,7 +358,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     if (esim === undefined) throw new Error("the eSIM is not in the catalog");
 
     const email = "buyer@example.com";
-    const bought = await buyer.buy(esim.id, { email });
+    const bought = await buyer.buy(esim, { email });
     const purchased = fields(bought.body);
     if (bought.statusUrl === null) throw new Error("the purchase named nowhere to read it again");
 
@@ -427,7 +427,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     const listed = (await buyer.catalog()).find((card) => card.title === unpriceable.title);
     if (listed === undefined) throw new Error("the unpriceable card is not in the catalog");
 
-    const bought = await buyer.buy(listed.id, { email: "buyer@example.com" });
+    const bought = await buyer.buy(listed, { email: "buyer@example.com" });
 
     // The purchase is over before any money moved, and it says so in the same
     // document a purchase that worked would have used.
@@ -459,7 +459,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     const rented = catalog.find((card) => card.title === RENTED_NUMBER.title);
     if (rented === undefined) throw new Error("the rented number is not in the catalog");
 
-    const bought = await buyer.buy(rented.id, { area_code: "415" });
+    const bought = await buyer.buy(rented, { area_code: "415" });
 
     // No goods, no settlement receipt, and not the success status.
     expect(bought.status).not.toBe(200);
@@ -555,7 +555,7 @@ describe("the same slice when the merchant's own code cannot fill the order", ()
     const unstaffed = catalog.find((card) => card.title === UNSTAFFED_NUMBER.title);
     if (unstaffed === undefined) throw new Error("the unstaffed card is not in the catalog");
 
-    const bought = await buyer.buy(unstaffed.id, {});
+    const bought = await buyer.buy(unstaffed, {});
 
     // The buyer paid for nothing and was charged for nothing: the payment was
     // verified, the goods never came, and the charge was never executed. The
@@ -605,7 +605,7 @@ describe("the same slice when the merchant's own code cannot fill the order", ()
     const esim = (await buyer.catalog()).find((card) => card.title === EUROPE_ESIM.title);
     if (esim === undefined) throw new Error("the eSIM is not in the catalog");
 
-    const afterwards = await buyer.buy(esim.id, { email: "buyer@example.com" });
+    const afterwards = await buyer.buy(esim, { email: "buyer@example.com" });
 
     expect(afterwards.status).toBe(200);
     const order = AgentOrderStatusSchema.parse(afterwards.body);

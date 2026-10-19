@@ -21,7 +21,7 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import type { PaymentEdge } from "../../http/x402.js";
+import { authorisedUntil, type PaymentEdge } from "../../http/x402.js";
 import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
 
 export class X402Facilitator implements Facilitator {
@@ -73,7 +73,13 @@ export class X402Facilitator implements Facilitator {
     }
 
     if (answered.isValid) {
-      return { verified: true, payer: answered.payer ?? null };
+      // The end comes from the payment the facilitator has just checked the
+      // signature of, so it is the one the payer signed.
+      return {
+        verified: true,
+        payer: answered.payer ?? null,
+        validUntil: authorisedUntil(payload),
+      };
     }
     const said = answered.invalidMessage ?? answered.invalidReason ?? "no reason was given";
     return { verified: false, reason: shapeOf(answered.invalidReason), message: said };

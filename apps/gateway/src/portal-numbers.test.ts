@@ -293,6 +293,23 @@ const PINS: readonly Pin[] = [
 
   // --- how long we wait for a price, and how long the answer lives ----------
   {
+    // The challenge's maxTimeoutSeconds is longer, so the agent is told the
+    // price's own life rather than reading it off the challenge.
+    what: "how long a price holds, in the text for language models",
+    page: "apps/web/lib/llms.ts",
+    anchor: /the price in them holds for (\w+) seconds/,
+    reads: "seconds",
+    is: deadlines.quoteTtlMs,
+  },
+  {
+    what: "how long a price holds, where the purchase is described to an agent's engineer",
+    page: "API_ROUTES.purchase_item.description",
+    text: API_ROUTES.purchase_item.description,
+    anchor: /The price a challenge names holds for (\w+) seconds/,
+    reads: "seconds",
+    is: deadlines.quoteTtlMs,
+  },
+  {
     what: "how long a price goes on being good, in the table of every time limit",
     page: "apps/docs/orders.md",
     anchor: /\| The price an order was given \| the agent \| (\w+) seconds \|/,

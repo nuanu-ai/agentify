@@ -107,6 +107,7 @@ const card: Card = {
 
 const shown = publicCardOf(CardSchema.parse(card), {
   id: "itm_4d21bb",
+  purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
   as_of: "2026-10-07T09:00:00Z",
   seller: { name: "Freeland", site: "https://freeland.example" },
 });
@@ -211,6 +212,47 @@ describe("what this gateway checks before it sends a document", () => {
       expect(sendable(AgentOrderStatusSchema, { ...ended, status: word }), word).toBe(false);
     }
     expect(sendable(AgentOrderStatusSchema, { ...status, reason })).toBe(false);
+  });
+
+  it("says on every order owing a refund why it is owed, in the merchant event's words", () => {
+    // `refund_due` alone reads as a refund on its way. Why the money is owed
+    // goes with it every time, in the word the merchant's own event carries,
+    // and a word for an ending never stands in for one.
+    const owed = (code: string) => ({ code, message: "The seller owes you the price." });
+    const owing = { ...unrefused, status: "refund_due", reason: owed("deadline_passed") };
+
+    expect(sendable(AgentOrderStatusSchema, owing)).toBe(true);
+    expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("merchant_left") })).toBe(
+      true,
+    );
+    expect(sendable(AgentOrderStatusSchema, unrefused)).toBe(true);
+    const { reason: _none, ...unexplained } = owing;
+    expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);
+    expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("price_expired") })).toBe(
+      false,
+    );
+    expect(sendable(AgentOrderStatusSchema, { ...owing, status: "expired" })).toBe(false);
+  });
+
+  it("says a merchant's refusal left a refund owed beside the refusal, and only then", () => {
+    // After the money moved a merchant's refusal leaves a debt. Their words
+    // say why they would not deliver; ours say what that left the buyer owed,
+    // and are not sent where no merchant refused.
+    const refusedAfterPaying = {
+      ...status,
+      status: "refund_due",
+      reason: { code: "refused", message: "The seller refused after you paid." },
+    };
+
+    expect(sendable(AgentOrderStatusSchema, refusedAfterPaying)).toBe(true);
+    const { refusal: _gone, ...withoutTheirWords } = refusedAfterPaying;
+    expect(sendable(AgentOrderStatusSchema, withoutTheirWords)).toBe(false);
+    expect(
+      sendable(AgentOrderStatusSchema, {
+        ...refusedAfterPaying,
+        reason: { code: "deadline_passed", message: "The time ran out." },
+      }),
+    ).toBe(false);
   });
 
   it("refuses to send goods on an order whose status says there are none", () => {

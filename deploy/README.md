@@ -691,15 +691,23 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
+`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`,
 `AGENTIFY_AUTH_SECRET`, `TOKEN_HMAC_SECRET`,
 `EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`, the last at least 32
 characters of its own (`openssl rand -base64 32`): the scanner presents it to
 the dashboard's private route, and the preflight refuses a channel where any
 other service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
-PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
-`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `MAIL_URL`, `MAIL_API_KEY` and
+PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`.
+
+Both channels settle through Coinbase's facilitator, so a payment that passes
+on TEST has met the facilitator live buyers meet, and a TEST product can enter
+Coinbase's testnet catalogue. Each channel holds its own Coinbase secret API
+key, an Ed25519 one, whose secret is a single line: a key leaked from TEST is
+revoked without touching PRODUCTION, so production's key never goes onto the
+test host. The preflight cannot tell the two keys apart and checks only that
+both halves are present.
 
 PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
 `REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters,

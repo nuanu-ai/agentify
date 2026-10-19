@@ -1568,7 +1568,7 @@ describe("two payments racing one order", () => {
 
     harnessed.facilitator.willVerify(
       { verified: false, reason: "signature", message: "not a signature at all" },
-      { verified: true, payer: "buyer" },
+      { verified: true, payer: "buyer", validUntil: null },
     );
 
     const junk = await harnessed.gateway.payPurchase(orderId, "stranger", "stranger-auth");

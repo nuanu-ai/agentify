@@ -724,6 +724,7 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  *
  * It differs from the published card on purpose. `id`, the catalog identifier
  * every purchase, receipt and status uses, replaces the merchant's own key.
+ * `purchase_url` is added: the whole address the product is bought at.
  * `price_check` becomes the single flag `price_checked_at_purchase`, which says
  * the merchant is asked, not that they answer. `as_of` is added: when the price
  * shown was published, the only freshness claim a catalog makes. `tags` are
@@ -738,6 +739,19 @@ export const PublicCardSchema = z
   .looseObject({
     /** The catalog identifier, the one a purchase, a receipt and a status use. */
     id: IdentifierSchema,
+
+    /**
+     * Where this product is bought: the whole address a purchase is sent to,
+     * scheme and host included, ready to call. It is the resource the payment
+     * challenge names, built from the address the gateway is configured to
+     * answer as, and held to the same rule as an order's `status_url`.
+     */
+    purchase_url: z
+      .url()
+      .regex(
+        /^https?:\/\//,
+        "a product's purchase address is a whole http or https address, not a path",
+      ),
 
     title: TitleSchema,
 
@@ -798,7 +812,7 @@ export const PublicCardSchema = z
     // `as_of` means something narrower here than the same name elsewhere in
     // this contract, so the description says so to readers of the export.
     description:
-      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Three rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform; only a product whose merchant is asked to confirm names a confirmation deadline; and a parcel, fulfillment \"ship\", names ship_within_seconds — the time to hand it to a carrier counted from the charge, not the time it arrives — and no result, because what the agent receives is the record of its shipment, while every other product names a result. On a parcel the price shown is the goods without shipping, and the purchase goes through at the merchant's answer for the whole, shipping to the buyer's place included. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.",
+      'A product an agent can buy, projected from the card its merchant published. purchase_url is the whole address it is bought at, the resource its payment challenge names: a POST there with the JSON document {"params": {...}}, holding what params declares, and on a parcel the address it goes to under ship_to beside it, is answered first with an x402 version 2 payment challenge in the PAYMENT-REQUIRED header and, sent again with the payment, with the order. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Three rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform; only a product whose merchant is asked to confirm names a confirmation deadline; and a parcel, fulfillment "ship", names ship_within_seconds — the time to hand it to a carrier counted from the charge, not the time it arrives — and no result, because what the agent receives is the record of its shipment, while every other product names a result. On a parcel the price shown is the goods without shipping, and the purchase goes through at the merchant\'s answer for the whole, shipping to the buyer\'s place included. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.',
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;
@@ -819,16 +833,22 @@ export type ProjectedCard = {
  *
  * Each field that is copied is named, rather than the card copied and the
  * internal fields removed, so a field added to the published card never
- * reaches agents by default. The three things the card cannot know are passed
- * in: the catalog identifier, the moment its price was published, and who
- * sells it as their merchant stands now.
+ * reaches agents by default. The four things the card cannot know are passed
+ * in: the catalog identifier, the address it is bought at, the moment its
+ * price was published, and who sells it as their merchant stands now.
  */
 export const publicCardOf = (
   card: Card,
-  issued: { readonly id: string; readonly as_of: string; readonly seller: Seller },
+  issued: {
+    readonly id: string;
+    readonly purchase_url: string;
+    readonly as_of: string;
+    readonly seller: Seller;
+  },
 ): ProjectedCard => {
   const common = {
     id: issued.id,
+    purchase_url: issued.purchase_url,
     seller: issued.seller,
     title: card.title,
     description: card.description,
@@ -898,8 +918,9 @@ export interface BazaarDeclaration {
   /** The JSON Schema that body is held to, derived from the card's `params`. */
   readonly inputSchema: Record<string, unknown>;
   /**
-   * An example of what arrives on delivery, derived from the card's `result`,
-   * or for a parcel the record of its shipment.
+   * An example of what a paid purchase answers with: the order document, with
+   * the goods the card's `result` declares under `delivered` where they come in
+   * the answer, and otherwise an order under way with none.
    */
   readonly output: { readonly example: Record<string, unknown> };
 }
@@ -959,15 +980,46 @@ const LISTED_SHIP_TO: ShipTo = {
 };
 
 /**
- * A recorded shipment, in a listing's example output, written as every other
- * example here is: each field standing for what goes there, and the instant
- * at the start of the clock rather than a date that looks like one somebody
- * shipped on.
+ * The instant a listing's examples stand on: the start of the clock, rather
+ * than a date that looks like one something happened on.
  */
-const LISTED_SHIPMENT = {
-  carrier: "string",
-  tracking_number: "string",
-  shipped_at: "1970-01-01T00:00:00Z",
+const LISTED_INSTANT = "1970-01-01T00:00:00Z";
+
+/**
+ * What every order document carries, in a listing's example output, written as
+ * every other example here is: each field standing for what goes there.
+ */
+const LISTED_ORDER = {
+  order_id: "string",
+  status_url: "string",
+  price: { amount: "string", currency: "string", at: LISTED_INSTANT, as_of: LISTED_INSTANT },
+  test: false,
+  seller: { name: "string", site: "string" },
+};
+
+/**
+ * What a paid purchase of this card answers with: the order document the
+ * status route also serves. Goods that come in the answer are under
+ * `delivered`; on every other card the order is under way with none, and they
+ * are collected at its `status_url`. A parcel's order names the instant it has
+ * to be with a carrier by and no shipment yet.
+ */
+const listedAnswerOf = (card: Card): Record<string, unknown> => {
+  switch (card.fulfillment) {
+    case "sync":
+      return { ...LISTED_ORDER, status: "delivered", delivered: exampleOf(card.result ?? {}) };
+    case "ship":
+      return {
+        ...LISTED_ORDER,
+        status: "in_progress",
+        delivered: null,
+        shipment: null,
+        ship_by: LISTED_INSTANT,
+      };
+    case "async":
+    case "confirm":
+      return { ...LISTED_ORDER, status: "in_progress", delivered: null };
+  }
 };
 
 /**
@@ -993,9 +1045,7 @@ export const bazaarDeclarationOf = (
     ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
   },
   inputSchema: purchaseBodySchemaOf(card),
-  // What the agent is finally handed: the goods the card declared, or for a
-  // parcel the record of its shipment.
-  output: { example: card.result === undefined ? LISTED_SHIPMENT : exampleOf(card.result) },
+  output: { example: listedAnswerOf(card) },
 });
 
 /**

@@ -10,15 +10,14 @@
  * hard ceiling on any single payment, so a challenge for more is refused before
  * anything is signed.
  *
- * The addresses are written out as strings and the answers read field by field
- * on purpose, where importing the contracts would be shorter. This is a
- * stranger's agent, holding the portal and no package of ours, so a green run
- * says the wire is readable from the documentation alone. The catalog page is
- * the exception and is read against the real schema. The status address is not
- * written at all: like a stranger's agent, this buyer asks where its purchase
- * answer's `status_url` says. `buyer.test.ts` holds every address that goes out
- * against the contract's route table, so a renamed route cannot leave these
- * strings pointing at nothing unnoticed.
+ * The answers are read field by field on purpose, where importing the
+ * contracts would be shorter: this stands in for a stranger's agent, holding
+ * no package of ours. The catalog page is the exception and is read against
+ * the real schema. The catalogue's address is the only one written here. Like
+ * a stranger's agent, this buyer buys where a product's `purchase_url` says
+ * and asks after an order where its purchase answer's `status_url` says.
+ * `buyer.test.ts` holds the catalogue's address against the contract's route
+ * table, so a renamed route cannot leave it pointing at nothing unnoticed.
  */
 
 import { CatalogPageSchema, cardsOf, type PublicCard } from "@nuanu-ai/agentify-contracts";
@@ -96,6 +95,9 @@ export interface OrderStatus {
   readonly delivered: unknown;
 }
 
+/** A product as the catalogue lists it, as far as buying it goes. */
+type Listed = Pick<PublicCard, "purchase_url">;
+
 export interface Buyer {
   /** The buyer's public wallet address — never the key, which is never printed. */
   readonly address: string;
@@ -106,9 +108,9 @@ export interface Buyer {
    * validators use produces one, and it names the amount, the asset and the
    * address the money would go to. The smoke's dry run stops here.
    */
-  challenge(itemId: string): Promise<PaymentRequired>;
-  /** Buys one product by its catalog identifier, walking the x402 exchange. */
-  buy(itemId: string, params: Readonly<Record<string, unknown>>): Promise<Bought>;
+  challenge(card: Listed): Promise<PaymentRequired>;
+  /** Buys one product at the address the catalogue named, walking the x402 exchange. */
+  buy(card: Listed, params: Readonly<Record<string, unknown>>): Promise<Bought>;
   /**
    * What became of an order, asked at the address its purchase answer named
    * ({@link Bought.statusUrl}) and with nothing else. It is how an agent that
@@ -152,8 +154,8 @@ export function makeBuyer(options: BuyerOptions): Buyer {
       return cardsOf(CatalogPageSchema.parse(await response.json()));
     },
 
-    async challenge(itemId) {
-      const response = await fetch(`${base}/x402/${encodeURIComponent(itemId)}/purchase`, {
+    async challenge(card) {
+      const response = await fetch(card.purchase_url, {
         headers: { accept: "application/json" },
       });
       const header = response.headers.get("payment-required");
@@ -162,14 +164,14 @@ export function makeBuyer(options: BuyerOptions): Buyer {
       await response.body?.cancel();
       if (header === null) {
         throw new Error(
-          `expected a 402 challenge for ${itemId} but the gateway answered ${response.status} with no PAYMENT-REQUIRED header`,
+          `expected a 402 challenge at ${card.purchase_url} but the gateway answered ${response.status} with no PAYMENT-REQUIRED header`,
         );
       }
       return decodePaymentRequiredHeader(header);
     },
 
-    async buy(itemId, params) {
-      const response = await payFetch(`${base}/x402/${encodeURIComponent(itemId)}/purchase`, {
+    async buy(card, params) {
+      const response = await payFetch(card.purchase_url, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ params }),

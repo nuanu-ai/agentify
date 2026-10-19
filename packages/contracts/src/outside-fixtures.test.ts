@@ -324,11 +324,17 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
 
   it("shows all three products to an agent without showing how the merchant is asked for a price", () => {
     const seller = { name: "Freeland", site: null };
+    const issuedAs = (id: string, as_of: string) => ({
+      id,
+      purchase_url: `https://agentify.ad/x402/${id}/purchase`,
+      as_of,
+      seller,
+    });
     const catalog = {
       items: [
-        publicCardOf(number, { id: "itm_1a00b2", as_of: "2026-08-26T09:00:00Z", seller }),
-        publicCardOf(esim, { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z", seller }),
-        publicCardOf(vpn, { id: "itm_6c0f39", as_of: "2026-08-20T09:00:00Z", seller }),
+        publicCardOf(number, issuedAs("itm_1a00b2", "2026-08-26T09:00:00Z")),
+        publicCardOf(esim, issuedAs("itm_4d21bb", "2026-08-26T09:00:00Z")),
+        publicCardOf(vpn, issuedAs("itm_6c0f39", "2026-08-20T09:00:00Z")),
       ],
     };
 

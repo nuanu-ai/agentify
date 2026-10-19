@@ -34,7 +34,16 @@ export interface Charge {
 }
 
 export type VerifyOutcome =
-  | { readonly verified: true; readonly payer: string | null }
+  | {
+      readonly verified: true;
+      readonly payer: string | null;
+      /**
+       * The instant the payment's authorisation stops being valid, as the
+       * payment it verified was signed with, or null where the payment names
+       * none this gateway can read.
+       */
+      readonly validUntil: number | null;
+    }
   | {
       readonly verified: false;
       readonly reason: PaymentVerificationFailure;

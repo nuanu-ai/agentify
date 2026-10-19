@@ -87,6 +87,7 @@ import type {
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
 import type { NotAPayoutWallet } from "../split/wallet-rule.js";
+import { purchaseUrlOf } from "./addresses.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -96,6 +97,7 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
+import { validityNeededAfterCheckMs } from "./payment-window.js";
 import {
   journal,
   recordMissingSplits,
@@ -528,6 +530,7 @@ export class Gateway {
         .map((entry) =>
           publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
+            purchase_url: purchaseUrlOf(this.runtime.config, entry.card.id),
             as_of: asTimestamp(entry.card.asOf),
             seller: { name: entry.serviceName, site: entry.sellerSite },
           }),
@@ -1424,6 +1427,29 @@ export class Gateway {
     // deciding when the park ends; the agent is then told "in progress", which
     // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
+
+    // A purchase delivered in the answer is charged after its goods, so where
+    // the goods are still to be made its authorisation has to outlast the
+    // merchant's answer and the facilitator's margin at the charge. One that
+    // would not is refused here, before the claim and before the merchant is
+    // asked for anything, or the goods would be made for a charge the
+    // facilitator then refuses. A payment whose end is not read here (a
+    // spelling no reference client sends) goes on to the facilitator, which
+    // refuses it at the charge if it has run out: a merchant's work, and no
+    // money, is what that can cost.
+    const needed = validityNeededAfterCheckMs(before.order.policy.deadlines);
+    if (
+      before.order.mode.settle === "after_fulfillment" &&
+      before.order.state === "quoted" &&
+      verified.validUntil !== null &&
+      verified.validUntil < checkedOutAt + needed
+    ) {
+      return {
+        step: "payment_not_verified",
+        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; sign the payment again and send it at once, while its price holds`,
+        retryable: false,
+      };
+    }
 
     // The owner is who the payment layer says paid, never the address the
     // payment declares of itself. Where the layer names no payer, the

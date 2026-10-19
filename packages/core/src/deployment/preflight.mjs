@@ -13,12 +13,11 @@
 const CHANNELS = {
   test: {
     network: "eip155:84532",
-    facilitator: "https://x402.org/facilitator",
+    facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
     surfaceMode: "test",
     origin: "https://test.agentify.ad",
     siteAddress: "test.agentify.ad",
     publishedPort: "8443",
-    credentials: false,
   },
   production: {
     network: "eip155:8453",
@@ -28,7 +27,6 @@ const CHANNELS = {
     siteAddress: ":8080",
     privateIngress: true,
     trustedEdgeCidr: "172.30.80.2/32",
-    credentials: true,
   },
 };
 
@@ -126,23 +124,12 @@ export function problemsWith(channel, resolved) {
   equal("app", "PAYMENT_NETWORK", app.PAYMENT_NETWORK, wanted.network);
   equal("app", "FACILITATOR_URL", app.FACILITATOR_URL, wanted.facilitator);
 
-  if (wanted.credentials) {
-    for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      if ((app[name] ?? "") === "") {
-        problems.push(
-          `app: ${name} is not set, and the ${channel} channel settles through a facilitator ` +
-            "that takes no request without credentials",
-        );
-      }
-    }
-  } else {
-    for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      if ((app[name] ?? "") !== "") {
-        problems.push(
-          `app: ${name} is set, and the ${channel} channel must not receive live ` +
-            "facilitator credentials",
-        );
-      }
+  for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
+    if ((app[name] ?? "") === "") {
+      problems.push(
+        `app: ${name} is not set, and the ${channel} channel settles through a facilitator ` +
+          "that takes no request without credentials",
+      );
     }
   }
 
