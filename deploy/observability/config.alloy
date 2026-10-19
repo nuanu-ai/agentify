@@ -6,12 +6,17 @@ discovery.docker "agentify" {
   host = "unix:///var/run/docker.sock"
   filter {
     name = "label"
-    values = ["com.docker.compose.project=agentify", "com.docker.compose.project=agentify-edge"]
+    values = ["com.docker.compose.project"]
   }
 }
 
 discovery.relabel "agentify" {
   targets = discovery.docker.agentify.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex = "agentify|agentify-edge"
+    action = "keep"
+  }
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
     regex = "app|scanner|scanner-worker|web|caddy"
