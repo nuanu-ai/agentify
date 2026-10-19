@@ -1,9 +1,12 @@
 /**
  * The merchant half of the stand, on the SDK a merchant actually uses.
  *
- * It keeps only the answer the handler is set to give, the orders it has taken
- * on for a later delivery, and the ones it is holding while it waits for a
- * person. The feed records what crossed this boundary; it neither replaces the
+ * In memory it keeps only the answer the handler is set to give, the orders it
+ * has taken on for a later delivery, and the ones it is holding while it waits
+ * for a person. Given a records directory, it keeps there what a merchant's own
+ * code has to keep: every arrival counted, and one record per order of the
+ * answer it got, written before that answer is sent and sent again to every
+ * repeat. The feed records what crossed this boundary; it neither replaces the
  * gateway's journal nor teaches the merchant key to any observer.
  *
  * Everything a merchant's code can do here goes through the SDK, and that is
@@ -30,6 +33,7 @@ import {
 import type { ParamSpec } from "@nuanu-ai/agentify-contracts";
 import { filledFrom } from "./stand-goods.js";
 import type { Feed } from "./stand-log.js";
+import type { Recorded, StandRecords } from "./stand-records.js";
 
 export type OrderMood =
   | "deliver"
@@ -197,12 +201,14 @@ interface StandMerchantOptions {
    * telling: whoever pressed the button reads the orders back after it.
    */
   readonly closedOnItsOwn?: () => void;
+  /** Where this merchant keeps its arrivals and its one effect per order, if anywhere. */
+  readonly records?: StandRecords;
 }
 
 /** Makes a merchant whose handler decisions are changed directly by the stand page. */
 export const makeStandMerchant = (
   feed: Feed,
-  { closedOnItsOwn = () => {} }: StandMerchantOptions = {},
+  { closedOnItsOwn = () => {}, records }: StandMerchantOptions = {},
 ): StandMerchant => {
   const moods = defaultMoods();
   const taken = new Map<string, LiveOrder>();
@@ -450,6 +456,49 @@ export const makeStandMerchant = (
     return decide(order, HELD_MEANS[answered]);
   };
 
+  /** An answer this order already has, which goes back as it is and promises nothing more. */
+  const fromRecord = (recorded: Recorded, said: string): Decision => ({
+    answer: recorded.answer,
+    said,
+    detail: { answer: recorded.answer, recorded_by: { port: recorded.port, pid: recorded.pid } },
+    deliversLater: false,
+  });
+
+  /**
+   * What goes back for one order: with records kept, the effect it already
+   * has, or the one decided now and recorded before anything is sent.
+   */
+  const answerFor = async (order: LiveOrder): Promise<Decision> => {
+    if (records === undefined) return decided(order);
+    const earlier = await records.find(order.id);
+    if (earlier !== null) {
+      return fromRecord(earlier, "The handler answered a repeat with the answer it recorded.");
+    }
+    const decision = await decided(order);
+    const kept = await records.keep(order, decision.answer);
+    if (kept.first) {
+      feed.write("merchant", "The handler recorded its answer before sending it.", {
+        order_id: order.id,
+        merchant_item_id: order.merchant_item_id,
+        records: records.directory,
+      });
+      return decision;
+    }
+    feed.write(
+      "merchant",
+      "Another stand recorded this order first, so this one sends that stand's answer instead of its own.",
+      {
+        order_id: order.id,
+        decided: decision.answer,
+        recorded_by: { port: kept.recorded.port, pid: kept.recorded.pid },
+      },
+    );
+    return fromRecord(
+      kept.recorded,
+      "The handler answered with the answer another stand recorded.",
+    );
+  };
+
   const register = (fresh: AgentifyClient): void => {
     fresh.on("order", async (order) => {
       feed.got("merchant", "The SDK handed the handler an order.", {
@@ -457,7 +506,8 @@ export const makeStandMerchant = (
         merchant_item_id: order.merchant_item_id,
         params: order.params,
       });
-      const decision = await decided(order);
+      await records?.arrived(order);
+      const decision = await answerFor(order);
       if (decision.deliversLater) {
         taken.set(order.id, order);
         deliverLater(order);
