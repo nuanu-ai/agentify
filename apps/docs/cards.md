@@ -580,6 +580,25 @@ a parcel's card that the live channel then refuses. Nor can it measure the
 header a card is paid through, so a card it passes can still be refused for its
 size ([how large a card may be](#how-large-a-card-may-be)).
 
+## Your seller name and site
+
+The findings about you rather than the card are fixed in your dashboard's
+Settings, and the name and the site also with a call: `POST /v0/seller-name`
+with your key as `Authorization: Bearer <key>`, which the SDK has no method
+for. Its body names `seller_name`, `seller_site` or both, and a field you leave
+out stays as it was. Your code can read the wallet with `GET /v0/payout-wallet`,
+which on the live channel also names a replacement waiting to take effect, and
+no call sets it.
+
+The name is at most 32 characters of printable ASCII with no space at either
+end, and it is plain text: HTML tags and codes such as `&amp;` are refused,
+and an ampersand written as text passes. The site is `https://` and the domain
+name of your shop in lower case with nothing after it, such as
+`https://yourshop.example`. Every agent reads both beside each of your cards
+and on the status of each order, as where to take what an order cannot
+answer, and is told that you gave them and we did not check them. Either can
+be changed, and neither can be removed once given.
+
 ## Updating a card, and taking one off sale
 
 Updating is the call that created it. Publishing again under the same

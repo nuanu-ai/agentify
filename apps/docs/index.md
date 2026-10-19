@@ -130,8 +130,8 @@ dispute — are in the [common questions](/faq).
    [The first test sale](/quickstart), or connect your WooCommerce shop
    ([how](/woocommerce)).
 4. Make your first test purchase yourself: your engineer buys your own card on
-   the test channel with test USDC, as [The first test sale](/quickstart)
-   shows.
+   the test channel with test USDC, as [the guide's sixth
+   step](/quickstart#_6-make-your-first-test-purchase) shows.
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
    as a separate account, save a wallet for real money there, and have your
    cards published again with a live key. An Agentify operator approves your

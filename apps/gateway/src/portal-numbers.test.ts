@@ -246,11 +246,6 @@ const PINS: readonly Pin[] = [
     { page: "apps/docs/faq.md" },
     "your payout contract sends {merchant}% of it to your wallet and {agentify}% to us",
   ),
-  ...sharesIn(
-    "the shares, where the engineer reads the wallet back",
-    { page: "apps/docs/quickstart.md" },
-    "that pays {merchant}% to `payout_wallet` and {agentify}% to Agentify",
-  ),
 
   // --- the commission, on the sellers' landing ------------------------------
   ...sharesIn(
@@ -364,62 +359,26 @@ const PINS: readonly Pin[] = [
     is: deadlines.syncResponseMs,
   },
   {
-    what: "the same, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /as one number for everybody, and it is (\w+) seconds/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the same, said again where the page says whose seconds they are",
-    page: "apps/docs/quickstart.md",
-    anchor: /they are the (\w+) seconds your handler has/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
     what: "the whole purchase the agent is promised, which the answer sits inside",
     page: "apps/docs/orders.md",
     anchor: /promised a synchronous purchase within (\w+) seconds of the payment check/,
     reads: "seconds",
     is: deadlines.syncBudgetMs,
   },
+
   {
-    what: "the same promise, where the handler is written",
+    what: "how long a synchronous answer has, where the handler is written",
     page: "apps/docs/quickstart.md",
-    anchor: /the (\w+) seconds we promise the agent/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  // The pages then name both numbers again, without the word "seconds", where
-  // they say the two clocks start together.
-  {
-    what: "the answer's time, as what the check runs before",
-    page: "apps/docs/quickstart.md",
-    anchor: /the check itself runs before the (\w+) begin/,
+    anchor: /a synchronous sale is lost (\w+) seconds after the payment check/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
-    what: "the ceiling, where the handler is written and its clock's start is named",
+    what: "how long we wait for a handler's answer, where the synchronous handler is written",
     page: "apps/docs/quickstart.md",
-    anchor: /The (\w+) start where your \w+ do/,
+    anchor: /still working after (\w+) seconds has the same order sent again/,
     reads: "seconds",
-    is: deadlines.syncBudgetMs,
-  },
-  {
-    what: "the answer's time, beside the ceiling it starts with, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /The \w+ start where your (\w+) do/,
-    reads: "seconds",
-    is: deadlines.syncResponseMs,
-  },
-  {
-    what: "the ceiling, as what the agent waits for after the check, where the handler is written",
-    page: "apps/docs/quickstart.md",
-    anchor: /the agent waits for the check, and then for the (\w+)/,
-    reads: "seconds",
-    is: deadlines.syncBudgetMs,
+    is: deadlines.handlerAnswerMs,
   },
 
   // --- how long the facilitator is waited for about a charge -----------------
