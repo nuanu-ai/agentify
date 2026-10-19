@@ -34,10 +34,17 @@ const FACE_DIGEST = createHash("sha256").update(readFileSync(DIAGRAM_FACE)).dige
 /** The face a label is measured in when it is drawn, which must be the face it is shown in. */
 export const DIAGRAM_FAMILY = '"Schibsted Grotesk", system-ui, sans-serif';
 
+/**
+ * Room, in pixels on each side, a label is measured with beyond its own text.
+ * Linux draws the same face a pixel or two wider than the Mac a drawing is
+ * usually made on, and a label drawn to its exact width there runs out of its box.
+ */
+export const LABEL_ROOM_PX = 3;
+
 /** The key a diagram is kept under, which is also its element's id on the page. */
 export const diagramKey = (source: string): string =>
   `diagram-${createHash("sha256")
-    .update(`${MERMAID_VERSION}\n${DIAGRAM_FAMILY}\n${FACE_DIGEST}\n${source}`)
+    .update(`${MERMAID_VERSION}\n${DIAGRAM_FAMILY}\n${FACE_DIGEST}\n${LABEL_ROOM_PX}\n${source}`)
     .digest("hex")
     .slice(0, 16)}`;
 

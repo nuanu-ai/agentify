@@ -12,7 +12,13 @@ import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { DIAGRAM_FACE, DIAGRAM_FAMILY, DIAGRAMS, diagramKey } from "../app/diagrams.server.js";
+import {
+  DIAGRAM_FACE,
+  DIAGRAM_FAMILY,
+  DIAGRAMS,
+  diagramKey,
+  LABEL_ROOM_PX,
+} from "../app/diagrams.server.js";
 import { diagramSources } from "../app/markdown.server.js";
 
 const require = createRequire(import.meta.url);
@@ -37,7 +43,9 @@ if (missing.length > 0) {
     const page = await browser.newPage();
     const face = (await readFile(DIAGRAM_FACE)).toString("base64");
     await page.setContent(
-      `<!doctype html><style>@font-face{font-family:"Schibsted Grotesk";font-weight:400 700;src:url(data:font/woff2;base64,${face}) format("woff2")}body{font-family:${DIAGRAM_FAMILY}}</style><body></body>`,
+      // The padding exists only on this page: the drawing keeps the wider box
+      // Mermaid measured, and the page shows the label without it.
+      `<!doctype html><style>@font-face{font-family:"Schibsted Grotesk";font-weight:400 700;src:url(data:font/woff2;base64,${face}) format("woff2")}body{font-family:${DIAGRAM_FAMILY}}foreignObject>div{padding-inline:${LABEL_ROOM_PX}px}</style><body></body>`,
     );
     await page.addScriptTag({ path: MERMAID });
     await page.evaluate(() =>
