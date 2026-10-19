@@ -342,8 +342,12 @@ accepted) or `payment_not_settled` (the charge did not go through), and
 `expired` with `price_expired` (the price ran out before the payment was taken)
 or `merchant_timed_out` (a synchronous answer did not arrive in time). Where
 the refusal was yours, your code and your message travel with the status
-instead, and a reason never stands beside them. A word you do not know is not
-an ending: read it again later.
+instead, and a reason stands beside them only on an order that owes a refund.
+Every `refund_due` carries a `reason` naming why the refund is owed, in the
+words of your own `order.refund_due` event — `refused`, `deadline_passed` or
+`merchant_left` — with a sentence telling the agent that nothing records a
+refund yet, so the status does not change once the buyer is paid back. A word
+you do not know is not an ending: read it again later.
 
 ```ts
 const order = await agentify.orders.get(orderId)
