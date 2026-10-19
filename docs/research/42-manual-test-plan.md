@@ -168,7 +168,12 @@ carry. The proxy arms one cut per run, and arming another means restarting it;
 a restart drops whatever is in flight through it, which is itself an unplanned
 cut, so stop the caller first. It cannot pick a poll answer by what it
 carries, which is the smallest capability still missing for J-07's lost-event
-variant. The pauses belong to the stand, our own SDK merchant. They hold the
+variant. Losing a purchase answer is half of J-01; the other half resends to
+the same order, and no buyer here can. The buy command and the stand sign a
+fresh payment every time, and the stand lets go of the challenge once it has
+signed it, so repeating the exact payment and signing a fresh authorisation for
+the same order both need a buyer that keeps the challenge and the signed
+payment header it sent. The proxy never logs that header. The pauses belong to the stand, our own SDK merchant. They hold the
 handler's answer to an order, not the later deliver call of an order taken on
 earlier, and they say nothing about a newcomer's merchant or the WooCommerce
 connector, whose faults stay with the rows marked missing. A stand keeping
