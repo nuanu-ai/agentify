@@ -349,3 +349,144 @@ describe("a payment reference", () => {
     expect((await harnessed.store.orderById(orderId))?.paidBy?.toLowerCase()).toBe(BUYER);
   });
 });
+
+describe("a payer whose answer was lost", () => {
+  it("is not told nothing was charged when it presents a used payment again, and a fresh one returns the order uncharged", async () => {
+    // Without the identifier in the challenge, paying again is how a payer
+    // gets back to an order whose answer it lost.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const payment = paymentAgainst(challenge, BUYER, "0x01");
+    harnessed.facilitator.willVerify(
+      { verified: true, payer: BUYER, validUntil: null },
+      {
+        verified: false,
+        reason: "signature",
+        message: "invalid_exact_evm_nonce_already_used",
+      },
+      { verified: true, payer: BUYER, validUntil: null },
+    );
+    const bought = await present(served, itemId, payment);
+    expect(bought.status).toBe(200);
+    const orderId = (bought.body as { order_id: string }).order_id;
+
+    const again = await present(served, itemId, payment);
+
+    expect(again.status).toBe(409);
+    expect((again.body as { error: { message: string } }).error.message).not.toMatch(
+      /nothing was charged/,
+    );
+    const fresh = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
+    expect(fresh.status).toBe(200);
+    expect((fresh.body as { order_id: string }).order_id).toBe(orderId);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
+describe("the reference of an order that ended before a payment was taken", () => {
+  /** A payment that is not one, carrying only the reference, as anyone who read it could send. */
+  const onlyTheReference = (challenge: string): string =>
+    encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: referenceIn(challenge) } } as never,
+      payload: {},
+    });
+
+  /** Neither the order's identifier nor the address built from it is in an answer. */
+  const expectNoOrderIn = (body: unknown, orderId: string) => {
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(orderId);
+    expect(text).not.toContain("status_url");
+    expect(text).not.toContain("/x402/orders/");
+  };
+
+  /** Waits, briefly, for an order to reach a state a timer moves it to. */
+  const reaching = async (harnessed: Harness, orderId: string, state: string) => {
+    for (let tries = 0; tries < 200; tries += 1) {
+      if ((await harnessed.store.orderById(orderId))?.order.state === state) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`the order never reached ${state}`);
+  };
+
+  it("hands back no order for a price that lapsed, and asks the facilitator nothing", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
+    const orderId = opened?.order.id ?? "";
+    harnessed.advance(60_000);
+
+    const answered = await present(served, itemId, onlyTheReference(challenge));
+
+    expect(answered.status).toBe(409);
+    expectNoOrderIn(answered.body, orderId);
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+  });
+
+  it("hands back no order for a synchronous purchase whose seller ran out of time, and its buyer still collects", async () => {
+    // The buyer's payment took the reference to the facilitator; the seller
+    // then missed the synchronous deadline, so the order closed unpaid.
+    const { harnessed, served } = await started({
+      SYNC_RESPONSE_MS: "80",
+      SETTLE_RESPONSE_MS: "40",
+      SYNC_BUDGET_MS: "1000",
+      HANDLER_ANSWER_MS: "1000",
+    });
+    const itemId = await publish(harnessed, syncCard);
+    const challenge = await challengeFor(served, itemId);
+    const paid = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+    const orderId = (paid.body as { order_id: string }).order_id;
+    await reaching(harnessed, orderId, "expired");
+    const checked = harnessed.facilitator.verifies.length;
+
+    const answered = await present(served, itemId, onlyTheReference(challenge));
+
+    expect(answered.status).toBe(409);
+    expectNoOrderIn(answered.body, orderId);
+    expect(harnessed.facilitator.verifies).toHaveLength(checked);
+
+    // The seller's goods arrive late and are held; the buyer pays again from
+    // the same wallet and collects them.
+    await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      delivered: { access_code: "SESAME" },
+    });
+    const collected = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
+    expect(collected.status).toBe(200);
+    expect(collected.body).toMatchObject({
+      order_id: orderId,
+      delivered: { access_code: "SESAME" },
+    });
+  });
+
+  it("hands back no order for a charge that went quiet, whose money may have moved", async () => {
+    // A charge carries the reference, which is what a listing publishes once
+    // the charge goes through.
+    const { harnessed, served } = await started({ SETTLE_RESPONSE_MS: "100" });
+    harnessed.facilitator.willSettle({ settled: "unknown", reason: "timed out" });
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const paid = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+    const orderId = (paid.body as { order_id: string }).order_id;
+    // What the settle clock does when it runs out.
+    await harnessed.gateway.runner.apply(orderId, {
+      kind: "deadline_expired",
+      at: harnessed.now() + 60_000,
+      deadline: "settle_response",
+    });
+    const quiet = await harnessed.store.orderById(orderId);
+    expect([quiet?.order.state, quiet?.order.payment]).toStrictEqual([
+      "rejected",
+      "outcome_unknown",
+    ]);
+    const checked = harnessed.facilitator.verifies.length;
+
+    const answered = await present(served, itemId, onlyTheReference(challenge));
+
+    expect(answered.status).toBe(409);
+    expectNoOrderIn(answered.body, orderId);
+    expect(harnessed.facilitator.verifies).toHaveLength(checked);
+  });
+});
