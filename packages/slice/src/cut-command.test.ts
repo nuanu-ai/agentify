@@ -444,9 +444,10 @@ describe("which answer is cut", () => {
   });
 
   it("does not spend the cut on a caller that left while the cut was being written to it", async () => {
-    // Far more than the kernel buffers on loopback hold, so the proxy is still
-    // writing the first half when the caller leaves.
-    const goods = Buffer.alloc(64 * 1024 * 1024, "g");
+    // The caller never reads, so its receive window stays small and the proxy
+    // is still writing the first half when the caller leaves. Under 8 MiB a
+    // Linux loopback can take the whole half before the reset arrives.
+    const goods = Buffer.alloc(16 * 1024 * 1024, "g");
     const up = await upstream((n, response) => {
       response.writeHead(200, { "content-type": "application/octet-stream" });
       response.end(n === 1 ? goods : PAID);
