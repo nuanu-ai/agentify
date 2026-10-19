@@ -113,8 +113,9 @@ export interface StandMerchant {
   /** Answers one held order. False when it is no longer being held. */
   answerHeld(orderId: string, answer: HeldAnswer): boolean;
   /**
-   * Where every order arriving from now on is paused, repeats included.
-   * Changing it releases nothing already paused.
+   * Where every order arriving from now on is paused, repeats included. An
+   * order is paused at most once, at the point set when it arrived, so
+   * changing this neither releases nor pauses again an order already arrived.
    */
   readonly pause: { at: PausePoint };
   /** Orders paused at this stand, waiting to be released. */
@@ -432,17 +433,19 @@ export const makeStandMerchant = (
   };
 
   /**
-   * Stops one order at `phase` when the stand is set to pause there, until it
-   * is released or the stand disconnects. There is no ceiling: the worker
-   * dispatches serially, so everything else this process would be handed
-   * waits behind a paused order, and that is the point of pausing it.
+   * Stops one order at `phase` when `pauseAt`, the point set as it arrived,
+   * is that phase, until it is released or the stand disconnects. There is no
+   * ceiling: the worker dispatches serially, so everything else this process
+   * would be handed waits behind a paused order, and that is the point of
+   * pausing it.
    */
   const pausedIfAsked = async (
     order: LiveOrder,
+    pauseAt: PausePoint,
     phase: PausedOrder["phase"],
     answer?: HandlerAnswer,
   ): Promise<void> => {
-    if (pause.at !== phase) return;
+    if (pauseAt !== phase) return;
     if (disconnecting) throw abandonment(order.id, "paused");
     paused.set(order.id, {
       id: order.id,
@@ -610,10 +613,11 @@ export const makeStandMerchant = (
         merchant_item_id: order.merchant_item_id,
         params: order.params,
       });
+      const pauseAt = pause.at;
       await records?.arrived(order);
-      await pausedIfAsked(order, "arrival");
+      await pausedIfAsked(order, pauseAt, "arrival");
       const decision = await answerFor(order);
-      await pausedIfAsked(order, "answer_ready", decision.answer);
+      await pausedIfAsked(order, pauseAt, "answer_ready", decision.answer);
       // Only now, with the answer about to go back: a delivery promised from a
       // timer started before a pause could reach the gateway ahead of the
       // answer that took the order on.
