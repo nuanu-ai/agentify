@@ -608,7 +608,8 @@ async function answerPurchase(
       return written(response, UNPROCESSABLE, refusal("ship_to_does_not_fit", attempt.message));
 
     case "ship_to_changed":
-      // Decided before the payment was checked, so nothing was taken.
+      // Decided once the payment was checked and before anything was claimed
+      // or charged, so nothing was taken.
       return written(
         response,
         CONFLICT,

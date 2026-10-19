@@ -224,7 +224,7 @@ describe("buying a parcel", () => {
     expect(order?.ship_to).toStrictEqual(locality);
   });
 
-  it("refuses a payment carrying another address before it is verified, and says to start again", async () => {
+  it("refuses a verified payment carrying another address before anything is charged, and says to start again", async () => {
     const { harnessed, served, itemId } = await started();
 
     const paid = await buyOverHttp(
@@ -241,7 +241,7 @@ describe("buying a parcel", () => {
     expect(paid.status).toBe(409);
     expect((paid.body as Refused).error.code).toBe("ship_to_changed");
     expect((paid.body as Refused).error.message).toContain("new purchase");
-    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
   it("does not tell a payment that is not one whether an address is the one priced", async () => {

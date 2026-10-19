@@ -1130,6 +1130,15 @@ const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> 
     `The seller stopped selling through Agentify after this order was paid and before its goods came, so they owe you the whole price back from their own wallet. ${UNRECORDED}`,
 };
 
+/**
+ * The sentence an order's `reason` carries where Agentify ended it, or null
+ * where it carries none.
+ */
+export function endingSentenceOf(order: Order): string | null {
+  const code = endingReasonFor(order);
+  return code === null ? null : REASON_WORDS[code](order);
+}
+
 const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
   unavailable: () =>
     "The seller's price check said this is not available, and gave no reason; nothing was charged. Buy it elsewhere, or ask the seller at their site.",
