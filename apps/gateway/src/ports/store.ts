@@ -144,10 +144,10 @@ export interface StoredOrder {
   /**
    * The order's owner: the payer the payment layer named when it verified the
    * first payment for the order (never the address a payment declares of
-   * itself), or that payment's fingerprint where the layer names none. Order
-   * ids are not secret and the payment route takes no key, so without an owner
-   * anyone holding an id could pay against, take the goods of, or close
-   * someone else's order. It is set inside the store's hold on the order, so
+   * itself), or that payment's fingerprint where the layer names none. A
+   * payment reference is not secret, since a listing can publish it, and the
+   * payment route takes no key, so without an owner anyone holding a reference
+   * could pay against, take the goods of, or close someone else's order. It is set inside the store's hold on the order, so
    * two racing payments cannot both become the owner.
    */
   readonly paidBy: string | null;

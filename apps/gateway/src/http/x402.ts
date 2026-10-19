@@ -4,9 +4,12 @@
  * middleware is not used because it verifies and settles around one request,
  * and the order machine needs the two apart.
  *
- * The order identifier travels in the requirements' `extra` and comes back
- * inside the payment. It is a hint, never an authority: a payment is checked
- * against the price on our own order.
+ * The order's payment reference travels in the requirements' `extra` and comes
+ * back inside the payment. It is a hint, never an authority: a payment is
+ * checked against the price on our own order. The order's identifier is never
+ * in the requirements, because they go to the payment facilitator and a
+ * discovery listing can publish them, and the identifier opens the order's
+ * goods.
  */
 
 import { createHash } from "node:crypto";
@@ -44,7 +47,8 @@ export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
 const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 
-export const ORDER_ID_IN_EXTRA = "order_id";
+/** Where in the requirements' `extra` the order's payment reference is written. */
+export const PAYMENT_REF_IN_EXTRA = "payment_ref";
 
 /**
  * A price in the token's smallest unit, written out exactly; money never
@@ -103,7 +107,7 @@ const widestListingName = (): string => {
 const WIDEST = {
   price: { amount: `${"9".repeat(18)}.${"9".repeat(PAYABLE_DECIMALS)}`, currency: "USD" },
   itemId: randomIds("item"),
-  orderId: randomIds("ord"),
+  paymentRef: randomIds("pay"),
   payTo: `0x${"f".repeat(40)}`,
   serviceName: widestListingName(),
 } as const;
@@ -121,7 +125,9 @@ export class PaymentEdge {
   }
 
   /**
-   * What an agent is asked to pay, to whom, and for which order. The address
+   * What an agent is asked to pay, to whom, and for which order, named by its
+   * payment reference; `null` names none, for a price with no order behind
+   * it. The address
    * is the one given, unchanged: the card's merchant's recorded split for a
    * challenge, and the order's own address at verification and at the charge,
    * never anything from our configuration.
@@ -133,7 +139,7 @@ export class PaymentEdge {
    */
   requirementsFor(
     price: { readonly amount: string; readonly currency: string },
-    orderId: string | null,
+    paymentRef: string | null,
     payTo: string | null,
   ): PaymentRequirements {
     if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
@@ -164,7 +170,7 @@ export class PaymentEdge {
         name: asset.name,
         version: asset.version,
         // A challenge for a card alone, with no order behind it, names none.
-        ...(orderId === null ? {} : { [ORDER_ID_IN_EXTRA]: orderId }),
+        ...(paymentRef === null ? {} : { [PAYMENT_REF_IN_EXTRA]: paymentRef }),
       },
     };
   }
@@ -180,7 +186,7 @@ export class PaymentEdge {
    */
   challengeFor(
     price: { readonly amount: string; readonly currency: string },
-    orderId: string | null,
+    paymentRef: string | null,
     listed: {
       readonly itemId: string;
       readonly card: Card;
@@ -203,7 +209,7 @@ export class PaymentEdge {
     // number it is reading.
     const said =
       listed.card.fulfillment === "ship"
-        ? [why, orderId === null ? PARCEL_LISTED : PARCEL_PRICED]
+        ? [why, paymentRef === null ? PARCEL_LISTED : PARCEL_PRICED]
             .filter((part) => part !== undefined)
             .join("; ")
         : why;
@@ -221,7 +227,7 @@ export class PaymentEdge {
         // A copy, not a cast: the contract's tags are read-only.
         ...(declared.resource.tags === undefined ? {} : { tags: [...declared.resource.tags] }),
       },
-      accepts: [this.requirementsFor(price, orderId, listed.payTo)],
+      accepts: [this.requirementsFor(price, paymentRef, listed.payTo)],
       extensions: discoveryExtensionOf(declared),
     };
     return encodePaymentRequiredHeader(challenge);
@@ -234,11 +240,11 @@ export class PaymentEdge {
    */
   widestChallengeFor(card: Card): number {
     let widest = 0;
-    for (const orderId of [null, WIDEST.orderId]) {
+    for (const paymentRef of [null, WIDEST.paymentRef]) {
       for (const why of Object.values(CHALLENGE_REASONS)) {
         const header = this.challengeFor(
           WIDEST.price,
-          orderId,
+          paymentRef,
           { itemId: WIDEST.itemId, card, serviceName: WIDEST.serviceName, payTo: WIDEST.payTo },
           why,
         );
@@ -416,7 +422,8 @@ function stably(value: unknown): string {
 }
 
 /**
- * What an agent presented, if anything, and which order it says it is for.
+ * What an agent presented, if anything, and the payment reference it names its
+ * order by.
  * `null` means no payment; `"unreadable"` means one that would not decode,
  * which the caller answers with a fresh challenge that says so, or the agent
  * cannot tell its own encoding is at fault.
@@ -425,7 +432,7 @@ export function presentedPayment(headers: Record<string, string | string[] | und
   | {
       readonly raw: string;
       readonly payload: PaymentPayload;
-      readonly orderId: string | null;
+      readonly paymentRef: string | null;
     }
   | "unreadable"
   | null {
@@ -443,8 +450,8 @@ export function presentedPayment(headers: Record<string, string | string[] | und
     return "unreadable";
   }
 
-  const named = payload.accepted?.extra?.[ORDER_ID_IN_EXTRA];
-  return { raw: header, payload, orderId: typeof named === "string" ? named : null };
+  const named = payload.accepted?.extra?.[PAYMENT_REF_IN_EXTRA];
+  return { raw: header, payload, paymentRef: typeof named === "string" ? named : null };
 }
 
 function headerValue(

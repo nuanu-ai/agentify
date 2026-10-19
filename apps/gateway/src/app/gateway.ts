@@ -1383,7 +1383,7 @@ export class Gateway {
         : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
 
     const verified = await this.runtime.facilitator.verify({
-      orderId,
+      paymentRef: before.paymentRef,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1560,6 +1560,15 @@ export class Gateway {
    */
   async orderById(orderId: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderById(orderId);
+  }
+
+  /**
+   * The order a payment is for, by the payment reference its challenge
+   * carried, whoever it belongs to. Only the purchase route asks: the
+   * reference names the order to the payment side and opens nothing else.
+   */
+  async orderForPayment(paymentRef: string): Promise<StoredOrder | null> {
+    return this.runtime.store.orderByPaymentRef(paymentRef);
   }
 
   /** One of this merchant's orders. Another merchant's is not found. */

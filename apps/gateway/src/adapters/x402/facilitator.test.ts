@@ -71,7 +71,7 @@ class Answering implements FacilitatorClient {
 }
 
 const charge = (payment: string): Charge => ({
-  orderId: "ord_1",
+  paymentRef: "pay_1",
   amount: "80.00",
   currency: "USD",
   payment,
@@ -83,20 +83,9 @@ const honest = (overrides: Partial<PaymentRequirements> = {}): string =>
   encodePaymentSignatureHeader({
     x402Version: 2,
     accepted: {
-      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
       ...overrides,
     },
-    payload: { signature: "0xsigned" },
-  });
-
-/**
- * A payment made against a different order of ours, correct in every other
- * respect: same price, same asset, same chain, same address.
- */
-const forOrder = (orderId: string): string =>
-  encodePaymentSignatureHeader({
-    x402Version: 2,
-    accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, orderId, PAY_TO),
     payload: { signature: "0xsigned" },
   });
 
@@ -139,7 +128,7 @@ describe("verifying a payment", () => {
     const signedUntil = (validBefore: string | undefined): string =>
       encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
         payload: {
           signature: "0xsigned",
           authorization: {
@@ -175,7 +164,7 @@ describe("verifying a payment", () => {
     // end as the permit's deadline.
     const permitted = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
       payload: {
         signature: "0xsigned",
         permit2Authorization: {
@@ -241,7 +230,7 @@ describe("verifying a payment", () => {
           x402Version: 2,
           accepted: edge.requirementsFor(
             { amount: "80.00", currency: "USD" },
-            "ord_1",
+            "pay_1",
             inLowerCase,
           ),
           payload: { signature: "0xsigned" },
@@ -258,7 +247,7 @@ describe("verifying a payment", () => {
     // The token's address is an address too, and arrives from the same
     // libraries. A payment echoing it in the other spelling is the same
     // payment.
-    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO);
+    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
     expect(
       await new X402Facilitator(new Answering(), edge).verify(
         charge(honest({ asset: ours.asset.toUpperCase().replace("0X", "0x") })),
@@ -286,13 +275,13 @@ describe("verifying a payment", () => {
     const theirs = "0x27b1fdb04752bbc536007a920d24acb045561c26";
     const paidToThem = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", theirs),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", theirs),
       payload: { signature: "0xsigned" },
     });
     const client = new Answering();
 
     const answered = await new X402Facilitator(client, edge).verify({
-      orderId: "ord_1",
+      paymentRef: "pay_1",
       amount: "80.00",
       currency: "USD",
       payment: paidToThem,
@@ -321,7 +310,7 @@ describe("verifying a payment", () => {
     const paidTo = (payTo: string): string =>
       encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", payTo),
         payload: { signature: "0xsigned" },
       });
     const against = (payment: string, payTo: string): Charge => ({ ...charge(payment), payTo });
@@ -407,7 +396,7 @@ describe("verifying a payment", () => {
     const client = new Answering();
     const facilitator = new X402Facilitator(client, edge);
 
-    for (const named of [{ payment_ref: "pay_2" }, { order_id: "pay_1" }, {}]) {
+    for (const named of [{ payment_ref: "pay_2" }, { order_id: "ord_1" }, {}]) {
       expect(await facilitator.verify(againstReference("pay_1", paidNaming(named)))).toStrictEqual({
         verified: false,
         reason: "price_stale",

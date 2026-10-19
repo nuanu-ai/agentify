@@ -335,7 +335,7 @@ if (databaseUrl === null) {
           PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000009",
           PUBLIC_BASE_URL: "https://agentify.example",
         }),
-      ).requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo as string | null)
+      ).requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", payTo as string | null)
         .payTo;
 
     beforeAll(async () => {

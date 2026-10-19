@@ -830,7 +830,7 @@ export class OrderRunner {
     }
 
     const outcome = await this.#runtime.facilitator.settle({
-      orderId: record.order.id,
+      paymentRef: record.paymentRef,
       amount: price.amount,
       currency: price.currency,
       payment,

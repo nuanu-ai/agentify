@@ -17,7 +17,7 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import { buildApp, refusal } from "./server.js";
-import { ORDER_ID_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /**
  * The files that hold every refusal this gateway sends, read as source text
@@ -547,7 +547,7 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.amount).toBe("1");
   });
 
-  it("prices a POST against an order it opened, and says which order", async () => {
+  it("prices a POST against an order it opened, and names that order by its payment reference", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -559,10 +559,10 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    const named = challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA];
+    const named = challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.order.id);
+    expect(named).toBe(orders[0]?.paymentRef);
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
@@ -584,10 +584,10 @@ describe("the payment challenge", () => {
 
     expect(bought.status).toBe(402);
     const named = decodePaymentRequiredHeader(bought.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
-      .accepts[0]?.extra?.[ORDER_ID_IN_EXTRA];
+      .accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.order.id);
+    expect(named).toBe(orders[0]?.paymentRef);
   });
 
   it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
@@ -604,7 +604,7 @@ describe("the payment challenge", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    expect(challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -621,7 +621,7 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.extra?.[ORDER_ID_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -727,7 +727,7 @@ describe("the payment challenge", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [ORDER_ID_IN_EXTRA]: "ord_from_nowhere" },
+        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
       },
       payload: {},
     });
@@ -794,7 +794,7 @@ describe("the payment challenge", () => {
     const nonsense = Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepted: { extra: { order_id: offered.order.order.id } },
+        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
       }),
       "utf8",
     ).toString("base64");
@@ -881,7 +881,7 @@ describe("a card whose payment challenge would be too large to read", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [ORDER_ID_IN_EXTRA]: "ord_from_nowhere" },
+        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
       },
       payload: {},
     });
@@ -1243,9 +1243,9 @@ describe("whose purchase it is", () => {
   };
 
   it("hands the goods to exactly one of two racing payments and refuses the other", async () => {
-    // The order identifier is public: it is in the challenge. Synchronous goods
-    // reach only the parked call, so a second call under the same order must not
-    // take the first one's place.
+    // The order's payment reference is public: it is in the challenge.
+    // Synchronous goods reach only the parked call, so a second call under the
+    // same order must not take the first one's place.
     const { served, harnessed } = await started(RACE_TIMING);
     const itemId = await publish(served, syncCard);
 
@@ -1375,8 +1375,8 @@ describe("whose purchase it is", () => {
   });
 
   it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // An order's identifier travels in challenges, on the merchant's stream and
-    // in receipts, so holding one does not make a wallet the buyer.
+    // An order's payment reference is in every challenge for it, and a listing
+    // can publish it, so holding one does not make a wallet the buyer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
