@@ -282,7 +282,7 @@ const orderNote = (body: Buffer, coding: string | null): string => {
  */
 const factsOf = (answer: Answer): { readonly facts: string; readonly unit: string } => {
   const named = (answer.headers["content-encoding"] ?? "").trim().toLowerCase();
-  const coding = named === "" || named === "identity" ? null : named;
+  const coding = named === "" ? null : named;
   const unit = coding === null ? "bytes" : `encoded bytes (${coding})`;
   const redirect =
     answer.status >= 300 && answer.status <= 399 && answer.headers.location !== undefined
