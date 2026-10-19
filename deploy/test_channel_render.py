@@ -47,7 +47,9 @@ CHANNELS = {
         "AGENTIFY_PUBLIC_ORIGIN": "https://test.agentify.ad",
         "AGENTIFY_SURFACE_MODE": "test",
         "AGENTIFY_PAYMENT_NETWORK": "eip155:84532",
-        "AGENTIFY_FACILITATOR_URL": "https://x402.org/facilitator",
+        "AGENTIFY_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+        "CDP_API_KEY_ID": "t" * 16,
+        "CDP_API_KEY_SECRET": "u" * 16,
         "AGENTIFY_TEST_LISTEN_ADDRESS": "10.20.10.20",
     },
     "production": {

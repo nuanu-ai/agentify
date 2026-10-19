@@ -88,6 +88,9 @@ importers:
       '@agentify/gateway':
         specifier: workspace:*
         version: link:../gateway
+      '@agentify/scanner':
+        specifier: workspace:*
+        version: link:../../packages/scanner
       '@agentify/scanner-contracts':
         specifier: workspace:*
         version: link:../../packages/scanner-contracts
