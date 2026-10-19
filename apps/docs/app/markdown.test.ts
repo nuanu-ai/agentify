@@ -10,9 +10,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DOCS_PAGES } from "@agentify/ui/docs";
+import { DOCS_GROUPS, DOCS_PAGES } from "@agentify/ui/docs";
 import { describe, expect, it } from "vitest";
-import { parser, renderedPages, withSiteValues } from "./markdown.server.js";
+import { markdownCopy } from "./markdown-copy.js";
+import { parser, renderedPages, sourceOf, withSiteValues } from "./markdown.server.js";
+import { PAGES } from "./pages.js";
 import { UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -88,6 +90,31 @@ describe("a link into the documentation", () => {
 
   it("keeps the anchor VitePress gave a heading that starts with a digit", () => {
     expect(anchorsOf("/quickstart")).toContain("_1-make-the-merchant-account-ready");
+  });
+});
+
+describe("the release of the SDK the documentation describes", () => {
+  const released = (
+    JSON.parse(readFileSync(join(ROOT, "packages/sdk/package.json"), "utf8")) as {
+      version: string;
+    }
+  ).version;
+  const engineers = PAGES.filter((page) =>
+    DOCS_GROUPS.find((group) => group.label === "For the engineer")?.entries.some(
+      (entry) => entry.path === page.path && entry.section === undefined,
+    ),
+  );
+
+  it("is named on every page for the engineer, as the package in the repository is versioned", async () => {
+    expect(engineers.length).toBeGreaterThan(2);
+    for (const page of engineers) {
+      const named = `@nuanu-ai/agentify</code> ${released}`;
+
+      expect(pages.get(page.path)?.html, page.path).toContain(named);
+      expect(await markdownCopy(await sourceOf(page)), page.path).toContain(
+        `\`@nuanu-ai/agentify\` ${released}`,
+      );
+    }
   });
 });
 
