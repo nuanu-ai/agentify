@@ -14,9 +14,9 @@ import {
   ServiceNameSchema,
 } from "./card.js";
 import { toJsonSchemas } from "./index.js";
+import { TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
 import { ShipToSchema } from "./ship-to.js";
-import { RecordedShipmentSchema } from "./shipment.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 const syncCard = {
@@ -880,7 +880,12 @@ describe("a card as a discovery channel reads it", () => {
     }
   });
 
-  it("publishes a delivery example the card's own promise would accept", () => {
+  /** The fields every order document carries, whatever became of the order. */
+  const orderFields = ["delivered", "order_id", "price", "seller", "status", "status_url", "test"];
+
+  it("publishes as its output the order a purchase answers, with the goods under delivered", () => {
+    // A purchase answers with the order document, not the bare goods; an
+    // agent built from the declaration looks for them where they are.
     const parsed = CardSchema.parse({
       ...syncCard,
       result: {
@@ -890,9 +895,11 @@ describe("a card as a discovery channel reads it", () => {
         credit: { type: "number", required: false },
       },
     });
-    const { output } = bazaarDeclarationOf(parsed, at);
+    const example = bazaarDeclarationOf(parsed, at).output.example as Record<string, unknown>;
 
-    expect(output.example).toStrictEqual({
+    expect(Object.keys(example).sort()).toStrictEqual(orderFields);
+    expect(example.status).toBe("delivered");
+    expect(example.delivered).toStrictEqual({
       access_url: "string",
       seats: 0,
       active: false,
@@ -900,10 +907,26 @@ describe("a card as a discovery channel reads it", () => {
     });
     // A delivery of this shape is one the merchant could actually send; an
     // empty string would be refused by the delivery check.
-    expect(deliveryCheckFor(parsed).safeParse(output.example).success).toBe(true);
-    expect(deliveryCheckFor(parsed).safeParse({ ...output.example, access_url: "" }).success).toBe(
-      false,
-    );
+    expect(deliveryCheckFor(parsed).safeParse(example.delivered).success).toBe(true);
+    expect(
+      deliveryCheckFor(parsed).safeParse({ ...(example.delivered as object), access_url: "" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("publishes as its output an order under way with no goods, where the goods come later", () => {
+    // The money moves at the purchase and the goods are collected at the
+    // order's status_url; the answer to the purchase carries none.
+    const later = CardSchema.parse({
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+    const example = bazaarDeclarationOf(later, at).output.example as Record<string, unknown>;
+
+    expect(Object.keys(example).sort()).toStrictEqual(orderFields);
+    expect(example.status).toBe("in_progress");
+    expect(example.delivered).toBeNull();
   });
 
   it("gives the same declaration for the same card twice", () => {
@@ -947,10 +970,26 @@ describe("a parcel's listing in a discovery catalog", () => {
     expect(ShipToSchema.safeParse((input as { ship_to?: unknown }).ship_to).success).toBe(true);
   });
 
-  it("publishes as its output a shipment as the agent reads one", () => {
-    const { output } = bazaarDeclarationOf(parcelCard, at);
+  it("publishes as its output the parcel's order, paid and not yet with a carrier", () => {
+    // What the purchase answers: the order under way, the instant the parcel
+    // has to be with a carrier by, and no shipment until one is recorded.
+    const example = bazaarDeclarationOf(parcelCard, at).output.example as Record<string, unknown>;
 
-    expect(RecordedShipmentSchema.safeParse(output.example).success).toBe(true);
+    expect(Object.keys(example).sort()).toStrictEqual([
+      "delivered",
+      "order_id",
+      "price",
+      "seller",
+      "ship_by",
+      "shipment",
+      "status",
+      "status_url",
+      "test",
+    ]);
+    expect(example.status).toBe("in_progress");
+    expect(example.delivered).toBeNull();
+    expect(example.shipment).toBeNull();
+    expect(TimestampSchema.safeParse(example.ship_by).success).toBe(true);
   });
 });
 

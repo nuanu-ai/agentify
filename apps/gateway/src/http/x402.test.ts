@@ -514,7 +514,9 @@ describe("the discovery declaration a challenge carries", () => {
     expect(info.input.method).toBe("POST");
     expect(info.input.bodyType).toBe("json");
     expect(info.input.body).toStrictEqual({ params: { email: "string" } });
-    expect(info.output?.example).toStrictEqual({ access_url: "string" });
+    expect((info.output?.example as { delivered?: unknown } | undefined)?.delivered).toStrictEqual({
+      access_url: "string",
+    });
   });
 
   it("holds together against its own schema", () => {

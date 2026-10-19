@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { setServiceName } from "../app/merchants.js";
 import {
+  buyOverHttp,
   type Harness,
   harness,
   type Served,
@@ -1926,6 +1927,60 @@ describe("the merchant's receipts", () => {
     const { served } = await started();
 
     expect((await served.call("GET", "/v0/receipts")).status).toBe(401);
+  });
+});
+
+describe("what a declaration says the purchase answers with", () => {
+  // The promise: an agent built from the declaration a challenge carries looks
+  // for the goods where the purchase puts them. Every leaf of the example
+  // stands for its type, so what is compared is the shape: the same fields at
+  // every depth, the same status word, and goods or none in the same place.
+  const shapeOf = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object") return value === null ? null : typeof value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([name, held]) => [name, name === "status" ? held : shapeOf(held)]),
+    );
+  };
+
+  const declaredOutput = async (served: Served, itemId: string): Promise<unknown> => {
+    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+    const declared = decodePaymentRequiredHeader(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
+      .extensions?.bazaar as { info: { output?: { example?: unknown } } };
+    return declared.info.output?.example;
+  };
+
+  it("declares the order with its goods, for a card delivered in the answer", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    expect(bought.status).toBe(200);
+    expect((bought.body as { status: string }).status).toBe("delivered");
+    expect(shapeOf(await declaredOutput(served, itemId))).toStrictEqual(shapeOf(bought.body));
+  });
+
+  it("declares the order under way and no goods, for a card whose goods come later", async () => {
+    // The money moves at the purchase and the goods arrive at status_url; an
+    // agent that looked for them in this answer would think it paid for nothing.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+
+    expect(bought.status).toBe(200);
+    expect((bought.body as { delivered: unknown }).delivered).toBeNull();
+    expect(shapeOf(await declaredOutput(served, itemId))).toStrictEqual(shapeOf(bought.body));
   });
 });
 
