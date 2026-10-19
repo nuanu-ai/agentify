@@ -752,7 +752,8 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-const declaresAuth = (artifacts: ScanArtifacts): boolean => {
+/** Whether a discovery document or an HTTP challenge declares authorization. */
+export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean => {
   const documents = [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])]
     .map(validDiscovery)
     .filter(Boolean);
@@ -777,16 +778,17 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
   const documents = artifacts.oauth
     .map(validDiscovery)
     .filter((value): value is Record<string, unknown> => Boolean(value));
+  if (artifacts.oauth.length < 2 || artifacts.oauth.some((artifact) => inaccessible(artifact)))
+    return result({
+      id: 11,
+      status: "unavailable",
+      earnedWeight: 0,
+      summaryCode: "oauth_unavailable",
+      evidence: { documents_found: documents.length },
+      userImpactCode: "oauth_not_assessed",
+      errorCode: unreadReason(artifacts.oauth, "oauth_fetch_incomplete"),
+    });
   if (!documents.length) {
-    if (artifacts.oauth.some((artifact) => inaccessible(artifact)))
-      return result({
-        id: 11,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "oauth_unavailable",
-        userImpactCode: "oauth_not_assessed",
-        errorCode: unreadReason(artifacts.oauth, "oauth_unavailable"),
-      });
     return result({
       id: 11,
       status: "fail",
