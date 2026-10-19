@@ -15,6 +15,7 @@ describe("IP and URL SSRF policy", () => {
     ["fe80::1", "link_local"],
     ["fc00::1", "private"],
     ["2001:db8::1", "documentation"],
+    ["2001:2::1", "benchmark"],
     ["::ffff:127.0.0.1", "loopback"],
   ])("blocks %s", (address, reason) => {
     expect(classifyIp(address)).toMatchObject({ allowed: false, reason });
