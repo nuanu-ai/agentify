@@ -20,9 +20,71 @@ describe("IP and URL SSRF policy", () => {
     expect(classifyIp(address)).toMatchObject({ allowed: false, reason });
   });
 
-  it.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888"])(
-    "allows public unicast %s",
-    (address) => expect(classifyIp(address)).toMatchObject({ allowed: true }),
+  it.each([
+    "8.8.8.8",
+    "1.1.1.1",
+    "2606:4700:4700::1111",
+    "2001:4860:4860::8888",
+    "2001:200::1",
+    "::ffff:8.8.8.8",
+  ])("allows public unicast %s", (address) =>
+    expect(classifyIp(address)).toMatchObject({ allowed: true }),
+  );
+
+  it.each([
+    ["64:ff9b::a00:1", "private"],
+    ["64:ff9b::7f00:1", "loopback"],
+    ["64:ff9b::a9fe:a9fe", "link_local"],
+  ])("a NAT64 address of a non-public IPv4 host is refused: %s", (address, reason) =>
+    expect(classifyIp(address)).toMatchObject({ allowed: false, reason }),
+  );
+
+  it("a NAT64 address of a public IPv4 host is reached, as an IPv6-only network reaches it", () =>
+    expect(classifyIp("64:ff9b::808:808")).toMatchObject({ allowed: true }));
+
+  it("a local-use NAT64 address is refused, since the IPv4 host it reaches is the network's choice", () =>
+    expect(classifyIp("64:ff9b:1::a00:1")).toMatchObject({ allowed: false, reason: "reserved" }));
+
+  it.each([
+    ["2002:a00:1::1", "private"],
+    ["2002:7f00:1::", "loopback"],
+    ["2002:c0a8:101::1", "private"],
+  ])("a 6to4 address of a non-public IPv4 host is refused: %s", (address, reason) =>
+    expect(classifyIp(address)).toMatchObject({ allowed: false, reason }),
+  );
+
+  it.each(["::127.0.0.1", "::a00:1", "::8.8.8.8"])(
+    "an IPv4-compatible address is refused whatever it carries: %s",
+    (address) => expect(classifyIp(address)).toMatchObject({ allowed: false, reason: "reserved" }),
+  );
+
+  it.each([
+    ["fec0::1", "deprecated site-local"],
+    ["100::1", "discard-only"],
+    ["5f00::1", "segment routing"],
+    ["::ffff:0:a00:1", "IPv4-translated"],
+    ["4000::1", "unassigned"],
+  ])("an address outside the global unicast space is refused: %s (%s)", (address) =>
+    expect(classifyIp(address)).toMatchObject({ allowed: false, reason: "reserved" }),
+  );
+
+  it.each([
+    ["2001::1", "Teredo"],
+    ["2001:0:4136:e378:8000:63bf:3fff:fdd2", "Teredo"],
+    ["2001:10::1", "ORCHID"],
+    ["2001:20::1", "ORCHIDv2"],
+    ["2001:1::1", "anycast relay"],
+    ["2001:3::1", "AMT relay"],
+    ["2001:4:112::1", "AS112 sink"],
+    ["2001:30::1", "drone identifier"],
+  ])("an address of the IETF protocol block is refused: %s (%s)", (address) =>
+    expect(classifyIp(address)).toMatchObject({ allowed: false, reason: "reserved" }),
+  );
+
+  it.each(["2001:db8::1", "3fff::1", "3fff:fff::1"])(
+    "an IPv6 documentation address is refused: %s",
+    (address) =>
+      expect(classifyIp(address)).toMatchObject({ allowed: false, reason: "documentation" }),
   );
 
   it("rejects mixed public/private DNS answers", () => {
