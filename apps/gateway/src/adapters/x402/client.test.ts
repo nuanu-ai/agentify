@@ -448,8 +448,9 @@ describe("showing the key to Coinbase before the gateway starts", () => {
   });
 
   it("takes the other answers Coinbase may give an empty payment as taking the key", async () => {
-    // A refusal of the payment in its other spelling, and a payment accepted,
-    // both say the key was let in.
+    // Neither has been seen from Coinbase for an empty payment. A refusal of
+    // the payment in its other spelling, and a payment accepted, are both
+    // answers given past the key check, so they are counted with the 400.
     const key = anApiKey();
     const coinbase = await aCoinbase(key);
 

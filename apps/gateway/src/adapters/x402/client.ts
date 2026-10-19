@@ -125,11 +125,13 @@ const unconfirmed = (why: string): string =>
 /**
  * Makes the credentials sign, as `refuseUnlessCredentialsSign` does, and then
  * shows the key to Coinbase once: its facilitator is asked to verify an empty
- * payment with the token a purchase's verify would carry. A key Coinbase takes
- * gets the payment turned down (400 or 422) or any 2xx, and null comes back.
- * A 401 or 403 is Coinbase refusing the key itself, and this throws, naming
- * the two variables and the likely causes. Any other status, no connection or
- * no answer within ten seconds says nothing about the key, and somebody else's
+ * payment with the token a purchase's verify would carry. A 400 is what
+ * Coinbase was seen to answer a key it lets through, judging the payment
+ * instead; a 2xx or 422 is counted with it, as an answer given past the key
+ * check, though neither has been seen. All three bring null back. A 401 or
+ * 403 is Coinbase refusing the key itself, and this throws, naming the two
+ * variables and the likely causes. Any other status, no connection or no
+ * answer within ten seconds says nothing about the key, and somebody else's
  * outage must not stop a storefront: what comes back then is the one line to
  * log saying the key is unconfirmed. A facilitator that is not Coinbase's is
  * asked nothing, and null comes back.

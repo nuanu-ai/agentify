@@ -664,20 +664,22 @@ an EC key, whose secret is a PEM block on several lines, is refused there.
 Whether Coinbase takes the key is asked of Coinbase itself, once at the
 gateway's start and once by activation before it stops the old release: its
 facilitator is asked to verify an empty payment, signed with the key as a
-purchase's verify is. A key it takes has the empty payment turned down: the
-gateway starts with nothing to say about it, and activation prints that
-Coinbase takes the key. An answer of 401 or 403 is Coinbase refusing
-the key, and the gateway does not start and activation stops nothing, with
-words that name `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` and the likely
-causes, which Coinbase's answer does not tell apart: the key was revoked or
-deleted, the key has an IP allowlist that does not include the host's public
-address, the account or project the key belongs to is restricted, or the
-host's clock is off by more than about two minutes, which makes every token
-Coinbase receives look expired or not yet valid. Any other
-answer, or none within ten seconds, says nothing about the key, and an outage
-at Coinbase must not keep a channel down, so both go on with one line in the
-log saying the key is unconfirmed; a key Coinbase refuses would then show only
-at the first purchase.
+purchase's verify is. A key Coinbase lets through has the empty payment judged
+instead: Coinbase was seen to answer 400, and a 2xx or 422 counts the same, as
+an answer given past the key check. The gateway then starts with nothing to
+say about it, and activation prints that Coinbase let the key through and
+judged the empty payment. An answer of 401 or 403 is Coinbase refusing the
+key, and the gateway does not start and activation stops nothing, with words
+that name `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` and the likely causes,
+which Coinbase's answer does not tell apart: the key was revoked or deleted,
+the key has an IP allowlist that does not include the host's public address,
+the account or project the key belongs to is restricted, or the host's clock
+is off by more than about two minutes, which makes every token Coinbase
+receives look expired or not yet valid. Any other answer, or none within ten
+seconds, says nothing about the key, and an outage at Coinbase must not keep a
+channel down, so both go on with one line in the log saying the key is
+unconfirmed; a key Coinbase refuses would then show only at the first
+purchase.
 
 PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
 `REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters,

@@ -22,7 +22,11 @@ try {
     );
   } else {
     const unconfirmed = await refuseUnlessCoinbaseTakesTheKey(facilitatorClientFor(payment), fetch);
-    console.log(unconfirmed ?? "Coinbase takes the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET");
+    console.log(
+      unconfirmed ??
+        "Coinbase let the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET through: it judged the " +
+          "empty payment instead of refusing the key",
+    );
   }
 } catch (thrown) {
   console.error(thrown instanceof Error ? thrown.message : String(thrown));
