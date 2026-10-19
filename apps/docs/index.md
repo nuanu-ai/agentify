@@ -63,6 +63,10 @@ product:
 | Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | you owe the buyer the goods or the money back |
 | A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | you owe the buyer the money back, unless you ship late after all |
 
+A WooCommerce shop's products are all charged at the moment of purchase, and
+the choice is not yours there: the connector publishes a download as a product
+that takes longer to prepare and a physical product as a parcel.
+
 The same choices, with the words your engineer's code uses for them, are on
 [Orders and fulfillment modes](/orders).
 
