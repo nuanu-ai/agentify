@@ -86,27 +86,30 @@ export const keepRecordsIn = (directory: string, port: number): StandRecords => 
       // Written whole and flushed under a name of its own, then linked to the
       // record's name. A link refuses a name that exists where a rename would
       // replace it, so the first stand to record an order keeps it, and no
-      // reader ever opens a record that is still being written.
+      // reader ever opens a record that is still being written. The name of
+      // its own is removed however this ends, a failed write included.
       const writing = `${named}.${randomUUID()}.writing`;
       const file = await open(writing, "wx");
       try {
-        await file.writeFile(`${JSON.stringify(recorded, null, 2)}\n`);
-        await file.sync();
-      } finally {
-        await file.close();
-      }
-      try {
-        await link(writing, named);
-        return { recorded, first: true };
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const standing = await find(order.id);
-        if (standing === null) {
-          throw new Error(
-            `The record for order ${order.id} existed a moment ago and is gone: something removed it from ${directory}.`,
-          );
+        try {
+          await file.writeFile(`${JSON.stringify(recorded, null, 2)}\n`);
+          await file.sync();
+        } finally {
+          await file.close();
         }
-        return { recorded: standing, first: false };
+        try {
+          await link(writing, named);
+          return { recorded, first: true };
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          const standing = await find(order.id);
+          if (standing === null) {
+            throw new Error(
+              `The record for order ${order.id} existed a moment ago and is gone: something removed it from ${directory}.`,
+            );
+          }
+          return { recorded: standing, first: false };
+        }
       } finally {
         await unlink(writing);
       }
