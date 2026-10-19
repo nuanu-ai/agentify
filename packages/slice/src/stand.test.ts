@@ -6,8 +6,11 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -644,4 +647,284 @@ describe("an order the gateway ended by itself", () => {
 
     expect(offersToDeliverOwed(await untilOwedIsEmpty(page))).toBe(false);
   }, 20_000);
+});
+
+/** Like `waitUntil`, for a condition that has to read something to know. */
+const waitFor = async (that: () => Promise<boolean>, within = 10_000): Promise<void> => {
+  const until = Date.now() + within;
+  while (!(await that())) {
+    if (Date.now() > until) throw new Error(`still not true after ${within}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
+
+const THE_ORDER = { ...OWED_ORDER, id: "order-paused-at-the-stand" } as const;
+
+/**
+ * A gateway that hands its one order to every poll until somebody answers it,
+ * which is what the real one does with an order whose answer never came: a
+ * stand that crashed holding it, and the stand started after it, are both
+ * handed the same order.
+ */
+const redeliveringGateway = async (): Promise<{
+  url: string;
+  handOver: () => void;
+  answers: unknown[];
+}> => {
+  let handing = false;
+  let envelopes = 0;
+  const answers: unknown[] = [];
+  gateway = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v0/worker/poll") {
+      envelopes += 1;
+      const sending = handing && answers.length === 0;
+      response.end(
+        JSON.stringify({
+          contract_version: CONTRACT_VERSION,
+          envelopes: sending
+            ? [
+                {
+                  kind: "order",
+                  id: `envelope-${envelopes}`,
+                  sent_at: "2026-10-19T00:00:00Z",
+                  payload: THE_ORDER,
+                },
+              ]
+            : [],
+        }),
+      );
+      return;
+    }
+    if (request.url === "/v0/cards") {
+      response.end(JSON.stringify({ selling: "open", cards: [] }));
+      return;
+    }
+    if (request.url === `/v0/orders/${THE_ORDER.id}/answer`) {
+      answers.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      response.end(JSON.stringify({ ok: true, result: "delivered" }));
+      return;
+    }
+    if (request.url?.startsWith("/v0/orders") === true) {
+      response.end(JSON.stringify({ orders: [] }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  gateway.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => gateway?.once("listening", resolve));
+  return {
+    url: `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`,
+    handOver: () => {
+      handing = true;
+    },
+    answers,
+  };
+};
+
+const ownStands: ChildProcess[] = [];
+
+afterEach(async () => {
+  for (const child of ownStands.splice(0)) {
+    if (child.exitCode !== null || child.signalCode !== null) continue;
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    child.kill("SIGKILL");
+    await exited;
+  }
+});
+
+/**
+ * A stand started the way `pnpm stand` starts it: one Node process, so the
+ * identifier it prints is the process a tester kills.
+ */
+const standProcess = async (
+  env: Record<string, string>,
+): Promise<{
+  child: ChildProcess;
+  output: () => string;
+  press: (fields: Record<string, string>) => Promise<Response>;
+  fromTerminal: (fields: Record<string, string>) => Promise<Response>;
+  page: (tab: string) => Promise<string>;
+  connectTo: (gatewayUrl: string) => Promise<void>;
+}> => {
+  const standPort = await freePort();
+  let output = "";
+  const child = spawn(process.execPath, ["--import", "tsx", "src/stand.ts"], {
+    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    env: {
+      ...process.env,
+      STAND_BUYER_KEY: `0x${"11".repeat(32)}`,
+      STAND_PORT: String(standPort),
+      ...env,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  ownStands.push(child);
+  child.stdout?.on("data", (chunk) => {
+    output += String(chunk);
+  });
+  child.stderr?.on("data", (chunk) => {
+    output += String(chunk);
+  });
+  await waitUntil(() => output.includes(`http://127.0.0.1:${standPort}`), 10_000);
+
+  const standUrl = `http://127.0.0.1:${standPort}`;
+  const posting =
+    (headers: Record<string, string>) =>
+    (fields: Record<string, string>): Promise<Response> =>
+      fetch(`${standUrl}/orders`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
+        body: new URLSearchParams(fields),
+        redirect: "manual",
+      });
+  const press = posting({ origin: standUrl });
+  return {
+    child,
+    output: () => output,
+    press,
+    // No Origin header, which is what curl sends; so does this fetch.
+    fromTerminal: posting({}),
+    page: (tab) => fetch(standUrl + tab).then((answer) => answer.text()),
+    connectTo: async (gatewayUrl) => {
+      const connected = await press({
+        action: "connect",
+        address: gatewayUrl,
+        api_key: "csk_test_the-key-the-stand-connects-with",
+      });
+      if (connected.status !== 303)
+        throw new Error(`the stand would not connect: ${connected.status}`);
+    },
+  };
+};
+
+/** The answers a records directory holds, one parsed file per answered order. */
+const recordsIn = async (directory: string): Promise<Record<string, unknown>[]> => {
+  const names = (await readdir(directory)).filter((name) => name.endsWith(".json"));
+  return Promise.all(
+    names.map(
+      async (name) =>
+        JSON.parse(await readFile(join(directory, name), "utf8")) as Record<string, unknown>,
+    ),
+  );
+};
+
+const REFUSING = {
+  action: "moods",
+  order: "refuse",
+  quote: "price",
+  deliver_after_ms: "0",
+  price_amount: "1.00",
+  price_currency: "USD",
+  refusal_code: "out_of_stock",
+  refusal_message: "The last one went this morning.",
+  goods: "",
+} as const;
+
+describe("a stand killed with an order paused with its answer recorded", () => {
+  it("leaves the order to be answered on restart with what it recorded", async () => {
+    // The promise: a crash after the durable effect and before the
+    // acknowledgement — `kill -9` on the process the stand names — loses
+    // nothing a restart cannot recover, and makes no second effect. The stand
+    // that comes back is set to deliver; the one that crashed had recorded a
+    // refusal, and the refusal is what the gateway gets.
+    const directory = await mkdtemp(join(tmpdir(), "stand-records-"));
+    try {
+      const redelivering = await redeliveringGateway();
+      const crashing = await standProcess({ STAND_RECORDS_DIR: directory });
+      expect(crashing.output()).toContain(String(crashing.child.pid));
+      expect(crashing.output()).toContain(directory);
+      await crashing.connectTo(redelivering.url);
+      expect((await crashing.press(REFUSING)).status).toBe(303);
+      expect((await crashing.press({ action: "pause_at", at: "answer_ready" })).status).toBe(303);
+
+      redelivering.handOver();
+      await waitFor(async () => (await recordsIn(directory)).length === 1);
+      expect(redelivering.answers).toEqual([]);
+
+      // The process the page names is the one a tester kills, so that is the
+      // one killed here, once it is known to be the stand.
+      const named = /data-pid="(\d+)"/.exec(await crashing.page("/orders"))?.[1];
+      expect(Number(named)).toBe(crashing.child.pid);
+      const died = new Promise<void>((resolve) => crashing.child.once("exit", () => resolve()));
+      process.kill(Number(named), "SIGKILL");
+      await died;
+
+      const restarted = await standProcess({ STAND_RECORDS_DIR: directory });
+      await restarted.connectTo(redelivering.url);
+      await waitUntil(() => redelivering.answers.length === 1, 10_000);
+
+      const records = await recordsIn(directory);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.pid).toBe(crashing.child.pid);
+      expect(redelivering.answers[0]).toEqual({
+        refused: { code: "out_of_stock", message: "The last one went this morning." },
+      });
+      const arrivals = (await readFile(join(directory, "arrivals.jsonl"), "utf8"))
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => (JSON.parse(line) as { pid: number }).pid);
+      expect(arrivals).toEqual([crashing.child.pid, restarted.child.pid]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+/** Whether the Orders tab is offering to release a paused order. */
+const offersToRelease = (page: string): boolean => page.includes('value="release_pause"');
+
+describe("releasing a paused order from a terminal", () => {
+  it("works without an Origin header, and refuses an order that is not paused", async () => {
+    // The promise: the curl line in the README releases the order it names.
+    // A mistyped identifier is told it released nothing, rather than looking
+    // as though it worked while the real order stays paused.
+    const redelivering = await redeliveringGateway();
+    const stand = await standProcess({});
+    await stand.connectTo(redelivering.url);
+    expect((await stand.press({ action: "pause_at", at: "arrival" })).status).toBe(303);
+    redelivering.handOver();
+    await waitFor(async () => offersToRelease(await stand.page("/orders")));
+
+    const mistyped = await stand.fromTerminal({
+      action: "release_pause",
+      order_id: "an-order-that-is-not-paused",
+    });
+    expect(mistyped.status).toBe(303);
+    // A terminal does not follow the redirect, so the refusal names the order
+    // in the body it prints, as well as on the page.
+    expect(await mistyped.text()).toContain("an-order-that-is-not-paused");
+    expect(await stand.page("/orders")).toContain('class="said-back problem"');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(redelivering.answers).toEqual([]);
+
+    const released = await stand.fromTerminal({ action: "release_pause", order_id: THE_ORDER.id });
+    expect(released.status).toBe(303);
+    await waitUntil(() => redelivering.answers.length === 1, 10_000);
+  }, 30_000);
+});
+
+describe("a pause point the stand does not know", () => {
+  it("is refused in words that name it, and pauses nothing", async () => {
+    // The promise: a mistyped point is told it set nothing, rather than being
+    // answered as though orders would now pause while none does. A terminal
+    // reads the body, so the refusal names what was typed there too.
+    const redelivering = await redeliveringGateway();
+    const stand = await standProcess({});
+    await stand.connectTo(redelivering.url);
+
+    const mistyped = await stand.fromTerminal({ action: "pause_at", at: "answer-ready" });
+    expect(mistyped.status).toBe(303);
+    expect(await mistyped.text()).toContain("answer-ready");
+    const page = await stand.page("/orders");
+    expect(page).toContain('class="said-back problem"');
+    expect(page).toContain('<option value="none" selected>');
+
+    redelivering.handOver();
+    await waitUntil(() => redelivering.answers.length === 1, 10_000);
+    expect(offersToRelease(await stand.page("/orders"))).toBe(false);
+  }, 30_000);
 });

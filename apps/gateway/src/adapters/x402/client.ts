@@ -4,8 +4,8 @@
  * The fork is on the facilitator's address, never on whether credentials are
  * set: Coinbase credentials are sent to Coinbase's facilitator and to nothing
  * else, whatever host an environment variable names. Building a client
- * contacts nothing, so an unreachable facilitator cannot stop the gateway from
- * starting.
+ * contacts nothing. The start asks Coinbase once whether it takes the key, and
+ * a Coinbase that does not answer still cannot stop the gateway from starting.
  */
 
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
@@ -90,18 +90,44 @@ export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorCli
   return cdpAuthenticatedClient(payment.facilitatorUrl, cdpApiKeyId, cdpApiKeySecret);
 }
 
+const COINBASE_ANSWER_WAIT_MS = 10_000;
+
+/** The line for the log when Coinbase gave no answer about the key, saying why. */
+const unconfirmed = (why: string): string =>
+  `the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET is unconfirmed — Coinbase could not say ` +
+  `whether it takes it (${why}), which says nothing about the key either way. The gateway starts ` +
+  "without knowing, and a key Coinbase refuses would show only at the first purchase, which " +
+  "would fail at verify";
+
 /**
- * Signs one request locally before the gateway starts selling, and refuses to
- * start if it cannot. A credential that is set but unusable (a truncated
- * secret) would otherwise turn every purchase into "unknown". Nothing is sent
- * to the facilitator; a client without credentials passes.
+ * Makes the credentials sign before the gateway starts selling, and then shows
+ * the key to Coinbase once: its facilitator is asked to verify an empty
+ * payment with the token a purchase's verify would carry. A 400 is what
+ * Coinbase was seen to answer a key it lets through, judging the payment
+ * instead; a 2xx or 422 is counted with it, as an answer given past the key
+ * check, though neither has been seen. All three bring null back. A 401 or
+ * 403 is Coinbase refusing the key itself, and this throws, naming the two
+ * variables and the likely causes. Any other status, no connection or no
+ * answer within ten seconds says nothing about the key, and somebody else's
+ * outage must not stop a storefront: what comes back then is the one line to
+ * log saying the key is unconfirmed. A facilitator that is not Coinbase's is
+ * asked nothing, and null comes back.
  *
- * The signer's error is dropped rather than wrapped: a refusal ends up in logs,
- * and only text written here is known not to carry key material.
+ * A credential that is set but cannot sign (a truncated secret), which would
+ * otherwise turn every purchase into "unknown", is refused before anything is
+ * sent, whatever the facilitator; a client without credentials signs nothing
+ * and passes. The signer's error is dropped rather than wrapped, since only
+ * text written here is known not to carry key material, and neither the
+ * token, nor Coinbase's answer, nor what fetch threw reaches what this throws
+ * or returns. A redirect is not followed with the token.
  */
-export async function refuseUnlessCredentialsSign(client: HTTPFacilitatorClient): Promise<void> {
+export async function refuseUnlessCoinbaseTakesTheKey(
+  client: HTTPFacilitatorClient,
+  post: typeof fetch,
+): Promise<string | null> {
+  let headers: Record<string, string>;
   try {
-    await client.createAuthHeaders("verify");
+    ({ headers } = await client.createAuthHeaders("verify"));
   } catch {
     throw new Error(
       "The gateway cannot start, the facilitator credentials do not work — the key in " +
@@ -111,4 +137,45 @@ export async function refuseUnlessCredentialsSign(client: HTTPFacilitatorClient)
         "“nobody knows” instead",
     );
   }
+  if (!isCdpFacilitator(client.url)) {
+    return null;
+  }
+
+  let status: number;
+  try {
+    const response = await post(`${client.url}/verify`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ x402Version: 2 }),
+      redirect: "manual",
+      signal: AbortSignal.timeout(COINBASE_ANSWER_WAIT_MS),
+    });
+    // Nothing reads the body; cancelling it frees the connection.
+    response.body?.cancel().catch(() => undefined);
+    status = response.status;
+  } catch (thrown) {
+    const name = thrown instanceof Error ? thrown.name : "";
+    return unconfirmed(
+      name === "TimeoutError"
+        ? `no answer within ${COINBASE_ANSWER_WAIT_MS / 1_000} seconds`
+        : "no connection",
+    );
+  }
+
+  if (status === 401 || status === 403) {
+    throw new Error(
+      "The gateway cannot start, Coinbase refuses the facilitator credentials — asked to verify " +
+        "an empty payment with the key CDP_API_KEY_ID names, signed with CDP_API_KEY_SECRET, it " +
+        `answered HTTP ${status}. Likely causes, though the answer does not say which: the key ` +
+        "was revoked or deleted; the key has an IP allowlist that does not include this server's " +
+        "public address; the account or the project the key belongs to is restricted; or this " +
+        "host's clock is off by more than about two minutes, so that every token Coinbase " +
+        "receives looks expired or not yet valid. Started anyway, the gateway would take " +
+        "purchases and fail every one of them at verify",
+    );
+  }
+  if ((status >= 200 && status < 300) || status === 400 || status === 422) {
+    return null;
+  }
+  return unconfirmed(`HTTP ${status}`);
 }

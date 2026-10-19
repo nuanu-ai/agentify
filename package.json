@@ -34,6 +34,7 @@
     "forget": "node scripts/forget.mjs",
     "buy": "pnpm --filter @agentify/slice run buy",
     "stand": "pnpm --filter @agentify/slice run stand",
+    "cut": "pnpm --filter @agentify/slice run cut",
     "changeset": "changeset",
     "mutate": "node scripts/mutate.mjs",
     "scanner:build": "pnpm --filter '@agentify/scanner-worker...' --if-present run build",

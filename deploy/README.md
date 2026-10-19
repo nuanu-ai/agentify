@@ -104,17 +104,20 @@ images by digest and, before anything stops, checks everything it can: the
 release's own preflight over the channel's rendered configuration, then the
 scanner image started alone with that configuration and no network, which has
 to pass its own start-up checks and its configuration check at
-`/api/health/live` — the very code the scanner runs when it starts. Then it
-writes the channel's transition record, stops the application (the gateway
-and the dashboard in one process, `docs/research/35-one-process.md`), the
-scanner and its worker, takes a restore point of the database, runs the
-migrations, starts everything again, on PRODUCTION installs the edge's route
-table, which the edge's own Caddy has validated before the stop, checks eleven
-public routes, checks that every card on sale before the stop is still on sale
-and answers its payment challenge on the channel's network, schedules the
-nightly privacy job, writes `current`, removes the record, and drops the
-databases an earlier restore replaced. The command needs no GitHub credential,
-and nothing in GitHub can reach a host.
+`/api/health/live` — the very code the scanner runs when it starts — and
+then the gateway's own check of the application's configuration, run in the
+application image with the network, which ends by asking Coinbase whether it
+takes the facilitator key, as the gateway asks at its own start ("Setting up
+a host" below). Then it writes the channel's transition record, stops the
+application (the gateway and the dashboard in one process,
+`docs/research/35-one-process.md`), the scanner and its worker, takes a
+restore point of the database, runs the migrations, starts everything again,
+on PRODUCTION installs the edge's route table, which the edge's own Caddy has
+validated before the stop, checks eleven public routes, checks that every card
+on sale before the stop is still on sale and answers its payment challenge on
+the channel's network, schedules the nightly privacy job, writes `current`,
+removes the record, and drops the databases an earlier restore replaced. The
+command needs no GitHub credential, and nothing in GitHub can reach a host.
 
 The card check spends nothing: a GET on a purchase address is always answered
 with the challenge and never read for payment. It reads the catalog as the one
@@ -186,9 +189,11 @@ of that unit scrolls by. The command prints
 activation prints one line per step, each beginning `activate:` — pulling the
 images; checking the channel's configuration, followed by the preflight's own
 `preflight: the production channel is what it claims to be` (the scanner's own
-check runs inside this step); stopping the three applications; taking the
-restore point, with its directory; the two migrations; starting the scanner;
-starting commerce and the route table; installing the edge's route table;
+check runs inside this step); checking the gateway's configuration and asking
+Coinbase about its facilitator key, followed by the answer in one line;
+stopping the three applications; taking the restore point, with its
+directory; the two migrations; starting the scanner; starting commerce and
+the route table; installing the edge's route table;
 checking the public routes; checking the cards on sale, followed by how many
 are on sale and how many were compared; scheduling the privacy job; and, when
 the previous release's images are no longer needed, removing them. Compose's
@@ -313,10 +318,11 @@ a build that failed or was not listed, CI that failed or has not finished, a
 move backwards; images that did not arrive within 30 minutes or do not carry
 the revision's label; an environment file with a `$` outside single quotes, a
 configuration that does not render, that the preflight refuses or that the
-scanner refuses at its own start; a PostgreSQL image other than the pinned
-one; a PRODUCTION edge other than the reviewed one, or a route table its Caddy
-does not accept; too little room for the restore point; and an earlier release
-or restore that waits for a person, below. Fix the cause and run the same
+scanner or the gateway refuses at its own start; a facilitator key Coinbase
+refuses; a PostgreSQL image other than the pinned one; a PRODUCTION edge
+other than the reviewed one, or a route table its Caddy does not accept; too
+little room for the restore point; and an earlier release or restore that
+waits for a person, below. Fix the cause and run the same
 command again.
 
 ### A card the release takes off sale on purpose
@@ -707,7 +713,29 @@ Coinbase's testnet catalogue. Each channel holds its own Coinbase secret API
 key, an Ed25519 one, whose secret is a single line: a key leaked from TEST is
 revoked without touching PRODUCTION, so production's key never goes onto the
 test host. The preflight cannot tell the two keys apart and checks only that
-both halves are present.
+both halves are present and that the secret holds no line break: activation
+hands the application's environment to its checks one line per variable, so
+an EC key, whose secret is a PEM block on several lines, is refused there.
+
+Whether Coinbase takes the key is asked of Coinbase itself, once at the
+gateway's start and once by activation before it stops the old release: its
+facilitator is asked to verify an empty payment, signed with the key as a
+purchase's verify is. A key Coinbase lets through has the empty payment judged
+instead: Coinbase was seen to answer 400, and a 2xx or 422 counts the same, as
+an answer given past the key check. The gateway then starts with nothing to
+say about it, and activation prints that Coinbase let the key through and
+judged the empty payment. An answer of 401 or 403 is Coinbase refusing the
+key, and the gateway does not start and activation stops nothing, with words
+that name `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` and the likely causes,
+which Coinbase's answer does not tell apart: the key was revoked or deleted,
+the key has an IP allowlist that does not include the host's public address,
+the account or project the key belongs to is restricted, or the host's clock
+is off by more than about two minutes, which makes every token Coinbase
+receives look expired or not yet valid. Any other answer, or none within ten
+seconds, says nothing about the key, and an outage at Coinbase must not keep a
+channel down, so both go on with one line in the log saying the key is
+unconfirmed; a key Coinbase refuses would then show only at the first
+purchase.
 
 PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
 `REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters,
@@ -745,7 +773,8 @@ goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`
 anywhere else as the start of a variable, cuts the value there and prints the
 rest in a warning, so `stack.sh` refuses such a file and names the key. The first release renders
 the file and refuses, before it stops anything, if a variable is missing, the
-preflight disagrees or the scanner refuses the configuration at its own start.
+preflight disagrees, the scanner or the gateway refuses the configuration at
+its own start, or Coinbase refuses the facilitator key.
 
 ## Google sign-in
 
