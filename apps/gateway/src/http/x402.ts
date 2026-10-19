@@ -127,10 +127,9 @@ export class PaymentEdge {
   /**
    * What an agent is asked to pay, to whom, and for which order, named by its
    * payment reference; `null` names none, for a price with no order behind
-   * it. The address
-   * is the one given, unchanged: the card's merchant's recorded split for a
-   * challenge, and the order's own address at verification and at the charge,
-   * never anything from our configuration.
+   * it. The address is the one given, unchanged: the card's merchant's
+   * recorded split for a challenge, and the order's own address at
+   * verification and at the charge, never anything from our configuration.
    *
    * No address is refused, in every mode, never defaulted: the configured
    * address is the operator's, and standing it in would send a merchant's

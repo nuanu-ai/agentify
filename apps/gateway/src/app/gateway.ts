@@ -1590,7 +1590,8 @@ export class Gateway {
   /**
    * The order a payment is for, by the payment reference its challenge
    * carried, whoever it belongs to. Only the purchase route asks: the
-   * reference names the order to the payment side and opens nothing else.
+   * reference names the order to the payment side, and no other route reads
+   * one.
    */
   async orderForPayment(paymentRef: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderByPaymentRef(paymentRef);

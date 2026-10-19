@@ -2,8 +2,9 @@
  * What a payment names its order by. The payment requirements go to the
  * payment facilitator on every verification and charge, and a discovery
  * listing can publish them as the last paying request carried them, so they
- * name the order by a payment reference that opens nothing. The order's
- * identifier, the key to the order and its goods, is in none of it.
+ * name the order by a payment reference, which nothing answers with the
+ * order. The order's identifier, the key to the order and its goods, is in
+ * none of it.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";

@@ -102,9 +102,10 @@ export interface StoredOrder {
    * identifier and never the same: the challenge goes to the payment
    * facilitator, and a discovery listing can publish it, while the identifier
    * opens the order and its goods. A payment is bound to the order whose
-   * reference it carries, and the reference opens nothing else. No two orders
-   * share one. An order written before references were issued has none, and
-   * no payment finds it.
+   * reference it carries, and nothing answers a reference with the order's
+   * identifier, status or goods. No two orders share one. Every order has
+   * one: those written before references were issued were given one when
+   * the store was migrated.
    */
   readonly paymentRef: string;
   /**
@@ -146,9 +147,10 @@ export interface StoredOrder {
    * first payment for the order (never the address a payment declares of
    * itself), or that payment's fingerprint where the layer names none. A
    * payment reference is not secret, since a listing can publish it, and the
-   * payment route takes no key, so without an owner anyone holding a reference
-   * could pay against, take the goods of, or close someone else's order. It is set inside the store's hold on the order, so
-   * two racing payments cannot both become the owner.
+   * payment route takes no key, so without an owner anyone holding a
+   * reference could pay against, take the goods of, or close someone else's
+   * order. It is set inside the store's hold on the order, so two racing
+   * payments cannot both become the owner.
    */
   readonly paidBy: string | null;
   /**
@@ -709,8 +711,8 @@ export interface Store {
   /**
    * The order a payment is for, by the reference its challenge carried,
    * whoever it belongs to; unscoped for the same reason as `orderById`. Only
-   * the payment route asks it: a reference is not an order's identifier and
-   * opens nothing else.
+   * the payment route asks it: a reference is not an order's identifier, and
+   * no other route reads one.
    */
   orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null>;
 
