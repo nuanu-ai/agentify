@@ -56,11 +56,14 @@ ending in `deliver` and `refuse`; a publish is `POST /v0/catalog/publish`. The
 other routes are listed in
 [`packages/contracts/src/api.ts`](../contracts/src/api.ts).
 
-Only an answer the gateway gave with a 2xx status counts, because a refusal is
-not a commitment. The unpaid first call of a purchase is answered with a 402
-challenge; it passes through untouched and is not counted, which is why the
-rule above cuts the paid answer that follows it and not the challenge. `--nth`
-picks which counted answer is cut, the first by default. Other answers are not
+Only an answer the gateway gave with a 2xx status is counted. That is the
+proxy's rule, not a verdict that other answers commit nothing: the gateway
+answers a synchronous purchase that came back without its goods with a 409
+that carries the order, and that answer passes uncounted too. The unpaid first
+call of a purchase is answered with a 402 challenge; it passes through
+untouched and is not counted, which is why the rule above cuts the paid answer
+that follows it and not the challenge. `--nth` picks which counted answer is
+cut, the first by default. Other answers are not
 counted either, and the log says why each time: an answer shorter than two
 bytes, which has no middle to cut midway; an answer whose caller had already
 left by the time it was complete, or left while the cut midway was still being

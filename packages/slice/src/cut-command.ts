@@ -5,8 +5,8 @@
  * the server has done the work: a paid purchase, a publish, a handler's
  * answer, a delivery, a refusal. Killing the caller on a timer proves nothing
  * about the server, so this proxy reads the upstream's whole answer before it
- * decides anything, and only a complete 2xx answer counts as a commitment that
- * may be cut. One rule per run: the nth matching 2xx answer is dropped before
+ * decides anything, and only a complete 2xx answer is counted and may be cut.
+ * One rule per run: the nth matching 2xx answer is dropped before
  * its headers or midway through its body, and from then on everything passes.
  *
  * Apart from the name of a content coding, the log never prints headers,
@@ -417,7 +417,7 @@ export const runCut = async (
     if (answer.status < 200 || answer.status > 299) {
       passThrough(response, answer);
       log(
-        `${facts}: matched, but a ${answer.status} is not a commitment; passed through, ${stillArmed}`,
+        `${facts}: matched; passed through, not counted: only 2xx answers are counted, and the rule is still armed`,
       );
       return;
     }
