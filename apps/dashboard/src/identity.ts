@@ -29,7 +29,6 @@ import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
 import {
   type AttachMerchantResult,
-  type ConsentedClick,
   DASHBOARD_DESTINATIONS,
   type DashboardDestination,
   type DashboardIdentity,
@@ -41,7 +40,6 @@ import {
   type LinkWall,
   type LiveSession,
   type MerchantPerson,
-  type OwnersChoice,
   type Person,
   type UnattachedPerson,
 } from "./dashboard-entry.js";
@@ -116,7 +114,6 @@ const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CLEANUP_BATCH = 100;
 const REPORT_DIGEST_KEY_ID = "digest-v1";
 const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;
-const CLICK_WORDING_MAX = 64;
 
 type MemoryRows = Record<string, Record<string, unknown>[]>;
 
@@ -134,7 +131,7 @@ type LinkClaim = Readonly<{
   email: string;
   destination: LinkDestination;
   request: string | null;
-  click?: ConsentedClick;
+  clickId?: string;
 }>;
 
 type Registration = typeof registrationPostbacks.$inferInsert;
@@ -393,16 +390,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
   /**
    * The click a press of this link would report: only where reporting is
-   * switched on, the link was asked for with a consented click, and the press
-   * makes the address's first verified account. A click asked for while
-   * reporting was on goes unreported once it is off.
+   * switched on, the link was asked for with a click, and the press makes the
+   * address's first verified account. A click asked for while reporting was on
+   * goes unreported once it is off.
    */
   const clickToReport = async (
     context: Awaited<typeof auth.$context>,
     claim: LinkClaim,
-  ): Promise<ConsentedClick | undefined> =>
-    reporting && claim.click !== undefined && (await isFirstVerification(context, claim.email))
-      ? claim.click
+  ): Promise<string | undefined> =>
+    reporting && claim.clickId !== undefined && (await isFirstVerification(context, claim.email))
+      ? claim.clickId
       : undefined;
 
   // The memory adapter is for deterministic tests and local work. Queueing its
@@ -434,11 +431,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     bound: typeof auth,
     email: string,
     destination: DashboardDestination,
-    click: ConsentedClick | undefined,
+    clickId: string | undefined,
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
     const active: LinkSend = {
-      claim: { email, destination, request: null, ...(click === undefined ? {} : { click }) },
+      claim: { email, destination, request: null, ...(clickId === undefined ? {} : { clickId }) },
       handed: "refused",
     };
     await sending.run(active, async () => {
@@ -474,7 +471,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const openWith = async (
     bound: typeof auth,
     token: string,
-    owner: OwnersChoice | undefined,
     { lockEmail, register }: OpeningTransaction,
   ): Promise<DashboardLinkResult> => {
     if (!RAW_TOKEN.test(token)) return { status: "refused" };
@@ -492,8 +488,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // Whether this press makes the address's first verified account has to be
     // read before the component verifies it. Under the address's lock, a second
     // press waits here and then finds the account the first one verified.
-    const registering =
-      owner?.tellTracker === true ? await clickToReport(context, claim) : undefined;
+    const registering = await clickToReport(context, claim);
 
     const verify = async () =>
       await bound.api.magicLinkVerify({
@@ -538,17 +533,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const startGoogleWith = async (
     bound: typeof auth,
     destination: DashboardDestination,
-    click: ConsentedClick | undefined,
+    clickId: string | undefined,
   ): Promise<GoogleStartResult> => {
     const callback = new URL(`${base}/sign-in`);
     callback.searchParams.set("next", destination);
-    if (click !== undefined) {
-      const checked = clickOf(click);
-      if (checked === null) throw new GoogleTransactionRefused();
+    if (clickId !== undefined) {
+      if (clickIdOf(clickId) === null) throw new GoogleTransactionRefused();
       // The component keeps the callback address in the state's own row on
       // the server, keyed by the state the browser's cookie is bound to; the
       // browser and Google are handed only the state.
-      callback.searchParams.set("click", JSON.stringify(checked));
+      callback.searchParams.set("clickid", clickId);
     }
     const started = await bound.api.signInSocial({
       headers: originHeaders,
@@ -602,7 +596,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const destination =
         DASHBOARD_DESTINATIONS.find((value) => value === redirected.searchParams.get("next")) ??
         "default";
-      const click = reporting ? clickIn(redirected) : undefined;
+      const clickId = reporting ? clickIdIn(redirected) : undefined;
       const error = redirected.searchParams.get("error");
       if (error !== null) {
         const reason =
@@ -642,7 +636,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           destination,
           setCookies,
           email: reason === "email-unverified" || reason === "email-changed" ? active.email : null,
-          ...(click === undefined || !ownState ? {} : { click }),
+          ...(clickId === undefined || !ownState ? {} : { clickId }),
         };
       }
       const sessionHeaders = new Headers({
@@ -656,10 +650,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       ) {
         throw new GoogleTransactionRefused();
       }
-      // The press that started this sign-in carried the consent, and Google
-      // has just shown that the same browser's person owns the address.
-      if (click !== undefined && active.firstVerification === true) {
-        await register(registrationOf(opened.user.id, click));
+      if (clickId !== undefined && active.firstVerification === true) {
+        await register(registrationOf(opened.user.id, clickId));
       }
       return { status: "opened", person: personFrom(opened.user), destination, setCookies };
     });
@@ -769,12 +761,12 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     ],
     googleEnabled: config.google !== null,
 
-    async startGoogle(destination, click) {
+    async startGoogle(destination, clickId) {
       if (config.google === null) return { status: "unavailable" };
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(
-            async (bound) => await startGoogleWith(bound, destination, click),
+            async (bound) => await startGoogleWith(bound, destination, clickId),
           );
         }
         return await drizzle(parts.pool).transaction(
@@ -782,7 +774,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             await startGoogleWith(
               authFor(drizzleAdapter(tx, { provider: "pg", schema })),
               destination,
-              click,
+              clickId,
             ),
         );
       } catch {
@@ -880,7 +872,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // The sweep of old links runs in a transaction of its own, first: inside
     // the one that waits on the mail provider it would hold other requests up
     // behind a send, and a refused send would undo it.
-    async requestLink(rawEmail, destination, click) {
+    async requestLink(rawEmail, destination, clickId) {
       const email = emailAs(rawEmail);
       try {
         if (parts.pool === undefined) {
@@ -891,7 +883,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-            return await requestWith(bound, email, destination, click, rated.retryAt);
+            return await requestWith(bound, email, destination, clickId, rated.retryAt);
           });
         }
         const db = drizzle(parts.pool, {
@@ -908,7 +900,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
             email,
             destination,
-            click,
+            clickId,
             rated.retryAt,
           );
         });
@@ -972,18 +964,15 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
       const claim = claimFrom(stored.value);
       if (claim === null) return null;
-      return {
-        email: claim.email,
-        tellsTracker: (await clickToReport(context, claim)) !== undefined,
-      };
+      return { email: claim.email };
     },
 
-    async openLink(token, owner) {
+    async openLink(token) {
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(
             async (bound, rows) =>
-              await openWith(bound, token, owner, {
+              await openWith(bound, token, {
                 register: async (registration) => registerInMemory(rows, registration),
               }),
           );
@@ -991,7 +980,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         const db = drizzle(parts.pool);
         return await db.transaction(async (tx) => {
           const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
-          return await openWith(bound, token, owner, {
+          return await openWith(bound, token, {
             lockEmail: async (email) => await lockEmail(tx, email),
             register: async (registration) => {
               await tx.insert(registrationPostbacks).values(registration);
@@ -1352,8 +1341,8 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
   const request = value.request ?? null;
   if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
-  const click = value.click === undefined ? undefined : clickOf(value.click);
-  if (click === null) return null;
+  const clickId = value.clickId === undefined ? undefined : clickIdOf(value.clickId);
+  if (clickId === null) return null;
   const destination = value.destination;
   if (typeof destination === "string") {
     const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
@@ -1362,11 +1351,11 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
       email: value.email,
       destination: known,
       request,
-      ...(click === undefined ? {} : { click }),
+      ...(clickId === undefined ? {} : { clickId }),
     };
   }
-  // The scanner asks for report links, and no consent travels with its request.
-  if (click !== undefined) return null;
+  // The scanner asks for report links, and no click travels with its request.
+  if (clickId !== undefined) return null;
   if (typeof destination !== "object" || destination === null) return null;
   const keys = Object.keys(destination);
   const report = (destination as { report?: unknown }).report;
@@ -1374,25 +1363,9 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   return { email: value.email, destination: { report }, request };
 }
 
-const CLICK_KEYS = ["consentedAt", "id", "wording"] as const;
-
-/**
- * Exactly the three fields: the identifier in the partner network's form, the
- * moment as `toISOString` writes it, and a short version name.
- */
-function clickOf(value: unknown): ConsentedClick | null {
-  if (typeof value !== "object" || value === null) return null;
-  const keys = Object.keys(value).sort();
-  if (keys.length !== CLICK_KEYS.length || keys.some((key, at) => key !== CLICK_KEYS[at])) {
-    return null;
-  }
-  const { id, consentedAt, wording } = value as Record<string, unknown>;
-  if (typeof id !== "string" || !PARTNER_CLICK_ID_PATTERN.test(id)) return null;
-  if (typeof consentedAt !== "string" || !isInstant(consentedAt)) return null;
-  if (typeof wording !== "string" || wording === "" || wording.length > CLICK_WORDING_MAX) {
-    return null;
-  }
-  return { id, consentedAt, wording };
+/** The identifier in the partner network's form, or null for anything else. */
+function clickIdOf(value: unknown): string | null {
+  return typeof value === "string" && PARTNER_CLICK_ID_PATTERN.test(value) ? value : null;
 }
 
 /**
@@ -1400,24 +1373,16 @@ function clickOf(value: unknown): ConsentedClick | null {
  * component kept it, or none where it holds anything this file would not have
  * written there.
  */
-function clickIn(callback: URL): ConsentedClick | undefined {
-  const written = callback.searchParams.get("click");
-  if (written === null) return undefined;
-  try {
-    return clickOf(JSON.parse(written)) ?? undefined;
-  } catch {
-    return undefined;
-  }
+function clickIdIn(callback: URL): string | undefined {
+  return clickIdOf(callback.searchParams.get("clickid")) ?? undefined;
 }
 
 /** Due at once: nothing about a new registration is worth waiting for. */
-function registrationOf(accountId: string, click: ConsentedClick): Registration {
+function registrationOf(accountId: string, clickId: string): Registration {
   const now = new Date();
   return {
     accountId,
-    clickId: click.id,
-    consentedAt: new Date(click.consentedAt),
-    consentWording: click.wording,
+    clickId,
     state: "pending",
     attempts: 0,
     nextAttemptAt: now,
@@ -1425,18 +1390,11 @@ function registrationOf(accountId: string, click: ConsentedClick): Registration 
   };
 }
 
-function isInstant(value: string): boolean {
-  const at = new Date(value);
-  return !Number.isNaN(at.getTime()) && at.toISOString() === value;
-}
-
 function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
   return (
     one.email === other.email &&
     one.request === other.request &&
-    one.click?.id === other.click?.id &&
-    one.click?.consentedAt === other.click?.consentedAt &&
-    one.click?.wording === other.click?.wording &&
+    one.clickId === other.clickId &&
     (typeof one.destination === "string" || typeof other.destination === "string"
       ? one.destination === other.destination
       : one.destination.report === other.destination.report)

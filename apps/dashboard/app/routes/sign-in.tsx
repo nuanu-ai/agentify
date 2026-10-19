@@ -43,7 +43,7 @@ export default function SignIn() {
         email={view.email}
         destination={view.destination}
         answer={view.answer}
-        {...(view.click === undefined ? {} : { click: view.click })}
+        {...(view.clickId === undefined ? {} : { clickId: view.clickId })}
       />
     );
   }
@@ -51,7 +51,7 @@ export default function SignIn() {
     return (
       <MailUnavailableScreen
         chrome={chrome}
-        {...(view.click === undefined ? {} : { click: view.click })}
+        {...(view.clickId === undefined ? {} : { clickId: view.clickId })}
       />
     );
   }

@@ -1,5 +1,5 @@
 /**
- * Tells the ad tracker that a person its ad sent signed up, once per consented
+ * Tells the ad tracker that a person its ad sent signed up, once per
  * registration: the click id and the word `reg`, nothing about the person.
  *
  * A turn is one transaction. It takes a lock every process and replica shares,

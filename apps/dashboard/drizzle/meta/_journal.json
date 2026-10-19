@@ -113,6 +113,13 @@
       "when": 1792047497013,
       "tag": "0015_registration_postbacks",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792392246608,
+      "tag": "0016_registration_report_keeps_no_consent",
+      "breakpoints": true
     }
   ]
 }
