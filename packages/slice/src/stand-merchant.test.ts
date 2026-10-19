@@ -967,14 +967,7 @@ describe("disconnecting while an order is paused", () => {
     expect(await recordsIn(directory)).toEqual([]);
     expect(stand.paused.size).toBe(0);
     // The SDK's word for a handler that answered nothing, so the order returns.
-    expect(
-      feed
-        .entries()
-        .some(
-          (entry) =>
-            detailOf(entry).error === "handler_failed" && detailOf(entry).subject === ORDER_ID,
-        ),
-    ).toBe(true);
+    expect(handlerFailedOn(feed, ORDER_ID)).toBe(true);
   });
 
   it("returns when the next order of a batch reaches a pause while it waits on a delivery", async () => {
@@ -986,12 +979,7 @@ describe("disconnecting while an order is paused", () => {
     shutting.push(gateway.close);
     const stand = makeStandMerchant(makeFeed());
     merchant = stand;
-    stand.moods.order = "accept_then_deliver";
-    stand.moods.deliverAfterMs = 0;
-    const letDeliveriesThrough = gateway.holdDeliveries();
-    await stand.connect(gateway.url, KEY);
-    gateway.hand(anOrder("an-order-whose-delivery-is-on-its-way"));
-    await waitUntil(() => gateway.deliveries.length === 1);
+    const letDeliveriesThrough = await connectedWithADeliveryInFlight(stand, gateway);
 
     stand.pause.at = "arrival";
     gateway.hand(anOrder(), anOrder("the-next-order-in-the-same-batch"));
@@ -1005,21 +993,38 @@ describe("disconnecting while an order is paused", () => {
   });
 
   it("keeps the record of an order paused with its answer ready, and answers nothing", async () => {
-    // The promise: an effect already made is not undone by a disconnect. The
-    // repeat that follows finds it.
+    // The promise: an effect already made is not undone by a disconnect, and
+    // the answer nobody released is not sent. The repeat that follows finds
+    // the record. The delivery in flight keeps the SDK running after the
+    // disconnect began, so a handler let go on instead of given up on would
+    // have its answer reach the gateway.
     const gateway = await handingGateway();
     shutting.push(gateway.close);
     const directory = await recordsDirectory();
-    const stand = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    const feed = makeFeed();
+    const stand = makeStandMerchant(feed, { records: keepRecordsIn(directory, 8701) });
     merchant = stand;
-    stand.pause.at = "answer_ready";
-    await stand.connect(gateway.url, KEY);
-    gateway.hand(anOrder());
-    await waitUntil(() => stand.paused.has(ORDER_ID));
+    const letDeliveriesThrough = await connectedWithADeliveryInFlight(stand, gateway);
+    let disconnecting = Promise.resolve();
+    try {
+      stand.moods.order = "refuse";
+      stand.pause.at = "answer_ready";
+      gateway.hand(anOrder());
+      await waitUntil(() => stand.paused.has(ORDER_ID));
 
-    await within(5_000, stand.disconnect());
+      disconnecting = stand.disconnect();
+      await settle();
+    } finally {
+      letDeliveriesThrough();
+    }
+    await within(5_000, disconnecting);
 
-    expect(gateway.answers).toEqual([]);
-    expect(await recordsIn(directory)).toHaveLength(1);
+    expect(gateway.answers.filter((one) => one.orderId === ORDER_ID)).toEqual([]);
+    expect(handlerFailedOn(feed, ORDER_ID)).toBe(true);
+    expect(
+      (await recordsIn(directory))
+        .filter((one) => one.order_id === ORDER_ID)
+        .map((one) => one.answer),
+    ).toEqual([{ refused: stand.moods.refusal }]);
   });
 });
