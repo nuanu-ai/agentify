@@ -774,6 +774,23 @@ merchant, and check sign-out and an intelligible return after cancellation.
 The email-link route must still work. These checks require the channel's
 Google client and real acceptance accounts; offline tests do not prove them.
 
+## Live sales approval in the admin screen
+
+Sign in on the live site with an account carrying the administrative flag
+below. Open `/admin`, follow **Manage live sales approval**, and find the seller
+by their account email. Check the displayed seller name and merchant ID, then
+confirm **Allow this merchant to sell for real money** and press **Approve live
+sales**. The account must already have a merchant. Approval creates none,
+changes no order and moves no money. The seller must still meet all other
+publication and selling requirements.
+
+Only live grants approval; a test or sandbox screen explains that none is
+needed there. A repeated grant preserves the original approval time. If the
+write's answer is lost, the result is unknown: find the merchant again to read
+the status, or repeat the same approval safely. The existing `pnpm approve
+<email>` terminal command grants the same permission. Neither route proves that
+a particular payment occurred.
+
 ## Who opens /admin
 
 The operator's dashboard at `/admin` opens for a session whose account carries

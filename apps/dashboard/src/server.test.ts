@@ -29,6 +29,7 @@ import {
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ApprovalDirectory } from "./approval-command.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
@@ -224,6 +225,7 @@ interface Running {
 let open: Running | null = null;
 
 interface Starting {
+  readonly approvalDirectory?: ApprovalDirectory;
   readonly base?: string;
   readonly gateway?: Record<string, string>;
   readonly dashboard?: Record<string, string>;
@@ -343,6 +345,18 @@ async function visiting(
   const app = buildApp(config, {
     pages: await testPages(),
     gateway: application,
+    approvalDirectory: options.approvalDirectory ?? {
+      resolve: async (email) => {
+        const found = await identity.byEmail(email.trim().toLowerCase());
+        return found === null
+          ? []
+          : [
+              found.merchant === null
+                ? { email: found.email, binding: "unbound" as const }
+                : { email: found.email, binding: "bound" as const, merchantId: found.merchant.id },
+            ];
+      },
+    },
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
     ...(options.wooShops === undefined ? {} : { wooShops: options.wooShops }),
@@ -6209,5 +6223,202 @@ describe("the screen a signed-out person was going to", () => {
     for (const path of ["/no-such-page", "/cards", "/keysmith"]) {
       expect((await running.browser.get(path)).to, path).toBe("/sign-in");
     }
+  });
+});
+
+describe("live sales approval in the admin screen", () => {
+  const path = "/admin/live-sales";
+  const live = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const asAdmin = async (options: Starting = {}) => {
+    const running = await started({
+      gateway: { ...live, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+      dashboard: live,
+      ...options,
+    });
+    await running.identity.setOperator(PERSON, true);
+    await running.browser.signIn();
+    const seller = await running.harnessed.store.addMerchant(
+      { id: "mer_approval", name: "Registered merchant" },
+      Date.now(),
+    );
+    if (seller === null) throw new Error("merchant already exists");
+    await running.identity.make(OTHER, seller.id);
+    await running.harnessed.store.setServiceName(seller.id, "Freeland", Date.now());
+    return { ...running, seller: seller.id };
+  };
+  const confirmation = (seller: string) => ({
+    intent: "approve",
+    email: OTHER,
+    merchant_id: seller,
+    confirm: "live-sales",
+  });
+
+  it("lets an administrator inspect an existing seller, then grant live approval idempotently", async () => {
+    const running = await asAdmin();
+    const { browser, seller, harnessed } = running;
+    expect((await browser.get(path)).status).toBe(200);
+    const preview = await browser.post(path, { intent: "lookup", email: OTHER });
+    expect(preview.status).toBe(200);
+    expect(readable(preview.html)).toContain("Freeland");
+    expect(readable(preview.html)).toContain(seller);
+    expect((await harnessed.store.merchantById(seller))?.liveApprovedAt).toBeNull();
+    const approved = await browser.post(path, confirmation(seller));
+    expect(approved.status).toBe(200);
+    const first = (await harnessed.store.merchantById(seller))?.liveApprovedAt;
+    expect(first).toBeTypeOf("number");
+    harnessed.advance(1_000);
+    expect((await browser.post(path, confirmation(seller))).status).toBe(200);
+    expect((await harnessed.store.merchantById(seller))?.liveApprovedAt).toBe(first);
+    expect((await browser.get(`${path}.data`)).headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("does not require the administrator to register as a merchant", async () => {
+    const running = await asAdmin();
+    running.forgetMerchant(PERSON);
+    expect((await running.browser.get(path)).status).toBe(200);
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(200);
+    expect(
+      (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+    ).not.toBeNull();
+  });
+
+  it("refuses ordinary accounts and revoked administrators on reads and writes", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    await running.identity.setOperator(PERSON, false);
+    for (const target of [path, `${path}.data`]) {
+      expect((await running.browser.get(target)).status).toBe(404);
+      expect((await running.browser.post(target, confirmation(running.seller))).status).toBe(404);
+    }
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("does not grant approval from a test or sandbox screen", async () => {
+    const running = await asAdmin({ gateway: {}, dashboard: {} });
+    expect((await running.browser.get(path)).status).toBe(200);
+    const refused = await running.browser.post(path, confirmation(running.seller));
+    expect(refused.status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it.each(["email", "merchant_id", "confirm", "intent"])(
+    "requires %s before granting real sales",
+    async (field) => {
+      const running = await asAdmin();
+      await running.browser.get(path);
+      const form: Record<string, string> = confirmation(running.seller);
+      delete form[field];
+      const refused = await running.browser.post(path, form);
+      expect(refused.status).toBe(400);
+      expect(readable(refused.html)).toMatch(/choose|enter|confirm|find|missing/i);
+      expect(
+        (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+      ).toBeNull();
+    },
+  );
+
+  it("refuses a merchant identifier that differs from the account being approved", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const refused = await running.browser.post(path, {
+      ...confirmation(running.seller),
+      merchant_id: running.theMerchant,
+    });
+    expect(refused.status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("refuses an ambiguous account lookup instead of approving either merchant", async () => {
+    const running = await asAdmin({
+      approvalDirectory: {
+        resolve: async () => [
+          { email: OTHER, binding: "bound", merchantId: "mer_approval" },
+          { email: OTHER, binding: "bound", merchantId: "another_merchant" },
+        ],
+      },
+    });
+    await running.browser.get(path);
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("refuses foreign origins and forms drawn for a different account", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    expect(
+      (await running.browser.from("https://other.invalid").post(path, confirmation(running.seller)))
+        .status,
+    ).toBe(403);
+    expect(
+      (await running.browser.post(path, { ...confirmation(running.seller), [DRAWN_FOR]: OTHER }))
+        .status,
+    ).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("does not turn a directory outage into an approval or a missing account", async () => {
+    const running = await asAdmin({
+      approvalDirectory: {
+        resolve: async () => {
+          throw new Error("database unavailable");
+        },
+      },
+    });
+    await running.browser.get(path);
+    const result = await running.browser.post(path, confirmation(running.seller));
+    expect(result.status).toBe(503);
+    expect(readable(result.html)).toMatch(/could not|unavailable/i);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+  it("leaves the outcome unknown when the response is lost after the approval commits", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const store = running.harnessed.store;
+    const grant = store.grantLiveApproval.bind(store);
+    vi.spyOn(store, "grantLiveApproval").mockImplementationOnce(async (id, at) => {
+      await grant(id, at);
+      throw new Error("connection lost after commit");
+    });
+    const result = await running.browser.post(path, confirmation(running.seller));
+    expect(result.status).toBe(503);
+    expect(readable(result.html)).toMatch(/outcome is unknown/i);
+    const recorded = (await store.merchantById(running.seller))?.liveApprovedAt;
+    expect(recorded).toBeTypeOf("number");
+    const inspected = await running.browser.post(path, { intent: "lookup", email: OTHER });
+    expect(inspected.status).toBe(200);
+    expect(readable(inspected.html)).toContain(
+      new Date(recorded as number).toISOString().slice(0, 10),
+    );
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(200);
+    expect((await store.merchantById(running.seller))?.liveApprovedAt).toBe(recorded);
+  });
+
+  it("does not approve a missing account or an account without a merchant", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    for (const email of ["absent@example.com", OTHER]) {
+      if (email === OTHER) running.forgetMerchant(OTHER);
+      expect(
+        (await running.browser.post(path, { ...confirmation(running.seller), email })).status,
+      ).toBe(409);
+      expect(
+        (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+      ).toBeNull();
+    }
+  });
+
+  it("does not accept duplicate confirmation fields", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const form = new URLSearchParams({ ...confirmation(running.seller), [DRAWN_FOR]: PERSON });
+    form.append("confirm", "live-sales");
+    expect(
+      (await running.browser.postRaw(path, "application/x-www-form-urlencoded", form.toString()))
+        .status,
+    ).toBe(400);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
   });
 });

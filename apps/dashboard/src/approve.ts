@@ -3,8 +3,8 @@
  *
  * It reads the address from standard input, shares one database pool between
  * the dashboard resolver and gateway store, and refuses every payment network
- * except the existing live network classification. There is no HTTP route and
- * no merchant credential involved.
+ * except the existing live network classification. The administrative screen
+ * grants the same approval; no merchant credential can grant it.
  */
 
 import { environmentOf } from "@agentify/core";

@@ -52,6 +52,7 @@ import {
 } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import type { LiveSalesView } from "../src/live-sales.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -2646,11 +2647,63 @@ const PROBLEMS: GalleryState[] = [
   ),
 ];
 
+const LIVE_SALES: GalleryState[] = [
+  at(
+    {
+      id: "admin-live-sales",
+      screen: "Live sales approval",
+      when: "An administrator opens the live sales screen from Admin.",
+      cause: "Their current session has the administrative flag; no seller has been selected.",
+    },
+    {
+      path: "/admin/live-sales",
+      mode: "live",
+      loaded: {
+        "routes/admin-live-sales": {
+          live: true,
+          email: "",
+          merchant: null,
+          message: null,
+        } satisfies LiveSalesView,
+      },
+    },
+  ),
+  at(
+    {
+      id: "admin-live-sales-confirm",
+      screen: "Live sales approval",
+      when: "An administrator has found the merchant to approve.",
+      cause:
+        "One account matches the email and names this existing merchant, which has not been admitted to live sales.",
+    },
+    {
+      path: "/admin/live-sales",
+      mode: "live",
+      loaded: {
+        "routes/admin-live-sales": {
+          live: true,
+          email: WHO,
+          message: null,
+          merchant: {
+            email: WHO,
+            id: MERCHANT,
+            name: "Freeland",
+            site: "https://freeland.example",
+            integration: "api",
+            approvedAt: null,
+          },
+        } satisfies LiveSalesView,
+      },
+    },
+  ),
+];
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
   lang: "en",
   states: [
+    ...LIVE_SALES,
     ...SIGNING_IN,
     ...SETTING_UP,
     ...CARDS,

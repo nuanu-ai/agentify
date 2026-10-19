@@ -34,6 +34,7 @@ export default [
   layout("routes/gate.tsx", [
     index("routes/start.ts"),
     route("merchant", "routes/merchant.tsx"),
+    route("admin/live-sales", "routes/admin-live-sales.tsx"),
     layout("routes/merchant-only.tsx", [
       route("choose-name", "routes/choose-name.tsx"),
       route("cards", "routes/cards.tsx"),

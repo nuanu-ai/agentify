@@ -99,6 +99,9 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
         <a className="button button-secondary" href="/admin">
           Refresh data
         </a>
+        <a className="button button-primary" href="/dashboard/admin/live-sales">
+          Manage live sales approval
+        </a>
       </section>
 
       <section aria-labelledby="overview-title">

@@ -36,6 +36,7 @@ import {
 import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
+import type { LiveSalesPages } from "./live-sales.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -159,6 +160,7 @@ export interface ChooseNameView {
 }
 
 export interface PageServices {
+  readonly liveSales: LiveSalesPages | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
   readonly surface: Surface;
@@ -249,6 +251,7 @@ export interface PageServices {
 }
 
 export interface PageParts {
+  readonly liveSales?: LiveSalesPages;
   readonly identity: DashboardIdentity;
   /**
    * The gateway's application called as the merchant on the signed-in
@@ -703,6 +706,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           : dashboardPathFor(base, destination);
 
   return {
+    liveSales: parts.liveSales ?? null,
     base,
     surface: {
       attribute: SURFACE_MARKER_ATTRIBUTE,

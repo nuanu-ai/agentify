@@ -154,7 +154,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents cannot buy your cards on the live site until Agentify approves your merchant; if an Agentify operator is coordinating your pilot, ask them for the approval.",
+    says: "Agents cannot buy your cards on the live site until an Agentify administrator approves your merchant. Test sales need no approval.",
     fix: null,
   },
   no_seller_name: {

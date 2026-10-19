@@ -14,6 +14,7 @@
 import type { Server } from "node:http";
 import type { Gateway } from "@agentify/gateway";
 import type { Pool } from "pg";
+import { PostgresApprovalDirectory } from "./approval-directory.js";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
 import { connect } from "./database.js";
@@ -101,7 +102,13 @@ function started(
 ): RunningDashboard {
   const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
 
-  const app = buildApp(config, { gateway: application, identity, wooShops, pages });
+  const app = buildApp(config, {
+    gateway: application,
+    identity,
+    wooShops,
+    pages,
+    approvalDirectory: new PostgresApprovalDirectory(pool),
+  });
   const listening = () => {
     console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
     // Says which delivery mode is in force without logging recipients or

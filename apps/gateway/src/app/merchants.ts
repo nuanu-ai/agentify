@@ -136,8 +136,8 @@ export interface LiveApprovalGrant {
 }
 
 /**
- * Admits one merchant to live publication. Only the protected operator command
- * calls this; no merchant-key route can make this decision. Null means no such
+ * Admits one merchant to live publication. The protected administrative screen
+ * and terminal command call this; no merchant-key route can make this decision. Null means no such
  * merchant; `changed: false` means already admitted.
  */
 export async function grantLiveApproval(

@@ -1,0 +1,95 @@
+/* Layout only: controls, colour, type and spacing use the shared design system. */
+.layout {
+  align-items: start;
+}
+
+.panel {
+  padding: var(--space-card);
+  gap: var(--space-block);
+}
+
+.panel h2 {
+  font-size: var(--text-section);
+}
+
+.panel p {
+  margin: 0;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-tight) var(--space-control);
+}
+
+.search,
+.confirm {
+  display: grid;
+  gap: var(--space-block);
+}
+
+.search button,
+.confirm button {
+  justify-self: start;
+}
+
+.details {
+  margin: 0;
+  display: grid;
+  gap: var(--space-block);
+}
+
+.details dt {
+  font-size: var(--text-label);
+  color: var(--muted);
+}
+
+.details dd {
+  margin: var(--space-snug) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.details dd:global(.mono) {
+  font-size: var(--text-label);
+}
+
+.confirm {
+  border-top: var(--hairline) solid var(--line);
+  padding-top: var(--space-block);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-control);
+  min-height: 48px;
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.check input {
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.explanation {
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.success {
+  color: var(--pass);
+}
+
+.notice {
+  margin: 0;
+}
+
+.channel {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-control);
+  margin-block: var(--space-card);
+}
