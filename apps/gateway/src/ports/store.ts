@@ -103,9 +103,7 @@ export interface StoredOrder {
    * facilitator, and a discovery listing can publish it, while the identifier
    * opens the order and its goods. A payment is bound to the order whose
    * reference it carries, and nothing answers a reference with the order's
-   * identifier, status or goods. No two orders share one. Every order has
-   * one: those written before references were issued were given one when
-   * the store was migrated.
+   * identifier or goods. Every order has one, and no two share one.
    */
   readonly paymentRef: string;
   /**

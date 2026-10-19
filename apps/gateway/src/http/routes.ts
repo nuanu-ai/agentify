@@ -656,9 +656,10 @@ async function answerPurchase(
       );
 
     case "payment_not_taken":
-      // For example an order whose charge never reported back: a second charge
-      // would spend the buyer's money on a guess. Whether a retry can succeed
-      // is the order machine's to say, not this handler's.
+      // For example an order whose charge never reported back, where a second
+      // charge would spend the buyer's money on a guess, or an order that is
+      // over. Whether a retry can succeed is the gateway's to say, not this
+      // handler's.
       return written(
         response,
         CONFLICT,

@@ -8,11 +8,11 @@
 --
 -- The first statement gives every order written before references existed one
 -- of its own, random as the gateway issues them: `pay_` and the 32 hex digits
--- of a version-4 UUID. Only documents without the key are touched, and only
--- the key is added. So every order has a reference. A buyer of such an order
--- still holds a challenge that named the order by its identifier, which no
--- payment is matched by any more, so an order waiting for its buyer to pay
--- again is reached only by a payment carrying the new reference.
+-- of a version-4 UUID. Only documents without one are touched, and only the
+-- reference is written. So every order has a reference, and every later charge
+-- for it carries one. The buyer of such an order is not given it: their
+-- challenge named the order by its identifier, which no payment is matched by
+-- any more, so they cannot pay that order again.
 --
 -- The second makes the lookup an index read rather than a read of every
 -- document, and refuses two orders under one reference. It is built in the
@@ -24,6 +24,6 @@ SET "record" = jsonb_set(
   '{paymentRef}',
   to_jsonb('pay_' || replace(gen_random_uuid()::text, '-', ''))
 )
-WHERE NOT ("record" ? 'paymentRef');
+WHERE "record" ->> 'paymentRef' IS NULL;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "orders_payment_ref_unique" ON "orders" USING btree (("record" ->> 'paymentRef'));
