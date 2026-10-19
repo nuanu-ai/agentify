@@ -490,6 +490,38 @@ describe("the payment challenge", () => {
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
+  it("gives an agent the life of the price as its time to pay, before it signs", async () => {
+    // An unpaid order closes when its price runs out. A challenge that offered
+    // longer would let an agent ask its owner, sign and pay after the order was
+    // gone, and learn so only from the refusal.
+    for (const [lives, seconds] of [
+      ["30000", 30],
+      ["45000", 45],
+    ] as const) {
+      const { served, harnessed } = await started({
+        QUOTE_TTL_MS: lives,
+        // Left from when the window was a number of its own; nothing reads it.
+        PAYMENT_TIMEOUT_SECONDS: "300",
+      });
+      const itemId = await publish(served, syncCard);
+
+      for (const asked of [
+        await served.call("GET", `/x402/${itemId}/purchase`),
+        await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } }),
+      ]) {
+        const challenge = decodePaymentRequiredHeader(
+          asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+        );
+        expect(challenge.accepts[0]?.maxTimeoutSeconds, lives).toBe(seconds);
+      }
+      expect(harnessed.runtime.config.deadlines.quoteTtlMs).toBe(seconds * 1_000);
+
+      await served.close();
+      await harnessed.stop();
+      open = null;
+    }
+  });
+
   it("asks for the smallest price the door takes, exactly", async () => {
     // The finest price publication accepts is one unit of the payment token,
     // and the challenge must ask for exactly that unit.
