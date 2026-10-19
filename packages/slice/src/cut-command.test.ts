@@ -518,6 +518,41 @@ describe("what passes between the caller and the upstream", () => {
   });
 });
 
+describe("an answer to HEAD", () => {
+  const described = (_n: number, response: ServerResponse) => {
+    response.writeHead(200, { "content-type": "application/json", "content-length": "1001" });
+    response.end();
+  };
+  const heads = (phase: string) => ["--method", "HEAD", "--path", "/v0/catalog", "--phase", phase];
+
+  it("keeps the length the upstream gave, and is never cut midway since it has no body", async () => {
+    const up = await upstream(described);
+    const { port, log } = await proxy(up.url, heads("mid-body"));
+
+    const first = await call(port, "HEAD", "/v0/catalog");
+    const second = await call(port, "HEAD", "/v0/catalog");
+
+    for (const reply of [first, second]) {
+      expect([reply.status, reply.whole, reply.headers["content-length"]]).toEqual([
+        200,
+        true,
+        "1001",
+      ]);
+    }
+    expect(await lineFor(log, 1)).toMatch(/no middle to cut/);
+    expect(log.join("\n")).not.toContain("CUT");
+  });
+
+  it("is cut before its headers like any other answer", async () => {
+    const up = await upstream(described);
+    const { port } = await proxy(up.url, heads("before-headers"));
+
+    const cut = await call(port, "HEAD", "/v0/catalog");
+
+    expect(cut.status).toBeNull();
+  });
+});
+
 describe("an answer the upstream encoded", () => {
   const encoders = {
     gzip: gzipSync,
