@@ -820,6 +820,131 @@ const within = async <T>(ms: number, promise: Promise<T>): Promise<T> => {
   }
 };
 
+/** Whether the SDK said the handler threw on this order, so nothing was answered for it. */
+const handlerFailedOn = (feed: ReturnType<typeof makeFeed>, orderId: string): boolean =>
+  feed
+    .entries()
+    .some(
+      (entry) => detailOf(entry).error === "handler_failed" && detailOf(entry).subject === orderId,
+    );
+
+/**
+ * Connects the stand with a delivery for an earlier order on its way and held
+ * by the gateway, and returns the call that lets it through.
+ *
+ * A disconnect waits for that delivery before it stops the SDK, and the SDK
+ * goes on posting answers meanwhile, so an answer that must never be sent has
+ * all the time it needs to reach the gateway. Without it the stop aborts the
+ * post first and a test of "answers nothing" holds only by timing.
+ */
+const connectedWithADeliveryInFlight = async (
+  stand: ReturnType<typeof makeStandMerchant>,
+  gateway: Awaited<ReturnType<typeof handingGateway>>,
+): Promise<() => void> => {
+  stand.moods.order = "accept_then_deliver";
+  stand.moods.deliverAfterMs = 0;
+  const letDeliveriesThrough = gateway.holdDeliveries();
+  await stand.connect(gateway.url, KEY);
+  gateway.hand(anOrder("an-order-whose-delivery-is-on-its-way"));
+  await waitUntil(() => gateway.deliveries.length === 1);
+  return letDeliveriesThrough;
+};
+
+describe("disconnecting while an order is held for a person", () => {
+  it("answers and records nothing for the held order, as for a paused one", async () => {
+    // The promise: nobody answered because the stand went away, which is not
+    // the merchant refusing. A refusal recorded here would be the order's one
+    // effect although it never reached the gateway, and every repeat after it
+    // would be refused with it.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const feed = makeFeed();
+    const stand = makeStandMerchant(feed, { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    const letDeliveriesThrough = await connectedWithADeliveryInFlight(stand, gateway);
+    let disconnecting = Promise.resolve();
+    try {
+      stand.moods.order = "ask_me";
+      gateway.hand(anOrder());
+      await waitUntil(() => stand.held.has(ORDER_ID));
+
+      disconnecting = stand.disconnect();
+      await settle();
+    } finally {
+      letDeliveriesThrough();
+    }
+    await within(5_000, disconnecting);
+
+    expect(gateway.answers.filter((one) => one.orderId === ORDER_ID)).toEqual([]);
+    expect((await recordsIn(directory)).filter((one) => one.order_id === ORDER_ID)).toEqual([]);
+    expect(stand.held.size).toBe(0);
+    expect(handlerFailedOn(feed, ORDER_ID)).toBe(true);
+  });
+
+  it("gives up at once on an order handed over while it waits on a delivery", async () => {
+    // The promise: a disconnect never holds an order for a person it will not
+    // show it to. The worker goes on polling while the disconnect waits for a
+    // delivery already on its way, and an order it hands over then has to be
+    // given up on at once, not held to the ceiling and refused.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const feed = makeFeed();
+    const stand = makeStandMerchant(feed, { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    const late = "an-order-handed-over-during-the-disconnect";
+    const letDeliveriesThrough = await connectedWithADeliveryInFlight(stand, gateway);
+    let disconnecting = Promise.resolve();
+    try {
+      stand.moods.order = "ask_me";
+      disconnecting = stand.disconnect();
+      await waitUntil(() => feed.entries().some(isWaitingForDeliveries));
+      gateway.hand(anOrder(late));
+
+      await waitUntil(() => handlerFailedOn(feed, late), 2_000);
+      expect(stand.held.size).toBe(0);
+    } finally {
+      letDeliveriesThrough();
+    }
+    await within(5_000, disconnecting);
+
+    expect(gateway.answers.filter((one) => one.orderId === late)).toEqual([]);
+    expect((await recordsIn(directory)).filter((one) => one.order_id === late)).toEqual([]);
+  });
+
+  it("still refuses, and records the refusal, when nobody answers while it is connected", async () => {
+    // The negative control of the two above: the ceiling's refusal is a real
+    // answer, recorded and sent, so the silence there is the disconnect's
+    // doing and not a stand that never records a held order.
+    const gateway = await handingGateway();
+    shutting.push(gateway.close);
+    const directory = await recordsDirectory();
+    const stand = makeStandMerchant(makeFeed(), { records: keepRecordsIn(directory, 8701) });
+    merchant = stand;
+    stand.moods.order = "ask_me";
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await stand.connect(gateway.url, KEY);
+      gateway.hand(anOrder());
+      const until = Date.now() + 5_000;
+      while (!stand.held.has(ORDER_ID) && Date.now() < until) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(stand.held.has(ORDER_ID)).toBe(true);
+      await vi.advanceTimersByTimeAsync(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitUntil(() => gateway.answers.length === 1);
+
+    const refusal = { refused: expect.objectContaining({ code: "nobody_answered" }) };
+    expect(gateway.answers[0]?.body).toEqual(refusal);
+    expect((await recordsIn(directory)).map((one) => one.answer)).toEqual([refusal]);
+  });
+});
+
 describe("disconnecting while an order is paused", () => {
   it("returns, and answers and records nothing for an order paused as it arrived", async () => {
     // The promise: a disconnect lets go of a paused order by giving up on it,
