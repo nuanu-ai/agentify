@@ -763,7 +763,15 @@ describe("the shipment", () => {
       });
 
       expect(repeated.status).toBe(httpStatus);
-      expect(repeated.body).toStrictEqual(beforeRepeat);
+      if (status === "rejected") {
+        // An order over with nothing taken is answered without the order:
+        // whoever presents its payment reference has not paid, and the buyer
+        // already holds the order from its first answer.
+        expect(repeated.body).toMatchObject({ error: { code: "payment_not_taken" } });
+        expect(JSON.stringify(repeated.body)).not.toContain(orderId);
+      } else {
+        expect(repeated.body).toStrictEqual(beforeRepeat);
+      }
       expect(harnessed.facilitator.settles).toHaveLength(1);
       expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
       expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
