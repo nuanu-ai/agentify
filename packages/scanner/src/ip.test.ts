@@ -78,6 +78,7 @@ describe("IP and URL SSRF policy", () => {
     ["2001:3::1", "AMT relay"],
     ["2001:4:112::1", "AS112 sink"],
     ["2001:30::1", "drone identifier"],
+    ["2001:1ff::1", "unassigned"],
   ])("an address of the IETF protocol block is refused: %s (%s)", (address) =>
     expect(classifyIp(address)).toMatchObject({ allowed: false, reason: "reserved" }),
   );

@@ -44,7 +44,7 @@ Allow: /
     ]);
   });
 
-  it("uses only the most specific user-agent groups when applying rules", () => {
+  it("follows the groups naming the scanner's token, and the * group only when none does", () => {
     const specificDeny = parseRobots(`
 User-agent: *
 Allow: /
@@ -64,6 +64,24 @@ Allow: /
 `);
     expect(isPathAllowed(specificAllow, "agentify-scanner", "/public")).toBe(true);
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
+
+    // RFC 9309 merges every group that names the token.
+    const twoGroups = parseRobots(`
+User-agent: agentify-scanner
+Disallow: /a
+User-agent: *
+Disallow: /
+User-agent: agentify-scanner
+Disallow: /b
+`);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/a")).toBe(false);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/b")).toBe(false);
+    expect(isPathAllowed(twoGroups, "agentify-scanner", "/c")).toBe(true);
+  });
+
+  it("reads a user-agent line of * followed by other words as the group for every crawler", () => {
+    const parsed = parseRobots("User-agent: * all crawlers\nDisallow: /\n");
+    expect(isPathAllowed(parsed, "agentify-scanner", "/")).toBe(false);
   });
 
   it.each([
