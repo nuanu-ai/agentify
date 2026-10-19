@@ -159,6 +159,77 @@ describe("bounded scan graph", () => {
       ).toBe(true);
   });
 
+  it("sends no request in an AI agent's name where robots.txt keeps that agent off the page", async () => {
+    const target = transport("User-agent: *\nAllow: /\n\nUser-agent: ChatGPT-User\nDisallow: /\n");
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.filter((request) => request.includes("ChatGPT-User"))).toEqual([]);
+    expect(evaluation.checks.find((check) => check.id === 13)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "agent_ua_robots_disallowed",
+    });
+    // The scanner itself was let in, so no check says robots.txt kept it out.
+    expect(evaluation.checks.filter((check) => check.errorCode === "robots_disallowed")).toEqual(
+      [],
+    );
+  });
+
+  it("follows no redirect in an AI agent's name to an address robots.txt keeps that agent off", async () => {
+    const target = transport(
+      "User-agent: *\nAllow: /\n\nUser-agent: Claude-User\nDisallow: /agents/\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers["user-agent"]?.startsWith("Claude-User")
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/agents/home",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/agents/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 13)?.summaryCode).toBe(
+      "agent_ua_robots_disallowed",
+    );
+  });
+
+  it("names robots.txt when it keeps the scanner off the page a request in an AI agent's name is redirected to", async () => {
+    const target = transport("User-agent: *\nDisallow: /agents/\n");
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers["user-agent"]?.startsWith("ChatGPT-User")
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/agents/home",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/agents/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 13)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_disallowed",
+    });
+  });
+
   it("sends the user agents the documentation's page about the scanner names, with the channel's own address", async () => {
     // The page names the site's address as `{{origin}}`, which Caddy fills
     // from the address the scanner is given as its own.
