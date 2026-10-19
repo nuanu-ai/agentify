@@ -286,6 +286,71 @@ describe("what the checks read from the markup real sites write", () => {
   });
 });
 
+describe("OAuth discovery evidence", () => {
+  const declared = (): ScanArtifacts => ({
+    ...makeArtifacts("owner"),
+    mcp: [artifact("https://example.com/.well-known/mcp.json", '{"authorization":"oauth2"}')],
+  });
+  const missing = (path: string) =>
+    artifact(`https://example.com/.well-known/${path}`, "", { status: 404 });
+  const metadata = () =>
+    artifact(
+      "https://example.com/.well-known/oauth-authorization-server",
+      JSON.stringify({
+        issuer: "https://example.com",
+        authorization_endpoint: "https://example.com/oauth/authorize",
+        token_endpoint: "https://example.com/oauth/token",
+      }),
+    );
+
+  it.each([
+    { oauth: [] as FetchArtifact[] },
+    { oauth: [missing("oauth-authorization-server")] },
+    { oauth: [metadata()] },
+  ])("does not claim missing metadata from an incomplete set of answers: %j", ({ oauth }) => {
+    const input = { ...declared(), oauth };
+    const evaluation = evaluateScan(input);
+    const checked = evaluation.checks.find(({ id }) => id === 11);
+    expect(checked).toMatchObject({ status: "unavailable", errorCode: "oauth_fetch_incomplete" });
+    expect(checked?.fixCode).toBeUndefined();
+    expect(evaluation.findings.negativeCheckIds).not.toContain(11);
+    expect(evaluation.score.coverage).toBeLessThan(1);
+  });
+
+  it("keeps one observed document without calling an unanswered document missing", () => {
+    const input = declared();
+    input.oauth = [
+      metadata(),
+      artifact("https://example.com/.well-known/oauth-protected-resource", "", {
+        status: 0,
+        errorCode: "fetch_timeout",
+      }),
+    ];
+    const checked = check(input, 11);
+    expect(checked).toMatchObject({
+      status: "unavailable",
+      errorCode: "fetch_timeout",
+      evidence: { documents_found: 1 },
+    });
+    expect(checked?.fixCode).toBeUndefined();
+  });
+
+  it("reports metadata missing after both discovery locations answered not found", () => {
+    const input = declared();
+    input.oauth = [missing("oauth-authorization-server"), missing("oauth-protected-resource")];
+    expect(check(input, 11)).toMatchObject({ status: "fail", fixCode: "publish_oauth_metadata" });
+  });
+
+  it("keeps a confirmed missing document actionable when the other was found", () => {
+    const input = declared();
+    input.oauth = [metadata(), missing("oauth-protected-resource")];
+    expect(check(input, 11)).toMatchObject({
+      status: "partial",
+      fixCode: "complete_oauth_metadata",
+    });
+  });
+});
+
 describe("a scan of a truncated HTML response", () => {
   const plain = "<html><head><title>Coffee</title></head><body><h1>Coffee</h1>";
   const productData = (evaluation: ReturnType<typeof evaluateScan>) =>
