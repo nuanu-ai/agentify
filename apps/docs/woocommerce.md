@@ -31,6 +31,11 @@ for a parcel the shipping rate, and your shop has four seconds to answer. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
 
+The buyer gets a download through Agentify: once your shop has created the
+order, the order the buyer reads from us carries your shop's private download
+address for the file, the file's name and the order's number in your shop, and
+the file itself comes from your shop at that address.
+
 Each order is created in your shop with your own dashboard email as the
 customer's, so the shop's customer emails — the confirmation, the download
 link — come to you and never to the buyer, and the shop's reports name you as
