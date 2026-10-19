@@ -1,5 +1,7 @@
 # Agentify experimental WooCommerce TEST acceptance protocol
 
+> Historical, 2026-09-18. The WooCommerce connector it calls experimental is developed on equal terms with the SDK, a merchant sells through one of the two at a time (ADR-0036), and it stays off the live channel until its orders pass end to end on the test channel.
+
 **Pre-registered:** 2026-09-18. Execute from the SDK baseline deployed for the
 controlled external SDK rehearsal, after the Woo implementation is reviewed and
 deployed.

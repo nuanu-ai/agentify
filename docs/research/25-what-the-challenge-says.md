@@ -1,5 +1,7 @@
 # Что живые ресурсы кладут в 402: замер поля `error`
 
+> Historical, 2026-09-01. A measurement of what live x402 resources put in a payment challenge, and the reasoning of the retired ADR-0021 drawn from it; the gateway's strings live in `apps/gateway/src/http/routes.ts`.
+
 Дата: 2026-09-01. Повод: у нас в вызове на GET-зонде лежало предложение про
 то, как устроена цена карточки, и возник вопрос, нормальная ли это практика.
 

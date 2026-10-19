@@ -54,7 +54,7 @@ suppressed by exact fingerprints.
 ## Alternatives rejected
 
 - Ansible on each host, building from source: slower, other bytes on each
-  channel, recovery by hand (measured in `docs/research/00-open-questions.md`,
+  channel, recovery by hand (measured in `docs/research/52-release-delivery.md`,
   which also says why the digests travel as they do).
 - Pushing to hosts from GitHub: a mesh credential or a public listener, and
   pull-request code on internal runners would cross the release boundary.
