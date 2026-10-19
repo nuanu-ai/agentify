@@ -55,12 +55,14 @@ Only an answer the gateway gave with a 2xx status counts, because a refusal is
 not a commitment. The unpaid first call of a purchase is answered with a 402
 challenge; it passes through untouched and is not counted, which is why the
 rule above cuts the paid answer that follows it and not the challenge. `--nth`
-picks which counted answer is cut, the first by default. Three other answers
-pass without being counted, and the log says why each time: an answer shorter
-than two bytes, which has no middle to cut midway; an answer whose caller had
-already left by the time it was complete, since nobody would see the cut; and
-an upstream that could not be reached or broke off its answer, which the
-caller receives as a 502 naming the upstream and the network code.
+picks which counted answer is cut, the first by default. Other answers are not
+counted either, and the log says why each time: an answer shorter than two
+bytes, which has no middle to cut midway; an answer whose caller had already
+left by the time it was complete, or left while the cut midway was still being
+written to it, since the cut never reached anyone; and an upstream that could
+not be reached or broke off its answer, which the caller receives as a 502
+naming the upstream and the network code, unless the caller has left too, in
+which case the line says that no 502 was sent.
 
 The phase decides what the caller sees. With `before-headers` the proxy writes
 nothing and closes the connection, so the caller has no status at all; curl
@@ -78,14 +80,15 @@ the size of the body, and the order a JSON answer names in a top-level
 `order_id`. The reverse proxy in front of the gateway compresses larger JSON
 answers for a caller that accepts it, and the fetch in the SDK and in the buyer
 does accept it, so many answers arrive encoded. The proxy forwards those bytes
-as they came; the line
-then names the coding and counts the encoded bytes, and reads the order from a
-decoded copy when the coding is gzip, deflate, br or zstd. When it cannot read
-the order, because the coding is another one or the body does not decode, the
-line says that the order was not read and why, so a line that names no order
-is always one whose answer names none. The line for the cut adds the phase and
-how many body bytes reached the caller, and the line after it says that the
-rule is spent. Apart from the name of a content coding, the log never prints a
+as they came; the line then names the coding and counts the encoded bytes, and
+reads the order from a decoded copy when the coding is gzip, deflate, br or
+zstd. When it cannot read the order, because the coding is another one or the
+body does not decode, the line says that the order was not read and why, so a
+line that names no order is always one whose answer names none. The line for
+the cut adds the phase and how many body bytes were written to the caller's
+connection before the proxy closed it; how many of them the caller read is
+something only the caller can tell. The line after it says that the rule is
+spent. Apart from the name of a content coding, the log never prints a
 header, a body or a query string, because merchant keys and payment
 signatures travel in headers and goods and buyers' addresses in bodies. Order
 ids do appear, in the paths and in that field, and an order id is a buyer's

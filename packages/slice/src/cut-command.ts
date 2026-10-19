@@ -296,8 +296,12 @@ const passThrough = (response: ServerResponse, answer: Answer): void => {
   response.end(answer.body);
 };
 
-/** Cuts the answer at its phase and says how many body bytes reached the caller. */
-const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<number> => {
+/**
+ * Cuts the answer at its phase. Resolves with how many body bytes were written
+ * to the caller's connection before the proxy closed it, or with null when the
+ * caller left while they were being written and so never met the cut.
+ */
+const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<number | null> => {
   const socket = response.socket;
   if (phase === "before-headers" || socket === null) {
     socket?.destroy();
@@ -309,7 +313,14 @@ const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<nu
     "content-length": answer.body.length,
   });
   return new Promise((resolve) => {
-    response.write(answer.body.subarray(0, half), () => {
+    // A write to a connection that dies under it may never call back, so the
+    // connection's close settles the cut as well.
+    response.once("close", () => resolve(null));
+    response.write(answer.body.subarray(0, half), (error) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
       socket.end();
       resolve(half);
     });
@@ -349,10 +360,10 @@ export const runCut = async (
   let counted = 0;
 
   const exchange = async (n: number, request: IncomingMessage, response: ServerResponse) => {
-    let callerGone = false;
-    response.once("close", () => {
-      callerGone = true;
-    });
+    // A connection's close event can trail its end by a turn of the event
+    // loop, and a write in that turn is dropped without a word, so whether the
+    // caller is still there is read from its connection at the moment of use.
+    const callerLeft = () => response.destroyed || !request.socket.writable;
     const method = request.method ?? "";
     const path = (request.url ?? "").split("?", 1)[0] ?? "";
     const log = (words: string) => stamped(`#${n} ${method} ${path} ${words}`);
@@ -370,11 +381,15 @@ export const runCut = async (
       answer = await forward(rule.upstream, basePath, request, body);
     } catch (error) {
       const code = codeOf(error);
-      log(`no whole answer from the upstream (${code}); answered 502, not counted`);
-      if (!callerGone) {
-        response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
-        response.end(`The cut proxy got no whole answer from ${upstreamName}: ${code}.\n`);
+      if (callerLeft()) {
+        log(
+          `no whole answer from the upstream (${code}), and the caller had left, so no 502 was sent; not counted`,
+        );
+        return;
       }
+      response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+      response.end(`The cut proxy got no whole answer from ${upstreamName}: ${code}.\n`);
+      log(`no whole answer from the upstream (${code}); answered 502, not counted`);
       return;
     }
 
@@ -382,7 +397,7 @@ export const runCut = async (
     const matched = counted < rule.nth && method === rule.method && pattern.test(path);
     const stillArmed = "not counted, the rule is still armed";
 
-    if (callerGone) {
+    if (callerLeft()) {
       log(
         `${facts}: the caller had left before the answer was whole, so nothing was sent${matched ? `; ${stillArmed}` : ""}`,
       );
@@ -414,10 +429,17 @@ export const runCut = async (
       return;
     }
     const sent = await cut(response, answer, rule.phase);
+    if (sent === null) {
+      counted -= 1;
+      log(
+        `${facts}: matched, but the caller left while the cut mid-body was being written, so the cut did not reach it; ${stillArmed}`,
+      );
+      return;
+    }
     log(
       rule.phase === "before-headers"
         ? `${facts}: matched, ${counted} of ${rule.nth}; CUT before-headers, nothing sent, connection closed`
-        : `${facts}: matched, ${counted} of ${rule.nth}; CUT mid-body, sent the status, the headers and ${sent} of the body's ${answer.body.length} ${unit}, then closed the connection`,
+        : `${facts}: matched, ${counted} of ${rule.nth}; CUT mid-body, wrote the status, the headers and ${sent} of the body's ${answer.body.length} ${unit} to the caller's connection, then closed it`,
     );
     stamped("the rule is spent: everything passes through from here on; a restart arms it again");
   };
