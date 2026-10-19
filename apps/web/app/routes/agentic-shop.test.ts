@@ -1,7 +1,7 @@
 /**
  * The page about selling to agents and the notice for the retired merchant
  * application form, drawn by the whole process and read as the HTML a browser
- * or a link preview receives.
+ * or a link preview receives, or as the Markdown a client asks for.
  */
 
 import { existsSync } from "node:fs";
@@ -132,12 +132,34 @@ describe("the sell-to-agents page", () => {
     }
   });
 
-  it("is kept by nobody, since it is no public page", async () => {
+  it("may be kept by a shared cache for an hour, as every public page may", async () => {
     const { answered } = await drawn("/agentic-shop");
 
-    expect(answered.headers.get("cache-control")).toBe(
-      "private, no-cache, no-store, max-age=0, must-revalidate",
+    expect(answered.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+    expect(answered.headers.get("vary")).toContain("Accept");
+  });
+
+  it("answers a client that asks for Markdown with the page in Markdown, every heading the page draws included", async () => {
+    const page = await drawn("/agentic-shop");
+    const answered = await ask("/agentic-shop", { headers: { accept: "text/markdown" } });
+    const markdown = await answered.text();
+    const main = page.html.slice(page.html.indexOf("<main"), page.html.indexOf("</main>"));
+    const headings = [...main.matchAll(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/g)].map((match) =>
+      (match[1] ?? "")
+        .replace(/<br\/?>/g, " ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&#x27;/g, "'"),
     );
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(answered.headers.get("vary")).toContain("Accept");
+    expect(markdown).toMatch(/^# \S/);
+    expect(headings.length).toBeGreaterThan(5);
+    for (const heading of headings) expect(markdown, heading).toContain(heading);
+    expect(markdown).toContain("](https://agentify.ad/dashboard/sign-in)");
+    expect(markdown).toContain("](https://agentify.ad/docs/money)");
+    expect(markdown).not.toContain("undefined");
   });
 });
 
