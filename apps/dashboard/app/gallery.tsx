@@ -1698,7 +1698,8 @@ const RECEIPTS: GalleryState[] = [
       id: "dashboard-receipts",
       screen: "Receipts",
       when: "A merchant whose products have been bought and delivered opens Receipts.",
-      cause: "The gateway lists receipts, each with the transfer the payment layer reported.",
+      cause:
+        "The gateway lists receipts with transactions reported by the facilitator or verified from chain evidence.",
     },
     ((listed) =>
       receiptsView(
@@ -1723,9 +1724,9 @@ const RECEIPTS: GalleryState[] = [
     {
       id: "dashboard-receipts-many",
       screen: "Receipts",
-      when: "A merchant with a season of sales scrolls through Receipts.",
+      when: "A reviewer checks every paid outcome the receipt contract admits.",
       cause:
-        "Many receipts, one still in progress, one owing a refund and one without a recorded transfer.",
+        "The contract admits receipts still in progress or owing a refund; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
     },
     receiptsView(
       seenBy("live"),

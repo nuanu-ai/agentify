@@ -111,15 +111,21 @@ deliver anything unpaid.
 
 ## What proves a sale happened
 
-A sale that went through leaves a receipt, a record of the payment written at
-the moment the goods are released. It shows what was bought and for how much;
-to the buyer it is proof of payment, and to you it is the record a dispute is
-settled from. The price the sale went through at stays on it unchanged after
-your price has moved. The Receipts screen of your dashboard lists them, and
-what each field means is on [Orders](/orders#the-receipt).
+A paid sale leaves a receipt when its goods are released or its parcel's
+shipment is recorded. It records what was bought and for how much, with the
+payment confirmed by the facilitator or verified from chain evidence. A test
+receipt is marked and does not prove that real money moved. The sale price
+stays unchanged after your price has moved. The Receipts screen of your
+dashboard lists them, and what each field means is on
+[Orders](/orders#the-receipt).
 
-An order paid for and never delivered leaves no receipt, because no goods went
-out; what you have for it is the order and the notice that a refund is owed.
+An unknown payment has no receipt. Verified recovery can release goods already
+held and write their receipt, using the payment's block time rather than the
+recovery time. A paid order neither delivered nor shipped leaves no receipt,
+including a late prepaid payment that leaves a refund owed; what you have for
+it is the order and the notice that a refund is owed. Receipts therefore do not
+account for all money received.
+
 When the answer to a purchase is lost on the way and the agent repeats it, it
 receives what was already delivered, with no second charge and no second
 delivery asked of you.

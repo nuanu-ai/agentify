@@ -471,7 +471,7 @@ describe("an order that owes a refund", () => {
     harnessed.facilitator.willSettle({ settled: "unknown", reason: "the facilitator timed out" });
     const silent = await buyOverHttp(harnessed, served, itemId, {});
     const reported = (silent.body as AgentOrderStatus).order_id;
-    // Closed on the silence, as an operator finds it before recording the charge.
+    // Wait for the response silence to close the order before the late result.
     await vi.waitFor(
       async () =>
         expect((await harnessed.store.orderById(reported))?.order.closure?.cause).toBe(

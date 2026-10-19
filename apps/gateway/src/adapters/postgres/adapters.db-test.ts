@@ -1855,7 +1855,7 @@ if (databaseUrl === null) {
         });
 
         it("opens a command's application that reads each wallet's split on that network", async () => {
-          // The operator's payout and the payment report run through it.
+          // WooCommerce recovery uses this writing command application.
           await store.recordPayoutSplits([payoutSplitFor(base, MERCHANT, W1)], now);
 
           const opened = await openCommandApplication(onBase());

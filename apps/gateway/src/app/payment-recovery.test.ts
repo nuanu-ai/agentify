@@ -232,6 +232,7 @@ describe("recovering a payment without another charge", () => {
       "chain",
     );
     expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect(await h.store.receiptForOrder(orderId)).toBeNull();
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((envelope) => envelope.kind)).toEqual(["order_event"]);
     expect(envelopes[0]).toMatchObject({

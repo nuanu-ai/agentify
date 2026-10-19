@@ -99,10 +99,10 @@ export const MerchantCardListSchema = z
  * purchase are released: when they are delivered, or when a parcel's shipment
  * is recorded. A purchase that ended before any payment has none, none is
  * written while it is unknown whether the buyer was charged, and a paid order
- * whose goods have not come, or that owes a refund, has none either. A charge
- * the payment layer never answered about and an operator later records by
- * hand leaves its order delivered with no receipt, because nothing here saw
- * that payment. So the list is not an account of the money that came in.
+ * awaiting fulfillment, or that owes a refund, has none either. A late
+ * facilitator confirmation or verified chain evidence can release held goods
+ * and write their receipt; an unverified assertion cannot. So the list is not
+ * an account of the money that came in.
  */
 export const ReceiptListSchema = z
   .strictObject({
@@ -110,7 +110,7 @@ export const ReceiptListSchema = z
   })
   .meta({
     description:
-      "The receipts of one merchant. A receipt is written as the goods of a paid purchase are released — when they are delivered, or when a parcel's shipment is recorded — and it is the record of that sale. So a purchase that ended before any payment is not here; neither is one whose payment outcome is still unknown, whose receipt is written if and when the payment layer answers — a charge an operator records by hand instead has none, because nothing here saw that payment; and neither is a paid order whose goods have not come or that owes a refund, which is on the merchant's order list and not here. The list is therefore not an account of the money that came in. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
+      "The receipts of one merchant. A receipt records a paid sale when its goods are released or its parcel's shipment is recorded. A purchase that ended before payment, one whose payment outcome is still unknown, and a paid order awaiting fulfillment or owing a refund have no receipt. A late facilitator confirmation or verified chain evidence can release held goods and write their receipt; an unverified assertion cannot. A late payment on a closed prepaid order leaves a refund owed and no receipt. The list is therefore not an account of all money received. This document does not say whether it is the whole list: paging is not designed, and the absence of a field about it is not a promise that there is no more.",
   });
 
 /**
@@ -734,7 +734,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/receipts",
     auth: "merchant_key",
     description:
-      "The receipts belonging to the key this call was made with: what was paid, when the payment executed, when that price was fixed for the sale, the moment the price behind it was true, and what became of the order. Those three moments are three different things and none of them stands in for another: on a card whose price is checked at the purchase, the price is fixed when the merchant answers, and the buyer may pay some time after that. Every receipt says whether the money behind it was real, and a reader reconciling against a wallet has to read that field rather than assume. Two silences are the receipt's own — a purchase that ended before any payment leaves no receipt, and none is written while it is unknown whether the buyer was charged. A third belongs to whoever serves this and is not a property of the shape: a gateway decides when it writes a receipt, and one that writes them only as goods are released has none for a payment that executed at the purchase and has not been delivered yet. That is money taken with nothing here to show it, so this list is not by itself an account of what was received. Whose receipts these are is settled by the key: the merchant it belongs to, and nobody else.",
+      "The receipts belonging to the merchant whose key made this call: what was paid, when the facilitator confirmed payment or its chain transaction executed, when the price was fixed for the sale, when that price was true, and what became of the order. Those three moments are different facts: a chain-recovered payment uses its transaction block's time, not the time recovery found it. Every receipt marks test purchases, so a reader reconciling real money must check that field. Agentify writes a receipt once payment is confirmed and the goods are released or the parcel's shipment is recorded. A purchase that ended before payment, one whose payment is still unknown, and a paid order awaiting fulfillment or owing a refund have no receipt. Verified recovery can release held goods with a receipt; a late payment on a closed prepaid order instead leaves a refund owed. This list therefore does not account for all money received. It contains this merchant's receipts and nobody else's.",
     response: { document: ReceiptListSchema },
   },
 

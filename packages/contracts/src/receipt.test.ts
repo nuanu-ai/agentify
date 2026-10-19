@@ -55,10 +55,10 @@ describe("what a receipt says became of the purchase", () => {
     );
   });
 
-  it("has no value for a purchase whose money never moved", () => {
+  it("has no value for an unpaid purchase or an unknown payment", () => {
     // A refused, declined, expired or cancelled purchase leaves no receipt,
-    // and neither does a synchronous delivery whose payment failed: no payment
-    // executed.
+    // and neither does a synchronous delivery whose payment failed. An unknown
+    // outcome cannot establish that a payment executed.
     for (const outcome of [
       "rejected",
       "payment_unresolved",
@@ -104,7 +104,7 @@ describe("receipt", () => {
     expect(errorOf(ReceiptSchema, { ...receipt, refunded: true })).toContain("refunded");
   });
 
-  it("names the transfer the payment layer reported, and never an empty one", () => {
+  it("names the recorded payment transaction, and never an empty one", () => {
     // Without it a receipt is matched to the payment on the chain by its time
     // alone, which is a guess.
     const named = { ...receipt, transaction: `0x${"ab".repeat(32)}` };

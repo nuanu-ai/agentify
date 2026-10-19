@@ -136,7 +136,7 @@ mismatch before the order leaves for you. On a card with no price check the
 price is fixed the instant the agent asks to buy, and its `as_of` is when that
 card price was published; on a card with a price check it is fixed when your
 answer comes back, and its `as_of` is what your answer said. Neither is the
-moment the money moved, which is on [the receipt](#the-receipt).
+payment time recorded on [the receipt](#the-receipt).
 
 The order does not say which mode it was sold in, and it does not carry the
 card's `result`. A process that sells products in more than one mode tells
@@ -575,24 +575,26 @@ comes from whichever channel your client is pointed at.
 
 ## The receipt
 
-A sale that went through leaves a receipt, written at the moment the goods are
-released; the dashboard's Receipts screen shows them, and `GET /v0/receipts`,
-called with your key as `Authorization: Bearer <key>`, returns them to your
-code, though the SDK has no method for it. An order paid for and never
-delivered leaves none.
+A paid sale leaves a receipt when its goods are released or its parcel's
+shipment is recorded; the dashboard's Receipts screen shows them, and
+`GET /v0/receipts`, called with your key as `Authorization: Bearer <key>`, returns
+them to your code, though the SDK has no method for it. A payment whose outcome
+is unknown has no receipt. A late facilitator confirmation or verified chain
+recovery can release goods already held and write their receipt. A paid order
+neither delivered nor shipped, including a late prepaid payment that leaves a
+refund owed, has none. Receipts therefore do not account for all money received.
 
 | Field | What it is |
 | --- | --- |
 | `id` | the receipt's own identifier |
 | `order_id`, `item_id` | the order and our catalogue identifier for the card that was bought |
 | `price` | the price the sale went through at, which stays as it was after your price moves: `amount`, `currency`, `at` — when we fixed it for this sale, "Price set" in the dashboard — and `as_of` — when that price was true, "Price as of" |
-| `paid_at` | when the payment executed, "Paid" in the dashboard |
+| `paid_at` | when the facilitator confirmed payment, or the transaction block's execution time for a chain-recovered payment; "Paid" in the dashboard |
 | `transaction` | the hash of the buyer's transfer into your payout contract, reported by the facilitator or verified during recovery, which the dashboard links to the chain's explorer; absent where no transaction was recorded |
-| `test` | whether the money behind it was real |
+| `test` | `true` for a test purchase, which is not proof that real money moved |
 
-The three moments are seldom the same: in the synchronous mode the charge
-comes seconds after the goods, and on a card whose price is checked at the
-purchase the agent may take minutes between the price and the payment. The
+The three moments can differ: in the synchronous mode the charge follows the
+merchant's delivery, and a price check can describe a price from earlier. The
 transfer a receipt names goes into your payout contract and not into your
 wallet, which receives one transfer per payout instead. A chain-recovered
 payment uses its block's execution time for `paid_at`, not the recovery time.

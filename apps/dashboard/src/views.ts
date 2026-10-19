@@ -640,14 +640,12 @@ const whereTheRestIs = (status: OrderStatus): Rest | null =>
 // --- receipts ----------------------------------------------------------------
 
 /**
- * The transfer behind a receipt, as the payment layer named it: a link to the
- * chain's page for it where this deployment has one and the name is a
- * transaction hash, the name as written otherwise. The view holds it whole, for
- * the copy button and the link: a shortened hash is a different string to
- * whoever pastes it. A receipt without
- * one says only that this receipt does not carry it, not that there was no
- * transfer: older receipts and payments an operator recorded by hand had one
- * all the same.
+ * The transfer behind a receipt, reported by the facilitator or verified from
+ * chain evidence: a link to the chain's page where this deployment has one and
+ * the name is a transaction hash, the name as written otherwise. The view holds
+ * it whole, for the copy button and the link: a shortened hash is a different
+ * string to whoever pastes it. An absent transaction means none was recorded on this
+ * receipt; it does not establish that no transfer occurred.
  */
 export type TransferView =
   | Readonly<{ kind: "none" }>
