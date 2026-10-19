@@ -34,3 +34,20 @@ Live activation remains pending the reviewed shared changes. Acceptance means
 fresh real log readback and metrics from both channels at the destination,
 with negative authorization and privacy checks. Local checks are evidence for
 the configuration, not a claim that either channel is delivering.
+
+Local verification uses the pinned Alloy image. Both channel configurations
+validate. Docker fixtures deliver scanner and commerce diagnostics and exclude
+sandbox mail and an unrelated service. Removing either mail exclusion causes
+the smoke check to fail. A separate full collector run delivers real exporter
+samples to an isolated HTTP receiver: decoded Prometheus remote-write samples
+contain the three canonical jobs, three distinct readiness components, and the
+expected channel labels. Removing writer onboarding also causes its behavioral
+test to fail. The separate adversarial review has no unresolved findings.
+
+The destination's complete local validation passes 213 tests, Ansible lint and
+playbook syntax checks. Infra's two narrow ACL contracts, Grafana stack tests,
+formatting and provider configuration validation pass. Its repository-wide
+validator stops on the existing expired `telegram-proxy` experiment; that
+unrelated resource is unchanged. The full Headscale shell suite requires a
+newer Bash than the local system provides. No provider plan, shared apply,
+destination activation or producer installation is claimed by these checks.
