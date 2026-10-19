@@ -342,13 +342,16 @@ input {
   text-decoration: underline;
 }
 
-/* A word in a cell keeps whole; the table scrolls instead. */
+/* Code in a cell breaks only where it has a space, so a word keeps whole
+   while an example written over several words fits its column. */
 .doc :is(th, td) code {
   overflow-wrap: normal;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .doc figure.diagram {
+  /* Each figure sets its drawing's own width in its style attribute. */
+  --diagram-width: 0px;
   margin: 24px 0;
   overflow-x: auto;
   border: var(--hairline) solid var(--line);
@@ -357,9 +360,12 @@ input {
   background: var(--surface);
 }
 
+/* A drawing is as wide as its column up to its own width, set on it, and
+   never narrower than three quarters of that width: on a narrow screen its
+   words stay readable and the figure scrolls. */
 .doc figure.diagram svg {
   display: block;
-  max-width: 100%;
+  min-width: calc(var(--diagram-width) * 0.75);
   height: auto;
   margin: 0 auto;
 }

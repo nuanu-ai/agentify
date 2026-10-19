@@ -181,7 +181,14 @@ function fences(md: MarkdownIt, highlighter: Highlighter): void {
     const token = tokens[index];
     if (token === undefined) return "";
     const lang = token.info.trim().split(/\s+/)[0] ?? "";
-    if (lang === "mermaid") return `<figure class="diagram">${drawingOf(token.content)}</figure>\n`;
+    if (lang === "mermaid") {
+      const drawing = drawingOf(token.content);
+      // The drawing's own width, which the stylesheet keeps a narrow screen
+      // from shrinking it far below.
+      const width = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+)/.exec(drawing)?.[1];
+      const style = width === undefined ? "" : ` style="--diagram-width: ${width}px"`;
+      return `<figure class="diagram"${style}>${drawing}</figure>\n`;
+    }
     // The theme's background is dropped: the block's frame is the page's.
     const code = highlighter
       .codeToHtml(token.content.replace(/\n$/, ""), {

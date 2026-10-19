@@ -509,23 +509,23 @@ one and leave its neighbours as type words.
 
 ## Every field of a card
 
-The sections above unfold these one at a time. Here they are together, the
-required fields first.
+The sections above unfold these one at a time, each with an example. Here they
+are together, the required fields first.
 
-| Field | Type | Required | Example |
-| --- | --- | --- | --- |
-| `id` | string | not yours to fill in: we issue it at publication | `item_f9290a94590540088e90afef0fdfd175` |
-| `merchant_item_id` | string | required | `access-monthly` |
-| `title` | plain text, one line | required | `One month of access to the service` |
-| `description` | plain text, up to 500 characters — the discovery catalog's ceiling, not ours | required | `Access for 30 days from delivery, renewal not included` |
-| `price` | an amount as a string, and a currency; or the two as one string | required | `{ amount: '5.00', currency: 'USD' }`, or `'5.00 USD'` |
-| `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none | `{ access_url: { type: 'string' } }`, or `{ access_url: 'string' }` |
-| `params` | the shape of the purchase parameters | required where the delivery needs input | `{ email: { type: 'string', required: true } }` |
-| `fulfillment` | `'sync'`, `'async'` or `'ship'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` | `'sync'` |
-| `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card | `86400` |
-| `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there | `172800` |
-| `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional | `'handler'` |
-| `tags` | words describing the product for an agent's search, at most five | optional | `['esim', 'telecom']` |
+| Field | Type | Required |
+| --- | --- | --- |
+| `id` | string | not yours to fill in: we issue it at publication |
+| `merchant_item_id` | string | required |
+| `title` | plain text, one line | required |
+| `description` | plain text, up to 500 characters — the discovery catalog's ceiling, not ours | required |
+| `price` | an amount as a string, and a currency; or the two as one string | required |
+| `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none |
+| `params` | the shape of the purchase parameters | required where the delivery needs input |
+| `fulfillment` | `'sync'`, `'async'` or `'ship'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` |
+| `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card |
+| `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there |
+| `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional |
+| `tags` | words describing the product for an agent's search, at most five | optional |
 
 ## How large a card may be
 
