@@ -82,7 +82,7 @@ statement() {
 case "$args" in
   "config --no-interpolate") echo "name: agentify" ;;
   '--profile * config --services') [[ -n ${NO_SERVICES:-} ]] || printf '%s\n' postgres migrate app scanner-migrate scanner scanner-worker web ;;
-  "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
+  "--profile jobs config --format json") echo '{"services": {"app": {"environment": {"B": "2"}}, "scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 app scanner scanner-worker")
     for c in app scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || sed -i 's/running/exited/' $W/containers/$c; done ;;
@@ -171,6 +171,7 @@ case "$args" in
   "image inspect -f {{.Id}} "*) echo "sha256:new-${args##*/}" ;;
   "run --rm -i --network none "*) cat > /dev/null; exit "${PREFLIGHT_EXIT:-0}" ;;
   "run -d --name agentify-scanner-check --network none --env-file "*) file="${args#*--env-file }"; cat "${file%% *}" > /dev/null ;;
+  "run --rm --env-file "*) file="${args#*--env-file }"; cat "${file%% *}" > /dev/null; exit "${FACILITATOR_KEY_EXIT:-0}" ;;
   "inspect -f {{.State.Running}} agentify-scanner-check") echo true ;;
   "exec agentify-scanner-check "*) echo "${SCANNER_HEALTH:-200}" ;;
   "start "*) for c in ${args#start }; do sed -i 's/exited/running/' $W/containers/$c; done ;;
@@ -806,6 +807,12 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", SCANNER_HEALTH="503")
         self.assertIn("exit 1", said)
         self.assertIn("scanner", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+    def test_a_facilitator_key_coinbase_refuses_stops_nothing(self):
+        said = self.run_script("activate", FACILITATOR_KEY_EXIT="1")
+        self.assertIn("exit 1", said)
+        self.assertIn("facilitator key", said)
         self.assert_old_release_runs_on_old_data(said)
 
     def test_a_host_without_the_database_volume_stops_nothing(self):
