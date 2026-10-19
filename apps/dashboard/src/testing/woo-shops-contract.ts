@@ -380,7 +380,7 @@ export const wooShopsContract = (
         await shops.beginGrant({
           token: "racing-token",
           accountId: accounts.one,
-          shopUrl: "https://replacement.example.com",
+          shopUrl: "https://shop.example.com",
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
