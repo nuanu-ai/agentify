@@ -259,31 +259,36 @@ describe("a payment reference", () => {
   });
 
   it("is the only thing a payment is bound by: one naming its order's identifier pays nothing", async () => {
-    // No fallback to the identifier: a payment that names an order the old
-    // way is a payment for no order, and gets a fresh price.
+    // No fallback to the identifier, whether a payment names the order the
+    // old way or puts the identifier where the reference goes: either is a
+    // payment for no order, and gets a fresh price.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
     const challenge = await challengeFor(served, itemId);
     const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-    const offered = decodePaymentRequiredHeader(challenge);
-    const accepted = offered.accepts[0];
+    const accepted = decodePaymentRequiredHeader(challenge).accepts[0];
     if (accepted === undefined || opened === undefined) throw new Error("nothing was priced");
     const { [PAYMENT_REF_IN_EXTRA]: _reference, ...rest } = accepted.extra ?? {};
 
-    const answered = await present(
-      served,
-      itemId,
-      encodePaymentSignatureHeader({
-        x402Version: 2,
-        accepted: { ...accepted, extra: { ...rest, order_id: opened.order.id } },
-        payload: { signature: "0xsigned", authorization: { from: BUYER, nonce: "0x01" } },
-      }),
-    );
+    for (const [nonce, named] of [
+      ["0x01", { order_id: opened.order.id }],
+      ["0x02", { [PAYMENT_REF_IN_EXTRA]: opened.order.id }],
+    ] as const) {
+      const answered = await present(
+        served,
+        itemId,
+        encodePaymentSignatureHeader({
+          x402Version: 2,
+          accepted: { ...accepted, extra: { ...rest, ...named } },
+          payload: { signature: `0xsigned${nonce}`, authorization: { from: BUYER, nonce } },
+        }),
+      );
 
-    expect(answered.status).toBe(402);
-    expect(
-      decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").error,
-    ).toMatch(/did not name an order this gateway is holding/);
+      expect(answered.status, JSON.stringify(named)).toBe(402);
+      expect(
+        decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").error,
+      ).toMatch(/did not name an order this gateway is holding/);
+    }
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect((await harnessed.store.orderById(opened.order.id))?.order.state).toBe("quoted");
   });
