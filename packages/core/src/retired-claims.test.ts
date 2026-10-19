@@ -17,10 +17,13 @@ const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 /**
  * Walked with the standard library rather than a glob package: a dependency
  * added for one search has to be justified at every release afterwards.
+ * React Router's generated route types under `.react-router` are skipped: no
+ * one writes a sentence there, and the route tests rewrite them while this
+ * file reads the tree.
  */
 const LOOK_IN = ["apps", "packages", "docs/research", "docs/decisions"];
 const READABLE = /\.(ts|md)$/;
-const SKIP = new Set(["node_modules", "dist", ".vitepress", "cache"]);
+const SKIP = new Set(["node_modules", "dist", ".vitepress", "cache", ".react-router"]);
 
 function filesUnder(directory: string): string[] {
   const found: string[] = [];
