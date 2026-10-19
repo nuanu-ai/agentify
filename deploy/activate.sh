@@ -195,16 +195,17 @@ case $verdict in
   silent) refuse "the scanner did not answer its health route within a minute of its own start; nothing was stopped." ;;
   *) refuse "the scanner's health route answered $verdict at its own start, so it finds its configuration invalid; nothing was stopped." ;;
 esac
-# The facilitator key, shown to Coinbase as the gateway's start shows it. This
-# check, unlike the two above, needs the network, Docker's default bridge: only
-# Coinbase can say whether it takes the key. A Coinbase that cannot be reached
-# says nothing about the key, so it passes with one line saying so.
-at "asking Coinbase whether it takes the facilitator key"
+# The gateway's own reading of the application's configuration, as at its
+# start, ending with the facilitator key shown to Coinbase. This check, unlike
+# the two above, needs the network, Docker's default bridge: only Coinbase can
+# say whether it takes the key. A Coinbase that cannot be reached says nothing
+# about the key, so it passes with one line saying so.
+at "checking the gateway's configuration and asking Coinbase about its facilitator key"
 docker run --rm --env-file <(python3 -c 'import json, sys
 for key, value in json.load(sys.stdin)["services"]["app"]["environment"].items():
     print(f"{key}={str(value).replace(chr(36) * 2, chr(36))}")' <<<"$rendered") \
   "$(sed -n 's/^AGENTIFY_APP_IMAGE=//p' "$images")" pnpm --silent --filter @agentify/gateway facilitator-key \
-  || refuse "the facilitator key does not pass, for the reason above; nothing was stopped."
+  || refuse "the gateway refuses its configuration, or Coinbase refuses its facilitator key, for the reason above; nothing was stopped."
 # Containers are found the way Compose finds them, by label: a recreate cut
 # short leaves one running under a temporary name.
 running="$(stack ps -aq postgres | xargs -r docker inspect -f '{{.Image}}' | sort -u)"

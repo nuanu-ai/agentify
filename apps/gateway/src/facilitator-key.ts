@@ -1,12 +1,14 @@
 /**
- * Shows the facilitator key in this environment to Coinbase, as the gateway's
- * own start does, without starting anything. Activation runs it with the
- * application's environment before it stops the running release:
+ * Reads the gateway's configuration from the environment and shows its
+ * facilitator key to Coinbase, as the gateway's own start does, without
+ * starting anything. Activation runs it with the application's environment
+ * before it stops the running release:
  *
  *   pnpm --silent --filter @agentify/gateway facilitator-key
  *
- * Exits 1 with the refusal on stderr when the key cannot sign or Coinbase
- * refuses it, and 0 otherwise, saying so when Coinbase could not be asked.
+ * Exits 1 with the reason on stderr when the gateway refuses the
+ * configuration, the key cannot sign or Coinbase refuses it, and 0 otherwise,
+ * saying so when Coinbase could not be asked.
  */
 
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
