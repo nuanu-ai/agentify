@@ -7,9 +7,14 @@ notifications. Application releases do not restart this collector.
 
 The matching shared changes live in `nuanu-ai/observability` (two dedicated
 writer identities, metrics and logs only) and `nuanu-ai/infra` (two narrow mesh
-routes and the Agentify dashboard). Those changes must pass their reviewed
-deployment before either collector can deliver data. A running collector alone
-does not establish delivery.
+routes). Those changes must pass their reviewed deployment before either
+collector can deliver data. On the owner's instruction the Agentify overview
+is created directly in Grafana for later adoption. Delivery does not depend on
+dashboard provisioning. A running collector alone does not establish delivery.
+
+The [Agentify overview](https://grafana.nuanu.ai/d/agentify-overview/agentify)
+compares both environments and filters logs by service. Until the collectors
+deliver, its panels correctly report missing data.
 
 ## What is collected
 
@@ -64,11 +69,11 @@ password and URLs. The gateway assigns its tenant; the collector must not send
 an `X-Scope-OrgID` header. TLS verifies the pinned CA and gateway hostname.
 
 Create `/etc/agentify-observability/collector.env`, root-owned mode 0600, with
-`AGENTIFY_CHANNEL=test` or `AGENTIFY_CHANNEL=production` and
-`OBSERVABILITY_GATEWAY_IP` set to Joglo's inspected mesh address. This address
-is installed as a container-local hosts entry because TEST does not resolve
-mesh names through its system DNS. It grants no network access: the mesh route
-must already permit TCP/8443 from the exact producer.
+`AGENTIFY_CHANNEL=test` or `AGENTIFY_CHANNEL=production`. The two exact mesh
+routes are delivered by [infra PR 370](https://github.com/nuanu-ai/infra/pull/370).
+Both hosts resolve `joglo.tail.nuanu.ai` through mesh DNS. Verify hostname
+resolution and pinned TLS from the collector's host network before starting
+delivery; no hosts-file override is required.
 
 From a root shell, on each host:
 
@@ -90,7 +95,8 @@ collector restart can lose pending log batches, visible in delivery counters.
 
 ## Verify delivery and stop the failed Cloud collector
 
-Make one ordinary GET to each public health route and one scanner page on
+Check the deployed source revision against the merged Agentify revision. Make
+one ordinary GET to each public health route and one scanner page on
 each channel. From the Grafana Agentify dashboard, verify fresh log entries
 under both environments, including a real scanner request and PRODUCTION's
 edge log. Verify three distinct `probe_success` series per environment and
@@ -108,7 +114,8 @@ up{app="agentify",job=~"agentify/(host|collector)"}
 sum by (environment, reason) (increase(loki_write_dropped_entries_total{app="agentify",component_id="loki.write.joglo"}[5m]))
 ```
 
-Confirm writer credentials cannot read data or write traces. Inspect collection
+Confirm missing and invalid credentials are rejected, writer credentials cannot
+read data or write traces, and a client tenant override is refused. Inspect collection
 errors and delivery counters as well as container status. Sign in on TEST and
 verify its sandbox mail is still available locally and absent from Loki.
 
@@ -126,7 +133,8 @@ collector.
 
 `python3 deploy/observability/smoke.py` runs the real Docker discovery and Loki
 pipeline against temporary synthetic containers and a local echo receiver.
-It checks useful diagnostics, channel labels, mail exclusion and unrelated
-service exclusion, and removes only its temporary containers. It needs Docker
+It preserves the production selection logic and checks both allowed Docker
+projects, useful diagnostics, channel labels, mail exclusion and unrelated
+project/service exclusion, and removes only its temporary containers. It needs Docker
 and the pinned image already cached; it performs no remote writes or public
 health probes. It is separate from the deterministic `pnpm test` suite.

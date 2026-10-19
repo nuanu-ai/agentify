@@ -14,10 +14,6 @@ services:
     env_file: /etc/agentify-observability/writer.env
     environment:
       AGENTIFY_CHANNEL: "${AGENTIFY_CHANNEL:?select test or production}"
-    # TEST does not use mesh DNS as its system resolver. Keep the private
-    # gateway address in the operator's file, with TLS still checking its name.
-    extra_hosts:
-      - "joglo.tail.nuanu.ai:${OBSERVABILITY_GATEWAY_IP:?set the mesh gateway address}"
     volumes:
       - ./config.alloy:/etc/alloy/config.alloy:ro
       - /etc/agentify-observability:/etc/agentify-observability:ro
