@@ -80,18 +80,19 @@ const openPinned = async (target: URL, address: string, init: RequestInit): Prom
       response.once("error", reject);
       response.once("end", () => {
         init.signal?.removeEventListener("abort", abort);
-        const received = new Headers();
-        for (const [name, value] of Object.entries(response.headers)) {
-          for (const one of Array.isArray(value) ? value : [value]) {
-            if (one !== undefined) received.append(name, one);
+        try {
+          const received = new Headers();
+          for (const [name, value] of Object.entries(response.headers)) {
+            for (const one of Array.isArray(value) ? value : [value]) {
+              if (one !== undefined) received.append(name, one);
+            }
           }
+          const status = response.statusCode ?? 502;
+          const body = [204, 205, 304].includes(status) ? null : Buffer.concat(chunks);
+          resolve(new Response(body, { status, headers: received }));
+        } catch (error) {
+          reject(error);
         }
-        resolve(
-          new Response(Buffer.concat(chunks), {
-            status: response.statusCode ?? 502,
-            headers: received,
-          }),
-        );
       });
     });
     if (init.body !== undefined && init.body !== null) {
