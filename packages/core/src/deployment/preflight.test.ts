@@ -354,6 +354,28 @@ describe("the chain and the facilitator together", () => {
     }
   });
 
+  // An EC key's secret is a PEM block on several lines, which the gateway can
+  // sign with, but activation hands the application's environment to the checks
+  // it runs before the stop one line per variable, and such a value cannot
+  // cross: the channel could never release, for a reason that names nothing.
+  it.each([
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
+  ] as const)(
+    "refuses %s with a secret on more than one line, without printing it",
+    (channel, config) => {
+      for (const lineBreak of ["\n", "\r\n", "\r"]) {
+        const secret = `the-first-line-of-a-secret${lineBreak}the-second-line-of-it`;
+        const problems = problemsWith(
+          channel,
+          withEnv(config, "app", "CDP_API_KEY_SECRET", secret),
+        );
+        expect(problems).toContainEqual(expect.stringMatching(/CDP_API_KEY_SECRET/));
+        expect(problems.join("\n")).not.toMatch(/the-first-line|the-second-line/);
+      }
+    },
+  );
+
   it("refuses a chain neither channel declared", () => {
     const wrong = withEnv(TEST_CHANNEL, "app", "PAYMENT_NETWORK", "eip155:11155111");
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/PAYMENT_NETWORK/));
