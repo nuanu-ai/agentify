@@ -218,7 +218,10 @@ describe("a page of the documentation in Chromium", () => {
       const other = address === "/docs/money" ? "/docs/faq" : "/docs/money";
 
       await contents(page)
-        .getByRole("link", { name: other === "/docs/faq" ? "Common questions" : "Money" })
+        .getByRole("link", {
+          name: other === "/docs/faq" ? "Common questions" : "Money",
+          exact: true,
+        })
         .click();
       await drawn(page, other);
       expect(await stayed(page)).toBe(true);
