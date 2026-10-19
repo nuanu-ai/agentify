@@ -329,10 +329,9 @@ describe("which answer is cut", () => {
 
 describe("what passes between the caller and the upstream", () => {
   it("carries request and response headers to their ends, and the log names the phase and the order but no header value, body or query", async () => {
+    const sold = '{"order_id":"ord_from_answer","goods":"BODY-MARKER-OUT"}';
     const answers = [
-      plainly(200, '{"order_id":"ord_from_answer","goods":"BODY-MARKER-OUT"}', {
-        "payment-response": "SECRET-SETTLEMENT",
-      }),
+      plainly(200, sold, { "payment-response": "SECRET-SETTLEMENT" }),
       plainly(200, '{"ok":true,"result":"delivered","note":"BODY-MARKER-OUT"}'),
     ];
     const up = await upstream((n, response) => answers[n - 1]?.(n, response));
@@ -362,6 +361,7 @@ describe("what passes between the caller and the upstream", () => {
     expect(up.received[0]?.headers["payment-signature"]).toBe(secrets["payment-signature"]);
     expect(up.received[0]?.headers.host).toBe(new URL(up.url).host);
     expect(passed.headers["payment-response"]).toBe("SECRET-SETTLEMENT");
+    expect(passed.headers["content-length"]).toBe(String(sold.length));
     expect(passed.whole).toBe(true);
     expect(cut.whole).toBe(false);
 
@@ -438,11 +438,18 @@ describe("the command line", () => {
     return argv;
   };
 
+  it.each(["--to", "--method", "--path", "--phase"])(
+    "refuses to start without %s, saying it is required",
+    async (flag) => {
+      const started = await runCut(without(flag), () => {});
+
+      expect(started.ok).toBe(false);
+      expect(started.ok ? "" : started.why).toContain(flag);
+      expect(started.ok ? "" : started.why).toMatch(/required/);
+    },
+  );
+
   it.each([
-    ["--to is missing", without("--to"), "--to"],
-    ["--method is missing", without("--method"), "--method"],
-    ["--path is missing", without("--path"), "--path"],
-    ["--phase is missing", without("--phase"), "--phase"],
     ["--to is not a URL", withValue("--to", "gateway"), "--to"],
     ["--to is not http or https", withValue("--to", "ftp://127.0.0.1"), "--to"],
     ["--to carries a query", withValue("--to", "http://127.0.0.1/?env=test"), "--to"],
