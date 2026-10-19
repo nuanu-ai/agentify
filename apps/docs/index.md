@@ -61,7 +61,7 @@ product:
 | --- | --- | --- |
 | Handed over at once by your system: a key, a link, access | after you have delivered, as the last step of the purchase | the purchase does not happen and the buyer pays nothing |
 | Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | you owe the buyer the goods or the money back |
-| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | you owe the buyer the money back |
+| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | you owe the buyer the money back, unless you ship late after all |
 
 The same choices, with the words your engineer's code uses for them, are on
 [Orders and fulfillment modes](/orders).
@@ -95,8 +95,8 @@ have answered them we have no more questions for you.
 | What it sells | anything your systems can deliver | downloads and parcels from the shop ([what can be imported](/woocommerce#what-can-be-imported)) |
 | Where it sells | the test channel, then the live one | the test channel, until its orders have gone through there end to end |
 
-You sell through one of the two at a time. Delivery by a message you confirm
-by hand is designed and not available.
+You sell through one of the two at a time. A mode in which you confirm each
+order by hand before the buyer pays is designed and not available.
 
 ## After you are connected
 

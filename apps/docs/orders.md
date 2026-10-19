@@ -118,7 +118,7 @@ sequenceDiagram
 | `merchant_item_id` | your own key for the product, the one it has in your database |
 | `params` | the purchase parameters, already checked against the card's declaration |
 | `price` | the sale price: `amount`, `currency`, `at` — the moment that price was fixed for this sale — and `as_of`, the moment the price it was worked out from was true |
-| `price_id` | the identifier of the price question this sale came out of, absent where the card has no price check |
+| `price_id` | the identifier of the price question this sale came out of, absent where the card has no price check or the check went silent |
 | `ship_to` | a parcel's address, and only on a parcel's order |
 | `test` | `true` on the test channel, `false` on the live one |
 
@@ -310,22 +310,22 @@ flowchart LR
     IP["<b>in_progress</b><br/>not finished;<br/>open once paid"]
     IP --> RD["<b>refund_due</b>, open<br/>charged, no goods:<br/>you owe the goods<br/>or the money"]
     IP --> DU["<b>delivered_unpaid</b>,<br/>open: sync goods<br/>made, charge failed"]
-    IP --> PU["<b>payment_unresolved</b><br/>nobody knows if the<br/>charge went through"]
+    IP --> PU["<b>payment_unresolved</b><br/>nobody knows if the<br/>charge went through;<br/>async or ship: a late<br/>success owes a refund"]
     IP --> NONE["<b>rejected</b>, <b>expired</b>,<br/><b>cancelled</b>: closed,<br/>nothing charged"]
     IP -- "you deliver" --> SOLD["<b>delivered</b>, or<br/><b>shipped</b> for a parcel:<br/>closed, money moved"]
     RD -- "you deliver late" --> SOLD
     DU -- "a repeat that pays" --> SOLD
-    PU -. "a late answer" .-> SOLD
+    PU -. "sync: a late success" .-> SOLD
     NONE -. "expired sync:<br/>a repeat that pays" .-> SOLD
     RD -.-> RF["<b>refunded</b>: nothing<br/>records one yet"]
 ```
 
 | `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
 | --- | --- | --- | --- |
-| `in_progress` | the purchase has not finished: priced, paid, with your handler, or taken on | once it is paid | delivers, if your own record says the goods are ready |
+| `in_progress` | the purchase has not finished: priced, paid, with your handler, or taken on | once it is paid | on an asynchronous order or a parcel, delivers if your own record says the goods are ready; on a synchronous one, nothing, since your handler answers it |
 | `delivered` | the goods are the agent's and the money moved | no | — |
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
-| `rejected` | nothing was charged: there was none, a parameter did not fit, the payment failed its check, a charge before the goods failed, or you refused a synchronous order | no | — |
+| `rejected` | nothing was charged: your price check said there is none, a charge before the goods failed, or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
 | `cancelled` | you left, and the order closed with nothing charged | no | — |
 | `refund_due` | the buyer was charged and has no goods: you owe the goods or the money | yes, until it is delivered | delivers, unless you have refunded it |
@@ -459,15 +459,18 @@ the word each one reads.
 | --- | --- | --- | --- |
 | You delivered the goods | `delivered` | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
 | You recorded a parcel's shipment | `shipped` | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after |
-| There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
+| There is none, or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
 | Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order was closed on its deadline |
 | You left | `cancelled`, `refund_due` | for what was not delivered, [you owe it back](/money#if-the-buyer-did-not-get-the-goods) | an unpaid order is closed; a paid one waits for your refund |
 | The money was charged and no delivery happened | `refund_due` | in your payout contract | the order is waiting for a refund |
 | You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
 | The facilitator did not say whether the money was charged | `payment_unresolved` | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
-A pause closes no orders: cards stop selling, and the orders already taken on
-play out in the ordinary way. Only leaving closes the ones that are open.
+A purchase whose parameters do not fit the card is refused at the door, before
+any order exists, and a payment that fails its check is refused the same way,
+leaving the priced order to lapse as `expired`. A pause closes no orders:
+cards stop selling, and the orders already taken on play out in the ordinary
+way. Only leaving closes the ones that are open.
 
 ## Every time limit
 
@@ -478,11 +481,11 @@ the two your card names.
 | What waits | Whom it binds | How long | Counted from | When it runs out |
 | --- | --- | --- | --- | --- |
 | Your price handler's answer | you | five seconds | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
-| The price an order was given | the agent | thirty seconds | your answer, or the agent's request on a card with no price check | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
-| Each hand-over of an order to your process | you | three seconds | the order is handed to your process | the order is sent again, up to five times in all, within its own deadline |
+| The price an order was given | the agent | thirty seconds | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
+| Each hand-over of an order to your process | you | three seconds | the order is handed to your process | the order is sent again, up to five deliveries in all, within its own deadline |
 | The goods of a synchronous order | you | ten seconds | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays |
 | The facilitator's answer about the charge | Agentify | ten seconds on a synchronous order; fifteen where the charge comes before the goods | the charge is sent | `payment_unresolved` |
-| The delivery of an asynchronous order | you | your `fulfill_deadline_seconds`; without it, a day | the charge at purchase | `refund_due` |
+| The delivery of an asynchronous order | you | the deadline your card names; without one, a day | the charge at purchase | `refund_due` |
 | The shipment of a parcel | you | your `ship_within_seconds`, at most thirty days | the charge at purchase | `refund_due` |
 
 The agent is promised a synchronous purchase within twenty seconds of the
@@ -550,15 +553,18 @@ comes from whichever channel your client is pointed at.
 ## The receipt
 
 A sale that went through leaves a receipt, written at the moment the goods are
-released; the dashboard's Receipts screen shows them, and `GET /v0/receipts`
-returns them to your code. An order paid for and never delivered leaves none.
+released; the dashboard's Receipts screen shows them, and `GET /v0/receipts`,
+called with your key as `Authorization: Bearer <key>`, returns them to your
+code, though the SDK has no method for it. An order paid for and never
+delivered leaves none.
 
 | Field | What it is |
 | --- | --- |
+| `id` | the receipt's own identifier |
 | `order_id`, `item_id` | the order and our catalogue identifier for the card that was bought |
 | `price` | the price the sale went through at, which stays as it was after your price moves: `amount`, `currency`, `at` — when we fixed it for this sale, "Price set" in the dashboard — and `as_of` — when that price was true, "Price as of" |
 | `paid_at` | when the payment executed, "Paid" in the dashboard |
-| `transaction` | the hash of the buyer's transfer into your payout contract, which the dashboard links to the chain's explorer |
+| `transaction` | the hash of the buyer's transfer into your payout contract, which the dashboard links to the chain's explorer; absent where the facilitator reported none |
 | `test` | whether the money behind it was real |
 
 The three moments are seldom the same: in the synchronous mode the charge

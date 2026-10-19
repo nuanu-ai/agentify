@@ -103,8 +103,8 @@ once. Keep it with your other secrets and out of source control.
 Any key you issue can do everything your code can: publish cards, read orders
 and receipts, take a card or all selling off sale and put it back, set your
 seller name and site, and issue and revoke other keys. None of them can change
-the wallet. So if a key leaks, revoke on API Keys every key you did not create
-yourself, and issue a fresh one for your code.
+the wallet. So if a key leaks, revoke it on API Keys together with every key
+you did not create yourself, and issue a fresh one for your code.
 
 This step worked if Settings shows your seller name and your wallet and you
 hold a key that starts with `csk_test_`.
@@ -153,10 +153,11 @@ add to that file, not one program to paste whole: `grantAccess`,
 goods and knows the price, and `savedId`, `url` and `order` in the later
 snippets stand for values your code holds at that point.
 
-This step worked if the client was built: a client built wrong — no key, an
-address that is not an address — is a `TypeError` at the line that is wrong.
-Whether the key and the address belong together is answered by the first call
-that reaches us, on the next step.
+This step worked if the client was built. A client built wrong is a
+`TypeError`: with no key or with an address that is not an address at the line
+that builds it, and with no address at all at its first call. Whether the key
+and the address belong together is answered by the first call that reaches us,
+on the next step.
 
 ## 3. Publish one card
 
@@ -373,7 +374,15 @@ npm install @x402/core @x402/evm @x402/fetch viem
 
 Then buy the card by the catalogue identifier step 3 returned, with the
 purchase parameters the card asks for, and read the order until it has
-finished:
+finished. The program below is TypeScript whose types Node 24 can simply
+erase, so save it as `buyer.mts` and run it with
+`node --env-file=.env buyer.mts`, with two more lines in `.env`:
+
+```sh
+BUYER_PRIVATE_KEY=0x...
+ITEM_ID=item_...
+```
+
 
 ```ts
 import { x402Client } from '@x402/core/client'
@@ -403,6 +412,7 @@ const bought = await payingFetch(card.purchase_url, {
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ params: { email: 'you@example.com' } }),
 })
+if (!bought.ok) throw new Error(`${bought.status}: ${await bought.text()}`)
 let order = (await bought.json()) as Order
 
 // Goods that come later are collected at the order's own address.

@@ -4,7 +4,8 @@ You hold the wallet your business is paid into, and you want what has
 accumulated in your payout contract now rather than when Agentify next
 collects its own share. A payout is one transaction on the Base network: it
 pays out every sale since the last payout, your share to your wallet and ours
-to us, and it costs only the network's fee. Why it works that way is on
+to our balance in the 0xSplits warehouse, and it costs only the network's
+fee. Why it works that way is on
 [Money](/money#getting-paid-out).
 
 ## With a Coinbase Wallet

@@ -100,7 +100,7 @@ again.
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings
 under `problems`. `deliver`, `refuse` and `accept` hand every failure back in
-that same envelope and never throw. `catalog.publish`, `orders.get` and
+that same envelope, and throw only on a client built with no address. `catalog.publish`, `orders.get` and
 `orders.list` throw an `AgentifyError` whenever no publish result or order came
 back — a refused key included — with the same codes, the flag and the call it
 happened on.

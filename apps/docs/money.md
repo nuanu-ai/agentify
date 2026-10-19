@@ -10,11 +10,11 @@ risk on the way, and what we take.
 ```mermaid
 flowchart TB
     accTitle: Where a buyer's payment goes
-    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse, 99.9 percent to your wallet and 0.1 percent to Agentify. A refund owed is the whole price, from your own wallet; how it reaches the buyer is not settled yet, and nothing Agentify gives you names the buyer's address.
+    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: 99.9 percent to your wallet, and 0.1 percent kept in the warehouse for Agentify. A refund owed is the whole price, from your own wallet; how it reaches the buyer is not settled yet, and nothing Agentify gives you names the buyer's address.
     B["Buyer's wallet"] -- "each sale: the whole<br/>price, in USDC" --> C["Your payout contract<br/>made from your<br/>wallet's address,<br/>with no owner"]
     C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify when it<br/>collects its share" --> W["0xSplits warehouse"]
     W -- "99.9%" --> Y["Your wallet"]
-    W -- "0.1%" --> F["Agentify"]
+    W -- "0.1%, kept there<br/>for Agentify" --> F["Agentify"]
     Y -. "a refund owed: the<br/>whole price, from you;<br/>how it reaches the<br/>buyer is not settled" .-> R["The buyer"]
 ```
 
