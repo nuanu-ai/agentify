@@ -3,81 +3,27 @@
 *This page describes `@nuanu-ai/agentify` {{sdk-version}}. A change to the public contract arrives in a new package version.*
 
 You are writing the handler that takes paid orders and gives out the goods for
-them. Everything it rests on is collected here: what the fulfillment modes are,
-what arrives in the handler, how an order can end, and what happens when time
-runs out. The working words — card, handler, idempotency key — are defined on
-[The first test sale](/quickstart), and the individual failures are collected
-on [What can go wrong](/failures).
+them. This page is its reference: the fulfillment modes, where an order comes
+from, what your handler answers, how an order can end, and every time limit
+that applies to it. The working words — card, handler, idempotency key — are
+defined on [The first test sale](/quickstart), and the failures are collected
+in one table on [What can go wrong](/failures).
 
 ## Fulfillment modes
 
-| Mode | `fulfillment` | The goods reach the agent | When the buyer is charged | If you refused or stayed silent |
-| --- | --- | --- | --- | --- |
-| Synchronous | `'sync'` | in the answer to the purchase | after your delivery, as the last step | the purchase did not happen and the buyer spent nothing |
-| Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is in your payout contract and the buyer has no goods: the order is marked as needing a refund |
-| A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call or your handler's answer | at the moment of purchase, before your shipment | as in the asynchronous mode |
-| With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
+| Mode | When the buyer is charged | The goods reach the agent | If you refused or stayed silent |
+| --- | --- | --- | --- |
+| Synchronous, `'sync'` | after your delivery, as the last step | in the answer to the purchase | the purchase did not happen and the buyer spent nothing |
+| Asynchronous, `'async'` | at the moment of purchase, before your delivery | later, by a separate call | the money is in your payout contract and the buyer has no goods: the order owes a refund |
+| A parcel, `'ship'` | at the moment of purchase, before your shipment | with a carrier, once you record the shipment | as in the asynchronous mode |
 
-The mode is declared in the card, and the agent knows it before it pays. The
-product decides which mode it is. The SDK handler supports synchronous and
-asynchronous delivery; delivery by a message is not available. What the moment
-of charging means for the owner of the business is on [Money](/money).
-
-The confirmation mode is not open during the pilot. A card cannot be published
-with `fulfillment: 'confirm'`, because the request that asks you to confirm has
-no shape on the wire yet and your handler could not tell one from a paid order.
-The rest of this page describes the mode as it is designed.
-
-From the agent's side the asynchronous mode and the confirmation mode look
-almost the same: the order and the way of watching where it stands are
-identical. What differs is the moment of charging, and one consequence of
-confirming — a confirmed order acquires a deadline for the agent to pay it in.
-
-The sequences below are the rows of the table, in the order the steps actually
-happen; a parcel's is the asynchronous one with a shipment at its end. The
-payment network is left off them: what reaches you is the order, and where the
-charge falls relative to your delivery is what the modes differ by.
-
-### Synchronous
-
-Nothing is charged until you have delivered, so a refusal leaves the buyer
-having spent nothing.
-
-```mermaid
-sequenceDiagram
-    accTitle: Synchronous order fulfillment
-    accDescr: The agent buys a card. Agentify sends the order to the merchant, who returns the goods. Only then is the buyer charged, and Agentify returns the goods in the purchase response.
-    participant A as Agent
-    participant C as Agentify
-    participant Y as You
-    A->>C: buys the card
-    C->>Y: the order, on your open subscription
-    Y-->>C: here are the goods
-    Note over C: the buyer is charged
-    C-->>A: the goods, in the answer to the purchase
-```
-
-### Asynchronous
-
-The buyer is charged before you are asked for anything, and the goods follow by
-a separate call — a minute later or a day later, which changes nothing here.
-
-```mermaid
-sequenceDiagram
-    accTitle: Asynchronous order fulfillment
-    accDescr: The agent buys a card and the buyer is charged before delivery. Agentify returns an order and sends it to the merchant. The merchant accepts and delivers the goods through a separate call. The agent reads the order to receive the goods.
-    participant A as Agent
-    participant C as Agentify
-    participant Y as You
-    A->>C: buys the card
-    Note over C: the buyer is charged
-    C-->>A: an order, and no goods yet
-    C->>Y: the order, on your open subscription
-    Y-->>C: accepted
-    Y-->>C: the goods, by a separate call
-    A->>C: asks where the order stands
-    C-->>A: the goods
-```
+The mode is declared in the card under `fulfillment`, and the agent knows it
+before it pays. Three modes can be published today: synchronous,
+asynchronous, and a parcel on the test channel only. A fourth, confirmation,
+is designed and cannot be published. The product decides the mode; which one
+yours takes is worked out on [The product card](/cards#goods-that-leave-later-than-the-answer),
+and what the moment of charging means for the owner of the business is on
+[Money](/money).
 
 ### A parcel
 
@@ -89,70 +35,80 @@ Your price handler is asked the price for the place the parcel goes: its
 the buyer gave them, and nothing about who receives it. Once the order is
 paid, it reaches your handler with the whole address in `ship_to`: a name, the
 first line, the city, the country and a phone number, and the second line, the
-state and the postal code where the buyer gave them. Store the address before you
-take the order on: the moment you answer `accepted`, or the order ends without
-you, Agentify erases its copy, the order reads only `ship_to: { erased_at }`
-from then on, and it is never handed to your handler again.
+state and the postal code where the buyer gave them. Store the address before
+you take the order on: the moment you answer `accepted`, or the order ends
+without you, Agentify erases its copy, the order reads only
+`ship_to: { erased_at }` from then on, and it is never handed to your handler
+again.
 
-When a carrier has the parcel, record the shipment with the same `deliver` call
-that delivers goods elsewhere, or answer your handler with it as `delivered`. Its body is the shipment: `carrier`, the carrier's
-name or your own courier; `tracking_number`, or `null` where the parcel has
-none; and, where you have them, `tracking_url`, an https page on the carrier's
-domain, and `estimated_delivery` with its `earliest` and `latest` instants.
-Agentify records the instant the call arrived. The same shipment sent again
-succeeds, and a different one is refused with `shipment_already_recorded`: a
-recorded shipment cannot be changed. The agent then reads the order as
-`shipped`, with your shipment beside it, and that is the last word Agentify has
-about the parcel — whether it arrives is between you and the buyer, who is
-pointed at your shop's site.
+When a carrier has the parcel, record the shipment with the same `deliver`
+call that delivers goods elsewhere, or answer your handler with it as
+`delivered`. Its body is the shipment: `carrier`, the carrier's name or your
+own courier; `tracking_number`, or `null` where the parcel has none; and,
+where you have them, `tracking_url`, an https page on the carrier's domain,
+and `estimated_delivery` with its `earliest` and `latest` instants. Agentify
+records the instant the call arrived. The same shipment sent again succeeds,
+and a different one is refused with `shipment_already_recorded`: a recorded
+shipment cannot be changed. The agent then reads the order as `shipped`, with
+your shipment beside it, and that is the last word Agentify has about the
+parcel — whether it arrives is between you and the buyer, who is pointed at
+your shop's site.
 
 A parcel not shipped by its deadline leaves you owing a refund, as goods not
 delivered in time do, and a shipment recorded late still closes that debt. A
-parcel you admit lost cannot be refunded through Agentify yet: the operator's
-command that records such a refund is not built. That is why a parcel sells on
-the test channel only, where the money is not real.
-
-### With confirmation
-
-Nothing is charged until you have said you will deliver. Your answer is the
-branch the order takes, so this diagram shows all three of its endings rather
-than the one where everything goes well.
-
-```mermaid
-sequenceDiagram
-    accTitle: Order fulfillment with confirmation, unavailable during the pilot
-    accDescr: Agentify asks the merchant to confirm delivery before charging the buyer. Refusal or silence closes the order without a charge. If the merchant confirms and the agent pays in time, the buyer is charged and the merchant delivers separately. If the agent never pays, the order expires without a charge.
-    participant A as Agent
-    participant C as Agentify
-    participant Y as You
-    A->>C: buys the card
-    C->>Y: will you deliver this
-    alt you refuse, or say nothing before your deadline
-        Note over C: the order closes and nothing was charged
-    else you take it on, and the agent pays in time
-        Y-->>C: I will
-        A->>C: pays
-        Note over C: the buyer is charged
-        C->>Y: the order, on your open subscription
-        Y-->>C: the goods, by a separate call
-        A->>C: asks where the order stands
-        C-->>A: the goods
-    else you take it on and the agent never pays
-        C->>Y: this order expired
-        Note over C: the order closes and nothing was charged
-    end
-```
-
-Between your "I will" and the agent's payment the clock is the agent's, and
-you are not waiting on your own deadline there — the third branch is how that
-ends, and it reaches you as an event on the same subscription.
+parcel you admit lost cannot be refunded through Agentify yet, which is why a
+parcel sells on the test channel only, where the money is not real.
 
 ## Where an order comes from
 
-A purchase starts on our side. The agent finds the card, we work out the price
-— from the card, or from your price check's answer — and we check the payment.
-Only after that does the order appear on yours. Invalid purchases, stale prices
-and payments that failed their check never reach your handler.
+A purchase starts on our side. The agent finds the card and asks to buy it, we
+work out the price — from the card, or from your price handler's answer — and
+the facilitator, the service that verifies and executes payments, checks the
+payment. Only after that does the order appear on your side, so invalid
+purchases, stale prices and payments that failed their check never reach your
+handler. The drawing shows one purchase in both kinds of mode.
+
+```mermaid
+---
+config:
+  sequence:
+    width: 120
+    actorMargin: 30
+---
+sequenceDiagram
+    accTitle: One purchase, from the catalogue to the goods
+    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits five seconds; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds thirty seconds. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, your goods come back within ten seconds of the payment check, the facilitator executes the charge into your payout contract and the agent receives the goods; a refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within three seconds, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a refund owed.
+    participant A as Buyer's agent
+    participant G as Agentify
+    participant Y as Your process
+    participant F as Facilitator
+    A->>G: reads the catalogue,<br/>asks to buy one card
+    opt a price check (a parcel always has one)
+        G->>Y: the price question
+        Y-->>G: a price, or none (5 s)
+        Note over G,Y: none: refused on any card<br/>silence: refused on async<br/>or ship, while a sync card<br/>sells at its own price
+    end
+    G-->>A: 402: the price, payable<br/>to your payout contract
+    Note over A,G: the price holds 30 s
+    A->>G: the same call,<br/>with a signed payment
+    G->>F: verify the payment
+    alt sync
+        G->>Y: the order
+        Y-->>G: the goods (10 s from<br/>the payment check)
+        G->>F: charge, into your<br/>payout contract
+        G-->>A: the goods
+        Note over G,Y: a refusal or silence:<br/>nothing is charged<br/>a failed charge:<br/>delivered_unpaid
+    else async or ship
+        G->>F: charge, into your<br/>payout contract
+        G-->>A: the order, no goods yet
+        G->>Y: the order
+        Y-->>G: accepted, or the goods<br/>(3 s per hand-over)
+        Y->>G: deliver, or a parcel's<br/>shipment, by the deadline
+        Note over G,Y: a refusal or a missed<br/>deadline: refund_due
+        A->>G: reads the order again
+        G-->>A: the goods, or shipped
+    end
+```
 
 ### What an order is made of
 
@@ -161,9 +117,10 @@ and payments that failed their check never reach your handler.
 | `id` | the order's identifier, and its idempotency key: the same across every repeat |
 | `merchant_item_id` | your own key for the product, the one it has in your database |
 | `params` | the purchase parameters, already checked against the card's declaration |
-| `price` | the sale price: the amount, the currency, the moment that price was fixed for this sale, and the `as_of` of the price it was worked out from |
+| `price` | the sale price: `amount`, `currency`, `at` — the moment that price was fixed for this sale — and `as_of`, the moment the price it was worked out from was true |
 | `price_id` | the identifier of the price question this sale came out of, absent where the card has no price check |
-| `test` | the mark of a test order |
+| `ship_to` | a parcel's address, and only on a parcel's order |
+| `test` | `true` on the test channel, `false` on the live one |
 
 Say an agent buys a month of access. What reaches your handler is your own
 `access-monthly`, the email address the agent gave at purchase, an order
@@ -172,20 +129,19 @@ recognise this same order if it arrives again — and the sum the access was
 sold for.
 
 The price is in the order because the sale may not have gone at the card's
-price: where a product has a price check, the sale went at the check's answer.
-You get the final sum, its currency, the moment that price was fixed for this
-sale and the `as_of` of the answer it was worked out from, which is enough to
-record the sale on your side without looking the card up. There is no need to
-compare that sum against your own price list and refuse on a mismatch — we catch
-a mismatch before the order leaves for you.
+price: where a product has a price check, it went at the check's answer. That
+is enough to record the sale on your side without looking the card up, and
+there is no need to compare it against your own price list: we catch a
+mismatch before the order leaves for you. On a card with no price check the
+price is fixed the instant the agent asks to buy, and its `as_of` is when that
+card price was published; on a card with a price check it is fixed when your
+answer comes back, and its `as_of` is what your answer said. Neither is the
+moment the money moved, which is on [the receipt](#the-receipt).
 
-The two moments are worth keeping apart, and neither of them is the moment the
-money moved. On a card with no price check the price is fixed the instant the
-agent asks to buy, and its `as_of` is when that card price was published. On a
-card with a price check it is fixed when your answer comes back, its `as_of` is
-whatever your answer said the price was true as of, and the agent may spend a
-while after that deciding whether to pay. When the money actually moved is on
-the receipt, under a name of its own.
+The order does not say which mode it was sold in, and it does not carry the
+card's `result`. A process that sells products in more than one mode tells
+them apart by `merchant_item_id`, and answers with the goods or with
+`accepted` accordingly.
 
 The field `price_id` ties the order to your own answer about the price: if you
 set stock aside against the price you named, this is the moment to write it
@@ -198,64 +154,36 @@ A handler has three answers:
 - a delivery — JSON to the result declared in the card; the order closes as a
   success;
 - a refusal — a short code and a reason a person can read, with the codes
-  collected in the [vocabulary of refusal codes](/cards);
+  collected in the [vocabulary of refusal codes](/cards#refusal-codes);
 - taking the order on, where the goods leave later: you confirm the delivery
-  itself with a separate call. That call does not exist in the synchronous mode,
-  so a synchronous handler that answers this way is refused with
-  `not_applicable_in_mode`. The order is not sent to it again for that answer,
-  and it ends when its seconds run out, with the buyer charged nothing.
+  itself with a separate call. That call does not exist in the synchronous
+  mode, so a synchronous handler that answers this way is refused with
+  `not_applicable_in_mode`, and the order ends when its seconds run out with
+  the buyer charged nothing.
 
-Those three are what a handler returns. The same three exist as calls you make
-from outside a handler — `deliver`, `refuse` and `accept` — and the two that
-close an order have sections of their own below.
+The same three exist as calls you make from outside a handler — `deliver`,
+`refuse` and `accept` — and the two that close an order have sections of
+their own below.
 
-Those three are the whole set, and that matters for how you report a temporary
-failure. An exception in the handler, a process that fell over, a connection
-that broke — for us each of these means the order never reached you: the answer
-did not arrive, so we send the order again, after a delay, until the mode's
-deadline runs out or we have delivered it five times, whichever comes first.
-Five is what this system is set to, and no card changes it. Once we stop sending
-it, the order stays open until its deadline: an answer or a delivery that
-arrives before then still counts, and at the deadline the order closes as any
-order whose deadline passed. We read a refusal the other way, as a
-final "this cannot be delivered", and we close the order on it. So a supplier
-that did not answer within five seconds is not worth a refusal: throw instead.
-
-Silence does not count as an answer: every wait has a deadline, and an order
-that runs past its deadline closes without you.
+Those three are the whole set, and that matters for how you report a
+temporary failure. An exception in the handler, a process that fell over, a
+connection that broke — for us each of these means the order never reached
+you, so we send it again, after a delay, until the order's deadline runs out
+or we have delivered it five times, whichever comes first. Five is what this
+system is set to, and no card changes it. Once we stop sending it, the order
+stays open until its deadline: an answer or a delivery that arrives before
+then still counts. A refusal we read the other way, as a final "this cannot be
+delivered", and we close the order on it. So a supplier that did not answer in
+time is not worth a refusal: throw instead.
 
 We wait three seconds for a handler's answer, counted from the moment we hand
-the order to your worker. A worker is handed one order or question at a time, so
-the wait covers your handler and the trip to it and back, and never another
-order's turn.
-
-An answer that comes later still counts, as long as the mode's deadline has not
-run out, but by then we have taken the silence for a failed delivery and the
-order goes out again, to the same process or to another instance of your
-handler, and that repeat is answered the way every repeat is ([Telling a repeat
-apart](#telling-a-repeat-apart)). In the asynchronous mode this is a reason to
-take the order on at once and do the work outside the handler. Once your
-acceptance has reached us, a silence no longer counts against the order — what
-holds you to it is the delivery deadline on your card — though a repeat that was
-already on its way still arrives. In the synchronous mode a handler slower than
-our wait should expect the same order again, in another instance while it is
-still working on the first or in the same one after it, and the buyer gets
-whichever answer reaches us first.
-
-### The confirmation mode
-
-In this mode one more step comes before the order. The request to confirm
-arrives on the same subscription the orders do and is marked as a request to
-confirm: the purchase parameters and the price are already in it, and no money
-has moved for it yet. Your handler answers it the way it answers an order, with
-whichever of the two answers hands nothing over — taking it on means "I will
-deliver", a refusal means "I will not". The goods cannot go out in that answer,
-because they have not been paid for.
-
-Answer that you will deliver, and the agent's clock for paying starts; after
-the payment the same order reaches you in the ordinary way. Answer that you
-will not, or stay silent past your deadline, and the order closes with the
-buyer having spent nothing.
+the order to your process. An answer that comes later still counts while the
+order's deadline has not run out, but by then the order has gone out again,
+to the same process or to another instance, and the repeat is answered the way
+every repeat is ([Telling a repeat apart](#telling-a-repeat-apart)). That is
+why an asynchronous handler takes the order on at once and does the work
+outside the handler, and why a synchronous handler slower than three seconds
+has to expect the same order twice.
 
 ## Confirming a delivery with a separate call
 
@@ -269,53 +197,40 @@ await order.deliver({ access_url: url, expires_at: until })
 ```
 
 A delivery carries exactly what the card's result declared when the agent
-asked to buy: every field it promised the agent, in the type it names, and
-nothing it does not name ([Delivery result](/cards#delivery-result)). The order
-keeps that promise from the moment it is made, so a card you republish with a
-different result changes what new orders are sold with and nothing about the
-orders already made: those are still delivered with the goods they were sold
-for.
-Goods that do not fit are refused
-with the offending fields named, and the order does not move at all — nothing
-of what you sent is written down, no receipt is issued, and no deadline of
-yours moves. Fix what the refusal names and deliver again.
+asked to buy: every field it promised, in the type it names, and nothing it
+does not name ([Delivery result](/cards#delivery-result)). The order keeps
+that promise from the moment it is made, and it does not carry the promise to
+you: after you republish a card with a different result, the orders already
+taken are still held to the old one, so deliver to them what they were sold
+with, or wait until they have closed before changing the shape. Goods that do
+not fit are refused with the offending fields named, and the order does not
+move at all — nothing of what you sent is written down, no receipt is issued,
+and no deadline of yours moves.
 
-That refusal also tells you whether the order is still there to finish, and it
-is worth reading before you make the goods again. Goods are weighed against the
-card and never against the state of the order, so the fault in your handler is
-what you hear about first either way. But an order still yours to finish is
-refused with the words that it stands where it did, marked as worth calling
-again: fix the handler and deliver. An order that has ended — one that ran out
-of time, one you refused yourself, one with a refund recorded on it — is refused
-with its ending named and marked as not worth calling again, and the fields that
-did not fit are still listed. There is nothing left to deliver against, and a
-handler that ignores that mark makes the goods once for every attempt.
-
-The check stands in front of every delivery that could put goods on the order,
-whether it comes back from your handler or from a `deliver` call, and whether
-it arrives on time or late.
+That refusal also says whether the order is still there to finish, so read it
+before you make the goods again. An order still yours to finish is refused
+with the words that it stands where it did, marked as worth calling again:
+fix the handler and deliver. An order that has ended is refused with its
+ending named and marked as not worth calling again, and the fields that did
+not fit are still listed; a handler that ignores that mark makes the goods
+once for every attempt.
 
 The call is idempotent by the order's identifier. Call it a second time with
 the same `order.id` and it succeeds again, marked as already delivered: no
-second delivery happened and no second charge. There is nothing here for your
-code to treat as a failure: `ok` is true in both cases, and you do not have to
-branch on the word inside it. The word is there when you do want it — a delivery
-that closed a refund debt rather than completing a sale says so. Repeating the
-call after a dropped connection is therefore safe. A repeat is not weighed
-against the card at all, because there is nothing left for it to write: what it
-carries is neither checked nor kept. What it ought to carry is in [Telling a
-repeat apart](#telling-a-repeat-apart).
+second delivery happened and no second charge. `ok` is true in both cases, so
+you do not have to branch on the word inside it; the word is there when you
+want it, and a delivery that closed a refund debt rather than completing a
+sale says so. A repeat is not weighed against the card, because there is
+nothing left for it to write: what it carries is neither checked nor kept.
 
-A late call is accepted. If your delivery deadline has passed, the order is
-already marked as needing a refund, and `deliver` closes that debt with the
-goods: the money for them has been paid, and late goods are better for the
-buyer than a refund.
-
-That holds until a refund is recorded on the order. Only a recorded refund
-makes a later delivery fail, with `refund_already_settled`, and recording a
-refund is not available yet. We do not see a refund you send from your own
-wallet, so it does not stop a late delivery: the order closes as delivered, and
-the buyer keeps both the money you sent back and the goods.
+A late call is accepted. If your delivery deadline has passed, the order
+already owes a refund, and `deliver` closes that debt with the goods: the
+money for them has been paid, and late goods are better for the buyer than a
+refund. Only a refund recorded on the order makes a later delivery fail, with
+`refund_already_settled`, and nothing records a refund yet. We do not see a
+refund you send from your own wallet, so it does not stop a late delivery: the
+order closes as delivered, and the buyer keeps both the money you sent back
+and the goods.
 
 ::: warning Once you have refunded an order, do not deliver it
 Nothing on our side stops that delivery for you. An order owing a refund stays
@@ -330,70 +245,44 @@ your handler and every loop over the open orders check it before they deliver.
 ### When a closing call does not go through
 
 `deliver`, `refuse` and `accept` hand their failures back rather than throwing
-them, in the envelope every call on this surface answers in: `ok` is false, and
-one `error` beside it carries a code to branch on, a sentence a person can read,
-and `retryable`. Eight codes are promised to mean one thing each — five sent by
-us, and three the tools produce when no answer they could read came back. The
-set is open beyond those eight, so a case nobody anticipated reaches you in its
-own words instead of being flattened into the nearest of these.
+them: `ok` is false, and one `error` beside it carries a code to branch on, a
+sentence a person can read, and `retryable`. Eight codes are promised to mean
+one thing each — five sent by us, and three the tools produce when no answer
+they could read came back. The set is open beyond those eight, so a case
+nobody anticipated reaches you in its own words.
 
 | Code | When it arrives | Repeating could change it |
 | --- | --- | --- |
 | `refund_already_settled` | a refund is recorded on this order, so there is nothing left to deliver against | no |
 | `order_already_closed` | the order reached an ending that no call reopens | no |
-| `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
+| `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal | no |
 | `delivery_does_not_match_card` | the goods are not the ones the order was sold with, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
 | `shipment_already_recorded` | a parcel's shipment is already recorded on this order, and a recorded shipment cannot be changed; the same shipment sent again succeeds | no |
 | `call_did_not_reach_us` | the call never got to us, so it did nothing | yes |
 | `answer_not_understood` | it reached us and came back in words these tools cannot read, so it may well have done its work | yes |
 | `outcome_unknown` | it went out into silence — the connection broke, the process was stopped mid-call — and nothing on your side knows whether it landed | yes |
 
-The flag says that repeating the call could change the outcome. It does not say
-that repeating is safe, and those are two questions rather than one. `deliver`
-and `accept` are idempotent by the order's identifier, so for them the answer to
-both is yes: send the call again and nothing is delivered or charged twice.
-`refuse` carries no such promise, so a refusal that failed is worth reading back
-with `get` before it is sent a second time. And `delivery_does_not_match_card`
-means a third thing by the flag: that call arrived and was understood, so the
-same goods sent again get the same refusal, and the retry that helps is the one
-carrying what the order was sold with.
-
-A code outside those eight is the ordinary case rather than the exception, and
-the commonest one is us refusing the call at the door: a key we will not take,
-an order identifier that names nothing, a body we could not read. Those come
-back under our own word for the refusal — `not_authorised`, `no_such_order` —
-because that word is the one that tells you what to do about it. The three the
-tools produce say only what they say: no answer arrived, or one did and could
-not be read. Neither is ever put in front of a refusal we wrote out in words.
-On a refusal of ours the flag is ours too, and we assign it carefully. It is
-true only where making the same call again is genuinely the way through — the
-call that fell over before anything was decided, the order whose price is not
-worked out yet. Everything settled, and everything we are merely unsure about,
-is false: a key we will not take, an order that is not there, a card its
-merchant has paused. Some of those do change eventually, but not because you
-called again, and a flag that said otherwise would have you polling a door
-somebody else has to open.
-
-The three the tools produce keep the flag true, and there it means something
-weaker. Those are not refusals at all: no answer arrived, or one arrived that
-could not be read. Nothing is known about the call, so nothing is claimed about
-it — trying again is worth doing precisely because the first attempt settled
-nothing.
+The flag says that repeating the call could change the outcome, which is not
+the same as saying that repeating is safe. `deliver` and `accept` are
+idempotent by the order's identifier, so for them it is both; `refuse` is not,
+so read a refusal that failed back with `get` before sending it again. A code
+outside those eight is most often us refusing the call at the door — a key we
+will not take, an order identifier that names nothing — under our own word,
+such as `not_authorised` or `no_such_order`, with `retryable` false.
 
 Where the error is about the goods you sent, what did not fit travels as
-findings in `error.problems`, and that list is the complete account. A field
-your card declares and your delivery got wrong is one finding there, carrying
-the path to it, a code and words a person can act on. The fields your card never
-declared are one finding between them, with an empty path — there is no path to
-a name the card never had — and all of those names inside its own words. The
-`message` beside the list is a single line, written to be read in a log: it says
-how many findings there are, quotes one or a few of them, and marks the place
-where a long one was cut short. Print that to a person; branch on the list.
+findings in `error.problems`, and that list is the complete account: one
+finding per declared field you got wrong, with its path, a code and words a
+person can act on, and one finding with an empty path for every field your
+card never declared. The `message` beside the list is a single line for a
+log, which may be cut short and says where. Print that to a person; branch on
+the list.
 
 ## Refusing after you have taken the order on
 
 Taking an order on does not bind you: while the order is open, you can refuse
-it with a separate call.
+it with a separate call. In the synchronous mode the handler refuses in its
+own answer, and there is no separate call there at all.
 
 ```ts
 await order.refuse({
@@ -402,25 +291,59 @@ await order.refuse({
 })
 ```
 
-The call is for the places where you have already answered that you took the
-order on: the asynchronous mode, and the confirmation mode after the payment.
-In the synchronous mode the handler refuses in its own answer, and there is no
-separate call there at all.
-
-The buyer has already been charged for an order you took on, so a refusal marks
-the order as needing a refund straight away. There is nothing to gain by
-waiting out your delivery deadline and arriving at the same result through
-silence: the buyer hears about the debt the minute you do, instead of a day
-later.
-
-The refusal does not close the order. It stays open owing a refund, and goods
-delivered for it afterwards still close it as delivered, the way a late
-delivery does ([Confirming a delivery with a separate
-call](#confirming-a-delivery-with-a-separate-call)).
+The buyer has already been charged for an order you took on, so a refusal
+makes the order owe a refund straight away, and the buyer hears about the debt
+the minute you do rather than when your deadline runs out. The refusal does
+not close the order: it stays open owing a refund, and goods delivered for it
+afterwards still close it as delivered, the way a late delivery does.
 
 ## Finding out where an order stands
 
-We remember where the orders stand as well, so you can ask us at any moment.
+Every order carries a `status`, which `orders.get` and `orders.list` return
+and which the agent reads too. The drawing shows how the words follow one
+another; the table after it is the one to write a `switch` from.
+
+```mermaid
+flowchart LR
+    accTitle: The status of an order, as orders.get and orders.list read it
+    accDescr: An order reads in_progress until it reaches an ending; once it is paid and handed to your handler it is on the list of open orders. It closes as delivered, or shipped for a parcel, when the goods or the shipment are recorded and the money moved, and as rejected, expired or cancelled when nothing was charged. Two statuses stay on the open list after the purchase itself is over: refund_due, when the buyer was charged and has no goods, and delivered_unpaid, when you delivered a synchronous order and the charge failed; that buyer has no goods and has paid nothing. payment_unresolved means nobody knows whether the charge went through; it is on the open list only after a synchronous delivery, and a late answer from the facilitator moves it to delivered, delivered_unpaid, refund_due or rejected. A late delivery turns refund_due into delivered; a repeat purchase that pays turns delivered_unpaid, or a synchronous order that expired while your goods were on the way, into delivered. Nothing records a refund yet, so no order reaches refunded.
+    IP["<b>in_progress</b><br/>not finished;<br/>open once paid"]
+    IP --> RD["<b>refund_due</b>, open<br/>charged, no goods:<br/>you owe the goods<br/>or the money"]
+    IP --> DU["<b>delivered_unpaid</b>,<br/>open: sync goods<br/>made, charge failed"]
+    IP --> PU["<b>payment_unresolved</b><br/>nobody knows if the<br/>charge went through"]
+    IP --> NONE["<b>rejected</b>, <b>expired</b>,<br/><b>cancelled</b>: closed,<br/>nothing charged"]
+    IP -- "you deliver" --> SOLD["<b>delivered</b>, or<br/><b>shipped</b> for a parcel:<br/>closed, money moved"]
+    RD -- "you deliver late" --> SOLD
+    DU -- "a repeat that pays" --> SOLD
+    PU -. "a late answer" .-> SOLD
+    NONE -. "expired sync:<br/>a repeat that pays" .-> SOLD
+    RD -.-> RF["<b>refunded</b>: nothing<br/>records one yet"]
+```
+
+| `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
+| --- | --- | --- | --- |
+| `in_progress` | the purchase has not finished: priced, paid, with your handler, or taken on | once it is paid | delivers, if your own record says the goods are ready |
+| `delivered` | the goods are the agent's and the money moved | no | — |
+| `shipped` | a parcel's shipment is recorded and the money moved | no | — |
+| `rejected` | nothing was charged: there was none, a parameter did not fit, the payment failed its check, a charge before the goods failed, or you refused a synchronous order | no | — |
+| `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
+| `cancelled` | you left, and the order closed with nothing charged | no | — |
+| `refund_due` | the buyer was charged and has no goods: you owe the goods or the money | yes, until it is delivered | delivers, unless you have refunded it |
+| `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
+| `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery | skips it: a late answer from the facilitator moves it on |
+| `refunded` | a refund is recorded | no | — |
+| `declined` | the confirmation mode's "I will not deliver", which no order reaches while that mode cannot be published | no | — |
+
+Where we rather than you ended an order and the word alone would leave the
+agent guessing its next step, the status carries a `reason`: `rejected` comes
+with `unavailable` (your price check said there is none),
+`price_check_unanswered` (it did not answer in time, or its answer could not be
+accepted) or `payment_not_settled` (the charge did not go through), and
+`expired` with `price_expired` (the price ran out before the payment was taken)
+or `merchant_timed_out` (a synchronous answer did not arrive in time). Where
+the refusal was yours, your code and your message travel with the status
+instead, and a reason never stands beside them. A word you do not know is not
+an ending: read it again later.
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -437,274 +360,160 @@ for (const waiting of open) {
   const issued = await accessFor(waiting.id)
 
   if (issued !== null) {
-    // On an order marked as needing a refund this closes the debt with the
-    // goods, even after you have paid the buyer back yourself, so `accessFor`
-    // has to answer null for an order you refunded.
+    // On an order owing a refund this closes the debt with the goods, even
+    // after you have paid the buyer back yourself, so `accessFor` has to
+    // answer null for an order you refunded.
     await waiting.deliver({ access_url: issued.url, expires_at: issued.expiresAt })
   }
 }
 ```
 
 The first call returns one order, the second every order still open. They are
-for the case where your process restarted and no record of the order is left on
-your side: the list of open orders shows what is still owed something, so the
-picture does not have to be rebuilt from your database alone. Neither has a
-failure branch to hand you — an order or a list is all they can answer with — so
-when they cannot reach us they throw, as an `AgentifyError` carrying a `code`
-from the same set the closing calls return and the `route` it happened on. That
-is worth remembering about a loop that runs the moment a process comes back up.
+for the case where your process restarted and no record of the order is left
+on your side, and they carry the same `deliver` and `refuse` as an order your
+handler was given. Neither has a failure branch to hand you, so when they
+cannot reach us they throw, as an `AgentifyError` carrying a `code` and the
+`route` it happened on — worth remembering about a loop that runs the moment a
+process comes back up.
 
-Orders from here carry the same calls that orders from the handler do:
-`deliver` and `refuse` are made directly on them. They also carry one field a
-handler's order does not: the word for where this one stands.
+An order the agent was given a price for and has not paid is not on the open
+list, because it never reached your handler: delivering against it would make
+goods for a purchase that never happened. A loop over the list therefore rests
+on your own record of what you have already sent. One that makes the goods
+afresh for every order it finds will issue a new code, be told it succeeded,
+and lose it ([Telling a repeat apart](#telling-a-repeat-apart)).
 
-After a restart your process therefore walks the list, asks itself what is
-ready for each order, and closes what is ready — without collecting identifiers
-of ours into a variable of its own. What is ready is yours to know and not
-ours.
-
-Open here means the order is still owed something you can finish or have to
-step around. An order the agent has been given a price for and has not paid,
-which has never reached your handler, is not on it: walking this list after a
-restart and delivering against that order would make goods for a purchase that
-never happened. It is still readable by its identifier, and there its status
-is the buyer's word for a purchase that has not finished, which is not an
-instruction to you. It holds an order marked as needing a refund, where
-delivering closes the debt with the goods instead of paying the money back, and
-that may be what you want. It goes on holding that order after you have sent
-the refund, and delivering then gives the buyer the goods as well as the money.
-
-It also holds orders that already have their goods and are waiting only on
-money, and those are the ones a loop over the list has to step around. A
-delivery against an order that already has its goods is answered as a success,
-and nothing of what it carried is written down or reaches the agent.
-
-One of them you can see coming: an order you delivered synchronously whose
-payment did not execute reads `delivered_unpaid`, which is why the loop above
-skips it. An order whose goods are made and whose charge is still running
-reads `in_progress`, for as long as that charge is actually in flight. An
-order whose charge was asked for and never answered reads `payment_unresolved`,
-not `in_progress`: nothing is still asking, and that word is not an order
-waiting for you. The loop skips it for the same reason it skips
-`delivered_unpaid`. Delivering against it answers success and keeps nothing
-of what you sent.
-
-So a loop over this list rests on your own record of what you have already
-sent. One that makes the goods afresh for every order it finds will issue a new
-code, be told it succeeded, and lose it
-([Telling a repeat apart](#telling-a-repeat-apart)).
-
-If your own record of the order did survive and it holds our identifier — a job
-in a queue, a row in your database — the order can be assembled from it without
-asking us anything:
+If your own record of the order survived and holds our identifier — a job in a
+queue, a row in your database — the order can be assembled from it without
+asking us anything. That call works even when we cannot be reached: it reads
+nothing, and a delivery against it goes out and comes back as an error flagged
+worth repeating.
 
 ```ts
 await agentify.orders.forId(savedId).deliver({ access_url: url, expires_at: expiresAt })
 ```
 
-That call asks nothing, and so it works even when we cannot be reached: `get`
-and `list` at such a moment throw, while a delivery against a saved identifier
-goes out and comes back as an error flagged worth repeating. It does not read
-the order itself — there are no purchase parameters and no state in it, only
-the calls that close an order.
-
 ## Events on the same subscription
 
 Besides orders, the same subscription carries events: messages about something
-that happened to an order without you. A handler for them is declared the way
-one is for orders, with `agentify.on('event', ...)`, and it sends nothing back
-— an event tells you something happened and asks for no answer.
+that happened to an order without you. A handler for them is declared with
+`agentify.on('event', ...)`, and it sends nothing back.
 
-An event is sent once and is never sent again, and that is the opposite of the
-rule for orders on the same subscription. Your answer is what acknowledges an
-order — any of the three, including taking it on — so we can tell whether it
-arrived and send it out again when it did not. An event is the price of asking
-for no answer: nothing on our side is waiting for a reply to it, so one that
-went into a poll response your process never received is simply gone. Nothing
-brings it back, and nothing afterwards announces that one went missing. So the
-guard an order needs is against a repeat, and the guard an event needs is
-against a silence; a handler written for one of those rules and pointed at the other gets
-that one wrong.
+| Event | `type` | What it carries |
+| --- | --- | --- |
+| An order was marked as needing a refund | `order.refund_due` | `order_id`, `at`, the whole `price` owed, and a `reason`: `refused` after the charge, `deadline_passed`, or `merchant_left` |
+| A payment did not execute after a synchronous delivery | `order.payment_failed_after_delivery` | `order_id` and `at`; the order's own status says whether the charge failed or went unanswered |
 
-The silence that costs money is the notice that an order needs a refund. The
-buyer has paid, the goods did not go out, the one message that would have told
-you did not arrive — and the money sits in your payout contract while nobody
-asks for it. What closes that hole is the list of open orders. Every order still
-owed something is on it, an order marked as needing a refund included, so
-walking that list finds what a lost event would otherwise have been your only
-word of. Walk it on a
-schedule and not only after a restart: a process that stayed up loses an event
-the same way one that went down does, and it has no restart to prompt it.
+An event is sent once and never again, which is the opposite of the rule for
+orders. Your answer is what acknowledges an order, so we can send it again when
+it did not arrive; an event asks for no answer, so one that went into a poll
+response your process never received is simply gone, and nothing afterwards
+says so. The guard an order needs is against a repeat, and the guard an event
+needs is against a silence.
 
-| Event | What happened |
-| --- | --- |
-| An order was marked as needing a refund | you did not deliver in time, you refused after the charge, you left with a paid order still open, or a charge we had given up on reported in late |
-| A confirmed order was not paid for | you answered that you would deliver and the agent did not pay in its own time; you are free |
-| A payment did not execute after a synchronous delivery | you delivered, and the charge either failed or went unanswered |
+The silence that costs money is the notice that an order owes a refund. What
+closes that hole is the list of open orders: every order owing a refund is on
+it, so walking that list finds what a lost event would otherwise have been
+your only word of. Walk it on a schedule and not only after a restart.
 
-The last cause of a refund is the one that will not match your own record: a
-charge we had written off as never having happened reports in afterwards, and
-the buyer is owed the money back through no fault of yours. That event carries
-a short reason beside the sum, and the reasons are three where the causes above
-are four: a refusal has its own word and a departure has its own, while both the
-deadline you ran past and this late charge arrive as the deadline — ours, on the
-charge, rather than yours on the goods. The vocabulary has no word for that last
-one, and inventing a fourth on the wire is a decision nobody has taken.
+A refund owed has a fourth cause the reasons do not name. A charge we had
+given up on can report in afterwards, and then an order we had closed without
+money owes the buyer their money back through no fault of yours; its event
+arrives with `reason: deadline_passed`, although no deadline of yours passed.
 
 ## You delivered and the payment did not execute
 
 A rare case, and possible only in the synchronous mode. We check a payment
 first and execute it as the last step, after your delivery; between the check
 and the execution the funds can leave the buyer's wallet for something else.
-Then you have produced the goods and there is no money for them.
+Then you have produced the goods and there is no money for them. The goods are
+recorded and the money is not, and the event above goes out to you; the order
+stays on the list of open orders whether the event arrived or not. For the
+agent the purchase did not happen: it received neither the goods nor a charge.
 
-In this case the goods are recorded and the money is not, and an event goes out
-to you, so there is no need to go looking for such cases by reconciling
-transfers. Like every event it is sent once and can be lost on the way
-([Events on the same subscription](#events-on-the-same-subscription)), and what
-survives that is the order itself: it stays open on your side, and the list of
-open orders shows it whether the event arrived or not. For the agent the
-purchase did not happen: we hand the goods over after the payment executes, so
-it received neither the goods nor a charge.
+Two situations reach you through that one event, and the order's status tells
+them apart. Where the charge came back failed, the order reads
+`delivered_unpaid`: the same buyer can retry payment for this order with a
+fresh authorization, and if that payment settles, the stored goods are
+released and the order closes without another call to your handler. Where the
+facilitator was asked and never answered, the order reads
+`payment_unresolved`: nobody can say whether the buyer was charged, so a
+repeat purchase is refused, because a second charge on top of a first one
+nobody has heard from would spend the buyer's money on a guess. Nothing on our
+side asks the facilitator again. If a late answer says the money moved, the
+order closes as delivered and the agent gets its goods.
 
-Two situations reach you through that one event, and they part on what the
-payment network finally said. The order carries the word that tells them apart,
-so read it back before you act on either.
-
-Where the charge came back failed, the order reads `delivered_unpaid`. The same
-buyer can retry payment for this order with a fresh authorization. If that
-payment settles, the stored goods are released and the order closes without
-another call to your handler.
-
-Where the payment network was asked and never answered, nobody can say whether
-the buyer was charged, and we do not pretend to. A repeat is refused there,
-because a second charge on top of a first one nobody has heard from would be
-spending the buyer's money on a guess about the first. The order reads
-`payment_unresolved`, and nothing on our side asks the payment network again.
-If a late answer is recorded and it says the money moved, the order closes as
-delivered and the agent gets its goods. A failure is not recorded while the
-order is still open: that would allow a second charge on a guess about the
-first. Until an answer that the money moved is recorded, the order can sit
-there, and a repeat purchase is refused.
-
-In both cases the goods are already recorded on our side, so there is nothing
-to deliver again: a second delivery is answered as a success and nothing it
-carries is written down. Whether to revoke what you gave out or to wait is
-yours to decide; the size of the risk is bounded by the price of one purchase,
-and the owner of the business is told about that risk on [Money](/money).
+In both cases the goods are already recorded on our side, so a second delivery
+is answered as a success and nothing it carries is written down. Whether to
+revoke what you gave out or to wait is yours to decide; the risk is bounded by
+the price of one purchase, and the owner of the business is told about it on
+[Money](/money).
 
 ## How an order can end
 
 Most orders close with a delivery, a refusal or a deadline, and the agent sees
-which. Three rare cases leave the money unsettled: the money was charged and no
-delivery happened; you delivered and the payment did not execute; or the
-payment network never said whether the charge went through. The first two keep
-the order open. The third closes it on the guess that the money did not move —
-and if the charge reports in afterwards saying that it did, that closed order
-becomes a refund you owe.
+which. Three rare cases leave the money unsettled, and the `status` column is
+the word each one reads.
 
-| Situation | Where the money is | What the agent sees |
-| --- | --- | --- |
-| You delivered the goods | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
-| You recorded a parcel's shipment | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after: whether it arrives is between you and the buyer |
-| There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
-| You answered "I will not deliver" to a request to confirm | never moved | a refusal with your code and your message, and that nothing was charged |
-| Time ran out: no confirmation, no payment or no synchronous delivery arrived | never moved | the order was closed on its deadline |
-| You left | for what was not delivered, [you send it back](/money) | an unpaid order is closed; a paid one waits for your refund |
-| The money was charged and no delivery happened | in your payout contract | the order is waiting for a refund |
-| You delivered synchronously and the payment did not execute | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
-| The payment network did not say whether the money was charged | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
+| Situation | `status` | Where the money is | What the agent sees |
+| --- | --- | --- | --- |
+| You delivered the goods | `delivered` | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
+| You recorded a parcel's shipment | `shipped` | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after |
+| There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
+| Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order was closed on its deadline |
+| You left | `cancelled`, `refund_due` | for what was not delivered, [you owe it back](/money#if-the-buyer-did-not-get-the-goods) | an unpaid order is closed; a paid one waits for your refund |
+| The money was charged and no delivery happened | `refund_due` | in your payout contract | the order is waiting for a refund |
+| You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
+| The facilitator did not say whether the money was charged | `payment_unresolved` | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
 A pause closes no orders: cards stop selling, and the orders already taken on
 play out in the ordinary way. Only leaving closes the ones that are open.
 
-A status says exactly what the system knows. Where there is no answer from you
-yet, that is what the status says, and the agent does not read not knowing as a
-refusal.
+## Every time limit
 
-Where the refusal was yours, the two words you wrote travel with the status: the
-code the agent branches on and the message it can show. That holds in every
-mode, so an order you refused after the buyer was already charged carries them
-as well as one refused before any money moved. Nothing else on this table
-carries your words.
+Every wait has a limit, and an order that runs past it closes or moves on
+without you. The limits are ours to set, the same for every merchant, except
+the two your card names.
 
-Where we rather than you ended the order, and one status word would leave the
-agent guessing its next step, the status says why in our own words, under
-`reason`: a code to branch on and a sentence. `rejected` comes with
-`unavailable` (your price check said there is none), `price_check_unanswered`
-(it did not answer in time, or its answer could not be accepted) or
-`payment_not_settled` (the charge did not go through); `expired` comes with
-`price_expired` (the price ran out before the payment was taken) or
-`merchant_timed_out` (a synchronous answer did not arrive in time). The other
-deadlines — your confirmation, the agent's payment after it, an asynchronous
-delivery — end the order with its status word alone. A reason never stands
-beside your refusal: where you refused, your words are the whole answer.
+| What waits | Whom it binds | How long | Counted from | When it runs out |
+| --- | --- | --- | --- | --- |
+| Your price handler's answer | you | five seconds | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
+| The price an order was given | the agent | thirty seconds | your answer, or the agent's request on a card with no price check | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
+| Each hand-over of an order to your process | you | three seconds | the order is handed to your process | the order is sent again, up to five times in all, within its own deadline |
+| The goods of a synchronous order | you | ten seconds | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays |
+| The facilitator's answer about the charge | Agentify | ten seconds on a synchronous order; fifteen where the charge comes before the goods | the charge is sent | `payment_unresolved` |
+| The delivery of an asynchronous order | you | your `fulfill_deadline_seconds`; without it, a day | the charge at purchase | `refund_due` |
+| The shipment of a parcel | you | your `ship_within_seconds`, at most thirty days | the charge at purchase | `refund_due` |
 
-## Time ran out
-
-An order whose deadline has passed does not hang in the air. It closes, and the
-agent sees how it ended. What happens depends on which step the waiting was at.
-
-The numbers are ours to set rather than the card's, and the ones below are what
-the system you are connecting to runs with. A price holds for thirty seconds. A
-synchronous answer has ten seconds. An asynchronous card can carry one
-deadline of yours, on the delivery, counted from the moment the buyer was
-charged; name it and the agent sees it before it buys, leave it out and a day
-applies, which the agent sees on your card as if you had named it
-([The product card](/cards)). The
-confirmation mode has a deadline of its own — an hour, where the card names none
-— and it arrives together with the mode.
-
-The ten seconds run from the moment the payment checked out rather than from
-the moment the agent first asked, so asking your price — which happens on the
-call before the payment — and checking the payment itself are behind them rather
-than inside them. They are not the whole of the agent's wait: executing the
-charge comes after your answer, on a clock of its own, and the two together fit
-inside the twenty seconds we promise the agent for a synchronous purchase. Those
-twenty start where your ten do, at the moment the payment checked out, so the
-check is on top of them and not inside: what the agent waits for is the check,
-and then the twenty.
-
-| Situation | Time ran out — what happened |
-| --- | --- |
-| The agent has the price and is thinking | the price no longer holds; if it still wants to buy, it asks for a fresh one |
-| A request asking whether you will deliver has arrived | the order closed, and the buyer's money never moved |
-| The agent owes payment for a confirmed order | the order closed and you are free; an event comes to you |
-| You are delivering a synchronous order | the purchase did not happen and nothing was charged; the same buyer can retry payment for that order with a fresh authorization, and the stored delivery is released only if it settles |
-| You are delivering an asynchronous order | the money is already in your payout contract, and the order is marked as needing a refund |
+The agent is promised a synchronous purchase within twenty seconds of the
+payment check, and your ten seconds and the facilitator's ten fit inside them.
+Asking your price comes before the payment, so it is outside all three
+numbers. A late synchronous answer is not an error and does not come back as
+an exception: the purchase is already closed with nothing charged, and goods
+that fit the card are kept for a repeat purchase without your code being told.
 
 ## Telling a repeat apart
 
 By the order's identifier: it is the same across every repeat, and your side
 answers with the earlier result under it instead of delivering a second time.
 Orders are delivered at least once, so a repeat is ordinary traffic; it does
-not mean that anything broke.
-
-On the agent's side the key is the same one, in every mode. The order's
-identifier rides in the payment challenge we issue and comes back in the
+not mean that anything broke. On the agent's side the key is the same one: the
+order's identifier rides in the payment request we issue and comes back in the
 payment the agent signs, so a repeat names the order it repeats and we carry
-that order on from where it stopped. What differs between the modes is only how
-much of the purchase was already done when the answer went missing.
-
-One case stands apart: a repeat of an asynchronous order you have already
-delivered. You confirmed that delivery with the `deliver` call rather than with
-the handler's answer, so the answer to such a repeat is the one you gave the
-first time — taking the order on. There is no need to deliver a second time or
-to call `deliver` again, because the order is already closed.
+that order on from where it stopped.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
 answered as a success, and whatever it carries is neither written down nor
 handed to the agent. So a handler that makes the goods afresh on every attempt
-— a new access code each time, because the one it made before went back to
-stock when its deadline passed — leaves the buyer holding the first code while
-your own records say the second one was spent. Nothing in our answer shows you
-that: a repeat is answered the same way whether it carried the same goods or
-different ones.
+— a new access code each time — leaves the buyer holding the first code while
+your own records say the second one was spent, and nothing in our answer shows
+you that.
 
-Answers that are not the goods may differ freely. You named an expected
-delivery time when you took the order on the first time, say, and not the
-second; that is not a second delivery and nothing turns on it.
+A repeat of an asynchronous order you have already delivered is answered with
+what you answered the first time, taking the order on; there is no need to
+call `deliver` again, because the order is already closed. Answers that are
+not the goods may differ freely between attempts.
 
 ## Running the handler in several instances
 
@@ -716,103 +525,65 @@ Your answer is what acknowledges an order: until it comes back, the order
 counts as open. A process that fell over or reconnected without answering
 leaves the order to go out again, possibly to another instance, and so does a
 handler that takes longer than the three seconds we wait for an answer. In that
-second case the same order is in two processes at once: the first is still
-working on it while the second receives the repeat. That is ordinary behaviour,
-and it is what the handler's idempotency by the order's identifier is for.
+second case the same order is in two processes at once, which is ordinary, and
+it is what the handler's idempotency by the order's identifier is for.
 
-Within one instance the orders are worked through one at a time, and the
-instance is handed the next order or question only once it has answered the one
-before, so each costs it a handler call and two trips: its answer coming back to
-us and the poll for the next one. Running more instances is how to get through
-more of them at once: no parameter takes several at once within one instance,
-and whether one will is among the things [not
-settled](/quickstart#what-is-not-settled-yet).
+Within one instance the orders are worked through one at a time: the instance
+is handed the next order or question only once it has answered the one before.
+Running more instances is how to get through more of them at once.
 
 ## Test orders
 
-A test order is marked with the `test` flag, which is how a handler tells a
-rehearsal from a live sale: send such an order into your own test environment,
-answer with a stub, or serve it like any other.
-
-There are two environments, and the flag is the difference between them. The
-test one is at `https://test.agentify.ad`: its keys begin `csk_test_`, and
-the payments it settles go over a test chain with test funds. The live one is at
-`https://agentify.ad`, where the money is real. The flag follows the chain
-the payment settled on rather than the key you called with, so every order from
-the test environment reads `test: true` and every order from the live one reads
-`test: false` ([the addresses and the keys](/quickstart)).
-
-So the flag says which of the two your process is connected to rather than
-sorting one stream into two: a process pointed at the test environment sees test
-orders and nothing else. That is what makes it worth reading in one code base that serves
-both. The same handler can stop short of the real provisioning where the flag is
-true, and it will not stop short of a live sale by accident, because a live
-order never carries the flag.
+A test order carries `test: true`, which is how a handler tells a rehearsal
+from a live sale: send such an order into your own test environment, answer
+with a stub, or serve it like any other. The flag follows the chain the
+payment settled on rather than the key you called with, so every order from
+the test channel at `https://test.agentify.ad` reads `true` and every order
+from the live channel at `https://agentify.ad` reads `false`. A process
+pointed at the test channel sees test orders and nothing else, so the same
+handler can stop short of real provisioning where the flag is true without
+ever stopping short of a live sale.
 
 The price question that comes before an order carries no flag of its own. It
-arrives down the same subscription, so it comes from whichever environment your
-client is pointed at; what you cannot do is read a field on the question and
-fork on that.
+comes from whichever channel your client is pointed at.
 
-## You did not deliver in time
+## The receipt
 
-A synchronous order carries a deadline after which we no longer start your
-delivery. The hard case is a delivery that began before the deadline and
-finished after it, by which time the purchase is closed as a refusal with
-nothing charged.
+A sale that went through leaves a receipt, written at the moment the goods are
+released; the dashboard's Receipts screen shows them, and `GET /v0/receipts`
+returns them to your code. An order paid for and never delivered leaves none.
 
-A synchronous answer has ten seconds, counted from the moment the payment
-checked out — asking your price is behind them, and so is whatever the agent
-spent deciding to pay, and so is the check on that payment. Say your handler
-began the delivery in the ninth second and finished in the twelfth. By that
-second the agent has already had a refusal and spent nothing, but the access you
-gave out has not gone anywhere.
+| Field | What it is |
+| --- | --- |
+| `order_id`, `item_id` | the order and our catalogue identifier for the card that was bought |
+| `price` | the price the sale went through at, which stays as it was after your price moves: `amount`, `currency`, `at` — when we fixed it for this sale, "Price set" in the dashboard — and `as_of` — when that price was true, "Price as of" |
+| `paid_at` | when the payment executed, "Paid" in the dashboard |
+| `transaction` | the hash of the buyer's transfer into your payout contract, which the dashboard links to the chain's explorer |
+| `test` | whether the money behind it was real |
 
-Work already done is not lost. The same buyer can retry payment for that order
-with a fresh authorization; if it settles, the stored delivery is released
-without another handler call. So answering with the earlier result under the
-merchant idempotency key is worth doing after the deadline has passed too.
-
-Being late is not in itself an error and does not come back as an exception.
-The goods are read before the state of the order is, so a late answer whose
-goods do not fit the card is refused for the goods — and the refusal names the
-ending as well, and marks itself not worth calling again, so you are not left
-fixing a handler for a sale that is already over. That refusal does reach you,
-because the tools report the answers we refuse.
-
-Fixing the handler tells you nothing further. A synchronous answer leaves
-through the tools rather than through a call of your own, and an answer whose
-goods do fit is taken — our side records the purchase as already closed, and
-your code is not told, because this is an answer we accept.
-
-Your handler is not called again. The same buyer can retry payment for that
-order with a fresh authorization. If it settles, the stored delivery is
-released; until then you have produced the goods and no payment has arrived.
-
-## The price changed while the agent was thinking
-
-A payment at a stale price does not go through: nothing is charged, the agent
-is told its price ran out (`reason: price_expired`) and starts a new purchase to
-get a fresh one. That is the expected course of events, nothing has failed, and
-your side never hears about it — no order reaches you.
+The three moments are seldom the same: in the synchronous mode the charge
+comes seconds after the goods, and on a card whose price is checked at the
+purchase the agent may take minutes between the price and the payment. The
+transfer a receipt names goes into your payout contract and not into your
+wallet, which receives one transfer per payout instead.
 
 ## What is not settled yet
 
 - The threshold at which a price counts as stale: any difference at all, or a
   difference larger than a named one.
-- What other events we send. The three named here are a minimum, and we add to
+- What other events we send. The two named here are a minimum, and we add to
   the catalogue as cases turn up where your side would otherwise learn of
   something only by reconciling by hand.
-- The transport for confirmations, for sellers with no API — together with the
-  path where an order arrives as a message, after the pilot.
-- How the agent is told it may now pay, in the confirmation mode. Your side of
-  that mode is settled — the request to confirm and your two answers — and the
-  agent's side of it is not, which is one of the reasons the mode is not open
-  during the pilot.
+- The confirmation mode, in which you are asked whether you will deliver and
+  the buyer is charged after your yes. Its request has no shape on the wire
+  yet and the agent's side of it is not designed, so a card in that mode is
+  refused at publication.
 - Recording a refund on an order. Nothing records one yet, so no order ends
-  as refunded and `refund_already_settled` is never sent. How a refund you sent
-  comes to be recorded belongs to the mechanics of refunding, which are open
-  as well ([Money](/money)).
+  as `refunded` and `refund_already_settled` is never sent. How a refund you
+  sent comes to be recorded belongs to the mechanics of refunding, which are
+  open as well ([Money](/money)).
 - Telling your code that a synchronous answer arrived after its deadline. The
   answer carries the word; the tools drop it, because they report only the
   answers we refuse.
+- Whether one instance of the handler will be able to work on several orders
+  at once.
