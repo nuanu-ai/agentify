@@ -636,8 +636,6 @@ placement, not a rule that every current behavior deserves to pass.
 
 [Research 50](50-commerce-correctness-test.md) records valuable prior checks
 and their omissions. It does not certify this protocol's combined scenarios.
-The [review rationale](51-product-test-plan-review.md) explains the scope of
-this revision and the checks removed or strengthened.
 
 This plan does not certify chain/provider security, a disaster-recovery restore,
 all browser/mail-client combinations, production capacity or carrier delivery.
