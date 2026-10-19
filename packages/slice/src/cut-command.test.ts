@@ -16,6 +16,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCut } from "./cut-command.js";
 
@@ -158,6 +159,17 @@ const proxy = async (
   }
   running.push(started.proxy);
   return { port: started.proxy.port, log };
+};
+
+/** The log line for request number `n`, once the proxy has printed it. */
+const lineFor = async (log: readonly string[], n: number): Promise<string> => {
+  for (;;) {
+    const line = log.find((entry) => entry.includes(` #${n} `));
+    if (line !== undefined) {
+      return line;
+    }
+    await pause(5);
+  }
 };
 
 const PURCHASE = '{"answers":{"email":"buyer@example.com"}}';
@@ -373,6 +385,61 @@ describe("what passes between the caller and the upstream", () => {
     expect(log[0]).toContain(`127.0.0.1:${port}`);
     expect(log[0]).toContain(up.url);
     expect(log[0]).toContain("POST /v0/orders/*/answer");
+  });
+});
+
+describe("an answer the upstream encoded", () => {
+  const encoders = {
+    gzip: gzipSync,
+    deflate: deflateSync,
+    br: brotliCompressSync,
+    zstd: zstdCompressSync,
+  } as const;
+
+  const encodedAs = (coding: string, bytes: Buffer) => (_n: number, response: ServerResponse) => {
+    response.writeHead(200, { "content-type": "application/json", "content-encoding": coding });
+    response.end(bytes);
+  };
+
+  it.each(Object.keys(encoders) as (keyof typeof encoders)[])(
+    "passes a %s answer's bytes untouched, and the log names the order inside it and says the size is of the encoded bytes",
+    async (coding) => {
+      const bytes = encoders[coding](Buffer.from(PAID));
+      const up = await upstream(encodedAs(coding, bytes));
+      const { port, log } = await proxy(up.url, purchases("mid-body"));
+
+      const passed = await call(port, "GET", "/x402/itm_7/purchase");
+
+      expect(passed.headers["content-encoding"]).toBe(coding);
+      expect(passed.body.equals(bytes)).toBe(true);
+      const line = await lineFor(log, 1);
+      expect(line).toContain("order ord_4f1c");
+      expect(line).toContain(`${bytes.length} encoded bytes (${coding})`);
+    },
+  );
+
+  it("says the order was not read when the coding is unknown or the body does not decode, unlike an answer that names no order or has no body", async () => {
+    const answers = [
+      encodedAs("x-squash", gzipSync(Buffer.from(PAID))),
+      encodedAs("gzip", Buffer.from(PAID)),
+      plainly(200, '{"status":"delivered"}'),
+      encodedAs("gzip", Buffer.alloc(0)),
+    ];
+    const up = await upstream((n, response) => answers[n - 1]?.(n, response));
+    const { port, log } = await proxy(up.url, purchases("mid-body"));
+
+    for (let n = 1; n <= answers.length; n += 1) {
+      await call(port, "GET", "/x402/itm_7/purchase");
+    }
+
+    const unknown = await lineFor(log, 1);
+    const undecodable = await lineFor(log, 2);
+    const unnamed = await lineFor(log, 3);
+    const empty = await lineFor(log, 4);
+    expect(unknown).toMatch(/order not read\b.*x-squash/);
+    expect(undecodable).toMatch(/order not read\b.*gzip.*Z_DATA_ERROR/);
+    expect(unnamed).not.toContain("order");
+    expect(empty).not.toContain("order");
   });
 });
 
