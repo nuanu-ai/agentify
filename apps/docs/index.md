@@ -8,7 +8,9 @@ pays — and how connecting begins.
 ## Who buys here
 
 Agentify publishes your products in its own catalogue, which AI agents read
-and buy from. Catalogues run by other people may list them too, and nothing
+and buy from; an agent that buys starts at
+[{{origin}}/llms.txt]({{origin}}/llms.txt), which names the catalogue.
+Catalogues run by other people may list them too, and nothing
 guarantees that, and how many agents read Agentify's catalogue today is not
 something we can tell you yet. An agent is a program that a person handed a
 task and a budget; to finish the task it finds the goods it needs, pays for

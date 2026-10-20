@@ -57,8 +57,16 @@ describe("a link into the documentation", () => {
       for (const [, href = ""] of page.html.matchAll(/<a [^>]*href="([^"]*)"/g)) {
         const [address = "", anchor] = href.split("#");
         // A page links off the site, to the dashboard by its whole address,
-        // and to nothing else on the origin outside the documentation.
-        if (address.startsWith("/dashboard/") || /^[a-z]+:/.test(address)) continue;
+        // to a file at the site's root by the site's own address, which is a
+        // whole address once served, and to nothing else on the origin
+        // outside the documentation.
+        if (
+          address.startsWith("/dashboard/") ||
+          address.startsWith(valueTemplate("origin")) ||
+          /^[a-z]+:/.test(address)
+        ) {
+          continue;
+        }
         const target =
           address === "" ? page.path : address.startsWith("/docs") ? pathOf(address) : null;
         if (target === null) {
