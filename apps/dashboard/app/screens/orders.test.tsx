@@ -360,6 +360,68 @@ describe("a long run of orders told in full", () => {
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
   });
+
+  /** The ids drawn in every list on the page, in order, each once. */
+  const listedIn = (html: string): readonly string[] =>
+    [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)]
+      .flatMap((list) => [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)].map((id) => id[0]))
+      .filter((id, at, all) => all.indexOf(id) === at);
+
+  /**
+   * The addresses the Needs you group leads to on this page, other than an
+   * order's own details and the documentation.
+   */
+  const waysOnFrom = (html: string): readonly string[] => {
+    const group =
+      /<section class="group">(?:(?!<\/section>)[\s\S])*?aria-label="Orders that need you"[\s\S]*?<\/section>/.exec(
+        html,
+      )?.[0] ?? "";
+    return [...group.matchAll(/<a [^>]*href="([^"]*)"/g)]
+      .map((link) => (link[1] ?? "").replaceAll("&amp;", "&"))
+      .filter((href) => href.startsWith("/orders") && !href.includes("details="));
+  };
+
+  it("leads from a cut Needs you to every order that needs the merchant, a page at a time and each drawn once", () => {
+    const owing = sixtyOf("unfulfilled");
+    const done = idOf("ffff", "1111");
+    const orders = OrderListSchema.parse({
+      orders: [...owing.orders, ...ordersOf([{ id: done }]).orders],
+    });
+    const preview = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, owing)} />);
+
+    const [way, ...more] = waysOnFrom(preview);
+    expect(more).toStrictEqual([]);
+    const reached: string[] = [];
+    let address: string | null = way ?? null;
+    for (let pages = 0; address !== null && pages < 3; pages += 1) {
+      const view = ordersView(
+        "live",
+        CARDS,
+        orders,
+        owing,
+        new URL(address, "https://agentify.ad").searchParams,
+      );
+      const html = served(() => <OrdersScreen view={view} />);
+      const told = toldIn(html, "Orders that need you");
+      // Nothing else on the page draws the same orders again.
+      expect(listedIn(html)).toStrictEqual(told);
+      reached.push(...told);
+      address = view.listing.cut?.next ?? null;
+      if (address !== null) expect(html).toContain(`href="${address.replaceAll("&", "&amp;")}"`);
+    }
+
+    expect(reached).toHaveLength(60);
+    expect([...reached].sort()).toStrictEqual(owing.orders.map((order) => order.id).sort());
+    expect(reached).not.toContain(done);
+  });
+
+  it("offers no other way on where Needs you already holds every order", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }, { id: SAME_HEAD }]);
+
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(waysOnFrom(html)).toStrictEqual([]);
+  });
 });
 
 describe("merchant fulfillment closure", () => {
