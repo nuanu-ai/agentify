@@ -389,7 +389,8 @@ interface OrderRow {
   readonly paymentUnresolved: boolean;
   readonly opened: boolean;
   readonly closure: Readonly<{ at: MomentView; message?: string }> | null;
-  readonly canClose: boolean;
+  /** Whether the closure form is offered, and whether it closes the order a second time. */
+  readonly closing: "first" | "again" | null;
 }
 
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
@@ -523,6 +524,7 @@ export const ordersView = (
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
+  const reopened = paidAfterClosureIn(open);
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
   const listed = [...orders.orders]
@@ -536,8 +538,9 @@ export const ordersView = (
         amount: money(order.price),
         test: order.test,
         shares: sharesIn(order.price, paidInto[order.id]),
-        state:
-          order.status === "fulfillment_closed" && order.merchant_closure !== undefined
+        state: reopened(order)
+          ? { text: "Paid after closure", tone: "warn" as const }
+          : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
             ? { text: "Closed by you", tone: "quiet" as const }
             : ORDER_WORDS[order.status],
         paymentUnresolved: order.payment_status === "unresolved",
@@ -557,7 +560,7 @@ export const ordersView = (
                   ? {}
                   : { message: order.merchant_closure.message }),
               },
-        canClose: closable(order),
+        closing: reopened(order) ? "again" : closable(order) ? "first" : null,
         priceSet: momentView(order.price.at),
         day: dayOf(order.price.at),
       } satisfies OrderRow,
@@ -569,12 +572,12 @@ export const ordersView = (
   );
   const finds = orderSearch(asked.q.toLocaleLowerCase());
   const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
-  const told = (which: (status: OrderStatus) => boolean): ToldOrders => {
-    const all = found.filter(({ order }) => which(order.status));
+  const told = (which: (order: OrderList["orders"][number]) => boolean): ToldOrders => {
+    const all = found.filter(({ order }) => which(order));
     return {
       rows: all.slice(0, PAGE_ROWS).map(({ order, row }) => ({
         ...row,
-        why: whatHappened(order, owed[order.id]),
+        why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
         rest: whereTheRestIs(order.status),
       })),
       of: all.length,
@@ -596,8 +599,8 @@ export const ordersView = (
           : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
       showAll: "Show all orders",
     }),
-    needsYou: told(needsYou),
-    waitsOnTheBuyer: told(waitsOnTheBuyer),
+    needsYou: told((order) => needsYou(order.status) || reopened(order)),
+    waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
   };
 };
 
@@ -632,6 +635,28 @@ export const closable = (
   order.merchant_closure === undefined &&
   STOPPABLE.has(order.status) &&
   !(order.status === "in_progress" && order.payment_status === "not_paid");
+
+/**
+ * An order the merchant closed, now paid, that the gateway still lists as
+ * open: its payment completed after the closure, and it stays open until the
+ * merchant closes it again.
+ */
+const paidAfterClosureIn = (open: OrderList) => {
+  const listed = new Set(open.orders.map((order) => order.id));
+  return (
+    order: Pick<
+      OrderList["orders"][number],
+      "id" | "status" | "payment_status" | "merchant_closure"
+    >,
+  ): boolean =>
+    order.status === "fulfillment_closed" &&
+    order.payment_status === "paid" &&
+    order.merchant_closure !== undefined &&
+    listed.has(order.id);
+};
+
+const PAID_AFTER_CLOSURE =
+  "The payment completed after you closed fulfillment, so the buyer paid and nothing was delivered. Close it again, with an explanation to the buyer.";
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -677,12 +702,12 @@ const sharesIn = (
  * documentation says what settles it and what the merchant's choice is.
  */
 const whereTheRestIs = (status: OrderStatus): Rest | null =>
-  status === "unfulfilled"
-    ? null
-    : {
+  status === "delivered_unpaid"
+    ? {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
         words: "What can still happen",
-      };
+      }
+    : null;
 
 // --- receipts ----------------------------------------------------------------
 

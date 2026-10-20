@@ -6504,6 +6504,43 @@ describe("closing fulfillment from Orders", () => {
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 
+  it("brings back an order paid after its closure until the merchant closes it again", async () => {
+    const running = await started();
+    const itemId = await publish(running.gateway, esimCard);
+    const priced = await running.harnessed.gateway.beginPurchase(itemId, {});
+    if (priced.step !== "pay") throw new Error("the order was not priced");
+    const id = priced.order.order.id;
+    running.harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await running.harnessed.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await running.browser.signIn();
+    await running.browser.post("/orders", { order_id: id, message: "Payment did not arrive." });
+    const pending = await running.harnessed.store.orderById(id);
+    if (pending?.paymentAttempt === undefined) throw new Error("the payment attempt is missing");
+    await running.harnessed.gateway.runner.completePaymentAttempt(
+      id,
+      pending.paymentAttempt.id,
+      { settled: true, transaction: "late-transaction" },
+      "facilitator",
+    );
+
+    const back = await running.browser.get("/orders");
+    expect(readable(back.html)).toContain("Needs you 1");
+    expect(readable(back.html)).toContain("payment completed after you closed fulfillment");
+    expect(formsIn(back.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
+
+    const again = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The payment arrived late; it will be returned.",
+    });
+    expect(again.status).toBe(303);
+    const after = await running.browser.get("/orders");
+    expect(readable(after.html)).not.toContain("Needs you");
+    expect(formsIn(after.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(
+      "The payment arrived late; it will be returned.",
+    );
+  });
+
   it("leads back to the order in its own words when a delivery lands before the closure", async () => {
     const running = await started({
       client: (real) => ({

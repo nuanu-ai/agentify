@@ -418,6 +418,32 @@ describe("merchant fulfillment closure", () => {
     expect(text).not.toContain("Fulfillment closed by you");
   });
 
+  it("counts a closed order whose payment completed afterwards as needing the merchant, and offers closing it again", () => {
+    // The gateway keeps such an order on the open list until the merchant
+    // closes it again; one it no longer lists is settled.
+    const orders = closed("fulfillment_closed", "paid", "Your payment did not go through.");
+    const id = orders.orders[0]?.id ?? "";
+    const reopened = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />
+    ));
+    const settled = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
+    ));
+    const needs = (html: string) => {
+      const text = readable(html);
+      return text.includes("Needs you")
+        ? text.slice(text.indexOf("Needs you"), text.indexOf("All orders"))
+        : "";
+    };
+
+    expect(needs(reopened)).toContain("Needs you 1");
+    expect(needs(reopened)).toContain("payment completed after you closed fulfillment");
+    expect(reopened).toContain(`name="order_id" value="${id}"`);
+    expect(readable(reopened)).toContain("Close again");
+    expect(needs(settled)).toBe("");
+    expect(settled).not.toContain(`name="order_id" value="${id}"`);
+  });
+
   it("offers closure only while fulfillment can still be stopped", () => {
     // Each order is named by its own hexadecimal tail, so a form is found by the order it closes.
     const cases = [

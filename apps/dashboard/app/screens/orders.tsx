@@ -84,32 +84,41 @@ const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>
   </>
 );
 
-const CloseFulfillment = ({ id }: Readonly<{ id: string }>) => (
-  <section className={styles.close} aria-label="Close fulfillment">
-    <h3>Close fulfillment</h3>
-    <p className={styles.help}>
-      Stops delivery through Agentify for this order. It cannot be undone, and it cancels nothing in
-      your shop and moves no money.
-    </p>
-    <PostForm action="/orders" className="issue">
-      {(pending) => (
-        <>
-          <input type="hidden" name="order_id" value={id} />
-          <Field
-            name="message"
-            label="Explanation to the buyer (optional)"
-            maxLength={2000}
-            autoComplete="off"
-            hint="Shown to the buyer as your words; Agentify does not check them."
-          />
-          <Button variant="secondary" pending={pending}>
-            Close fulfillment
-          </Button>
-        </>
-      )}
-    </PostForm>
-  </section>
-);
+/**
+ * The same form closes an order the first time and, where its payment
+ * completed after that closure, again: the second records its own time and
+ * explanation.
+ */
+const CloseFulfillment = ({ id, again }: Readonly<{ id: string; again: boolean }>) => {
+  const press = again ? "Close again" : "Close fulfillment";
+  return (
+    <section className={styles.close} aria-label={press}>
+      <h3>{press}</h3>
+      <p className={styles.help}>
+        {again
+          ? "The payment arrived after you closed this order. Closing again records a new time and explanation; it moves no money."
+          : "Stops delivery through Agentify for this order. It cannot be undone, and it cancels nothing in your shop and moves no money."}
+      </p>
+      <PostForm action="/orders" className="issue">
+        {(pending) => (
+          <>
+            <input type="hidden" name="order_id" value={id} />
+            <Field
+              name="message"
+              label="Explanation to the buyer (optional)"
+              maxLength={2000}
+              autoComplete="off"
+              hint="Shown to the buyer as your words; Agentify does not check them."
+            />
+            <Button variant="secondary" pending={pending}>
+              {press}
+            </Button>
+          </>
+        )}
+      </PostForm>
+    </section>
+  );
+};
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
@@ -265,7 +274,9 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                           </p>
                         </section>
                       )}
-                      {row.canClose ? <CloseFulfillment id={row.id} /> : null}
+                      {row.closing === null ? null : (
+                        <CloseFulfillment id={row.id} again={row.closing === "again"} />
+                      )}
                     </div>
                   </RowMore>
                 </Row>
