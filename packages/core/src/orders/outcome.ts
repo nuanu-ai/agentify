@@ -122,7 +122,9 @@ export function outcomeFor(order: Order): OrderOutcome {
  *
  * The merchant's own refusal has no reason here: it travels in their words, and
  * a reason of ours beside it would speak for them. Endings whose word already
- * says it all have none either.
+ * says it all have none either. A paid order the merchant closed is the one
+ * place a reason of ours stands beside the merchant's words, because those
+ * words can contradict the payment.
  */
 export const ENDING_REASONS = [
   /** The merchant's price check said there is none; it did not say why. */
@@ -135,12 +137,21 @@ export const ENDING_REASONS = [
   "price_expired",
   /** The merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
+  /**
+   * The merchant closed fulfillment of a paid order. Their own words stand
+   * beside it, and this says what Agentify knows: paid, nothing delivered, no
+   * refund verified.
+   */
+  "merchant_closed",
 ] as const;
 
 export type EndingReason = (typeof ENDING_REASONS)[number];
 
 export function endingReasonFor(order: Order): EndingReason | null {
   const outcome = outcomeFor(order);
+  if (outcome === "fulfillment_closed") {
+    return order.payment === "settled" ? "merchant_closed" : null;
+  }
   if ((outcome !== "rejected" && outcome !== "expired") || order.closure === null) {
     return null;
   }

@@ -99,6 +99,15 @@ describe("the authenticated merchant closure", () => {
       },
     ]);
     expect(await openIds()).toEqual([id]);
+    const agentReads = (await server.call("GET", `/x402/orders/${id}/status`)).body as {
+      reason?: { code: string; message: string };
+    };
+    expect(agentReads).toMatchObject({
+      status: "fulfillment_closed",
+      payment_status: "paid",
+      reason: { code: "merchant_closed" },
+    });
+    expect(agentReads.reason?.message).toMatch(/completed after the seller had closed/);
     expect((await server.call("GET", `/v0/orders/${id}`, { headers })).body).toMatchObject({
       status: "fulfillment_closed",
       payment_status: "paid",
@@ -122,6 +131,44 @@ describe("the authenticated merchant closure", () => {
     });
     expect(h.facilitator.settles).toHaveLength(1);
     expect(await h.store.receipts(h.merchant.id)).toEqual([]);
+  });
+
+  it("tells the buyer's agent in Agentify's words what is true of a paid order the merchant closed, beside the merchant's own", async () => {
+    const id = await order();
+    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await h.gateway.refuseOrder(h.merchant.id, id, { code: "out_of_stock", message: "none left" });
+    const headers = { authorization: `Bearer ${h.merchant.key}` };
+    expect(
+      (
+        await server.call("POST", `/v0/orders/${id}/close`, {
+          headers,
+          body: { message: "Nothing was charged." },
+        })
+      ).body,
+    ).toEqual({ ok: true });
+
+    const read = (await server.call("GET", `/x402/orders/${id}/status`)).body as {
+      reason?: { code: string; message: string };
+    };
+    expect(read).toMatchObject({
+      status: "fulfillment_closed",
+      payment_status: "paid",
+      delivered: null,
+      refusal: { code: "out_of_stock", message: "none left" },
+      merchant_closure: { message: "Nothing was charged." },
+      reason: { code: "merchant_closed" },
+    });
+    expect(read.reason?.message).toMatch(/paid/);
+    expect(read.reason?.message).toMatch(/no delivery/);
+    expect(read.reason?.message).toMatch(/not verified any refund/);
+  });
+
+  it("gives no reason of its own on a closed order nobody paid", async () => {
+    const id = await order();
+    await h.gateway.closeOrder(h.merchant.id, id, {});
+    const read = (await server.call("GET", `/x402/orders/${id}/status`)).body;
+    expect(read).toMatchObject({ status: "fulfillment_closed", payment_status: "not_paid" });
+    expect(read).not.toHaveProperty("reason");
   });
 
   it("preserves its first attributed message and exposes payment facts on both read views", async () => {

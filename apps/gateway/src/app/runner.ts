@@ -1437,6 +1437,10 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
     "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
     "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
+  merchant_closed: (order) =>
+    paidAfterClosure(order)
+      ? "The payment for this order completed after the seller had closed fulfillment through Agentify, so the seller's words under merchant_closure were written before it arrived. Agentify has no delivery recorded and has not verified any refund or agreement. Contact the seller."
+      : "This order is paid, and the seller closed fulfillment through Agentify with no delivery recorded. The words under merchant_closure are the seller's own; Agentify has not verified any refund or agreement. Contact the seller.",
   merchant_timed_out: (order) =>
     order.heldFulfillment
       ? "The seller's goods arrived after the purchase had closed; nothing was charged. Pay this same order again, from the same wallet, to collect them."

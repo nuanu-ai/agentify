@@ -258,6 +258,33 @@ describe("what this gateway checks before it sends a document", () => {
     ).toBe(false);
   });
 
+  it("says in our words what is true of a paid order the merchant closed, beside any refusal, and of no other closed order", () => {
+    // The merchant's closing words can contradict the payment, so a paid order
+    // they closed always carries our reason too; an unpaid one has nothing for
+    // it to correct.
+    const closure = { closed_at: "2026-10-08T10:00:00Z", message: "Nothing was charged." };
+    const reason = { code: "merchant_closed", message: "This order is paid; no delivery." };
+    const closedPaid = {
+      ...status,
+      status: "fulfillment_closed",
+      payment_status: "paid",
+      merchant_closure: closure,
+      reason,
+    };
+
+    expect(sendable(AgentOrderStatusSchema, closedPaid)).toBe(true);
+    const { refusal: _theirs, ...closedUnrefused } = closedPaid;
+    expect(sendable(AgentOrderStatusSchema, closedUnrefused)).toBe(true);
+    const { reason: _ours, ...unexplained } = closedUnrefused;
+    expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);
+    expect(
+      sendable(AgentOrderStatusSchema, { ...closedUnrefused, payment_status: "not_paid" }),
+    ).toBe(false);
+    expect(sendable(AgentOrderStatusSchema, { ...unexplained, payment_status: "not_paid" })).toBe(
+      true,
+    );
+  });
+
   it("refuses to send goods on an order whose status says there are none", () => {
     // The goods are the buyer's only once the status says delivered; on any
     // other word something in this field could only be a mistake.

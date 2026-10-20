@@ -267,8 +267,10 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  * `price` and `delivered` are required and nullable, so that "none yet" is a
  * stated fact rather than a missing field. `refusal` is present only where a
  * merchant's refusal ended the order. `reason` is present where Agentify ended
- * it and the status word alone would not say what to do next, and on every
- * order unfulfilled, to say why it is owed.
+ * it and the status word alone would not say what to do next, on every paid
+ * order left unfulfilled, to say why nothing was delivered, and on every paid
+ * order whose merchant closed fulfillment, to say what Agentify knows beside
+ * the merchant's own words.
  */
 export const AgentOrderStatusSchema = z
   .looseObject({
@@ -360,9 +362,10 @@ export const AgentOrderStatusSchema = z
     refusal: RefusalSchema.loose().optional(),
 
     /**
-     * Agentify's explanation for rejection, expiry or an unfulfilled paid
-     * order. A merchant refusal stays separately attributed under refusal.
-     * Unfulfilled explains what delivery failed to happen, not an unfulfilled order.
+     * Agentify's explanation in its own words: why a rejected or expired order
+     * ended, why a paid order has no delivery, and what Agentify knows of a
+     * paid order whose merchant closed fulfillment. The merchant's own words
+     * stay apart, under refusal and merchant_closure.
      */
     reason: z
       .looseObject({
@@ -380,7 +383,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      "What became of one purchase. status_url is the absolute address to read again, built from the configured gateway address. order_id and status_url are private bearer credentials: anyone holding either can read the order and its goods, and responses forbid caching. This view contains no merchant account, merchant product key, purchase parameters or other orders. price is what the buyer was asked for, or null when no price was named; payment_status independently says whether the original payment is paid, not_paid or unresolved. A merchant closure does not change that payment fact and establishes no refund. delivered contains goods released to the buyer, or null; held goods whose payment failed or remains unknown stay withheld. Parcels instead carry shipment and ship_by, null until recorded or paid respectively, and delivered stays null. shipped records handoff to the carrier, without claiming arrival. refusal contains the merchant's own code and sentence unchanged. An absent refusal means no refusal to quote; none was dropped. reason contains Agentify's explanation for rejection, expiry or unfulfilled delivery. unfulfilled is a paid purchase without fulfillment after refusal, a deadline or merchant departure; delivery may still arrive until fulfillment is explicitly closed. fulfillment_closed means future Agentify fulfillment is stopped. merchant_closure records the authenticated merchant's first closure time and optional message, attributed to that merchant; Agentify verifies no refund or agreement. test marks rehearsal purchases whose other facts otherwise resemble real payment. seller is the current name and shop site supplied by the merchant, where questions outside this document can be taken. Unknown statuses are not known endings: read again without buying again. The document and its nested parts accept future fields.",
+      "What became of one purchase. status_url is the absolute address to read again, built from the configured gateway address. order_id and status_url are private bearer credentials: anyone holding either can read the order and its goods, and responses forbid caching. This view contains no merchant account, merchant product key, purchase parameters or other orders. price is what the buyer was asked for, or null when no price was named; payment_status independently says whether the original payment is paid, not_paid or unresolved. A merchant closure does not change that payment fact and establishes no refund. delivered contains goods released to the buyer, or null; held goods whose payment failed or remains unknown stay withheld. Parcels instead carry shipment and ship_by, null until recorded or paid respectively, and delivered stays null. shipped records handoff to the carrier, without claiming arrival. refusal contains the merchant's own code and sentence unchanged. An absent refusal means no refusal to quote; none was dropped. reason contains Agentify's own explanation: why a rejected or expired order ended, why a paid order has no delivery, and, on a paid order whose merchant closed fulfillment, what Agentify knows beside the merchant's words, which can say otherwise. unfulfilled is a paid purchase without fulfillment after refusal, a deadline or merchant departure; delivery may still arrive until fulfillment is explicitly closed. fulfillment_closed means future Agentify fulfillment is stopped. merchant_closure records the authenticated merchant's first closure time and optional message, attributed to that merchant; Agentify verifies no refund or agreement. test marks rehearsal purchases whose other facts otherwise resemble real payment. seller is the current name and shop site supplied by the merchant, where questions outside this document can be taken. Unknown statuses are not known endings: read again without buying again. The document and its nested parts accept future fields.",
   });
 
 /**
