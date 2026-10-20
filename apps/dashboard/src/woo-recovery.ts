@@ -176,6 +176,13 @@ const recover = async (
       "The shop did not answer the product check. Nothing was changed, and the recovery can be run again.",
     );
   }
+  if (!inspected.ok && !inspected.saidNo) {
+    return unresolved(
+      `The shop's answer to the product check could not be read or trusted: ${inspected.why}` +
+        " Nothing was changed. If the shop's keys were revoked, connect it again, then run the" +
+        " recovery again.",
+    );
+  }
   if (
     !inspected.ok ||
     inspected.product.kind !== "download" ||
