@@ -56,10 +56,12 @@ import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
 import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
 import { asTimestamp } from "../ports/clock.js";
-import type {
-  PaymentRecoveryContext,
-  PaymentRecoveryOutcome,
-  SettleOutcome,
+import {
+  type Facilitator,
+  type PaymentRecoveryContext,
+  type PaymentRecoveryOutcome,
+  RecoveryFailure,
+  type SettleOutcome,
 } from "../ports/facilitator.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
@@ -979,6 +981,9 @@ export class OrderRunner {
                 : attempt.nextBlock
               : attempt.nextBlock;
           const transaction = "transaction" in outcome ? outcome.transaction : undefined;
+          // Recovery polls every minute; repeating its words would push out
+          // what the facilitator said, which is said once.
+          const repeated = source === "chain" && found.paymentWords.at(-1)?.said === outcome.reason;
           return {
             save: {
               ...found,
@@ -987,7 +992,9 @@ export class OrderRunner {
                 ...(nextBlock === undefined ? {} : { nextBlock }),
                 ...(transaction === undefined ? {} : { transaction }),
               },
-              ...this.#alsoSaid(found, { at, about: "settle", said: outcome.reason }),
+              ...(repeated
+                ? {}
+                : this.#alsoSaid(found, { at, about: "settle", said: outcome.reason })),
             },
             result: true,
           };
@@ -1030,42 +1037,71 @@ export class OrderRunner {
     );
   }
 
-  /** Revisits persisted unanswered attempts, including purchases already closed on a timeout. */
+  /**
+   * Revisits persisted unanswered attempts, including purchases already closed
+   * on a timeout. Each run ends with one log line while any payment is
+   * unresolved, saying how many and how long the oldest has waited, and one
+   * more naming the failure when the chain could not be read: a recovery that
+   * cannot finish is visible, not silent.
+   */
   async reconcilePayments(): Promise<void> {
     const reconcile = this.#runtime.facilitator.reconcile;
-    if (reconcile === undefined) return;
     await this.#runtime.store.runAlone(RECONCILE_PAYMENTS, async () => {
+      const now = this.#runtime.clock();
+      let unresolved = 0;
+      let oldest = now;
+      let failed = 0;
+      let failure = "";
       let afterId = "";
       for (;;) {
         const records = await this.#runtime.store.unresolvedPayments(afterId, 100);
-        if (records.length === 0) return;
+        if (records.length === 0) break;
         for (const record of records) {
           afterId = record.order.id;
           if (
             record.order.payment === "settling" &&
             deadlines(record.order).some(
-              (deadline) =>
-                deadline.kind === "settle_response" && deadline.at > this.#runtime.clock(),
+              (deadline) => deadline.kind === "settle_response" && deadline.at > now,
             )
           )
             continue;
           try {
-            const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
-            if (attempt?.recovery === undefined || attempt.completion !== null) continue;
-            const outcome = await reconcile.call(this.#runtime.facilitator, {
-              context: attempt.recovery,
-              ...(attempt.transaction === undefined ? {} : { transaction: attempt.transaction }),
-              ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
-            });
-            await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+            if (await this.#reconcileOne(record, reconcile)) continue;
           } catch (thrown) {
-            console.error(
-              `[gateway] payment recovery could not inspect ${record.order.id}: ${failureNamed(thrown)}`,
-            );
+            failed += 1;
+            failure ||= thrown instanceof RecoveryFailure ? thrown.message : failureNamed(thrown);
           }
+          unresolved += 1;
+          const since =
+            record.paymentAttempt?.startedAt ??
+            record.order.timestamps.settleStartedAt ??
+            record.order.timestamps.createdAt;
+          if (since < oldest) oldest = since;
         }
       }
+      if (failed > 0)
+        console.error(
+          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure}`,
+        );
+      if (unresolved > 0)
+        console.warn(
+          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off" : ""}`,
+        );
     });
+  }
+
+  /** Whether the chain settled this record's payment one way or the other. */
+  async #reconcileOne(record: StoredOrder, reconcile: Facilitator["reconcile"]): Promise<boolean> {
+    if (reconcile === undefined) return false;
+    const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
+    if (attempt?.recovery === undefined || attempt.completion !== null) return false;
+    const outcome = await reconcile.call(this.#runtime.facilitator, {
+      context: attempt.recovery,
+      ...(attempt.transaction === undefined ? {} : { transaction: attempt.transaction }),
+      ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
+    });
+    await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+    return outcome.settled !== "unknown";
   }
 
   async #recoverAttempt(record: StoredOrder): Promise<PaymentAttempt | undefined> {
@@ -1078,13 +1114,18 @@ export class OrderRunner {
       price === null
     )
       return undefined;
-    const recovery = await recoveryFor.call(this.#runtime.facilitator, {
-      paymentRef: record.paymentRef,
-      payment: record.payment,
-      payTo: record.payTo,
-      amount: price.amount,
-      currency: price.currency,
-    });
+    // The payment was checked after the order existed, so its transfer is later still.
+    const recovery = await recoveryFor.call(
+      this.#runtime.facilitator,
+      {
+        paymentRef: record.paymentRef,
+        payment: record.payment,
+        payTo: record.payTo,
+        amount: price.amount,
+        currency: price.currency,
+      },
+      record.order.timestamps.createdAt,
+    );
     if (recovery === null || record.paidBy?.toLowerCase() !== recovery.payer.toLowerCase())
       return undefined;
     const fingerprint = authorizationFingerprint(recovery);

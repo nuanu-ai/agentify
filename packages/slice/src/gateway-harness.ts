@@ -142,7 +142,7 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
  * threw hands the caller no `stop()`, so nothing else would.
  */
 export async function bootGateway(
-  makeFacilitator: (config: GatewayConfig) => Facilitator,
+  makeFacilitator: (config: GatewayConfig) => Facilitator | Promise<Facilitator>,
   env: Record<string, string> = sliceEnv(),
 ): Promise<Booted> {
   if (Object.hasOwn(env, "PUBLIC_BASE_URL")) {
@@ -183,7 +183,7 @@ export async function bootGateway(
       config,
       store,
       queue,
-      facilitator: makeFacilitator(config),
+      facilitator: await makeFacilitator(config),
       clock: systemClock,
       ids: randomIds,
       // The slice runs on a test chain or a sandbox, where nothing is

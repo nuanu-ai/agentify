@@ -1,8 +1,10 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
-import { encodeAbiParameters, encodeEventTopics, parseAbi } from "viem";
-import { describe, expect, it } from "vitest";
+import { encodeAbiParameters, encodeEventTopics, numberToHex, parseAbi } from "viem";
+import { afterEach, describe, expect, it } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
-import type { PaymentRecoveryContext } from "../../ports/facilitator.js";
+import { type PaymentRecoveryContext, RecoveryFailure } from "../../ports/facilitator.js";
 import { X402Facilitator } from "./facilitator.js";
 import {
   type ChainBlock,
@@ -23,7 +25,11 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 const ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const NONCE = `0x${"a".repeat(64)}` as const;
 const TX = `0x${"b".repeat(64)}` as const;
-const HASH = `0x${"c".repeat(64)}` as const;
+/** Blocks come every two seconds from time zero, as on Base, unless a test says otherwise. */
+let secondsPerBlock = 2n;
+const timeOf = (number: bigint): bigint => number * secondsPerBlock;
+const hashOf = (number: bigint): string => `0x${number.toString(16).padStart(64, "0")}`;
+/** The authorization was checked at time 990 (block 495) and is valid until 1100 (block 550). */
 const CONTEXT: PaymentRecoveryContext = {
   kind: "evm-exact-eip3009",
   network: "eip155:84532",
@@ -32,20 +38,21 @@ const CONTEXT: PaymentRecoveryContext = {
   payTo: PAY_TO,
   amount: "80000000",
   validAfter: "400",
-  validBefore: "1300",
+  validBefore: "1100",
   nonce: NONCE,
-  fromBlock: "10",
+  notBefore: "990",
 };
 
 function event(
   name: "AuthorizationUsed" | "AuthorizationCanceled" | "Transfer",
   index: number,
+  at = 500n,
 ): ChainLog {
   return {
     address: ASSET,
     transactionHash: TX,
-    blockNumber: 20n,
-    blockHash: HASH,
+    blockNumber: at,
+    blockHash: hashOf(at),
     logIndex: index,
     topics:
       name === "Transfer"
@@ -63,17 +70,21 @@ function event(
   };
 }
 
+/**
+ * A chain on which the authorization is used in block `usedAt` by the
+ * transaction `receiptValue`. The finalized block is far past the
+ * authorization's expiry, as it always is by the time recovery runs.
+ */
 class Chain implements ChainReader {
   chainId = 84532;
-  head: ChainBlock = { number: 30n, hash: HASH, timestamp: 1200n };
-  usedAt: bigint | null = 20n;
-  historicalUnavailable = false;
+  finalized = 1000n;
+  usedAt: bigint | null = 500n;
   failed = false;
-  events: ChainLog[] = [event("AuthorizationUsed", 4)];
+  receiptsRead: bigint[] = [];
   receiptValue: ChainReceipt = {
     transactionHash: TX,
-    blockNumber: 20n,
-    blockHash: HASH,
+    blockNumber: 500n,
+    blockHash: hashOf(500n),
     status: "success",
     logs: [event("AuthorizationUsed", 4), event("Transfer", 5)],
   };
@@ -81,15 +92,16 @@ class Chain implements ChainReader {
     return this.chainId;
   }
   async block(number?: bigint): Promise<ChainBlock> {
-    if (this.failed) throw new Error("RPC unavailable");
-    return number === undefined ? this.head : { number, hash: HASH, timestamp: 1000n };
+    if (this.failed) throw new RecoveryFailure("eth_getBlockByNumber at rpc.invalid failed.");
+    const at = number ?? this.finalized;
+    return { number: at, hash: hashOf(at), timestamp: timeOf(at) };
   }
-  async authorizationState(_context: PaymentRecoveryContext, number: bigint) {
-    if (this.historicalUnavailable && number !== this.head.number) throw new Error("no archive");
+  async authorizationState(_context: unknown, number: bigint) {
     return this.usedAt !== null && number >= this.usedAt;
   }
-  async authorizationLogs(_context: PaymentRecoveryContext, from: bigint, to: bigint) {
-    return this.events.filter((log) => log.blockNumber >= from && log.blockNumber <= to);
+  async blockReceipts(number: bigint) {
+    this.receiptsRead.push(number);
+    return number === this.receiptValue.blockNumber ? [this.receiptValue] : [];
   }
   async receipt(_transaction: string) {
     return this.receiptValue;
@@ -97,6 +109,10 @@ class Chain implements ChainReader {
 }
 
 describe("recovering an EIP-3009 payment from chain evidence", () => {
+  afterEach(() => {
+    secondsPerBlock = 2n;
+  });
+
   it("recovers a held payment accepted without RPC after a reader is configured", async () => {
     const edge = new PaymentEdge({
       payment: {
@@ -140,7 +156,7 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     };
     const first = new X402Facilitator(client, edge, undefined, () => 1_000_000);
     const accepted = await first.verify(charge);
-    expect(accepted).toMatchObject({ verified: true, recovery: { fromBlock: "0" } });
+    expect(accepted).toMatchObject({ verified: true, recovery: { notBefore: "970" } });
     expect(await first.settle(charge)).toMatchObject({ settled: "unknown" });
     if (accepted.verified !== true || !accepted.recovery)
       throw new Error("No durable context was returned.");
@@ -152,39 +168,91 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     });
   });
 
-  it("has no chain recovery capability when no RPC URL is configured", () => {
-    expect(recoveryOn("eip155:84532")).toBeUndefined();
-  });
-
-  it("does not query a configured RPC for a different saved chain or reveal its credentials", async () => {
-    const recovery = recoveryOn("eip155:8453", "https://secret:credential@rpc.invalid");
-    if (!recovery) throw new Error("Configured RPC did not produce a recovery reader.");
-    const outcome = await recovery.reconcile({ context: CONTEXT });
-    expect(outcome).toMatchObject({ settled: "unknown" });
-    expect(JSON.stringify(outcome)).not.toContain("credential");
-  });
-  it("finds a finalized exact transfer without calling settle or knowing a transaction hash", async () => {
+  it("finds a transfer without its hash once the finalized chain is past the authorization's expiry", async () => {
     const chain = new Chain();
     expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toStrictEqual({
       settled: true,
       transaction: TX,
       executedAt: 1_000_000,
     });
+    expect(chain.receiptsRead).toEqual([495n, 496n, 497n, 498n, 499n, 500n]);
+  });
+
+  it("reads only the blocks where the authorization was valid, then proves it expired unused when a later cancellation marked it used", async () => {
+    const chain = new Chain();
+    chain.usedAt = 550n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 550n,
+      blockHash: hashOf(550n),
+      logs: [event("AuthorizationCanceled", 4, 550n)],
+    };
+    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
+      settled: false,
+    });
+    expect(chain.receiptsRead[0]).toBe(495n);
+    expect(chain.receiptsRead.at(-1)).toBe(549n);
+  });
+
+  it("keeps a used authorization unknown when its window holds no evidence, and stays where it stopped", async () => {
+    const chain = new Chain();
+    chain.receiptValue = { ...chain.receiptValue, blockNumber: 700n };
+    const recovery = new Eip3009Recovery(() => chain);
+    const outcome = await recovery.reconcile({ context: CONTEXT });
+    expect(outcome).toMatchObject({ settled: "unknown", nextBlock: "550" });
+    chain.receiptsRead = [];
+    expect(await recovery.reconcile({ context: CONTEXT, nextBlock: "550" })).toMatchObject({
+      settled: "unknown",
+    });
+    expect(chain.receiptsRead).toEqual([]);
+  });
+
+  it("starts at the first block of the window on a chain whose blocks are one second apart", async () => {
+    secondsPerBlock = 1n;
+    const chain = new Chain();
+    chain.finalized = 2000n;
+    chain.usedAt = 990n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 990n,
+      blockHash: hashOf(990n),
+      logs: [event("AuthorizationUsed", 4, 990n), event("Transfer", 5, 990n)],
+    };
+    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
+      settled: true,
+      transaction: TX,
+    });
+    expect(chain.receiptsRead).toEqual([990n]);
+  });
+
+  it("continues a long search on the next poll from where it stopped", async () => {
+    const chain = new Chain();
+    const recovery = new Eip3009Recovery(() => chain);
+    const context = { ...CONTEXT, notBefore: "800" };
+    const first = await recovery.reconcile({ context });
+    expect(first).toMatchObject({ settled: "unknown", nextBlock: "464" });
+    expect(chain.receiptsRead[0]).toBe(400n);
+    chain.receiptsRead = [];
+    expect(await recovery.reconcile({ context, nextBlock: "464" })).toMatchObject({
+      settled: true,
+      transaction: TX,
+    });
+    expect(chain.receiptsRead[0]).toBe(464n);
   });
 
   it("proves nonpayment only after an unused authorization has irreversibly expired", async () => {
     const chain = new Chain();
     chain.usedAt = null;
+    chain.finalized = 540n;
     const recovery = new Eip3009Recovery(() => chain);
     expect(await recovery.reconcile({ context: CONTEXT })).toMatchObject({ settled: "unknown" });
-    chain.head = { ...chain.head, timestamp: 1300n };
+    chain.finalized = 550n;
     expect(await recovery.reconcile({ context: CONTEXT })).toMatchObject({ settled: false });
   });
 
-  it("recognizes a finalized cancellation as nonpayment even before expiry", async () => {
+  it("recognizes a finalized cancellation inside the window as nonpayment", async () => {
     const chain = new Chain();
-    chain.events = [event("AuthorizationCanceled", 4)];
-    chain.receiptValue = { ...chain.receiptValue, logs: chain.events };
+    chain.receiptValue = { ...chain.receiptValue, logs: [event("AuthorizationCanceled", 4)] };
     expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
       settled: false,
     });
@@ -195,21 +263,24 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     "unfinalized",
     "noncanonical",
     "different token",
+    "authorization from another contract",
     "different payer",
     "different recipient",
     "different amount",
     "different nonce",
     "intervening log",
+    "non-adjacent log index",
     "duplicate use",
     "wrong receipt hash",
-    "out of window",
   ])("keeps %s evidence unknown", async (fault) => {
     const chain = new Chain();
     const logs = [...chain.receiptValue.logs];
     if (fault === "reverted") chain.receiptValue.status = "reverted";
-    if (fault === "unfinalized") chain.head = { ...chain.head, number: 19n };
+    if (fault === "unfinalized") chain.finalized = 499n;
     if (fault === "noncanonical") chain.receiptValue.blockHash = `0x${"d".repeat(64)}`;
     if (fault === "different token") logs[1] = { ...event("Transfer", 5), address: PAYER };
+    if (fault === "authorization from another contract")
+      logs[0] = { ...event("AuthorizationUsed", 4), address: PAYER };
     if (fault === "different payer")
       logs[1] = {
         ...event("Transfer", 5),
@@ -240,13 +311,40 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
         }) as string[],
       };
     if (fault === "intervening log") logs.splice(1, 0, { ...event("Transfer", 5), address: PAYER });
+    if (fault === "non-adjacent log index") logs[1] = event("Transfer", 6);
     if (fault === "duplicate use") logs.push(event("AuthorizationUsed", 6));
     if (fault === "wrong receipt hash") chain.receiptValue.transactionHash = `0x${"d".repeat(64)}`;
     chain.receiptValue.logs = logs;
-    const context = fault === "out of window" ? { ...CONTEXT, validBefore: "900" } : CONTEXT;
     expect(
-      await new Eip3009Recovery(() => chain).reconcile({ context, transaction: TX }),
+      await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT, transaction: TX }),
     ).toMatchObject({ settled: "unknown" });
+  });
+
+  it.each([
+    ["at or after its validBefore", { validBefore: "1000" }],
+    ["at or before its validAfter", { validAfter: "1000" }],
+  ])("never takes a transfer in a block %s as payment", async (_case, terms) => {
+    const chain = new Chain();
+    const outcome = await new Eip3009Recovery(() => chain).reconcile({
+      context: { ...CONTEXT, ...terms },
+      transaction: TX,
+    });
+    expect(outcome.settled).not.toBe(true);
+  });
+
+  it("never reads a transfer from a block above the finalized one", async () => {
+    const chain = new Chain();
+    chain.finalized = 510n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 520n,
+      blockHash: hashOf(520n),
+      logs: [event("AuthorizationUsed", 4, 520n), event("Transfer", 5, 520n)],
+    };
+    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
+      settled: "unknown",
+    });
+    expect(chain.receiptsRead.at(-1)).toBe(510n);
   });
 
   it("uses a candidate hash only as a hint and still finds the original authorization", async () => {
@@ -262,66 +360,20 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     ).toMatchObject({ settled: true, transaction: TX });
   });
 
-  it("keeps missing evidence and RPC failures unknown", async () => {
+  it("reports a chain it cannot read instead of answering unknown", async () => {
     const chain = new Chain();
-    chain.events = [];
-    const recovery = new Eip3009Recovery(() => chain);
-    expect(await recovery.reconcile({ context: CONTEXT })).toMatchObject({ settled: "unknown" });
     chain.failed = true;
-    expect(await recovery.reconcile({ context: CONTEXT })).toMatchObject({ settled: "unknown" });
+    await expect(new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).rejects.toThrow(
+      RecoveryFailure,
+    );
   });
 
   it("refuses a reader connected to a different chain", async () => {
     const chain = new Chain();
     chain.chainId = 8453;
-    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
-      settled: "unknown",
-    });
-  });
-
-  it("advances a bounded durable cursor when historical reads are unavailable", async () => {
-    const chain = new Chain();
-    chain.head = { ...chain.head, number: 5000n };
-    chain.usedAt = 2500n;
-    chain.historicalUnavailable = true;
-    chain.events = [{ ...event("AuthorizationUsed", 4), blockNumber: 2500n }];
-    chain.receiptValue = {
-      ...chain.receiptValue,
-      blockNumber: 2500n,
-      logs: chain.receiptValue.logs.map((log) => ({ ...log, blockNumber: 2500n })),
-    };
-    const recovery = new Eip3009Recovery(() => chain);
-    const context = { ...CONTEXT, fromBlock: "0" };
-    const first = await recovery.reconcile({ context });
-    expect(first).toMatchObject({ settled: "unknown", nextBlock: "1000" });
-    const second = await recovery.reconcile({ context, nextBlock: "1000" });
-    expect(second).toMatchObject({ settled: "unknown", nextBlock: "2000" });
-    expect(await recovery.reconcile({ context, nextBlock: "2000" })).toMatchObject({
-      settled: true,
-    });
-  });
-
-  it("finds an old cancellation before validAfter using historical nonce state", async () => {
-    const chain = new Chain();
-    chain.head = { ...chain.head, number: 100000000n };
-    chain.usedAt = 20n;
-    chain.events = [event("AuthorizationCanceled", 4)];
-    chain.receiptValue.logs = chain.events;
-    expect(
-      await new Eip3009Recovery(() => chain).reconcile({
-        context: { ...CONTEXT, fromBlock: "0", validAfter: "1100" },
-      }),
-    ).toMatchObject({ settled: false });
-  });
-
-  it("does not skip a range after one of its receipts fails to load", async () => {
-    const chain = new Chain();
-    chain.receipt = async () => {
-      throw new Error("receipt unavailable");
-    };
-    expect(
-      await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT }),
-    ).not.toHaveProperty("nextBlock");
+    await expect(new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).rejects.toThrow(
+      /8453/,
+    );
   });
 
   it("revisits a discovered authorization until its complete receipt is available", async () => {
@@ -330,10 +382,9 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     chain.receiptValue = { ...complete, logs: [event("AuthorizationUsed", 4)] };
     const recovery = new Eip3009Recovery(() => chain);
     const first = await recovery.reconcile({ context: CONTEXT });
-    expect(first).toMatchObject({ settled: "unknown" });
-    expect(first).not.toHaveProperty("nextBlock");
+    expect(first).toMatchObject({ settled: "unknown", nextBlock: "500" });
     chain.receiptValue = complete;
-    expect(await recovery.reconcile({ context: CONTEXT })).toMatchObject({
+    expect(await recovery.reconcile({ context: CONTEXT, nextBlock: "500" })).toMatchObject({
       settled: true,
       transaction: TX,
     });
@@ -352,5 +403,143 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
       settled: "unknown",
     });
+  });
+});
+
+/**
+ * The chain above, served over JSON-RPC on this machine the way a public Base
+ * endpoint serves it: log queries are refused, as Base mainnet's refuses them.
+ */
+async function serve(chain: Chain, status = 200): Promise<{ url: string; asked: string[] }> {
+  const asked: string[] = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", async () => {
+      const { id, method, params } = JSON.parse(body);
+      asked.push(method);
+      const reply = (result: unknown, code = status) => {
+        response.writeHead(code, { "content-type": "application/json" });
+        response.end(JSON.stringify({ jsonrpc: "2.0", id, ...(result as object) }));
+      };
+      if (status !== 200 || chain.failed)
+        return reply({ error: { code: -32011, message: "request limit reached" } }, status);
+      const at = (tag: string) => (tag === "finalized" ? chain.finalized : BigInt(tag));
+      const rpcLog = (log: ChainLog) => ({
+        ...log,
+        blockNumber: numberToHex(log.blockNumber),
+        logIndex: numberToHex(log.logIndex),
+        transactionIndex: "0x0",
+        removed: false,
+      });
+      const rpcReceipt = (receipt: ChainReceipt) => ({
+        transactionHash: receipt.transactionHash,
+        blockNumber: numberToHex(receipt.blockNumber),
+        blockHash: receipt.blockHash,
+        status: receipt.status === "success" ? "0x1" : "0x0",
+        logs: receipt.logs.map(rpcLog),
+        transactionIndex: "0x0",
+        from: PAYER,
+        to: ASSET,
+        type: "0x2",
+      });
+      switch (method) {
+        case "eth_chainId":
+          return reply({ result: numberToHex(chain.chainId) });
+        case "eth_getBlockByNumber": {
+          const block = await chain.block(at(params[0]));
+          return reply({
+            result: {
+              number: numberToHex(block.number),
+              hash: block.hash,
+              timestamp: numberToHex(block.timestamp),
+              transactions: [],
+            },
+          });
+        }
+        case "eth_call": {
+          const used = await chain.authorizationState(null, at(params[1]));
+          return reply({ result: `0x${(used ? "1" : "0").padStart(64, "0")}` });
+        }
+        case "eth_getBlockReceipts":
+          return reply({ result: (await chain.blockReceipts(at(params[0]))).map(rpcReceipt) });
+        case "eth_getTransactionReceipt":
+          return reply({ result: rpcReceipt(await chain.receipt(params[0])) });
+        default:
+          return reply({ error: { code: -32011, message: "request limit reached" } }, 429);
+      }
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  servers.push(server);
+  const { port } = server.address() as AddressInfo;
+  return { url: `http://127.0.0.1:${port}/v2/provider-key-123?key=provider-key-456`, asked };
+}
+
+const servers: Server[] = [];
+afterEach(async () => {
+  await Promise.all(
+    servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))),
+  );
+});
+
+describe("recovering through a JSON-RPC endpoint", () => {
+  it("has no chain recovery capability when no RPC URL is configured", async () => {
+    expect((await recoveryOn("eip155:84532")).recovery).toBeUndefined();
+  });
+
+  it("finds a transfer through an endpoint that refuses log queries", async () => {
+    const chain = new Chain();
+    const { url, asked } = await serve(chain);
+    const { recovery } = await recoveryOn("eip155:84532", url);
+    expect(await recovery?.reconcile({ context: CONTEXT })).toStrictEqual({
+      settled: true,
+      transaction: TX,
+      executedAt: 1_000_000,
+    });
+    expect(asked).not.toContain("eth_getLogs");
+  });
+
+  it("stays off, saying why, when the endpoint serves another chain", async () => {
+    const chain = new Chain();
+    chain.chainId = 8453;
+    const { url } = await serve(chain);
+    const started = await recoveryOn("eip155:84532", url);
+    expect(started.recovery).toBeUndefined();
+    expect(started.broken).toBe(true);
+    expect(started.said).toContain("8453");
+  });
+
+  it("stays off when the endpoint does not answer, without revealing the address's path or query", async () => {
+    const { url } = await serve(new Chain(), 429);
+    const started = await recoveryOn("eip155:84532", url);
+    expect(started.recovery).toBeUndefined();
+    expect(started.broken).toBe(true);
+    expect(started.said).toContain("429");
+    expect(started.said).not.toContain("provider-key");
+  });
+
+  it("reports a failed read by its kind, without revealing the address's path or query", async () => {
+    const chain = new Chain();
+    const { url } = await serve(chain);
+    const { recovery } = await recoveryOn("eip155:84532", url);
+    chain.failed = true;
+    const failed = await recovery?.reconcile({ context: CONTEXT }).catch((thrown) => thrown);
+    expect(failed).toBeInstanceOf(RecoveryFailure);
+    expect(failed.message).toMatch(/^eth_\w+ at 127\.0\.0\.1:\d+ failed: .*-32011/);
+    expect(failed.message).not.toContain("provider-key");
+  });
+
+  it("does not query the endpoint for a payment saved on another chain", async () => {
+    const chain = new Chain();
+    chain.chainId = 8453;
+    const { url, asked } = await serve(chain);
+    const { recovery } = await recoveryOn("eip155:8453", url);
+    const before = asked.length;
+    await expect(recovery?.reconcile({ context: CONTEXT })).rejects.toThrow(RecoveryFailure);
+    expect(asked).toHaveLength(before);
   });
 });

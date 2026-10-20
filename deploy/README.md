@@ -717,12 +717,31 @@ empty value disables chain checks. The gateway receives it as `PAYMENT_RPC_URL`.
 Local Compose and the standalone gateway have no default RPC.
 
 RPC is read only and is called for unanswered payments after their response
-deadline, never for ordinary verification or settlement. Recovery checks
-finalized blocks, USDC authorization state, logs and receipts. The endpoint
-must support `eth_chainId`, `eth_getBlockByNumber`, `eth_call`, `eth_getLogs`
-and `eth_getTransactionReceipt`; historical state reads speed up old payment
-recovery but are not required. The URL can contain a provider key and belongs
-in the protected environment file, never in a public diagnostic or PR.
+deadline, never for ordinary verification or settlement. At start-up the gateway
+asks the endpoint for its chain id. An endpoint that answers another chain, or
+does not answer, leaves recovery off until the next start, and the log's first
+lines say so; payments through the facilitator go on either way.
+
+Recovery reads the finalized block and the USDC nonce state there. When the
+nonce was used and no transaction hash is known, it finds the first block at or
+after the moment the payment was verified by bisecting block times, then reads
+the receipts of the blocks up to the authorization's expiry, which for a
+payment accepted here is about two minutes of blocks. It sends no log queries:
+Base mainnet's public endpoint refuses them and Base Sepolia's caps them at 200
+blocks. The endpoint must therefore support `eth_chainId`,
+`eth_getBlockByNumber`, `eth_call`, `eth_getBlockReceipts` and
+`eth_getTransactionReceipt`. A read of nonce state at an older block, which
+needs historical state, is needed only to prove that an authorization
+canceled after its expiry never paid; the public Base endpoints serve it. The
+URL can contain a provider key and belongs in the protected environment file,
+never in a public diagnostic or PR; log lines name only its host.
+
+The endpoint's answers are trusted as payment evidence, as the facilitator's
+are. Recovery checks the token contract, the chain, the payer, the merchant's
+split, the amount, the nonce, finality and that the block is the canonical one,
+but an endpoint that serves a consistent false receipt could release goods
+without payment, and one that misreports nonce state could end a paid order as
+unpaid. Choose a provider you trust as much as the facilitator.
 
 With RPC disabled, payments use the facilitator's verification and settlement.
 Its confirmed answer completes the payment as usual; a lost or pending answer
@@ -730,12 +749,15 @@ remains unresolved and forbids a second charge. Enabling RPC later starts
 checking those saved attempts without submitting again.
 
 An unavailable configured RPC also leaves ordinary facilitator payments
-available. Missing recovery evidence keeps an existing payment unresolved;
-the scheduled checks resume when the provider answers. The public Base RPCs
-are rate limited, so recovery has no guaranteed completion time. If their limits
-prevent recovery, this same setting can select a provider with enough capacity.
-Changing the endpoint must preserve its network and access to saved payment
-history. This setting changes no merchant SDK configuration.
+available, and missing recovery evidence keeps an existing payment unresolved.
+Every minute while any payment is unresolved, the gateway logs how many there
+are and how long the oldest has waited, says when recovery is off, and names
+the failure when the chain could not be read, for example an HTTP 429 from a
+rate limit. The public Base RPCs are rate limited and promise nothing about
+time, so recovery has no guaranteed completion time. If those lines persist,
+this same setting can select a provider with enough capacity. Changing the
+endpoint must preserve its network. This setting changes no merchant SDK
+configuration.
 
 Both channels settle through Coinbase's facilitator, so a payment that passes
 on TEST has met the facilitator live buyers meet, and a TEST product can enter

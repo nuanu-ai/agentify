@@ -37,6 +37,12 @@ import type {
 } from "../../ports/facilitator.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
 
+/**
+ * How far another clock may differ from ours: an agent's when it sets an
+ * authorization's expiry, and the chain's when recovery searches by time.
+ */
+const CLOCK_SKEW_SECONDS = 30;
+
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
   readonly #edge: PaymentEdge;
@@ -87,18 +93,32 @@ export class X402Facilitator implements Facilitator {
       authorization = authorizationOf(payload, requirements);
       const now = BigInt(Math.floor(this.#now() / 1000));
       const expires = BigInt(authorization.validBefore);
-      if (expires <= now || expires > now + BigInt(requirements.maxTimeoutSeconds + 30)) {
+      const asked = requirements.maxTimeoutSeconds;
+      // Signing again fixes both cases, and the offer still stands: answering
+      // `price_stale` would send the agent to a new purchase it signs the same way.
+      if (expires <= now) {
         return {
           verified: false,
-          reason: "price_stale",
-          message:
-            "The signed authorization must expire within the offered payment timeout, allowing 30 seconds of clock skew.",
+          reason: "signature",
+          message: `the signed authorization has already expired; sign one that stays valid for ${asked} seconds, as the offer asks`,
+        };
+      }
+      if (expires > now + BigInt(asked + CLOCK_SKEW_SECONDS)) {
+        return {
+          verified: false,
+          reason: "signature",
+          message: `the signed authorization stays valid for ${expires - now} seconds, longer than the ${asked} seconds the offer asks for (${CLOCK_SKEW_SECONDS} more are allowed for clock differences); sign one that expires within ${asked} seconds`,
         };
       }
     } catch (thrown) {
       return { verified: false, reason: "signature", message: describe(thrown) };
     }
-    const recovery: PaymentRecoveryContext = { ...authorization, fromBlock: "0" };
+    // The facilitator's check refuses a used authorization, so the transfer
+    // lands after this moment, give or take the clocks.
+    const recovery: PaymentRecoveryContext = {
+      ...authorization,
+      notBefore: String(Math.floor(this.#now() / 1000) - CLOCK_SKEW_SECONDS),
+    };
 
     let answered: VerifyResponse;
     try {
@@ -167,12 +187,15 @@ export class X402Facilitator implements Facilitator {
     return settlementFailure(answered);
   }
 
-  async recoveryFor(charge: Charge): Promise<PaymentRecoveryContext | null> {
+  async recoveryFor(charge: Charge, since: number): Promise<PaymentRecoveryContext | null> {
     try {
       const payload = decoded(charge.payment);
       if (!payload) return null;
       // Recovery binds signed financial terms to the saved sale; an old unsigned routing hint cannot establish payment.
-      return { ...authorizationOf(payload, savedRequirements(charge, payload)), fromBlock: "0" };
+      return {
+        ...authorizationOf(payload, savedRequirements(charge, payload)),
+        notBefore: String(Math.floor(since / 1000) - CLOCK_SKEW_SECONDS),
+      };
     } catch {
       return null;
     }

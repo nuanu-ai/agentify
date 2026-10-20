@@ -181,7 +181,7 @@ export async function verdictOnPurchase(
 }
 
 /** The real facilitator, built from the loaded config exactly as production does. */
-export function realFacilitator(config: GatewayConfig): Facilitator {
+export async function realFacilitator(config: GatewayConfig): Promise<Facilitator> {
   const edge = new PaymentEdge(config);
   const { cdpApiKeyId, cdpApiKeySecret } = config.payment;
   const client = new HTTPFacilitatorClient({
@@ -198,11 +198,9 @@ export function realFacilitator(config: GatewayConfig): Facilitator {
           },
         }),
   });
-  return new X402Facilitator(
-    client,
-    edge,
-    recoveryOn(config.payment.network, config.payment.rpcUrl),
-  );
+  const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
+  console.log(started.said);
+  return new X402Facilitator(client, edge, started.recovery);
 }
 
 async function main(): Promise<void> {
