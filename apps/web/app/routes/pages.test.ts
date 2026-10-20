@@ -43,6 +43,19 @@ describe("the front page", () => {
     expect(underTheForm).toContain('href="/agentic-shop"');
   });
 
+  it.each(["/", "/store", "/local"])(
+    "leads an agent that buys from %s, under the form, to where it starts, which names the catalogue",
+    async (path) => {
+      const { html } = await page(path);
+      const formAt = html.indexOf("<form");
+      const underTheForm = html.slice(formAt, html.indexOf("</section>", formAt));
+      const starts = await (await ask("/llms.txt", { headers: { accept: "text/plain" } })).text();
+
+      expect(underTheForm).toContain('href="/llms.txt"');
+      expect(starts).toContain("/x402/catalog");
+    },
+  );
+
   it("announces its segment and variant, which is what the landing analytics record", async () => {
     const { html } = await page("/");
 
