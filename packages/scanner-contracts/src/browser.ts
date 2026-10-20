@@ -50,13 +50,13 @@ export const ROBOTS_REASONS = ["disallowed", "unassessed"] as const;
 /**
  * Why the scanner stopped a scan that ended without a result, where it knows:
  * no public website answers at the address or one it redirects to, a redirect
- * leads where the scanner does not follow, or no secure connection could be
- * opened. A name that leads to a private address and a name that does not
+ * leads where the scanner does not follow, or the scanner did not accept the
+ * site's HTTPS certificate. A name that leads to a private address and a name that does not
  * exist share one reason, so that the answer never tells which names exist on
  * the scanner's own network.
  */
 export const SCAN_STOP_REASONS = [
   "no_public_site",
   "forbidden_redirect",
-  "secure_connection_failed",
+  "certificate_invalid",
 ] as const;

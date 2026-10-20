@@ -22,13 +22,14 @@ const REDIRECT_REFUSALS = new Set([
 // A timeout or a reset connection is left out: the scanner's own deadline
 // cuts requests short as a slow site does, and a reset says nothing of why.
 // So is a lookup that failed, or answered with no address: that is the
-// resolver's state, not the name's.
+// resolver's state, not the name's. And so is a secure handshake that failed
+// or was cut, which a firewall dropping the scanner causes as well.
 const stopOf = (errorCode: string | null | undefined): ScanStopReason | null => {
   if (!errorCode) return null;
   if (errorCode.startsWith("ssrf_blocked:") || errorCode === "dns_not_found")
     return "no_public_site";
   if (REDIRECT_REFUSALS.has(errorCode)) return "forbidden_redirect";
-  if (errorCode === "tls_invalid") return "secure_connection_failed";
+  if (errorCode === "tls_certificate_invalid") return "certificate_invalid";
   return null;
 };
 

@@ -127,7 +127,12 @@ describe("canonical contracts", () => {
     expect(scanStatusResponseSchema.safeParse(failed).success).toBe(true);
     // Whether a name leads to a private address or to none at all is not
     // told apart: a stranger could otherwise map the scanner's own network.
-    for (const stop_reason of ["timed_out", "private_address", "host_not_found", "secure_connection_failed"])
+    for (const stop_reason of [
+      "timed_out",
+      "private_address",
+      "host_not_found",
+      "secure_connection_failed",
+    ])
       expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(false);
   });
 

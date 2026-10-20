@@ -20,10 +20,10 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
     words:
       "The scanner follows a redirect only to a public web address on the usual ports, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect goes outside those limits, for example to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
   },
-  secure_connection_failed: {
-    headline: "The scanner could not open a secure connection",
+  certificate_invalid: {
+    headline: "The scanner did not accept the site's certificate",
     words:
-      "The site's HTTPS certificate was not accepted, or the secure handshake failed, for example because the certificate has expired or does not cover this address. Check the certificate, then scan the site again.",
+      "The site's HTTPS certificate failed the checks a browser makes, for example because it has expired, is self-signed, or does not cover this address. Check the certificate, then scan the site again.",
   },
 };
 
