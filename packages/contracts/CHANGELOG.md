@@ -1,5 +1,146 @@
 # Contracts release history
 
+## 0.12.0
+
+### Minor Changes
+
+- 0266c2a: Every product in the catalogue an agent reads carries `purchase_url`: the
+  whole address it is bought at, scheme and host included, built from the
+  gateway's configured address and the same one its payment challenge names as
+  the resource. Until now the catalogue gave an agent a product and a price but
+  no address to buy it at. `PublicCardSchema` requires the field and refuses a
+  path or another scheme, and `publicCardOf` takes it beside the identifier.
+  `CONTRACT_VERSION` does not move: the storefront's documents carry no version
+  and take fields added later (ADR-0006 §5), and no worker of the merchant's SDK
+  reads the catalogue. A reader on this version passes over an item without the
+  field, so against a gateway released before it, `cardsOf` returns an empty
+  catalogue until that gateway is released too.
+- d61411b: `bazaarDeclarationOf` declares as its output what a paid purchase really
+  answers: the order document, with the goods under `delivered` and the status
+  `delivered` on a card delivered in the answer, and an order `in_progress`
+  with `delivered: null` on every other, whose goods are collected at its
+  `status_url`. A parcel's example is its order paid and not yet with a
+  carrier, with `shipment: null` and `ship_by`. The declaration used to show
+  the bare goods, or a parcel's shipment, as if they were the answer. Every
+  value in the example still stands for its type. `CONTRACT_VERSION` does not
+  move: the payment challenge is the storefront's, which carries no version
+  (ADR-0006 §5).
+- 4430b48: A merchant can now close fulfillment of an order through Agentify, and the
+  words for a paid order without delivery no longer speak of refunds. This
+  release removes and renames exported names and wire words without aliases, so
+  code written against the previous release needs the changes below before it
+  compiles or reads the new gateway correctly.
+  
+  Closing an order is `order.close({ message })` on any bound order in the SDK,
+  and `POST /v0/orders/:order_id/close` on the wire. It stops fulfillment
+  through Agentify for that order and answers `{ ok: true }`, also on a retry,
+  which keeps the first closure's time and optional message except after a late
+  payment, described below. The message is the merchant's statement to the
+  buyer, read by the buyer's agent as the merchant's own words. It is plain text
+  of at most 2000 characters, an emoji counting as one: markup, character
+  references, control characters other than the line feed, bidirectional
+  control characters and half of a character cut in two are refused with 400.
+  Agentify confirms no refund or agreement. Closing is refused, with the order
+  left as it is, as `fulfillment_complete` on an order already delivered or
+  shipped and as `nothing_to_close` on one that ended without a charge. It
+  cancels no payment: a payment Agentify had already asked the facilitator to
+  execute may still go through after the closure. If it does, the merchant
+  receives `order.unfulfilled` with the new reason `paid_after_closure`, and the
+  order is on `orders.list({ open: true })` until the merchant closes it again,
+  which records that closure's own time and message.
+  
+  The words that change, old to new:
+  
+  - order status `refund_due` is now `unfulfilled`, and `refunded` is now
+    `fulfillment_closed`; the receipt outcome words change the same way;
+  - the event `order.refund_due` is now `order.unfulfilled`, and
+    `ORDER_EVENT_TYPES.REFUND_DUE` is now `ORDER_EVENT_TYPES.UNFULFILLED`;
+  - `RefundDueReasonSchema` and the type `RefundDueReason` are now
+    `UnfulfilledReasonSchema` and `UnfulfilledReason`, and the JSON Schema
+    export `refund_due_reason` is now `unfulfilled_reason`; its words are
+    `refused`, `deadline_passed`, `merchant_left` and the new
+    `paid_after_closure`;
+  - the order call result `debt_closed_by_delivery` is now `delivered_late`;
+  - the error code `refund_already_settled` is now `fulfillment_closed`, and
+    `fulfillment_complete` and `nothing_to_close` are new.
+  
+  What is added: `payment_status` (`not_paid`, `paid` or `unresolved`) is a
+  required field of `OrderWithStatus` and of the agent's order document, and
+  `merchant_closure` an optional one, with `PaymentStatusSchema`,
+  `MerchantClosureSchema`, `OrderCloseRequestSchema` and
+  `OrderCloseResponseSchema` and their types. `OrderCalls` gains a required
+  `close`, so a test double of it must add one. On the agent's order document,
+  `payment_status` is an open word like `status`; every `unfulfilled` order
+  carries a `reason` saying why nothing was delivered, and a paid
+  `fulfillment_closed` order carries the reason `merchant_closed` in Agentify's
+  words beside the merchant's.
+  
+  A worker on the previous SDK cannot read the new gateway: `orders.get` and
+  `orders.list` fail on the new required field, a poll carrying
+  `order.unfulfilled` fails, and a late delivery's `delivered_late` reads as an
+  answer it cannot understand. Move workers to this release together with the
+  gateway. `CONTRACT_VERSION` stays `"2"`, as ADR-0006 allows until the first
+  merchant we do not control.
+
+### Patch Changes
+
+- b2e54b0: The purchase route's description says that the price a challenge names holds
+  for thirty seconds, and the order opened for it lapses with it, while the
+  challenge's `maxTimeoutSeconds` is longer: it is how long the signed
+  authorisation has to stay valid for a purchase delivered in the answer to be
+  charged after its goods, not a time to pay in, so an agent signs and presents
+  the payment at once. It also says that, where the goods are still to be made,
+  a payment for such a purchase whose authorisation would end before that
+  charge, with a margin, is refused as `payment_not_verified`, before anything
+  is made or charged, and that the same order can be paid again with a fresh
+  signature while its price holds. No
+  schema, type or behaviour of the package changes, and `CONTRACT_VERSION` does
+  not move.
+- 0ab1aa4: Enforce the existing fulfillment-dependent card rules in generated JSON Schema,
+  including cards embedded in merchant catalog responses. Synchronous and
+  asynchronous cards require a declared result; parcel cards require their shipping
+  time and price handler, and refuse declared results and delivery deadlines.
+  The export continues to describe normalized cards with an explicit fulfillment
+  mode, while runtime validation keeps its field-specific publication errors.
+- 82b9c5e: The agent's order document says that `order_id`, and the `status_url` built
+  from it, are the only key to the order and its goods: anyone who holds either
+  can read them, so they are not to be shared. The status route's answers tell
+  caches to keep nothing. No schema, type or behaviour of the package changes,
+  and `CONTRACT_VERSION` does not move.
+- 9e27b45: The purchase route's description says that the payment challenge names the
+  order it prices by a payment reference, `extra.payment_ref` in its payment
+  requirements, which comes back with the payment and binds it to that order,
+  and that the reference is not the order's identifier, which comes in the
+  purchase's answer and never in the payment request. It also says that a
+  payment for an order already over, with nothing held for it, is refused as
+  `payment_not_taken` in words that name no order, and that a payer whose
+  answer was lost signs the same challenge again from the same wallet and is
+  answered with the order, with no second charge, unless the order ended with
+  nothing charged or its payment's outcome is not known yet, when the refusal
+  says so. The status route's description, and the doc comment of its
+  `order_id` door, say that the identifier goes to the agent that bought and to
+  its merchant, while the payment requirements, which the payment facilitator
+  receives and a discovery catalogue can publish, carry the reference instead,
+  and the status route answers that reference as an unknown identifier. The
+  descriptions no longer say that the facilitator receives the identifier. No
+  schema, type or behaviour of the package changes, and `CONTRACT_VERSION` does
+  not move: the payment challenge is the storefront's, which carries no
+  version, and no worker of the merchant's SDK reads it.
+- 0f35b18: Describe receipts as records of paid sales whose goods were released or whose
+  parcels shipped. A late facilitator answer or verified chain evidence can
+  release held goods with a receipt; unknown payments and paid orders left
+  unfulfilled have none. Clarify that the receipt ID does not repeat a purchase,
+  transactions can come from verified recovery, and recovered payment times come
+  from the transaction block rather than the recovery clock. Ordinary receipt
+  times record the facilitator's confirmation. Receipt shapes and financial
+  behavior are unchanged.
+- 243f500: The doc comments on the `rejected` status and on the agent's order document no
+  longer say that parameters which do not fit the card, or a payment that fails
+  its check, end an order as `rejected`. Unfit parameters are refused before any
+  order exists, and after a payment that fails its check the order stays open
+  until its price runs out and then reads `expired`; both are refused on the
+  call itself. No schema, published description, type or behaviour changes.
+
 ## 0.11.0
 
 ### Minor Changes
