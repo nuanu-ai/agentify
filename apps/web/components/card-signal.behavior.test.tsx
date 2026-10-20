@@ -22,6 +22,16 @@ function siteWith(pressed: () => Promise<Response>, status = "setup_pending") {
   );
 }
 
+const notMatched = {
+  error: {
+    code: "page_not_matched",
+    message:
+      "The page this came from could not be matched to the address signed in now, somebody-else@example.com, so nothing was changed. Reload the page to act as this address.",
+    retryable: false,
+    request_id: "019f5b6a-4b9f-7000-8000-0000000000f3",
+  },
+};
+
 const lost = () => Promise.reject(new TypeError("Failed to fetch"));
 
 afterEach(() => {
@@ -130,6 +140,57 @@ describe("the optional card signal's presses", () => {
     await userEvent.click(screen.getByRole("button", { name: /secure card form/i }));
 
     expect(await screen.findByText("Secure card form ready.")).toBeTruthy();
+  });
+
+  it("name the address the page was loaded for with a confirmation and a removal", async () => {
+    // The site refuses either press when it names another address than the
+    // one signed in now, or none.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET") return json(200, { status: "setup_pending" });
+      const sent = JSON.parse(String(init?.body ?? "{}")) as { signed_in_as?: unknown };
+      if (sent.signed_in_as !== "owner@example.com") return json(409, notMatched);
+      return String(input).endsWith("/local-confirm")
+        ? json(200, { status: "attached" })
+        : json(200, { status: "detached" });
+    });
+    render(
+      <CardSignal
+        adapter="local"
+        enabled
+        initialSignal={{ signalId, status: "setup_pending", clientSecret: "local-secret" }}
+        publishableKey={null}
+        scanId={scanId}
+        signedInAs="owner@example.com"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /simulate provider confirmation/i }));
+    await userEvent.click(await screen.findByRole("button", { name: "Remove card" }));
+    await userEvent.click(screen.getByRole("button", { name: "Yes, remove card" }));
+
+    expect(await screen.findByText("Card removed and verified with the provider.")).toBeTruthy();
+  });
+
+  it("offer only a reload once the site says somebody else is signed in now", async () => {
+    // A press again could only be refused again.
+    siteWith(async () => json(409, notMatched));
+    render(
+      <CardSignal
+        adapter="local"
+        enabled
+        publishableKey={null}
+        scanId={scanId}
+        signedInAs="owner@example.com"
+      />,
+    );
+    await userEvent.click(screen.getByRole("checkbox"));
+
+    await userEvent.click(screen.getByRole("button", { name: /secure card form/i }));
+
+    expect(await screen.findByText(/could not be matched/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("link", { name: /reload/i })).toBeTruthy();
   });
 
   it("pass on the site's own refusal in its own words", async () => {
