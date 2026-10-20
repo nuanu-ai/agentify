@@ -9,7 +9,7 @@ import {
 import { acted, formOf, readOnly, type Trouble } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { ErrorBoundary as PageTrouble } from "../root.js";
-import { OrdersScreen } from "../screens/orders.js";
+import { OrdersNotLoaded, OrdersScreen } from "../screens/orders.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -52,12 +52,7 @@ export function ErrorBoundary() {
   if (again === undefined) return <PageTrouble />;
   return (
     <Frame tab="orders" title="Orders">
-      <p className="problem" role="alert">
-        Your orders could not be loaded. Loading them changed nothing.
-      </p>
-      <a className="button button-primary" href={again}>
-        Load again
-      </a>
+      <OrdersNotLoaded again={again} />
     </Frame>
   );
 }

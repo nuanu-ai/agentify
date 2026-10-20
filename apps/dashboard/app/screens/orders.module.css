@@ -138,3 +138,16 @@
   color: var(--muted);
   font-size: var(--text-small);
 }
+
+/* Where the orders could not be read: the panel saying so, its way on under it. */
+.unread {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.unread > :global(.callout) {
+  justify-self: stretch;
+  margin: 0;
+}
