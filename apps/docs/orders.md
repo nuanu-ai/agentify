@@ -349,37 +349,49 @@ the list.
 ## Finding out where an order stands
 
 Every order carries a `status`, which `orders.get` and `orders.list` return
-and which the agent reads too. The drawing shows how the words follow one
-another, and the table after it is the one to write a `switch` from. The
-drawing leaves out `declined`, which no order reaches today.
+and which the agent reads too. The drawings show how the words follow one
+another, and the table after them is the one to write a `switch` from. The
+drawings leave out `declined`, which no order reaches today.
 
 ```mermaid
 flowchart TB
     accTitle: How an order's status changes
-    accDescr: An order starts in_progress. From there it is delivered or shipped; it ends rejected, expired or cancelled with nothing charged; it becomes unfulfilled when it was paid and not delivered in time, refused after the charge, or you left; it becomes delivered_unpaid when a synchronous charge failed after your delivery; and it becomes payment_unresolved when nobody heard whether the charge went through. A late delivery takes an unfulfilled order to delivered or shipped, and a buyer paying again takes a delivered_unpaid order to delivered. A payment_unresolved order moves once the payment is known: paid takes a synchronous order to delivered and an order paid at purchase to unfulfilled, and not paid takes a synchronous order to delivered_unpaid and an order paid at purchase to rejected. A delivered_unpaid order whose new charge goes unanswered becomes payment_unresolved. You can close fulfillment of an order that is in_progress, unfulfilled or delivered_unpaid, which makes it fulfillment_closed; closing a payment_unresolved order keeps that word until the payment is known, and then it reads fulfillment_closed.
+    accDescr: An order starts in_progress. From there it is delivered or shipped; it ends rejected, expired or cancelled with nothing charged; it ends expired with goods held when a synchronous delivery arrives after its deadline; it becomes unfulfilled when it was paid and not delivered in time, refused after the charge, or you left; it becomes delivered_unpaid when a synchronous charge failed after your delivery; and it becomes payment_unresolved when nobody heard whether the charge went through. A late delivery takes an unfulfilled order to delivered or shipped, and the buyer paying again takes a delivered_unpaid order, or an expired order with goods held, to delivered. A payment_unresolved order moves once the payment is known: paid takes a synchronous order to delivered and an order paid at purchase to unfulfilled, and not paid takes a synchronous order to delivered_unpaid and an order paid at purchase to rejected. A delivered_unpaid order whose new charge goes unanswered becomes payment_unresolved.
     IP["in_progress"]
     DS["delivered<br/>or shipped"]
     NC["rejected, expired<br/>or cancelled"]
+    EX["expired,<br/>late goods held"]
     U["unfulfilled"]
     DU["delivered_unpaid"]
     PU["payment_unresolved"]
-    FC["fulfillment_closed"]
     IP --> DS
     IP -- "nothing charged" --> NC
+    IP -- "sync goods after<br/>the deadline" --> EX
     IP -- "paid, not delivered" --> U
     IP -- "sync charge failed" --> DU
     IP -- "charge unanswered" --> PU
     U -- "late delivery" --> DS
-    DU -- "buyer pays again" --> DS
+    EX -- "paid again" --> DS
+    DU -- "paid again" --> DS
     DU -- "new charge<br/>unanswered" --> PU
     PU -- "paid, sync" --> DS
     PU -- "paid, prepaid" --> U
     PU -- "not paid, sync" --> DU
     PU -- "not paid, prepaid" --> NC
-    IP -- "you close" --> FC
-    U -- "you close" --> FC
-    DU -- "you close" --> FC
-    PU -- "you close, once<br/>the payment is known" --> FC
+```
+
+Closing fulfillment leads to one word from every status that still has
+fulfillment to stop:
+
+```mermaid
+flowchart LR
+    accTitle: Where closing fulfillment leads
+    accDescr: You can close fulfillment of an order that is in_progress, unfulfilled or delivered_unpaid, or expired with late goods held, and it then reads fulfillment_closed. Closing a payment_unresolved order keeps that word until the payment is known, and then it reads fulfillment_closed.
+    IP["in_progress"] -- "you close" --> FC["fulfillment_closed"]
+    U["unfulfilled"] -- "you close" --> FC
+    DU["delivered_unpaid"] -- "you close" --> FC
+    EX["expired,<br/>late goods held"] -- "you close" --> FC
+    PU["payment_unresolved"] -- "you close; it reads<br/>payment_unresolved until<br/>the payment is known" --> FC
 ```
 
 | `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
