@@ -87,6 +87,9 @@ export function CardSignal({
           : "",
   );
   const [confirmingDetach, setConfirmingDetach] = useState(false);
+  // Set once the site has said this page was loaded for somebody other than
+  // who is signed in now; from then on the page offers only a reload.
+  const [stale, setStale] = useState(false);
   const idempotencyKey = useRef(crypto.randomUUID());
   const stripeStep =
     canLoadStripeSdk({ consented, clientSecret, adapter, publishableKey }) &&
@@ -136,6 +139,11 @@ export function CardSignal({
 
   if (!enabled) return null;
 
+  function refusedWith(refusal: Readonly<{ code: string; message: string }>) {
+    setMessage(refusal.message);
+    if (refusal.code === "page_not_matched") setStale(true);
+  }
+
   async function prepareCard() {
     if (!consented) return;
     setBusy(true);
@@ -159,11 +167,11 @@ export function CardSignal({
     setBusy(false);
     if (outcome.kind !== "done") {
       setStatus("failed");
-      setMessage(
-        outcome.kind === "refused"
-          ? outcome.refusal.message
-          : "No answer came back, so we cannot tell whether the card form was prepared. Try again: no card is saved until you enter one.",
-      );
+      if (outcome.kind === "refused") refusedWith(outcome.refusal);
+      else
+        setMessage(
+          "No answer came back, so we cannot tell whether the card form was prepared. Try again: no card is saved until you enter one.",
+        );
       return;
     }
     const setup = outcome.answer;
@@ -186,7 +194,11 @@ export function CardSignal({
     setMessage("Waiting for signed provider confirmation…");
     const outcome = await press(
       `/api/v1/card-signals/${signalId}/local-confirm`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signed_in_as: signedInAs }),
+      },
       statusIn,
     );
     setBusy(false);
@@ -201,7 +213,7 @@ export function CardSignal({
     }
     if (outcome.kind === "refused") {
       setStatus("failed");
-      setMessage(outcome.refusal.message);
+      refusedWith(outcome.refusal);
       return;
     }
     // Still waiting, so the page goes on asking the provider's state.
@@ -216,7 +228,11 @@ export function CardSignal({
     setMessage("Removing the card and checking provider state…");
     const outcome = await press(
       `/api/v1/card-signals/${signalId}/payment-method`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signed_in_as: signedInAs }),
+      },
       (answer) => (statusIn(answer) === "detached" ? "detached" : null),
     );
     setBusy(false);
@@ -226,12 +242,25 @@ export function CardSignal({
       setMessage("Card removed and verified with the provider.");
       return;
     }
-    setMessage(
-      outcome.kind === "refused"
-        ? outcome.refusal.message
-        : "No answer came back, so we cannot tell whether the card was removed. Reload this page: it shows whether the card is still saved.",
-    );
+    if (outcome.kind === "refused") refusedWith(outcome.refusal);
+    else
+      setMessage(
+        "No answer came back, so we cannot tell whether the card was removed. Reload this page: it shows whether the card is still saved.",
+      );
   }
+
+  if (stale)
+    return (
+      <section className={className} id="card-signal">
+        <p aria-live="polite" className={styles.status}>
+          {message}
+        </p>
+        <p>
+          {/* Drawn only after a press, in the browser, so the address is there. */}
+          <a href={window.location.href}>Reload this page</a>
+        </p>
+      </section>
+    );
 
   return (
     <section className={className} id="card-signal">
