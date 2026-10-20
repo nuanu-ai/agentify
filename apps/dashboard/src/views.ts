@@ -450,6 +450,12 @@ export interface OrdersView {
    * merchant, who decides whether to revoke what they delivered or to wait.
    */
   readonly waitsOnTheBuyer: ToldOrders;
+  /**
+   * The order the address opens where the list does not draw it and the
+   * merchant closed it, as a closure leaves the Needs you list it was pressed
+   * on, with the way to it; null otherwise.
+   */
+  readonly closedElsewhere: Readonly<{ id: string; opens: string }> | null;
 }
 
 /** The terms of the payout split each order's charge went into, by order. */
@@ -662,8 +668,20 @@ export const ordersView = (
         }
       : told(needing),
     waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
+    closedElsewhere: closedElsewhere(query.get("details"), onPage, orders),
   };
 };
+
+const closedElsewhere = (
+  id: string | null,
+  onPage: ReadonlySet<string>,
+  orders: OrderList,
+): OrdersView["closedElsewhere"] =>
+  id === null ||
+  onPage.has(id) ||
+  orders.orders.find((order) => order.id === id)?.merchant_closure === undefined
+    ? null
+    : { id, opens: `?${new URLSearchParams({ q: id, details: id })}` };
 
 /** Where a closure leads back to: the list its form's fields name. */
 export const ordersPlace = (fields: URLSearchParams): string =>

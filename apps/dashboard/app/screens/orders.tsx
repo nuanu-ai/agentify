@@ -2,7 +2,7 @@ import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, OrdersView, ToldOrders } from "../../src/views.js";
-import { Ident } from "../components/copy.js";
+import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
   DayHeading,
@@ -398,6 +398,14 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
             })}
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
+      {view.closedElsewhere === null ? null : (
+        <p className="quiet">
+          {`Fulfillment closed for ${shortened(view.closedElsewhere.id)} · `}
+          <Link to={{ pathname: "/orders", search: view.closedElsewhere.opens }}>
+            Order details
+          </Link>
+        </p>
+      )}
       {here?.key === "needs" ? (
         <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>
           {listing.rows.length === 0 ? (
