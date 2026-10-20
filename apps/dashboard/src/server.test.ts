@@ -6577,6 +6577,37 @@ describe("closing fulfillment from Orders", () => {
     ).not.toContain(id);
   });
 
+  it("keeps the line breaks of an explanation, as the buyer's agent reads it", async () => {
+    // A browser sends the breaks of a box of several lines as a carriage
+    // return and a line feed; plain text breaks a line with a line feed alone.
+    const running = await started();
+    const itemId = await publish(running.gateway, esimCard);
+    const bought = await buyOverHttp(running.harnessed, running.gateway, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const { order_id: id, status_url: status } = bought.body as {
+      order_id: string;
+      status_url: string;
+    };
+    await running.browser.signIn();
+
+    const closed = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The delivery deadline was missed.\r\nA refund was sent outside Agentify.",
+    });
+
+    expect(closed.status).toBe(303);
+    const told = (await running.gateway.call("GET", new URL(status).pathname)).body as {
+      merchant_closure?: { message?: string };
+    };
+    expect(told.merchant_closure?.message).toBe(
+      "The delivery deadline was missed.\nA refund was sent outside Agentify.",
+    );
+    expect((await running.browser.get(closed.to ?? "")).html).toContain(
+      "The delivery deadline was missed.\nA refund was sent outside Agentify.",
+    );
+  });
+
   it("rereads an unanswered write and shows the recorded closure", async () => {
     const running = await started({
       client: (real) => ({
