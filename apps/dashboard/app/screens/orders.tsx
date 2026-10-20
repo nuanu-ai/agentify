@@ -64,6 +64,15 @@ const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
   </li>
 );
 
+/** Orders told in full, a row of their own each. */
+const ToldRows = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>) => (
+  <List label={label} columns="1fr">
+    {told.rows.map((order) => (
+      <Told key={order.id} order={order} />
+    ))}
+  </List>
+);
+
 /**
  * Orders told in full, and under them how many of how many where they were
  * cut, with the way to the list of them all where there is one.
@@ -74,11 +83,7 @@ const ToldList = ({
   all,
 }: Readonly<{ told: ToldOrders; label: string; all?: string }>) => (
   <>
-    <List label={label} columns="1fr">
-      {told.rows.map((order) => (
-        <Told key={order.id} order={order} />
-      ))}
-    </List>
+    <ToldRows told={told} label={label} />
     {told.rows.length === told.of ? null : (
       <p className="cut">
         <span>{`Showing the newest ${told.rows.length} of ${told.of}`}</span>
@@ -304,7 +309,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           {listing.rows.length === 0 ? (
             <NothingHere listing={listing} />
           ) : (
-            <ToldList told={view.needsYou} label="Orders that need you" />
+            <ToldRows told={view.needsYou} label="Orders that need you" />
           )}
           <CutNote cut={listing.cut} />
         </Group>
