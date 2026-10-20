@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
-import { readable } from "../../src/testing/html.js";
+import { formsIn, readable } from "../../src/testing/html.js";
 import { ordersView } from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
@@ -459,6 +459,27 @@ describe("a long run of orders told in full", () => {
     expect(reached).toHaveLength(61);
     expect([...reached].sort()).toStrictEqual(owing.orders.map((order) => order.id).sort());
     expect(reached).not.toContain(done);
+  });
+
+  it("opens an order's closure on the page of Needs you it was found on, and carries that page in the form", () => {
+    // A merchant working through the orders that need them comes back where
+    // they were after each closure.
+    const owing = sixtyOf("unfulfilled");
+    const drawnAt = (address: URLSearchParams) =>
+      served(() => <OrdersScreen view={ordersView("live", CARDS, owing, owing, address)} />);
+    const second = drawnAt(new URLSearchParams("show=needs&page=2"));
+    const [id] = toldIn(second, "Orders that need you");
+
+    const link =
+      [...second.matchAll(/<a [^>]*href="([^"]*)"/g)]
+        .map((found) => (found[1] ?? "").replaceAll("&amp;", "&"))
+        .find((href) => href.includes(`details=${id}`)) ?? "";
+    const opened = new URL(link, "https://agentify.ad").searchParams;
+    const form = formsIn(drawnAt(opened)).find((one) => one.fields.get("order_id") === id);
+
+    expect([opened.get("show"), opened.get("page")]).toStrictEqual(["needs", "2"]);
+    expect(form?.fields.get("show")).toBe("needs");
+    expect(form?.fields.get("page")).toBe("2");
   });
 
   it("says once which of how many it shows where the list is the orders that need the merchant", () => {

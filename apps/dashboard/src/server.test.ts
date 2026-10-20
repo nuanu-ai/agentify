@@ -6659,6 +6659,21 @@ describe("closing fulfillment from Orders", () => {
     expect(readsAfter).toBe(2);
   });
 
+  it("leads back to the list the closure was pressed on, with the order opened", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const closed = await running.browser.post("/orders", {
+      order_id: id,
+      show: "needs",
+      page: "2",
+    });
+
+    expect(closed.status).toBe(303);
+    expect(closed.to).toBe(`/orders?show=needs&page=2&details=${id}#details-${id}`);
+  });
+
   it("rereads an unanswered write and shows the recorded closure", async () => {
     const running = await started({
       client: (real) => ({
