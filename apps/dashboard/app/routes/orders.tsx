@@ -1,19 +1,28 @@
 import {
   type ActionFunctionArgs,
-  isRouteErrorResponse,
+  createContext,
   type LoaderFunctionArgs,
+  type ShouldRevalidateFunction,
   useActionData,
   useLoaderData,
-  useRouteError,
 } from "react-router";
-import { acted, formOf, readOnly, type Trouble } from "../answer.js";
+import { acted, formOf, readOnly } from "../answer.js";
 import { Frame } from "../components/frame.js";
-import { ErrorBoundary as PageTrouble } from "../root.js";
-import { OrdersNotLoaded, OrdersScreen } from "../screens/orders.js";
+import { readFailedIn } from "../components/not-loaded.js";
+import { OrdersScreen } from "../screens/orders.js";
 import { services, signedIn } from "../services.js";
+
+/**
+ * Set by the press. Where no script sent it, React Router loads the page's
+ * data after the press in the same request; the press's answer is the whole
+ * page, read by the press itself, and a second read that failed would draw
+ * its failure in place of what became of the press.
+ */
+const pressed = createContext(false);
 
 export async function loader(asked: LoaderFunctionArgs) {
   const { url, context } = asked;
+  if (context.get(pressed)) return null;
   return readOnly(
     async () => await context.get(services).screens.orders(context.get(signedIn), url.searchParams),
     asked,
@@ -22,6 +31,7 @@ export async function loader(asked: LoaderFunctionArgs) {
 
 export async function action(asked: ActionFunctionArgs) {
   const { context, request } = asked;
+  context.set(pressed, true);
   return acted(
     async () =>
       await context.get(services).fulfillment.close(context.get(signedIn), await formOf(request)),
@@ -29,9 +39,18 @@ export async function action(asked: ActionFunctionArgs) {
   );
 }
 
+/** Where script sent the press, the page is drawn from its answer alone as well. */
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  actionResult,
+  defaultShouldRevalidate,
+}) => actionResult === undefined && defaultShouldRevalidate;
+
 export default function Orders() {
   const loaded = useLoaderData<typeof loader>();
   const view = useActionData<typeof action>() ?? loaded;
+  if (view === null) {
+    throw new Error("the orders page was loaded after a press and drawn without its answer");
+  }
   return (
     <Frame tab="orders" title="Orders">
       <OrdersScreen view={view} />
@@ -39,20 +58,4 @@ export default function Orders() {
   );
 }
 
-/**
- * A read of the orders that failed changed nothing, so it is said in the
- * frame, the sections beside it, with the same list offered again. A press
- * that failed may have been done, and is the dashboard's own page about that.
- */
-export function ErrorBoundary() {
-  const error = useRouteError();
-  const trouble = isRouteErrorResponse(error) ? (error.data as Trouble | undefined) : undefined;
-  const again =
-    trouble?.kind === "unread" || trouble?.kind === "problem" ? trouble.again : undefined;
-  if (again === undefined) return <PageTrouble />;
-  return (
-    <Frame tab="orders" title="Orders">
-      <OrdersNotLoaded again={again} />
-    </Frame>
-  );
-}
+export const ErrorBoundary = readFailedIn({ tab: "orders", title: "Orders", what: "orders" });

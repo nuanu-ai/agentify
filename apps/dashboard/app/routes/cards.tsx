@@ -1,13 +1,14 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
-import { acted, answer, formOf, useChrome } from "../answer.js";
+import { acted, formOf, readOnly, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
+import { readFailedIn } from "../components/not-loaded.js";
 import { AllSelling, CardsScreen } from "../screens/cards.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
   const { url, context } = asked;
-  return answer(
-    await context.get(services).screens.cards(context.get(signedIn), url.searchParams),
+  return readOnly(
+    async () => await context.get(services).screens.cards(context.get(signedIn), url.searchParams),
     asked,
   );
 }
@@ -35,3 +36,5 @@ export default function Cards() {
     </Frame>
   );
 }
+
+export const ErrorBoundary = readFailedIn({ tab: "cards", title: "Product cards", what: "cards" });

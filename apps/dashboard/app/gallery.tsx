@@ -2908,15 +2908,18 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-page-not-answered",
-      screen: "Something went wrong",
-      when: "A merchant opens a page while Agentify is not answering.",
-      cause: "The gateway did not answer the page's read in time; the page offers itself again.",
+      screen: "Product cards",
+      when: "A merchant opens Cards while Agentify is not answering.",
+      cause:
+        "The gateway did not answer the page's read in time. A read changes nothing, so the page says so in the frame and offers itself again; Orders, Receipts and API keys say the same of theirs.",
     },
     {
       path: "/cards",
       mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/cards": null },
       failed: {
-        "routes/gate": thrown(LATE_PROBLEM.status, {
+        "routes/cards": thrown(LATE_PROBLEM.status, {
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,

@@ -336,16 +336,3 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
     </>
   );
 }
-
-/** In place of the orders where reading them failed, with the same list offered again. */
-export const OrdersNotLoaded = ({ again }: Readonly<{ again: string }>) => (
-  <div className={styles.unread}>
-    <div className="callout" role="alert">
-      <div className="what">Your orders could not be loaded.</div>
-      <p className="why">Loading them changed nothing.</p>
-    </div>
-    <a className="button button-primary" href={again}>
-      Load again
-    </a>
-  </div>
-);
