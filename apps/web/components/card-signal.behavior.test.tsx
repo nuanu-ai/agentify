@@ -17,7 +17,7 @@ const json = (status: number, body: unknown) =>
 
 /** The provider's state as the page polls it, and `pressed` for the press under test. */
 function siteWith(pressed: () => Promise<Response>, status = "setup_pending") {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) =>
     (init?.method ?? "GET") === "GET" ? json(200, { status }) : await pressed(),
   );
 }

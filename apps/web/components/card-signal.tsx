@@ -5,6 +5,7 @@ import {
   type CardSignalState as CardSignalStatus,
   canLoadStripeSdk,
 } from "../lib/card-signal-ui";
+import { press } from "../lib/press";
 import styles from "./card-signal.module.css";
 import { lazyPart } from "./lazy-part";
 
@@ -20,6 +21,32 @@ type SetupResponse = Readonly<{
   client_secret: string | null;
   adapter: "local" | "stripe";
 }>;
+
+const SIGNAL_STATES: readonly string[] = [
+  "not_started",
+  "setup_pending",
+  "attached",
+  "detached",
+  "failed",
+];
+
+function setupIn(answer: unknown): SetupResponse | null {
+  if (typeof answer !== "object" || answer === null) return null;
+  const setup = answer as Record<string, unknown>;
+  return typeof setup.signal_id === "string" &&
+    statusIn(setup) !== null &&
+    (setup.client_secret === null || typeof setup.client_secret === "string") &&
+    (setup.adapter === "local" || setup.adapter === "stripe")
+    ? (setup as SetupResponse)
+    : null;
+}
+
+function statusIn(answer: unknown): CardSignalStatus | null {
+  const status = (answer as { status?: unknown } | null)?.status;
+  return typeof status === "string" && SIGNAL_STATES.includes(status)
+    ? (status as CardSignalStatus)
+    : null;
+}
 
 export function CardSignal({
   scanId,
@@ -110,8 +137,9 @@ export function CardSignal({
     if (!consented) return;
     setBusy(true);
     setMessage("Preparing the secure card form…");
-    try {
-      const response = await fetch("/api/v1/card-signals/setup-intents", {
+    const outcome = await press(
+      "/api/v1/card-signals/setup-intents",
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -121,38 +149,30 @@ export function CardSignal({
           scan_id: scanId,
           card_signal_consent: true,
         }),
-      });
-      const payload = (await response.json().catch(() => null)) as
-        | SetupResponse
-        | { error?: { message?: string } }
-        | null;
-      if (!response.ok || !payload || !("signal_id" in payload)) {
-        throw new Error(
-          payload && "error" in payload
-            ? payload.error?.message
-            : "The card form is temporarily unavailable.",
-        );
-      }
-      setSignalId(payload.signal_id);
-      setStatus(payload.status);
-      if (payload.client_secret) setClientSecret(payload.client_secret);
-      setMessage(
-        payload.status === "attached"
-          ? "Card saved after verified provider confirmation."
-          : payload.status === "detached"
-            ? "Card removed and verified with the provider."
-            : "Secure card form ready.",
-      );
-    } catch (error) {
+      },
+      setupIn,
+    );
+    setBusy(false);
+    if (outcome.kind !== "done") {
       setStatus("failed");
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "The card form is temporarily unavailable. Your report is unaffected.",
+        outcome.kind === "refused"
+          ? outcome.refusal.message
+          : "No answer came back, so we cannot tell whether the card form was prepared. Try again: no card is saved until you enter one.",
       );
-    } finally {
-      setBusy(false);
+      return;
     }
+    const setup = outcome.answer;
+    setSignalId(setup.signal_id);
+    setStatus(setup.status);
+    if (setup.client_secret) setClientSecret(setup.client_secret);
+    setMessage(
+      setup.status === "attached"
+        ? "Card saved after verified provider confirmation."
+        : setup.status === "detached"
+          ? "Card removed and verified with the provider."
+          : "Secure card form ready.",
+    );
   }
 
   async function confirmLocal() {
@@ -160,49 +180,53 @@ export function CardSignal({
     setBusy(true);
     setStatus("setup_pending");
     setMessage("Waiting for signed provider confirmation…");
-    try {
-      const response = await fetch(`/api/v1/card-signals/${signalId}/local-confirm`, {
-        method: "POST",
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        status?: CardSignalStatus;
-      } | null;
-      if (!response.ok || !payload?.status) throw new Error("Local provider confirmation failed.");
-      setStatus(payload.status);
+    const outcome = await press(
+      `/api/v1/card-signals/${signalId}/local-confirm`,
+      { method: "POST" },
+      statusIn,
+    );
+    setBusy(false);
+    if (outcome.kind === "done") {
+      setStatus(outcome.answer);
       setMessage(
-        payload.status === "attached"
+        outcome.answer === "attached"
           ? "Card saved after verified provider confirmation."
           : "Waiting for signed provider confirmation…",
       );
-    } catch {
-      setStatus("failed");
-      setMessage("Card confirmation failed. Your report is unaffected.");
-    } finally {
-      setBusy(false);
+      return;
     }
+    if (outcome.kind === "refused") {
+      setStatus("failed");
+      setMessage(outcome.refusal.message);
+      return;
+    }
+    // Still waiting, so the page goes on asking the provider's state.
+    setMessage(
+      "No answer came back, so we cannot tell whether the confirmation went through. Reload this page to see whether the card is saved.",
+    );
   }
 
   async function detach() {
     if (!signalId) return;
     setBusy(true);
     setMessage("Removing the card and checking provider state…");
-    try {
-      const response = await fetch(`/api/v1/card-signals/${signalId}/payment-method`, {
-        method: "DELETE",
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        status?: CardSignalStatus;
-      } | null;
-      if (!response.ok || payload?.status !== "detached")
-        throw new Error("Provider removal could not be verified.");
+    const outcome = await press(
+      `/api/v1/card-signals/${signalId}/payment-method`,
+      { method: "DELETE" },
+      (answer) => (statusIn(answer) === "detached" ? "detached" : null),
+    );
+    setBusy(false);
+    if (outcome.kind === "done") {
       setStatus("detached");
       setConfirmingDetach(false);
       setMessage("Card removed and verified with the provider.");
-    } catch {
-      setMessage("Removal could not be verified, so the card is not marked removed.");
-    } finally {
-      setBusy(false);
+      return;
     }
+    setMessage(
+      outcome.kind === "refused"
+        ? outcome.refusal.message
+        : "No answer came back, so we cannot tell whether the card was removed. Reload this page: it shows whether the card is still saved.",
+    );
   }
 
   return (
