@@ -138,10 +138,11 @@ const aShopThatAccepts = () => {
 /**
  * A shop's Store API cart, answering the place with a cart that holds
  * `quantity` of product 28 and charges 5.00 to ship it, as a shop does whose
- * plugin raised a minimum quantity.
+ * plugin raised a minimum quantity, and carrying `errors` as a shop's
+ * restriction plugin raises them.
  */
 const aCartHoldingTheTote =
-  (quantity: number): WooRequest =>
+  (quantity: number, errors: readonly unknown[] = []): WooRequest =>
   async (url, init) => {
     const asked = new URL(url).pathname;
     if ((init?.method ?? "GET") === "GET") {
@@ -153,6 +154,7 @@ const aCartHoldingTheTote =
     return Response.json(
       {
         items: [{ key: "line-28", id: 28, quantity }],
+        errors,
         needs_shipping: true,
         shipping_rates: [
           {
@@ -176,6 +178,12 @@ const aCartHoldingTheTote =
       { status: asked.endsWith("/add-item") ? 201 : 200 },
     );
   };
+
+/** What a shop's plugin that will not ship the line to the place raises on the cart. */
+const A_CART_ERROR = {
+  code: "woocommerce_rest_cart_item_error",
+  message: "This product cannot be shipped to your country.",
+};
 
 /** The shop's answers to a product check that cannot be read or trusted. */
 const UNREADABLE: readonly (readonly [string, WooRequest])[] = [
@@ -1399,6 +1407,25 @@ describe("a parcel's price question", () => {
     expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
   });
 
+  it("names no price where the shop's own cart refuses the line", async () => {
+    // The order is later made through the shop's admin interface, which skips
+    // the checks that raised these errors, so the cart's refusal is the last
+    // word the shop gets.
+    const shops = memoryWooShops();
+
+    const answer = await answering(shops, (where) =>
+      shippingRatesInTheShop(
+        "https://shop.example.com",
+        "28",
+        where as typeof place,
+        aCartHoldingTheTote(1, [A_CART_ERROR]),
+      ),
+    );
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+  });
+
   it("says nothing when the shop's cart could not answer just now", async () => {
     const answer = await answering(memoryWooShops(), async () => ({
       ok: false,
@@ -1696,6 +1723,31 @@ describe("a parcel's paid order", () => {
       );
       expect(JSON.stringify(answer), what).toMatch(/no longer/);
     }
+  });
+
+  it("refuses an order whose cart at fulfilment refuses the line, and posts nothing", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: (keys, productId, where) =>
+          shippingRatesInTheShop(
+            keys.shopUrl,
+            productId,
+            where,
+            aCartHoldingTheTote(1, [A_CART_ERROR]),
+          ),
+      }),
+      NO_SPLIT,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
   });
 
   it("answers nothing and writes nothing while the shop does not answer", async () => {

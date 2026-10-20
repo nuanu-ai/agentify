@@ -1327,6 +1327,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   });
   const cart = (rates: unknown[], overrides: Record<string, unknown> = {}) => ({
     items: [LINE],
+    errors: [],
     needs_shipping: true,
     shipping_rates: [aPackage(rates)],
     ...overrides,
@@ -1437,6 +1438,24 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     for (const [what, addItem, placed, saidNo] of [
       ["the product refused", refusing("woocommerce_rest_product_out_of_stock"), null, true],
       ["the place refused", null, refusing("rest_invalid_param"), true],
+      [
+        // What a shop's restriction plugin raises on the cart it would not
+        // check out, whatever the line and its rate say.
+        "a cart whose own errors refuse the line",
+        null,
+        {
+          status: 200,
+          body: cart([rate()], {
+            errors: [
+              {
+                code: "woocommerce_rest_cart_item_error",
+                message: "This product cannot be shipped to your country.",
+              },
+            ],
+          }),
+        },
+        true,
+      ],
       [
         "no shipping needed",
         null,
