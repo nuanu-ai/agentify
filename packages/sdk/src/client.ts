@@ -129,8 +129,13 @@ export interface OrderCalls {
    * closure and message. The message is the merchant's statement to the buyer;
    * Agentify confirms no refund or agreement. This does not cancel a payment
    * already accepted for execution: its original outcome may still update.
-   * Closing causes no new charge, and original payment recovery remains.
-   * Already delivered or shipped orders are refused.
+   * Closing causes no new charge, and Agentify keeps checking the original
+   * payment for an outcome. Closing cannot be undone.
+   *
+   * Resolves to `{ ok: true }`, or to `ok: false` with an `error` and leaves the
+   * order unchanged: `fulfillment_complete` where the goods were delivered or
+   * the parcel's shipment is recorded, and `nothing_to_close` where the order
+   * ended without a charge and holds nothing for its buyer.
    */
   close(options?: OrderCloseRequest): Promise<OrderCloseResponse>;
 }

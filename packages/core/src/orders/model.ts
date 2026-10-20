@@ -110,6 +110,26 @@ export function isOpen(state: OrderState): boolean {
 }
 
 /**
+ * The endings that hold nothing for the buyer: no goods kept for them and, on
+ * every one but a `rejected` order whose charge went unanswered, no money taken.
+ * An `expired` order is one only while it holds no goods its buyer could still
+ * pay to collect.
+ */
+export function endedWithNothingHeld(order: Order): boolean {
+  switch (order.state) {
+    case "failed":
+    case "rejected":
+    case "declined":
+    case "cancelled":
+      return true;
+    case "expired":
+      return !order.heldFulfillment;
+    default:
+      return false;
+  }
+}
+
+/**
  * When the payment is executed. This is one of the two switches that turn the
  * three published modes into one machine.
  *
@@ -380,6 +400,8 @@ export type MerchantAnswerResult = (typeof MERCHANT_ANSWER_RESULTS)[number];
 
 export const MERCHANT_ANSWER_ERRORS = [
   "fulfillment_closed",
+  "fulfillment_complete",
+  "nothing_to_close",
   "order_already_closed",
   "not_applicable_in_mode",
 ] as const;

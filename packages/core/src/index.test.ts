@@ -45,6 +45,9 @@ describe("@agentify/core", () => {
       "moneyInvariantViolations",
       "modeOf",
       "isOpen",
+      // Whether an ended order holds nothing for its buyer: the machine refuses
+      // to close one, and the gateway takes no payment for one.
+      "endedWithNothingHeld",
       // Whether a parcel's order still holds its buyer's address: the gateway's
       // last check before it writes one down.
       "holdsShipTo",

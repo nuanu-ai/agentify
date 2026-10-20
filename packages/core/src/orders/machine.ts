@@ -50,7 +50,7 @@ import type {
   TransitionRejectionCode,
   TransitionResult,
 } from "./model.js";
-import { effectsOnQuoted, holdsShipTo } from "./model.js";
+import { effectsOnQuoted, endedWithNothingHeld, holdsShipTo } from "./model.js";
 import { nextRedelivery } from "./redelivery.js";
 
 /**
@@ -116,7 +116,13 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
 function transitionIn(order: Order, event: OrderEvent): TransitionResult {
   if (event.kind === "close_called") {
     if (order.state === "delivered") {
-      return answer(order, { ok: false, error: "order_already_closed", retryable: false });
+      return answer(order, { ok: false, error: "fulfillment_complete", retryable: false });
+    }
+    // An ending with nothing charged and nothing held leaves no fulfillment to
+    // stop, and closing it would only replace the ending its buyer reads. One
+    // whose charge went unanswered is closable: that payment may still complete.
+    if (endedWithNothingHeld(order) && !paymentUnresolved(order)) {
+      return answer(order, { ok: false, error: "nothing_to_close", retryable: false });
     }
     if (order.merchantClosure !== undefined) {
       return answer(order, { ok: true, result: "purchase_already_closed" });
@@ -183,6 +189,10 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
     default:
       return assertNever(order.state, "order state");
   }
+}
+
+function paymentUnresolved(order: Order): boolean {
+  return order.payment === "settling" || order.payment === "outcome_unknown";
 }
 
 // --- the answers this file gives -------------------------------------------

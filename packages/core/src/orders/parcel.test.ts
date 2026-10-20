@@ -70,7 +70,7 @@ describe("what the agent is told about a parcel", () => {
 });
 
 describe("a parcel's address", () => {
-  it("is erased on merchant closure once, and a recorded shipment cannot be closed", () => {
+  it("is erased on merchant closure once, and a recorded shipment's fulfillment is complete and cannot be closed", () => {
     const { order, effects } = must(handedOver(parcel()), { kind: "close_called", at: T0 + 5 });
     expect(holdsShipTo(order)).toBe(false);
     expect(erasures(effects)).toBe(1);
@@ -82,7 +82,7 @@ describe("a parcel's address", () => {
     expect(outcomeFor(attempted.order)).toBe("shipped");
     expect(attempted.effects).toContainEqual({
       kind: "answer_merchant",
-      answer: { ok: false, error: "order_already_closed", retryable: false },
+      answer: { ok: false, error: "fulfillment_complete", retryable: false },
     });
   });
 

@@ -247,14 +247,16 @@ The order carries `merchant_closure: { closed_at, message? }`. This is the merch
 
 `deliver`, `refuse`, `accept` and `close` hand their failures back rather than throwing
 them, unless the client was built with no address: `ok` is false, and one `error` beside it carries a code to branch on, a
-sentence a person can read, and `retryable`. Eight codes are promised to mean
-one thing each — five sent by us, and three the tools produce when no answer
-they could read came back. The set is open beyond those eight, so a case
+sentence a person can read, and `retryable`. Ten codes are promised to mean
+one thing each — seven sent by us, and three the tools produce when no answer
+they could read came back. The set is open beyond those ten, so a case
 nobody anticipated reaches you in its own words.
 
 | Code | When it arrives | Repeating could change it |
 | --- | --- | --- |
 | `fulfillment_closed` | the merchant closed future Agentify fulfillment for this order | no |
+| `fulfillment_complete` | `close` on an order whose goods were delivered or whose parcel's shipment is recorded; the order was not changed | no |
+| `nothing_to_close` | `close` on an order that ended without a charge and holds nothing for its buyer; the order was not changed | no |
 | `order_already_closed` | the order reached an ending that no call reopens | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal | no |
 | `delivery_does_not_match_card` | the goods are not the ones the order was sold with, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
@@ -267,7 +269,7 @@ The flag says that repeating the call could change the outcome, which is not
 the same as saying that repeating is safe. `deliver`, `accept` and `close` are
 idempotent by the order's identifier, so for them it is both; `refuse` is not,
 so read a refusal that failed back with `get` before sending it again. A code
-outside those eight is most often us refusing the call at the door — a key we
+outside those ten is most often us refusing the call at the door — a key we
 will not take, an order identifier that names nothing — under our own word,
 such as `not_authorised` or `no_such_order`, with `retryable` false.
 

@@ -52,6 +52,10 @@ export const OrderCallResultSchema = z.enum(ORDER_CALL_RESULTS);
  * open string, so an unanticipated error reaches the merchant in its own words.
  *
  * `fulfillment_closed`: the merchant closed future fulfillment through Agentify.
+ * `fulfillment_complete`: closing was asked of an order whose goods were
+ * delivered or whose parcel's shipment was recorded, and the order was left as
+ * it is. `nothing_to_close`: closing was asked of an order that ended without a
+ * charge and holds nothing for its buyer, and the order was left as it is.
  * `order_already_closed`: this order reached an ending that this call cannot
  * change. `not_applicable_in_mode`: this mode has no such call or answer.
  * `shipment_already_recorded`: a different shipment is already recorded;
@@ -65,6 +69,8 @@ export const OrderCallResultSchema = z.enum(ORDER_CALL_RESULTS);
  */
 export const ORDER_CALL_ERROR_CODES = Object.freeze([
   "fulfillment_closed",
+  "fulfillment_complete",
+  "nothing_to_close",
   "order_already_closed",
   "not_applicable_in_mode",
   "delivery_does_not_match_card",
@@ -120,7 +126,7 @@ export const CallErrorSchema = z.strictObject({
     // The promised codes travel in the description, so that a client generated
     // from the JSON Schema export learns them.
     description:
-      "Why the call did not go through. Codes are open strings. card_rejected means publication failed and error.problems names every finding, including the merchant's missing name, payout wallet, live approval or parcel shop site. Order calls promise fulfillment_closed (the merchant stopped future Agentify fulfillment), order_already_closed (the call cannot change the order's ending), not_applicable_in_mode (the mode has no such call or answer), delivery_does_not_match_card (the goods do not match the card sold with the order; problems names the fields, and retryable is true only while delivery can still be corrected), and shipment_already_recorded (a different shipment is recorded and cannot be replaced; repeating the same one succeeds). No code establishes a refund or settlement.",
+      "Why the call did not go through. Codes are open strings. card_rejected means publication failed and error.problems names every finding, including the merchant's missing name, payout wallet, live approval or parcel shop site. Order calls promise fulfillment_closed (the merchant stopped future Agentify fulfillment), fulfillment_complete (closing was asked of an order already delivered or shipped, and nothing changed), nothing_to_close (closing was asked of an order that ended without a charge, and nothing changed), order_already_closed (the call cannot change the order's ending), not_applicable_in_mode (the mode has no such call or answer), delivery_does_not_match_card (the goods do not match the card sold with the order; problems names the fields, and retryable is true only while delivery can still be corrected), and shipment_already_recorded (a different shipment is recorded and cannot be replaced; repeating the same one succeeds). No code establishes a refund or settlement.",
   }),
   message: z.string().regex(/\S/, "an error carries an explanation a person can read"),
   retryable: z.boolean(),

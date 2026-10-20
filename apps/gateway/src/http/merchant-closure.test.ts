@@ -126,6 +126,46 @@ describe("the authenticated merchant closure", () => {
     },
   );
 
+  it("refuses to close an order that ended without a charge, and the buyer's agent reads the same ending", async () => {
+    const id = await order();
+    h.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
+    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    const headers = { authorization: `Bearer ${h.merchant.key}` };
+    const before = await server.call("GET", `/x402/orders/${id}/status`);
+    expect(before.body).toMatchObject({ status: "rejected", payment_status: "not_paid" });
+
+    const response = await server.call("POST", `/v0/orders/${id}/close`, {
+      headers,
+      body: { message: "Cancelled." },
+    });
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: { code: "nothing_to_close", retryable: false },
+    });
+    expect((response.body as { error: { message: string } }).error.message).toMatch(
+      /ended without a charge.*nothing to close/,
+    );
+    expect((await server.call("GET", `/x402/orders/${id}/status`)).body).toStrictEqual(before.body);
+  });
+
+  it("refuses to close a delivered order, saying its fulfillment is complete", async () => {
+    const id = await order();
+    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await h.gateway.deliverOrder(h.merchant.id, id, { activation_code: "BOUGHT" });
+    const response = await server.call("POST", `/v0/orders/${id}/close`, {
+      headers: { authorization: `Bearer ${h.merchant.key}` },
+      body: {},
+    });
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: { code: "fulfillment_complete", retryable: false },
+    });
+    expect((response.body as { error: { message: string } }).error.message).toMatch(
+      /delivered.*not changed/,
+    );
+    expect((await h.store.orderById(id))?.order.state).toBe("delivered");
+  });
+
   it.each([true, false])(
     "serializes closure against delivery, with a single public result (close first=%s)",
     async (closeFirst) => {
@@ -144,7 +184,7 @@ describe("the authenticated merchant closure", () => {
       expect(closed).toMatchObject(
         wasClosed
           ? { ok: true }
-          : { ok: false, error: { code: "order_already_closed", retryable: false } },
+          : { ok: false, error: { code: "fulfillment_complete", retryable: false } },
       );
       expect(delivered).toMatchObject(
         wasClosed

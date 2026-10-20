@@ -82,6 +82,7 @@ export type {
 export {
   CLOSED_ORDER_STATES,
   DEADLINE_KINDS,
+  endedWithNothingHeld,
   FULFILLMENT_MODES,
   holdsShipTo,
   isOpen,

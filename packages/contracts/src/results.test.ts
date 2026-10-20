@@ -200,6 +200,8 @@ describe("the error codes the calls answer with", () => {
   it("names the ones the merchant is expected to branch on", () => {
     expect([...ORDER_CALL_ERROR_CODES]).toStrictEqual([
       "fulfillment_closed",
+      "fulfillment_complete",
+      "nothing_to_close",
       "order_already_closed",
       "not_applicable_in_mode",
       "delivery_does_not_match_card",
