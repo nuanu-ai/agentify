@@ -6316,7 +6316,8 @@ describe("live sales approval in the admin screen", () => {
       delete form[field];
       const refused = await running.browser.post(path, form);
       expect(refused.status).toBe(400);
-      expect(readable(refused.html)).toMatch(/choose|enter|confirm|find|missing/i);
+      // The refusal is said where the screen says refusals, not left to a status code.
+      expect(/<p class="problem" role="alert">[^<]+<\/p>/.test(refused.html)).toBe(true);
       expect(
         (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
       ).toBeNull();
