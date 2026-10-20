@@ -12,6 +12,7 @@ const REDIRECT_REFUSALS = new Set([
   "hostname_blocked",
   "numeric_host_blocked",
   "single_label_host_blocked",
+  "hostname_invalid",
   "port_blocked",
   "secret_query_blocked",
   "redirect_invalid",

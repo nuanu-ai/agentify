@@ -47,6 +47,13 @@ export function validateSubmittedUrl(value: string): UrlSyntaxResult {
   if (!parsed.hostname.replace(/\.$/, "").includes(".")) {
     return { ok: false, message: "Enter the site's full domain name, such as example.com." };
   }
+  if (parsed.hostname.includes("_")) {
+    return {
+      ok: false,
+      message:
+        "A website's domain name has no underscore in it. Check the address, such as example.com.",
+    };
+  }
   if (parsed.port && !["80", "443"].includes(parsed.port)) {
     return {
       ok: false,

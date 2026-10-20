@@ -43,9 +43,12 @@ export const canonicalizeTarget = (input: string): URL => {
   const numericCandidate = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(numericCandidate) !== 0 || looksLikeObfuscatedIpv4(numericCandidate))
     throw new UrlPolicyError("numeric_host_blocked");
-  // A name without a dot, such as "shop", is no public website's.
+  // A name without a dot, such as "shop", is no public website's, nor is one
+  // with an underscore, which public DNS gives no website but a container
+  // network's own resolver does.
   if (!url.hostname.replace(/\.$/, "").includes("."))
     throw new UrlPolicyError("single_label_host_blocked");
+  if (url.hostname.includes("_")) throw new UrlPolicyError("hostname_invalid");
   if (url.port && url.port !== "80" && url.port !== "443") throw new UrlPolicyError("port_blocked");
 
   const keys = [...url.searchParams.keys()];
