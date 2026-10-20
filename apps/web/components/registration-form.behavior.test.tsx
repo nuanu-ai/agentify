@@ -167,6 +167,50 @@ describe("asking the scanner for a verification link", () => {
     expect(screen.getByRole("link", { name: /reload/i })).toBeTruthy();
   });
 
+  it.each([
+    ["never arrived", () => Promise.reject(new TypeError("Failed to fetch"))],
+    [
+      "came from something other than the site",
+      async () =>
+        new Response("<html>Bad gateway</html>", {
+          status: 502,
+          headers: { "content-type": "text/html" },
+        }),
+    ],
+  ])(
+    "says it cannot tell whether a signed-in ask was filed when the answer %s, and lets it be pressed again",
+    async (_case, lost) => {
+      // The site may have filed the report before the answer was lost, so
+      // neither "nothing happened" nor silence is true.
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+        String(input).endsWith("/api/v2/session")
+          ? json(200, { status: "signed_in", email: "owner@example.com", operator: false })
+          : await lost(),
+      );
+      sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+      render(<RegistrationForm scanId={scanId} />);
+      await userEvent.click(await screen.findByLabelText(/acknowledge the scanner data notice/i));
+      await userEvent.click(screen.getByRole("button"));
+
+      expect(await screen.findByText(/cannot tell whether/i)).toBeTruthy();
+      expect(screen.getByText(/press .* again/i)).toBeTruthy();
+      expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    },
+  );
+
+  it("says it cannot tell whether a link was sent when a stranger's answer never arrived", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/api/v2/session")) return json(200, { status: "signed_out" });
+      throw new TypeError("Failed to fetch");
+    });
+
+    const button = await askForALink();
+
+    expect(await screen.findByText(/cannot tell whether/i)).toBeTruthy();
+    expect(screen.getByText(/inbox/i)).toBeTruthy();
+    expect(button().disabled).toBe(false);
+  });
+
   it("links the data notice from the box that acknowledges it", async () => {
     // The visitor is asked to acknowledge a notice, so the notice is one
     // press away from the box, and the same page the footer calls Privacy.
