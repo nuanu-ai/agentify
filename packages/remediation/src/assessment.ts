@@ -11,6 +11,25 @@ export type ScanAssessment = Readonly<{
   unassessed: readonly string[];
 }>;
 
+/**
+ * The assessment of a scan as its report gives it, or as its status does with
+ * its time and coverage put in the report's terms: a check is unassessed when
+ * it is unavailable.
+ */
+export function assessmentOf(scan: {
+  scanned_at: string;
+  coverage: number;
+  checks: readonly { status: string; label_code: string }[];
+}): ScanAssessment {
+  return {
+    inspectedAt: scan.scanned_at,
+    coverage: scan.coverage,
+    unassessed: scan.checks
+      .filter((check) => check.status === "unavailable")
+      .map((check) => check.label_code),
+  };
+}
+
 const inspectedLabel = (moment: string): string => {
   const at = new Date(moment);
   if (Number.isNaN(at.getTime())) return "time not recorded";

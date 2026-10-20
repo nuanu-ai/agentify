@@ -1,4 +1,8 @@
-import { generateRemediationPrompt, type RemediationFindingInput } from "@agentify/remediation";
+import {
+  assessmentOf,
+  generateRemediationPrompt,
+  type RemediationFindingInput,
+} from "@agentify/remediation";
 import type {
   BrowserObservationFinding,
   RemediationPromptResponse,
@@ -6,7 +10,6 @@ import type {
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { scanChecks, scans } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
-import { reportAssessment } from "../fix-prompts";
 import type { Visitor } from "./auth";
 import { getDatabase } from "./database";
 import { getFullBrowserObservation, getFullReport } from "./reporting";
@@ -68,13 +71,11 @@ export async function getTeaserRemediationPrompt(
   const generated = generateRemediationPrompt({
     scope: "teaser",
     host: scan.targetHost,
-    assessment: {
-      inspectedAt: status.updated_at,
+    assessment: assessmentOf({
+      scanned_at: status.updated_at,
       coverage: status.teaser.coverage,
-      unassessed: status.checks
-        .filter((check) => check.status === "unavailable")
-        .map((check) => check.label_code),
-    },
+      checks: status.checks,
+    }),
     findings: canonicalFindings,
   });
   return {
@@ -112,7 +113,7 @@ export async function getFullRemediationPrompt(
   const generated = generateRemediationPrompt({
     scope: "full",
     host: report.host,
-    assessment: reportAssessment(report),
+    assessment: assessmentOf(report),
     findings: [...canonicalFindings, ...fromBrowser(browser?.findings)],
   });
   return {
