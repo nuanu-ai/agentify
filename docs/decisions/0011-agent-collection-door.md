@@ -3,7 +3,7 @@
 Date: 2026-08-27
 Status: accepted; revised 2026-10-19 (the product owner): fit for a public
 audience wherever the gateway that keeps the identifier out of the payment
-requirements runs
+requirements runs; revised 2026-10-20: what the status shows of a paid order
 
 ## Context
 

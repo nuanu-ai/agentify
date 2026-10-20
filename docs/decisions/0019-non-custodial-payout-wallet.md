@@ -2,8 +2,8 @@
 
 Date: 2026-08-28
 Status: accepted (the product owner, 2026-09-24 and 2026-09-25; the split,
-2026-10-14); the write left `/v0` with the dashboard's key
-(`docs/research/35-one-process.md`), 2026-10-09
+2026-10-14); the write left `/v0` with the dashboard's key, 2026-10-09; revised
+2026-10-20: the payee a paid order's payment is checked against
 
 ## Context
 
@@ -17,22 +17,22 @@ it redirects money, so the threat to it is a dashboard session not the owner's.
 
 Payments are non-custodial: a payment request pays the split of the merchant
 who published the card, as recorded for their wallet in force when the request
-is written (ADR-0037, ADR-0038), and a verified payment settles where it was
-verified. A payment that would be charged is verified against the split in
-force when it arrives; one presented for an order already paid, which only
-returns that purchase to its payer, is verified against the split recorded on
-the order, and where the merchant has left that split it is never charged.
-The wallet is a column on the merchant, held to `EvmAddressSchema`: `0x` and
-forty hexadecimal characters, in lower case or the exact EIP-55 spelling a
+is written (ADR-0037, ADR-0038). A payment is verified against the split in
+force when it arrives and charged where it was verified; one whose order
+records its payer and payee and would take no new charge, a synchronous order
+whose charge has not run included, only returns the purchase, is verified
+against the order's recorded split and is never charged where the merchant left
+it. The wallet is a column on the merchant, held to `EvmAddressSchema`: `0x`
+and forty hexadecimal characters, in lower case or the exact EIP-55 spelling a
 wallet shows, refused in between, because a typo is somebody else's valid
 address and the checksum is the only warning. It is written checksummed, which
 a person can check by eye (ADR-0017); a row holding it in lower case is the
-same wallet, paid through the same split. Outside the sandbox
-(ADR-0026 §5) a merchant without one cannot publish (`no_payout_wallet`). It is
-changed, never removed: the pause ends sales. Saving it on the screen that
-names the commission is consent to the commission. The wire keeps
-`payout_wallet` as it is, meaning where the merchant's share arrives, and tells
-merchant code neither the split nor the commission.
+same wallet, paid through the same split. Outside the sandbox (ADR-0026 §5) a
+merchant without one cannot publish (`no_payout_wallet`). It is changed, never
+removed: the pause ends sales. Saving it on the screen that names the
+commission is consent to the commission. The wire keeps `payout_wallet` as it
+is, meaning where the merchant's share arrives, and tells merchant code neither
+the split nor the commission.
 
 Any key of the merchant's reads it at `GET /v0/payout-wallet`; only a person
 signed in to the dashboard writes it, with its split, by a call inside the
@@ -76,26 +76,26 @@ Agentify cannot move the merchant's money, and the money waits in the split
 until somebody, the merchant included, sends a payout (ADR-0037). The gateway
 keeps no ledger, only a registry of the splits it named, and runs no payout
 job; the operator sends one over every split recorded, twenty to a transaction,
-by hand. The merchant checks the
-wallet by eye but not the split, whose recipients a block explorer shows from
-its first payout. The checksum's Keccak-256 is hand-written in the contracts
-package, whose published tree is `zod` alone (ADR-0003 §1); the split's address
-is a second need for a hash, met in the gateway, outside that tree, by an
-audited library. A replacement costs two days of sales to the old wallet's
-split. An intruding session can ask again after each cancel, or set a first
-address; the owner answers with the immediate pause, signing out other devices
-(ADR-0026 §3) and the cancel, all of which hold only while the mailbox and
-any linked Google account remain theirs (ADR-0026 §1). A replacement waits on the mail provider, and a merchant
-no account names, such as the one every database starts with (ADR-0010),
-cannot have its wallet replaced.
+by hand. The merchant checks the wallet by eye but not the split, whose
+recipients a block explorer shows from its first payout. The checksum's
+Keccak-256 is hand-written in the contracts package, whose published tree is
+`zod` alone (ADR-0003 §1); the split's address is a second need for a hash, met
+in the gateway, outside that tree, by an audited library. A replacement costs
+two days of sales to the old wallet's split. An intruding session can ask again
+after each cancel, or set a first address; the owner answers with the immediate
+pause, signing out other devices (ADR-0026 §3) and the cancel, all of which
+hold only while the mailbox and any linked Google account remain theirs
+(ADR-0026 §1). A replacement waits on the mail provider, and a merchant no
+account names, such as the one every database starts with (ADR-0010), cannot
+have its wallet replaced.
 
 Rejected: one address per deployment, which is custody; an address per card,
 fifty chances for one to be wrong; defaulting to the configured
 `PAY_TO_ADDRESS`, silent and irreversible on a chain, so it stands in only in
 the sandbox (ADR-0020); refusing the sale, not the publish, which the agent
 finds before the merchant; lower case as the canon, uncheckable by eye;
-normalizing on read, a parser in every reader; a mailed confirmation in place of
-the wait, sent to the mailbox a session opens from; a short session, which only
-narrows the window; any key setting the wallet, so a leaked key moves the money;
-a field naming the split in `GET /v0/payout-wallet`, area that everyone who
-reconciles payments must learn and that no merchant has asked for.
+normalizing on read, a parser in every reader; a mailed confirmation in place
+of the wait, sent to the mailbox a session opens from; a short session, which
+only narrows the window; any key setting the wallet, so a leaked key moves the
+money; a field naming the split in `GET /v0/payout-wallet`, area that everyone
+who reconciles payments must learn and that no merchant has asked for.
