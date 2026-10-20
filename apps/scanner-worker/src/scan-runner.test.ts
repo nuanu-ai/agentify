@@ -1117,6 +1117,7 @@ describe("why a scan the scanner stopped has no result", () => {
     ["a bare IP address", "https://10.0.0.7/robots.txt"],
     ["plain HTTP from HTTPS", "http://example.com/robots.txt"],
     ["an internal name", "https://shop.internal/robots.txt"],
+    ["a name with an underscore", "https://db_1.example.com/robots.txt"],
   ])("names a redirect it does not follow when every page redirects to %s", async (_, to) => {
     const result = await stopped(
       { resolve: publicAddress },
