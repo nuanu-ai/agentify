@@ -858,6 +858,150 @@ describe("a payment checked against where a paid order's money went", () => {
   });
 });
 
+/** A guide sent to whoever the buyer names, and a second product of the same seller. */
+const guideCard: Card = {
+  merchant_item_id: "wrapping-guide",
+  title: "A gift wrapping guide",
+  description: "A short guide to wrapping a gift, sent to the address given",
+  price: { amount: "5.00", currency: "USD" },
+  params: { email: { type: "string", required: true } },
+  result: { guide: { type: "string" } },
+  fulfillment: "sync",
+};
+const cardCard: Card = {
+  ...guideCard,
+  merchant_item_id: "greeting-card",
+  title: "A greeting card",
+  description: "A greeting card, sent to the address given",
+};
+
+const ORIGINAL = { email: "original-recipient@example.invalid" };
+const CHANGED = { email: "changed-recipient@example.invalid" };
+
+describe("a payment presented with a request other than the one it was made for", () => {
+  /** The seller's two products on sale, the guide priced for ORIGINAL, and its payment signed. */
+  const pricedGuide = async () => {
+    const { harnessed, served } = await started();
+    const guide = await publish(harnessed, guideCard);
+    const other = await publish(harnessed, cardCard);
+    const handled: unknown[] = [];
+    const worker = workUntilStopped(harnessed, {
+      onOrder: (order) => {
+        handled.push(order.params);
+        return { delivered: { guide: "Fold the corners first." } };
+      },
+    });
+    const priced = await served.call("POST", `/x402/${guide}/purchase`, {
+      body: { params: ORIGINAL },
+    });
+    expect(priced.status).toBe(402);
+    const challenge = priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
+    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
+    const sendTo = (itemId: string, params: Record<string, unknown>, payment: string) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    return {
+      harnessed,
+      guide,
+      other,
+      handled,
+      worker,
+      challenge,
+      orderId: opened?.order.id ?? "",
+      sendTo,
+    };
+  };
+
+  it.each([
+    ["at another product's address", true, ORIGINAL],
+    ["at another product's address with another recipient", true, CHANGED],
+    ["at its own product's address with another recipient", false, CHANGED],
+  ] as const)(
+    "is refused %s before anything is charged or handed over, and still buys at the request it was made for",
+    async (_case, elsewhere, params) => {
+      const sale = await pricedGuide();
+      try {
+        const payment = paymentAgainst(sale.challenge, BUYER, "0x01");
+
+        const misplaced = await sale.sendTo(elsewhere ? sale.other : sale.guide, params, payment);
+
+        expect(misplaced.status).toBe(409);
+        expect(misplaced.body).toMatchObject({
+          error: { code: "payment_not_taken", retryable: false },
+        });
+        expect(JSON.stringify(misplaced.body)).toMatch(/another purchase/);
+        expectNoOrderIn(misplaced.body, sale.orderId);
+        expect(JSON.stringify(misplaced.body)).not.toContain(ORIGINAL.email);
+        expect(sale.harnessed.facilitator.settles).toHaveLength(0);
+        expect(sale.handled).toStrictEqual([]);
+        expect((await sale.harnessed.store.orderById(sale.orderId))?.paidBy).toBeNull();
+
+        const bought = await sale.sendTo(sale.guide, ORIGINAL, payment);
+        expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+        expect(bought.body).toMatchObject({ order_id: sale.orderId });
+        expect(sale.handled).toStrictEqual([ORIGINAL]);
+        expect(sale.harnessed.facilitator.settles).toHaveLength(1);
+      } finally {
+        await sale.worker.stop();
+      }
+    },
+  );
+
+  it("refused by the payment layer says nothing of the purchase it was made for", async () => {
+    // A used authorization can be read from the chain, so presenting it with
+    // a guess at another request must not confirm or deny the guess.
+    const sale = await pricedGuide();
+    try {
+      const payment = paymentAgainst(sale.challenge, BUYER, "0x01");
+      expect((await sale.sendTo(sale.guide, ORIGINAL, payment)).status).toBe(200);
+      sale.harnessed.facilitator.willRefuseVerification(
+        "signature",
+        "invalid_exact_evm_nonce_already_used",
+      );
+
+      const guessed = await sale.sendTo(sale.other, CHANGED, payment);
+
+      expect(guessed.status).toBe(409);
+      expect(guessed.body).toMatchObject({ error: { code: "payment_not_verified" } });
+      expect(JSON.stringify(guessed.body)).not.toMatch(/another purchase/);
+      expectNoOrderIn(guessed.body, sale.orderId);
+      expect(sale.harnessed.facilitator.settles).toHaveLength(1);
+    } finally {
+      await sale.worker.stop();
+    }
+  });
+
+  it("lets the payer who lost its answer recover with a fresh payment for the same request", async () => {
+    const sale = await pricedGuide();
+    try {
+      const first = await sale.sendTo(
+        sale.guide,
+        ORIGINAL,
+        paymentAgainst(sale.challenge, BUYER, "0x01"),
+      );
+      expect(first.status).toBe(200);
+
+      const recovered = await sale.sendTo(
+        sale.guide,
+        ORIGINAL,
+        paymentAgainst(sale.challenge, BUYER, "0x02"),
+      );
+
+      expect(recovered.status).toBe(200);
+      expect(recovered.body).toMatchObject({
+        order_id: sale.orderId,
+        delivered: { guide: "Fold the corners first." },
+      });
+      expect(sale.harnessed.facilitator.settles).toHaveLength(1);
+      expect(sale.handled).toStrictEqual([ORIGINAL]);
+    } finally {
+      await sale.worker.stop();
+    }
+  });
+});
+
 describe("the reference of an order that ended before a payment was taken", () => {
   it("hands back no order for a price that lapsed, and asks the facilitator nothing", async () => {
     const { harnessed, served } = await started();
