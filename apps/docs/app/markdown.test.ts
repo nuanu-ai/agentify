@@ -12,12 +12,23 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOCS_GROUPS, DOCS_PAGES } from "@agentify/ui/docs";
 import { describe, expect, it } from "vitest";
+import scannerRoutes from "../../web/app/routes.js";
 import { parser, renderedPages, sourceOf, withSiteValues } from "./markdown.server.js";
 import { markdownCopy } from "./markdown-copy.js";
 import { PAGES } from "./pages.js";
 import { UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+/** The site's own address, as a page writes it and Caddy fills it. */
+const ORIGIN = valueTemplate("origin");
+
+/** The files the scanner answers at the site's root, such as `/llms.txt`, by its route table. */
+const ROOT_FILES: ReadonlySet<string> = new Set(
+  scannerRoutes.flatMap((entry) =>
+    entry.path !== undefined && /^[^/:*]+\.[a-z]+$/.test(entry.path) ? [`/${entry.path}`] : [],
+  ),
+);
 
 /** The page at a documentation address, `/docs/money` and `/docs/` alike. */
 const pathOf = (address: string): string =>
@@ -57,18 +68,20 @@ describe("a link into the documentation", () => {
       for (const [, href = ""] of page.html.matchAll(/<a [^>]*href="([^"]*)"/g)) {
         const [address = "", anchor] = href.split("#");
         // A page links off the site, to the dashboard by its whole address,
-        // to a file at the site's root by the site's own address, which is a
-        // whole address once served, and to nothing else on the origin
-        // outside the documentation.
-        if (
-          address.startsWith("/dashboard/") ||
-          address.startsWith(valueTemplate("origin")) ||
-          /^[a-z]+:/.test(address)
-        ) {
-          continue;
-        }
+        // and on the origin outside the documentation to nothing but a file
+        // the site serves at its root, by the site's own address, which is a
+        // whole address once served. An address on the site's own is held as
+        // any other.
+        if (address.startsWith("/dashboard/") || /^[a-z]+:/.test(address)) continue;
+        const onOrigin = address.startsWith(ORIGIN) ? address.slice(ORIGIN.length) : null;
+        if (onOrigin !== null && ROOT_FILES.has(onOrigin)) continue;
+        const within = onOrigin ?? address;
         const target =
-          address === "" ? page.path : address.startsWith("/docs") ? pathOf(address) : null;
+          within === "" && onOrigin === null
+            ? page.path
+            : within.startsWith("/docs")
+              ? pathOf(within)
+              : null;
         if (target === null) {
           broken.push(`${page.path} links to ${href}, which is outside the documentation`);
           continue;
