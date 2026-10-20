@@ -1692,8 +1692,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       { verifiedLeadId: leadId, scanTokenAuthorized: false },
       false,
     );
-    expect(shared && !shared.conflict).toBe(true);
-    if (!shared || shared.conflict) throw new Error("share_failed");
+    if (!shared) throw new Error("share_failed");
     const publishedPreview = await previewShare(
       new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },

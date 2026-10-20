@@ -18,8 +18,8 @@ type Publishing = Readonly<{ share: PublishedShare }> | Readonly<{ failure: stri
 // preview this page loads names a link that is live, so a reload tells.
 const PUBLISH_UNANSWERED =
   "No answer came back, so we cannot tell whether the public link was made. Reload this page: a link that was made shows as live, with a way to revoke it.";
-// A refusal carries no link, and after a lost press it can contradict what
-// the page shows ("already exists", "not found"), so it points to a reload.
+// A refusal carries no link, and after a lost revoke its "not found" can
+// contradict a link the page still shows as live, so it points to a reload.
 const RELOAD_FOR_STATE = "Reload this page to see the link's current state.";
 const REVOKE_UNANSWERED =
   "No answer came back, so we cannot tell whether the link was revoked. Reload this page: a link that is still live shows as live, with a way to revoke it.";

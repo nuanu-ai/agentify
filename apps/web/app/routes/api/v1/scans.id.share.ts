@@ -33,8 +33,6 @@ async function share(request: Request, params: Params): Promise<Response> {
   );
   if (!result)
     return errorResponse(request, 409, "share_unavailable", "This scan cannot be shared.");
-  if (result.conflict)
-    return errorResponse(request, 409, "share_already_published", "A public link already exists.");
   return Response.json(
     {
       slug: result.slug,

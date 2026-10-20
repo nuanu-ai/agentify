@@ -250,7 +250,6 @@ export async function createPublicShare(
   )[0];
   if (existing) {
     return {
-      conflict: false as const,
       slug: deriveCapability(getServerConfig().hmacSecret, "share-slug", existing.id),
       snapshot: undefined,
     };
@@ -307,7 +306,7 @@ export async function createPublicShare(
       });
     }
   });
-  return { conflict: false as const, slug, snapshot };
+  return { slug, snapshot };
 }
 
 export async function getPublicShare(slug: string) {

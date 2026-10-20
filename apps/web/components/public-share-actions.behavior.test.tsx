@@ -70,16 +70,14 @@ describe("publishing and revoking a scan's public link", () => {
     expect(screen.getByRole("button", { name: "Revoke" })).toBeTruthy();
   });
 
-  it("passes on the site's own refusal to publish in its own words, and says a reload shows the link", async () => {
-    // A press again after a lost publish meets "a link already exists", which
-    // carries no link; the page cannot show it, so it says where to see it.
+  it("passes on the site's own refusal to publish in its own words, and says a reload shows the link's state", async () => {
     siteWith({
       existing: false,
       pressed: async () =>
         json(409, {
           error: {
-            code: "share_already_published",
-            message: "A public link already exists.",
+            code: "share_unavailable",
+            message: "This scan cannot be shared.",
             retryable: false,
             request_id: "019f5b6a-4b9f-7000-8000-0000000000dd",
           },
@@ -90,7 +88,7 @@ describe("publishing and revoking a scan's public link", () => {
 
     await userEvent.click(copy);
 
-    const told = await screen.findByText(/A public link already exists\./);
+    const told = await screen.findByText(/This scan cannot be shared\./);
     expect(told.textContent).toMatch(/reload/i);
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
