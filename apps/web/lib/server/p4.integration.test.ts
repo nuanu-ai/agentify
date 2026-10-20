@@ -574,6 +574,14 @@ describe("P4 dashboard-owned scanner identity", () => {
     await expect(
       stoppedScan("private-name", null, ["ssrf_blocked:loopback", "ssrf_blocked:private", null]),
     ).resolves.toMatchObject({ status: "failed", stop_reason: "no_public_site" });
+    // A name that does not exist is told the same, so the two cannot be told
+    // apart; a lookup that failed says nothing of the name.
+    await expect(stoppedScan("missing-name", null, ["dns_not_found"])).resolves.toMatchObject({
+      stop_reason: "no_public_site",
+    });
+    expect(await stoppedScan("failed-lookup", null, ["dns_error"])).not.toHaveProperty(
+      "stop_reason",
+    );
     await expect(
       stoppedScan("redirected-to-a-number", null, ["numeric_host_blocked"]),
     ).resolves.toMatchObject({ stop_reason: "forbidden_redirect" });

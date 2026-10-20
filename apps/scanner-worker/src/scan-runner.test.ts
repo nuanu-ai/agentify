@@ -747,7 +747,7 @@ describe("bounded scan graph", () => {
     expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
     expect(
       [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
-    ).toEqual(["dns_error", "redirect_downgrade_blocked"]);
+    ).toEqual(["dns_not_found", "redirect_downgrade_blocked"]);
   });
 
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
@@ -1199,6 +1199,26 @@ describe("why a scan the scanner stopped has no result", () => {
     );
     expect(privateName.stop).not.toBeNull();
     expect(privateName).toEqual(missingName);
+  });
+
+  it("names no stop when the scanner's resolver failed for a moment, which says nothing of the name", async () => {
+    let lookups = 0;
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async (hostname) => {
+          lookups += 1;
+          if (lookups === 1)
+            throw Object.assign(new Error(`getaddrinfo EAI_AGAIN ${hostname}`), {
+              code: "EAI_AGAIN",
+            });
+          return publicAddress();
+        },
+      },
+      transport: transport().adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(evaluation.checks.find((check) => check.id === 1)?.errorCode).toBe("dns_error");
+    expect(scanStopReason(evaluation.checks)).toBeNull();
   });
 
   it("names no stop where the checks it could not assess were stopped for different reasons", async () => {

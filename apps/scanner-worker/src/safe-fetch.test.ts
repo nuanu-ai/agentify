@@ -421,7 +421,7 @@ describe("safe fetch policy", () => {
     expect(calls).toBe(1);
   });
 
-  it("answers a name that does not resolve with the request's own error", async () => {
+  it("answers a name that does not exist with the request's own error", async () => {
     const fetcher = new SafeFetcher(
       {
         resolve: async () => {
@@ -436,9 +436,37 @@ describe("safe fetch policy", () => {
     );
     await expect(fetcher.fetch("https://cdn.example.com/sitemap.xml")).resolves.toMatchObject({
       status: 0,
-      errorCode: "dns_error",
+      errorCode: "dns_not_found",
     });
   });
+
+  // Only "no such name" says something of the site: a resolver that could
+  // not answer says nothing of whether the name exists.
+  it.each([
+    ["a temporary failure", { code: "EAI_AGAIN" }],
+    ["a server failure", { code: "ESERVFAIL" }],
+    ["a refused query", { code: "EREFUSED" }],
+    ["a resolver timeout", { code: "ETIMEOUT" }],
+    ["an error with no code", {}],
+  ])(
+    "answers a lookup that failed with %s apart from a name that does not exist",
+    async (_, failure) => {
+      const fetcher = new SafeFetcher(
+        {
+          resolve: async () => {
+            throw Object.assign(new Error("lookup failed"), failure);
+          },
+        },
+        { request: async (input) => response(input) },
+        new RequestBudget(),
+        "scanner",
+      );
+      await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+        status: 0,
+        errorCode: "dns_error",
+      });
+    },
+  );
 
   it("stops waiting for a name that never resolves when the scan is cut short", async () => {
     const fetcher = new SafeFetcher(
