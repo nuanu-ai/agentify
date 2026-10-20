@@ -96,8 +96,8 @@ export function ScanTeaser({
               </div>
               {shareShown ? (
                 <p className={row.note}>
-                  Both buttons publish a link anyone can open, which shows only the domain, level,
-                  score, and scan date. You can revoke it.
+                  Copy share link and Publish image both publish a link anyone can open, which shows
+                  only the domain, level, score, and scan date. You can revoke it.
                 </p>
               ) : null}
             </div>
