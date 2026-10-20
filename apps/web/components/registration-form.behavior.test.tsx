@@ -170,6 +170,14 @@ describe("asking the scanner for a verification link", () => {
   it.each([
     ["never arrived", () => Promise.reject(new TypeError("Failed to fetch"))],
     [
+      "was a success the form cannot read, such as a sign-in portal's page",
+      async () =>
+        new Response("<html>Sign in to the network</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    ],
+    [
       "came from something other than the site",
       async () =>
         new Response("<html>Bad gateway</html>", {
