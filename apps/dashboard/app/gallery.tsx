@@ -2419,7 +2419,7 @@ const WOO_RECOVERY: GalleryState[] = [
     {
       mode: "delivered",
       wooOrderId: "13",
-      message: "Agentify confirms that this download was delivered.",
+      message: null,
     },
   ),
 ];

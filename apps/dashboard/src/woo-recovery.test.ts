@@ -469,7 +469,7 @@ describe("merchant recovery pages", () => {
 
     expect(result).toMatchObject({ kind: "view", view: { mode: "delivered", wooOrderId: "13" } });
     expect(result.kind === "view" && result.status).not.toBe(503);
-    expect(result.kind === "view" && result.view.message).not.toMatch(/unknown|not confirm/i);
+    expect(result.kind === "view" && result.view.message).toBeNull();
   });
 
   it("keeps the saved binding visible when the final gateway reread is unavailable", async () => {
