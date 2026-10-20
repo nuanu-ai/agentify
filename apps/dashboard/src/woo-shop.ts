@@ -714,6 +714,8 @@ const CartRateSchema = z.looseObject({
  */
 const CartSchema = z.looseObject({
   items: z.array(z.looseObject({ key: z.string(), id: z.number(), quantity: z.number() })),
+  /** What the cart's own checks raised, which the shop's checkout would refuse on. */
+  errors: z.array(z.unknown()),
   needs_shipping: z.boolean(),
   shipping_rates: z.array(
     z.looseObject({
@@ -847,6 +849,16 @@ export const shippingRatesInTheShop = async (
       why: "The shop's cart answered without its shipping rates.",
       again: false,
       saidNo: false,
+    };
+  }
+  // The order is made through the admin interface, which skips the checks
+  // that raised these, so the cart's refusal is the last word the shop gets.
+  if (read.data.errors.length > 0) {
+    return {
+      ok: false,
+      why: "The shop's cart refuses this product to this place.",
+      again: false,
+      saidNo: true,
     };
   }
   // The shop's plugins may change a cart while it is asked, raising a minimum
