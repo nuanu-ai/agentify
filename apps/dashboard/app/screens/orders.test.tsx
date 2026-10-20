@@ -271,6 +271,23 @@ describe("the counts beside a search", () => {
     expect(linksIn(toolsOf("q=virtual&show=open"))).toContain("/orders?show=open");
   });
 
+  it("offer one way back where the search found nothing", () => {
+    const page = served(() => (
+      <OrdersScreen
+        view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams("q=unfulfilled"))}
+      />
+    ));
+
+    expect(linksIn(page).filter((href) => href === "/orders")).toHaveLength(1);
+  });
+
+  it("say nothing more where the page searched for the one order it opens", () => {
+    // The page's own links to an order search for it; the merchant searched
+    // for nothing.
+    expect(readable(toolsOf(`q=${FIRST}&details=${FIRST}`))).not.toContain("“");
+    expect(readable(toolsOf(`q=${FIRST}`))).toContain(`“${FIRST}”`);
+  });
+
   it("say nothing of a search where there is none", () => {
     const tools = toolsOf("");
 
