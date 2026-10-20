@@ -180,14 +180,18 @@ export const fillFromTheShop = async (
   };
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-    // Refused either way, with the true reason: a shop that did not answer has
-    // said nothing about the product.
+    // Refused either way, with the true reason: a shop that did not answer, or
+    // whose answer could not be read, has said nothing about the product.
+    const silent = !inspected.ok && inspected.again;
+    const unread = !inspected.ok && !inspected.again && !inspected.saidNo;
+    if (!inspected.ok && unread) unreadable(order.id, inspected.why);
     return {
       refused: {
         code: "cannot_fulfill",
-        message:
-          !inspected.ok && inspected.again
-            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+        message: silent
+          ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+          : unread
+            ? UNREADABLE_PRODUCT
             : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
@@ -411,6 +415,10 @@ const fillParcelFromTheShop = async (
     console.error(`[dashboard] ${order.id} waits: ${inspected.why}`);
     return null;
   }
+  if (!inspected.ok && !inspected.saidNo) {
+    unreadable(order.id, inspected.why);
+    return await refuse(UNREADABLE_PRODUCT);
+  }
   if (!inspected.ok || inspected.product.kind !== "parcel") {
     return await refuse(
       "This shop product is no longer a parcel this connector sells, so no WooCommerce order was created.",
@@ -425,6 +433,13 @@ const fillParcelFromTheShop = async (
   if (!rates.ok && rates.again) {
     console.error(`[dashboard] ${order.id} waits: ${rates.why}`);
     return null;
+  }
+  if (!rates.ok && !rates.saidNo) {
+    unreadable(order.id, rates.why);
+    return await refuse(
+      "The shop's cart answered about shipping to this place in a way that could not be read or" +
+        " trusted, so no WooCommerce order was created.",
+    );
   }
   const goods = centsOf(product.price.amount);
   const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
@@ -512,6 +527,18 @@ const fillParcelFromTheShop = async (
     `[dashboard] ${order.id} has no verifiable WooCommerce creation result${inTheShop}`,
   );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
+};
+
+const UNREADABLE_PRODUCT =
+  "The shop's answer to the product check could not be read or trusted when this order was" +
+  " placed, so no WooCommerce order was created.";
+
+/**
+ * The buyer is told only that the answer could not be read; the merchant is
+ * told why, which is what they can repair. A reason carries no address.
+ */
+const unreadable = (orderId: string, why: string): void => {
+  console.error(`[dashboard] ${orderId} is refused, the shop's answer unread: ${why}`);
 };
 
 const samePermission = (left: WooPermission, right: WooPermission): boolean =>
