@@ -130,7 +130,7 @@ export const OrderListQuerySchema = z
   })
   .meta({
     description:
-      'Which orders to list. Written as text because a query string carries text. "true" narrows the list to the orders a restarted worker should walk: ones the merchant was handed and has not finished, an unfulfilled paid order, and one delivered but never paid for. An order that was priced and never paid, and never reached the handler, is not in that narrowing. Leaving the field out asks for everything.',
+      'Which orders to list. Written as text because a query string carries text. "true" narrows the list to the orders a restarted worker should walk: ones the merchant was handed and has not finished, an unfulfilled paid order, one delivered but never paid for, and one whose fulfillment the merchant closed before its payment completed, until the merchant closes it again. An order that was priced and never paid, and never reached the handler, is not in that narrowing. Leaving the field out asks for everything.',
   });
 
 /**
@@ -192,7 +192,10 @@ export const OrderCallResponseSchema = z.discriminatedUnion("ok", [
   OrderCallFailedSchema,
 ]);
 
-/** Closing fulfillment succeeds identically on a retry; the first action stays recorded. */
+/**
+ * Closing fulfillment succeeds identically on a retry, and the first closure
+ * stays recorded unless a payment completed after it.
+ */
 export const OrderCloseResponseSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true) }),
   OrderCallFailedSchema,
@@ -773,7 +776,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders/:order_id/close",
     auth: "merchant_key",
     description:
-      "Stops future fulfillment through Agentify for this merchant's order. The optional message is the merchant's statement to the buyer and establishes no refund or settled agreement. The first closure time and message stay unchanged on every retry, which succeeds as ok: true. Original payment facts, accepted payment authorization, goods already held and order history remain. Closure does not cancel a payment already accepted for execution: the original payment may still complete and update after closure. Closure causes no new charge or release. An order whose goods were delivered or whose parcel's shipment is recorded is refused as fulfillment_complete, and one that ended without a charge and holds nothing for its buyer (rejected, declined, expired, cancelled) as nothing_to_close; neither refusal changes the order. An unknown order and another merchant's order are answered identically.",
+      "Stops future fulfillment through Agentify for this merchant's order and answers ok: true. The optional message is the merchant's statement to the buyer, which the buyer's agent reads as the merchant's own words; it establishes no refund or settled agreement. A retry also answers ok: true and keeps the first closure time and message. Closure keeps the original payment facts, an accepted payment authorization, goods already held and the order's history; it causes no new charge and releases nothing. It does not cancel a payment already accepted for execution, which may still complete after closure. When such a payment completes, the merchant receives order.unfulfilled with reason paid_after_closure, and the order is on the merchant's open order list until the merchant closes it again; that closure records its own time and message. An order whose goods were delivered or whose parcel's shipment is recorded is refused as fulfillment_complete, and one that ended without a charge and holds nothing for its buyer (rejected, declined, expired, cancelled) as nothing_to_close; neither refusal changes the order. An unknown order and another merchant's order are answered identically.",
     request: OrderCloseRequestSchema,
     response: { document: OrderCloseResponseSchema },
   },

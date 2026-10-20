@@ -36,6 +36,7 @@ import {
   holdsShipTo,
   moneyInvariantViolations,
   outcomeFor,
+  paidAfterClosure,
   transition,
 } from "@agentify/core";
 import {
@@ -1390,9 +1391,11 @@ export function merchantClosureOf(order: Order): {
 function reasonOf(order: Order): {
   reason?: { code: EndingReason | UnfulfilledReason; message: string };
 } {
-  if (outcomeFor(order) === "unfulfilled") {
-    const reason = unfulfilledReasonOf(order);
-    return { reason: { code: reason, message: UNFULFILLED_WORDS[reason](order) } };
+  // A payment after closure is the merchant's news; the agent reads that order
+  // as closed.
+  const unfulfilled = outcomeFor(order) === "unfulfilled" ? unfulfilledReasonOf(order) : null;
+  if (unfulfilled !== null && unfulfilled !== "paid_after_closure") {
+    return { reason: { code: unfulfilled, message: UNFULFILLED_WORDS[unfulfilled](order) } };
   }
   const code = endingReasonFor(order);
   if (code === null) {
@@ -1401,7 +1404,9 @@ function reasonOf(order: Order): {
   return { reason: { code, message: REASON_WORDS[code](order) } };
 }
 
-const UNFULFILLED_WORDS: Readonly<Record<UnfulfilledReason, (order: Order) => string>> = {
+const UNFULFILLED_WORDS: Readonly<
+  Record<Exclude<UnfulfilledReason, "paid_after_closure">, (order: Order) => string>
+> = {
   refused: () =>
     "The seller refused this paid order, in their own words under refusal. Agentify has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   deadline_passed: (order) =>
@@ -1506,9 +1511,13 @@ function shipByOf(order: Order): string | null {
  * charge that reported in after we gave up on it is folded into
  * `deadline_passed`, meaning our deadline on the charge and not his on the
  * goods, because the vocabulary has no word for our side losing track of the
- * money.
+ * money. A payment that completed after the merchant closed fulfillment is
+ * `paid_after_closure`, whatever had happened before.
  */
 function unfulfilledReasonOf(order: Order): UnfulfilledReason {
+  if (paidAfterClosure(order)) {
+    return "paid_after_closure";
+  }
   const closure = order.closure;
   if (closure === null) {
     throw new Error(`the paid order ${order.id} is unfulfilled with nothing recording why`);

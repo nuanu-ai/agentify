@@ -616,7 +616,17 @@ export type Order = {
    */
   readonly heldFulfillment: boolean;
   readonly closure: Closure | null;
-  readonly merchantClosure?: { readonly at: number; readonly message?: string };
+  /**
+   * The merchant's closure of fulfillment: when, and their optional words.
+   * `paymentCompletedAt` is when a payment that was unresolved at closure
+   * completed afterwards. It marks the order as waiting for the merchant to
+   * close it again, which records a new closure without it.
+   */
+  readonly merchantClosure?: {
+    readonly at: number;
+    readonly message?: string;
+    readonly paymentCompletedAt?: number;
+  };
   readonly test: boolean;
   readonly timestamps: OrderTimestamps;
 };

@@ -174,10 +174,15 @@ export function endingReasonFor(order: Order): EndingReason | null {
  * that never happened (the buyer still reads `in_progress`). A charge nobody
  * heard back from is listed even so, with a status saying the outcome is
  * unknown. An order waiting on the buyer's payment after a confirmation is not
- * listed: nothing there is the merchant's to deliver.
+ * listed: nothing there is the merchant's to deliver. A closed order whose
+ * payment completed after the closure is listed until the merchant closes it
+ * again, since the buyer paid and nothing was delivered.
  */
 export function onTheMerchantsOpenList(order: Order): boolean {
   if (order.payment === "outcome_unknown" && isOpen(order.state)) {
+    return true;
+  }
+  if (paidAfterClosure(order)) {
     return true;
   }
 
@@ -203,4 +208,25 @@ export function onTheMerchantsOpenList(order: Order): boolean {
     default:
       return assertNever(order.state, "order state");
   }
+}
+
+/**
+ * Whether the buyer's payment completed after the merchant had closed
+ * fulfillment, and the merchant has not closed the order again since. The
+ * merchant was told by `order.unfulfilled`, and the order waits on their list.
+ */
+export function paidAfterClosure(order: Order): boolean {
+  return (
+    order.state === "fulfillment_closed" &&
+    order.payment === "settled" &&
+    order.merchantClosure?.paymentCompletedAt !== undefined
+  );
+}
+
+/**
+ * Whether the store keeps an order on its open list: an open state, or a
+ * closed order whose payment completed after the closure.
+ */
+export function listedAsOpen(order: Order): boolean {
+  return isOpen(order.state) || paidAfterClosure(order);
 }

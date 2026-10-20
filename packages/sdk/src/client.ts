@@ -125,12 +125,17 @@ export interface OrderCalls {
   accept(): Promise<OrderAcceptResponse>;
 
   /**
-   * Stops future fulfillment through Agentify. Repeating preserves the first
-   * closure and message. The message is the merchant's statement to the buyer;
-   * Agentify confirms no refund or agreement. This does not cancel a payment
-   * already accepted for execution: its original outcome may still update.
-   * Closing causes no new charge, and Agentify keeps checking the original
-   * payment for an outcome. Closing cannot be undone.
+   * Stops future fulfillment through Agentify for this order. The message is
+   * your statement to the buyer, which their agent reads as your words;
+   * Agentify confirms no refund or agreement. Repeating the call succeeds and
+   * keeps the first closure's time and message. Closing cannot be undone, and
+   * it causes no new charge.
+   *
+   * It does not cancel a payment already accepted for execution, and Agentify
+   * keeps checking that payment for an outcome. If it completes after you
+   * closed, you receive `order.unfulfilled` with reason `paid_after_closure`,
+   * and the order is on `orders.list({ open: true })` until you close it
+   * again, which records that closure's own time and message.
    *
    * Resolves to `{ ok: true }`, or to `ok: false` with an `error` and leaves the
    * order unchanged: `fulfillment_complete` where the goods were delivered or
@@ -257,7 +262,8 @@ export interface OrdersNamespace {
   /**
    * Orders and the states they are in. With `open: true`, only the ones a
    * restarted worker should walk: orders it was handed and has not finished,
-   * an unfulfilled paid order, and one delivered but never paid for. An order
+   * an unfulfilled paid order, one delivered but never paid for, and a closed
+   * one whose payment completed after you closed it. An order
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it. Throws `AgentifyError` when the call
    * fails.

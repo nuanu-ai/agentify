@@ -51,6 +51,7 @@ import type {
   TransitionResult,
 } from "./model.js";
 import { effectsOnQuoted, endedWithNothingHeld, holdsShipTo } from "./model.js";
+import { paidAfterClosure } from "./outcome.js";
 import { nextRedelivery } from "./redelivery.js";
 
 /**
@@ -124,7 +125,10 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
     if (endedWithNothingHeld(order) && !paymentUnresolved(order)) {
       return answer(order, { ok: false, error: "nothing_to_close", retryable: false });
     }
-    if (order.merchantClosure !== undefined) {
+    // A repeat keeps the first closure, unless a payment completed after it:
+    // then the merchant closes again knowing the buyer paid, and that closure
+    // is the one recorded.
+    if (order.merchantClosure !== undefined && !paidAfterClosure(order)) {
       return answer(order, { ok: true, result: "purchase_already_closed" });
     }
     return answer(
@@ -1263,9 +1267,25 @@ function fromUnfulfilled(order: Order, event: StateEvent): TransitionResult {
 function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "payment_settled":
+      // The buyer paid for an order the merchant had already closed, perhaps
+      // saying nothing was charged. Nothing is delivered, and the merchant is
+      // told, as for any paid order left unfulfilled.
+      if (!paymentUnresolved(order)) {
+        return notApplicable(order, event);
+      }
+      return ok(
+        {
+          ...order,
+          payment: "settled",
+          ...(order.merchantClosure === undefined
+            ? {}
+            : { merchantClosure: { ...order.merchantClosure, paymentCompletedAt: event.at } }),
+        },
+        [{ kind: "emit_merchant_event", event: "order.unfulfilled" }],
+      );
     case "payment_settle_failed":
-      return order.payment === "settling" || order.payment === "outcome_unknown"
-        ? ok({ ...order, payment: event.kind === "payment_settled" ? "settled" : "settle_failed" })
+      return paymentUnresolved(order)
+        ? ok({ ...order, payment: "settle_failed" })
         : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
@@ -1275,8 +1295,18 @@ function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResul
     case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
-    default:
+    case "quote_answered":
+    case "quote_silent":
+    case "payment_verified":
+    case "payment_verification_failed":
+    case "confirmation_dispatched":
+    case "order_dispatched":
+    case "handler_accepted":
+    case "handler_refused":
+    case "handler_undelivered":
       return notApplicable(order, event);
+    default:
+      return assertNever(event, "order event");
   }
 }
 

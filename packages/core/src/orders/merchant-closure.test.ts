@@ -4,7 +4,7 @@ import { must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import { ORDER_STATES, type OrderState } from "./model.js";
 import { moneyInvariantViolations } from "./money.js";
-import { outcomeFor } from "./outcome.js";
+import { onTheMerchantsOpenList, outcomeFor, paidAfterClosure } from "./outcome.js";
 
 const ENDED_WITHOUT_A_CHARGE: readonly OrderState[] = [
   "failed",
@@ -146,9 +146,88 @@ describe("the merchant closes Agentify fulfillment without deciding the money", 
       expect(completed.order.state).toBe("fulfillment_closed");
       expect(completed.order.payment).toBe(settled ? "settled" : "settle_failed");
       expect(completed.order.closure).toStrictEqual(pending.closure);
-      expect(completed.order.merchantClosure).toStrictEqual(closed.merchantClosure);
-      expect(completed.effects).toEqual([]);
       expect(moneyInvariantViolations(completed.order)).toEqual([]);
     },
   );
+
+  it.each(["settling", "outcome_unknown"] as const)(
+    "tells the merchant when a payment unresolved at closure completes afterwards, and lists the order for them (%s)",
+    (unresolved) => {
+      const closed = must(reach("fulfilled"), {
+        kind: "close_called",
+        at: T0 + 10,
+        message: "Your payment did not go through.",
+      }).order;
+      const waiting =
+        unresolved === "settling"
+          ? closed
+          : must(closed, {
+              kind: "deadline_expired",
+              at: deadlines(closed)[0]?.at ?? Number.NaN,
+              deadline: "settle_response",
+            }).order;
+      expect(waiting.payment).toBe(unresolved);
+      expect(onTheMerchantsOpenList(waiting)).toBe(false);
+
+      const paid = must(waiting, { kind: "payment_settled", at: T0 + 100_000 });
+      expect(paid.order).toMatchObject({
+        state: "fulfillment_closed",
+        payment: "settled",
+        merchantClosure: {
+          at: T0 + 10,
+          message: "Your payment did not go through.",
+          paymentCompletedAt: T0 + 100_000,
+        },
+      });
+      expect(paid.effects).toStrictEqual([
+        { kind: "emit_merchant_event", event: "order.unfulfilled" },
+      ]);
+      expect(paidAfterClosure(paid.order)).toBe(true);
+      expect(onTheMerchantsOpenList(paid.order)).toBe(true);
+      expect(moneyInvariantViolations(paid.order)).toEqual([]);
+    },
+  );
+
+  it("tells nobody and lists nothing when a payment unresolved at closure fails afterwards", () => {
+    const closed = must(reach("fulfilled"), { kind: "close_called", at: T0 + 10 }).order;
+    const failed = must(closed, { kind: "payment_settle_failed", at: T0 + 100_000 });
+    expect(failed.effects).toStrictEqual([]);
+    expect(failed.order.merchantClosure).toStrictEqual(closed.merchantClosure);
+    expect(paidAfterClosure(failed.order)).toBe(false);
+    expect(onTheMerchantsOpenList(failed.order)).toBe(false);
+  });
+
+  it("does not list a paid order the merchant closed after its payment had completed", () => {
+    const closed = reach("fulfillment_closed");
+    expect(closed.payment).toBe("settled");
+    expect(paidAfterClosure(closed)).toBe(false);
+    expect(onTheMerchantsOpenList(closed)).toBe(false);
+  });
+
+  it("records a new closure once the merchant closes again after the late payment, and keeps that one on repeat", () => {
+    const closed = must(reach("fulfilled"), {
+      kind: "close_called",
+      at: T0 + 10,
+      message: "Your payment did not go through.",
+    }).order;
+    const paid = must(closed, { kind: "payment_settled", at: T0 + 100_000 }).order;
+    const again = must(paid, {
+      kind: "close_called",
+      at: T0 + 200_000,
+      message: "Your payment arrived late; we returned it to your wallet.",
+    });
+    expect(again.order).toStrictEqual({
+      ...paid,
+      merchantClosure: {
+        at: T0 + 200_000,
+        message: "Your payment arrived late; we returned it to your wallet.",
+      },
+    });
+    expect(again.effects).toStrictEqual([
+      { kind: "answer_merchant", answer: { ok: true, result: "purchase_already_closed" } },
+    ]);
+    expect(onTheMerchantsOpenList(again.order)).toBe(false);
+    const repeated = must(again.order, { kind: "close_called", at: T0 + 300_000, message: "x" });
+    expect(repeated.order).toStrictEqual(again.order);
+  });
 });

@@ -9,7 +9,7 @@
  * are the same answer.
  */
 
-import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
+import { listedAsOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -1340,7 +1340,7 @@ function rowFor(record: StoredOrder) {
   return {
     id: record.order.id,
     state: record.order.state,
-    open: isOpen(record.order.state),
+    open: listedAsOpen(record.order),
     merchantId: record.merchantId,
     itemId: record.itemId,
     merchantItemId: record.merchantItemId,

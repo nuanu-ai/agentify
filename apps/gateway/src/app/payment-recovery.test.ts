@@ -116,7 +116,9 @@ describe("recovering a payment without another charge", () => {
           payment: settled ? "settled" : "settle_failed",
         });
         expect(after?.paymentAttempt?.completion?.settled).toBe(settled);
-        expect(await h.gateway.poll(h.merchant.id, 0)).toMatchObject({ envelopes: [] });
+        expect((await h.gateway.poll(h.merchant.id, 0)).envelopes).toMatchObject(
+          settled ? [{ payload: { type: "order.unfulfilled", reason: "paid_after_closure" } }] : [],
+        );
         expect(await h.store.receipts(h.merchant.id)).toEqual([]);
         expect((await h.store.claimPayment("fp-original", "ord_other")).claimed).toBe(false);
         await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
@@ -150,7 +152,9 @@ describe("recovering a payment without another charge", () => {
     const closed = await h.store.orderById(orderId);
     expect(closed?.order).toMatchObject({ state: "fulfillment_closed", payment: "settled" });
     expect(closed?.paymentAttempt?.completion).toMatchObject({ settled: true, source: "chain" });
-    expect(await h.gateway.poll(h.merchant.id, 0)).toMatchObject({ envelopes: [] });
+    expect((await h.gateway.poll(h.merchant.id, 0)).envelopes).toMatchObject([
+      { payload: { type: "order.unfulfilled", reason: "paid_after_closure" } },
+    ]);
     expect(await h.store.receipts(h.merchant.id)).toEqual([]);
     expect(h.facilitator.settles).toHaveLength(1);
   });

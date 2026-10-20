@@ -105,7 +105,9 @@ export type { EndingReason, OrderOutcome } from "./orders/outcome.js";
 export {
   ENDING_REASONS,
   endingReasonFor,
+  listedAsOpen,
   ORDER_OUTCOMES,
   onTheMerchantsOpenList,
   outcomeFor,
+  paidAfterClosure,
 } from "./orders/outcome.js";
