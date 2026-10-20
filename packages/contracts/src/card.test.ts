@@ -880,7 +880,7 @@ describe("a card as a discovery channel reads it", () => {
     }
   });
 
-  /** The fields every order document carries, whatever became of the order. */
+  /** The fields the document of a paid order carries, whatever became of its goods. */
   const orderFields = [
     "delivered",
     "order_id",
@@ -890,6 +890,7 @@ describe("a card as a discovery channel reads it", () => {
     "status",
     "status_url",
     "test",
+    "transaction",
   ];
 
   it("publishes as its output the order a purchase answers, with the goods under delivered", () => {
@@ -997,6 +998,7 @@ describe("a parcel's listing in a discovery catalog", () => {
       "status",
       "status_url",
       "test",
+      "transaction",
     ]);
     expect(example.payment_status).toBe("paid");
     expect(example.status).toBe("in_progress");

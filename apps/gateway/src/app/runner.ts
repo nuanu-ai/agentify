@@ -1259,10 +1259,7 @@ export class OrderRunner {
         : moneyMovedNow
           ? at
           : (record.order.timestamps.paidAt ?? at);
-    const transaction =
-      completion?.settled && completion.executedAt !== null
-        ? completion.transaction
-        : record.settlement?.transaction;
+    const transaction = paidTransactionOf(record);
 
     // The merchant comes from the order, not through the card: a card can be
     // republished or taken off sale, and a receipt names who made the sale
@@ -1280,9 +1277,7 @@ export class OrderRunner {
       ...(record.priceId === null ? {} : { price_id: record.priceId }),
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
-      // An empty transaction is left off: the contract refuses one, and a
-      // single refused receipt would break the merchant's whole list.
-      ...(transaction === undefined || transaction.trim() === "" ? {} : { transaction }),
+      ...(transaction === undefined ? {} : { transaction }),
       test: record.order.test,
     };
   }
@@ -1385,6 +1380,7 @@ export function agentOrderStatusOf(
     status_url: statusUrlOf(config, record.order.id),
     status,
     payment_status: paymentStatusOf(record.order),
+    ...transactionOf(record),
     ...merchantClosureOf(record.order),
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.
@@ -1425,6 +1421,28 @@ export function agentOrderStatusOf(
       : {}),
     ...reasonOf(record.order),
   };
+}
+
+/**
+ * The transaction that paid this order: the one the chain showed for a payment
+ * recovery found there, otherwise the one the facilitator named when it
+ * confirmed the charge. Neither is recorded for a charge that failed or went
+ * unanswered. An empty one is left off: the contract refuses one, and a single
+ * refused document would break a whole list.
+ */
+export function paidTransactionOf(record: StoredOrder): string | undefined {
+  const completion = record.paymentAttempt?.completion;
+  const transaction =
+    completion?.settled && completion.executedAt !== null
+      ? completion.transaction
+      : record.settlement?.transaction;
+  return transaction === undefined || transaction.trim() === "" ? undefined : transaction;
+}
+
+/** The transaction field of a document about this order, where it has one. */
+function transactionOf(record: StoredOrder): { readonly transaction?: string } {
+  const transaction = paidTransactionOf(record);
+  return transaction === undefined ? {} : { transaction };
 }
 
 export function paymentStatusOf(order: Order): PaymentStatus {

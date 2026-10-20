@@ -20,7 +20,8 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
-import { agentOrderStatusOf } from "../app/runner.js";
+import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
+import type { StoredOrder } from "../ports/store.js";
 import {
   BAD_REQUEST,
   bodyRefused,
@@ -736,6 +737,7 @@ async function answerPurchase(
       // the charge has not reported back yet. Where the goods come later, 200
       // is honest, and `status_url` is the only place the agent learns where to
       // collect them.
+      sayWhatPaid(edge, response, attempt.order, gateway.runtime.config.payment.network);
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
@@ -746,19 +748,7 @@ async function answerPurchase(
       };
 
     case "settled": {
-      const settlement = attempt.order.settlement;
-      if (settlement !== null) {
-        // The payment layer's receipt, the agent's proof that money moved.
-        response.setHeader(
-          PAYMENT_RESPONSE_HEADER,
-          edge.receiptHeader({
-            success: true,
-            transaction: settlement.transaction,
-            network: gateway.runtime.config.payment.network as `${string}:${string}`,
-          }),
-        );
-      }
-
+      sayWhatPaid(edge, response, attempt.order, gateway.runtime.config.payment.network);
       return {
         status: ["delivered", "shipped"].includes(outcomeFor(attempt.order.order)) ? OK : CONFLICT,
         document: agentOrderStatusOf(
@@ -769,6 +759,25 @@ async function answerPurchase(
       };
     }
   }
+}
+
+/**
+ * The standard x402 payment response, the agent's proof that money moved, on
+ * any answer about an order whose charge has gone through by now, whether or
+ * not the goods have come.
+ */
+function sayWhatPaid(
+  edge: PaymentEdge,
+  response: RouteCall["response"],
+  order: StoredOrder,
+  network: string,
+): void {
+  const transaction = paidTransactionOf(order);
+  if (transaction === undefined) return;
+  response.setHeader(
+    PAYMENT_RESPONSE_HEADER,
+    edge.receiptHeader({ success: true, transaction, network: network as `${string}:${string}` }),
+  );
 }
 
 function written(response: RouteCall["response"], status: number, document: unknown): RouteAnswer {
