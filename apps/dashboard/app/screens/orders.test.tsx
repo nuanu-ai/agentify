@@ -478,25 +478,30 @@ describe("a long run of orders told in full", () => {
     expect(reached).not.toContain(done);
   });
 
-  it("opens an order's closure on the page of Needs you it was found on, and carries that page in the form", () => {
+  it("closes an order on the page of Needs you it is on, from one control on its row, carrying that page in the form", () => {
     // A merchant working through the orders that need them comes back where
-    // they were after each closure.
+    // they were after each closure, and each row has one way to it.
     const owing = sixtyOf("unfulfilled");
-    const drawnAt = (address: URLSearchParams) =>
-      served(() => <OrdersScreen view={ordersView("live", CARDS, owing, owing, address)} />);
-    const second = drawnAt(new URLSearchParams("show=needs&page=2"));
-    const [id] = toldIn(second, "Orders that need you");
+    const drawnAt = (address: string) =>
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, owing, owing, new URLSearchParams(address))}
+        />
+      ));
+    const second = drawnAt("show=needs&page=2");
+    const [id = ""] = toldIn(second, "Orders that need you");
+    const rowOf = (html: string) =>
+      html.split("<li ").find((row) => row.includes(`name="order_id" value="${id}"`)) ?? "";
+    const row = rowOf(second);
+    const form = formsIn(second).find((one) => one.fields.get("order_id") === id);
 
-    const link =
-      [...second.matchAll(/<a [^>]*href="([^"]*)"/g)]
-        .map((found) => (found[1] ?? "").replaceAll("&amp;", "&"))
-        .find((href) => href.includes(`details=${id}`)) ?? "";
-    const opened = new URL(link, "https://agentify.ad").searchParams;
-    const form = formsIn(drawnAt(opened)).find((one) => one.fields.get("order_id") === id);
-
-    expect([opened.get("show"), opened.get("page")]).toStrictEqual(["needs", "2"]);
+    expect(row.match(/<summary aria-label=/g)).toHaveLength(1);
+    expect(row).toMatch(/<summary[^>]*aria-label="Close fulfillment for /);
+    expect(row).not.toMatch(/<a [^>]*href="[^"]*details=/);
     expect(form?.fields.get("show")).toBe("needs");
     expect(form?.fields.get("page")).toBe("2");
+    // Named by the address, as the closure's answer names it, it is open.
+    expect(rowOf(drawnAt(`show=needs&page=2&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
   });
 
   it("says once which of how many it shows where the list is the orders that need the merchant", () => {
