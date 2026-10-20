@@ -294,8 +294,9 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       <ListTools
         listing={listing}
         path="/orders"
-        label="Search orders"
+        label="Search orders by ID or product"
         placeholder="Search by order ID or product"
+        searched={(q) => `Only orders whose ID or product matches “${q}” are counted and shown.`}
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {here?.key === "needs" ? (

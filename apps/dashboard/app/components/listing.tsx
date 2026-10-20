@@ -14,6 +14,7 @@ export function ListTools({
   path,
   label,
   placeholder,
+  searched,
 }: Readonly<{
   listing: Listing<unknown>;
   /** The list's page, without the dashboard's prefix. */
@@ -21,6 +22,12 @@ export function ListTools({
   /** What the search box is called, "Search cards". */
   label: string;
   placeholder: string;
+  /**
+   * Where a search was made, the sentence saying what it reads and that the
+   * counts are its own, given the words searched for; the way back to the
+   * whole list follows it.
+   */
+  searched?: (q: string) => string;
 }>) {
   const going = useGoingTo();
   const goingTo =
@@ -63,6 +70,20 @@ export function ListTools({
       {listing.search.cutAt === null ? null : (
         <p className="search-cut">
           {`Only the first ${listing.search.cutAt} characters of the search were used.`}
+        </p>
+      )}
+      {searched === undefined || listing.search.q === "" ? null : (
+        <p className="search-cut">
+          {searched(listing.search.q)}{" "}
+          <Link
+            to={
+              listing.search.show === null
+                ? path
+                : `${path}?${new URLSearchParams({ show: listing.search.show })}`
+            }
+          >
+            Clear the search
+          </Link>
         </p>
       )}
     </div>
