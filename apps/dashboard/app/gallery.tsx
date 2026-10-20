@@ -2208,7 +2208,7 @@ const WOOCOMMERCE: GalleryState[] = [
 
 const RECOVERY_SALE = {
   orderId: idOf("ord", "Coffee & Brunch Gift Card recovery"),
-  product: imported("Coffee & Brunch Gift Card").card.merchant_item_id,
+  product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
   amount: "25.00 USD",
   test: true,
@@ -2220,28 +2220,54 @@ const RECOVERY_FRAME = {
   account: bannerOf(seenBy("test"), { through: "woocommerce", selling: "open" }),
 };
 
+/** A recovery page as the server draws it: drawn on opening, or answering a press. */
+const recovery = (
+  told: Told,
+  view: Omit<WooRecoveryView, keyof typeof RECOVERY_SALE | "typedRefusal"> &
+    Partial<Pick<WooRecoveryView, "typedRefusal">>,
+  answering = false,
+): GalleryState => {
+  const drawn = { ...RECOVERY_SALE, typedRefusal: null, ...view } satisfies WooRecoveryView;
+  return at(told, {
+    ...RECOVERY_FRAME,
+    ...(answering
+      ? {
+          loaded: { "routes/woocommerce-recovery": null },
+          pressed: { "routes/woocommerce-recovery": drawn },
+        }
+      : { loaded: { "routes/woocommerce-recovery": drawn } }),
+  });
+};
+
 const WOO_RECOVERY: GalleryState[] = [
-  at(
+  recovery(
     {
       id: "dashboard-woo-recovery-link",
       screen: "Recover WooCommerce delivery",
       when: "A merchant opens recovery for their download whose shop order creation was not confirmed.",
       cause:
-        "The saved sale has no linked shop order; the merchant can name the exact existing order for the connector to verify before delivering its download.",
+        "The saved sale has no linked shop order; the merchant can name the exact existing order for the connector to verify before delivering its download, or close fulfillment if the shop holds none.",
+    },
+    { mode: "link", wooOrderId: "", message: null },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-mismatch",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant enters a shop order that is not this sale's.",
+      cause:
+        "The connector read the order and it differs from the sale; each fact that differs is named under the box, and nothing was linked or delivered.",
     },
     {
-      ...RECOVERY_FRAME,
-      loaded: {
-        "routes/woocommerce-recovery": {
-          ...RECOVERY_SALE,
-          mode: "link",
-          wooOrderId: "",
-          message: null,
-        } satisfies WooRecoveryView,
-      },
+      mode: "link",
+      wooOrderId: "14",
+      message: null,
+      typedRefusal:
+        "That order does not match this sale: its status is cancelled, not Processing or Completed; it was not paid with Agentify.",
     },
+    true,
   ),
-  at(
+  recovery(
     {
       id: "dashboard-woo-recovery-retry",
       screen: "Recover WooCommerce delivery",
@@ -2249,20 +2275,41 @@ const WOO_RECOVERY: GalleryState[] = [
       cause:
         "The shop order and its download were saved before the delivery answer was lost; their ID stays visible and the next press retries the same delivery.",
     },
+    { mode: "retry", wooOrderId: "13", message: "Agentify did not confirm the late delivery." },
+    true,
+  ),
+  recovery(
     {
-      ...RECOVERY_FRAME,
-      loaded: { "routes/woocommerce-recovery": null },
-      pressed: {
-        "routes/woocommerce-recovery": {
-          ...RECOVERY_SALE,
-          mode: "retry",
-          wooOrderId: "13",
-          message: "Agentify did not confirm the late delivery.",
-        } satisfies WooRecoveryView,
-      },
+      id: "dashboard-woo-recovery-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A press of Link and deliver failed inside Agentify partway.",
+      cause:
+        "Whether a shop order or a delivery was recorded is not known, so the page says so and asks for a reload before another press.",
+    },
+    {
+      mode: "link",
+      wooOrderId: "13",
+      message:
+        "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-unavailable",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
+      cause:
+        "This page cannot create a shop order, so it offers no press and says what the merchant can do instead.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message:
+        "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders.",
     },
   ),
-  at(
+  recovery(
     {
       id: "dashboard-woo-recovery-delivered",
       screen: "Recover WooCommerce delivery",
@@ -2271,15 +2318,9 @@ const WOO_RECOVERY: GalleryState[] = [
         "The saved shop order and Agentify's fresh delivered readback agree; the page confirms delivery and offers no further recovery press.",
     },
     {
-      ...RECOVERY_FRAME,
-      loaded: {
-        "routes/woocommerce-recovery": {
-          ...RECOVERY_SALE,
-          mode: "delivered",
-          wooOrderId: "13",
-          message: "Agentify confirms that this download was delivered.",
-        } satisfies WooRecoveryView,
-      },
+      mode: "delivered",
+      wooOrderId: "13",
+      message: "Agentify confirms that this download was delivered.",
     },
   ),
 ];
