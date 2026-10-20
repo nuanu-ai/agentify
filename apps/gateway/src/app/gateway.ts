@@ -1395,13 +1395,18 @@ export class Gateway {
     // for an order already paid, which only returns the purchase to its payer,
     // is checked against where that order's money went: the payment request
     // its payer kept names that split, whatever the merchant is paid at today.
+    // Where that split is one the merchant has left, the payment is fit only
+    // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+    const payeeNow =
+      payingMerchant === null
+        ? null
+        : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
     const payTo =
       before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order)
         ? before.payTo
-        : payingMerchant === null
-          ? null
-          : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
+        : payeeNow;
+    const onlyReturns = payTo?.toLowerCase() !== payeeNow?.toLowerCase();
 
     const verified = await this.runtime.facilitator.verify({
       paymentRef: before.paymentRef,
@@ -1547,10 +1552,14 @@ export class Gateway {
       payment,
       payTo,
       this.runtime.clock(),
-      { fingerprint, ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }) },
+      {
+        fingerprint,
+        onlyReturns,
+        ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }),
+      },
     );
 
-    // These two turned the payment away before it spent anything, so the claim
+    // These turned the payment away before it spent anything, so the claim
     // is released; held, it would tell the buyer who lost the race that their
     // next attempt was already spent on somebody else's order. `refused` keeps
     // its claim, because some of its causes have moved money.
@@ -1568,6 +1577,17 @@ export class Gateway {
       return now !== null && overWithNothingHeld(now)
         ? noPaymentTakenFor(now.order)
         : { step: "not_this_purchase" };
+    }
+    if (taken.kind === "payee_left") {
+      this.runner.purchases.giveUp(key);
+      await this.runtime.store.releaseClaim(fingerprint, orderId);
+      // What this payment is told if it is presented again, now that the order
+      // checks it against where the merchant is paid today.
+      return {
+        step: "payment_not_verified",
+        why: `nothing was charged: ${NEXT_STEP_AFTER.price_stale}`,
+        retryable: false,
+      };
     }
     if (taken.kind === "refused") {
       this.runner.purchases.giveUp(key);

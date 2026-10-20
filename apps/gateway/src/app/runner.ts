@@ -123,6 +123,8 @@ export type PresentResult =
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
+  /** A payment fit only to return a paid purchase, for an order that would now charge it. */
+  | { readonly kind: "payee_left" }
   | { readonly kind: "no_such_order" };
 
 /** What one hold on an order came to, before its effects are carried out. */
@@ -144,7 +146,8 @@ type PresentDecided =
     }
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
-  | { readonly kind: "refused"; readonly rejection: TransitionRejection };
+  | { readonly kind: "refused"; readonly rejection: TransitionRejection }
+  | { readonly kind: "payee_left" };
 
 export type Applied =
   | {
@@ -434,7 +437,16 @@ export class OrderRunner {
     payment: string,
     payTo: string | null,
     at: number,
-    verified?: { readonly recovery?: PaymentRecoveryContext; readonly fingerprint: string },
+    verified?: {
+      readonly recovery?: PaymentRecoveryContext;
+      readonly fingerprint: string;
+      /**
+       * Checked against the split a paid order's money went to, which is no
+       * longer where its merchant is paid, so the payment may return the
+       * purchase and must not be charged.
+       */
+      readonly onlyReturns?: boolean;
+    },
   ): Promise<PresentResult> {
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
@@ -456,6 +468,11 @@ export class OrderRunner {
           // The owner is asking again about a purchase already under way. The
           // answer is wherever it has got to, and nothing changes.
           return { result: { kind: "already_yours", state: found.order.state } };
+        }
+        // The order came to take a new charge while the payment was checked,
+        // and charged now its money would go to a wallet the merchant left.
+        if (verified?.onlyReturns === true) {
+          return { result: { kind: "payee_left" } };
         }
 
         let order = found.order;
