@@ -695,7 +695,9 @@ none, and neither has a paid order that was never delivered or shipped,
 including one you closed. A payment found after its deadline writes a receipt
 only where it releases goods already held, and never once you closed
 fulfillment. Receipts therefore do not account for all the money you
-received.
+received. The buyer's status names the transaction of every paid order under
+`transaction` once its payment has gone through, so a payment whose goods are
+still to come can be proved without searching the chain for it.
 
 | Field | What it is |
 | --- | --- |

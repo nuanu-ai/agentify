@@ -122,7 +122,9 @@ of your dashboard lists them, and what each field means is on
 
 A receipt follows the goods, so an order paid for and never delivered has
 none, and neither has a payment nobody knows the outcome of. Receipts
-therefore do not account for all the money you received. When the answer to a
+therefore do not account for all the money you received. A paid order without a
+receipt still names the transaction that paid it to its buyer: the buyer's
+status carries `transaction` once the payment has gone through. When the answer to a
 purchase is lost on the way and the agent repeats it, it receives what was
 already delivered, with no second charge and no second delivery asked of you.
 
