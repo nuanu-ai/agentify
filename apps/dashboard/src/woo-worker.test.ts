@@ -332,6 +332,9 @@ describe("one paid order, in the merchant's own shop", () => {
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(JSON.stringify(answer)).not.toMatch(/did not answer/);
+    // The shop's own no is told as the product having changed, not as an
+    // answer nobody could read.
+    expect(JSON.stringify(answer)).toMatch(/no longer/);
     expect(shop.placed).toHaveLength(0);
   });
 
@@ -1663,6 +1666,17 @@ describe("a parcel's paid order", () => {
     // shipping changed.
     for (const [what, overrides] of [
       ["out of stock", { inspectProduct: async () => RULED_OUT }],
+      [
+        "the place refused",
+        {
+          shippingRates: async (): Promise<RatesRead> => ({
+            ok: false,
+            why: "The shop's cart refused the question (HTTP 400).",
+            again: false,
+            saidNo: true,
+          }),
+        },
+      ],
       [
         "shipping now dearer",
         {
