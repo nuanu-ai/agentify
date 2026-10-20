@@ -859,6 +859,16 @@ const SCANNING: GalleryState[] = [
   ),
   scan(
     {
+      id: "scanner-scan-private-address",
+      screen: "Scan",
+      when: "A scanned address leads to a private network.",
+      cause:
+        "The site's name resolves to a private or internal address, which the scanner does not read.",
+    },
+    { status: ended("private"), shows: "Scan ended without a reliable result" },
+  ),
+  scan(
+    {
       id: "scanner-scan-kept-out",
       screen: "Scan",
       when: "A scanned site's robots.txt keeps the scanner out of what it reads.",
