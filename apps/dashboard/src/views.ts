@@ -407,7 +407,8 @@ export interface ToldOrders {
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
-  readonly closureUnconfirmed: boolean;
+  /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
+  readonly closureNote: string | null;
   /**
    * Said once over the orders where some are test purchases and no band over
    * the page says the channel's payments are tests; null otherwise.
@@ -556,9 +557,7 @@ export const ordersView = (
                   ? {}
                   : { message: order.merchant_closure.message }),
               },
-        canClose:
-          order.merchant_closure === undefined &&
-          !["delivered", "shipped", "fulfillment_closed"].includes(order.status),
+        canClose: closable(order),
         priceSet: momentView(order.price.at),
         day: dayOf(order.price.at),
       } satisfies OrderRow,
@@ -583,7 +582,7 @@ export const ordersView = (
   };
   return {
     none: orders.orders.length === 0,
-    closureUnconfirmed: query.get("closure") === "unconfirmed",
+    closureNote: CLOSURE_NOTES[query.get("closure") ?? ""] ?? null,
     testNote: testOrders(orders, mode),
     listing: listingOf({
       rows: listed.map(({ row }) => row),
@@ -601,6 +600,38 @@ export const ordersView = (
     waitsOnTheBuyer: told(waitsOnTheBuyer),
   };
 };
+
+/**
+ * Set by the close press's redirect: a write whose answer was lost and whose
+ * reread did not show it, or a closure that arrived after the order ended.
+ */
+const CLOSURE_NOTES: Readonly<Record<string, string>> = {
+  unconfirmed:
+    "Your closure could not be confirmed. Check the order below; if it is still open, closing it again is safe.",
+  ended:
+    "Nothing was closed: this order ended before your closure arrived. Its current state is below.",
+};
+
+/**
+ * Closure stops what Agentify would still deliver, so it is offered only where
+ * something is left to stop: a paid or possibly paid order that has not ended,
+ * and goods held for a payment the buyer may still make. An order that ended
+ * with nothing charged has nothing to stop, and closing it would only replace
+ * the ending its buyer's agent reads.
+ */
+const STOPPABLE: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  "in_progress",
+  "payment_unresolved",
+  "unfulfilled",
+  "delivered_unpaid",
+]);
+
+export const closable = (
+  order: Pick<OrderList["orders"][number], "status" | "payment_status" | "merchant_closure">,
+): boolean =>
+  order.merchant_closure === undefined &&
+  STOPPABLE.has(order.status) &&
+  !(order.status === "in_progress" && order.payment_status === "not_paid");
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -632,7 +663,7 @@ const whatHappened = (
   cause: UnfulfilledCause | undefined,
 ): string =>
   order.status === "unfulfilled"
-    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You decide the remedy with the buyer. A late delivery is still accepted until you close fulfillment.`
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it late, or close fulfillment with an explanation to the buyer.`
     : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
 
 const sharesIn = (

@@ -3,37 +3,48 @@ import type { WooRecoveryView } from "../../src/woo-recovery-pages.js";
 import { Ident } from "../components/copy.js";
 import { PostForm } from "../components/post-form.js";
 import { TestMark } from "./orders.js";
+import orders from "./orders.module.css";
 import styles from "./woocommerce-recovery.module.css";
+
+/** What the merchant can do here, in a line; the rules are in the documentation. */
+const INTRO: Readonly<Record<WooRecoveryView["mode"], string | null>> = {
+  link: "Your shop may hold this order without Agentify knowing it. Find the order whose Transaction ID is this order ID and enter its ID.",
+  retry:
+    "The shop order and its download are saved. Retry sends the same download; no new shop order is made.",
+  delivered: null,
+  unavailable: null,
+};
 
 export function WooRecoveryScreen({
   view,
   base,
 }: Readonly<{ view: WooRecoveryView; base: string }>) {
   const link = view.mode === "link";
+  const acts = link || view.mode === "retry";
+  const intro = INTRO[view.mode];
+  const ordersPage = <a href={`${base}/orders`}>Orders</a>;
   return (
     <>
-      <p>
-        <a href={`${base}/orders`}>Back to Orders</a>
-      </p>
       <div className="settings-grid">
         <section
           className={`settings-panel settings-wide ${styles.panel}`}
           aria-labelledby="recovery-sale"
         >
-          <h2 id="recovery-sale">Order details</h2>
-          <dl className={styles.facts}>
+          <div className="lede">
             <div>
-              <dt>Agentify order ID</dt>
+              <h2 id="recovery-sale">{view.product}</h2>
+              {intro === null ? null : <p>{intro}</p>}
+            </div>
+          </div>
+          <dl className={`${orders.facts} ${styles.facts}`}>
+            <div>
+              <dt>Order ID</dt>
               <dd>
                 <Ident value={view.orderId} what="order ID" whole />
               </dd>
             </div>
             <div>
-              <dt>Product code</dt>
-              <dd>{view.product}</dd>
-            </div>
-            <div>
-              <dt>Whole price</dt>
+              <dt>Price</dt>
               <dd>
                 {view.amount}
                 <TestMark test={view.test} />
@@ -45,71 +56,60 @@ export function WooRecoveryScreen({
             </div>
             {view.wooOrderId === "" || link ? null : (
               <div>
-                <dt>Linked WooCommerce order ID</dt>
+                <dt>Shop order ID</dt>
                 <dd>{view.wooOrderId}</dd>
               </div>
             )}
           </dl>
-          {view.message === null ? null : (
-            <p
-              className={view.mode === "delivered" ? "saved" : "problem"}
-              role={view.mode === "delivered" ? "status" : "alert"}
+          {acts ? (
+            <PostForm
+              document
+              action={`/integrations/woocommerce/recover/${encodeURIComponent(view.orderId)}`}
+              className="issue"
             >
-              {view.message}
-            </p>
-          )}
-          {view.mode !== "link" && view.mode !== "retry" ? null : (
-            <>
-              <p>
-                {link
-                  ? "The shop may already hold this order, but Agentify has no confirmed download to deliver. Find the existing shop order whose Transaction ID is the Agentify order ID above."
-                  : "The existing shop order and download are saved. Retry sends that same download to Agentify; it does not create another shop order."}
+              {(pending) => (
+                <>
+                  {link ? (
+                    <Field
+                      label="WooCommerce order ID"
+                      name="woo_order_id"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]*"
+                      defaultValue={view.wooOrderId}
+                      autoComplete="off"
+                      hint="The number in the order's address in your shop, which can differ from its order number."
+                      {...(view.typedRefusal === null ? {} : { error: view.typedRefusal })}
+                      required
+                    />
+                  ) : null}
+                  <Button pending={pending}>{link ? "Link and deliver" : "Retry delivery"}</Button>
+                </>
+              )}
+            </PostForm>
+          ) : null}
+          <div className="panel-messages">
+            {view.message === null ? null : view.mode === "delivered" ? (
+              <p role="status">{view.message}</p>
+            ) : (
+              <p className="problem" role="alert">
+                {view.message}
               </p>
+            )}
+            {acts ? (
               <p className="quiet">
-                This page cannot create a shop order or send or verify a refund. If Agentify must
-                stop delivering this order, close fulfillment on Orders before retrying recovery.
+                {link
+                  ? "If your shop holds no such order, nothing can be delivered from here; close fulfillment on "
+                  : "To stop delivery instead, close fulfillment on "}
+                {ordersPage}.
               </p>
-              <PostForm
-                document
-                action={`/integrations/woocommerce/recover/${encodeURIComponent(view.orderId)}`}
-                className={styles.form}
-              >
-                {(pending) => (
-                  <>
-                    {link ? (
-                      <Field
-                        label="WooCommerce order ID"
-                        name="woo_order_id"
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[1-9][0-9]*"
-                        defaultValue={view.wooOrderId}
-                        autoComplete="off"
-                        hint="The internal numeric ID in your shop's order URL can differ from its displayed order number."
-                        required
-                      />
-                    ) : null}
-                    <Button pending={pending}>
-                      {link ? "Link order and deliver download" : "Retry delivery"}
-                    </Button>
-                  </>
-                )}
-              </PostForm>
-              {link ? (
-                <p className="quiet">
-                  Agentify checks that this exact order and product match the saved sale before
-                  delivering.
-                </p>
-              ) : null}
-            </>
-          )}
-          {view.mode === "delivered" ? null : (
-            <p>
-              <a href={`${base}/woocommerce`}>Your WooCommerce connection</a>
-            </p>
-          )}
+            ) : null}
+          </div>
         </section>
       </div>
+      <p className="quiet">
+        <a href={`${base}/orders`}>Back to Orders</a>
+      </p>
     </>
   );
 }

@@ -2033,7 +2033,12 @@ describe("a press that fails inside the dashboard", () => {
 });
 
 describe("merchant delivery recovery", () => {
-  const sale = async (running: Running, accountId = running.accountId, placed = false) => {
+  const sale = async (
+    running: Running,
+    accountId = running.accountId,
+    placed = false,
+    neverAsked = false,
+  ) => {
     const merchantItemId = merchantItemIdFor(SHOP, "11");
     const published = await running.harnessed.gateway.publishCard(running.harnessed.merchant.id, {
       merchant_item_id: merchantItemId,
@@ -2080,14 +2085,17 @@ describe("merchant delivery recovery", () => {
       new Date(now.getTime() + 3600000),
       now,
     );
-    await running.shops.claimOrder(accountId, orderId, facts, now);
+    if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
+    else await running.shops.claimOrder(accountId, orderId, facts, now);
     await running.shops.connect({
       accountId,
       shopUrl: SHOP,
       consumerKey: "ck_recovery",
       consumerSecret: "cs_recovery",
       permissions: "read_write",
-      revision: "grant_recovery",
+      // A shop connected again since the refusal: the one condition under
+      // which the operator's command would create the order.
+      revision: neverAsked ? "grant_again" : "grant_recovery",
       connectedAt: now,
     });
     if (placed)
@@ -2128,6 +2136,38 @@ describe("merchant delivery recovery", () => {
     expect(formTo(recovered.html, "post", own.path)).toBeUndefined();
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
     expect((await running.get("/orders")).html).not.toContain(`href="${own.path}"`);
+  });
+
+  it("turns away a press for a sale its shop was never asked to create, without asking the shop anything", async () => {
+    let inspected = 0;
+    const running = await started({
+      inspectProduct: async (_keys, merchantItemId) => {
+        inspected += 1;
+        return {
+          ok: true,
+          product: {
+            kind: "download",
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+          },
+        };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, true);
+    const page = await running.get(own.path);
+    expect(formTo(page.html, "post", own.path)).toBeUndefined();
+
+    const pressed = await running.post(own.path);
+
+    expect(pressed.status).toBe(409);
+    expect(formTo(pressed.html, "post", own.path)).toBeUndefined();
+    expect(inspected).toBe(0);
+    expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("precreate_refused");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
   });
 
   it("answers another account's exact sale like a missing sale on GET and POST", async () => {

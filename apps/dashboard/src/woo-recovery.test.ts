@@ -1,11 +1,11 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
-import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
+import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { percentOf, sharesOf } from "./shares.js";
 import { recoverWooOrder, recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
-import { wooRecoveryPagesFor } from "./woo-recovery-pages.js";
+import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
 import {
   type EligibleWooProduct,
   type OrderMade,
@@ -62,6 +62,30 @@ const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
   status,
 });
 
+/** The merchant's catalogue, holding the card the sale was made from. */
+const CARDS = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    {
+      id: "itm_22",
+      as_of: "2026-09-18T09:00:00Z",
+      card: {
+        merchant_item_id: FACTS.merchantItemId,
+        title: "Agentify test download",
+        description: "A file delivered by the merchant's WooCommerce shop",
+        price: { amount: FACTS.amount, currency: FACTS.currency },
+        result: { download_url: { type: "string" } },
+        fulfillment: "async",
+      },
+      selling: "open",
+      paused: false,
+    },
+  ],
+});
+
+/** The recovery's parts, whose gateway also lists the cards the recovery page names the product from. */
+type Parts = Omit<WooRecoveryParts, "gatewayFor"> & Pick<WooRecoveryPageParts, "gatewayFor">;
+
 const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
   id: "13",
   number: "WOO-13",
@@ -109,10 +133,7 @@ const setup = async (phase: "precreate_refused" | "create_unknown") => {
   return shops;
 };
 
-const parts = (
-  shops: Awaited<ReturnType<typeof setup>>,
-  overrides: Partial<WooRecoveryParts> = {},
-) => {
+const parts = (shops: Awaited<ReturnType<typeof setup>>, overrides: Partial<Parts> = {}) => {
   let delivered = 0;
   let created = 0;
   let read = 0;
@@ -125,7 +146,7 @@ const parts = (
     orderKey: "wc_order_13",
     downloadId: PRODUCT.downloadId,
   };
-  const value: WooRecoveryParts = {
+  const value: Parts = {
     shops,
     identity: {
       byId: async () => ({
@@ -151,6 +172,7 @@ const parts = (
         };
       },
       paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
+      cards: async () => ({ ok: true as const, document: CARDS }),
     }),
     inspectProduct: async () => ({ ok: true, product: PRODUCT }),
     createOrder: async (_keys, item) => {
@@ -246,6 +268,31 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
   });
 
+  it("names each fact of a typed shop order that differs from the sale, and only those", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      readOrder: async () => ({
+        ok: true,
+        order: shopOrder({ status: "cancelled", paymentMethod: "bacs" }),
+      }),
+    });
+
+    const outcome = await recoverWooOrderAs(
+      OWNER,
+      { orderId: "ord_1", wooOrderId: "13" },
+      test.value,
+    );
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused", typed: true });
+    const why = outcome.ok ? "" : outcome.why;
+    expect(why).toContain("cancelled");
+    expect(why).toContain("not paid with Agentify");
+    expect(why).not.toContain("Transaction ID");
+    expect(why).not.toContain("billing email");
+    expect(why).not.toContain("total");
+    expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
   it("keeps an unreadable exact shop order unresolved and allows the same check again", async () => {
     const shops = await setup("create_unknown");
     let available = false;
@@ -302,7 +349,7 @@ describe("merchant recovery pages", () => {
       view: {
         mode: "link",
         orderId: "ord_1",
-        product: FACTS.merchantItemId,
+        product: "Agentify test download",
         shopOrigin: FACTS.shopOrigin,
         amount: "0.01 USD",
         test: true,
@@ -310,6 +357,43 @@ describe("merchant recovery pages", () => {
       },
     });
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("says a refused shop order under its box and keeps what was typed, with nothing linked", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      readOrder: async () => ({ ok: true, order: shopOrder({ paymentMethod: "bacs" }) }),
+    });
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+
+    expect(await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", form)).toMatchObject({
+      kind: "view",
+      status: 409,
+      view: {
+        mode: "link",
+        wooOrderId: "13",
+        message: null,
+        typedRefusal: expect.stringContaining("not paid with Agentify"),
+      },
+    });
+    expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("names the product by its product code when the catalogue cannot be read, and still offers recovery", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        cards: async () => ({ ok: false, status: 0, why: "not answered" }),
+      }),
+    });
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "link", product: FACTS.merchantItemId },
+    });
   });
 
   it("reads back a durable binding when delivery is unknown, then offers retry rather than another binding", async () => {

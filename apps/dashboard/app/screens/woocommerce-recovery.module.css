@@ -1,45 +1,10 @@
-.facts {
-  display: grid;
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.facts > div {
-  display: grid;
-  grid-template-columns: 12rem minmax(0, 1fr);
-  gap: 1rem;
-}
-
-.facts dt {
-  color: var(--muted);
-}
-.facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 600px) {
-  .facts > div {
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
-  }
-}
+/* Layout only: the facts take the Orders details' look, and stack as they do
+   there once the panel is narrow. */
 .panel {
-  padding: 24px;
+  container-type: inline-size;
 }
 
-.form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: start;
-  gap: var(--space-block);
-  padding: 20px 0 24px;
-}
-
-.form :global(.field) {
-  width: 100%;
-}
-
-.form > button {
-  max-width: 100%;
+/* Over the Orders details' own margin, whichever stylesheet comes first. */
+.panel > .facts {
+  margin: var(--space-block) var(--space-card) 0;
 }

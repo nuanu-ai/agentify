@@ -270,8 +270,8 @@ function ParcelRules({ base }: Readonly<{ base: string }>) {
         <li>
           <span>
             If Orders shows an unfulfilled order before the seven days are up while your shop holds
-            a paid order for it, <b>do not ship</b>: Agentify could not confirm it, and you owe the
-            buyer a remedy you arrange with the buyer instead.
+            a paid order for it, <b>do not ship</b>: Agentify could not confirm that order. Close
+            fulfillment on Orders instead, with an explanation to the buyer.
           </span>
         </li>
         <li>

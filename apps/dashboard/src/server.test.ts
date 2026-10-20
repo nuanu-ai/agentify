@@ -3563,7 +3563,6 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("Pause all sales");
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
-    expect(text).toContain("Paid orders left unfulfilled remain recorded");
   });
 
   it("is offered no switch on a card, not even one they paused before they left", async () => {
@@ -3712,8 +3711,8 @@ describe("the orders screen", () => {
     expect(readable((await browser.get("/orders")).html)).toContain("No orders yet");
   });
 
-  it("calls out a paid unfulfilled order without prescribing a refund", async () => {
-    // The one open state that costs the merchant money must be shown, not left
+  it("calls out a paid unfulfilled order", async () => {
+    // The one open state that costs the buyer money must be shown, not left
     // to be noticed.
     const { browser, gateway, harnessed } = await started({
       gateway: { DEFAULT_ASYNC_FULFILLMENT_MS: "40" },
@@ -3745,13 +3744,10 @@ describe("the orders screen", () => {
     // The whole price, though the split paid the merchant only their share,
     // and said to be a test purchase's, as every sale on this stack is.
     expect(text).toContain("8.00 USD test");
-    expect(text).not.toContain("Return the full price");
-    // `unfulfilled` is what a program branches on; a merchant reads a sentence.
-    expect(text).not.toContain("unfulfilled");
   });
 
   it("says why an order was unfulfilled without guessing that a window ran out", async () => {
-    // A refund falls due when the merchant refuses an order already paid for;
+    // An order is unfulfilled too when the merchant refuses one already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
     // send a merchant reconciling it looking for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();
@@ -6317,7 +6313,8 @@ describe("live sales approval in the admin screen", () => {
       delete form[field];
       const refused = await running.browser.post(path, form);
       expect(refused.status).toBe(400);
-      expect(readable(refused.html)).toMatch(/choose|enter|confirm|find|missing/i);
+      // The refusal is said where the screen says refusals, not left to a status code.
+      expect(/<p class="problem" role="alert">[^<]+<\/p>/.test(refused.html)).toBe(true);
       expect(
         (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
       ).toBeNull();
@@ -6504,6 +6501,28 @@ describe("closing fulfillment from Orders", () => {
     expect(readable(read.html)).toContain("closure could not be confirmed");
     expect(readable(read.html)).not.toContain("Closed by you");
     expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("leads back to the order in its own words when a delivery lands before the closure", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.deliverOrder(id, { iccid: "arrived first" });
+          return await real.closeOrder(id, request);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const posted = await running.browser.post("/orders", { order_id: id, message: "Too late." });
+    expect(posted.status).toBe(303);
+    const read = await running.browser.get(posted.to ?? "");
+    const text = readable(read.html);
+    expect(text).toContain("Nothing was closed: this order ended before your closure arrived.");
+    expect(text).toContain("Delivered");
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 
