@@ -15,7 +15,7 @@ export class SnapshotUnavailable extends Error {
 }
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
-const HTTP_LABELS = ["component", "route", "method", "status_class"];
+const HTTP_LABELS = ["component", "route", "method", "status_class", "traffic"];
 
 export class Telemetry {
   readonly registry = new Registry();
@@ -94,6 +94,9 @@ export class Telemetry {
   ): void {
     const method =
       request.method !== undefined && METHODS.has(request.method) ? request.method : "OTHER";
+    // This fixed probe tag separates sample populations; it grants no authority.
+    const traffic =
+      request.headers["user-agent"] === "Agentify-Observability-Probe/1.0" ? "probe" : "client";
     const started = performance.now();
     this.#inFlight.inc({ component });
     let finished = false;
@@ -107,7 +110,7 @@ export class Telemetry {
       } catch {
         /* Telemetry cannot break an answer. */
       }
-      const labels = { component, route: matched, method, status_class: status };
+      const labels = { component, route: matched, method, status_class: status, traffic };
       this.#inFlight.dec({ component });
       this.#requests.inc(labels);
       this.#duration.observe(labels, (performance.now() - started) / 1_000);

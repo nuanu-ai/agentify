@@ -71,13 +71,19 @@ import uuid
 class H(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
  def do_GET(self):
-  good=Path('/out/mode').read_text()=='good'
+  mode=Path('/out/mode').read_text();good=mode=='good'
+  if self.headers.get('User-Agent')!='Agentify-Observability-Probe/1.0':
+   self.send_response(400);self.end_headers();return
+  if mode=='wrong_html':
+   self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(b'<html><h1>Service unavailable</h1></html>');return
+  if mode=='wrong_surface':
+   self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(b'<html><input name="email"><form action="/dashboard/sign-in"></form></html>' if self.path=='/' else b'<html><input name="url"></html>');return
   if not good and self.path=='/dashboard/sign-in':
    self.send_response(302);self.send_header('location','/');self.end_headers();return
-  self.send_response(200);self.end_headers()
-  self.wfile.write((b'{"items":[]}' if good else b'{"wrong":[]}') if self.path=='/x402/catalog' else (b'<html>fixture</html>' if good else b'upstream unavailable'))
+  self.send_response(200);self.send_header('Content-Type','application/json' if self.path=='/x402/catalog' else 'text/html');self.end_headers()
+  self.wfile.write((b'{"items":[]}' if good else b'{"wrong":[]}') if self.path=='/x402/catalog' else ((b'<html><input name="email"><form action="/dashboard/sign-in"></form></html>' if self.path=='/dashboard/sign-in' else b'<html><input name="url"></html>') if good else b'upstream unavailable'))
  def do_POST(self):
-  Path('/out/'+str(__import__('time').time_ns())+'.snappy').write_bytes(self.rfile.read(int(self.headers['Content-Length'])))
+  dest=Path('/out/'+str(__import__('time').time_ns())+'.snappy');partial=dest.with_suffix('.partial');partial.write_bytes(self.rfile.read(int(self.headers['Content-Length'])));partial.rename(dest)
   self.send_response(204);self.end_headers()
 HTTPServer(('0.0.0.0',8080),H).serve_forever()
 ''')
@@ -89,11 +95,13 @@ HTTPServer(('0.0.0.0',8080),H).serve_forever()
   collector=name+'-collector';containers.append(collector)
   docker('run','--pull=never','-d','--name',collector,'--network',name,'-v',str(d/'config.alloy')+':/etc/alloy/config.alloy:ro','-v',str(root/'blackbox.yaml')+':/etc/alloy/blackbox.yaml:ro','-e','AGENTIFY_CHANNEL=production','-e','OBSERVABILITY_METRICS_URL=http://receiver:8080/metrics','-e','OBSERVABILITY_USERNAME=synthetic','-e','OBSERVABILITY_PASSWORD=synthetic',image,'run','/etc/alloy/config.alloy')
   observations=[]
-  for mode,expected in [('good',1),('bad',0)]:
-   (d/'mode').write_text(mode);deadline=time.monotonic()+24
+  for mode,expected in [('good',1),('wrong_html',0),('wrong_surface',0),('bad',0)]:
+   (d/'mode').write_text(mode);phase_started=int(time.time()*1000);deadline=time.monotonic()+24
    while time.monotonic()<deadline:
     current=samples(d)
-    if set(current)=={'scanner_page','catalog','sign_in_page'} and all(v[1]==expected for v in current.values()):break
+    if set(current)=={'scanner_page','catalog','sign_in_page'} and all(v[0]>phase_started for v in current.values()):
+     assert all(v[1]==expected for v in current.values()),(mode,current)
+     break
     time.sleep(.3)
    else:raise AssertionError((mode,current))
    observations.append({'fixture':mode,'probe_success':{k:v[1] for k,v in current.items()}})

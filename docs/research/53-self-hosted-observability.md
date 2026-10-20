@@ -45,6 +45,10 @@ public surfaces answer externally; the cause of that path failure is not
 proved. It must not become a product-down verdict.
 
 A missing series is unknown, and a failed snapshot removes business gauges.
+Each expected public surface and application target remains explicitly visible
+as unknown when just that source disappears; a partial set of green fields
+does not represent complete coverage. Tagged public probes are excluded from
+client HTTP counts and latency and remain visible in diagnostics separately.
 A current successful snapshot with a zero count establishes an empty queue or
 cohort. HTTP 5xx, abandoned answers and expected 4xx remain distinct. Request
 latency excludes intentional worker long polling; scan completion latency is

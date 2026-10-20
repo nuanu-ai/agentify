@@ -643,7 +643,7 @@ it("keeps mounted dashboard assets separate from interactive traffic", async () 
     const body = await telemetry.metrics();
     return Number(
       body.match(
-        /^agentify_http_requests_total\{component="dashboard",route="asset",method="GET",status_class="2xx"\} ([\d.]+)$/m,
+        /^agentify_http_requests_total\{component="dashboard",route="asset",method="GET",status_class="2xx",traffic="client"\} ([\d.]+)$/m,
       )?.[1] ?? 0,
     );
   };

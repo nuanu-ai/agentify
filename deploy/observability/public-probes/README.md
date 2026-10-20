@@ -6,7 +6,11 @@ identity. It changes no shared receiver, access policy or alert configuration.
 
 The three anonymous GETs check the scanner HTML page, the catalog's JSON
 envelope and the sign-in HTML page. Public DNS, trusted public TLS, a 2xx
-answer and the expected body marker must all succeed; redirects fail. These
+answer, expected content type and page-specific markers must all succeed;
+redirects fail. Scanner HTML must contain its URL input; sign-in HTML must
+contain the email input and sign-in form action. Generic HTML and the wrong
+surface fail even with HTTP 200. The fixed probe user agent lets application
+metrics separate probes from client traffic without retaining header values. These
 checks do not prove that a user can sign in, finish a scan or buy a product.
 The vantage point is one independent host, not a multi-region uptime service.
 
@@ -69,5 +73,8 @@ It needs Docker with the pinned Alloy image and `python:3.12-slim-bookworm`
 already cached. An internal Docker network contains its HTTP fixture and
 collector; it contacts no public site or remote receiver. The check reads real
 remote-write samples, verifies all canonical labels and three successes, then
-changes the fixture to wrong HTML/JSON and a redirect and requires three
-failures. It removes only the containers and network it creates.
+changes the fixture to an HTTP-200 HTML error page, swapped page contents,
+wrong JSON and a redirect and requires failures. Each phase waits for fresh
+observations, so an earlier failed sample cannot satisfy a later check. The
+fixture also requires the probe traffic tag. It removes only the containers
+and network it creates.

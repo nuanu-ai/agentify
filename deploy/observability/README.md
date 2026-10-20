@@ -54,8 +54,12 @@ Local development opens no listener unless `AGENTIFY_METRICS_PORT` is set.
 CI bakes the full source commit into `agentify_build_info{revision}`. A local
 build without that argument reports `unknown`.
 
-HTTP counters and histograms use bounded component, route template, method and
-response-class labels. Expected payment challenges are 4xx, not server errors.
+HTTP counters and histograms use bounded component, route template, method,
+response-class and `traffic=client|probe` labels. Public probes send the fixed
+`Agentify-Observability-Probe/1.0` user agent; raw user agents are never exported.
+The tag separates diagnostic populations and grants no authority. Exclude
+`traffic="probe"` from client traffic and latency; synthetic traffic stays
+available separately. Expected payment challenges are 4xx, not server errors.
 Abandoned answers have the separate `aborted` class. Exclude health, assets and
 the intentional `/v0/worker/poll` long poll from interactive request latency;
 show its sample count beside p50/p95. No requests, identifiers or payloads are

@@ -43,12 +43,33 @@ describe("service telemetry", () => {
     const exported = await metrics.metrics();
     for (const status of ["2xx", "4xx", "5xx"]) {
       expect(exported).toContain(
-        `agentify_http_requests_total{component="gateway",route="/x402/buy/:item_id",method="GET",status_class="${status}"} 1`,
+        `agentify_http_requests_total{component="gateway",route="/x402/buy/:item_id",method="GET",status_class="${status}",traffic="client"} 1`,
       );
     }
     expect(exported).toContain('agentify_http_requests_in_flight{component="gateway"} 0');
     expect(exported).toContain('agentify_http_request_duration_seconds_bucket{le="+Inf"');
     expect(exported).not.toMatch(/secret-product|private-token|private-key/);
+  });
+
+  it("separates public probes from the client latency population", async () => {
+    const metrics = new Telemetry();
+    const origin = await listening(
+      createServer((request, response) => {
+        metrics.observeHttp("scanner", request, response, () => "page_landing");
+        response.end("page");
+      }),
+    );
+    for (const agent of [
+      "Agentify-Observability-Probe/1.0",
+      "real-client",
+      "Agentify-Observability-Probe/1.0-private-suffix",
+    ]) {
+      await (await fetch(origin, { headers: { "user-agent": agent } })).text();
+    }
+    const exported = await metrics.metrics();
+    expect(exported).toContain('status_class="2xx",traffic="probe"} 1');
+    expect(exported).toContain('status_class="2xx",traffic="client"} 2');
+    expect(exported).not.toMatch(/real-client|private-suffix|Agentify-Observability/);
   });
 
   it("records an abandoned request and releases its in-flight count", async () => {
@@ -74,7 +95,7 @@ describe("service telemetry", () => {
     await answer.text().catch(() => undefined);
     await accepted;
     const exported = await metrics.metrics();
-    expect(exported).toContain('status_class="aborted"} 1');
+    expect(exported).toContain('status_class="aborted",traffic="client"} 1');
     expect(exported).toContain('agentify_http_requests_in_flight{component="gateway"} 0');
   });
 
@@ -88,7 +109,9 @@ describe("service telemetry", () => {
       }),
     );
     await fetch(origin, { method: "POST" });
-    expect(await metrics.metrics()).toContain('route="other",method="POST",status_class="4xx"} 1');
+    expect(await metrics.metrics()).toContain(
+      'route="other",method="POST",status_class="4xx",traffic="client"} 1',
+    );
   });
 
   it("omits unavailable snapshot values instead of retaining a healthy zero", async () => {

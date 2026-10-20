@@ -17,7 +17,9 @@ loopback; the public router forwards no request to them. The existing host
 collector reads them and uses the channel's existing metrics writer.
 
 Metrics contain bounded operation classes, methods, response classes and
-domain states. They contain no customer, merchant, product, order or request
+domain states. A fixed probe tag separates synthetic and client HTTP
+observations without retaining user-agent values or granting authority.
+They contain no customer, merchant, product, order or request
 identifiers, URLs, credentials or payloads. The source revision is baked into
 the image by CI. A local image without one identifies its revision as unknown.
 

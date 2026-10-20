@@ -7,7 +7,7 @@ prometheus.exporter.blackbox "public" {
   target {
     name = "scanner_page"
     address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/"
-    module = "http_page"
+    module = "http_scanner"
     labels = {component = "scanner_page"}
   }
   target {
@@ -19,7 +19,7 @@ prometheus.exporter.blackbox "public" {
   target {
     name = "sign_in_page"
     address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/dashboard/sign-in"
-    module = "http_page"
+    module = "http_sign_in"
     labels = {component = "sign_in_page"}
   }
 }
