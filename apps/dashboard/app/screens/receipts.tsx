@@ -68,12 +68,11 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
       <div className="summary-text">
         <p>
           A receipt appears when the product is released to the buyer, or a parcel is handed to a
-          carrier. It shows the amount and three times. Paid is when the facilitator confirmed
-          payment, or the block time for a payment verified during chain recovery. Price set is when
-          Agentify fixed the price for this sale. Price as of is when that price was true: the
-          moment your price check said it held from, or, for a card sold at its own price, when the
-          card was published with it. When the price is checked at the purchase, these times can be
-          minutes apart.{" "}
+          carrier. It shows the amount and three times. Paid is when the payment went through. Price
+          set is when Agentify fixed the price for this sale. Price as of is when that price was
+          true: the moment your price check said it held from, or, for a card sold at its own price,
+          when the card was published with it. When the price is checked at the purchase, these
+          times can be minutes apart.{" "}
           <a href="/docs/money#what-proves-a-sale-happened">
             What a receipt records, and what each of its times is
           </a>
