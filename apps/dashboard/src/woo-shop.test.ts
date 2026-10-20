@@ -58,8 +58,10 @@ interface Stand {
 const shopAnswering = async (
   answer: (asked: Asked) => {
     status: number;
-    body: unknown;
+    body?: unknown;
     headers?: Readonly<Record<string, string>>;
+    /** Sent as it is in place of the body, for an answer that is not JSON. */
+    raw?: string;
   },
 ): Promise<Stand> => {
   const asked: Asked[] = [];
@@ -78,7 +80,7 @@ const shopAnswering = async (
       asked.push(call);
       const said = answer(call);
       response.writeHead(said.status, { "content-type": "application/json", ...said.headers });
-      response.end(JSON.stringify(said.body));
+      response.end(said.raw ?? JSON.stringify(said.body));
     });
   });
   server.listen(0, "127.0.0.1");
@@ -639,7 +641,8 @@ describe("the protected product check", () => {
 
     const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
 
-    expect(read).toMatchObject({ ok: false, again: false });
+    // Refused, and not as the shop ruling the product out: it said nothing.
+    expect(read).toMatchObject({ ok: false, again: false, saidNo: false });
   });
 
   /**
@@ -791,6 +794,59 @@ describe("the protected product check", () => {
     expect(read).toMatchObject({ ok: false, again: false });
   });
 
+  it("says the shop ruled a product out only where its own readable answer did", async () => {
+    // What the buyer is told hangs on this: "not available" is the seller's
+    // word, and a revoked key or a page that is not WooCommerce's said nothing
+    // about the product.
+    for (const [what, answered, saidNo] of [
+      ["out of stock", { status: 200, body: parcelDocument({ stock_status: "outofstock" }) }, true],
+      ["not purchasable", { status: 200, body: parcelDocument({ purchasable: false }) }, true],
+      ["unpublished", { status: 200, body: parcelDocument({ status: "draft" }) }, true],
+      [
+        "deleted",
+        {
+          status: 404,
+          body: {
+            code: "woocommerce_rest_product_invalid_id",
+            message: "Invalid ID.",
+            data: { status: 404 },
+          },
+        },
+        true,
+      ],
+      [
+        "a revoked key",
+        {
+          status: 401,
+          body: {
+            code: "woocommerce_rest_cannot_view",
+            message: "Sorry, you cannot view this resource.",
+          },
+        },
+        false,
+      ],
+      ["a page that is not JSON", { status: 200, raw: "not-json" }, false],
+      ["a route that is not there", { status: 404, body: { code: "rest_no_route" } }, false],
+      ["an incomplete document", { status: 200, body: { id: 28, type: "simple" } }, false],
+      ["another product's document", { status: 200, body: parcelDocument({ id: 29 }) }, false],
+    ] as const) {
+      stand = await shopAnswering((asked) =>
+        asked.url.includes("/settings/")
+          ? { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) }
+          : answered,
+      );
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "28"),
+      );
+
+      expect(read, what).toMatchObject({ ok: false, again: false, saidNo });
+      await stand.close();
+      stand = null;
+    }
+  });
+
   it("accepts only the one protected native download the agent can receive", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
@@ -873,7 +929,12 @@ describe("the protected product check", () => {
       connectionTo(stand.url),
       merchantItemIdFor(stand.url, "11"),
     );
-    expect(publicFile).toMatchObject({ ok: false, why: expect.stringContaining("public") });
+    // A file anyone can fetch is the shop's own answer, and it rules the sale out.
+    expect(publicFile).toMatchObject({
+      ok: false,
+      saidNo: true,
+      why: expect.stringContaining("public"),
+    });
   });
 
   it("refuses a shop that calculates taxes and names the setting to repair", async () => {
@@ -1304,6 +1365,85 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     // Without a token the cart cannot be asked anything.
     stand = await shopAnswering(() => ({ status: 200, body: cart([]) }));
     expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, again: false });
+  });
+
+  it("says the shop ruled a parcel or its place out only where its own readable answer did", async () => {
+    // A cart that refused the product or the place is the seller's no; a cart
+    // in front of which something else answered, or one holding what was not
+    // asked, said nothing about this parcel.
+    const refusing = (code: string) => ({
+      status: 400,
+      body: { code, message: "No.", data: { status: 400 } },
+    });
+    for (const [what, addItem, placed, saidNo] of [
+      ["the product refused", refusing("woocommerce_rest_product_out_of_stock"), null, true],
+      ["the place refused", null, refusing("rest_invalid_param"), true],
+      [
+        "no shipping needed",
+        null,
+        { status: 200, body: cart([], { needs_shipping: false, shipping_rates: [] }) },
+        true,
+      ],
+      [
+        "a rate in another currency",
+        null,
+        { status: 200, body: cart([rate({ currency_code: "EUR" })]) },
+        true,
+      ],
+      [
+        "a cart behind a login",
+        null,
+        { status: 403, body: { code: "woocommerce_rest_missing_nonce" } },
+        false,
+      ],
+      [
+        "a refusal that is not WooCommerce's",
+        null,
+        { status: 400, raw: "<html>Bad Request</html>" },
+        false,
+      ],
+      ["a page that is not JSON", null, { status: 200, raw: "not-json" }, false],
+      ["a cart without its rates", null, { status: 200, body: { items: [] } }, false],
+      [
+        "a cart holding two",
+        null,
+        {
+          status: 200,
+          body: cart([rate()], {
+            items: [{ ...LINE, quantity: 2 }],
+            shipping_rates: [aPackage([rate()], [{ ...PACKED, quantity: 2 }])],
+          }),
+        },
+        false,
+      ],
+      [
+        "a rate that is not an amount",
+        null,
+        { status: 200, body: cart([rate({ price: "five" })]) },
+        false,
+      ],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.method === "GET") {
+          return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        }
+        if (asked.url.endsWith("/add-item")) return addItem ?? { status: 201, body: cart([]) };
+        return placed ?? { status: 200, body: cart([rate()]) };
+      });
+
+      expect(await ratesFor(stand.url, "28", JAKARTA), what).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo,
+      });
+      await stand.close();
+      stand = null;
+    }
+
+    // Without a token the cart cannot be asked anything, which says nothing
+    // about the parcel either.
+    stand = await shopAnswering(() => ({ status: 200, body: cart([]) }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, saidNo: false });
   });
 
   it("refuses rates it could not sell at, rather than choosing among them", async () => {

@@ -933,8 +933,13 @@ describe("a price question off the merchant's stream", () => {
         ? showing(product)
         : RULED_OUT;
 
-  const answering = async (shops: WooShops, product: typeof inTheShop | null): Promise<unknown> => {
-    let answer: unknown;
+  const answering = async (
+    shops: WooShops,
+    product: typeof inTheShop | null,
+    inspectProduct = shopShowing(product),
+  ): Promise<unknown> => {
+    // Stays null when the worker says nothing.
+    let answer: unknown = null;
     const gateway = {
       pollWorker: async () => ({
         ok: true as const,
@@ -965,7 +970,7 @@ describe("a price question off the merchant's stream", () => {
       },
       clientFor: () => gateway,
       now: () => new Date(NOW),
-      inspectProduct: shopShowing(product),
+      inspectProduct,
     });
     return answer;
   };
@@ -1065,6 +1070,35 @@ describe("a price question off the merchant's stream", () => {
       }
     });
   }
+
+  it("says nothing when the shop's answer about the product could not be read", async () => {
+    // A revoked key or a page in front of the shop said nothing about the
+    // product, so the agent is told the price check went unanswered, not that
+    // the seller said it is not available.
+    for (const [what, answer] of [
+      [
+        "a revoked key",
+        () =>
+          Response.json(
+            {
+              code: "woocommerce_rest_cannot_view",
+              message: "Sorry, you cannot view this resource.",
+            },
+            { status: 401 },
+          ),
+      ],
+      ["a page that is not JSON", () => new Response("not-json", { status: 200 })],
+    ] as const) {
+      const shops = memoryWooShops();
+
+      const said = await answering(shops, inTheShop, (asked, merchantItemId) =>
+        inspectProductInTheShop(asked, merchantItemId, async () => answer()),
+      );
+
+      expect(said, what).toBeNull();
+      expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBeNull();
+    }
+  });
 
   it("names no price when that price was already bound to another product", async () => {
     // The order comes back held to the first answer, so a price for a changed
@@ -1314,7 +1348,8 @@ describe("a parcel's price question", () => {
       available: true,
       price: { amount: "25.00" },
     });
-    expect(await answering(shops, fromTheCart(2))).toStrictEqual({ available: false, as_of: NOW });
+    // Not the seller's "not available": the cart said nothing about this parcel.
+    expect(await answering(shops, fromTheCart(2))).toBeNull();
     expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
   });
 
