@@ -44,7 +44,10 @@ describe("ReportActionPanel", () => {
     const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
 
     expect(markup).toMatch(/<button[^>]*>[^<]*publish[^<]*image[^<]*<\/button>/i);
-    expect(markup).toMatch(/revoke/i);
+    // The note sits under four or five buttons, so it names the two it means.
+    const note = markup.match(/<p[^>]*>([^<]*revoke[^<]*)<\/p>/i)?.[1] ?? "";
+    expect(note).toContain("Copy share link");
+    expect(note).toContain("Publish image");
   });
 
   it("drops prompt actions when the export flag is off", () => {

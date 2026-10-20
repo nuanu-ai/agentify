@@ -55,7 +55,10 @@ describe("ScanExperience teaser actions", () => {
     const markup = await drawn("teaser");
 
     expect(markup).toMatch(/<button[^>]*>[^<]*publish[^<]*image[^<]*<\/button>/i);
-    expect(markup).toMatch(/revoke/i);
+    // The note sits under four or five buttons, so it names the two it means.
+    const note = markup.match(/<p[^>]*>([^<]*revoke[^<]*)<\/p>/i)?.[1] ?? "";
+    expect(note).toContain("Copy share link");
+    expect(note).toContain("Publish image");
   });
 
   it("hides unusable teaser export actions when registration is disabled", async () => {
