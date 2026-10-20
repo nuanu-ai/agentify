@@ -327,6 +327,14 @@ p {
   font: inherit;
 }
 
+/* A box of several lines starts its text a line's padding from the top, and
+   whoever types in it may make it taller. */
+textarea.field-input {
+  padding: 12px 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .field-input[aria-invalid="true"] {
   border-color: var(--fail);
 }
