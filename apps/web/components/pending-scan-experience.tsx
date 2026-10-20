@@ -103,8 +103,9 @@ export function PendingScanExperience({
     }
     if (code === "temporarily_busy") {
       setState("busy");
+      // Busy is also the answer to a repeat whose scan already exists.
       setMessage(
-        "The scanner could not take this scan just now. No scan was started; please retry shortly.",
+        "The scanner could not take this scan just now. Retry shortly: you get the scan if it started, or a new one.",
       );
       return;
     }
