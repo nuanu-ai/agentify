@@ -894,6 +894,51 @@ const cardCard: Card = {
 const ORIGINAL = { email: "original-recipient@example.invalid" };
 const CHANGED = { email: "changed-recipient@example.invalid" };
 
+describe("a payment whose authorization has expired", () => {
+  it("is answered the same before and after its order is paid, and the buyer's renewal still returns the order", async () => {
+    // The adapter refuses an expired authorization itself, without asking the
+    // payment layer, so whoever holds the payment request can make one up;
+    // its answer must not say whether the purchase was bought.
+    const network = new Recording();
+    const shop = await aGatewayPayingThrough(network);
+    const worker = workUntilStopped(shop, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    try {
+      const itemId = await shop.publish(syncCard);
+      const challenge = await challengeFor(shop.served, itemId);
+      const madeUp = paymentAgainst(challenge, STRANGER, "0x09", {
+        validBefore: Math.floor(shop.now() / 1_000) - 1,
+      });
+
+      const beforeTheSale = await present(shop.served, itemId, madeUp);
+      const bought = await present(shop.served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+      expect(bought.status).toBe(200);
+      const orderId = (bought.body as { order_id: string }).order_id;
+      const afterTheSale = await present(shop.served, itemId, madeUp);
+
+      expect(afterTheSale.status).toBe(409);
+      expect(afterTheSale.body).toStrictEqual(beforeTheSale.body);
+      expect(afterTheSale.body).toMatchObject({ error: { code: "payment_not_verified" } });
+      expect(JSON.stringify(afterTheSale.body)).toMatch(/expired/);
+      expect(JSON.stringify(afterTheSale.body)).not.toMatch(/payment layer refused/);
+      expectNoOrderIn(afterTheSale.body, orderId);
+      expect(network.sent.filter((call) => call.startsWith('{"verify"'))).toHaveLength(1);
+
+      const renewed = await present(shop.served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
+      expect(renewed.status).toBe(200);
+      expect(renewed.body).toMatchObject({
+        order_id: orderId,
+        delivered: { access_code: "SESAME" },
+      });
+      expect(network.charged).toHaveLength(1);
+    } finally {
+      await worker.stop();
+      await shop.close();
+    }
+  });
+});
+
 describe("a payment presented with a request other than the one it was made for", () => {
   /** The seller's two products on sale, the guide priced for ORIGINAL, and its payment signed. */
   const pricedGuide = async (goodsReady: Promise<void> = Promise.resolve()) => {
