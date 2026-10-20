@@ -106,6 +106,26 @@ describe("a field", () => {
     expect(screen.getByLabelText("Email address").hasAttribute("aria-describedby")).toBe(false);
   });
 
+  it("keeps the line breaks typed into a box of several lines", () => {
+    render(
+      onAPage(
+        <Field label="Explanation" name="message" rows={4} defaultValue={"First.\nSecond."} />,
+      ),
+    );
+
+    expect((screen.getByLabelText("Explanation") as HTMLTextAreaElement).value).toBe(
+      "First.\nSecond.",
+    );
+  });
+
+  it("has a box of several lines read out with its refusal and marked invalid", () => {
+    render(onAPage(<Field label="Explanation" name="message" rows={4} error="Too long." />));
+    const box = screen.getByLabelText("Explanation");
+
+    expect(describedBy(box)).toBe("Too long.");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("keeps two fields on one page apart", () => {
     render(
       onAPage(

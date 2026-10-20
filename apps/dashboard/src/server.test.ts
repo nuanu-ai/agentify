@@ -3827,7 +3827,8 @@ describe("the orders screen", () => {
     });
     await browser.signIn();
 
-    const text = readable((await browser.get("/orders?show=open")).html);
+    const { html } = await browser.get("/orders?show=open");
+    const text = readable(html);
 
     expect(text).toContain("the goods are held");
     // Still open, with nothing owed by the merchant. What can still happen is
@@ -3838,7 +3839,8 @@ describe("the orders screen", () => {
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
     expect(text).toContain("Waiting on the buyer 1");
-    expect(text).not.toMatch(/needs? you/i);
+    expect(text).toContain("Needs you 0");
+    expect(html).not.toContain('aria-label="Orders that need you"');
   });
 });
 
@@ -5123,8 +5125,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 describe("when the gateway will not answer", () => {
   it("says the gateway did not answer rather than showing an empty catalog", async () => {
     // "Nothing answered" and "you have no cards" are different news, and only
-    // one means the merchant should act; and what was asked may still have been
-    // done.
+    // one means the merchant should act.
     const { browser, gateway, silenceGateway } = await started({ answerWithinMs: 100 });
     await publish(gateway, roomCard);
     await browser.signIn();
@@ -5134,27 +5135,27 @@ describe("when the gateway will not answer", () => {
 
     expect(answered.status).toBe(504);
     const text = readable(answered.html);
-    expect(text).toContain("Agentify did not answer");
-    expect(text).toMatch(/may or may not have been done/);
+    expect(text).toContain("could not be loaded");
+    expect(text).not.toContain("Publish a card through the SDK");
   });
 });
 
 describe("the page that says a call to the gateway failed", () => {
   it("tries the page the merchant was on again, not another one", async () => {
-    // A merchant reading Receipts who presses "Try again" wants Receipts
+    // A merchant reading Settings who presses "Try again" wants Settings
     // again; sent to Cards, they lose their place and press their way back.
     const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
     await browser.signIn();
     silenceGateway();
 
-    const failed = await browser.get("/receipts");
+    const failed = await browser.get("/settings");
     const again =
       /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
         failed.html,
       )?.[1];
 
     expect(failed.status).toBe(504);
-    expect(again).toMatch(/\/receipts$/);
+    expect(again).toMatch(/\/settings$/);
   });
 
   it("offers the page again, not its data, when the page was opened inside the application", async () => {
@@ -5454,6 +5455,73 @@ describe("what the dashboard writes down about entry", () => {
   });
 });
 
+describe("a list, when it could not be read", () => {
+  /** The page's own part: the sections beside it are left out. */
+  const mainOf = (html: string): string => /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? "";
+  const waysOnIn = (html: string): readonly string[] =>
+    [...mainOf(html).matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((link) =>
+      (link[1] ?? "").replaceAll("&amp;", "&"),
+    );
+  const quietly = async <T>(during: () => Promise<T>): Promise<T> => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      return await during();
+    } finally {
+      error.mockRestore();
+    }
+  };
+  // Each screen at an address it was asked with, and the read it cannot do
+  // without.
+  const LISTS = [
+    ["/orders?show=open", "orders"],
+    ["/cards?q=room", "cards"],
+    ["/receipts", "receipts"],
+    ["/keys", "keys"],
+  ] as const;
+
+  it.each(LISTS)(
+    "%s says a failed read changed nothing, beside the dashboard's sections, and offers the same page again",
+    async (path, read) => {
+      // A read changes nothing, so the merchant has nothing to check before
+      // going on, and the way on is the page they asked for.
+      let breaking = false;
+      const { browser } = await started({
+        client: (real) => ({
+          ...real,
+          [read]: async (...asked: unknown[]) => {
+            if (breaking) throw new Error("the read failed");
+            return await (real[read] as (...given: unknown[]) => Promise<unknown>)(...asked);
+          },
+        }),
+      });
+      await browser.signIn();
+      breaking = true;
+
+      const failed = await quietly(async () => await browser.get(path));
+
+      expect(failed.status).toBe(500);
+      expect(failed.html).toContain('aria-label="Dashboard sections"');
+      expect(waysOnIn(failed.html)).toStrictEqual([path]);
+      expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+      expect(readable(failed.html)).not.toMatch(/went through/i);
+    },
+  );
+
+  it.each(LISTS)("%s says the same of a read Agentify did not answer", async (path) => {
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await quietly(async () => await browser.get(path));
+
+    expect(failed.status).toBe(504);
+    expect(failed.html).toContain('aria-label="Dashboard sections"');
+    expect(waysOnIn(failed.html)).toStrictEqual([path]);
+    expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+    expect(readable(failed.html)).not.toMatch(/may or may not have been done/i);
+  });
+});
+
 describe("a press that fails in a way nobody planned for", () => {
   const said = async (during: () => Promise<void>): Promise<string> => {
     const lines: string[] = [];
@@ -5559,6 +5627,7 @@ describe("a press that fails in a way nobody planned for", () => {
           { payout_wallet: "0x1111111111111111111111111111111111111111" },
         ],
         ["/sign-out", {}],
+        ["/orders", { order_id: `ord_${"0".repeat(32)}` }],
       ] as const) {
         const pressed = await browser.post(path, form);
 
@@ -6521,6 +6590,107 @@ describe("closing fulfillment from Orders", () => {
     ).not.toContain(id);
   });
 
+  it("keeps the line breaks of an explanation, as the buyer's agent reads it", async () => {
+    // A browser sends the breaks of a box of several lines as a carriage
+    // return and a line feed; plain text breaks a line with a line feed alone.
+    const running = await started();
+    const itemId = await publish(running.gateway, esimCard);
+    const bought = await buyOverHttp(running.harnessed, running.gateway, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const { order_id: id, status_url: status } = bought.body as {
+      order_id: string;
+      status_url: string;
+    };
+    await running.browser.signIn();
+
+    const closed = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The delivery deadline was missed.\r\nA refund was sent outside Agentify.",
+    });
+
+    expect(closed.status).toBe(303);
+    const told = (await running.gateway.call("GET", new URL(status).pathname)).body as {
+      merchant_closure?: { message?: string };
+    };
+    expect(told.merchant_closure?.message).toBe(
+      "The delivery deadline was missed.\nA refund was sent outside Agentify.",
+    );
+    expect((await running.browser.get(closed.to ?? "")).html).toContain(
+      "The delivery deadline was missed.\nA refund was sent outside Agentify.",
+    );
+  });
+
+  it("still refuses a carriage return that is not half of a browser's line break", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const refused = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The delivery deadline was missed.\rA refund was sent outside Agentify.",
+    });
+
+    expect(refused.status).toBe(400);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("keeps a press's answer when the orders cannot be read after it, which it reads once", async () => {
+    // A form sent without the page's script is answered in one request, and
+    // the press has already said what became of it.
+    let pressed = false;
+    let readsAfter = 0;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async () => {
+          pressed = true;
+          return lateAnswer(10);
+        },
+        getOrder: async () => lateAnswer(10),
+        orders: async (open) => {
+          if (pressed) {
+            readsAfter += 1;
+            if (readsAfter > 2) throw new Error("a second read failed");
+          }
+          return await real.orders(open);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "Payment returned outside Agentify.";
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+    error.mockRestore();
+
+    expect(posted.status).toBe(503);
+    expect(readable(posted.html)).toContain("closure could not be confirmed");
+    expect(
+      formsIn(posted.html)
+        .find((one) => one.fields.get("order_id") === id)
+        ?.fields.get("message"),
+    ).toBe(typed);
+    // The open list and the whole one, read once, by the press's own answer.
+    expect(readsAfter).toBe(2);
+  });
+
+  it("leads back to the list the closure was pressed on, with the order opened", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const closed = await running.browser.post("/orders", {
+      order_id: id,
+      show: "needs",
+      page: "2",
+    });
+
+    expect(closed.status).toBe(303);
+    expect(closed.to).toBe(`/orders?show=needs&page=2&details=${id}#details-${id}`);
+  });
+
   it("rereads an unanswered write and shows the recorded closure", async () => {
     const running = await started({
       client: (real) => ({
@@ -6591,7 +6761,8 @@ describe("closing fulfillment from Orders", () => {
     });
     expect(again.status).toBe(303);
     const after = await running.browser.get("/orders");
-    expect(readable(after.html)).not.toContain("Needs you");
+    expect(readable(after.html)).toContain("Needs you 0");
+    expect(after.html).not.toContain('aria-label="Orders that need you"');
     expect(formsIn(after.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(
       "The payment arrived late; it will be returned.",
@@ -6659,7 +6830,7 @@ describe("closing fulfillment from Orders", () => {
     expect(form?.fields.get("message")).toBe(
       "A remedy was agreed &lt;b&gt;outside&lt;/b&gt; Agentify.",
     );
-    const box = /<input[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
+    const box = /<textarea[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
     expect(box).toContain('aria-invalid="true"');
     expect(readable(refused.html)).toContain("Your explanation carries HTML markup");
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();

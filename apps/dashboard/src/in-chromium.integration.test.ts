@@ -626,7 +626,7 @@ describe("the site header over the pages outside the frame", () => {
   );
 });
 
-it("closes fulfillment from a keyboard-accessible order form and preserves the merchant statement", async () => {
+it("closes fulfillment from a keyboard-accessible order form and preserves the merchant statement, line breaks and all", async () => {
   const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
     merchant_item_id: "esim-closure",
     title: "eSIM Europe, 5 GB for 30 days",
@@ -647,7 +647,7 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
     const summary = page.locator("details.cell-more > summary");
     await summary.focus();
     await page.keyboard.press("Enter");
-    const message = "  A remedy was agreed outside Agentify.  ";
+    const message = "  A remedy was agreed outside Agentify.\nNothing more is owed.  ";
     await page.getByLabel("Explanation to the buyer (optional)").fill(message);
     await page.getByRole("button", { name: "Close fulfillment", exact: true }).focus();
     await page.keyboard.press("Enter");

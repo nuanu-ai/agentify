@@ -79,8 +79,8 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
           nothing to keep and no password to remember.
         </p>
         <p className="quiet">
-          New to Agentify? Sign in here. Once you are signed in, one button opens your seller
-          dashboard.
+          New to Agentify? Sign in here. The dashboard then offers one button, “Open my seller
+          dashboard”, whose press creates your merchant.
         </p>
         {/* The header's own Privacy link is hidden on a phone, and an ad's visitor is reported
             to the ad tracker with nothing asked here, so the privacy page is reached from

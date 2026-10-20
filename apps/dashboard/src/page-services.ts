@@ -60,6 +60,7 @@ import {
   closable,
   type FrameView,
   type OrdersView,
+  ordersPlace,
   ordersView,
   type ReceiptsView,
   receiptsView,
@@ -1008,7 +1009,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     fulfillment: {
       async close(person, form) {
         const id = IdentifierSchema.safeParse(once(form.getAll("order_id")));
-        const typed = once(form.getAll("message"));
+        const sent = once(form.getAll("message"));
+        // A browser sends the line breaks of a box of several lines as a
+        // carriage return and a line feed; plain text breaks with the feed alone.
+        const typed = typeof sent === "string" ? sent.replaceAll("\r\n", "\n") : sent;
         const request = OrderCloseRequestSchema.safeParse(
           typeof typed === "string"
             ? typed.trim() === ""
@@ -1053,7 +1057,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const gateway = gatewayAs(person);
         const closed = await gateway.closeOrder(id.data, request.data);
         const order = new URLSearchParams({ q: id.data, details: id.data });
-        const drawn = `${base}/orders?${order}#details-${encodeURIComponent(id.data)}`;
+        // Back to the list the closure was pressed on, the order opened there.
+        const place = ordersPlace(fieldsIn(form));
+        const drawn = `${base}${place}${place.includes("?") ? "&" : "?"}${new URLSearchParams({ details: id.data })}#details-${encodeURIComponent(id.data)}`;
         if (closed.ok) return { kind: "redirect", location: drawn };
         const refused = closed.status !== 0 && closed.status < 500;
         if (refused && closed.status !== 409) return problemOf(closed);

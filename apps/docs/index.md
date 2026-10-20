@@ -8,7 +8,9 @@ pays — and how connecting begins.
 ## Who buys here
 
 Agentify publishes your products in its own catalogue, which AI agents read
-and buy from. Catalogues run by other people may list them too, and nothing
+and buy from; an agent that buys starts at
+[{{origin}}/llms.txt]({{origin}}/llms.txt), which names the catalogue.
+Catalogues run by other people may list them too, and nothing
 guarantees that, and how many agents read Agentify's catalogue today is not
 something we can tell you yet. An agent is a program that a person handed a
 task and a budget; to finish the task it finds the goods it needs, pays for
@@ -131,8 +133,10 @@ dispute — are in the [common questions](/faq).
 ## How to start
 
 1. Open the [test channel's dashboard](https://test.agentify.ad/dashboard),
-   enter your email address and follow the one-time link in the message. On
-   your first visit it asks for the seller name buyers will see.
+   enter your email address, open the link in the message and press the
+   confirmation button. The dashboard then offers one button, "Open my seller
+   dashboard", whose press creates your merchant and asks for the name buyers
+   will see.
 2. In Settings, save the wallet where your share arrives; on the test channel
    it only ever receives test USDC. [Money](/money#if-you-have-no-wallet-yet)
    says how to get one, and replacing a wallet you saved on the live channel

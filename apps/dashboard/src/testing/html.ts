@@ -70,7 +70,7 @@ export interface ServedForm {
   readonly method: string;
   readonly action: string;
   /**
-   * Each input that carries a name, with the value it was served with, as the
+   * Each input and text area that carries a name, with the value it was served with, as the
    * browser would send the form untouched: a box counts only where it is
    * served ticked.
    */
@@ -106,6 +106,12 @@ export const formsIn = (html: string): ServedForm[] =>
       const box = /^(checkbox|radio)$/i.test(attribute(input, "type") ?? "");
       if (box && !/\schecked(?:=""|\s|\/|$)/i.test(input)) continue;
       if (name !== undefined) fields.set(name, attribute(input, "value") ?? (box ? "on" : ""));
+    }
+    for (const [, box = "", typed = ""] of inside.matchAll(
+      /<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi,
+    )) {
+      const name = attribute(box, "name");
+      if (name !== undefined) fields.set(name, typed);
     }
     const presses = [...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)]
       .filter(([, tag = ""]) => (attribute(tag, "type") ?? "submit").toLowerCase() === "submit")

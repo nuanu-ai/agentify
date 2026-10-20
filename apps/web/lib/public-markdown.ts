@@ -63,6 +63,8 @@ function renderLanding(config: LandingConfig): string {
     "",
     `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
     "",
+    `${LANDING_SHARED_CONTENT.agentDoor.lead} [${LANDING_SHARED_CONTENT.agentDoor.label}](${new URL(LANDING_SHARED_CONTENT.agentDoor.href, app.baseUrl).toString()})${LANDING_SHARED_CONTENT.agentDoor.rest}`,
+    "",
   ];
 
   output.push(`## ${LANDING_SHARED_CONTENT.howTitle}`, "");

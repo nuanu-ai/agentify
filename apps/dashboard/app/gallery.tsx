@@ -1745,6 +1745,18 @@ const ORDERS: GalleryState[] = [
   ),
   orders(
     {
+      id: "dashboard-orders-needs-you-list",
+      screen: "Orders",
+      when: "A merchant chooses Needs you over the list, or Show all under a cut Needs you.",
+      cause:
+        "The list is the orders that need the merchant, each told in full, a page at a time; nothing above it repeats them.",
+    },
+    OWING,
+    "/orders?show=needs",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
       id: "dashboard-orders-every-ending",
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
@@ -2896,19 +2908,44 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-page-not-answered",
-      screen: "Something went wrong",
-      when: "A merchant opens a page while Agentify is not answering.",
-      cause: "The gateway did not answer the page's read in time; the page offers itself again.",
+      screen: "Product cards",
+      when: "A merchant opens Cards while Agentify is not answering.",
+      cause:
+        "The gateway did not answer the page's read in time. A read changes nothing, so the page says so in the frame and offers itself again; Orders, Receipts and API keys say the same of theirs.",
     },
     {
       path: "/cards",
       mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/cards": null },
       failed: {
-        "routes/gate": thrown(LATE_PROBLEM.status, {
+        "routes/cards": thrown(LATE_PROBLEM.status, {
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
           again: "/cards",
+        }),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-orders-not-loaded",
+      screen: "Orders",
+      when: "A merchant opens Orders while the read of their orders fails.",
+      cause:
+        "An exception inside Agentify while reading the orders. A read changes nothing, so the page says so in the dashboard's frame and offers the same list again.",
+    },
+    {
+      path: "/orders?show=open",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/orders": null },
+      failed: {
+        "routes/orders": thrown(500, {
+          kind: "unread",
+          chrome: chromeIn("live"),
+          again: "/orders?show=open",
         }),
       },
     },

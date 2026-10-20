@@ -14,6 +14,7 @@ export function ListTools({
   path,
   label,
   placeholder,
+  searched,
 }: Readonly<{
   listing: Listing<unknown>;
   /** The list's page, without the dashboard's prefix. */
@@ -21,6 +22,12 @@ export function ListTools({
   /** What the search box is called, "Search cards". */
   label: string;
   placeholder: string;
+  /**
+   * Where a search was made, the sentence saying what it reads and that the
+   * counts are its own, given the words searched for; the way back to the
+   * whole list follows it, unless the empty list under it offers that way.
+   */
+  searched?: (q: string) => string;
 }>) {
   const going = useGoingTo();
   const goingTo =
@@ -65,9 +72,37 @@ export function ListTools({
           {`Only the first ${listing.search.cutAt} characters of the search were used.`}
         </p>
       )}
+      {searched === undefined || listing.search.q === "" ? null : (
+        <p className="search-cut">
+          {searched(listing.search.q)}
+          {listing.nothing === null ? (
+            <>
+              {" "}
+              <Link
+                to={
+                  listing.search.show === null
+                    ? path
+                    : `${path}?${new URLSearchParams({ show: listing.search.show })}`
+                }
+              >
+                Clear the search
+              </Link>
+            </>
+          ) : null}
+        </p>
+      )}
     </div>
   );
 }
+
+/**
+ * The list a press is made on, carried in its form, so the press leads back
+ * to the search, the segment and the page the merchant was reading.
+ */
+export const KeptPlace = ({ place }: Readonly<{ place: Listing<unknown>["place"] }>) =>
+  Object.entries(place).map(([name, value]) => (
+    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
+  ));
 
 /** Under a list cut short: which rows of how many, and the ways to the rest. */
 export function CutNote({ cut }: Readonly<{ cut: CutView | null }>) {
