@@ -283,6 +283,8 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   const save = async (product: boolean, ads: boolean) => {
     setSaving(true);
     setError(undefined);
+    // Set once the site has recorded the choice, which the browser keeping it can still fail after.
+    let recorded = false;
     const snapshot = createConsentSnapshot({
       policy,
       decisions: decisions(product, ads),
@@ -292,7 +294,10 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       await saveConsentDecision({
         storage: window.localStorage,
         snapshot,
-        persistAppendOnly: persist,
+        persistAppendOnly: async (choice) => {
+          await persist(choice);
+          recorded = true;
+        },
       });
       setProductAnalytics(product);
       setAdsMeasurement(ads);
@@ -302,9 +307,11 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
     } catch (failure) {
       setError(
-        failure instanceof ChoiceUnanswered
-          ? "No answer came back, so we cannot tell whether your choices were saved. Choose again: the choice saved last is the one that holds."
-          : "We could not save your choices. No optional analytics were enabled.",
+        recorded
+          ? "Your choices were saved, but this browser would not keep them, so you may be asked again."
+          : failure instanceof ChoiceUnanswered
+            ? "No answer came back, so we cannot tell whether your choices were saved. Choose again: the choice saved last is the one that holds."
+            : "We could not save your choices. No optional analytics were enabled.",
       );
     } finally {
       setSaving(false);
