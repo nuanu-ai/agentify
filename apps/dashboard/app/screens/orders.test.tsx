@@ -658,6 +658,44 @@ describe("merchant fulfillment closure", () => {
   });
 });
 
+describe("a closure made from the Needs you list", () => {
+  // The closure leads back to the list it was pressed on with the order named,
+  // and a closed order has left that list.
+  const owing = ordersOf([
+    { id: FIRST, status: "unfulfilled" },
+    { id: SAME_HEAD, status: "delivered" },
+  ]);
+  const orders = OrderListSchema.parse({
+    orders: [
+      ...owing.orders,
+      {
+        ...ordersOf([{ id: SAME_TAIL, status: "fulfillment_closed" }]).orders[0],
+        merchant_closure: { closed_at: "2026-10-19T09:30:00Z" },
+      },
+    ],
+  });
+  const drawnAt = (address: string) =>
+    served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, owing, new URLSearchParams(address))} />
+    ));
+  const leadsTo = (html: string, id: string) =>
+    html.includes(`href="/orders?q=${id}&amp;details=${id}"`);
+
+  it("says the order named was closed, where it is no longer on the list, and leads to it", () => {
+    const html = drawnAt(`show=needs&details=${SAME_TAIL}`);
+
+    expect(readable(html)).toContain(shortened(SAME_TAIL));
+    expect(leadsTo(html, SAME_TAIL)).toBe(true);
+  });
+
+  it("says nothing of an order the list still draws, or of one nobody closed", () => {
+    expect(leadsTo(drawnAt(`show=needs&details=${FIRST}`), FIRST)).toBe(false);
+    expect(leadsTo(drawnAt(`show=needs&details=${SAME_HEAD}`), SAME_HEAD)).toBe(false);
+    // On All the closed order is drawn, its details opened in place.
+    expect(leadsTo(drawnAt(`details=${SAME_TAIL}`), SAME_TAIL)).toBe(false);
+  });
+});
+
 describe("an order's details", () => {
   const detailsOf = (html: string, id: string) =>
     new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
