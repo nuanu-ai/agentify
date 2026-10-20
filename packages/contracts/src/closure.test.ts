@@ -123,6 +123,14 @@ describe("a merchant closes future Agentify fulfillment", () => {
     expect(errorOf(OrderWithStatusSchema, { ...merchant, payment_status: "refunded" })).toContain(
       "payment_status",
     );
+    // The agent's reader is a stranger's, which no version can stop: a word
+    // added later must read as unknown, not break the document.
+    expect(
+      AgentOrderStatusSchema.parse({ ...agent, payment_status: "a_later_word" }).payment_status,
+    ).toBe("a_later_word");
+    expect(errorOf(AgentOrderStatusSchema, { ...agent, payment_status: "" })).toContain(
+      "payment_status",
+    );
     expect(
       OrderWithStatusSchema.safeParse({
         ...merchant,
