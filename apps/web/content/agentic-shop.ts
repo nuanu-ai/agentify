@@ -86,7 +86,7 @@ export const AGENTIC_SHOP = {
       {
         symbol: "↗",
         title: "Open your dashboard.",
-        text: "Enter your email and open the one-time link. The dashboard then offers one button, “Open my seller dashboard”, whose press creates your merchant and asks for the name buyers will see.",
+        text: "Enter your email, open the one-time link and press its confirmation button. The dashboard then offers one button, “Open my seller dashboard”, whose press creates your merchant and asks for the name buyers will see.",
       },
       {
         symbol: "⇄",
