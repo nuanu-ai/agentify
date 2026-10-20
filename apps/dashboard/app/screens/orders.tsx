@@ -365,9 +365,11 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
   const here = listing.segments.find((one) => one.here);
   const needs = listing.segments.find((one) => one.key === "needs");
-  // The page's own links to an order search for it and open it; the merchant
-  // searched for nothing there, so nothing is said of the search.
-  const opening = listing.rows.length === 1 && listing.rows[0]?.opened === true;
+  // The page's own links to an order search for its ID and open it; the
+  // merchant searched for nothing there, so nothing is said of the search.
+  const opening = listing.rows.some(
+    (row) => row.opened && row.id.toLowerCase() === listing.search.q.toLowerCase(),
+  );
   const note = (
     <p className="note">
       Purchases that closed before they had a price are not listed; nothing was charged for them.
