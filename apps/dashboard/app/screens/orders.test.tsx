@@ -464,6 +464,8 @@ describe("a long run of orders told in full", () => {
       );
       const html = served(() => <OrdersScreen view={view} />);
       const told = toldIn(html, "Orders that need you");
+      // The group's own count, apart from the segment's beside the search.
+      expect(readable(/<h2>Needs you[\s\S]*?<\/h2>/.exec(html)?.[0] ?? "")).toBe("Needs you 61");
       // Nothing else on the page draws the same orders again.
       expect(listedIn(html)).toStrictEqual(told);
       reached.push(...told);
