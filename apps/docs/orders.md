@@ -632,8 +632,10 @@ from where it stopped.
 
 To recover a lost answer, the agent signs a new payment for that same payment
 request from the same wallet, and once the facilitator verifies it, the agent
-receives the original purchase without a second charge. The payment reference
-is public and opens nothing by itself: a payment already used, or one whose
+receives the original purchase without a second charge. Asking the purchase
+address again without that kept payment request starts a new purchase, which
+is charged again, so recovery always signs the kept request again. The payment
+reference is public and opens nothing by itself: a payment already used, or one whose
 window has passed, sent again reveals neither the order nor where to read it.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
