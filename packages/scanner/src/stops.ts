@@ -23,9 +23,13 @@ const REDIRECT_REFUSALS = new Set([
 // cuts requests short as a slow site does, and a reset says nothing of why.
 const stopOf = (errorCode: string | null | undefined): ScanStopReason | null => {
   if (!errorCode) return null;
-  if (errorCode.startsWith("ssrf_blocked:")) return "private_address";
+  if (
+    errorCode.startsWith("ssrf_blocked:") ||
+    errorCode === "dns_error" ||
+    errorCode === "dns_no_answers"
+  )
+    return "no_public_site";
   if (REDIRECT_REFUSALS.has(errorCode)) return "forbidden_redirect";
-  if (errorCode === "dns_error" || errorCode === "dns_no_answers") return "host_not_found";
   if (errorCode === "tls_invalid") return "secure_connection_failed";
   return null;
 };

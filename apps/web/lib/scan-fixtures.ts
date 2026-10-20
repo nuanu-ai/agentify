@@ -2,7 +2,7 @@
  * Example states of a scan for a developer, drawn on the scan page at
  * `?fixture=<name>` outside production instead of a live scan: one running,
  * one that failed, one the site turned away, one robots.txt kept out, one
- * whose address leads to a private network, and
+ * at whose address no public website answers, and
  * teasers complete, partial and with checks robots.txt kept the scanner from.
  * The page's loader builds them, so none of this reaches a browser that did
  * not ask for one.
@@ -72,7 +72,7 @@ function statusOf(name: ScanFixtureName): ScanStatusResponse {
       })),
       updated_at: now,
       target_host: "example.com",
-      stop_reason: "private_address",
+      stop_reason: "no_public_site",
     };
   }
   if (name === "failed" || name === "blocked") {

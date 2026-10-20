@@ -862,7 +862,7 @@ const SCANNING: GalleryState[] = [
     {
       id: "scanner-scan-private-address",
       screen: "Scan",
-      when: "A scanned address leads to a private network.",
+      when: "No public website answers at a scanned address.",
       cause:
         "The site's name resolves to a private or internal address, which the scanner does not read.",
     },

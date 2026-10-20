@@ -10,20 +10,15 @@ import { SiteLink } from "./site-link";
 // Running the same address again meets the same stop, so these offer a new
 // scan rather than a retry.
 const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words: string }>>> = {
-  private_address: {
-    headline: "This address leads to a private network",
+  no_public_site: {
+    headline: "No public website answers at this address",
     words:
-      "The scanner reads only public websites. This address, or a page it redirects to, points to a private or internal network address, so the scanner requested nothing from it. Check the address you entered; scanning it again gives the same answer.",
+      "The scanner reads only public websites. The name of this address, or of a page it redirects to, does not lead to one: it finds no server on the public internet or points into a private network, and the scanner requested nothing there. Check the address you entered; scanning it again gives the same answer.",
   },
   forbidden_redirect: {
     headline: "The site redirected the scanner where it does not go",
     words:
       "The scanner follows a redirect only to a public web address on the usual ports, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect goes outside those limits, for example to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
-  },
-  host_not_found: {
-    headline: "The scanner could not find this site",
-    words:
-      "Looking up the address's name found no server for it. Check that the address is spelled right. If the domain is new or its settings changed recently, scan it again later.",
   },
   secure_connection_failed: {
     headline: "The scanner could not open a secure connection",
