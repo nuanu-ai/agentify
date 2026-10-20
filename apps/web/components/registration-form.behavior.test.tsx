@@ -95,10 +95,12 @@ describe("asking the scanner for a verification link", () => {
     expect(button().textContent).not.toMatch(/\d/);
   });
 
-  it("files a signed-in person's own ask under their address, sends none, and says so first", async () => {
-    // The ask carries no address: the session decides whose it is. The API
-    // here refuses an ask that names one, or that does not acknowledge the
-    // data notice, so the report opens only for the ask the form must send.
+  it("files a signed-in person's own ask under the address it showed, sends none, and says so first", async () => {
+    // The ask names the address the form showed, so a session changed in
+    // another tab is refused rather than given the report. The API here
+    // refuses an ask that names another address or none, or that does not
+    // acknowledge the data notice, so the report opens only for the ask the
+    // form must send.
     let settled = () => {};
     const answered = new Promise<void>((resolve) => {
       settled = resolve;
@@ -109,7 +111,7 @@ describe("asking the scanner for a verification link", () => {
       }
       const ask = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       settled();
-      return "email" in ask || ask.dataset_reuse_acknowledged !== true
+      return ask.email !== "owner@example.com" || ask.dataset_reuse_acknowledged !== true
         ? json(400, {
             error: {
               code: "invalid_request",
@@ -137,6 +139,32 @@ describe("asking the scanner for a verification link", () => {
     // Opening the report keeps the button waiting; a refusal would say why.
     expect(screen.getByRole("button").textContent).toBe("Sending…");
     expect(screen.queryByText(/not one the form should send/)).toBeNull();
+  });
+
+  it("offers only a reload once the site says somebody else is signed in now", async () => {
+    // The form still says the report goes under the address it was loaded
+    // for; leaving its button there would invite pressing it again for nothing.
+    answerWith(
+      409,
+      {
+        error: {
+          code: "signed_in_as_another_address",
+          message:
+            "You are signed in as somebody-else@example.com, so nothing was filed under owner@example.com.",
+          retryable: false,
+          request_id: "019f5b6a-4b9f-7000-8000-000000000004",
+        },
+      },
+      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
+    );
+    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+    render(<RegistrationForm scanId={scanId} />);
+    await userEvent.click(await screen.findByLabelText(/acknowledge the scanner data notice/i));
+    await userEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByText(/somebody-else@example\.com/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("link", { name: /reload/i })).toBeTruthy();
   });
 
   it("links the data notice from the box that acknowledges it", async () => {
