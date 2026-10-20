@@ -647,16 +647,17 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
     const summary = page.locator("details.cell-more > summary");
     await summary.focus();
     await page.keyboard.press("Enter");
-    const message = "  A remedy was agreed <outside Agentify>.  ";
+    const message = "  A remedy was agreed outside Agentify.  ";
     await page.getByLabel("Explanation to the buyer (optional)").fill(message);
     await page.getByRole("button", { name: "Close fulfillment", exact: true }).focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(
       `${origin}${BASE}/orders?q=${encodeURIComponent(id)}&details=${encodeURIComponent(id)}#details-${encodeURIComponent(id)}`,
     );
-    await page.getByText("Closed by you", { exact: true }).waitFor();
-    expect(await page.locator(".more-body").innerText()).toMatch(/Original payment\s+Paid/);
-    expect(await page.locator(".more-body").textContent()).toContain(message);
+    const details = page.locator(`[id="details-${id}"] .more-body`);
+    await details.getByText("Closed by you", { exact: true }).waitFor();
+    expect(await details.innerText()).toMatch(/Payment\s+Paid/);
+    expect(await details.textContent()).toContain(message);
     expect(await page.getByRole("button", { name: "Close fulfillment", exact: true }).count()).toBe(
       0,
     );

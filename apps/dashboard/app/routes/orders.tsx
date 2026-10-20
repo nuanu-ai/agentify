@@ -1,4 +1,9 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
+import {
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+  useActionData,
+  useLoaderData,
+} from "react-router";
 import { acted, answer, formOf } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { OrdersScreen } from "../screens/orders.js";
@@ -22,7 +27,8 @@ export async function action(asked: ActionFunctionArgs) {
 }
 
 export default function Orders() {
-  const view = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>();
+  const view = useActionData<typeof action>() ?? loaded;
   return (
     <Frame tab="orders" title="Orders">
       <OrdersScreen view={view} />

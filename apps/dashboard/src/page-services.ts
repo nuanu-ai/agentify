@@ -54,6 +54,7 @@ import { type SettingsPress, type SettingsView, settingsView } from "./settings-
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
+  CLOSURE_NOTES,
   cardsPlace,
   cardsView,
   closable,
@@ -197,7 +198,7 @@ export interface PageServices {
   };
   /** Stops this merchant's future Agentify fulfillment for one order. */
   readonly fulfillment: {
-    close(person: Person, form: FormData): Promise<Outcome<never>>;
+    close(person: Person, form: FormData): Promise<Outcome<OrdersView>>;
   };
   /** The card switches; each form carries the list it was drawn on. */
   readonly selling: {
@@ -708,6 +709,59 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           ? `${base}/merchant`
           : dashboardPathFor(base, destination);
 
+  const ordersScreen = async (
+    person: Person,
+    query: URLSearchParams,
+  ): Promise<Outcome<OrdersView>> => {
+    const gateway = gatewayAs(person);
+    // The open list is read beside the whole one, never after it, since
+    // which orders are open is the gateway's to say.
+    const [cards, orders, open, owed, paidInto] = await Promise.all([
+      gateway.cards(),
+      gateway.orders(false),
+      gateway.orders(true),
+      gateway.unfulfilledOrders(),
+      gateway.paidIntoSplits(),
+    ]);
+    if (!cards.ok) return problemOf(cards);
+    if (!orders.ok) return problemOf(orders);
+    if (!open.ok) return problemOf(open);
+    if (!owed.ok) return problemOf(owed);
+    if (!paidInto.ok) return problemOf(paidInto);
+    const view = ordersView(
+      viewing(person).mode,
+      cards.document,
+      orders.document,
+      open.document,
+      query,
+      owed.document,
+      paidInto.document,
+    );
+    if (parts.woo !== null && view.needsYou.rows.length > 0) {
+      const links = await parts.woo.recoveryLinks(
+        person,
+        view.needsYou.rows.map((row) => row.id),
+      );
+      return {
+        kind: "view",
+        view: {
+          ...view,
+          needsYou: {
+            ...view.needsYou,
+            rows: view.needsYou.rows.map((row) => ({
+              ...row,
+              rest:
+                links[row.id] === undefined
+                  ? row.rest
+                  : { href: links[row.id] as string, words: "Recover WooCommerce delivery" },
+            })),
+          },
+        },
+      };
+    }
+    return { kind: "view", view };
+  };
+
   return {
     liveSales: parts.liveSales ?? null,
     base,
@@ -964,7 +1018,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
               ? { message: typed }
               : {},
         );
-        if (!id.success || !request.success || form.getAll("message").length > 1) {
+        if (!id.success || form.getAll("message").length > 1) {
           return {
             kind: "problem",
             problem: {
@@ -973,25 +1027,59 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             },
           };
         }
+        const said = typeof typed === "string" ? typed : "";
+        if (!request.success) {
+          // The contract's own reason, said of the box it is about.
+          const reason = request.error.issues[0]?.message ?? "";
+          const page = await ordersScreen(
+            person,
+            new URLSearchParams({ q: id.data, details: id.data }),
+          );
+          if (page.kind !== "view") return page;
+          return {
+            kind: "view",
+            status: 400,
+            view: {
+              ...page.view,
+              pressed: {
+                id: id.data,
+                note: null,
+                refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+                typed: said,
+              },
+            },
+          };
+        }
         const gateway = gatewayAs(person);
         const closed = await gateway.closeOrder(id.data, request.data);
-        const destination = new URLSearchParams({ q: id.data, details: id.data });
-        if (!closed.ok) {
-          const refused = closed.status !== 0 && closed.status < 500;
-          if (refused && closed.status !== 409) return problemOf(closed);
-          // A timed-out write may have committed, and a refused one may have
-          // lost to a delivery or an ending: only a fresh read says which.
-          const read = await gateway.getOrder(id.data);
-          if (refused) {
-            if (!read.ok || closable(read.document)) return problemOf(closed);
-            if (read.document.merchant_closure === undefined) destination.set("closure", "ended");
-          } else if (!read.ok || read.document.merchant_closure === undefined) {
-            destination.set("closure", "unconfirmed");
-          }
+        const order = new URLSearchParams({ q: id.data, details: id.data });
+        const drawn = `${base}/orders?${order}#details-${encodeURIComponent(id.data)}`;
+        if (closed.ok) return { kind: "redirect", location: drawn };
+        const refused = closed.status !== 0 && closed.status < 500;
+        if (refused && closed.status !== 409) return problemOf(closed);
+        // A timed-out write may have committed, and a refused one may have
+        // lost to a delivery or an ending: only a fresh read says which.
+        const read = await gateway.getOrder(id.data);
+        if (read.ok && read.document.merchant_closure !== undefined) {
+          return { kind: "redirect", location: drawn };
         }
+        if (refused && (!read.ok || closable(read.document))) return problemOf(closed);
+        // Drawn here rather than redirected to, so what was typed stays in
+        // the box and a reload does not repeat the note.
+        const page = await ordersScreen(person, order);
+        if (page.kind !== "view") return page;
         return {
-          kind: "redirect",
-          location: `${base}/orders?${destination}#details-${encodeURIComponent(id.data)}`,
+          kind: "view",
+          status: refused ? 409 : 503,
+          view: {
+            ...page.view,
+            pressed: {
+              id: id.data,
+              note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
+              refusal: null,
+              typed: said,
+            },
+          },
         };
       },
     },
@@ -1039,55 +1127,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      async orders(person, query) {
-        const gateway = gatewayAs(person);
-        // The open list is read beside the whole one, never after it, since
-        // which orders are open is the gateway's to say.
-        const [cards, orders, open, owed, paidInto] = await Promise.all([
-          gateway.cards(),
-          gateway.orders(false),
-          gateway.orders(true),
-          gateway.unfulfilledOrders(),
-          gateway.paidIntoSplits(),
-        ]);
-        if (!cards.ok) return problemOf(cards);
-        if (!orders.ok) return problemOf(orders);
-        if (!open.ok) return problemOf(open);
-        if (!owed.ok) return problemOf(owed);
-        if (!paidInto.ok) return problemOf(paidInto);
-        const view = ordersView(
-          viewing(person).mode,
-          cards.document,
-          orders.document,
-          open.document,
-          query,
-          owed.document,
-          paidInto.document,
-        );
-        if (parts.woo !== null && view.needsYou.rows.length > 0) {
-          const links = await parts.woo.recoveryLinks(
-            person,
-            view.needsYou.rows.map((row) => row.id),
-          );
-          return {
-            kind: "view",
-            view: {
-              ...view,
-              needsYou: {
-                ...view.needsYou,
-                rows: view.needsYou.rows.map((row) => ({
-                  ...row,
-                  rest:
-                    links[row.id] === undefined
-                      ? row.rest
-                      : { href: links[row.id] as string, words: "Recover WooCommerce delivery" },
-                })),
-              },
-            },
-          };
-        }
-        return { kind: "view", view };
-      },
+      orders: ordersScreen,
 
       async receipts(person) {
         const gateway = gatewayAs(person);

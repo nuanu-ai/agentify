@@ -80,7 +80,14 @@ import {
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
 import type { Viewer } from "../src/viewer.js";
-import { cardsView, type FrameView, momentView, ordersView, receiptsView } from "../src/views.js";
+import {
+  CLOSURE_NOTES,
+  cardsView,
+  type FrameView,
+  momentView,
+  ordersView,
+  receiptsView,
+} from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
@@ -1496,6 +1503,28 @@ const orders = (
     loaded: { "routes/orders": ordersAt(path, listed, more) },
   });
 
+/** Orders as the close press answers it: the pressed order found and opened, the note by it. */
+const closurePressed = (
+  told: Told,
+  listed: ReturnType<typeof ordersOf>,
+  said: Readonly<{ note: string | null; refusal?: string; typed: string }>,
+): GalleryState => {
+  const id = listed.orders[0]?.id ?? "";
+  const path = `/orders?${new URLSearchParams({ q: id, details: id })}`;
+  return at(told, {
+    path,
+    mode: "live",
+    account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+    loaded: { "routes/orders": null },
+    pressed: {
+      "routes/orders": {
+        ...ordersAt(path, listed, { owed: OWED_BECAUSE }),
+        pressed: { id, ...said },
+      },
+    },
+  });
+};
+
 const OWING = ordersOf([
   ["esimEurope", "unfulfilled"],
   ["number", "delivered_unpaid"],
@@ -1571,7 +1600,7 @@ const ORDERS: GalleryState[] = [
           does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Your explanation to the buyer",
+      shows: "Your explanation",
     },
   },
   {
@@ -1595,34 +1624,46 @@ const ORDERS: GalleryState[] = [
       shows: "Close fulfillment",
     },
   },
-  {
-    ...orders(
-      {
-        id: "dashboard-orders-close-unconfirmed",
-        screen: "Orders",
-        when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
-        cause:
-          "The press leads back to the order, opened, with a line saying the closure could not be confirmed and that closing again is safe.",
-      },
-      OWING,
-      `/orders?${new URLSearchParams({
-        q: OWING.orders[0]?.id ?? "",
-        details: OWING.orders[0]?.id ?? "",
-        closure: "unconfirmed",
-      })}`,
-      { owed: OWED_BECAUSE },
-    ),
-  },
-  orders(
+  closurePressed(
+    {
+      id: "dashboard-orders-close-unconfirmed",
+      screen: "Orders",
+      when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
+      cause:
+        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the explanation typed is still in the box.",
+    },
+    OWING,
+    {
+      note: CLOSURE_NOTES.unconfirmed,
+      typed: "Your payment was returned to your wallet.",
+    },
+  ),
+  closurePressed(
+    {
+      id: "dashboard-orders-close-refused",
+      screen: "Orders",
+      when: "A merchant typed markup into the explanation and pressed Close fulfillment.",
+      cause:
+        "The explanation is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
+    },
+    OWING,
+    {
+      note: null,
+      refusal:
+        "Your explanation carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
+      typed: "Your payment was <b>returned</b>.",
+    },
+  ),
+  closurePressed(
     {
       id: "dashboard-orders-close-too-late",
       screen: "Orders",
       when: "A merchant pressed Close fulfillment on an order whose delivery landed a moment earlier.",
       cause:
-        "The gateway refused the closure and the order read afterwards is delivered, so the page says nothing was closed and shows the order as it now stands.",
+        "The gateway refused the closure and the order read afterwards is delivered, so the order is opened with a line saying nothing was closed, and no form.",
     },
     ordersOf([["esimEurope", "delivered"]]),
-    `/orders?${new URLSearchParams({ closure: "ended" })}`,
+    { note: CLOSURE_NOTES.ended, typed: "" },
   ),
   at(
     {

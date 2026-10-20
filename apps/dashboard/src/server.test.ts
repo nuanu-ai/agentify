@@ -6447,7 +6447,7 @@ describe("closing fulfillment from Orders", () => {
     expect(first.status).toBe(303);
     const read = await running.browser.get(first.to ?? "");
     expect(readable(read.html)).toContain("Closed by you");
-    expect(readable(read.html)).toContain("Original payment Paid");
+    expect(readable(read.html)).toContain("Payment Paid");
     expect(readable(read.html)).toContain("A remedy was arranged outside Agentify.");
     const after = await running.harnessed.store.orderById(id);
     expect(after?.order.price).toStrictEqual(before?.order.price);
@@ -6496,11 +6496,15 @@ describe("closing fulfillment from Orders", () => {
     });
     const id = await paid(running);
     await running.browser.signIn();
-    const posted = await running.browser.post("/orders", { order_id: id });
-    const read = await running.browser.get(posted.to ?? "");
-    expect(readable(read.html)).toContain("closure could not be confirmed");
-    expect(readable(read.html)).not.toContain("Closed by you");
-    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
+    const typed = "Payment returned outside Agentify.";
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+    // The page itself answers, so the note sits by the order's form and what
+    // was typed is still in its box; a reload does not repeat the note.
+    expect(posted.status).toBe(503);
+    expect(readable(posted.html)).toContain("closure could not be confirmed");
+    expect(readable(posted.html)).not.toContain("Closed by you");
+    const form = formsIn(posted.html).find((one) => one.fields.get("order_id") === id);
+    expect(form?.fields.get("message")).toBe(typed);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 
@@ -6553,9 +6557,8 @@ describe("closing fulfillment from Orders", () => {
     });
     const id = await paid(running);
     await running.browser.signIn();
-    const posted = await running.browser.post("/orders", { order_id: id, message: "Too late." });
-    expect(posted.status).toBe(303);
-    const read = await running.browser.get(posted.to ?? "");
+    const read = await running.browser.post("/orders", { order_id: id, message: "Too late." });
+    expect(read.status).toBe(409);
     const text = readable(read.html);
     expect(text).toContain("Nothing was closed: this order ended before your closure arrived.");
     expect(text).toContain("Delivered");
@@ -6586,6 +6589,26 @@ describe("closing fulfillment from Orders", () => {
     });
     const attempt = await foreignClient.closeOrder(id, {});
     expect(attempt).toMatchObject({ ok: false, status: 404 });
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("says why an explanation was refused under its box and keeps what was typed", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "A remedy was agreed <b>outside</b> Agentify.";
+
+    const refused = await running.browser.post("/orders", { order_id: id, message: typed });
+
+    expect(refused.status).toBe(400);
+    const form = formsIn(refused.html).find((one) => one.fields.get("order_id") === id);
+    // Kept in the box, and escaped there like any other text.
+    expect(form?.fields.get("message")).toBe(
+      "A remedy was agreed &lt;b&gt;outside&lt;/b&gt; Agentify.",
+    );
+    const box = /<input[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
+    expect(box).toContain('aria-invalid="true"');
+    expect(readable(refused.html)).toContain("Your explanation carries HTML markup");
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 

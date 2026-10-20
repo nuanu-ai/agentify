@@ -99,34 +99,12 @@
   white-space: normal;
 }
 
-.orderDetails:global(.cell-more) {
-  scroll-margin-top: 80px;
-  margin-top: 0;
-  color: var(--fg-2);
-  font-size: 1rem;
-}
-
-.orderDetails > summary {
-  min-height: 44px;
-  padding-block: 10px;
-  color: var(--fg-2);
-  font-size: var(--text-small);
-  font-weight: 500;
-  line-height: 24px;
-}
-
-.orderDetails > :global(.more-body) {
-  margin-top: 0;
-  font-size: 1rem;
-}
-
+/* An order's details hold its facts, then what can still be done with it. */
 .details {
   display: grid;
-  gap: var(--space-card);
+  gap: var(--space-block);
   max-width: 44rem;
-  padding: var(--space-block) 0 var(--space-control);
-  border-top: var(--hairline) solid var(--line);
-  line-height: 1.5;
+  padding-bottom: var(--space-tight);
 }
 
 .details p,
@@ -137,55 +115,16 @@
 
 .details h3 {
   color: var(--fg);
-  font-size: 1rem;
+  font-size: var(--text-small);
   font-weight: 600;
 }
 
-.facts {
-  display: grid;
-  gap: var(--space-control);
-  margin: 0;
-  font-size: var(--text-small);
-}
-
-.facts > div {
-  display: grid;
-  grid-template-columns: 9rem minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--space-block);
-}
-
-.facts dt {
-  color: var(--muted);
-}
-
-.facts dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--fg-2);
-  overflow-wrap: anywhere;
-}
-
-.facts :global(.ident) {
-  max-width: 100%;
-}
-
-.facts :global(.ident) > span:first-child {
-  min-width: 0;
-}
-
-.shares {
-  display: grid;
-  gap: var(--space-snug);
-}
-
-.close,
-.closure {
+.close {
   display: grid;
   justify-items: start;
   gap: var(--space-tight);
   margin: 0;
-  padding-top: var(--space-card);
+  padding-top: var(--space-block);
   border-top: var(--hairline) solid var(--line);
 }
 
@@ -195,24 +134,7 @@
   padding: var(--space-tight) 0 0;
 }
 
-.help,
-.label {
+.help {
   color: var(--muted);
   font-size: var(--text-small);
-}
-
-.statement {
-  display: grid;
-  gap: var(--space-tight);
-}
-
-.statement > p:last-child {
-  white-space: pre-wrap;
-}
-
-@container (max-width: 560px) {
-  .facts > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-snug);
-  }
 }
