@@ -21,54 +21,53 @@ payment timeout with clock-skew allowance. Smart-wallet signatures are allowed.
 
 Acceptance permanently reserves the network, token, payer and authorization
 nonce for this order, atomically with its saved payment. Before submission the
-order stores an attempt identifier and recovery terms. Ordinary verification
-and settlement make no RPC requests. Recovery searches from genesis when no
-transaction hint exists; neither restarts nor recovery submit again.
+order stores an attempt identifier and recovery terms, including when the
+authorization was verified unused. Ordinary verification and settlement make
+no RPC requests; neither restarts nor recovery submit again.
 
 An indeterminate result is `payment_unresolved`, including on closed orders.
-Pending, unfamiliar and contradictory failure responses remain unknown. Only
-an established refusal before broadcast can immediately establish nonpayment.
-A configured RPC enables background checks after the response deadline, including
-closed orders. The channel defaults to its free public Base RPC; an explicit
-empty address disables it. Without RPC or during an outage, verified facilitator
-payments continue; a lost result stays unknown
-until a late answer or verified recovery arrives. Connecting RPC later checks
-the saved attempts. RPC errors and missing evidence never establish failure.
+Pending, unfamiliar and contradictory failure responses remain unknown; only an
+established refusal before broadcast establishes nonpayment at once. A
+configured RPC, by default the channel's free public Base RPC, is checked in the
+background after the response deadline. An empty address disables it; one that
+answers another chain id at start-up, or none, leaves recovery off and says so.
+Facilitator payments never depend on it. Every poll logs a read failure and the
+count and age of unresolved payments. RPC errors and missing evidence never
+establish failure.
 
 Success requires a successful receipt in a canonical finalized block, with the
 canonical USDC token's `AuthorizationUsed(payer, nonce)` immediately followed
-by its `Transfer(payer, recipient, amount)` at the next full-receipt log index.
-Circle's implementation emits these together without an intervening external
-call. The evidence establishes this reserved nonce's exact financial effect;
-it does not identify signature bytes or distinguish identical authorizations
-sharing that nonce. Conflicting evidence cannot settle an order.
-
+by its `Transfer(payer, recipient, amount)` at the next full-receipt log index,
+which Circle's implementation emits without an intervening external call. This
+proves the reserved nonce's exact financial effect, not the signature bytes.
 A finalized cancellation, or an unused nonce in a finalized block at or after
-the authorization's expiry, proves it cannot execute. A reverted transaction,
-an elapsed local timer or an unsuccessful search does not. A lost hash is
-recovered by nonce events, with bounded scans and a durable cursor. Older
-records use their saved payment terms and reserve their nonce before recovery;
-missing or conflicting context stays unresolved. Historical state reads can
-locate an old consumed nonce; unavailable history leaves the scan progressing.
+the expiry, proves nonpayment; a reverted transaction, an elapsed timer or an
+unsuccessful search does not.
+
+Without a hash, recovery reads the receipts of only the blocks where the
+authorization could execute: from its verification time, found by bisecting
+block times, to its `validBefore`, with a durable cursor and no log queries. A
+used nonce absent from that window is unpaid only if it was unused at the
+window's last block. Older records search from the order's creation and reserve
+their nonce first; missing or conflicting context stays unresolved.
+
+The RPC is trusted as payment evidence, as the facilitator is. Recovery checks
+the token contract, chain id, payer, merchant split, amount, nonce, finality
+and canonical block hash, but cannot detect an endpoint serving a consistent
+false receipt or nonce state; choosing the endpoint is a security decision.
 
 The original answer and recovery share one conditional completion under the
-order lock. It checks the attempt and applies any due settlement deadline
-before the result. State, receipt and merchant messages commit together.
-Synchronous goods already held are released once unless the merchant has closed
-fulfillment. A payment discovered after
-a prepaid order's deadline records payment without dispatching new fulfillment.
-Merchant closure preserves payment recovery without restarting fulfillment
-(ADR-0028); refund policy and execution remain the merchant's business.
-
-A recovered receipt uses the transaction block's time. Chain evidence is kept
-separate from the facilitator's answer and cannot manufacture its payment
-response header. No merchant, administrator or maintenance command may declare
-success or failure without verification.
+order lock, which applies any due settlement deadline first; state, receipt
+and merchant messages commit together. Held synchronous goods are released once
+unless the merchant closed fulfillment (ADR-0028); a payment found after a
+prepaid order's deadline is recorded without new fulfillment. A recovered
+receipt uses the block's time and cannot manufacture the facilitator's payment
+response header. No merchant, administrator or command may declare success or
+failure without verification; refunds remain the merchant's business.
 
 ## Alternatives rejected
 
-A second settle; unchecked outcome buttons; staffed reconciliation; an
-inspection-time receipt; and interpreting an unavailable RPC as nonpayment.
-Public RPC has no recovery-time guarantee. Facilitator payments stay available
-when RPC cannot answer; unresolved results are retained, never guessed. Details
-and acceptance evidence live in `../research/52-self-service.md`.
+A second settle; outcome buttons; staffed reconciliation; an inspection-time
+receipt; reading an unavailable RPC as nonpayment; a log search from genesis,
+which public Base endpoints refuse or cap at 200 blocks. Public RPC gives no
+recovery-time guarantee. Details: `../research/54-self-service.md`.
