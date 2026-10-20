@@ -18,7 +18,10 @@ it redirects money, so the threat to it is a dashboard session not the owner's.
 Payments are non-custodial: a payment request pays the split of the merchant
 who published the card, as recorded for their wallet in force when the request
 is written (ADR-0037, ADR-0038), and a verified payment settles where it was
-verified.
+verified. A payment that would be charged is verified against the split in
+force when it arrives; one presented for an order already paid, which only
+returns that purchase to its payer, is verified against the split recorded on
+the order, and where the merchant has left that split it is never charged.
 The wallet is a column on the merchant, held to `EvmAddressSchema`: `0x` and
 forty hexadecimal characters, in lower case or the exact EIP-55 spelling a
 wallet shows, refused in between, because a typo is somebody else's valid

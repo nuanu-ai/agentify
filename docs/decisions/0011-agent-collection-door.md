@@ -35,12 +35,13 @@ compared. So a listing may publish it.
 
 The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the
 document the purchase returns, built field by field so that nothing reaches it
-unwritten: the state and price, the original payment's status, the goods once
-delivered, a parcel's shipment once shipped, whether the sale was a test, who
+unwritten: the state and price, the original payment's status and, once it
+has gone through, the transaction that paid it, the goods once delivered, a parcel's shipment once shipped, whether the sale was a test, who
 sold it, the merchant's words where it refused, the merchant's closure and its
 message where they closed fulfillment, and Agentify's reason where Agentify
-ended the order, fulfillment is overdue, or a paid order was closed
-(`merchant_closed`, ADR-0028). It leaves out the merchant's product key,
+ended the order, fulfillment is overdue, a paid order was closed
+(`merchant_closed`, ADR-0028), or goods are held because their charge did not
+go through (`delivered_unpaid`). It leaves out the merchant's product key,
 what the buyer sent and every other order. An identifier naming no order gets the same
 `no_such_order` as any other, every answer tells caches to keep nothing
 (`Cache-Control: no-store`), and the order document's description and
@@ -51,8 +52,9 @@ what the buyer sent and every other order. An identifier naming no order gets th
 Anyone who obtains an identifier through a log, a proxy or an agent's own
 store can read that order, though not change it, act as its payer or list
 other orders: for a parcel its tracking number and link, whose carrier page
-may show the buyer's city or who signed for it (ADR-0033), and for every order
-the seller's name and site (ADR-0034). A listing is not such a place.
+may show the buyer's city or who signed for it (ADR-0033), for every order
+the seller's name and site (ADR-0034), and for a paid one the transaction that
+paid it, which on the public chain leads to the buyer's wallet. A listing is not such a place.
 
 ## Alternatives rejected
 
