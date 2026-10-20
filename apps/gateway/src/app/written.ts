@@ -112,24 +112,33 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   .superRefine((written, context) => {
     // Our own reason is said where the status word blurs what to do next: why
     // we ended a rejected or expired order, never in the same breath as a
-    // merchant's refusal. Every paid unfulfilled order records why it stopped.
+    // merchant's refusal. Every paid unfulfilled order records why it stopped,
+    // and goods held unpaid always say that they are held and why.
     const { reason } = written;
     const unfulfilled = written.status === "unfulfilled";
     const closedPaid = written.status === "fulfillment_closed" && written.payment_status === "paid";
-    if ((unfulfilled || closedPaid) && reason === undefined) {
+    const heldUnpaid = written.status === "delivered_unpaid";
+    if ((unfulfilled || closedPaid || heldUnpaid) && reason === undefined) {
       context.addIssue({
         code: "custom",
         path: ["reason"],
         message: unfulfilled
           ? "an unfulfilled paid order always says why fulfillment stopped"
-          : "a paid order the merchant closed always says in our words what is true of it",
+          : heldUnpaid
+            ? "goods held for a charge that did not go through always say so"
+            : "a paid order the merchant closed always says in our words what is true of it",
       });
     }
     if (reason !== undefined) {
-      const words = unfulfilled ? UnfulfilledReasonSchema : OrderEndingReasonSchema;
+      const words = unfulfilled
+        ? UnfulfilledReasonSchema
+        : heldUnpaid
+          ? z.literal("payment_not_settled")
+          : OrderEndingReasonSchema;
       if (
         !unfulfilled &&
         !closedPaid &&
+        !heldUnpaid &&
         written.status !== "rejected" &&
         written.status !== "expired"
       ) {

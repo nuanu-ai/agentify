@@ -241,15 +241,14 @@ describe("why an order ended, where its merchant did not say", () => {
     expect(endingReasonFor(unresolved)).toBeNull();
   });
 
+  it("says of goods held unpaid that their charge did not go through", () => {
+    expect(outcomeFor(reach("delivered_unpaid"))).toBe("delivered_unpaid");
+    expect(endingReasonFor(reach("delivered_unpaid"))).toBe("payment_not_settled");
+  });
+
   it("gives no reason of ours where the merchant refused, or where the status says it all", () => {
     expect(endingReasonFor(reach("failed"))).toBeNull();
-    for (const state of [
-      "created",
-      "dispatched",
-      "delivered",
-      "unfulfilled",
-      "delivered_unpaid",
-    ] as const) {
+    for (const state of ["created", "dispatched", "delivered", "unfulfilled"] as const) {
       expect(endingReasonFor(reach(state)), state).toBeNull();
     }
   });

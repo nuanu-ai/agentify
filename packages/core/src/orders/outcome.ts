@@ -131,7 +131,11 @@ export const ENDING_REASONS = [
   "unavailable",
   /** The merchant's price check gave no price the purchase could use. */
   "price_check_unanswered",
-  /** The payment layer said the charge did not go through. */
+  /**
+   * The payment layer said the charge did not go through. On a synchronous
+   * purchase whose goods were already made it explains `delivered_unpaid`,
+   * which is still open and is not an ending.
+   */
   "payment_not_settled",
   /** The price ran out before a payment for it was taken. */
   "price_expired",
@@ -149,6 +153,9 @@ export type EndingReason = (typeof ENDING_REASONS)[number];
 
 export function endingReasonFor(order: Order): EndingReason | null {
   const outcome = outcomeFor(order);
+  if (outcome === "delivered_unpaid") {
+    return "payment_not_settled";
+  }
   if (outcome === "fulfillment_closed") {
     return order.payment === "settled" ? "merchant_closed" : null;
   }
