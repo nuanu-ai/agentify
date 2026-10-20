@@ -114,6 +114,26 @@ describe("canonical contracts", () => {
     expect(scanStatusResponseSchema.safeParse({ ...base, target_host: "" }).success).toBe(false);
   });
 
+  it("carries why the scanner stopped a failed scan, in its own words for a stop and no others", () => {
+    const failed = {
+      status: "failed",
+      progress: { completed: 18, total: 18 },
+      checks: [],
+      updated_at: "2026-07-13T12:00:00.000Z",
+    };
+    for (const stop_reason of [
+      "private_address",
+      "forbidden_redirect",
+      "host_not_found",
+      "secure_connection_failed",
+    ])
+      expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(true);
+    expect(scanStatusResponseSchema.safeParse(failed).success).toBe(true);
+    expect(
+      scanStatusResponseSchema.safeParse({ ...failed, stop_reason: "timed_out" }).success,
+    ).toBe(false);
+  });
+
   it("rejects credentialed and non-http scan URLs", () => {
     expect(
       createScanRequestSchema.safeParse({

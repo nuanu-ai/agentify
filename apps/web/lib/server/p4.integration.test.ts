@@ -546,6 +546,47 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await getScanStatus(graded.scan.id, graded.accessToken)).not.toHaveProperty("blocked");
   });
 
+  it("tells the scan page why the scanner stopped a scan, from the reasons the worker stored", async () => {
+    const { db } = getDatabase();
+    const stoppedScan = async (label: string, score: number | null, codes: (string | null)[]) => {
+      const fresh = await createFreshCompletedScan(label);
+      await db
+        .update(scans)
+        .set(score === null ? { status: "failed", score: null, level: "incomplete" } : { score })
+        .where(eq(scans.id, fresh.scan.id));
+      await db.insert(scanChecks).values(
+        codes.map((errorCode, index) => ({
+          scanId: fresh.scan.id,
+          checkId: index + 1,
+          status: errorCode ? ("unavailable" as const) : ("pass" as const),
+          nominalWeight: "5",
+          applicableWeight: "5",
+          earnedWeight: errorCode ? "0" : "5",
+          summaryCode: "robots_unavailable",
+          userImpactCode: "robots_not_assessed",
+          errorCode,
+        })),
+      );
+      return (await getScanStatus(fresh.scan.id, fresh.accessToken)) ?? {};
+    };
+    // A name that leads to a private network address, whichever address of
+    // that kind it is.
+    await expect(
+      stoppedScan("private-name", null, ["ssrf_blocked:loopback", "ssrf_blocked:private", null]),
+    ).resolves.toMatchObject({ status: "failed", stop_reason: "private_address" });
+    await expect(
+      stoppedScan("redirected-to-a-number", null, ["numeric_host_blocked"]),
+    ).resolves.toMatchObject({ stop_reason: "forbidden_redirect" });
+    // Checks stopped for different reasons leave the cause unknown, and so
+    // does a scan graded all the same.
+    expect(
+      await stoppedScan("mixed-stops", null, ["ssrf_blocked:private", "dns_error"]),
+    ).not.toHaveProperty("stop_reason");
+    expect(
+      await stoppedScan("graded-around-a-stop", 40, ["ssrf_blocked:private", null]),
+    ).not.toHaveProperty("stop_reason");
+  });
+
   it("records nothing of a visit until its visitor allows optional measurement", async () => {
     const { db, pool } = getDatabase();
     // The browser's cookie, as the consent route sets it when the visitor

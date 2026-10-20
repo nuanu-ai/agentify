@@ -233,6 +233,33 @@ describe("a scan's states", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
+  it.each(["private_address", "forbidden_redirect", "host_not_found", "secure_connection_failed"])(
+    "says why the scanner stopped a scan it knows the reason for (%s), and offers a new scan rather than the same one again",
+    async (stopReason) => {
+      apiAnswers(() =>
+        json(
+          200,
+          scan({
+            status: "failed",
+            progress: { completed: 18, total: 18 },
+            checks: checks((id) => (id === 16 ? "pass" : "unavailable")),
+            stop_reason: stopReason,
+          }),
+        ),
+      );
+
+      visit();
+
+      await waitFor(() =>
+        expect(document.querySelector(`h1[data-stop-reason="${stopReason}"]`)).not.toBeNull(),
+      );
+      expect(screen.queryByText("No reliable diagnostic was produced")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe("/");
+      expect(screen.queryByRole("meter")).toBeNull();
+    },
+  );
+
   it("says the site blocked the reader and shows no score", async () => {
     apiAnswers(() => json(200, blockedScan));
 

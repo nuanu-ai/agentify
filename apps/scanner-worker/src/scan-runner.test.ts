@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { FetchArtifact } from "@agentify/scanner";
+import { type FetchArtifact, scanStopReason } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
@@ -1063,5 +1063,151 @@ describe("bounded scan graph", () => {
     expect(protocols.slice(0, 2)).toEqual(["https:", "http:"]);
     expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(true);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
+  });
+});
+
+describe("why a scan the scanner stopped has no result", () => {
+  const publicAddress = async () => [{ address: "93.184.216.34", family: 4 as const }];
+  const stopped = async (
+    resolver: ConstructorParameters<typeof ScanRunner>[0]["resolver"],
+    adapter: PinnedTransport,
+  ) => {
+    const evaluation = await new ScanRunner({
+      resolver,
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    return { terminal: evaluation.score.terminalStatus, stop: scanStopReason(evaluation.checks) };
+  };
+
+  it("names a private address when the site's name leads to one, and asks nothing of it", async () => {
+    const target = transport();
+    const result = await stopped(
+      { resolve: async () => [{ address: "127.0.0.1", family: 4 }] },
+      target.adapter,
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "private_address" });
+    expect(target.paths).toEqual([]);
+  });
+
+  it("names a private address when every page redirects to a name that leads to one", async () => {
+    const target = transport();
+    const result = await stopped(
+      {
+        resolve: async (hostname) =>
+          hostname === "intranet.example.com"
+            ? [{ address: "10.0.0.7", family: 4 }]
+            : publicAddress(),
+      },
+      {
+        request: async (input) =>
+          input.url.hostname === "example.com"
+            ? {
+                ...makeArtifact(input, 302, "", "text/html"),
+                redirectLocation: `https://intranet.example.com${input.url.pathname}`,
+              }
+            : target.adapter.request(input),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "private_address" });
+    expect(target.paths).toEqual([]);
+  });
+
+  it.each([
+    ["a bare IP address", "https://10.0.0.7/robots.txt"],
+    ["plain HTTP from HTTPS", "http://example.com/robots.txt"],
+    ["an internal name", "https://shop.internal/robots.txt"],
+  ])("names a redirect it does not follow when every page redirects to %s", async (_, to) => {
+    const result = await stopped(
+      { resolve: publicAddress },
+      {
+        request: async (input) => ({
+          ...makeArtifact(input, 301, "", "text/html"),
+          redirectLocation: to,
+        }),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "forbidden_redirect" });
+  });
+
+  it("names a site whose name finds no server", async () => {
+    const result = await stopped(
+      {
+        resolve: async (hostname) => {
+          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+            code: "ENOTFOUND",
+          });
+        },
+      },
+      transport().adapter,
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "host_not_found" });
+  });
+
+  it("names a secure connection the site's certificate kept from opening", async () => {
+    const result = await stopped(
+      { resolve: publicAddress },
+      {
+        request: async (input) => ({ ...makeArtifact(input, 0, "", ""), errorCode: "tls_invalid" }),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "secure_connection_failed" });
+  });
+
+  it.each([
+    ["a site that answered", () => transport().adapter],
+    [
+      "robots.txt keeping the scanner out, which has words of its own",
+      () => transport("User-agent: *\nDisallow: /\n").adapter,
+    ],
+    [
+      "connections the site reset, whose cause is not known",
+      (): PinnedTransport => ({
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "connection_reset",
+        }),
+      }),
+    ],
+    [
+      "requests that ran out of time, which the scanner's own deadline can cause",
+      (): PinnedTransport => ({
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "fetch_timeout",
+        }),
+      }),
+    ],
+  ])("names no stop for %s", async (_, adapter) => {
+    expect((await stopped({ resolve: publicAddress }, adapter())).stop).toBeNull();
+  });
+
+  it("names no stop where the checks it could not assess were stopped for different reasons", async () => {
+    // Every page redirects to a bare IP address but the home page, which
+    // redirects to a name that finds no server.
+    const result = await stopped(
+      {
+        resolve: async (hostname) => {
+          if (hostname === "www.example.com")
+            throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+          return publicAddress();
+        },
+      },
+      {
+        request: async (input) =>
+          input.url.pathname === "/robots.txt"
+            ? { ...makeArtifact(input, 404, "", "text/plain") }
+            : input.url.hostname === "example.com" && input.url.pathname === "/"
+              ? {
+                  ...makeArtifact(input, 301, "", "text/html"),
+                  redirectLocation: "https://www.example.com/",
+                }
+              : {
+                  ...makeArtifact(input, 301, "", "text/html"),
+                  redirectLocation: "https://10.0.0.7/",
+                },
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: null });
   });
 });
