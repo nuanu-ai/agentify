@@ -1144,14 +1144,17 @@ describe("why a scan the scanner stopped has no result", () => {
     expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
   });
 
-  it("names a secure connection the site's certificate kept from opening", async () => {
+  it("names a certificate the scanner did not accept", async () => {
     const result = await stopped(
       { resolve: publicAddress },
       {
-        request: async (input) => ({ ...makeArtifact(input, 0, "", ""), errorCode: "tls_invalid" }),
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "tls_certificate_invalid",
+        }),
       },
     );
-    expect(result).toEqual({ terminal: "failed", stop: "secure_connection_failed" });
+    expect(result).toEqual({ terminal: "failed", stop: "certificate_invalid" });
   });
 
   it.each([
@@ -1159,6 +1162,12 @@ describe("why a scan the scanner stopped has no result", () => {
     [
       "robots.txt keeping the scanner out, which has words of its own",
       () => transport("User-agent: *\nDisallow: /\n").adapter,
+    ],
+    [
+      "a secure handshake that failed or was cut, which a firewall causes as much as a certificate",
+      (): PinnedTransport => ({
+        request: async (input) => ({ ...makeArtifact(input, 0, "", ""), errorCode: "tls_invalid" }),
+      }),
     ],
     [
       "connections the site reset, whose cause is not known",

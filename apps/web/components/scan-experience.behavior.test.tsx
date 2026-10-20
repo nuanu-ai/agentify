@@ -233,7 +233,7 @@ describe("a scan's states", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
-  it.each(["no_public_site", "forbidden_redirect", "secure_connection_failed"])(
+  it.each(["no_public_site", "forbidden_redirect", "certificate_invalid"])(
     "says why the scanner stopped a scan it knows the reason for (%s), and offers a new scan rather than the same one again",
     async (stopReason) => {
       apiAnswers(() =>
