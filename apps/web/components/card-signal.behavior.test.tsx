@@ -32,7 +32,15 @@ afterEach(() => {
 describe("the optional card signal's presses", () => {
   it("say they cannot tell whether the card form was prepared when the answer was lost, and let it be tried again", async () => {
     siteWith(lost);
-    render(<CardSignal adapter="local" enabled publishableKey={null} scanId={scanId} />);
+    render(
+      <CardSignal
+        adapter="local"
+        enabled
+        publishableKey={null}
+        scanId={scanId}
+        signedInAs="owner@example.com"
+      />,
+    );
     await userEvent.click(screen.getByRole("checkbox"));
 
     await userEvent.click(screen.getByRole("button", { name: /secure card form/i }));
@@ -54,6 +62,7 @@ describe("the optional card signal's presses", () => {
         initialSignal={{ signalId, status: "attached", clientSecret: null }}
         publishableKey={null}
         scanId={scanId}
+        signedInAs="owner@example.com"
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Remove card" }));
@@ -73,6 +82,7 @@ describe("the optional card signal's presses", () => {
         initialSignal={{ signalId, status: "setup_pending", clientSecret: "local-secret" }}
         publishableKey={null}
         scanId={scanId}
+        signedInAs="owner@example.com"
       />,
     );
 
@@ -133,7 +143,15 @@ describe("the optional card signal's presses", () => {
         },
       }),
     );
-    render(<CardSignal adapter="local" enabled publishableKey={null} scanId={scanId} />);
+    render(
+      <CardSignal
+        adapter="local"
+        enabled
+        publishableKey={null}
+        scanId={scanId}
+        signedInAs="owner@example.com"
+      />,
+    );
     await userEvent.click(screen.getByRole("checkbox"));
 
     await userEvent.click(screen.getByRole("button", { name: /secure card form/i }));

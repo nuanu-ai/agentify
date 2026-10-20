@@ -506,6 +506,7 @@ const report = (
           cardSignal: {
             adapter: "local",
             publishableKey: null,
+            signedInAs: WHO,
             ...(card === undefined
               ? {}
               : {

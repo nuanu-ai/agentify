@@ -41,6 +41,7 @@ export const loader = async ({
           ? {
               adapter: owned?.adapter ?? card.adapter,
               publishableKey: card.publishableKey,
+              signedInAs: page.visitor.email,
               ...(owned === undefined
                 ? {}
                 : {

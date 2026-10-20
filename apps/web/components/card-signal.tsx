@@ -55,12 +55,15 @@ export function CardSignal({
   adapter,
   publishableKey,
   initialSignal,
+  signedInAs,
 }: Readonly<{
   scanId: string;
   className?: string;
   enabled: boolean;
   adapter: "local" | "stripe";
   publishableKey: string | null;
+  /** The address the report page was loaded for, named with the setup. */
+  signedInAs: string;
   initialSignal?: {
     signalId: string;
     status: CardSignalStatus;
@@ -148,6 +151,7 @@ export function CardSignal({
         body: JSON.stringify({
           scan_id: scanId,
           card_signal_consent: true,
+          signed_in_as: signedInAs,
         }),
       },
       setupIn,

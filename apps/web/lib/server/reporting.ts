@@ -63,7 +63,7 @@ export async function loadReportPage(
   | Readonly<{ kind: "not_yours"; email: string }>
   | Readonly<{
       kind: "report";
-      visitor: Visitor;
+      visitor: Extract<Visitor, { kind: "person" }>;
       report: ReportResponse;
       browserObservation: BrowserObservationStatusResponse | undefined;
     }>
