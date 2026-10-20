@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { sharePreviewIn } from "../lib/api-answers";
+import { press } from "../lib/press";
 import type { PublicResultPreview } from "../lib/share-copy";
 import styles from "./public-share-actions.module.css";
 import row from "./report-actions.module.css";
@@ -11,6 +12,14 @@ type ScopedPublishedShare = Readonly<{
   value: PublishedShare;
 }>;
 type ActionState = "idle" | "publishing" | "published" | "revoking";
+type Publishing = Readonly<{ share: PublishedShare }> | Readonly<{ failure: string }>;
+
+// A press whose answer was lost may still have been carried out, and the
+// preview this page loads names a link that is live, so a reload tells.
+const PUBLISH_UNANSWERED =
+  "No answer came back, so we cannot tell whether the public link was made. Reload this page: a link that was made shows as live, with a way to revoke it.";
+const REVOKE_UNANSWERED =
+  "No answer came back, so we cannot tell whether the link was revoked. Reload this page: a link that is still live shows as live, with a way to revoke it.";
 
 export function PublicShareActions({
   enabled,
@@ -89,26 +98,31 @@ export function PublicShareActions({
 
   const token = () => (tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : null);
 
-  async function ensurePublished(): Promise<PublishedShare> {
-    if (currentPublished) return currentPublished;
-    if (!exactPreview) throw new Error("share_preview_unavailable");
+  async function ensurePublished(): Promise<Publishing> {
+    if (currentPublished) return { share: currentPublished };
+    if (!exactPreview) return { failure: "The public link could not be prepared. Try again." };
     setActionState("publishing");
     setManualCopy(false);
     setCopied(false);
-    const response = await fetch(`/api/v1/scans/${encodeURIComponent(scanId)}/share`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: shareRequestHeaders(token(), true),
-      body: JSON.stringify({ allow_indexing: false }),
-    });
-    const share = validatePublishedShare(
-      await response.json().catch(() => null),
-      window.location.origin,
+    const outcome = await press(
+      `/api/v1/scans/${encodeURIComponent(scanId)}/share`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: shareRequestHeaders(token(), true),
+        body: JSON.stringify({ allow_indexing: false }),
+      },
+      (answer) => validatePublishedShare(answer, window.location.origin),
     );
-    if (!response.ok || !share) throw new Error("share_publish_failed");
-    setPublished({ scanId, value: share });
-    setActionState("published");
-    return share;
+    if (outcome.kind === "done") {
+      setPublished({ scanId, value: outcome.answer });
+      setActionState("published");
+      return { share: outcome.answer };
+    }
+    setActionState("idle");
+    return {
+      failure: outcome.kind === "refused" ? outcome.refusal.message : PUBLISH_UNANSWERED,
+    };
   }
 
   async function copyLink(
@@ -133,54 +147,54 @@ export function PublicShareActions({
 
   async function publishAndCopy() {
     setMessage("Preparing and copying your public link…");
-    try {
-      const share = await ensurePublished();
-      await copyLink(share);
-    } catch {
-      setActionState("idle");
-      setMessage("The public link could not be prepared. Try again.");
+    const published = await ensurePublished();
+    if ("failure" in published) {
+      setMessage(published.failure);
+      return;
     }
+    await copyLink(published.share);
   }
 
   async function downloadImage() {
     setMessage("Preparing your share image…");
-    try {
-      const share = await ensurePublished();
-      const anchor = document.createElement("a");
-      anchor.href = `/api/v1/shares/${encodeURIComponent(share.slug)}/image`;
-      anchor.download = "";
-      anchor.hidden = true;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      setActionState("published");
-      setMessage("Image download started. The public link is live and noindex.");
-    } catch {
-      setActionState("idle");
-      setMessage("The share image could not be prepared. Try again.");
+    const published = await ensurePublished();
+    if ("failure" in published) {
+      setMessage(published.failure);
+      return;
     }
+    const anchor = document.createElement("a");
+    anchor.href = `/api/v1/shares/${encodeURIComponent(published.share.slug)}/image`;
+    anchor.download = "";
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setMessage("Image download started. The public link is live and noindex.");
   }
 
   async function revoke() {
     if (!currentPublished) return;
     setActionState("revoking");
     setMessage("Revoking the public link…");
-    try {
-      const response = await fetch(`/api/v1/shares/${encodeURIComponent(currentPublished.slug)}`, {
+    const outcome = await press(
+      `/api/v1/shares/${encodeURIComponent(currentPublished.slug)}`,
+      {
         method: "DELETE",
         credentials: "same-origin",
         headers: shareRequestHeaders(token(), false),
-      });
-      if (!response.ok) throw new Error("share_revoke_failed");
+      },
+      () => true,
+    );
+    if (outcome.kind === "done") {
       setPublished(undefined);
       setManualCopy(false);
       setCopied(false);
       setActionState("idle");
       setMessage("Public link revoked.");
-    } catch {
-      setActionState("published");
-      setMessage("The public link could not be revoked. Try again.");
+      return;
     }
+    setActionState("published");
+    setMessage(outcome.kind === "refused" ? outcome.refusal.message : REVOKE_UNANSWERED);
   }
 
   const busy = actionState === "publishing" || actionState === "revoking";
