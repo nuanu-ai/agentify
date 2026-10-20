@@ -1419,7 +1419,8 @@ const ACCOUNT: GalleryState[] = [
       id: "scanner-unsubscribe-not-answered",
       screen: "Email preferences",
       when: "A signed-in person presses Unsubscribe while the site is failing.",
-      cause: "The site's answer could not be read, so the page says nothing was changed.",
+      cause:
+        "The site's answer could not be read, so the page says it cannot tell whether the press went through, and that pressing again is safe.",
     },
     "/email/unsubscribe",
     "routes/email.unsubscribe",
@@ -1431,7 +1432,7 @@ const ACCOUNT: GalleryState[] = [
           does: (page) => press(page, "Unsubscribe from marketing"),
         },
       ],
-      shows: "Nothing was changed",
+      shows: "cannot tell whether this went through",
     },
   ),
   at(
