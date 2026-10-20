@@ -1533,6 +1533,25 @@ const CLOSED = OrderListSchema.parse({
   })),
 });
 
+/** An order closed while its payment was unknown, which then completed, beside an ordinary sale. */
+const PAID_AFTER_CLOSURE = OrderListSchema.parse({
+  orders: ordersOf([
+    ["esimEurope", "fulfillment_closed"],
+    ["vpn", "delivered"],
+  ]).orders.map((order, at) =>
+    at === 0
+      ? {
+          ...order,
+          payment_status: "paid",
+          merchant_closure: {
+            closed_at: "2026-10-19T09:30:00Z",
+            message: "Your payment did not arrive, so this order is closed.",
+          },
+        }
+      : order,
+  ),
+});
+
 const ORDERS: GalleryState[] = [
   {
     ...orders(
@@ -1641,6 +1660,20 @@ const ORDERS: GalleryState[] = [
         },
       };
     })(),
+  ),
+  orders(
+    {
+      id: "dashboard-orders-paid-after-closure",
+      screen: "Orders",
+      when: "A merchant closed an order while its payment was unknown, and the payment then completed.",
+      cause:
+        "The gateway lists the closed order as open again, so it needs the merchant: one line says the payment arrived after the closure, and its details offer Close again with the same form.",
+    },
+    PAID_AFTER_CLOSURE,
+    `/orders?${new URLSearchParams({ details: PAID_AFTER_CLOSURE.orders[0]?.id ?? "" })}`,
+    {
+      open: OrderListSchema.parse({ orders: PAID_AFTER_CLOSURE.orders.slice(0, 1) }),
+    },
   ),
   orders(
     {
