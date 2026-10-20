@@ -645,7 +645,7 @@ async function answerPurchase(
         CONFLICT,
         refusal(
           "payment_not_taken",
-          "this payment was not taken and nothing was charged: it belongs to another purchase; send it with the request it was made for, or start a new purchase",
+          "this payment belongs to another purchase and is not taken for this request: send it with the request it was made for, or start a new purchase",
           { retryable: false },
         ),
       );
