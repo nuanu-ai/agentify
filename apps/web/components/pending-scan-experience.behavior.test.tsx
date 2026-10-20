@@ -92,6 +92,29 @@ describe("pending scan acceptance", () => {
     expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
   });
 
+  it("passes on the scanner's own words for why it is busy, a pause among them", async () => {
+    savePendingScan(window.sessionStorage, pending("paused"));
+    installNetwork(
+      response(
+        {
+          error: {
+            code: "temporarily_busy",
+            message: "New scans are temporarily paused. Existing private reports remain available.",
+            retryable: true,
+            retry_after_seconds: 60,
+            request_id: "request-behavior-test",
+          },
+        },
+        503,
+      ),
+    );
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner is busy" });
+    expect(screen.getByRole("status").textContent).toContain("New scans are temporarily paused.");
+  });
+
   it("offers another address and no retry when the refusal says retrying cannot help", async () => {
     // An address the scanner refuses is refused again on every retry: the
     // only way on is a different address.
