@@ -94,8 +94,9 @@ describe("pending scan acceptance", () => {
     );
   });
 
-  it("says the scanner did not answer, not that it is busy, when the request cannot reach it", async () => {
-    // Nothing was heard back, so nothing is known about how busy it is.
+  it("says it cannot tell whether the scan started, not that the scanner is busy, when no answer came back", async () => {
+    // Nothing was heard back, so nothing is known about how busy it is, and
+    // the scan may have started before the answer was lost.
     savePendingScan(window.sessionStorage, pending("unreachable"));
     globalThis.fetch = async (input) => {
       if (String(input) === "/api/v1/attribution") return new Response(null, { status: 201 });
@@ -105,18 +106,22 @@ describe("pending scan acceptance", () => {
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await screen.findByRole("heading", { name: "The scanner did not answer" });
+    expect(screen.getByRole("status").textContent).toMatch(/cannot tell whether/i);
     expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
     expect(readPendingScan(window.sessionStorage)).not.toBeNull();
   });
 
-  it("keeps the retry when the answer is not a refusal of ours", async () => {
-    // A proxy's error page says nothing about whether the address is good.
+  it("says it cannot tell whether the scan started, and keeps the retry, when the answer is not a refusal of ours", async () => {
+    // A proxy's error page says nothing about whether the address is good,
+    // nor whether the scanner took the scan before the page came back.
     savePendingScan(window.sessionStorage, pending("proxy"));
     installNetwork(new Response("<html>Bad gateway</html>", { status: 502 }));
 
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     expect(await screen.findByRole("button", { name: "Retry scan" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "The scan could not start" })).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/cannot tell whether/i);
   });
 
   it("removes the pending request once the server accepts it", async () => {
