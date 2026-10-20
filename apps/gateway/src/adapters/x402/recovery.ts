@@ -176,8 +176,6 @@ export class Eip3009Recovery {
     const validBefore = BigInt(context.validBefore);
     let earliest = BigInt(context.notBefore);
     if (BigInt(context.validAfter) + 1n > earliest) earliest = BigInt(context.validAfter) + 1n;
-    // Clamped so that the block where the search stops is the first one past the window.
-    if (earliest > validBefore) earliest = validBefore;
     if (cursor === undefined && finalized.timestamp < earliest)
       return { settled: "unknown", reason: NOT_FOUND };
     let next =
@@ -187,8 +185,8 @@ export class Eip3009Recovery {
         return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
       const block = await reader.block(next);
       if (block.timestamp >= validBefore) {
-        // Unused at the window's last block, it can no longer pay: a later
-        // cancellation is what marked it used.
+        // Unused before this block, it can no longer pay: every later block
+        // is past its validBefore, and a later cancellation marked it used.
         if (next > 0n && !(await reader.authorizationState(context, next - 1n)))
           return EXPIRED_UNUSED;
         return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
@@ -197,7 +195,7 @@ export class Eip3009Recovery {
         receipt.logs.some((log) => this.authorizationEvent(log, context) !== null),
       );
       for (const receipt of receipts) {
-        const proof = this.proof(context, finalized, receipt, block);
+        const proof = this.proof(context, receipt, block);
         if (proof) return proof;
       }
       if (receipts.length > 0)
@@ -274,20 +272,21 @@ export class Eip3009Recovery {
     const receipt = await reader.receipt(transaction);
     if (!same(receipt.transactionHash, transaction) || receipt.blockNumber > finalized.number)
       return null;
-    return this.proof(context, finalized, receipt, await reader.block(receipt.blockNumber));
+    return this.proof(context, receipt, await reader.block(receipt.blockNumber));
   }
 
-  /** The receipt's verdict, if it proves this authorization's outcome in the canonical `block`. */
+  /**
+   * The receipt's verdict, if it proves this authorization's outcome in the
+   * canonical `block`, which the callers have checked is finalized.
+   */
   private proof(
     context: PaymentRecoveryContext,
-    finalized: ChainBlock,
     receipt: ChainReceipt,
     block: ChainBlock,
   ): PaymentRecoveryOutcome | null {
     const transaction = receipt.transactionHash;
     if (
       receipt.status !== "success" ||
-      receipt.blockNumber > finalized.number ||
       block.number !== receipt.blockNumber ||
       !same(block.hash, receipt.blockHash)
     )

@@ -180,12 +180,12 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
 
   it("reads only the blocks where the authorization was valid, then proves it expired unused when a later cancellation marked it used", async () => {
     const chain = new Chain();
-    chain.usedAt = 600n;
+    chain.usedAt = 550n;
     chain.receiptValue = {
       ...chain.receiptValue,
-      blockNumber: 600n,
-      blockHash: hashOf(600n),
-      logs: [event("AuthorizationCanceled", 4, 600n)],
+      blockNumber: 550n,
+      blockHash: hashOf(550n),
+      logs: [event("AuthorizationCanceled", 4, 550n)],
     };
     expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
       settled: false,
@@ -330,6 +330,21 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       transaction: TX,
     });
     expect(outcome.settled).not.toBe(true);
+  });
+
+  it("never reads a transfer from a block above the finalized one", async () => {
+    const chain = new Chain();
+    chain.finalized = 510n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 520n,
+      blockHash: hashOf(520n),
+      logs: [event("AuthorizationUsed", 4, 520n), event("Transfer", 5, 520n)],
+    };
+    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
+      settled: "unknown",
+    });
+    expect(chain.receiptsRead.at(-1)).toBe(510n);
   });
 
   it("uses a candidate hash only as a hint and still finds the original authorization", async () => {
