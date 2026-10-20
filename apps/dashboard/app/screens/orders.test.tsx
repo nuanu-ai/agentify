@@ -243,6 +243,42 @@ describe("searching the orders", () => {
   });
 });
 
+describe("the counts beside a search", () => {
+  /** The search box and the counts beside it, apart from the lists under them. */
+  const toolsOf = (address: string): string =>
+    /<div class="list-tools">([\s\S]*?)<section class="group">/.exec(
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams(address))}
+        />
+      )),
+    )?.[1] ?? "";
+  const linksIn = (html: string): readonly string[] =>
+    [...html.matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((link) =>
+      (link[1] ?? "").replaceAll("&amp;", "&"),
+    );
+
+  it("are said to be the search's, with the way back to every order's", () => {
+    // A status word finds nothing, and a count of none under it is not a
+    // merchant with nothing to do.
+    const tools = toolsOf("q=unfulfilled");
+
+    expect(readable(tools)).toContain("“unfulfilled”");
+    expect(linksIn(tools)).toContain("/orders");
+  });
+
+  it("lead back to the segment the search was made in", () => {
+    expect(linksIn(toolsOf("q=virtual&show=open"))).toContain("/orders?show=open");
+  });
+
+  it("say nothing of a search where there is none", () => {
+    const tools = toolsOf("");
+
+    expect(linksIn(tools)).not.toContain("/orders");
+    expect(readable(tools)).not.toContain("“");
+  });
+});
+
 describe("an unfulfilled test purchase", () => {
   it("marks the original amount as a test", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
