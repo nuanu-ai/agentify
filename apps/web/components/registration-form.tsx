@@ -154,7 +154,14 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       onFocusCapture={markRegistrationStarted}
       onSubmit={(event) => void submit(event)}
     >
-      {signedIn ? (
+      {/* A link comes back to a signed-in form only when the session ended
+          before the press, and the site took it as a stranger's. */}
+      {signedIn && state === "sent" ? (
+        <p className={styles.lead}>
+          You are no longer signed in, so we emailed a secure link to{" "}
+          <strong>{visitor.email}</strong> instead.
+        </p>
+      ) : signedIn ? (
         <p className={styles.lead}>
           You are signed in, so the report will be filed under <strong>{visitor.email}</strong> and
           open here without a message.
@@ -224,7 +231,11 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         disabled={state === "sending" || state === "opening" || resendWait > 0}
         type="submit"
       >
-        {signedIn && resendWait === 0 && state !== "sending" && state !== "opening"
+        {signedIn &&
+        resendWait === 0 &&
+        state !== "sending" &&
+        state !== "opening" &&
+        state !== "sent"
           ? "Open the full report"
           : registrationSubmitLabel(state, resendWait)}
       </button>
