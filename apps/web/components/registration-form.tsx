@@ -1,11 +1,12 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
+import { refusalIn } from "../lib/api-answers";
 import { linkAnswerFailure, waitLabel } from "../lib/link-answer";
 import { useVisitor } from "../lib/visitor";
 import styles from "./registration-form.module.css";
 
-type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error";
+type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error" | "stale";
 
 /** The wait is the server's to name; the button never counts down a guess of its own. */
 export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
@@ -25,9 +26,12 @@ export function sentConfirmationCopy(email: string) {
 /**
  * The ask for the full report. A stranger types an address and gets a link. A
  * signed-in person is shown the address the report will be filed under before
- * the press, and their ask carries no address, is filed at once and sends
- * nothing. A page that cannot tell who is visiting offers no ask rather than
- * take an address over a session it could not see.
+ * the press, and their ask is filed at once and sends nothing. Every ask names
+ * the address the page showed or was typed into it: the session can change in
+ * another tab while this page stays open, and the route refuses an ask naming
+ * an address other than the one signed in now. A page that cannot tell who is
+ * visiting offers no ask rather than take an address over a session it could
+ * not see.
  */
 export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   const visitor = useVisitor();
@@ -64,7 +68,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       return;
     }
     const form = new FormData(event.currentTarget);
-    const signedIn = visitor.status === "signed_in";
+    const email = visitor.status === "signed_in" ? visitor.email : form.get("email");
     setState("sending");
     const response = await fetch(`/api/v2/scans/${encodeURIComponent(scanId)}/registrations`, {
       method: "POST",
@@ -73,7 +77,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ...(signedIn ? {} : { email: form.get("email") }),
+        email,
         phone: form.get("phone") || undefined,
         role: form.get("role"),
         site_is_mine: form.get("site_is_mine") === "on",
@@ -95,7 +99,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       setMessage("");
     } else {
       const failure = linkAnswerFailure(payload);
-      setState("error");
+      setState(refusalIn(payload)?.code === "signed_in_as_another_address" ? "stale" : "error");
       setMessage(failure.message);
       setResendWait(failure.waitSeconds);
     }
@@ -115,6 +119,20 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       </p>
     );
   const signedIn = visitor.status === "signed_in";
+  // The site has said this page was loaded for somebody other than who is
+  // signed in now, so the page offers only a reload.
+  if (state === "stale")
+    return (
+      <div>
+        <p aria-live="polite" className={styles.error}>
+          {message}
+        </p>
+        <p>
+          {/* Drawn only after a press, in the browser, so the address is there. */}
+          <a href={window.location.href}>Reload this page</a>
+        </p>
+      </div>
+    );
 
   return (
     <form
