@@ -297,9 +297,53 @@ describe("one paid order, in the merchant's own shop", () => {
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
   });
 
-  it("refuses an order whose product check could not be read, and says neither that the product changed nor that the shop was silent", async () => {
+  it("refuses an order whose product check could not be read in none of the words that say the product changed or the shop was silent", async () => {
     // The shop answered, so it was not silent, and what it answered says
-    // nothing about the product, so the product is not "no longer" anything.
+    // nothing about the product, so no reason that says the product changed
+    // is true of it.
+    const refusalWith = async (overrides: Partial<Filling>): Promise<string | undefined> => {
+      const answer = await fillFromTheShop(
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        { ...filling(memoryWooShops(), aShopThatAccepts().place), ...overrides },
+        NO_SPLIT,
+      );
+      return (answer as { refused?: { message?: string } } | null)?.refused?.message;
+    };
+    const download = {
+      kind: "download" as const,
+      productId: "11",
+      downloadId: "dl_guide",
+      fileName: "Guide",
+      price: { amount: "25.00", currency: "USD" },
+      fingerprint: "accepted-download-fingerprint",
+    };
+    const untrue = new Set(
+      await Promise.all(
+        [
+          { inspectProduct: async () => RULED_OUT },
+          {
+            inspectProduct: async () =>
+              showing({ kind: "parcel", productId: "11", price: download.price, fingerprint: "p" }),
+          },
+          {
+            inspectProduct: async () =>
+              showing({ ...download, price: { amount: "30.00", currency: "USD" } }),
+          },
+          { quotedProduct: async () => "an-earlier-download" },
+          {
+            inspectProduct: async (): Promise<ProductInspection> => ({
+              ok: false,
+              why: "The shop did not answer the protected product check.",
+              again: true,
+            }),
+          },
+        ].map(refusalWith),
+      ),
+    );
+    expect(untrue.has(undefined)).toBe(false);
+
     for (const [what, answering] of UNREADABLE) {
       const shops = memoryWooShops();
       const shop = aShopThatAccepts();
@@ -317,7 +361,8 @@ describe("one paid order, in the merchant's own shop", () => {
       );
 
       expect(answer, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
-      expect(JSON.stringify(answer), what).not.toMatch(/no longer|did not answer/);
+      const message = (answer as { refused?: { message?: string } } | null)?.refused?.message;
+      expect(untrue, what).not.toContain(message);
       expect(shop.placed, what).toHaveLength(0);
       expect((await shops.knownOrder("ord_1"))?.kind, what).toBe("precreate_refused");
     }
@@ -1656,25 +1701,10 @@ describe("a parcel's paid order", () => {
     expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
   });
 
-  it("refuses an order whose product or cart answer could not be read, and does not say the product or its shipping changed", async () => {
-    const unreadable: [string, Partial<Filling>][] = UNREADABLE.map(([what, answering]) => [
-      what,
-      {
-        inspectProduct: (asked: WooConnection, merchantItemId: string) =>
-          inspectProductInTheShop(asked, merchantItemId, answering),
-      },
-    ]);
-    unreadable.push([
-      "a cart holding two",
-      {
-        shippingRates: (keys, productId, where) =>
-          shippingRatesInTheShop(keys.shopUrl, productId, where, aCartHoldingTheTote(2)),
-      },
-    ]);
-    for (const [what, overrides] of unreadable) {
+  it("refuses a paid parcel in words that say only what the shop's answer showed", async () => {
+    const refusalWith = async (overrides: Partial<Filling>): Promise<string | undefined> => {
       const shops = memoryWooShops();
       const shop = aParcelShop();
-
       const answer = await fillFromTheShop(
         parcelOrder(),
         connection(),
@@ -1682,17 +1712,85 @@ describe("a parcel's paid order", () => {
         parcelParts(shops, shop.place, overrides),
         NO_SPLIT,
       );
+      // Every case here is refused before the shop is asked for an order.
+      expect(shop.placed).toHaveLength(0);
+      expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+      return (answer as { refused?: { message?: string } } | null)?.refused?.message;
+    };
+    const fromTheCart = (request: WooRequest): Partial<Filling> => ({
+      shippingRates: (keys, productId, where) =>
+        shippingRatesInTheShop(keys.shopUrl, productId, where, request),
+    });
+    // A cart that took its token and refuses the product, as one sold out
+    // since the price was asked does.
+    const soldOut: WooRequest = async (_url, init) =>
+      (init?.method ?? "GET") === "GET"
+        ? Response.json(
+            { items: [], errors: [], needs_shipping: false, shipping_rates: [] },
+            { headers: { "Cart-Token": "cart-token-1" } },
+          )
+        : Response.json(
+            {
+              code: "woocommerce_rest_product_out_of_stock",
+              message: "You cannot add that amount to the cart.",
+              data: { status: 400 },
+            },
+            { status: 400 },
+          );
 
-      expect(answer, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
-      expect(JSON.stringify(answer), what).not.toMatch(/no longer/);
-      expect(shop.placed, what).toHaveLength(0);
-      expect(await shops.knownOrder("ord_1"), what).toStrictEqual({ kind: "precreate_refused" });
+    // What is said where the product or its shipping did change.
+    const changed = new Set<string | undefined>();
+    for (const overrides of [
+      { inspectProduct: async () => RULED_OUT },
+      { quotedProduct: async () => "an-earlier-parcel" },
+      {
+        inspectProduct: async (): Promise<ProductInspection> =>
+          showing({
+            kind: "download",
+            productId: "28",
+            downloadId: "dl",
+            fileName: "Tote.pdf",
+            price: { amount: "20.00", currency: "USD" },
+            fingerprint: "accepted-parcel-fingerprint",
+          }),
+      },
+      {
+        shippingRates: async () => ({
+          ok: true as const,
+          rates: [rate("Standard", "6.00", "3")],
+        }),
+      },
+    ] satisfies Partial<Filling>[]) {
+      changed.add(await refusalWith(overrides));
+    }
+    expect(changed.has(undefined)).toBe(false);
+
+    // Where the answer could not be read, none of those is true.
+    const unread = new Set<string | undefined>();
+    for (const [what, overrides] of [
+      ...UNREADABLE.map(
+        ([what, answering]) =>
+          [
+            what,
+            {
+              inspectProduct: (asked: WooConnection, merchantItemId: string) =>
+                inspectProductInTheShop(asked, merchantItemId, answering),
+            },
+          ] as const,
+      ),
+      ["a cart holding two", fromTheCart(aCartHoldingTheTote(2))] as const,
+    ]) {
+      const message = await refusalWith(overrides);
+      expect(message, what).toBeDefined();
+      expect(changed, what).not.toContain(message);
+      unread.add(message);
     }
 
-    // Where the shop did say so, the buyer is still told the product or its
-    // shipping changed.
+    // Where the shop's cart refused the parcel, that is what is said: not
+    // that its shipping changed, and not that its answer could not be read.
     for (const [what, overrides] of [
-      ["out of stock", { inspectProduct: async () => RULED_OUT }],
+      ["sold out since the price", fromTheCart(soldOut)],
+      ["a cart whose errors refuse the line", fromTheCart(aCartHoldingTheTote(1, [A_CART_ERROR]))],
       [
         "the place refused",
         {
@@ -1704,24 +1802,11 @@ describe("a parcel's paid order", () => {
           }),
         },
       ],
-      [
-        "shipping now dearer",
-        {
-          shippingRates: async () => ({
-            ok: true as const,
-            rates: [rate("Standard", "6.00", "3")],
-          }),
-        },
-      ],
     ] as const) {
-      const answer = await fillFromTheShop(
-        parcelOrder(),
-        connection(),
-        MERCHANT_EMAIL,
-        parcelParts(memoryWooShops(), aParcelShop().place, overrides),
-        NO_SPLIT,
-      );
-      expect(JSON.stringify(answer), what).toMatch(/no longer/);
+      const message = await refusalWith(overrides);
+      expect(message, what).toBeDefined();
+      expect(changed, what).not.toContain(message);
+      expect(unread, what).not.toContain(message);
     }
   });
 
