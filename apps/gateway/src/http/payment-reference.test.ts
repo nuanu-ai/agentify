@@ -914,11 +914,13 @@ describe("a payment presented with a request other than the one it was made for"
     expect(priced.status).toBe(402);
     const challenge = priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
     const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-    const sendTo = (itemId: string, params: Record<string, unknown>, payment: string) =>
+    const shopCall = (itemId: string, body: unknown, payment: string) =>
       served.call("POST", `/x402/${itemId}/purchase`, {
-        body: { params },
+        body,
         headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
       });
+    const sendTo = (itemId: string, params: Record<string, unknown>, payment: string) =>
+      shopCall(itemId, { params }, payment);
     return {
       harnessed,
       guide,
@@ -928,6 +930,7 @@ describe("a payment presented with a request other than the one it was made for"
       challenge,
       orderId: opened?.order.id ?? "",
       sendTo,
+      shopCall,
     };
   };
 
@@ -965,6 +968,28 @@ describe("a payment presented with a request other than the one it was made for"
       }
     },
   );
+
+  it("is refused with parameters that cannot be read, before anything is charged, and still buys at its own request", async () => {
+    // Parameters that cannot be compared must not pass for the ones priced.
+    const sale = await pricedGuide();
+    try {
+      const payment = paymentAgainst(sale.challenge, BUYER, "0x01");
+
+      const unreadable = await sale.shopCall(sale.guide, { params: 5 }, payment);
+
+      expect(unreadable.status).toBe(400);
+      expect(unreadable.body).toMatchObject({ error: { code: "malformed_body" } });
+      expectNoOrderIn(unreadable.body, sale.orderId);
+      expect(sale.harnessed.facilitator.settles).toHaveLength(0);
+      expect(sale.handled).toStrictEqual([]);
+
+      const bought = await sale.sendTo(sale.guide, ORIGINAL, payment);
+      expect(bought.status).toBe(200);
+      expect(sale.harnessed.facilitator.settles).toHaveLength(1);
+    } finally {
+      await sale.worker.stop();
+    }
+  });
 
   it("is refused without claiming nothing was charged while the purchase it was made for is being charged", async () => {
     // Delivered in the answer, the purchase is charged after its goods, so its
