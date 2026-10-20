@@ -1080,17 +1080,17 @@ describe("why a scan the scanner stopped has no result", () => {
     return { terminal: evaluation.score.terminalStatus, stop: scanStopReason(evaluation.checks) };
   };
 
-  it("names a private address when the site's name leads to one, and asks nothing of it", async () => {
+  it("names no public site when the site's name leads to a private address, and asks nothing of it", async () => {
     const target = transport();
     const result = await stopped(
       { resolve: async () => [{ address: "127.0.0.1", family: 4 }] },
       target.adapter,
     );
-    expect(result).toEqual({ terminal: "failed", stop: "private_address" });
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
     expect(target.paths).toEqual([]);
   });
 
-  it("names a private address when every page redirects to a name that leads to one", async () => {
+  it("names no public site when every page redirects to a name that leads to a private address", async () => {
     const target = transport();
     const result = await stopped(
       {
@@ -1109,7 +1109,7 @@ describe("why a scan the scanner stopped has no result", () => {
             : target.adapter.request(input),
       },
     );
-    expect(result).toEqual({ terminal: "failed", stop: "private_address" });
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
     expect(target.paths).toEqual([]);
   });
 
@@ -1130,7 +1130,7 @@ describe("why a scan the scanner stopped has no result", () => {
     expect(result).toEqual({ terminal: "failed", stop: "forbidden_redirect" });
   });
 
-  it("names a site whose name finds no server", async () => {
+  it("names no public site when the site's name does not exist", async () => {
     const result = await stopped(
       {
         resolve: async (hostname) => {
@@ -1141,7 +1141,7 @@ describe("why a scan the scanner stopped has no result", () => {
       },
       transport().adapter,
     );
-    expect(result).toEqual({ terminal: "failed", stop: "host_not_found" });
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
   });
 
   it("names a secure connection the site's certificate kept from opening", async () => {
@@ -1180,6 +1180,25 @@ describe("why a scan the scanner stopped has no result", () => {
     ],
   ])("names no stop for %s", async (_, adapter) => {
     expect((await stopped({ resolve: publicAddress }, adapter())).stop).toBeNull();
+  });
+
+  it("tells a name that leads to a private address and a name that does not exist alike", async () => {
+    const privateName = await stopped(
+      { resolve: async () => [{ address: "172.18.0.4", family: 4 }] },
+      transport().adapter,
+    );
+    const missingName = await stopped(
+      {
+        resolve: async (hostname) => {
+          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+            code: "ENOTFOUND",
+          });
+        },
+      },
+      transport().adapter,
+    );
+    expect(privateName.stop).not.toBeNull();
+    expect(privateName).toEqual(missingName);
   });
 
   it("names no stop where the checks it could not assess were stopped for different reasons", async () => {

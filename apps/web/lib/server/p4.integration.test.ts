@@ -573,14 +573,14 @@ describe("P4 dashboard-owned scanner identity", () => {
     // that kind it is.
     await expect(
       stoppedScan("private-name", null, ["ssrf_blocked:loopback", "ssrf_blocked:private", null]),
-    ).resolves.toMatchObject({ status: "failed", stop_reason: "private_address" });
+    ).resolves.toMatchObject({ status: "failed", stop_reason: "no_public_site" });
     await expect(
       stoppedScan("redirected-to-a-number", null, ["numeric_host_blocked"]),
     ).resolves.toMatchObject({ stop_reason: "forbidden_redirect" });
     // Checks stopped for different reasons leave the cause unknown, and so
     // does a scan graded all the same.
     expect(
-      await stoppedScan("mixed-stops", null, ["ssrf_blocked:private", "dns_error"]),
+      await stoppedScan("mixed-stops", null, ["ssrf_blocked:private", "tls_invalid"]),
     ).not.toHaveProperty("stop_reason");
     expect(
       await stoppedScan("graded-around-a-stop", 40, ["ssrf_blocked:private", null]),

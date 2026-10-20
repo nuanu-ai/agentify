@@ -122,17 +122,13 @@ describe("canonical contracts", () => {
       checks: [],
       updated_at: "2026-07-13T12:00:00.000Z",
     };
-    for (const stop_reason of [
-      "private_address",
-      "forbidden_redirect",
-      "host_not_found",
-      "secure_connection_failed",
-    ])
+    for (const stop_reason of ["no_public_site", "forbidden_redirect", "secure_connection_failed"])
       expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(true);
     expect(scanStatusResponseSchema.safeParse(failed).success).toBe(true);
-    expect(
-      scanStatusResponseSchema.safeParse({ ...failed, stop_reason: "timed_out" }).success,
-    ).toBe(false);
+    // Whether a name leads to a private address or to none at all is not
+    // told apart: a stranger could otherwise map the scanner's own network.
+    for (const stop_reason of ["timed_out", "private_address", "host_not_found"])
+      expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(false);
   });
 
   it("rejects credentialed and non-http scan URLs", () => {

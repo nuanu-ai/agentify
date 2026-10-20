@@ -148,7 +148,7 @@ describe("the browser's reading of an API answer", () => {
         checks: checks("unavailable"),
         updated_at: "2026-10-13T09:00:30.000Z",
         target_host: "shop.example",
-        stop_reason: "private_address",
+        stop_reason: "no_public_site",
       },
       {
         status: "completed",
