@@ -1114,8 +1114,7 @@ describe("a payment presented with a request other than the one it was made for"
 
   it("refused by the payment layer is answered the same whatever request it came with, naming no order", async () => {
     // A used authorization can be read from the chain, so presenting it with
-    // a guess at another request must not confirm or deny the guess. That its
-    // order is paid is said, as the chain already shows.
+    // a guess at another request must not confirm or deny the guess.
     const sale = await pricedGuide();
     try {
       const payment = paymentAgainst(sale.challenge, BUYER, "0x01");
@@ -1131,7 +1130,7 @@ describe("a payment presented with a request other than the one it was made for"
       expect(guessed.status).toBe(409);
       expect(guessed.body).toMatchObject({ error: { code: "payment_not_verified" } });
       expect(guessed.body).toStrictEqual(matching.body);
-      expect(JSON.stringify(guessed.body)).toMatch(/already paid/);
+      expect(JSON.stringify(guessed.body)).toMatch(/if this purchase was already paid for/);
       expectNoOrderIn(guessed.body, sale.orderId);
       expect(sale.harnessed.facilitator.settles).toHaveLength(1);
     } finally {
@@ -1260,7 +1259,7 @@ describe("goods made for a purchase whose charge did not go through", () => {
       expect(again.body).toMatchObject({
         error: { code: "payment_not_verified", retryable: false },
       });
-      expect(JSON.stringify(again.body)).toMatch(/nothing was charged/i);
+      expect(JSON.stringify(again.body)).toMatch(/charged nothing/i);
       expect(JSON.stringify(again.body)).toMatch(/start a new purchase/i);
       expect(sale.network.charged).toStrictEqual([]);
     } finally {
