@@ -60,8 +60,8 @@ product:
 | Your product | When the buyer pays | If you cannot deliver |
 | --- | --- | --- |
 | Handed over at once by your system: a key, a link, access | after you have delivered, as the last step of the purchase | the purchase does not happen and the buyer pays nothing |
-| Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | you owe the buyer the goods or the money back |
-| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | you owe the buyer the money back, unless you ship late after all |
+| Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | the paid order is recorded as unfulfilled: you deliver late or close it, and any refund is yours to arrange |
+| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | as above: you ship late or close the order, and any refund is yours to arrange |
 
 A WooCommerce shop's products are all charged at the moment of purchase, and
 the choice is not yours there: the connector publishes a download as a product
@@ -119,11 +119,11 @@ so ending someone's session does not touch your integration. You can stop the
 sales yourself at any moment, with a pause on each card or one button that
 stops selling altogether: a paused card stops selling and disappears from the
 catalogue, while the orders already taken play out in the ordinary way.
-Full offboarding is not available yet. Pausing and revoking keys do not cancel
-accepted orders, settle debts or delete your account; the
-[FAQ](/faq#can-i-leave-altogether) describes the available controls. Monitor
-your orders and pause sales when your integration cannot deliver; Agentify
-has no staffed monitoring service.
+Leaving altogether is not available yet: pausing and revoking keys end no
+order already taken and delete no account, and the
+[FAQ](/faq#can-i-leave-altogether) says what you can do instead. Nobody at
+Agentify watches your orders for you, so keep an eye on them and pause selling
+when your integration cannot deliver.
 
 Short answers — what this costs, what happens about refunds, who settles a
 dispute — are in the [common questions](/faq).

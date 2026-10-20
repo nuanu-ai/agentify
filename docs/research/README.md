@@ -16,8 +16,8 @@ moved on; it stays because a decision cites it or because it records a
 measurement of its day, and it opens with one line saying what replaced it.
 Working material that supports no decision, such as session notes, reviews of
 drafts and retrospectives, does not stay here, and git keeps what was removed.
-Notes are numbered in the order they were written. Four numbers, 34, 47, 49 and
-52, went to two notes each, which is why every citation uses the whole file
+Notes are numbered in the order they were written. Three numbers, 34, 47 and
+49, went to two notes each, which is why every citation uses the whole file
 name. Notes written in Russian stay in Russian.
 
 | Note | What it is | Decisions it supports | Language | Status |
@@ -63,7 +63,8 @@ name. Notes written in Russian stay in Russian.
 | [49-lighthouse](49-lighthouse.md) | Lighthouse scores of the public pages, with [the raw results](49-lighthouse-results.csv) | — | English | historical |
 | [50-commerce-correctness-test](50-commerce-correctness-test.md) | defects a correctness test found in the purchase path, and their fixes | ADR-0012 | English | current |
 | [52-release-delivery](52-release-delivery.md) | what the move to images built once in CI measured | ADR-0016 | English | current |
-| [52-self-service](52-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
+| [53-self-hosted-observability](53-self-hosted-observability.md) | how the logs and host telemetry of both channels reach the shared self-hosted observability stack | — | English | current |
+| [54-self-service](54-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

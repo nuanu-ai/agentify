@@ -54,7 +54,9 @@ your shipment beside it, and that is the last word Agentify has about the
 parcel — whether it arrives is between you and the buyer, who is pointed at
 your shop's site.
 
-A parcel not shipped by its deadline is `unfulfilled`. A late shipment can still be recorded until you close fulfillment. A recorded shipment is the last fulfillment fact Agentify records; a lost parcel and its remedy are between you and the buyer. Parcels remain on the test channel while their live readiness gates are incomplete.
+A parcel not shipped by its deadline is `unfulfilled`, and a late shipment can
+still be recorded until you [close fulfillment](#closing-fulfillment). Parcels
+are not sold on the live channel yet.
 
 ## Where an order comes from
 
@@ -148,7 +150,7 @@ off. The identifier is good once, and no second order arrives under it.
 
 A handler has three answers:
 
-- a delivery — JSON to the result declared in the card; the order closes as a
+- a delivery — JSON to the result declared in the card; the order ends as a
   success;
 - a refusal — a short code and a reason a person can read, with the codes
   collected in the [vocabulary of refusal codes](/cards#refusal-codes);
@@ -159,9 +161,11 @@ A handler has three answers:
   the buyer charged nothing.
 
 The same three exist as calls you make from outside a handler — `deliver`,
-`refuse` and `accept`. `close` is a separate control that stops future Agentify fulfillment, described under [Closing fulfillment](#closing-fulfillment).
+`refuse` and `accept`. A fourth call, `close`, is not an answer: it stops
+Agentify accepting deliveries for an order ([Closing
+fulfillment](#closing-fulfillment)).
 
-Those three are the whole set of handler answers, and that matters for how you report a
+Those three answers are the whole set, and that matters for how you report a
 temporary failure. An exception in the handler, a process that fell over, a
 connection that broke — for us each of these means the order never reached
 you, so we send it again, after a delay, until the order's deadline runs out
@@ -169,7 +173,7 @@ or we have delivered it five times, whichever comes first. Five is what this
 system is set to, and no card changes it. Once we stop sending it, the order
 stays open until its deadline: an answer or a delivery that arrives before
 then still counts. A refusal we read the other way, as a final "this cannot be
-delivered", and we close the order on it. So a supplier that did not answer in
+delivered", and we end the order on it. So a supplier that did not answer in
 time is not worth a refusal: throw instead.
 
 We wait three seconds for a handler's answer, counted from the moment we hand
@@ -183,7 +187,7 @@ has to expect the same order twice.
 
 ## Confirming a delivery with a separate call
 
-You close an order you took on with `deliver`, once the delivery is finished.
+You finish an order you took on with `deliver`, once the delivery is done.
 The call is made on the order itself — the object that arrived in your handler,
 or the one you read back from us — and it takes one argument: the result, to
 the shape declared in the card, which goes to the agent as it is.
@@ -198,7 +202,7 @@ does not name ([Delivery result](/cards#delivery-result)). The order keeps
 that promise from the moment it is made, and it does not carry the promise to
 you: after you republish a card with a different result, the orders already
 taken are still held to the old one, so deliver to them what they were sold
-with, or wait until they have closed before changing the shape. Goods that do
+with, or wait until they have ended before changing the shape. Goods that do
 not fit are refused with the offending fields named, and the order does not
 move at all — nothing of what you sent is written down, no receipt is issued,
 and no deadline of yours moves.
@@ -214,36 +218,97 @@ once for every attempt.
 The call is idempotent by the order's identifier. Call it a second time with
 the same `order.id` and it succeeds again, marked as already delivered: no
 second delivery happened and no second charge. `ok` is true in both cases, so
-you do not have to branch on the word inside it; the word is there when you
-want it; an accepted late delivery carries `delivered_late`. A repeat is not weighed against the card, because there is
-nothing left for it to write: what it carries is neither checked nor kept.
+you do not have to branch on the word inside it, which is there when you want
+it. A repeat is not weighed against the card, because there is nothing left
+for it to write: what it carries is neither checked nor kept.
 
-A late call is accepted while fulfillment remains open. After the delivery deadline the order is `unfulfilled`, with the original payment still recorded. A late `deliver` changes it to `delivered`, or `shipped` for a parcel. A merchant closure stops that path: later delivery calls are refused with `fulfillment_closed`.
+A delivery after the deadline still counts. Past its deadline a paid order
+reads `unfulfilled`, and a late `deliver` makes it `delivered`, or `shipped`
+for a parcel, with `ok` true and the word `delivered_late`. Once you close
+fulfillment of the order, a late `deliver` is refused with
+`fulfillment_closed`.
+
+## Refusing after you have taken the order on
+
+Taking an order on does not bind you: while the order is open, you can refuse
+it with a separate call. In the synchronous mode the handler refuses in its
+own answer, and there is no separate call there at all.
+
+```ts
+await order.refuse({
+  code: 'out_of_stock',
+  message: 'The supplier did not confirm the number',
+})
+```
+
+The buyer has already been charged for an order you took on, so a refusal
+makes it `unfulfilled` straight away. It stays on the open list, and a late
+delivery still counts. A refusal does not stop Agentify accepting deliveries;
+closing fulfillment does.
 
 ## Closing fulfillment
 
-Close fulfillment when Agentify must stop accepting deliveries for the order, whether you arranged a refund, another remedy, or fulfillment outside Agentify. The action records your decision; it does not move money, confirm a refund, or decide whether an agreement settles the buyer's claim.
+Close fulfillment when Agentify must stop accepting deliveries for an order:
+you refunded the buyer, agreed something else with them, or fulfilled the
+order outside Agentify. Closing records that you decided so. It moves no
+money, confirms no refund and does not judge whether the buyer's claim is
+settled.
 
 ```ts
 const order = agentify.orders.forId(savedId)
 await order.close()
 ```
 
-You can include an explanation for the buyer:
+You can add an explanation for the buyer, which its agent reads as your words:
 
 ```ts
 await order.close({ message: explanationForBuyer })
 ```
 
-`explanationForBuyer` is your statement, at most 2000 characters. It is shown as yours, including any claim about a refund or agreement. Leave it out rather than send a blank message. The same action is available under **Order details → Close fulfillment** on the dashboard's Orders screen, for SDK and WooCommerce orders alike. It changes no WooCommerce setting and sends no cancellation or refund to the shop.
+The message is held to the same [plain-text
+rule](/cards#the-words-on-a-card-are-plain-text) as a card's description: no
+HTML markup, no character references, no control characters or direction
+overrides, line feeds allowed, at most 2000 characters. A message that breaks
+the rule is refused before anything is recorded, with words naming what is
+wrong.
 
-A successful call returns `{ ok: true }`. Closure is idempotent by order ID: retrying after a lost response keeps the first closure time and explanation. Read the order again if the outcome is unknown. Only your authenticated merchant can close its order. An order already delivered or shipped is refused with `order_already_closed`; its original receipt remains as recorded.
+The dashboard offers the same action under **Orders → Order details → Close
+fulfillment**, for SDK and WooCommerce orders alike, and it changes nothing in
+a WooCommerce shop.
 
-Closing cannot be undone. It stops future Agentify fulfillment and removes the order from the open list. It cannot recall work your handler or shop already started. Stop that work in your own system where needed. A payment already accepted for execution can still complete: closure does not cancel or reuse its authorization. While its outcome is unknown, the order keeps `payment_unresolved` and `payment_status: 'unresolved'`, alongside the merchant closure. Automatic verification continues, without a new charge. Confirmation changes `payment_status` to `paid`; proof that it did not execute changes it to `not_paid`. Closed fulfillment never releases held goods.
+What `close` does depends on where the order stands:
 
-The order carries `merchant_closure: { closed_at, message? }`. This is the merchant's action and optional statement, not proof of a refund. The separate `payment_status` records the original payment: `not_paid`, `paid` or `unresolved`. A closed order can still have a paid original payment. The original order price, payment and history remain; there is no net amount or refund amount on this record.
+| The order | What `close` answers | What follows |
+| --- | --- | --- |
+| still open — `in_progress`, `unfulfilled`, `delivered_unpaid` — or `expired` with late goods held for a repeat purchase | `{ ok: true }` | it reads `fulfillment_closed`, a late `deliver` is refused with `fulfillment_closed`, goods held for it are never released, and it leaves the open list |
+| `payment_unresolved` | `{ ok: true }` | it reads `payment_unresolved` until the payment is known, then `fulfillment_closed`; if the payment went through, you are sent `order.unfulfilled` and the order is on the open list again |
+| already closed by you | `{ ok: true }` | nothing changes: the first time and message stay, unless a payment went through after you closed, when closing again records your new message and takes the order off the open list |
+| delivered or shipped | `fulfillment_complete`, not retryable | nothing changes, and the receipt stands |
+| ended with nothing charged and nothing held: `rejected`, `expired`, `cancelled` | `nothing_to_close`, not retryable | nothing changes, and the agent keeps the reason it was given |
 
-### When a closing call does not go through
+Closing cannot be undone, and it cannot recall work your handler or your shop
+has already started, so stop that work in your own system. Like `deliver`,
+`close` is idempotent by the order's identifier: after a lost answer, call it
+again or read the order back. An order of another merchant is answered as if
+it did not exist.
+
+A charge Agentify had already sent to the facilitator when you closed can
+still go through, because closing cancels no payment. If it does, the order
+keeps `fulfillment_closed`, its `payment_status` becomes `paid`, you are sent
+`order.unfulfilled` with the reason `paid_after_closure`, and the order is on
+the open list again. Your earlier message may now be
+wrong, so once you have settled things with the buyer, close it again with a
+message that says what you did; that takes it off the list. Closing never
+releases goods held for the order and never lets the buyer pay a second time.
+
+After closing, the order you read back carries
+`merchant_closure: { closed_at, message? }` beside its
+[`payment_status`](#finding-out-where-an-order-stands). It keeps its price,
+payment and history, and records no refund amount. On a paid order the agent
+reads, beside your message, a sentence of Agentify's own: the order was paid,
+you closed fulfillment, and Agentify confirms no refund.
+
+## When a call on an order does not go through
 
 `deliver`, `refuse`, `accept` and `close` hand their failures back rather than throwing
 them, unless the client was built with no address: `ok` is false, and one `error` beside it carries a code to branch on, a
@@ -279,38 +344,40 @@ card never declared. The `message` beside the list is a single line for a
 log, which may be cut short and says where. Print that to a person; branch on
 the list.
 
-## Refusing after you have taken the order on
-
-Taking an order on does not bind you: while the order is open, you can refuse
-it with a separate call. In the synchronous mode the handler refuses in its
-own answer, and there is no separate call there at all.
-
-```ts
-await order.refuse({
-  code: 'out_of_stock',
-  message: 'The supplier did not confirm the number',
-})
-```
-
-The buyer has already been charged for an order you took on, so a refusal marks it `unfulfilled` straight away. It stays on the open list, and a late delivery is still accepted. Use `close` to stop future Agentify fulfillment; refusal alone does not do that.
-
 ## Finding out where an order stands
 
 Every order carries a `status`, which `orders.get` and `orders.list` return
 and which the agent reads too. The drawing shows how the words follow one
-another; the table after it is the one to write a `switch` from.
+another, and the table after it is the one to write a `switch` from. The
+drawing leaves out `declined`, which no order reaches today.
 
 ```mermaid
-flowchart LR
-    accTitle: Fulfillment status and merchant closure
-    accDescr: A paid order in progress can be delivered or shipped. Refusal or a missed deadline leaves it unfulfilled, and late delivery is still accepted until the merchant closes fulfillment. The merchant can close an order that has not been delivered or shipped. Closure preserves the original payment fact and blocks future Agentify fulfillment. An unknown payment remains payment_unresolved until its original outcome is established, even when merchant closure is recorded.
-    IP["in_progress"] --> U["unfulfilled"]
-    IP --> D["delivered or shipped"]
-    U -- "late delivery" --> D
-    IP -- "merchant closes" --> C["fulfillment_closed"]
-    U -- "merchant closes" --> C
-    PU["payment_unresolved"] -- "merchant closes" --> PC["payment_unresolved<br/>merchant closure<br/>recorded"]
-    PC -- "original outcome<br/>established" --> C
+flowchart TB
+    accTitle: How an order's status changes
+    accDescr: An order starts in_progress. From there it is delivered or shipped; it ends rejected, expired or cancelled with nothing charged; it becomes unfulfilled when it was paid and not delivered in time, refused after the charge, or you left; it becomes delivered_unpaid when a synchronous charge failed after your delivery; and it becomes payment_unresolved when nobody heard whether the charge went through. A late delivery takes an unfulfilled order to delivered or shipped, and a buyer paying again takes a delivered_unpaid order to delivered. A payment_unresolved order moves once the payment is known: paid takes a synchronous order to delivered and an order paid at purchase to unfulfilled, and not paid takes a synchronous order to delivered_unpaid and an order paid at purchase to rejected. A delivered_unpaid order whose new charge goes unanswered becomes payment_unresolved. You can close fulfillment of an order that is in_progress, unfulfilled or delivered_unpaid, which makes it fulfillment_closed; closing a payment_unresolved order keeps that word until the payment is known, and then it reads fulfillment_closed.
+    IP["in_progress"]
+    DS["delivered<br/>or shipped"]
+    NC["rejected, expired<br/>or cancelled"]
+    U["unfulfilled"]
+    DU["delivered_unpaid"]
+    PU["payment_unresolved"]
+    FC["fulfillment_closed"]
+    IP --> DS
+    IP -- "nothing charged" --> NC
+    IP -- "paid, not delivered" --> U
+    IP -- "sync charge failed" --> DU
+    IP -- "charge unanswered" --> PU
+    U -- "late delivery" --> DS
+    DU -- "buyer pays again" --> DS
+    DU -- "new charge<br/>unanswered" --> PU
+    PU -- "paid, sync" --> DS
+    PU -- "paid, prepaid" --> U
+    PU -- "not paid, sync" --> DU
+    PU -- "not paid, prepaid" --> NC
+    IP -- "you close" --> FC
+    U -- "you close" --> FC
+    DU -- "you close" --> FC
+    PU -- "you close, once<br/>the payment is known" --> FC
 ```
 
 | `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
@@ -320,22 +387,33 @@ flowchart LR
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
 | `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
-| `cancelled` | you left, and the order closed with nothing charged | no | — |
-| `unfulfilled` | the original payment is confirmed, and no fulfillment was recorded | yes, until delivery or merchant closure | delivers only if your own record says to fulfill; otherwise you decide the remedy and can close fulfillment |
+| `cancelled` | you left, and the order ended with nothing charged | no | — |
+| `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to; otherwise leave it, or close fulfillment |
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
-| `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and never after merchant closure | skips it: a late answer or verified automatic recovery establishes the original payment |
-| `fulfillment_closed` | future Agentify fulfillment is closed; the original payment is recorded separately | no | — |
+| `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
+| `fulfillment_closed` | you closed fulfillment; `payment_status` says what became of the payment | only when a payment went through after you closed, until you close it again | skips delivering, which is refused; closes it again once you have settled with the buyer |
 | `declined` | the confirmation mode's "I will not deliver", which no order reaches while that mode cannot be published | no | — |
 
 Where we rather than you ended an order and the word alone would leave the
-agent guessing its next step, the status carries a `reason`: `rejected` comes
+agent guessing its next step, the status carries a `reason`. `rejected` comes
 with `unavailable` (your price check said there is none),
 `price_check_unanswered` (it did not answer in time, or its answer could not be
-accepted) or `payment_not_settled` (the charge did not go through), and
-`expired` with `price_expired` (the price ran out before the payment was taken)
-or `merchant_timed_out` (a synchronous answer did not arrive in time). Where
-the refusal was yours, your code and your message travel with the status
-instead. An `unfulfilled` order carries a `reason` — `refused`, `deadline_passed` or `merchant_left` — describing the missing fulfillment. A payment confirmed after the response deadline uses `deadline_passed`, even though no delivery deadline of yours passed. The status establishes no mandatory refund or remedy. A word you do not know is not an ending: read it again later.
+accepted) or `payment_not_settled` (the charge did not go through). `expired`
+comes with `price_expired` (the price ran out before the payment was taken) or
+`merchant_timed_out` (a synchronous answer did not arrive in time).
+
+Where the refusal was yours, your code and your message travel with the status
+instead. An `unfulfilled` order carries a `reason` saying why nothing was
+delivered: `refused`, `deadline_passed` or `merchant_left`. A payment confirmed
+only after its own response deadline also reads `deadline_passed`, although no
+deadline of yours passed. None of these words obliges you to refund, and a
+word you do not know is not an ending: read the order again later.
+
+Beside `status`, every order you read back carries `payment_status`, what
+became of the original payment: `paid`, `not_paid`, or `unresolved` while
+nobody knows. It is apart from the status because an order you closed can
+still have been paid. Like `status`, it is an open set of words, and one you
+do not know means read the order again later.
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -349,12 +427,17 @@ for (const waiting of open) {
     continue
   }
 
+  // Paid after you closed it: it needs your word to the buyer, not goods,
+  // and closing it again with that word takes it off this list.
+  if (waiting.status === 'fulfillment_closed') {
+    continue
+  }
+
   const issued = await accessFor(waiting.id)
 
   if (issued !== null) {
-    // Your own record decides whether to deliver. Close fulfillment when
-    // Agentify must stop accepting delivery; already-closed orders are not
-    // on this list. A synchronous handler answers its own in-progress order.
+    // Your own record decides whether to deliver. A synchronous handler
+    // answers its own in-progress order, and an order you closed refuses it.
     await waiting.deliver({ access_url: issued.url, expires_at: issued.expiresAt })
   }
 }
@@ -362,8 +445,8 @@ for (const waiting of open) {
 
 The first call returns one order, the second every order still open. They are
 for the case where your process restarted and no record of the order is left
-on your side, and they carry the same `deliver`, `refuse` and `close` as an order your
-handler was given. Neither has a failure branch to hand you, so when they
+on your side, and they carry the same `deliver`, `refuse` and `close` as an
+order your handler was given. Neither has a failure branch to hand you, so when they
 cannot reach us they throw, as an `AgentifyError` carrying a `code` and the
 `route` it happened on — worth remembering about a loop that runs the moment a
 process comes back up.
@@ -393,7 +476,7 @@ that happened to an order without you. A handler for them is declared with
 
 | Event | `type` | What it carries |
 | --- | --- | --- |
-| A paid order was left unfulfilled | `order.unfulfilled` | `order_id`, `at`, the original sale `price`, and a `reason`: `refused` after the charge, `deadline_passed`, or `merchant_left` |
+| A paid order was left unfulfilled | `order.unfulfilled` | `order_id`, `at`, the original sale `price`, and a `reason`: `refused` after the charge, `deadline_passed`, `merchant_left`, or `paid_after_closure` for a payment that went through after you closed fulfillment |
 | A payment did not execute after a synchronous delivery | `order.payment_failed_after_delivery` | `order_id` and `at`; the order's own status says whether the charge failed or went unanswered |
 
 An event is sent once and never again, which is the opposite of the rule for
@@ -403,71 +486,89 @@ response your process never received is simply gone, and nothing afterwards
 says so. The guard an order needs is against a repeat, and the guard an event
 needs is against a silence.
 
-A lost notice must not hide an unfulfilled order. Every such order stays on the open list until delivery or merchant closure, so walking that list finds what a lost event would otherwise hide. Walk it on a schedule and not only after a restart. A charge confirmed after its response deadline also leaves the paid order unfulfilled; its event uses `reason: deadline_passed`.
+A lost notice must not hide a paid order without its goods. Every such order
+stays on the open list until you deliver or close fulfillment, and an order
+you closed comes back to it when a payment goes through afterwards, so walking
+that list finds what a lost event would otherwise hide. Walk it on a schedule
+and not only after a restart.
 
 ## You delivered and the payment did not execute
 
 A rare case, and possible only in the synchronous mode. We check a payment
-first and execute it as the last step, after your delivery; between the check
-and the execution the funds can leave the buyer's wallet for something else.
-You have produced the goods, but the charge failed or its outcome is unknown.
-The goods are recorded and the event above goes out to you; the order stays
-on the list of open orders whether the event arrived or not. The agent
-receives the goods only after payment is established; an unknown outcome does
-not mean the buyer was not charged.
+first and execute it as the last step, after your delivery, and between the
+check and the execution the funds can leave the buyer's wallet for something
+else.
 
-Two situations reach you through that one event, and the order's status tells
-them apart. Where the charge came back failed, the order reads
-`delivered_unpaid`: the same buyer can retry payment for this order with a
-fresh authorization, and if that payment settles, the stored goods are
-released and the order closes without another call to your handler. Where the
-facilitator was asked and never answered, the order reads
-`payment_unresolved`: nobody can say whether the buyer was charged, so a
-repeat purchase is refused, because a second charge on top of a first one
-nobody has heard from would spend the buyer's money on a guess. After the
-payment's response deadline, Agentify checks the original authorization against
-chain evidence without submitting another charge. While fulfillment remains open, confirmed payment releases
-the saved goods; a cancelled authorization or proven unused expiry changes the
-order to `delivered_unpaid`, permitting a fresh authorization from the same
-buyer. Unavailable or disabled verification, conflicting evidence or a hash
-alone establishes neither outcome, so the order stays unresolved and a second
-payment is refused. Recovery resumes after a restart or reconnection and
-requires no manual approval from you or Agentify; an ordinary late answer from
-the facilitator can also establish the result. After merchant closure, recovery records only the original payment outcome, without releasing goods or permitting a fresh payment.
+You have produced the goods, and the charge either failed or never answered.
+The goods are recorded, the event above goes out to you, and the order stays
+on the open list whether the event arrived or not. The agent receives the
+goods only once the payment is known to have gone through.
 
-In both cases the goods are already recorded on our side. While fulfillment remains open, a second delivery
+The order's status tells the two cases apart. Where the charge came back
+failed, the order reads `delivered_unpaid`: the same buyer can pay for this
+order again, and if that payment goes through, the goods you made are released
+and the order ends without another call to your handler. Where the
+facilitator never answered, the order reads `payment_unresolved`, described in
+the next section.
+
+In both cases the goods are already recorded on our side, so a second delivery
 is answered as a success and nothing it carries is written down. Whether to
-revoke what you gave out or to wait is yours to decide; the risk is bounded by
+revoke what you gave out or to wait is yours to decide. The risk is bounded by
 the price of one purchase, and the owner of the business is told about it on
 [Money](/money).
 
+## When nobody knows whether the charge went through
+
+An order reads `payment_unresolved` when Agentify sent the charge and the
+facilitator never said whether it went through. Another payment for the order
+is refused meanwhile, because a second charge on top of one nobody has heard
+from would spend the buyer's money on a guess.
+
+The payment the agent signs authorizes one transfer from its wallet, valid for
+a short window, and that transfer either happened on the Base network or did
+not. After the payment's response deadline, Agentify looks for it there in the
+background, without sending another charge; a late answer from the facilitator
+settles the order as well. What it finds decides where the order goes:
+
+| What Agentify finds | A synchronous order you delivered | An order charged at purchase | An order whose fulfillment you closed |
+| --- | --- | --- | --- |
+| the transfer happened | `delivered`: the goods are released and a receipt is written | `unfulfilled`, and you are sent `order.unfulfilled`; the order never reached your handler, so deliver it from the open list or close fulfillment | `fulfillment_closed` with `payment_status: 'paid'`, and you are sent `order.unfulfilled` with `paid_after_closure`; no goods are released |
+| the transfer can no longer happen: the authorization was cancelled, or its window passed unused | `delivered_unpaid`, and the buyer can pay again | `rejected`, with the reason `payment_not_settled` | `fulfillment_closed` with `payment_status: 'not_paid'`; the buyer cannot pay again |
+
+Until Agentify finds one or the other, the order stays `payment_unresolved`.
+A network that cannot be read, evidence that contradicts itself or a
+transaction hash on its own settles nothing. The search carries on across
+restarts and needs nothing from you.
+
+No time is promised for it. Both channels read the network through a free
+public service, which can turn requests away for long stretches, so an order
+can stay unresolved for a long time, and nobody at Agentify settles it by hand
+meanwhile.
+
 ## How an order can end
 
-Most orders close with a delivery, a refusal or a deadline, and the agent sees
-which. Three rare cases leave the money unsettled, and the `status` column is
-the word each one reads. A prepaid order whose payment deadline passes stays
-unresolved until its payment outcome is established. Payment confirmed after
-that deadline leaves the paid order unfulfilled without a new fulfillment; saved
-synchronous goods can still be released when their payment is confirmed, unless the merchant has closed fulfillment.
+Most orders end with a delivery, a refusal or a deadline, and the agent sees
+which. The table also holds the rarer endings, where the payment is unknown or
+you closed fulfillment, and its `status` column is the word each one reads.
 
 | Situation | `status` | Where the money is | What the agent sees |
 | --- | --- | --- | --- |
 | You delivered the goods | `delivered` | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
 | You recorded a parcel's shipment | `shipped` | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after |
 | There is none, or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
-| Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order was closed on its deadline |
-| You left | `cancelled`, `unfulfilled` | an unpaid order was not charged; a paid order keeps its original payment | an unpaid order is closed; a paid one records missing fulfillment |
-| The money was charged and no delivery happened | `unfulfilled` | the original payment is confirmed | no fulfillment is recorded; the merchant decides the remedy |
-| You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
-| The merchant closed future fulfillment | `fulfillment_closed`, or `payment_unresolved` while payment is unknown | the original `payment_status` stays explicit | the merchant closure and optional attributed explanation; no refund confirmation |
-| The facilitator did not say whether the money was charged | `payment_unresolved` | unknown until the original payment is confirmed or disproved | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
+| Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order ended on its deadline |
+| You left | `cancelled`, `unfulfilled` | an unpaid order was not charged; a paid one is in your payout contract | an unpaid order ended; a paid one has no delivery recorded |
+| The money was charged and no delivery happened | `unfulfilled` | in your payout contract | no delivery is recorded, and Agentify confirms no refund |
+| You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the purchase did not happen; the same buyer can pay for this order again |
+| You closed fulfillment | `fulfillment_closed`, or `payment_unresolved` while the payment is unknown | where `payment_status` says: in your payout contract when `paid` | that you closed fulfillment, with your message as your words, and on a paid order Agentify's own sentence that no refund is confirmed |
+| The facilitator did not say whether the money was charged | `payment_unresolved` | unknown until Agentify finds the transfer or proof it cannot happen | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. A pause closes no orders:
-cards stop selling, and the orders already taken on play out in the ordinary
-way. Use [Close fulfillment](#closing-fulfillment) to stop future Agentify
-delivery for an individual order.
+leaving the priced order to lapse as `expired`. A pause ends no orders: cards
+stop selling, and the orders already taken on play out in the ordinary way.
+To stop Agentify accepting deliveries for one order, [close
+fulfillment](#closing-fulfillment).
 
 ## Every time limit
 
@@ -480,7 +581,7 @@ the two your card names.
 | Your price handler's answer | you | five seconds | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
 | The price an order was given | the agent | thirty seconds | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
 | Each hand-over of an order to your process | you | three seconds | the order is handed to your process | the order is sent again, up to five deliveries in all, within its own deadline |
-| The goods of a synchronous order | you | ten seconds | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless the merchant closed fulfillment |
+| The goods of a synchronous order | you | ten seconds | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless you closed fulfillment |
 | The facilitator's answer about the charge | Agentify | ten seconds on a synchronous order; fifteen where the charge comes before the goods | the charge is sent | `payment_unresolved` |
 | The delivery of an asynchronous order | you | the deadline your card names; without one, a day | the charge at purchase | `unfulfilled` |
 | The shipment of a parcel | you | your `ship_within_seconds`, at most thirty days | the charge at purchase | `unfulfilled` |
@@ -503,11 +604,11 @@ separate from its identifier, and that reference comes back in the payment the
 agent signs, so a repeat names the order it repeats and we carry that order on
 from where it stopped.
 
-To recover a lost answer, the buyer signs a fresh valid authorization for that
-same request from the same wallet. The payment reference is public and grants
-no private read access; replaying a used or expired authorization does not
-reveal the order or its status address. A verified repeat retrieves the
-original purchase without a second charge.
+To recover a lost answer, the agent signs a new payment for that same payment
+request from the same wallet, and once the facilitator verifies it, the agent
+receives the original purchase without a second charge. The payment reference
+is public and opens nothing by itself: a payment already used, or one whose
+window has passed, sent again reveals neither the order nor where to read it.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
@@ -558,32 +659,36 @@ comes from whichever channel your client is pointed at.
 
 A paid sale leaves a receipt when its goods are released or its parcel's
 shipment is recorded; the dashboard's Receipts screen shows them, and
-`GET /v0/receipts`, called with your key as `Authorization: Bearer <key>`, returns
-them to your code, though the SDK has no method for it. A payment whose outcome
-is unknown has no receipt. A late facilitator confirmation or verified chain
-recovery can release goods already held and write their receipt only while fulfillment remains open. A paid order
-neither delivered nor shipped, including a late prepaid payment that leaves an
-unfulfilled order, has none. Receipts therefore do not account for all money received.
+`GET /v0/receipts`, called with your key as `Authorization: Bearer <key>`,
+returns them to your code, though the SDK has no method for it.
+
+A receipt follows the goods, so a payment nobody knows the outcome of has
+none, and neither has a paid order that was never delivered or shipped,
+including one you closed. A payment found after its deadline writes a receipt
+only where it releases goods already held, and never once you closed
+fulfillment. Receipts therefore do not account for all the money you
+received.
 
 | Field | What it is |
 | --- | --- |
 | `id` | the receipt's own identifier |
 | `order_id`, `item_id` | the order and our catalogue identifier for the card that was bought |
 | `price` | the price the sale went through at, which stays as it was after your price moves: `amount`, `currency`, `at` — when we fixed it for this sale, "Price set" in the dashboard — and `as_of` — when that price was true, "Price as of" |
-| `paid_at` | when the facilitator confirmed payment, or the transaction block's execution time for a chain-recovered payment; "Paid" in the dashboard |
-| `transaction` | the hash of the buyer's transfer into your payout contract, reported by the facilitator or verified during recovery, which the dashboard links to the chain's explorer; absent where no transaction was recorded |
+| `paid_at` | when the facilitator confirmed payment, or, for a payment Agentify found on the network afterwards, the time of the block that holds its transfer; "Paid" in the dashboard |
+| `transaction` | the hash of the buyer's transfer into your payout contract, as the facilitator reported it or Agentify found it, which the dashboard links to the chain's explorer; absent where no transaction was recorded |
 | `test` | `true` for a test purchase, which is not proof that real money moved |
 
-The three moments can differ: in the synchronous mode the charge follows the
-merchant's delivery, and a price check can describe a price from earlier. The
-transfer a receipt names goes into your payout contract and not into your
-wallet, which receives one transfer per payout instead. A chain-recovered
-payment uses its block's execution time for `paid_at`, not the recovery time.
+The three moments can differ: in the synchronous mode the charge follows your
+delivery, and a price check can describe a price from earlier. The transfer a
+receipt names goes into your payout contract and not into your wallet, which
+receives one transfer per payout instead.
 
 ## What is not settled yet
 
 - The threshold at which a price counts as stale: any difference at all, or a
   difference larger than a named one.
+- How long finding a payment whose answer was lost takes. No time is promised,
+  and both channels depend on a free public service to read the network.
 - What other events we send. The two named here are a minimum, and we add to
   the catalogue as cases turn up where your side would otherwise learn of
   something only by reconciling by hand.

@@ -18,8 +18,8 @@ seconds sits right where the transfers land.
 
 On an order paid before its goods (asynchronous, confirmed or a parcel), a
 charge declared silent closes the order without dispatching it, and if the
-charge then lands after all, the order becomes `refund_due`: the merchant holds
-money for goods they were never asked to make, and owes it back. These orders
+charge then lands after all, the order becomes `unfulfilled`: the merchant
+holds money for goods they were never asked to make. These orders
 wait fifteen seconds for the charge (`SETTLE_BEFORE_GOODS_MS`).
 
 On a synchronous order the merchant has already made the goods when the charge

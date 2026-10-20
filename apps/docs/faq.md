@@ -68,15 +68,23 @@ connected](/#after-you-are-connected)).
 
 ### Can I leave altogether?
 
-Full offboarding is not available yet, and there is no staffed process to
-arrange it. You can pause all sales and revoke your Agentify API keys in the
-dashboard, but that does not cancel accepted orders, settle debts or delete
-your account. Fulfill accepted orders, or arrange the remedy with the buyer and close Agentify fulfillment on Orders, before disabling the integration they need. A connected shop's keys stay valid until you revoke them
-in WooCommerce → Settings → Advanced → REST API.
+Not yet, and nobody at Agentify arranges it for you. You can pause all selling
+and revoke your API keys in the dashboard, but neither ends an order already
+taken or deletes your account. Before you switch off the integration those
+orders need, deliver them, or close fulfillment of each on Orders with an
+explanation for the buyer. A connected shop's keys stay valid until you revoke
+them in WooCommerce → Settings → Advanced → REST API, and what is in your
+payout contract can be paid out at any time, after a pause too ([If the buyer
+did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
 
-Money in your payout contract can be paid out at any time to its fixed
-recipients, including after you pause. Merchant remedies and closure are described on
-[Money](/money#if-the-buyer-did-not-get-the-goods).
+### A buyer paid and did not get the goods — what happens about a refund?
+
+Agentify records the order as unfulfilled, and you decide what to do: deliver
+late, or close fulfillment with an explanation for the buyer. A refund, if you
+make one, is yours to send, in whatever amount and form you agree, and
+Agentify neither sends nor checks it. Nothing Agentify gives you names the
+buyer or their wallet, so a refund is possible only with a buyer who reaches
+you ([If the buyer did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
 
 ### The buyer is unhappy — who settles the dispute?
 

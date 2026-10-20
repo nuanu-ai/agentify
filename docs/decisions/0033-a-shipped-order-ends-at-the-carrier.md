@@ -2,7 +2,7 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28 and 2026-10-09). Built, and
-sold on the test channel only. Merchant closure is governed by ADR-0028.
+sold on the test channel only.
 
 ## Context
 
@@ -18,10 +18,10 @@ it, and the pilot pays in advance only for goods that survive a second delivery
 A card for shipped goods says `fulfillment: "ship"`, and money moves as in the
 asynchronous mode until the parcel ships. The order records at purchase that it
 is a parcel, or the result it was sold with where it is not, so a republished
-card changes no order in flight, and the state
-machine gains no state. The card names `ship_within_seconds`, the time to hand
-the parcel to a carrier from the charge, capped at thirty days in the contract,
-which the agent reads on the card and as the absolute `ship_by` on the order.
+card changes no order in flight, and the state machine gains no state. The card
+names `ship_within_seconds`, the time to hand the parcel to a carrier from the
+charge, capped at thirty days, which the agent reads on the card and as the
+absolute `ship_by` on the order.
 The mode fixes the rest: no declared `result` or delivery deadline, the address
 carried by the purchase (ADR-0032), and the whole price with shipping asked of
 the merchant's price handler. Its merchant must have given their shop's site
@@ -43,13 +43,16 @@ place and nobody's home. `ship` and `shipped` join the storefront's open
 vocabularies (ADR-0006 §5), and the contract version does not move, as no
 merchant outside our control runs a published SDK yet (ADR-0006 §2).
 
-A lost parcel and any refund or other agreement remain the merchant's
-responsibility. Agentify records no verified refund or settlement of that
-agreement (ADR-0028). The live channel continues to refuse a `ship` card until
-the merchant closure flow and its public contract are implemented, reviewed
-and tested, and the other parcel readiness gates hold. Closure applies only
-before shipment is recorded: an already-shipped parcel keeps its shipment and
-receipt, and any subsequent agreement stays outside Agentify. Who may read a parcel's tracking is
+A lost parcel and any refund or agreement remain the merchant's (ADR-0028),
+who can close fulfillment until the shipment is recorded; a shipped parcel
+keeps its shipment and receipt. That closure was this decision's condition
+for live parcels, and it is built. The live channel still refuses a `ship`
+card, with words, until the product owner admits parcels there after the
+questions in `docs/research/00-open-questions.md`: for every parcel, erasing
+the buyer's address from backups taken before the erasure (ADR-0029); for a
+WooCommerce shop's, also the connector's fixed seven days to ship, region codes
+the shop writes its own way, the guest session a price question leaves in the
+shop, and how slow a shop may be. Who may read a parcel's tracking is
 ADR-0011's rule: the holder of the order identifier, which no payment
 requirement or listing carries.
 
@@ -63,7 +66,7 @@ duties, returns, a changed address and pickup points have no handling.
 
 Rejected: `delivered` with a caveat on the card (the status read alone claims
 arrival); an arrival state with its own deadline (merchants rarely know
-arrival, and debts would fall on parcels at the door); a result each merchant
+arrival, and parcels at the door would read unfulfilled); a result each merchant
 declares (no agent learns every shape); a second shipment accepted in silence
 (a correction would vanish without a word); a required tracking number (it
 shuts out local couriers and invites made-up numbers); reusing
