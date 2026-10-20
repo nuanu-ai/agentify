@@ -309,9 +309,10 @@ const environmentSchema = z.object({
    */
   SWEEP_DISPATCH_GRACE_MS: durationMs(5 * 60 * 1_000),
   /**
-   * How many of the payment layer's own words one order keeps; an operator
-   * reconciles a silent charge from them. They arrive on an unauthenticated
-   * route, so the list is bounded and what falls off it is counted.
+   * How many of the payment layer's own words one order keeps, which is what
+   * an operator reads to learn what the facilitator and chain recovery said
+   * about a charge. They arrive on an unauthenticated route, so the list is
+   * bounded and what falls off it is counted.
    */
   PAYMENT_WORDS_KEPT: countAbove(20),
 

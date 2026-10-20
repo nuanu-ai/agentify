@@ -2,7 +2,7 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { authorizationFingerprint } from "../http/x402.js";
-import type { PaymentRecoveryContext } from "../ports/facilitator.js";
+import { type PaymentRecoveryContext, RecoveryFailure } from "../ports/facilitator.js";
 import { drawEverything, type Harness, harness } from "../testing/harness.js";
 import { Gateway } from "./gateway.js";
 
@@ -21,7 +21,21 @@ let open: Harness | null = null;
 afterEach(async () => {
   await open?.stop();
   open = null;
+  vi.restoreAllMocks();
 });
+
+/** Everything the gateway wrote to its log while `run` ran, one call per line. */
+async function logged(run: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const keep = (...words: unknown[]) => {
+    lines.push(words.map(String).join(" "));
+  };
+  for (const level of ["log", "warn", "error"] as const)
+    vi.spyOn(console, level).mockImplementation(keep);
+  await run();
+  vi.restoreAllMocks();
+  return lines;
+}
 
 async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadlineSeconds?: number) {
   const h = await harness({ SETTLE_RESPONSE_MS: "5000" });
@@ -702,5 +716,58 @@ describe("recovering a payment without another charge", () => {
     expect((await h.store.orderById(orderId))?.order.payment).not.toBe("settle_failed");
     expect(await h.store.receiptForOrder(orderId)).toBeNull();
     expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it("keeps the facilitator's own words however many polls find nothing new", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "FACILITATOR-SAID-TIMEOUT" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    let block = 100;
+    h.runtime.facilitator.reconcile = async () => {
+      block += 1;
+      return { settled: "unknown", reason: "still reading", nextBlock: String(block) };
+    };
+    h.advance(60_000);
+    await logged(async () => {
+      for (let poll = 0; poll < 30; poll += 1) await h.gateway.runner.reconcilePayments();
+    });
+    const saved = await h.store.orderById(orderId);
+    expect(saved?.paymentAttempt?.nextBlock).toBe("130");
+    const said = saved?.paymentWords.map((word) => word.said) ?? [];
+    expect(said).toContain("FACILITATOR-SAID-TIMEOUT");
+    expect(said.filter((word) => word === "still reading")).toHaveLength(1);
+  });
+
+  it("tells the operator on every poll why recovery cannot read the chain and how long the oldest payment has waited", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.runtime.facilitator.reconcile = async () => {
+      throw new RecoveryFailure("eth_getBlockByNumber at rpc.example failed: HTTP 429.");
+    };
+    h.advance(21 * 60_000);
+    for (let poll = 0; poll < 2; poll += 1) {
+      const lines = await logged(() => h.gateway.runner.reconcilePayments());
+      expect(lines.join("\n")).toContain("eth_getBlockByNumber at rpc.example failed: HTTP 429.");
+      expect(lines.join("\n")).toMatch(/\b1 unresolved payment\b.*\b21 minutes\b/);
+    }
+    expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
+  });
+
+  it("tells the operator on every poll that a payment is unresolved while recovery is off", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.advance(5 * 60_000);
+    const lines = await logged(() => h.gateway.runner.reconcilePayments());
+    expect(lines.join("\n")).toMatch(/\b1 unresolved payment\b.*\b5 minutes\b.*recovery is off/);
+  });
+
+  it("says nothing while no payment is unresolved", async () => {
+    const { h } = await purchase();
+    h.runtime.facilitator.reconcile = async () => {
+      throw new Error("no payment should be searched for");
+    };
+    expect(await logged(() => h.gateway.runner.reconcilePayments())).toEqual([]);
   });
 });
