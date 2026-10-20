@@ -798,7 +798,7 @@ describe("the protected product check", () => {
     expect(read).toMatchObject({ ok: false, again: false });
   });
 
-  it("tells a revoked key, a firewall and a missing settings route apart in the reason it gives", async () => {
+  it("tells a revoked key, a firewall, a missing settings route and a key kept from the settings apart in the reason it gives", async () => {
     // The reason is all whoever reads the log has to go on: one reconnects, one
     // asks their host, one repairs the shop.
     const reasons = new Set<string>();
@@ -806,6 +806,8 @@ describe("the protected product check", () => {
       ["/products/", 401, "woocommerce_rest_cannot_view"],
       ["/products/", 403, "forbidden"],
       ["woocommerce_ship_to_destination", 404, "rest_no_route"],
+      // A key that may read the product and not the shop's settings.
+      ["woocommerce_ship_to_destination", 401, "woocommerce_rest_cannot_view"],
     ] as const) {
       stand = await shopAnswering((asked) => {
         if (asked.url.includes(where)) return { status, body: { code } };
@@ -825,7 +827,7 @@ describe("the protected product check", () => {
       await stand.close();
       stand = null;
     }
-    expect(reasons.size).toBe(3);
+    expect(reasons.size).toBe(4);
   });
 
   it("says the shop ruled a product out only where its own readable answer did", async () => {
