@@ -32,6 +32,29 @@ describe("a merchant closes future Agentify fulfillment", () => {
     }
   });
 
+  it("holds the explanation to plain text, since the buyer's agent reads it exactly as written", () => {
+    for (const message of [
+      "Tea & coffee, 5 < 10.\nWe will write to you.",
+      "Mohon maaf, pesanan dibatalkan.",
+      "مرتجع",
+    ]) {
+      expect(OrderCloseRequestSchema.safeParse({ message }).success, message).toBe(true);
+    }
+    for (const [message, named] of [
+      ["<b>Refund sent</b>", "HTML markup"],
+      ["Refund &amp; apology", "HTML character reference"],
+      ["a\u0000b", "U+0000"],
+      ["ring \u0007 bell", "U+0007"],
+      ["a\r\nb", "U+000D"],
+      ["\u202Edecnys\u202C", "bidirectional"],
+      ["\u2066isolated\u2069", "bidirectional"],
+    ] as const) {
+      const error = errorOf(OrderCloseRequestSchema, { message });
+      expect(error, JSON.stringify(message)).toContain("message");
+      expect(error, JSON.stringify(message)).toContain(named);
+    }
+  });
+
   it("records the merchant's first closure time and optional words", () => {
     expect(MerchantClosureSchema.parse(closure)).toStrictEqual(closure);
     expect(MerchantClosureSchema.parse({ closed_at: closure.closed_at })).toStrictEqual({

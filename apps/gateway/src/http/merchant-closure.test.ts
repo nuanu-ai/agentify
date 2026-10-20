@@ -221,19 +221,26 @@ describe("the authenticated merchant closure", () => {
     expect((await h.store.orderById(id))?.order.state).toBe("quoted");
   });
 
-  it.each([{ message: " " }, { message: "x".repeat(2001) }, { message: 42 }, { refunded: true }])(
-    "refuses malformed claims without changing the order: %j",
-    async (body) => {
-      const id = await order();
-      const before = await h.store.orderById(id);
-      const response = await server.call("POST", `/v0/orders/${id}/close`, {
-        headers: { authorization: `Bearer ${h.merchant.key}` },
-        body,
-      });
-      expect(response.status).toBe(400);
-      expect((await h.store.orderById(id))?.order).toEqual(before?.order);
-    },
-  );
+  it.each([
+    { message: " " },
+    { message: "x".repeat(2001) },
+    { message: 42 },
+    { refunded: true },
+    { message: "a\u0000b" },
+    { message: "<b>Refund sent</b> &amp; \u202Edecnys" },
+  ])("refuses malformed claims without changing the order: %j", async (body) => {
+    const id = await order();
+    const before = await h.store.orderById(id);
+    const response = await server.call("POST", `/v0/orders/${id}/close`, {
+      headers: { authorization: `Bearer ${h.merchant.key}` },
+      body,
+    });
+    expect(response.status).toBe(400);
+    // Not retryable: the same words are refused every time, so a merchant's
+    // code must not send them again.
+    expect(response.body).toMatchObject({ error: { retryable: false } });
+    expect((await h.store.orderById(id))?.order).toEqual(before?.order);
+  });
 
   it("refuses to close an order that ended without a charge, and the buyer's agent reads the same ending", async () => {
     const id = await order();
