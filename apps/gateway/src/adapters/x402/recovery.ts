@@ -71,6 +71,7 @@ const EXPIRED_UNUSED: PaymentRecoveryOutcome = {
   settled: false,
   reason: "The original payment authorization expired unused on the finalized chain.",
 };
+const STILL_READING = "The blocks where the original authorization was valid are still being read.";
 const NOT_FOUND =
   "The original authorization was used, but no transfer or cancellation of it was found in the blocks where it was valid.";
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -173,7 +174,6 @@ export class Eip3009Recovery {
     finalized: ChainBlock,
     cursor: string | undefined,
   ): Promise<PaymentRecoveryOutcome> {
-    const validBefore = BigInt(context.validBefore);
     let earliest = BigInt(context.notBefore);
     if (BigInt(context.validAfter) + 1n > earliest) earliest = BigInt(context.validAfter) + 1n;
     if (cursor === undefined && finalized.timestamp < earliest)
@@ -181,37 +181,56 @@ export class Eip3009Recovery {
     let next =
       cursor === undefined ? await firstBlockAt(reader, finalized, earliest) : BigInt(cursor);
     for (let read = 0n; read < BLOCKS_PER_POLL; read += 1n) {
-      if (next > finalized.number)
-        return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
-      const block = await reader.block(next);
-      if (block.timestamp >= validBefore) {
-        // Unused before this block, it can no longer pay: every later block
-        // is past its validBefore, and a later cancellation marked it used.
-        if (next > 0n && !(await reader.authorizationState(context, next - 1n)))
-          return EXPIRED_UNUSED;
-        return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
-      }
-      const receipts = (await reader.blockReceipts(next)).filter((receipt) =>
-        receipt.logs.some((log) => this.authorizationEvent(log, context) !== null),
-      );
-      for (const receipt of receipts) {
-        const proof = this.proof(context, receipt, block);
-        if (proof) return proof;
-      }
-      if (receipts.length > 0)
+      let outcome: PaymentRecoveryOutcome | null;
+      try {
+        outcome = await this.blockOutcome(reader, context, finalized, next);
+      } catch (thrown) {
+        if (!(thrown instanceof RecoveryFailure)) throw thrown;
         return {
           settled: "unknown",
-          reason:
-            "The original authorization was found, but its complete finalized receipt could not be verified.",
+          reason: STILL_READING,
           nextBlock: next.toString(),
+          failure: thrown.message,
         };
+      }
+      if (outcome) return outcome;
       next += 1n;
     }
-    return {
-      settled: "unknown",
-      reason: "The blocks where the original authorization was valid are still being read.",
-      nextBlock: next.toString(),
-    };
+    return { settled: "unknown", reason: STILL_READING, nextBlock: next.toString() };
+  }
+
+  /** What block `next` of the search shows, or null to read on. */
+  private async blockOutcome(
+    reader: ChainReader,
+    context: PaymentRecoveryContext,
+    finalized: ChainBlock,
+    next: bigint,
+  ): Promise<PaymentRecoveryOutcome | null> {
+    if (next > finalized.number)
+      return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
+    const block = await reader.block(next);
+    if (block.timestamp >= BigInt(context.validBefore)) {
+      // Unused before this block, it can no longer pay: every later block
+      // is past its validBefore, and a later cancellation marked it used.
+      if (next > 0n && !(await reader.authorizationState(context, next - 1n)))
+        return EXPIRED_UNUSED;
+      return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
+    }
+    const receipts = (await reader.blockReceipts(next)).filter((receipt) =>
+      receipt.logs.some((log) => this.authorizationEvent(log, context) !== null),
+    );
+    for (const receipt of receipts) {
+      const proof = this.proof(context, receipt, block);
+      if (proof) return proof;
+    }
+    if (receipts.length > 0)
+      return {
+        settled: "unknown",
+        reason:
+          "The original authorization was found, but its complete finalized receipt could not be verified.",
+        nextBlock: next.toString(),
+      };
+    return null;
   }
 
   private async reader(context: PaymentRecoveryContext): Promise<ChainReader> {
@@ -234,7 +253,7 @@ export class Eip3009Recovery {
     const answered = await reader.networkId();
     if (answered !== Number(context.network.split(":")[1]))
       throw new RecoveryFailure(
-        `The recovery RPC serves chain ${answered}, not the saved payment's ${context.network}.`,
+        `The recovery RPC serves chain ${answered}, not the saved payment's ${context.network}; point PAYMENT_RPC_URL at an endpoint for ${context.network}.`,
       );
     return reader;
   }
@@ -361,52 +380,52 @@ async function firstBlockAt(reader: ChainReader, finalized: ChainBlock, time: bi
   return low;
 }
 
-/** Whether recovery is on for this channel, and the sentence that tells an operator so. */
+/** Recovery for this channel, if an RPC is configured, and the sentence that tells an operator how it stands. */
 export interface RecoveryStart {
   readonly recovery?: Eip3009Recovery;
   readonly said: string;
-  /** Whether an RPC was configured and recovery is off anyway. */
+  /** Whether a configured RPC did not answer this channel's chain at start-up. */
   readonly broken: boolean;
 }
 
 /**
- * Recovery for the channel's network through `rpcUrl`, once the endpoint has
- * answered that network's chain id. An endpoint that answers another chain, or
- * does not answer, leaves recovery off and says why; verification and
- * settlement through the facilitator never depend on it.
+ * Recovery for the channel's network through `rpcUrl`. The endpoint is asked
+ * its chain id at once, so the log says at start-up whether it serves this
+ * network; whatever it answers, recovery is built, because every poll asks
+ * again and a blip at start-up must not leave it off until a restart.
+ * Verification and settlement through the facilitator never depend on it.
  */
 export async function recoveryOn(network: string, rpcUrl?: string): Promise<RecoveryStart> {
   if (!rpcUrl)
     return {
-      said: "payment recovery is off because no RPC is configured: a charge whose answer is lost stays unresolved",
+      said: "payment recovery is off because no RPC is configured: a charge whose answer is lost stays unresolved until PAYMENT_RPC_URL names a Base endpoint",
       broken: false,
     };
   const reader = defaultReader(network, rpcUrl);
   const host = new URL(rpcUrl).host;
+  const recovery = new Eip3009Recovery((savedNetwork) => {
+    if (savedNetwork !== network)
+      throw new RecoveryFailure(
+        `The configured recovery RPC serves ${network}, not the saved payment's ${savedNetwork}.`,
+      );
+    return reader;
+  });
   try {
     const answered = await reader.networkId();
     if (answered !== Number(network.split(":")[1]))
       return {
-        said: `payment recovery is off: the RPC at ${host} serves chain ${answered}, not this channel's ${network}`,
+        recovery,
+        said: `payment recovery cannot use the RPC at ${host}: it serves chain ${answered}, not this channel's ${network}; point PAYMENT_RPC_URL at an endpoint for ${network}. It asks again on every poll`,
         broken: true,
       };
   } catch (thrown) {
     return {
-      said: `payment recovery is off: ${thrown instanceof RecoveryFailure ? thrown.message : `the RPC at ${host} could not be asked for its chain`}`,
+      recovery,
+      said: `payment recovery could not ask the RPC for its chain: ${thrown instanceof RecoveryFailure ? thrown.message : `the RPC at ${host} did not answer.`} It asks again on every poll`,
       broken: true,
     };
   }
-  return {
-    recovery: new Eip3009Recovery((savedNetwork) => {
-      if (savedNetwork !== network)
-        throw new RecoveryFailure(
-          `The configured recovery RPC serves ${network}, not the saved payment's ${savedNetwork}.`,
-        );
-      return reader;
-    }),
-    said: `payment recovery reads ${network} from ${host}`,
-    broken: false,
-  };
+  return { recovery, said: `payment recovery reads ${network} from ${host}`, broken: false };
 }
 
 function defaultReader(network: string, rpcUrl: string): ChainReader {

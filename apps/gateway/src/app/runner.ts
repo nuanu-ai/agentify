@@ -1082,16 +1082,19 @@ export class OrderRunner {
       }
       if (failed > 0)
         console.error(
-          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure}`,
+          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure.replace(/\.?$/, ".")} It tries again every minute; an endpoint that keeps failing is replaced through PAYMENT_RPC_URL`,
         );
       if (unresolved > 0)
         console.warn(
-          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off" : ""}`,
+          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off because no RPC is configured, and setting PAYMENT_RPC_URL to a Base endpoint turns it on" : ""}`,
         );
     });
   }
 
-  /** Whether the chain settled this record's payment one way or the other. */
+  /**
+   * Whether the chain settled this record's payment one way or the other. It
+   * throws when the chain could not be read, after keeping any progress.
+   */
   async #reconcileOne(record: StoredOrder, reconcile: Facilitator["reconcile"]): Promise<boolean> {
     if (reconcile === undefined) return false;
     const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
@@ -1102,6 +1105,9 @@ export class OrderRunner {
       ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
     });
     await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+    // The progress is saved; the read that stopped it still counts as a failure.
+    if (outcome.settled === "unknown" && outcome.failure !== undefined)
+      throw new RecoveryFailure(outcome.failure);
     return outcome.settled !== "unknown";
   }
 
