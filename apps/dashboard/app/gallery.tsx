@@ -1745,6 +1745,18 @@ const ORDERS: GalleryState[] = [
   ),
   orders(
     {
+      id: "dashboard-orders-needs-you-list",
+      screen: "Orders",
+      when: "A merchant chooses Needs you over the list, or Show all under a cut Needs you.",
+      cause:
+        "The list is the orders that need the merchant, each told in full, a page at a time; nothing above it repeats them.",
+    },
+    OWING,
+    "/orders?show=needs",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
       id: "dashboard-orders-every-ending",
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
