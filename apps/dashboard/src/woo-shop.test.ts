@@ -1585,6 +1585,37 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, saidNo: false });
   });
 
+  it("reads no rate from a cart answer missing any field it is judged by", async () => {
+    // Each of these is part of every Store API cart answer; one missing is an
+    // answer this cannot read, not a cart with nothing in it.
+    const without = (field: string, from: Record<string, unknown>) => {
+      const { [field]: _left, ...rest } = from;
+      return rest;
+    };
+    const whole = cart([rate()]);
+    for (const [what, body] of [
+      ...["items", "errors", "needs_shipping", "shipping_rates"].map(
+        (field) => [field, without(field, whole)] as const,
+      ),
+      ["a package's items", { ...whole, shipping_rates: [without("items", aPackage([rate()]))] }],
+      [
+        "a package's rates",
+        { ...whole, shipping_rates: [without("shipping_rates", aPackage([rate()]))] },
+      ],
+      ["a line's key", { ...whole, items: [without("key", LINE)] }],
+    ] as const) {
+      stand = await shopWithRates(() => ({ status: 200, body }));
+
+      expect(await ratesFor(stand.url, "28", JAKARTA), what).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: false,
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
   it("refuses rates it could not sell at, rather than choosing among them", async () => {
     // Another currency or scale, an added tax, or two packages: none is the
     // price of shipping this parcel in dollars, and choosing among them would
