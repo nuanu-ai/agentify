@@ -110,7 +110,7 @@
   min-height: 44px;
   padding-block: 10px;
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   font-weight: 500;
   line-height: 24px;
 }
@@ -122,9 +122,9 @@
 
 .details {
   display: grid;
-  gap: 24px;
+  gap: var(--space-card);
   max-width: 44rem;
-  padding: 16px 0 12px;
+  padding: var(--space-block) 0 var(--space-control);
   border-top: var(--hairline) solid var(--line);
   line-height: 1.5;
 }
@@ -139,21 +139,20 @@
   color: var(--fg);
   font-size: 1rem;
   font-weight: 600;
-  line-height: 1.5;
 }
 
 .facts {
   display: grid;
-  gap: 12px;
+  gap: var(--space-control);
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .facts > div {
   display: grid;
   grid-template-columns: 9rem minmax(0, 1fr);
   align-items: baseline;
-  gap: 16px;
+  gap: var(--space-block);
 }
 
 .facts dt {
@@ -164,6 +163,7 @@
   min-width: 0;
   margin: 0;
   color: var(--fg-2);
+  overflow-wrap: anywhere;
 }
 
 .facts :global(.ident) {
@@ -176,33 +176,34 @@
 
 .shares {
   display: grid;
-  gap: 4px;
+  gap: var(--space-snug);
 }
 
 .close,
 .closure {
   display: grid;
   justify-items: start;
-  gap: 16px;
+  gap: var(--space-tight);
   margin: 0;
-  padding-top: 24px;
+  padding-top: var(--space-card);
   border-top: var(--hairline) solid var(--line);
 }
 
-.close :global(.field) {
+/* The settings screens' row of a box and its button, inset by the details, not again by itself. */
+.close > :global(.issue) {
   width: 100%;
+  padding: var(--space-tight) 0 0;
 }
 
-.details .help,
+.help,
 .label {
   color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: var(--text-small);
 }
 
 .statement {
   display: grid;
-  gap: 8px;
+  gap: var(--space-tight);
 }
 
 .statement > p:last-child {
@@ -212,6 +213,6 @@
 @container (max-width: 560px) {
   .facts > div {
     grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    gap: var(--space-snug);
   }
 }

@@ -85,28 +85,30 @@ const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>
 );
 
 const CloseFulfillment = ({ id }: Readonly<{ id: string }>) => (
-  <PostForm action="/orders" className={styles.close}>
-    {(pending) => (
-      <>
-        <input type="hidden" name="order_id" value={id} />
-        <h3>Close fulfillment</h3>
-        <p>
-          Stop further delivery through Agentify for this order. This cannot be undone and does not
-          cancel work in your shop or move money.
-        </p>
-        <Field
-          name="message"
-          label="Explanation to the buyer (optional)"
-          maxLength={2000}
-          autoComplete="off"
-          hint="Shown as your statement. Agentify does not verify a refund or agreement."
-        />
-        <Button variant="secondary" pending={pending}>
-          Close fulfillment
-        </Button>
-      </>
-    )}
-  </PostForm>
+  <section className={styles.close} aria-label="Close fulfillment">
+    <h3>Close fulfillment</h3>
+    <p className={styles.help}>
+      Stops delivery through Agentify for this order. It cannot be undone, and it cancels nothing in
+      your shop and moves no money.
+    </p>
+    <PostForm action="/orders" className="issue">
+      {(pending) => (
+        <>
+          <input type="hidden" name="order_id" value={id} />
+          <Field
+            name="message"
+            label="Explanation to the buyer (optional)"
+            maxLength={2000}
+            autoComplete="off"
+            hint="Shown to the buyer as your words; Agentify does not check them."
+          />
+          <Button variant="secondary" pending={pending}>
+            Close fulfillment
+          </Button>
+        </>
+      )}
+    </PostForm>
+  </section>
 );
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
@@ -241,9 +243,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                       </dl>
                       {row.paymentUnresolved ? (
                         <p className={styles.help}>
-                          A payment already accepted for execution may still complete. Closing
-                          fulfillment does not cancel it; Agentify continues checking its original
-                          outcome.
+                          This payment may still complete. Closing fulfillment does not cancel it,
+                          and Agentify keeps checking it.
                         </p>
                       ) : null}
                       {row.closure === null ? null : (
