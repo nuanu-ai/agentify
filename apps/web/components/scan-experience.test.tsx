@@ -49,6 +49,18 @@ describe("ScanExperience teaser actions", () => {
     expect(markup).toContain("Copy share link");
   });
 
+  it("says before either share button is pressed that both publish a link that can be revoked", async () => {
+    // "Download image" also makes the scan's result readable by anyone at a
+    // public link; a person who wanted only a file must know before pressing.
+    const markup = await drawn("teaser");
+
+    expect(markup).toMatch(/<button[^>]*>[^<]*publish[^<]*image[^<]*<\/button>/i);
+    // The note sits under four or five buttons, so it names the two it means.
+    const note = markup.match(/<p[^>]*>([^<]*revoke[^<]*)<\/p>/i)?.[1] ?? "";
+    expect(note).toContain("Copy share link");
+    expect(note).toContain("Publish image");
+  });
+
   it("hides unusable teaser export actions when registration is disabled", async () => {
     const markup = await drawn("teaser", { registrationEnabled: false });
 

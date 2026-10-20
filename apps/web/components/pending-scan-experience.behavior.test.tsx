@@ -79,6 +79,42 @@ describe("pending scan acceptance", () => {
     },
   );
 
+  it("does not say no scan was started when the scanner is busy, since the scan may already exist", async () => {
+    // The scanner answers busy also to a repeat whose scan was created by an
+    // earlier press whose answer was lost.
+    savePendingScan(window.sessionStorage, pending("busy-replay"));
+    installNetwork(response(errorEnvelope("temporarily_busy", true), 503));
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner is busy" });
+    expect(screen.getByRole("status").textContent).not.toMatch(/no scan was started/i);
+    expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
+  });
+
+  it("passes on the scanner's own words for why it is busy, a pause among them", async () => {
+    savePendingScan(window.sessionStorage, pending("paused"));
+    installNetwork(
+      response(
+        {
+          error: {
+            code: "temporarily_busy",
+            message: "New scans are temporarily paused. Existing private reports remain available.",
+            retryable: true,
+            retry_after_seconds: 60,
+            request_id: "request-behavior-test",
+          },
+        },
+        503,
+      ),
+    );
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner is busy" });
+    expect(screen.getByRole("status").textContent).toContain("New scans are temporarily paused.");
+  });
+
   it("offers another address and no retry when the refusal says retrying cannot help", async () => {
     // An address the scanner refuses is refused again on every retry: the
     // only way on is a different address.
@@ -94,8 +130,9 @@ describe("pending scan acceptance", () => {
     );
   });
 
-  it("says the scanner did not answer, not that it is busy, when the request cannot reach it", async () => {
-    // Nothing was heard back, so nothing is known about how busy it is.
+  it("says it cannot tell whether the scan started, not that the scanner is busy, when no answer came back", async () => {
+    // Nothing was heard back, so nothing is known about how busy it is, and
+    // the scan may have started before the answer was lost.
     savePendingScan(window.sessionStorage, pending("unreachable"));
     globalThis.fetch = async (input) => {
       if (String(input) === "/api/v1/attribution") return new Response(null, { status: 201 });
@@ -105,18 +142,22 @@ describe("pending scan acceptance", () => {
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await screen.findByRole("heading", { name: "The scanner did not answer" });
+    expect(screen.getByRole("status").textContent).toMatch(/cannot tell whether/i);
     expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
     expect(readPendingScan(window.sessionStorage)).not.toBeNull();
   });
 
-  it("keeps the retry when the answer is not a refusal of ours", async () => {
-    // A proxy's error page says nothing about whether the address is good.
+  it("says it cannot tell whether the scan started, and keeps the retry, when the answer is not a refusal of ours", async () => {
+    // A proxy's error page says nothing about whether the address is good,
+    // nor whether the scanner took the scan before the page came back.
     savePendingScan(window.sessionStorage, pending("proxy"));
     installNetwork(new Response("<html>Bad gateway</html>", { status: 502 }));
 
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     expect(await screen.findByRole("button", { name: "Retry scan" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "The scan could not start" })).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/cannot tell whether/i);
   });
 
   it("removes the pending request once the server accepts it", async () => {

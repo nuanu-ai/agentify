@@ -44,6 +44,8 @@ type ReportCheckView = Readonly<{
 export type ReportCardSignal = Readonly<{
   adapter: "local" | "stripe";
   publishableKey: string | null;
+  /** The address the page was loaded for, which a setup names. */
+  signedInAs: string;
   initialSignal?: Readonly<{
     signalId: string;
     status: CardSignalState;

@@ -63,7 +63,7 @@ export async function loadReportPage(
   | Readonly<{ kind: "not_yours"; email: string }>
   | Readonly<{
       kind: "report";
-      visitor: Visitor;
+      visitor: Extract<Visitor, { kind: "person" }>;
       report: ReportResponse;
       browserObservation: BrowserObservationStatusResponse | undefined;
     }>
@@ -256,7 +256,6 @@ export async function createPublicShare(
   )[0];
   if (existing) {
     return {
-      conflict: false as const,
       slug: deriveCapability(getServerConfig().hmacSecret, "share-slug", existing.id),
       snapshot: undefined,
     };
@@ -313,7 +312,7 @@ export async function createPublicShare(
       });
     }
   });
-  return { conflict: false as const, slug, snapshot };
+  return { slug, snapshot };
 }
 
 export async function getPublicShare(slug: string) {

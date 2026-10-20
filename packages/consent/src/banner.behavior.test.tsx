@@ -9,7 +9,7 @@ import {
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsentBanner } from "./banner.js";
 import { PrivacyChoicesButton } from "./privacy-choices.js";
 
@@ -75,6 +75,82 @@ describe("consent persistence", () => {
     await screen.findByRole("status");
     expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
     expect(screen.queryByRole("complementary", { name: "Privacy choices" })).not.toBeNull();
+  });
+
+  it("says it cannot tell whether the choice was saved when the answer was lost", async () => {
+    // The site may have recorded the choice, an allowing one included, before
+    // the answer was lost, so "nothing was enabled" may not be true there.
+    globalThis.fetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    expect((await screen.findByRole("status")).textContent).toMatch(/cannot tell whether/i);
+    expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Allow optional analytics" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("says it cannot tell whether the choice was saved when a proxy's error page answers instead of the site", async () => {
+    // A gateway's page says nothing about whether the site recorded the choice.
+    globalThis.fetch = async () =>
+      new Response("<html>502 Bad Gateway</html>", {
+        status: 502,
+        headers: { "content-type": "text/html" },
+      });
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    expect(told.textContent).toMatch(/cannot tell whether/i);
+    expect(told.textContent).not.toMatch(/no optional analytics were enabled/i);
+  });
+
+  it("does not say the choice was not saved when the site saved it and the browser would not keep it", async () => {
+    globalThis.fetch = async () => new Response(null, { status: 201 });
+    const keep = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    });
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    keep.mockRestore();
+    expect(told.textContent).not.toMatch(/could not save|cannot tell/i);
+    expect(told.textContent).toMatch(/saved/i);
+  });
+
+  it("says the choice was not saved when the site refuses it in its own words", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "consent_unavailable",
+            message: "Consent preferences could not be saved.",
+            retryable: true,
+            retry_after_seconds: 5,
+            request_id: "019f5b6a-4b9f-7000-8000-0000000000f1",
+          },
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      );
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    expect(told.textContent).not.toMatch(/cannot tell/i);
+    expect(told.textContent).toMatch(/could not save/i);
   });
 
   it("stores only the optional categories the visitor selected", async () => {

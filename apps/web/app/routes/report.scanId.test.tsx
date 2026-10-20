@@ -213,6 +213,8 @@ describe("a report's page", () => {
     expect(handed.kind === "report" ? handed.view.cardSignal : null).toEqual({
       adapter: "local",
       publishableKey: null,
+      // The address the page is drawn for, which a setup names back.
+      signedInAs: "owner@shop.example",
       initialSignal: {
         signalId: "0190f4c5-0000-7000-8000-00000000e001",
         status: "setup_pending",

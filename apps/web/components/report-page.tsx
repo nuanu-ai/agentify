@@ -134,6 +134,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
                 initialSignal={view.cardSignal.initialSignal}
                 publishableKey={view.cardSignal.publishableKey}
                 scanId={view.scanId}
+                signedInAs={view.cardSignal.signedInAs}
               />
             ) : null}
           </div>

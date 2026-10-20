@@ -210,9 +210,9 @@ const contracts = [
     ],
   },
   {
-    // The address is not required here: a signed-in person's own ask files the
-    // report under the session's address and sends none. The route refuses a
-    // stranger's ask without one, in its own words.
+    // The address is not required here so that the route can refuse an ask
+    // without one in its own words, a signed-in person's as well as a
+    // stranger's.
     name: "registrationRequestSchema",
     schema: registrationRequestSchema,
     valid: {

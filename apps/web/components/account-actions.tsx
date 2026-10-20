@@ -1,9 +1,28 @@
 import { useState } from "react";
 
+import { press } from "../lib/press";
 import { useVisitor } from "../lib/visitor";
 
-/** What a press that got no answer the page can read is told. */
-const NOTHING_CHANGED = "Nothing was changed, because the site did not answer. Try again shortly.";
+type Action = "unsubscribe" | "access" | "deletion";
+type Done = "requested" | "completed" | "unsubscribed";
+
+function doneIn(answer: unknown): Done | null {
+  const status = (answer as { status?: unknown } | null)?.status;
+  return status === "requested" || status === "completed" || status === "unsubscribed"
+    ? status
+    : null;
+}
+
+/**
+ * What a press whose answer never came, or could not be read, is told: the
+ * site may have done it, so the words say how to find out. Asking for access
+ * and unsubscribing only set a date, so pressing again is harmless.
+ */
+function unansweredFor(action: Action, email: string): string {
+  if (action === "deletion")
+    return `No answer came back, so we cannot tell whether the deletion went through. Reload this page to find out: if it did, your reports are gone and the page asks you to sign in. If it still shows ${email} as signed in, press Delete my data again, and the answer says whether anything is left to delete.`;
+  return "No answer came back, so we cannot tell whether this went through. Pressing again is safe: the same request is recorded once.";
+}
 
 /**
  * The account requests a person makes about their own address.
@@ -37,12 +56,13 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
       </p>
     );
   const email = visitor.email;
-  async function act(action: "unsubscribe" | "access" | "deletion") {
+  async function act(action: Action) {
     const endpoint =
       action === "unsubscribe" ? "/api/v1/account/unsubscribe" : "/api/v1/account/data-request";
     setBusy(true);
-    try {
-      const response = await fetch(endpoint, {
+    const outcome = await press(
+      endpoint,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -50,27 +70,27 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
             ? { signed_in_as: email }
             : { type: action, signed_in_as: email },
         ),
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        status?: "requested" | "completed";
-        error?: { code?: string; message?: string };
-      } | null;
+      },
+      doneIn,
+    );
+    setBusy(false);
+    if (outcome.kind === "done") {
+      setConfirmingDeletion(false);
       setMessage(
-        response.ok
-          ? payload?.status === "completed"
-            ? "Deletion completed. Card/provider state was cleared first, then your reports, shares, and personal data were anonymized; your sign-in was removed unless it holds a seller dashboard."
-            : action === "deletion"
-              ? "Report access is closed. Deletion was requested and will finish automatically."
-              : "Request recorded."
-          : (payload?.error?.message ?? NOTHING_CHANGED),
+        outcome.answer === "completed"
+          ? "Deletion completed. Card/provider state was cleared first, then your reports, shares, and personal data were anonymized; your sign-in was removed unless it holds a seller dashboard."
+          : action === "deletion"
+            ? "Report access is closed. Deletion was requested and will finish automatically."
+            : "Request recorded.",
       );
-      if (response.ok) setConfirmingDeletion(false);
-      if (payload?.error?.code === "page_not_matched") setStale(true);
-    } catch {
-      setMessage(NOTHING_CHANGED);
-    } finally {
-      setBusy(false);
+      return;
     }
+    if (outcome.kind === "refused") {
+      setMessage(outcome.refusal.message);
+      if (outcome.refusal.code === "page_not_matched") setStale(true);
+      return;
+    }
+    setMessage(unansweredFor(action, email));
   }
   if (stale)
     return (

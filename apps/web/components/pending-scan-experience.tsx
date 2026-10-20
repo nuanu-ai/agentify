@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { acceptedScanIn, refusalIn } from "../lib/api-answers";
+import { acceptedScanIn } from "../lib/api-answers";
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
+import { press } from "../lib/press";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
 import { SiteDoors } from "./site-chrome";
@@ -46,12 +47,13 @@ export function PendingScanExperience({
     setState("starting");
     setMessage("Starting as soon as it is accepted.");
     setRetryable(true);
-    try {
-      await captureLandingAttribution(pending.segment, pending.variant, {
-        pathname: pending.landingPath,
-        search: pending.landingSearch,
-      });
-      const response = await fetch("/api/v1/scans", {
+    await captureLandingAttribution(pending.segment, pending.variant, {
+      pathname: pending.landingPath,
+      search: pending.landingSearch,
+    });
+    const outcome = await press(
+      "/api/v1/scans",
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -63,47 +65,56 @@ export function PendingScanExperience({
           landing_variant: pending.variant,
           turnstile_token: turnstileToken ?? null,
         }),
+      },
+      acceptedScanIn,
+    );
+    if (outcome.kind === "done") {
+      clearPendingScan(window.sessionStorage);
+      const fragment = new URLSearchParams({
+        access_token: outcome.answer.access_token,
       });
-      const payload: unknown = await response.json().catch(() => null);
-      const accepted = acceptedScanIn(payload);
-      if (response.ok && accepted !== null) {
-        clearPendingScan(window.sessionStorage);
-        const fragment = new URLSearchParams({
-          access_token: accepted.access_token,
-        });
-        window.location.replace(
-          `/scan/${encodeURIComponent(accepted.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
-        );
-        return;
-      }
-
-      const code = readErrorCode(payload);
-      if (code === "challenge_required") {
-        challengeRetried.current = false;
-        setState("challenge");
-        setMessage("Complete the challenge to continue.");
-        return;
-      }
-      if (code === "hard_rate_limit") {
-        setState("hard-limit");
-        setMessage("This network or target reached the hard scan limit. Try again later.");
-        return;
-      }
-      if (code === "temporarily_busy") {
-        setState("busy");
-        setMessage(
-          "The scanner could not take this scan just now. No scan was started; please retry shortly.",
-        );
-        return;
-      }
-
-      setState("error");
-      setRetryable(readRetryable(payload));
-      setMessage(readErrorMessage(payload) ?? "The scan could not be accepted. Please retry.");
-    } catch {
-      setState("unreachable");
-      setMessage("The scanner cannot be reached right now. Please retry shortly.");
+      window.location.replace(
+        `/scan/${encodeURIComponent(outcome.answer.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
+      );
+      return;
     }
+    if (outcome.kind === "unknown") {
+      // The retry carries the same idempotency key, so a scan this browser's
+      // session started is answered again; a first visit whose cookie was lost
+      // with the answer starts another, which is harmless.
+      setState("unreachable");
+      setMessage(
+        "No answer came back, so we cannot tell whether the scan started. Retrying is safe: you get the scan that started, or a new one.",
+      );
+      return;
+    }
+
+    const { code } = outcome.refusal;
+    if (code === "challenge_required") {
+      challengeRetried.current = false;
+      setState("challenge");
+      setMessage("Complete the challenge to continue.");
+      return;
+    }
+    if (code === "hard_rate_limit") {
+      setState("hard-limit");
+      setMessage("This network or target reached the hard scan limit. Try again later.");
+      return;
+    }
+    if (code === "temporarily_busy") {
+      setState("busy");
+      // Busy is also the answer to a repeat whose scan already exists.
+      setMessage(
+        `${outcome.refusal.message} Retry shortly: you get the scan if it started, or a new one.`,
+      );
+      return;
+    }
+
+    // A refusal says whether the same request could succeed later; an address
+    // the scanner refuses never will.
+    setState("error");
+    setRetryable(outcome.refusal.retryable);
+    setMessage(outcome.refusal.message);
   }, []);
 
   useEffect(() => {
@@ -181,19 +192,4 @@ export function PendingScanExperience({
       </nav>
     </main>
   );
-}
-
-function readErrorCode(payload: unknown): string | null {
-  return refusalIn(payload)?.code ?? null;
-}
-
-// A refusal says whether the same request could succeed later; an address the
-// scanner refuses never will. An answer that is not a refusal of ours, such as
-// a proxy's error page, says nothing either way, and a retry is left open.
-function readRetryable(payload: unknown): boolean {
-  return refusalIn(payload)?.retryable ?? true;
-}
-
-function readErrorMessage(payload: unknown): string | null {
-  return refusalIn(payload)?.message ?? null;
 }

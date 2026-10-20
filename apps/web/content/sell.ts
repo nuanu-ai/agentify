@@ -121,7 +121,7 @@ export const SELL_LANDING = {
       text: "Your developer publishes cards from code and runs an SDK module that handles the orders. The module fetches new orders itself, so your server does not need to accept incoming requests.",
       points: [
         "You control the cards and fulfillment",
-        "A key on every order prevents duplicate fulfillment",
+        "Each order keeps one identifier; your code answers a repeat with its first result",
         "API keys in your dashboard",
       ],
       action: "How to connect the SDK",

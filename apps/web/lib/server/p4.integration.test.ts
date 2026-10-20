@@ -1021,12 +1021,10 @@ describe("P4 dashboard-owned scanner identity", () => {
     const cookie = signedInAs(email);
     process.env.REGISTRATION_ENABLED = "true";
     try {
-      const forged = await registrationRequest(
-        scan.id,
-        accessToken,
-        { ...registrationBody(email), email: undefined },
-        { cookie, origin: "https://foreign.example" },
-      );
+      const forged = await registrationRequest(scan.id, accessToken, registrationBody(email), {
+        cookie,
+        origin: "https://foreign.example",
+      });
       expect(forged.status).toBe(403);
 
       // An address typed beside a session is not quietly swapped for the
@@ -1046,7 +1044,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       const asked = await registrationRequest(
         scan.id,
         accessToken,
-        { ...registrationBody(email), email: undefined, marketing_email_opt_in: false },
+        { ...registrationBody(email), marketing_email_opt_in: false },
         { cookie },
       );
 
@@ -1085,6 +1083,38 @@ describe("P4 dashboard-owned scanner identity", () => {
           eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "typed-over@example.com")),
         ),
     ).toHaveLength(0);
+  });
+
+  it("files nothing for a signed-in ask whose page showed another address, or none", async () => {
+    // A form loaded while one address was signed in can be pressed after the
+    // session changed in another tab. The press names the address the form
+    // showed; filing the report and the ownership claim under whoever is
+    // signed in now would put them under an address the person never saw.
+    const { db } = getDatabase();
+    const { scan, accessToken } = await createFreshCompletedScan("stale-form");
+    await copyChecks(scan.id);
+    const signedInNow = "signed-in-now@example.com";
+    const cookie = signedInAs(signedInNow);
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      for (const named of ["shown-on-the-form@example.com", undefined]) {
+        const answer = await registrationRequest(
+          scan.id,
+          accessToken,
+          { ...registrationBody(signedInNow), email: named },
+          { cookie },
+        );
+        expect(answer.status, String(named)).toBe(409);
+        const { error } = (await answer.json()) as { error: { code: string; message: string } };
+        expect(error.code).toBe("signed_in_as_another_address");
+        expect(error.message).toContain(signedInNow);
+      }
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+    expect(await registrationsFor(scan.id)).toBe("0");
+    expect(await db.select().from(leadScans).where(eq(leadScans.scanId, scan.id))).toHaveLength(0);
+    expect(await reportFor(scan.id, cookie)).toBeUndefined();
   });
 
   it("refuses a stranger's ask without an address, in words", async () => {
@@ -1308,12 +1338,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     process.env.REGISTRATION_ENABLED = "true";
     try {
-      const answer = await registrationRequest(
-        scan.id,
-        accessToken,
-        { ...registrationBody(email), email: undefined },
-        { cookie: signedInAs(email) },
-      );
+      const answer = await registrationRequest(scan.id, accessToken, registrationBody(email), {
+        cookie: signedInAs(email),
+      });
       expect(answer.status).toBe(503);
       expect(((await answer.json()) as { error: { code: string } }).error.code).toBe(
         "report_unavailable",
@@ -1333,7 +1360,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         last = await registrationRequest(
           scan.id,
           accessToken,
-          { ...registrationBody("unused@example.com"), email: undefined },
+          registrationBody("signed-in-cooldown@example.com"),
           { cookie },
         );
       }
@@ -1759,8 +1786,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       { verifiedLeadId: leadId, scanTokenAuthorized: false },
       false,
     );
-    expect(shared && !shared.conflict).toBe(true);
-    if (!shared || shared.conflict) throw new Error("share_failed");
+    if (!shared) throw new Error("share_failed");
     const publishedPreview = await previewShare(
       new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },

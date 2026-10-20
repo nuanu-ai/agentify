@@ -2,7 +2,12 @@ import { uuidV7Schema } from "@agentify/scanner-contracts";
 import { z } from "zod";
 
 import { visitorOf } from "../../../../lib/server/auth";
-import { errorResponse, hasSameOrigin, visitorUnknownResponse } from "../../../../lib/server/http";
+import {
+  errorResponse,
+  hasSameOrigin,
+  pageNotMatched,
+  visitorUnknownResponse,
+} from "../../../../lib/server/http";
 import { methods } from "../../../../lib/server/methods";
 import { setupCardSignal } from "../../../../lib/server/stripe-card-signal";
 
@@ -10,6 +15,9 @@ const setupRequest = z
   .object({
     scan_id: uuidV7Schema,
     card_signal_consent: z.literal(true),
+    // Optional here only so that a press naming no address is refused below
+    // in the same words as one naming another.
+    signed_in_as: z.string().optional(),
   })
   .strict();
 
@@ -24,7 +32,8 @@ async function setUp(request: Request): Promise<Response> {
       "invalid_idempotency_key",
       "A valid Idempotency-Key header is required.",
     );
-  const parsed = setupRequest.safeParse(await request.json().catch(() => null));
+  const sent = await request.json().catch(() => null);
+  const parsed = setupRequest.safeParse(sent);
   if (!parsed.success)
     return errorResponse(
       request,
@@ -34,6 +43,13 @@ async function setUp(request: Request): Promise<Response> {
     );
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown") return visitorUnknownResponse(request);
+  // The report page names the address it was loaded for: the session can
+  // change in another tab, and the consent and the card would otherwise be
+  // recorded under a person who never saw the box.
+  if (visitor.kind === "person") {
+    const unmatched = pageNotMatched(request, sent, visitor.email);
+    if (unmatched !== null) return unmatched;
+  }
   try {
     const result = await setupCardSignal({
       visitor,
