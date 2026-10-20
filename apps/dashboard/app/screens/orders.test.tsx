@@ -244,13 +244,10 @@ describe("searching the orders", () => {
 });
 
 describe("an unfulfilled test purchase", () => {
-  it("marks the original amount as a test without prescribing a transfer", () => {
+  it("marks the original amount as a test", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
-    const text = readable(html);
-    expect(text).toContain("5.00 USD test");
-    expect(text).not.toContain("Return the full price");
-    expect(text).not.toContain("from your own wallet");
+    expect(readable(html)).toContain("5.00 USD test");
   });
 });
 

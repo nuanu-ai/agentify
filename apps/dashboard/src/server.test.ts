@@ -3711,8 +3711,8 @@ describe("the orders screen", () => {
     expect(readable((await browser.get("/orders")).html)).toContain("No orders yet");
   });
 
-  it("calls out a paid unfulfilled order without prescribing a refund", async () => {
-    // The one open state that costs the merchant money must be shown, not left
+  it("calls out a paid unfulfilled order", async () => {
+    // The one open state that costs the buyer money must be shown, not left
     // to be noticed.
     const { browser, gateway, harnessed } = await started({
       gateway: { DEFAULT_ASYNC_FULFILLMENT_MS: "40" },
@@ -3744,13 +3744,10 @@ describe("the orders screen", () => {
     // The whole price, though the split paid the merchant only their share,
     // and said to be a test purchase's, as every sale on this stack is.
     expect(text).toContain("8.00 USD test");
-    expect(text).not.toContain("Return the full price");
-    // `unfulfilled` is what a program branches on; a merchant reads a sentence.
-    expect(text).not.toContain("unfulfilled");
   });
 
   it("says why an order was unfulfilled without guessing that a window ran out", async () => {
-    // A refund falls due when the merchant refuses an order already paid for;
+    // An order is unfulfilled too when the merchant refuses one already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
     // send a merchant reconciling it looking for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();

@@ -380,7 +380,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
 });
 
 describe("a paid order left unfulfilled", () => {
-  it("reports the missing delivery without deciding the buyer's remedy", () => {
+  it("reports the missing delivery and names no sum for the merchant to send", () => {
     const unfulfilled: OrderList = OrderListSchema.parse({
       orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
     });
@@ -401,9 +401,9 @@ describe("a paid order left unfulfilled", () => {
     );
     const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
     expect(callout).toContain("delivery window ran out");
-    expect(callout).not.toContain("full price");
-    expect(callout).not.toContain("return");
-    expect(callout).not.toContain("79.92");
+    // The order's own price is the one sum told; neither its share nor any
+    // amount owed back is put to the merchant as a transfer to make.
+    expect(callout.match(/\d+\.\d{2} USD/g)).toStrictEqual(["80.00 USD"]);
   });
 
   it("does not guess why delivery was missing when no cause was read", () => {
