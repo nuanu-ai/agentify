@@ -1,0 +1,41 @@
+modules:
+  http_scanner:
+    prober: http
+    timeout: 8s
+    http:
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+      headers:
+        User-Agent: Agentify-Observability-Probe/1.0
+      fail_if_header_not_matches:
+        - header: Content-Type
+          regexp: '^text/html([;[:space:]].*)?$'
+      fail_if_body_not_matches_regexp:
+        - '<input[^>]*name="url"'
+  http_sign_in:
+    prober: http
+    timeout: 8s
+    http:
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+      headers:
+        User-Agent: Agentify-Observability-Probe/1.0
+      fail_if_header_not_matches:
+        - header: Content-Type
+          regexp: '^text/html([;[:space:]].*)?$'
+      fail_if_body_not_matches_regexp:
+        - '<input[^>]*name="email"'
+        - '<form[^>]*action="/dashboard/sign-in"'
+  http_catalog:
+    prober: http
+    timeout: 8s
+    http:
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+      headers:
+        User-Agent: Agentify-Observability-Probe/1.0
+      fail_if_header_not_matches:
+        - header: Content-Type
+          regexp: '^application/json([;[:space:]].*)?$'
+      fail_if_body_not_matches_regexp:
+        - '"items"[[:space:]]*:[[:space:]]*\['

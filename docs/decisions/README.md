@@ -73,6 +73,7 @@ written in; the rest are in English.
 | [0013](0013-effects-commit-with-the-state.md) | An effect that cannot be re-driven commits in the same transaction as the order state that implies it. |
 | [0016](0016-two-channel-releases.md) | Two isolated release channels that pull their releases: images built once in CI, TEST following a tag, production taking an `app-v*` tag a person releases, which also publishes the SDK. |
 | [0029](0029-production-backups-leave-the-host.md) | Production's data and secrets leave the host every ten minutes for one encrypted bucket; TEST is not backed up. |
+| [0040](0040-operational-metrics-stay-private.md) | Operational measurements use private listeners and read-only observations, omit unavailable business data, and contain no customer identifiers or payloads. |
 
 ### The scanner
 

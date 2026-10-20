@@ -7,14 +7,20 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./source": "./src/index.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@prometheus-io/client": "0.16.1",
+    "pg": "8.23.0"
+  },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "@types/node": "24.13.3",
     "typescript": "5.9.3",
     "vitest": "4.1.10",

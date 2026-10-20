@@ -12,6 +12,6 @@ const app = (name: string): string =>
  */
 export const SURFACES: readonly SurfaceSource[] = [
   { root: app("web"), module: "app/gallery.tsx", alias: scannerSourceAlias },
-  { root: app("dashboard"), module: "app/gallery.tsx" },
+  { root: app("dashboard"), module: "app/gallery.tsx", alias: scannerSourceAlias },
   { root: app("docs"), module: "app/gallery.tsx" },
 ];
