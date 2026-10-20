@@ -864,7 +864,7 @@ export const shippingRatesInTheShop = async (
   if (read.data.errors.length > 0) {
     return {
       ok: false,
-      why: "The shop's cart refuses this product to this place.",
+      why: "The shop's cart reports errors of its own, so its checkout would not take this product.",
       again: false,
       saidNo: true,
     };

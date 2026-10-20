@@ -443,7 +443,7 @@ const fillParcelFromTheShop = async (
       );
     }
     return await refuse(
-      "The shop's cart would not sell this parcel to this place when this order was placed, so no" +
+      "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
         " WooCommerce order was created.",
     );
   }
