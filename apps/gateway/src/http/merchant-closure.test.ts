@@ -227,6 +227,7 @@ describe("the authenticated merchant closure", () => {
     { message: 42 },
     { refunded: true },
     { message: "a\u0000b" },
+    { message: "cut short \uD83D" },
     { message: "<b>Refund sent</b> &amp; \u202Edecnys" },
   ])("refuses malformed claims without changing the order: %j", async (body) => {
     const id = await order();

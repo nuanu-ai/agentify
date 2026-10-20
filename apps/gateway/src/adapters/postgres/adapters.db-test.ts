@@ -45,6 +45,7 @@ import {
   authorisation,
   countedIds,
   loggedWhile,
+  serve,
   testConfig,
   workUntilStopped,
 } from "../../testing/harness.js";
@@ -503,6 +504,44 @@ if (databaseUrl === null) {
       expect(await idsOf({ open: true })).not.toContain(orderId);
       // Closed is not deleted: reconciling a day's orders reads the full list.
       expect(await idsOf()).toContain(orderId);
+    });
+
+    it("refuses a closing message cut in the middle of a character before the database sees it", async () => {
+      // Postgres refuses half a surrogate pair in a document, so a message
+      // that reached it would fail the write and answer as a retryable fault
+      // a merchant's code could repeat forever.
+      const published = await store.publishCard(
+        A,
+        { ...syncCard, merchant_item_id: "closed-with-half-a-character" },
+        now,
+      );
+      const offered = await gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      const orderId = offered.order.order.id;
+      const { secret } = await gateway.issueMerchantKey(A, "closing", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
+      const served = await serve({ gateway });
+      try {
+        const close = (message: string) =>
+          served.call("POST", `/v0/orders/${orderId}/close`, {
+            headers: { authorization: `Bearer ${secret}` },
+            body: { message },
+          });
+
+        const cut = await close(`${"We are sorry ".repeat(10)}\uD83D`);
+        expect(cut.status).toBe(400);
+        expect(cut.body).toMatchObject({ error: { code: "malformed_body", retryable: false } });
+        expect((await store.orderById(orderId))?.order.state).toBe("quoted");
+
+        expect((await close("We are sorry \u{1F64F}")).body).toEqual({ ok: true });
+        expect((await store.orderById(orderId))?.order.merchantClosure?.message).toBe(
+          "We are sorry \u{1F64F}",
+        );
+      } finally {
+        await served.close();
+      }
     });
 
     it("leaves the row alone when a decision asked for nothing to be written", async () => {

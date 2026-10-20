@@ -48,6 +48,9 @@ describe("a merchant closes future Agentify fulfillment", () => {
       ["a\r\nb", "U+000D"],
       ["\u202Edecnys\u202C", "bidirectional"],
       ["\u2066isolated\u2069", "bidirectional"],
+      // A message cut to length in the middle of an emoji keeps half of it.
+      ["cut short \uD83D", "half of a character"],
+      ["\uDE00 cut short", "half of a character"],
     ] as const) {
       const error = errorOf(OrderCloseRequestSchema, { message });
       expect(error, JSON.stringify(message)).toContain("message");
@@ -163,6 +166,17 @@ describe("a merchant closes future Agentify fulfillment", () => {
     }
     for (const body of [{ message: " " }, { message: "x".repeat(2001) }, { amount: "5.00" }]) {
       expect(validate(body)).toBe(false);
+    }
+    // Both count characters as a person does, so an emoji is one: a message
+    // the export accepts is never refused for its length at run time.
+    const emoji = "\u{1F600}";
+    for (const [message, fits] of [
+      [emoji.repeat(2000), true],
+      [emoji.repeat(2001), false],
+    ] as const) {
+      expect(validate({ message }), `${[...message].length} characters`).toBe(fits);
+      expect(OrderCloseRequestSchema.safeParse({ message }).success).toBe(fits);
+      expect(MerchantClosureSchema.safeParse({ ...closure, message }).success).toBe(fits);
     }
     const validateClosure = ajv.compile(schemas.merchant_closure);
     expect(validateClosure(closure), JSON.stringify(validateClosure.errors)).toBe(true);
