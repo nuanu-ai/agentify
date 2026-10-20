@@ -280,7 +280,8 @@ Two things are asked of you rather than of the card. A parcel's card is
 published only once you have given the site of your shop, because a parcel
 that does not arrive is a question its buyer takes there (`no_seller_site`).
 And it is published on the test channel only, where the money is not real: on
-the live one it is refused (`not_sold_yet`) while the live parcel readiness gates remain incomplete. Merchant closure alone does not enable live parcels.
+the live one it is refused (`not_sold_yet`), because parcels are not sold on
+the live channel yet.
 
 ## A price worked out at the moment of purchase
 
