@@ -326,7 +326,7 @@ describe("recovering a payment without another charge", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("records the debt without a handover when the paid fulfillment window has already elapsed", async () => {
+  it("marks a payment found after its fulfillment window unfulfilled, without a handover", async () => {
     const { h, orderId } = await purchase("async", 1);
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
@@ -610,7 +610,7 @@ describe("recovering a payment without another charge", () => {
     expect((await h.store.orderById(orderId))?.settlement).toBeNull();
   });
 
-  it("recovers a closed silence after restart as a refund debt, without asking the merchant for goods", async () => {
+  it("after a restart, marks a charge found on a timed-out order unfulfilled, without asking the merchant for goods", async () => {
     const { h, orderId } = await purchase();
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
