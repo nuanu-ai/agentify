@@ -1469,9 +1469,23 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         true,
       ],
       [
-        "a cart behind a login",
+        "a cart that wants a nonce",
         null,
-        { status: 403, body: { code: "woocommerce_rest_missing_nonce" } },
+        { status: 401, body: { code: "woocommerce_rest_missing_nonce" } },
+        false,
+      ],
+      [
+        "a cart that refuses its nonce",
+        null,
+        { status: 403, body: { code: "woocommerce_rest_invalid_nonce" } },
+        false,
+      ],
+      [
+        // A code neither WooCommerce nor WordPress refuses a product or a place
+        // with, as a plugin or a proxy in front of the cart can write.
+        "a refusal under another code",
+        null,
+        refusing("rest_forbidden"),
         false,
       ],
       [
