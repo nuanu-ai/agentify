@@ -556,9 +556,7 @@ export const ordersView = (
                   ? {}
                   : { message: order.merchant_closure.message }),
               },
-        canClose:
-          order.merchant_closure === undefined &&
-          !["delivered", "shipped", "fulfillment_closed"].includes(order.status),
+        canClose: closable(order),
         priceSet: momentView(order.price.at),
         day: dayOf(order.price.at),
       } satisfies OrderRow,
@@ -601,6 +599,27 @@ export const ordersView = (
     waitsOnTheBuyer: told(waitsOnTheBuyer),
   };
 };
+
+/**
+ * Closure stops what Agentify would still deliver, so it is offered only where
+ * something is left to stop: a paid or possibly paid order that has not ended,
+ * and goods held for a payment the buyer may still make. An order that ended
+ * with nothing charged has nothing to stop, and closing it would only replace
+ * the ending its buyer's agent reads.
+ */
+const STOPPABLE: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  "in_progress",
+  "payment_unresolved",
+  "unfulfilled",
+  "delivered_unpaid",
+]);
+
+export const closable = (
+  order: Pick<OrderList["orders"][number], "status" | "payment_status" | "merchant_closure">,
+): boolean =>
+  order.merchant_closure === undefined &&
+  STOPPABLE.has(order.status) &&
+  !(order.status === "in_progress" && order.payment_status === "not_paid");
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for

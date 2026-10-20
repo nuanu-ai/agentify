@@ -421,11 +421,31 @@ describe("merchant fulfillment closure", () => {
     expect(text).not.toContain("Fulfillment closed by you");
   });
 
-  it("offers closure only while Agentify fulfillment can still be stopped", () => {
+  it("offers closure only while fulfillment can still be stopped", () => {
+    // Each order is named by its own hexadecimal tail, so a form is found by the order it closes.
+    const cases = [
+      ["unfulfilled", "paid", true],
+      ["payment_unresolved", "unresolved", true],
+      ["delivered_unpaid", "not_paid", true],
+      ["in_progress", "paid", true],
+      ["in_progress", "not_paid", false],
+      ["rejected", "not_paid", false],
+      ["declined", "not_paid", false],
+      ["expired", "not_paid", false],
+      ["cancelled", "not_paid", false],
+      ["delivered", "paid", false],
+      ["shipped", "paid", false],
+      ["fulfillment_closed", "paid", false],
+    ] as const;
+    const idAt = (at: number) => idOf("c1a5", at.toString(16).padStart(4, "0"));
     const orders = OrderListSchema.parse({
       orders: [
-        { ...THREE.orders[0], id: FIRST, status: "unfulfilled", payment_status: "paid" },
-        { ...THREE.orders[0], id: SAME_HEAD, status: "delivered", payment_status: "paid" },
+        ...cases.map(([status, payment], at) => ({
+          ...THREE.orders[0],
+          id: idAt(at),
+          status,
+          payment_status: payment,
+        })),
         {
           ...THREE.orders[0],
           id: SAME_TAIL,
@@ -437,9 +457,12 @@ describe("merchant fulfillment closure", () => {
     });
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
-    expect(html).toContain(`name="order_id" value="${FIRST}"`);
-    expect(html).not.toContain(`name="order_id" value="${SAME_HEAD}"`);
+    cases.forEach(([status, payment, offered], at) => {
+      expect(
+        html.includes(`name="order_id" value="${idAt(at)}"`),
+        `${status} with payment ${payment}`,
+      ).toBe(offered);
+    });
     expect(html).not.toContain(`name="order_id" value="${SAME_TAIL}"`);
-    expect(html).toContain('name="message"');
   });
 });
