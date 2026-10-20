@@ -118,7 +118,7 @@ const ENDINGS = [
   "The money was charged and no delivery happened",
   "You delivered synchronously and the payment did not execute",
   "The facilitator did not say whether the money was charged",
-  "The merchant closed future fulfillment",
+  "You closed fulfillment",
 ] as const;
 
 /** The status words the page promises for one of its endings. */

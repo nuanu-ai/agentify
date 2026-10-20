@@ -292,8 +292,8 @@ await order.refuse({
 
 `deliver` and `refuse` return their failures in the same envelope the publish
 does, `ok` and an `error`, rather than throwing them, unless the client was
-built with no address ([When a closing call does not go
-through](/orders#when-a-closing-call-does-not-go-through)).
+built with no address ([When a call on an order does not go
+through](/orders#when-a-call-on-an-order-does-not-go-through)).
 
 ### A failure that may pass, and a repeat
 

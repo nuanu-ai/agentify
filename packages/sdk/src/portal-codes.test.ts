@@ -18,7 +18,7 @@ const page = fileURLToPath(new URL("../../../apps/docs/orders.md", import.meta.u
 const FROM_THE_TOOLS = [CALL_DID_NOT_REACH_US, ANSWER_NOT_UNDERSTOOD, OUTCOME_UNKNOWN];
 
 /** The heading the table belongs to, so a table added elsewhere is not read as this one. */
-const SECTION = "### When a closing call does not go through";
+const SECTION = "## When a call on an order does not go through";
 
 /**
  * The first column of the first table under that heading. A row is a code
