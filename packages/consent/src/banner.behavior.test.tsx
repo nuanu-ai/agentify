@@ -96,6 +96,23 @@ describe("consent persistence", () => {
     ).toBe(false);
   });
 
+  it("says it cannot tell whether the choice was saved when a proxy's error page answers instead of the site", async () => {
+    // A gateway's page says nothing about whether the site recorded the choice.
+    globalThis.fetch = async () =>
+      new Response("<html>502 Bad Gateway</html>", {
+        status: 502,
+        headers: { "content-type": "text/html" },
+      });
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    expect(told.textContent).toMatch(/cannot tell whether/i);
+    expect(told.textContent).not.toMatch(/no optional analytics were enabled/i);
+  });
+
   it("says the choice was not saved when the site refuses it in its own words", async () => {
     globalThis.fetch = async () =>
       new Response(
