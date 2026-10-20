@@ -896,14 +896,15 @@ const CHANGED = { email: "changed-recipient@example.invalid" };
 
 describe("a payment presented with a request other than the one it was made for", () => {
   /** The seller's two products on sale, the guide priced for ORIGINAL, and its payment signed. */
-  const pricedGuide = async () => {
+  const pricedGuide = async (goodsReady: Promise<void> = Promise.resolve()) => {
     const { harnessed, served } = await started();
     const guide = await publish(harnessed, guideCard);
     const other = await publish(harnessed, cardCard);
     const handled: unknown[] = [];
     const worker = workUntilStopped(harnessed, {
-      onOrder: (order) => {
+      onOrder: async (order) => {
         handled.push(order.params);
+        await goodsReady;
         return { delivered: { guide: "Fold the corners first." } };
       },
     });
@@ -964,6 +965,38 @@ describe("a payment presented with a request other than the one it was made for"
       }
     },
   );
+
+  it("is refused without claiming nothing was charged while the purchase it was made for is being charged", async () => {
+    // Delivered in the answer, the purchase is charged after its goods, so its
+    // authorization is still unused while the merchant works and verifies
+    // again; the money it carries is then charged once, for its own purchase.
+    let handOver: () => void = () => undefined;
+    const goods = new Promise<void>((resolve) => {
+      handOver = resolve;
+    });
+    const sale = await pricedGuide(goods);
+    try {
+      const payment = paymentAgainst(sale.challenge, BUYER, "0x01");
+      const buying = sale.sendTo(sale.guide, ORIGINAL, payment);
+      await vi.waitFor(() => expect(sale.handled).toHaveLength(1));
+
+      const misplaced = await sale.sendTo(sale.other, ORIGINAL, payment);
+
+      expect(misplaced.status).toBe(409);
+      expect(misplaced.body).toMatchObject({
+        error: { code: "payment_not_taken", retryable: false },
+      });
+      expect(JSON.stringify(misplaced.body)).toMatch(/another purchase/);
+      expect(JSON.stringify(misplaced.body)).not.toMatch(/nothing was charged/i);
+      expectNoOrderIn(misplaced.body, sale.orderId);
+      handOver();
+      expect((await buying).status).toBe(200);
+      expect(sale.harnessed.facilitator.settles).toHaveLength(1);
+    } finally {
+      handOver();
+      await sale.worker.stop();
+    }
+  });
 
   it("refused by the payment layer says nothing of the purchase it was made for", async () => {
     // A used authorization can be read from the chain, so presenting it with
