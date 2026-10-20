@@ -540,8 +540,9 @@ const UNREADABLE_PRODUCT =
   " placed, so no WooCommerce order was created.";
 
 /**
- * The buyer is told only that the answer could not be read; the merchant is
- * told why, which is what they can repair. A reason carries no address.
+ * The buyer is told only that the answer could not be read. Why goes to the
+ * dashboard's own log, which the operator reads and the merchant cannot; a
+ * reason carries no address.
  */
 const unreadable = (orderId: string, why: string): void => {
   console.error(`[dashboard] ${orderId} is refused, the shop's answer unread: ${why}`);
@@ -747,8 +748,8 @@ export const quoteFromTheShop = async (
   // whose answer could not be read or trusted, said nothing: null lets the
   // gateway's wait run out and tells the agent the price check went
   // unanswered. On a WooCommerce card (asynchronous or a parcel) that silence
-  // refuses the sale; on a synchronous card it would sell at the listed price
-  // instead.
+  // refuses the sale; on a `sync` or a `confirm` card it would sell at
+  // the listed price instead.
   const silent = (why: string): null => {
     console.error(
       `[dashboard] ${question.merchant_item_id} is not priced for ${question.price_id}, and nothing is said: ${why}`,
