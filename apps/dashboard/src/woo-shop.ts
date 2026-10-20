@@ -653,9 +653,19 @@ const CartRateSchema = z.looseObject({
   currency_minor_unit: z.number().int(),
 });
 
+/**
+ * A line names its product by `id`; a package's items name the line they ship
+ * by its `key`, and carry no product id of their own.
+ */
 const CartSchema = z.looseObject({
+  items: z.array(z.looseObject({ key: z.string(), id: z.number(), quantity: z.number() })),
   needs_shipping: z.boolean(),
-  shipping_rates: z.array(z.looseObject({ shipping_rates: z.array(CartRateSchema) })),
+  shipping_rates: z.array(
+    z.looseObject({
+      items: z.array(z.looseObject({ key: z.string(), quantity: z.number() })),
+      shipping_rates: z.array(CartRateSchema),
+    }),
+  ),
 });
 
 /**
@@ -759,13 +769,32 @@ export const shippingRatesInTheShop = async (
   if (!read.success) {
     return { ok: false, why: "The shop's cart answered without its shipping rates.", again: false };
   }
+  // The shop's plugins may change a cart while it is asked, raising a minimum
+  // quantity, adding a gift or swapping the line, and the rate is then the
+  // rate of whatever the cart holds.
+  const [line, ...otherLines] = read.data.items;
+  if (line === undefined || otherLines.length > 0 || line.id !== product || line.quantity !== 1) {
+    return {
+      ok: false,
+      why: "The shop's cart does not hold this product alone, once, so its rates are not this parcel's.",
+      again: false,
+    };
+  }
   if (!read.data.needs_shipping) {
     return { ok: false, why: "The shop's cart says this product needs no shipping.", again: false };
   }
   const [only, ...more] = read.data.shipping_rates;
-  if (only === undefined || more.length > 0) {
-    // One product is one parcel; a shop that splits it or answers with no
-    // package is not pricing what this sells.
+  const [packed, ...morePacked] = only?.items ?? [];
+  if (
+    only === undefined ||
+    more.length > 0 ||
+    packed === undefined ||
+    morePacked.length > 0 ||
+    packed.key !== line.key ||
+    packed.quantity !== 1
+  ) {
+    // One product is one parcel; a shop that splits it, answers with no
+    // package, or packs something else is not pricing what this sells.
     return {
       ok: false,
       why: "The shop's cart did not price this product as one parcel.",
