@@ -219,6 +219,25 @@ describe("asking the scanner for a verification link", () => {
     expect(button().disabled).toBe(false);
   });
 
+  it("says a link was sent, and no longer that the report opens without one, when the session ended in another tab", async () => {
+    // The page was loaded signed in; by the press the session had ended, so the
+    // site took the ask as a stranger's and mailed a link to the address shown.
+    answerWith(
+      202,
+      { status: "verification_sent" },
+      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
+    );
+    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+    render(<RegistrationForm scanId={scanId} />);
+    expect(await screen.findByText(/without a message/)).toBeTruthy();
+    await userEvent.click(screen.getByLabelText(/acknowledge the scanner data notice/i));
+    await userEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByText(/Check your inbox/)).toBeTruthy();
+    expect(screen.queryByText(/without a message/)).toBeNull();
+    expect(screen.getByRole("button").textContent).not.toBe("Open the full report");
+  });
+
   it("links the data notice from the box that acknowledges it", async () => {
     // The visitor is asked to acknowledge a notice, so the notice is one
     // press away from the box, and the same page the footer calls Privacy.
