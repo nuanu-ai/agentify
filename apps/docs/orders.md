@@ -309,8 +309,8 @@ flowchart LR
     U -- "late delivery" --> D
     IP -- "merchant closes" --> C["fulfillment_closed"]
     U -- "merchant closes" --> C
-    PU["payment_unresolved"] -- "merchant closes" --> PC["payment_unresolved<br/>merchant closure recorded"]
-    PC -- "original outcome established" --> C
+    PU["payment_unresolved"] -- "merchant closes" --> PC["payment_unresolved<br/>merchant closure<br/>recorded"]
+    PC -- "original outcome<br/>established" --> C
 ```
 
 | `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
