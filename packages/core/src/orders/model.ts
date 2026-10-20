@@ -110,6 +110,26 @@ export function isOpen(state: OrderState): boolean {
 }
 
 /**
+ * The endings that hold nothing for the buyer: no goods kept for them and, on
+ * every one but a `rejected` order whose charge went unanswered, no money taken.
+ * An `expired` order is one only while it holds no goods its buyer could still
+ * pay to collect.
+ */
+export function endedWithNothingHeld(order: Order): boolean {
+  switch (order.state) {
+    case "failed":
+    case "rejected":
+    case "declined":
+    case "cancelled":
+      return true;
+    case "expired":
+      return !order.heldFulfillment;
+    default:
+      return false;
+  }
+}
+
+/**
  * When the payment is executed. This is one of the two switches that turn the
  * three published modes into one machine.
  *
@@ -380,6 +400,8 @@ export type MerchantAnswerResult = (typeof MERCHANT_ANSWER_RESULTS)[number];
 
 export const MERCHANT_ANSWER_ERRORS = [
   "fulfillment_closed",
+  "fulfillment_complete",
+  "nothing_to_close",
   "order_already_closed",
   "not_applicable_in_mode",
 ] as const;
@@ -594,7 +616,17 @@ export type Order = {
    */
   readonly heldFulfillment: boolean;
   readonly closure: Closure | null;
-  readonly merchantClosure?: { readonly at: number; readonly message?: string };
+  /**
+   * The merchant's closure of fulfillment: when, and their optional words.
+   * `paymentCompletedAt` is when a payment that was unresolved at closure
+   * completed afterwards. It marks the order as waiting for the merchant to
+   * close it again, which records a new closure without it.
+   */
+  readonly merchantClosure?: {
+    readonly at: number;
+    readonly message?: string;
+    readonly paymentCompletedAt?: number;
+  };
   readonly test: boolean;
   readonly timestamps: OrderTimestamps;
 };

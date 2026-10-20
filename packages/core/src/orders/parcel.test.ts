@@ -55,7 +55,7 @@ describe("what the agent is told about a parcel", () => {
     expect(outcomeFor(shipped)).toBe("shipped");
   });
 
-  it("is the same when a late shipment closes a refund owed", () => {
+  it("is the same when a late shipment reaches an unfulfilled order", () => {
     const owed = must(handedOver(parcel()), {
       kind: "deadline_expired",
       at: T0 + 999_999_999,
@@ -70,7 +70,7 @@ describe("what the agent is told about a parcel", () => {
 });
 
 describe("a parcel's address", () => {
-  it("is erased on merchant closure once, and a recorded shipment cannot be closed", () => {
+  it("is erased on merchant closure once, and a recorded shipment's fulfillment is complete and cannot be closed", () => {
     const { order, effects } = must(handedOver(parcel()), { kind: "close_called", at: T0 + 5 });
     expect(holdsShipTo(order)).toBe(false);
     expect(erasures(effects)).toBe(1);
@@ -82,7 +82,7 @@ describe("a parcel's address", () => {
     expect(outcomeFor(attempted.order)).toBe("shipped");
     expect(attempted.effects).toContainEqual({
       kind: "answer_merchant",
-      answer: { ok: false, error: "order_already_closed", retryable: false },
+      answer: { ok: false, error: "fulfillment_complete", retryable: false },
     });
   });
 
@@ -117,7 +117,7 @@ describe("a parcel's address", () => {
     expect(erasures(effects)).toBe(1);
   });
 
-  it("is let go when the order becomes a refund owed without having been taken on", () => {
+  it("is let go when the order is left unfulfilled without having been taken on", () => {
     const refused = must(handedOver(parcel()), {
       kind: "handler_refused",
       at: T0 + 5,
@@ -215,7 +215,7 @@ describe("a parcel whose address is gone", () => {
     expect(accepted.order.timestamps.dispatchedAt).toBeNull();
   });
 
-  it("is not handed to a handler again once it owes a refund, though its shipment still closes the debt", () => {
+  it("is not handed to a handler again once the order is unfulfilled, though a late shipment is still recorded", () => {
     const owing = must(handedOver(parcel()), {
       kind: "handler_refused",
       at: T0 + 5,

@@ -67,7 +67,14 @@ describe("the portal's table of codes a closing call fails under", () => {
     // is what a merchant sizes their `switch` from. Enough of it is quoted for
     // the pin to die when it is rewritten, and the numbers are counted from
     // the lists.
-    const words: Record<string, number> = { three: 3, four: 4, five: 5, seven: 7, eight: 8 };
+    const words: Record<string, number> = {
+      three: 3,
+      four: 4,
+      five: 5,
+      seven: 7,
+      eight: 8,
+      ten: 10,
+    };
     const said =
       /(\w+) codes are promised to mean one thing each — (\w+) sent by us, and (\w+) the tools produce/.exec(
         readFileSync(page, "utf8").replace(/\s+/g, " "),

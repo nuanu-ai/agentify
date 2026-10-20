@@ -274,7 +274,7 @@ describe("an order accepted before operator approval existed", () => {
     expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
   });
 
-  it("still reaches refund due when a paid asynchronous order is refused", async () => {
+  it("still leaves a paid asynchronous order unfulfilled when it is refused", async () => {
     const { served, harnessed } = await started();
     const { merchantId, orderId } = await acceptedOrderWithoutApproval(
       harnessed,

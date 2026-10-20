@@ -34,7 +34,7 @@ it("closes through a bound order with the merchant key and preserves the explana
 
 it("returns a closure refusal and makes an unreadable answer safe to retry", async () => {
   const error = {
-    code: "order_already_closed",
+    code: "fulfillment_complete",
     message: "A shipment is already recorded.",
     retryable: false,
   };

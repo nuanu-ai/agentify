@@ -326,7 +326,8 @@ describe("the contract as JSON Schema", () => {
     // plain text, `.tracking_url` to an address, and `.estimated_delivery`
     // compares its two ends; the merchant's shipment shares them, except the
     // window, which an agent reads open and which is met again under
-    // `shipment`.
+    // `shipment`. `order_close_request.message` is the merchant's closing
+    // words, held to plain text on the way in only, as a card's are.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
       "agent_order_status.seller.site",
       "agent_order_status.shipment.carrier",
@@ -338,6 +339,7 @@ describe("the contract as JSON Schema", () => {
       "card.tags",
       "evm_address",
       "merchant_card.card",
+      "order_close_request.message",
       "public_card.result",
       "seller_name_request",
       "seller_name_request.seller_name",

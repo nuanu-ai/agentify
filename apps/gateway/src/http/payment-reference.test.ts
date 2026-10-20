@@ -288,7 +288,7 @@ describe("the order's identifier on the payment side", () => {
 
 describe("a payment reference", () => {
   it.each([false, true])(
-    "does not reveal an unowned closed order through a fresh verified payment (closure races verification=%s)",
+    "answers a payment for an order its merchant closed unpaid as over and uncharged, revealing nothing of the closure (closure races verification=%s)",
     async (racing) => {
       const { harnessed, served } = await started();
       const itemId = await publish(harnessed, asyncCard);
@@ -311,15 +311,22 @@ describe("a payment reference", () => {
         const answered = await (trying ??
           present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02")));
         expect(answered.status).toBe(409);
+        expect(answered.body).toMatchObject({
+          error: { code: "payment_not_taken", retryable: false },
+        });
+        expect(JSON.stringify(answered.body)).toContain("this order is over");
+        expect(JSON.stringify(answered.body)).toContain("Nothing was charged");
         expectNoOrderIn(answered.body, opened.order.id);
         for (const privateWord of [
           "merchant_closure",
           "Private merchant explanation",
           "fulfillment_closed",
-          "Nothing was charged",
         ]) {
           expect(JSON.stringify(answered.body)).not.toContain(privateWord);
         }
+        // Answered before the payment is checked, unless it was already
+        // being checked when the merchant closed.
+        expect(harnessed.facilitator.verifies).toHaveLength(racing ? 1 : 0);
         expect(harnessed.facilitator.settles).toEqual([]);
         expect((await harnessed.store.orderById(opened.order.id))?.paidBy).toBeNull();
       } finally {

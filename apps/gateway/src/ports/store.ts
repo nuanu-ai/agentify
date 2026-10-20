@@ -51,13 +51,15 @@ export const INTEGRATIONS = ["api", "woocommerce"] as const;
 export type Integration = (typeof INTEGRATIONS)[number];
 
 /**
- * The open states in which no handler response is pending: late fulfillment
- * or payment for goods already held. Neither holds
- * a switch of integration (`IntegrationSwitch`).
+ * The states on the open list in which no handler response is pending: late
+ * fulfillment, payment for goods already held, and a closed order whose payment
+ * completed after the closure. None of them holds a switch of integration
+ * (`IntegrationSwitch`).
  */
 export const NO_PENDING_HANDLER = [
   "unfulfilled",
   "delivered_unpaid",
+  "fulfillment_closed",
 ] as const satisfies readonly OrderState[];
 
 /**
@@ -740,7 +742,10 @@ export interface Store {
   /** One of this merchant's orders. Another merchant's order is not found. */
   merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null>;
 
-  /** This merchant's orders, or with `open` only the ones still owed work or money. */
+  /**
+   * This merchant's orders, or with `open` only the ones still owed work or
+   * money and the closed ones whose payment completed after the closure.
+   */
   orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
 
   /**

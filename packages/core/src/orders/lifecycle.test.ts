@@ -213,7 +213,7 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     expect(outcomeFor(deliveredTwice.order)).toBe("delivered");
   });
 
-  it("would have owed the buyer a refund had the four hours run out instead", () => {
+  it("would have been left unfulfilled had the four hours run out instead", () => {
     // The same order, taken to the same point and then left. The merchant's
     // side never comes back, and the order must end in a debt rather than a
     // quiet closure.

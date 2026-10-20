@@ -122,7 +122,9 @@ export function outcomeFor(order: Order): OrderOutcome {
  *
  * The merchant's own refusal has no reason here: it travels in their words, and
  * a reason of ours beside it would speak for them. Endings whose word already
- * says it all have none either.
+ * says it all have none either. A paid order the merchant closed is the one
+ * place a reason of ours stands beside the merchant's words, because those
+ * words can contradict the payment.
  */
 export const ENDING_REASONS = [
   /** The merchant's price check said there is none; it did not say why. */
@@ -135,12 +137,21 @@ export const ENDING_REASONS = [
   "price_expired",
   /** The merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
+  /**
+   * The merchant closed fulfillment of a paid order. Their own words stand
+   * beside it, and this says what Agentify knows: paid, nothing delivered, no
+   * refund verified.
+   */
+  "merchant_closed",
 ] as const;
 
 export type EndingReason = (typeof ENDING_REASONS)[number];
 
 export function endingReasonFor(order: Order): EndingReason | null {
   const outcome = outcomeFor(order);
+  if (outcome === "fulfillment_closed") {
+    return order.payment === "settled" ? "merchant_closed" : null;
+  }
   if ((outcome !== "rejected" && outcome !== "expired") || order.closure === null) {
     return null;
   }
@@ -174,10 +185,15 @@ export function endingReasonFor(order: Order): EndingReason | null {
  * that never happened (the buyer still reads `in_progress`). A charge nobody
  * heard back from is listed even so, with a status saying the outcome is
  * unknown. An order waiting on the buyer's payment after a confirmation is not
- * listed: nothing there is the merchant's to deliver.
+ * listed: nothing there is the merchant's to deliver. A closed order whose
+ * payment completed after the closure is listed until the merchant closes it
+ * again, since the buyer paid and nothing was delivered.
  */
 export function onTheMerchantsOpenList(order: Order): boolean {
   if (order.payment === "outcome_unknown" && isOpen(order.state)) {
+    return true;
+  }
+  if (paidAfterClosure(order)) {
     return true;
   }
 
@@ -203,4 +219,25 @@ export function onTheMerchantsOpenList(order: Order): boolean {
     default:
       return assertNever(order.state, "order state");
   }
+}
+
+/**
+ * Whether the buyer's payment completed after the merchant had closed
+ * fulfillment, and the merchant has not closed the order again since. The
+ * merchant was told by `order.unfulfilled`, and the order waits on their list.
+ */
+export function paidAfterClosure(order: Order): boolean {
+  return (
+    order.state === "fulfillment_closed" &&
+    order.payment === "settled" &&
+    order.merchantClosure?.paymentCompletedAt !== undefined
+  );
+}
+
+/**
+ * Whether the store keeps an order on its open list: an open state, or a
+ * closed order whose payment completed after the closure.
+ */
+export function listedAsOpen(order: Order): boolean {
+  return isOpen(order.state) || paidAfterClosure(order);
 }

@@ -40,11 +40,19 @@ describe("@agentify/core", () => {
       // Why an order ended where its merchant did not say: the gateway writes
       // it into the agent's status.
       "endingReasonFor",
-      // The merchant's open list is narrower than the machine's open states.
+      // The merchant's open list is narrower than the machine's open states,
+      // and the store's open flag is wider by the orders paid after closure.
       "onTheMerchantsOpenList",
+      "listedAsOpen",
+      // Why a paid order the merchant closed is back in front of them: the
+      // gateway names it in the merchant's event.
+      "paidAfterClosure",
       "moneyInvariantViolations",
       "modeOf",
       "isOpen",
+      // Whether an ended order holds nothing for its buyer: the machine refuses
+      // to close one, and the gateway takes no payment for one.
+      "endedWithNothingHeld",
       // Whether a parcel's order still holds its buyer's address: the gateway's
       // last check before it writes one down.
       "holdsShipTo",

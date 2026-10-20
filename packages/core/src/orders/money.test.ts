@@ -45,7 +45,7 @@ describe("the invariants of the order's money", () => {
   // not an implementation detail: the gateway joins them into the error a
   // person reads when an order will not persist.
 
-  it("catches an order that claims a debt without a charge behind it", () => {
+  it("catches an order that claims paid fulfillment stopped without a charge behind it", () => {
     const impossible: Order = { ...reach("dispatched"), state: "unfulfilled", payment: "none" };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
@@ -127,7 +127,7 @@ describe("the invariants of the order's money", () => {
   });
 });
 
-describe("a refusal before the charge never creates a debt", () => {
+describe("a refusal before the charge never leaves a paid order unfulfilled", () => {
   const refusalsBeforeMoney: readonly [string, Order][] = [
     ["a handler refusing a synchronous order", reach("failed")],
     ["a merchant declining a confirmation", reach("declined")],
@@ -135,7 +135,7 @@ describe("a refusal before the charge never creates a debt", () => {
   ];
 
   for (const [what, order] of refusalsBeforeMoney) {
-    it(`leaves nothing owed after ${what}`, () => {
+    it(`leaves no paid order unfulfilled after ${what}`, () => {
       expect(order.payment).not.toBe("settled");
       expect(order.state).not.toBe("unfulfilled");
       expect(moneyInvariantViolations(order)).toStrictEqual([]);
@@ -144,7 +144,7 @@ describe("a refusal before the charge never creates a debt", () => {
 });
 
 describe("money taken is always accounted for", () => {
-  it("turns the departure of a merchant who was already paid into a debt", () => {
+  it("leaves a paid order unfulfilled when its merchant departs", () => {
     const paid = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },

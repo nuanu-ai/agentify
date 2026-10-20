@@ -82,6 +82,7 @@ export type {
 export {
   CLOSED_ORDER_STATES,
   DEADLINE_KINDS,
+  endedWithNothingHeld,
   FULFILLMENT_MODES,
   holdsShipTo,
   isOpen,
@@ -104,7 +105,9 @@ export type { EndingReason, OrderOutcome } from "./orders/outcome.js";
 export {
   ENDING_REASONS,
   endingReasonFor,
+  listedAsOpen,
   ORDER_OUTCOMES,
   onTheMerchantsOpenList,
   outcomeFor,
+  paidAfterClosure,
 } from "./orders/outcome.js";

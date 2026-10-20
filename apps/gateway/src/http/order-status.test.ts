@@ -387,7 +387,7 @@ describe("a refusal the merchant made", () => {
   });
 });
 
-describe("an order that owes a refund", () => {
+describe("a paid order left unfulfilled", () => {
   // `unfulfilled` alone reads as "a refund is on its way". The agent has to be
   // told why the money is owed, in the words the merchant's own event uses,
   // and in a sentence that nothing here will say when it has been paid back.
@@ -498,7 +498,7 @@ describe("an order that owes a refund", () => {
     expect(owingReported.reason?.message).not.toBe(owingLate.reason?.message);
   });
 
-  it("gives each way of coming to owe a sentence of its own", async () => {
+  it("gives each way of being left unfulfilled a sentence of its own", async () => {
     // One sentence for all three would tell an agent waiting on a late
     // delivery the same thing as one whose seller has gone.
     const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });

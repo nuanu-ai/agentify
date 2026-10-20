@@ -95,7 +95,7 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(silent)).not.toBe(outcomeFor(reported));
   });
 
-  it("turns a charge that finally reports in into the debt it is", () => {
+  it("turns a charge that finally reports in into the unfulfilled paid order it is", () => {
     // The order was closed as refused because the payment network went silent,
     // and then the money turned out to have moved. The machine reopens the
     // order as a debt, and the agent must be told that too: "nobody can say
@@ -152,7 +152,7 @@ describe("what the agent is told an order came to", () => {
     expect(onTheMerchantsOpenList(reach("rejected"))).toBe(false);
   });
 
-  it("shows the two endings where money is owed as what they are", () => {
+  it("shows a paid order without delivery, goods held unpaid and a merchant's closure as what they are", () => {
     expect(outcomeFor(reach("unfulfilled"))).toBe("unfulfilled");
     expect(outcomeFor(reach("delivered_unpaid"))).toBe("delivered_unpaid");
     expect(outcomeFor(reach("fulfillment_closed"))).toBe("fulfillment_closed");
@@ -169,7 +169,7 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(reach("cancelled"))).toBe("cancelled");
   });
 
-  it("changes its answer the moment a late delivery closes a debt", () => {
+  it("changes its answer the moment a late delivery reaches an unfulfilled order", () => {
     const closed = walk(reach("unfulfilled"), [{ kind: "deliver_called", at: T0 + 999 }]);
 
     expect(outcomeFor(closed)).toBe("delivered");
@@ -219,7 +219,26 @@ describe("why an order ended, where its merchant did not say", () => {
       expect(endingReasonFor(order), reason).toBe(reason);
       expect(["rejected", "expired"]).toContain(outcomeFor(order));
     }
-    expect(new Set(cases.map(([, reason]) => reason))).toStrictEqual(new Set(ENDING_REASONS));
+    expect(new Set([...cases.map(([, reason]) => reason), "merchant_closed"])).toStrictEqual(
+      new Set(ENDING_REASONS),
+    );
+  });
+
+  it("says in its own words what is true of a paid order whose merchant closed fulfillment", () => {
+    const closedAfterPayment = reach("fulfillment_closed");
+    const paidAfterClosure = walk(reach("fulfilled"), [
+      { kind: "close_called", at: T0 + 10 },
+      { kind: "payment_settled", at: T0 + 20 },
+    ]);
+    for (const order of [closedAfterPayment, paidAfterClosure]) {
+      expect(order.payment).toBe("settled");
+      expect(outcomeFor(order)).toBe("fulfillment_closed");
+      expect(endingReasonFor(order)).toBe("merchant_closed");
+    }
+    const unpaid = walk(reach("quoted"), [{ kind: "close_called", at: T0 + 10 }]);
+    expect(endingReasonFor(unpaid)).toBeNull();
+    const unresolved = walk(reach("fulfilled"), [{ kind: "close_called", at: T0 + 10 }]);
+    expect(endingReasonFor(unresolved)).toBeNull();
   });
 
   it("gives no reason of ours where the merchant refused, or where the status says it all", () => {

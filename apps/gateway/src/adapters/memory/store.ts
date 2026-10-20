@@ -7,7 +7,7 @@
  * as the SQL does, because the two-merchant tests run here.
  */
 
-import { isOpen, type MerchantSelling } from "@agentify/core";
+import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
@@ -513,7 +513,7 @@ export class MemoryStore implements Store {
       .filter(
         (record) =>
           record.merchantId === merchantId &&
-          isOpen(record.order.state) &&
+          listedAsOpen(record.order) &&
           !(NO_PENDING_HANDLER as readonly string[]).includes(record.order.state),
       )
       .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
@@ -575,7 +575,7 @@ export class MemoryStore implements Store {
     query?: { readonly open?: boolean },
   ): Promise<readonly StoredOrder[]> {
     const mine = [...this.#orders.values()].filter((record) => record.merchantId === merchantId);
-    return query?.open === true ? mine.filter((record) => isOpen(record.order.state)) : mine;
+    return query?.open === true ? mine.filter((record) => listedAsOpen(record.order)) : mine;
   }
 
   async withOrder<T>(
@@ -642,7 +642,7 @@ export class MemoryStore implements Store {
   }
 
   async openOrders(): Promise<readonly StoredOrder[]> {
-    return [...this.#orders.values()].filter((record) => isOpen(record.order.state));
+    return [...this.#orders.values()].filter((record) => listedAsOpen(record.order));
   }
 
   async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {

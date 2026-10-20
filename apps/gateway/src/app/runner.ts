@@ -36,6 +36,7 @@ import {
   holdsShipTo,
   moneyInvariantViolations,
   outcomeFor,
+  paidAfterClosure,
   transition,
 } from "@agentify/core";
 import {
@@ -1431,9 +1432,11 @@ export function merchantClosureOf(order: Order): {
 function reasonOf(order: Order): {
   reason?: { code: EndingReason | UnfulfilledReason; message: string };
 } {
-  if (outcomeFor(order) === "unfulfilled") {
-    const reason = unfulfilledReasonOf(order);
-    return { reason: { code: reason, message: UNFULFILLED_WORDS[reason](order) } };
+  // A payment after closure is the merchant's news; the agent reads that order
+  // as closed.
+  const unfulfilled = outcomeFor(order) === "unfulfilled" ? unfulfilledReasonOf(order) : null;
+  if (unfulfilled !== null && unfulfilled !== "paid_after_closure") {
+    return { reason: { code: unfulfilled, message: UNFULFILLED_WORDS[unfulfilled](order) } };
   }
   const code = endingReasonFor(order);
   if (code === null) {
@@ -1442,7 +1445,9 @@ function reasonOf(order: Order): {
   return { reason: { code, message: REASON_WORDS[code](order) } };
 }
 
-const UNFULFILLED_WORDS: Readonly<Record<UnfulfilledReason, (order: Order) => string>> = {
+const UNFULFILLED_WORDS: Readonly<
+  Record<Exclude<UnfulfilledReason, "paid_after_closure">, (order: Order) => string>
+> = {
   refused: () =>
     "The seller refused this paid order, in their own words under refusal. Agentify has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   deadline_passed: (order) =>
@@ -1473,6 +1478,10 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
     "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
     "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
+  merchant_closed: (order) =>
+    paidAfterClosure(order)
+      ? "The payment for this order completed after the seller had closed fulfillment through Agentify, so the seller's words under merchant_closure were written before it arrived. Agentify has no delivery recorded and has not verified any refund or agreement. Contact the seller."
+      : "This order is paid, and the seller closed fulfillment through Agentify with no delivery recorded. The words under merchant_closure are the seller's own; Agentify has not verified any refund or agreement. Contact the seller.",
   merchant_timed_out: (order) =>
     order.heldFulfillment
       ? "The seller's goods arrived after the purchase had closed; nothing was charged. Pay this same order again, from the same wallet, to collect them."
@@ -1547,9 +1556,13 @@ function shipByOf(order: Order): string | null {
  * charge that reported in after we gave up on it is folded into
  * `deadline_passed`, meaning our deadline on the charge and not his on the
  * goods, because the vocabulary has no word for our side losing track of the
- * money.
+ * money. A payment that completed after the merchant closed fulfillment is
+ * `paid_after_closure`, whatever had happened before.
  */
 function unfulfilledReasonOf(order: Order): UnfulfilledReason {
+  if (paidAfterClosure(order)) {
+    return "paid_after_closure";
+  }
   const closure = order.closure;
   if (closure === null) {
     throw new Error(`the paid order ${order.id} is unfulfilled with nothing recording why`);

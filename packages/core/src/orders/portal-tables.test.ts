@@ -229,7 +229,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(charged)).toBe("unfulfilled");
   });
 
-  it(`${ENDINGS[5]}: the money is the merchant's and the order waits for a refund`, () => {
+  it(`${ENDINGS[5]}: the money is the merchant's and the order is unfulfilled`, () => {
     expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(reach("unfulfilled"))]);
   });
 
@@ -391,7 +391,7 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     expect(outcomeFor(beforeTheGoods)).toBe("payment_unresolved");
   });
 
-  it(`${TIME_LIMITS[5]}: the money is already the merchant's and a refund is owed`, () => {
+  it(`${TIME_LIMITS[5]}: the money is already the merchant's and the order is unfulfilled`, () => {
     const { order } = must(paidAsync(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -401,7 +401,7 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     expect(outcomeFor(order)).toBe("unfulfilled");
   });
 
-  it(`${TIME_LIMITS[6]}: a parcel not shipped in time owes a refund as well`, () => {
+  it(`${TIME_LIMITS[6]}: a parcel not shipped in time is unfulfilled as well`, () => {
     const { order } = must(paidParcel(), {
       kind: "deadline_expired",
       at: T0 + 999_999,

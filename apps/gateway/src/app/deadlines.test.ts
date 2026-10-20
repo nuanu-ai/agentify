@@ -161,7 +161,7 @@ describe("when the time runs out", () => {
     expect(refused.error.retryable).toBe(true);
   });
 
-  it("marks an asynchronous order for a refund, because the money is already gone", async () => {
+  it("marks an asynchronous order unfulfilled, because the money has already moved", async () => {
     // Unlike the synchronous case the charge went through at the purchase, so an
     // ending that said "nothing happened" would leave the buyer out of pocket.
     const harnessed = await started();
@@ -669,7 +669,7 @@ describe("when a delivery goes unanswered", () => {
     expect(new Set(seen.map((each) => each.message)).size).toBe(seen.length);
   });
 
-  it("stops repeating once the attempts are spent, and leaves the debt to the deadline", async () => {
+  it("stops repeating once the attempts are spent, and leaves the order to its deadline", async () => {
     // Running out of attempts is not running out of time: the merchant may
     // still deliver until the deadline, and the debt comes from the deadline
     // passing. The money moved at the purchase, so what is left is a debt

@@ -64,7 +64,12 @@ export const ORDER_STATUSES = Object.freeze([
    * This says nothing about a refund or the parties' agreement.
    */
   "unfulfilled",
-  /** Future Agentify fulfillment is closed; payment_status describes the original payment. */
+  /**
+   * The merchant closed fulfillment through Agentify: nothing more is
+   * delivered here. `payment_status` says what happened to the original
+   * payment, and the merchant's own words are under `merchant_closure`; on a
+   * paid order Agentify's `reason` stands beside them.
+   */
   "fulfillment_closed",
   /**
    * The merchant delivered synchronously and the payment did not execute. The
@@ -86,10 +91,12 @@ export const PaymentStatusSchema = z.enum(["not_paid", "paid", "unresolved"]).me
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 
 /**
- * Why an order ended, where Agentify and not its merchant decided it and one
- * status word would otherwise cover endings that call for different next
- * steps. A merchant's refusal travels in their own words and never gets one of
- * these beside it.
+ * Why an order ended, in Agentify's words: where Agentify and not its merchant
+ * decided it and one status word would otherwise cover endings that call for
+ * different next steps, and where a merchant closed fulfillment of a paid
+ * order, whose own words could otherwise be read as more than they establish.
+ * A merchant's refusal travels in their own words and gets one of these beside
+ * it only where they later closed the paid order.
  */
 export const ORDER_ENDING_REASONS = Object.freeze([
   /**
@@ -109,6 +116,11 @@ export const ORDER_ENDING_REASONS = Object.freeze([
   "price_expired",
   /** `expired`: the merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
+  /**
+   * `fulfillment_closed` on a paid order: the merchant closed fulfillment with
+   * no delivery recorded, and Agentify has verified no refund or agreement.
+   */
+  "merchant_closed",
 ] as const);
 
 export const OrderEndingReasonSchema = z.enum(ORDER_ENDING_REASONS);

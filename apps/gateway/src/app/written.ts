@@ -115,16 +115,24 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
     // merchant's refusal. Every paid unfulfilled order records why it stopped.
     const { reason } = written;
     const unfulfilled = written.status === "unfulfilled";
-    if (unfulfilled && reason === undefined) {
+    const closedPaid = written.status === "fulfillment_closed" && written.payment_status === "paid";
+    if ((unfulfilled || closedPaid) && reason === undefined) {
       context.addIssue({
         code: "custom",
         path: ["reason"],
-        message: "an unfulfilled paid order always says why fulfillment stopped",
+        message: unfulfilled
+          ? "an unfulfilled paid order always says why fulfillment stopped"
+          : "a paid order the merchant closed always says in our words what is true of it",
       });
     }
     if (reason !== undefined) {
       const words = unfulfilled ? UnfulfilledReasonSchema : OrderEndingReasonSchema;
-      if (!unfulfilled && written.status !== "rejected" && written.status !== "expired") {
+      if (
+        !unfulfilled &&
+        !closedPaid &&
+        written.status !== "rejected" &&
+        written.status !== "expired"
+      ) {
         context.addIssue({
           code: "custom",
           path: ["reason"],
@@ -137,8 +145,10 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
           message: `"${reason.code}" is not a reason an order whose status is "${written.status}" is given`,
         });
       }
+      // A paid order the merchant closed keeps any refusal it carried, and our
+      // reason beside it says only what Agentify knows about the money.
       const besideTheirWords = unfulfilled && reason.code === "refused";
-      if ((written.refusal !== undefined) !== besideTheirWords) {
+      if (!closedPaid && (written.refusal !== undefined) !== besideTheirWords) {
         context.addIssue({
           code: "custom",
           path: ["reason"],

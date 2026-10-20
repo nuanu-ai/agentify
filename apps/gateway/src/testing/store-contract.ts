@@ -1781,6 +1781,34 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // Closed is not deleted.
         expect(await store.orders(A)).toHaveLength(4);
       });
+      it("is listed while its payment completed after the merchant closed it, until they close it again", async () => {
+        // The merchant is told by an event that is sent at most once, so the
+        // open list is where such an order is found again. It holds no switch
+        // of integration: nothing of it waits on a handler.
+        const store = await twoMerchants();
+        const closed = anOrder("ord_closed_paid_later", "fulfillment_closed");
+        await store.addOrder({
+          ...closed,
+          order: {
+            ...closed.order,
+            payment: "settled",
+            merchantClosure: { at: 1_000, paymentCompletedAt: 2_000 },
+          },
+        });
+        await store.addOrder(anOrder("ord_closed", "fulfillment_closed", { createdAt: 2_000 }));
+
+        expect(await idsOf(store.orders(A, { open: true }))).toStrictEqual([
+          "ord_closed_paid_later",
+        ]);
+        expect((await store.switchIntegration(A, "woocommerce")).switched).toBe(true);
+        await store.switchIntegration(A, "api");
+
+        await store.withOrder("ord_closed_paid_later", (found) => ({
+          save: { ...found, order: { ...found.order, merchantClosure: { at: 3_000 } } },
+          result: null,
+        }));
+        expect(await idsOf(store.orders(A, { open: true }))).toStrictEqual([]);
+      });
     });
 
     describe("a payment", () => {
