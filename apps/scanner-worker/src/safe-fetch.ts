@@ -366,7 +366,12 @@ export class SafeFetcher {
           answers = await untilAborted(this.resolver.resolve(url.hostname), controller.signal);
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") throw error;
-          return refused(url, "dns_error");
+          // Node gives ENOTFOUND to a name that does not exist and its own
+          // code to a resolver that could not answer, which says nothing of it.
+          return refused(
+            url,
+            (error as NodeJS.ErrnoException).code === "ENOTFOUND" ? "dns_not_found" : "dns_error",
+          );
         }
         let pinnedAddress: ResolvedAddress;
         try {
