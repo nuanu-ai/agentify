@@ -72,12 +72,20 @@ const referenceIn = (challenge: string): unknown =>
 
 /**
  * What an x402 client sends back: the offer it accepted, the resource and the
- * extensions it was offered, and an authorisation signed by `from`.
+ * extensions it was offered, and an authorisation signed by `from`. `terms`
+ * stands in for a client that changed the offer before signing, or signed one
+ * whose window has already passed.
  */
-const paymentAgainst = (challenge: string, from: string, nonce: string): string => {
+const paymentAgainst = (
+  challenge: string,
+  from: string,
+  nonce: string,
+  terms: { readonly payTo?: string; readonly validBefore?: number } = {},
+): string => {
   const offered = decodePaymentRequiredHeader(challenge);
-  const accepted = offered.accepts[0];
-  if (accepted === undefined) throw new Error("the challenge offered no way to pay");
+  const asked = offered.accepts[0];
+  if (asked === undefined) throw new Error("the challenge offered no way to pay");
+  const accepted = { ...asked, payTo: terms.payTo ?? asked.payTo };
   return encodePaymentSignatureHeader({
     x402Version: offered.x402Version,
     resource: offered.resource,
@@ -90,23 +98,43 @@ const paymentAgainst = (challenge: string, from: string, nonce: string): string 
         to: accepted.payTo,
         value: accepted.amount,
         validAfter: "0",
-        validBefore: String(Math.floor(Date.now() / 1_000) + accepted.maxTimeoutSeconds),
+        validBefore: String(
+          terms.validBefore ?? Math.floor(Date.now() / 1_000) + accepted.maxTimeoutSeconds,
+        ),
         nonce: `0x${nonce.slice(2).padStart(64, "0")}`,
       },
     },
   });
 };
 
-/** A facilitator that says yes to everything and keeps, whole, everything it was sent. */
+/** Where a challenge asks to be paid. */
+const payToIn = (challenge: string): string | undefined =>
+  decodePaymentRequiredHeader(challenge).accepts[0]?.payTo;
+
+/** The signer and nonce of a payment's authorisation, where it carries one. */
+const signedBy = (payload: PaymentPayload) =>
+  (payload.payload as { authorization?: { from?: string; nonce?: string } }).authorization;
+
+/**
+ * A facilitator that says yes to every authorisation it has not charged,
+ * names its signer as the payer, and keeps, whole, everything it was sent. An
+ * authorisation it charged is used, and it refuses that one as the chain does.
+ */
 class Recording implements FacilitatorClient {
   readonly sent: string[] = [];
+  /** Where each charge it executed was paid to. */
+  readonly charged: string[] = [];
+  readonly #used = new Set<string | undefined>();
 
   async verify(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
   ): Promise<VerifyResponse> {
     this.sent.push(JSON.stringify({ verify: { payload, requirements } }));
-    return { isValid: true };
+    const signed = signedBy(payload);
+    return this.#used.has(signed?.nonce)
+      ? { isValid: false, invalidReason: "invalid_exact_evm_nonce_already_used" }
+      : { isValid: true, ...(signed?.from === undefined ? {} : { payer: signed.from }) };
   }
 
   async settle(
@@ -114,6 +142,8 @@ class Recording implements FacilitatorClient {
     requirements: PaymentRequirements,
   ): Promise<SettleResponse> {
     this.sent.push(JSON.stringify({ settle: { payload, requirements } }));
+    this.#used.add(signedBy(payload)?.nonce);
+    this.charged.push(requirements.payTo);
     return { success: true, transaction: "0xtx", network: requirements.network };
   }
 
@@ -127,8 +157,11 @@ class Recording implements FacilitatorClient {
  * with only the network behind it swapped, and identifiers as production
  * issues them, so an identifier found in a call is that order's and no other's.
  */
-async function aGatewayPayingThrough(network: FacilitatorClient) {
-  const config = testConfig({ PAY_TO_ADDRESS: PAY_TO });
+async function aGatewayPayingThrough(
+  network: FacilitatorClient,
+  overrides: Record<string, string> = {},
+) {
+  const config = testConfig({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
   const queue = new MemoryQueue();
   const store = new MemoryStore(config.payment.network, randomIds, Date.now, queue.envelopes());
   const gateway = new Gateway({
@@ -157,6 +190,8 @@ async function aGatewayPayingThrough(network: FacilitatorClient) {
 
   return {
     gateway,
+    store,
+    config,
     merchant,
     served,
     async publish(card: Card): Promise<string> {
@@ -223,7 +258,11 @@ const expectNoOrderIn = (body: unknown, orderId: string) => {
 };
 
 /** Waits, briefly, for an order to reach a state a timer moves it to. */
-const reaching = async (harnessed: Harness, orderId: string, state: string) => {
+const reaching = async (
+  harnessed: { readonly store: Pick<MemoryStore, "orderById"> },
+  orderId: string,
+  state: string,
+) => {
   for (let tries = 0; tries < 200; tries += 1) {
     if ((await harnessed.store.orderById(orderId))?.order.state === state) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -534,6 +573,183 @@ describe("a payer whose answer was lost", () => {
     expect((fresh.body as { order_id: string }).order_id).toBe(orderId);
     expect(fresh.body).toMatchObject({ delivered: { access_code: "SESAME" } });
     expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
+/** A wallet the seller moves to after a sale, so the split they are paid at changes. */
+const MOVED_TO = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+
+/** Where the seller of this product asks to be paid now, as a probe reads it. */
+const paidNowFor = async (served: Served, itemId: string) => {
+  const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+  expect(probed.status).toBe(402);
+  return payToIn(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "");
+};
+
+/**
+ * A purchase delivered in the answer and charged, whose seller then replaced
+ * their wallet: the payment request the buyer kept names a split the seller is
+ * no longer paid at.
+ */
+async function deliveredThenTheWalletMoved() {
+  const network = new Recording();
+  const shop = await aGatewayPayingThrough(network);
+  const worker = workUntilStopped(shop, {
+    onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+  });
+  const itemId = await shop.publish(syncCard);
+  const challenge = await challengeFor(shop.served, itemId);
+  const bought = await present(shop.served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+  expect(bought.status).toBe(200);
+  const orderId = (bought.body as { order_id: string }).order_id;
+  await setPayoutWallet(
+    shop.store,
+    shop.config.payoutSplit,
+    shop.merchant.id,
+    MOVED_TO,
+    Date.now(),
+  );
+  const paidTo = payToIn(challenge);
+  expect(network.charged).toStrictEqual([paidTo]);
+  expect(await paidNowFor(shop.served, itemId)).not.toBe(paidTo);
+  return {
+    network,
+    shop,
+    itemId,
+    challenge,
+    orderId,
+    paidTo,
+    async close() {
+      await worker.stop();
+      await shop.close();
+    },
+  };
+}
+
+describe("a payer whose answer was lost, after the seller moved their wallet", () => {
+  it("gets the original order back for a fresh payment against the payment request it kept, charged nothing more", async () => {
+    const sold = await deliveredThenTheWalletMoved();
+    try {
+      const fresh = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, BUYER, "0x02"),
+      );
+
+      expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
+      expect(fresh.body).toMatchObject({
+        order_id: sold.orderId,
+        delivered: { access_code: "SESAME" },
+      });
+      expect(sold.network.charged).toStrictEqual([sold.paidTo]);
+    } finally {
+      await sold.close();
+    }
+  });
+
+  it("is the only one the order comes back to: another wallet's valid payment against the same request learns nothing of it", async () => {
+    const sold = await deliveredThenTheWalletMoved();
+    try {
+      const stranger = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, STRANGER, "0x02"),
+      );
+
+      expect(stranger.status).toBe(409);
+      expect((stranger.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
+      expectNoOrderIn(stranger.body, sold.orderId);
+      expect(JSON.stringify(stranger.body)).not.toContain("SESAME");
+      expect(sold.network.charged).toStrictEqual([sold.paidTo]);
+    } finally {
+      await sold.close();
+    }
+  });
+
+  it("opens nothing for the used authorization sent again, or for a renewal whose window has passed", async () => {
+    const sold = await deliveredThenTheWalletMoved();
+    try {
+      const used = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, BUYER, "0x01"),
+      );
+      const lapsed = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, BUYER, "0x03", {
+          validBefore: Math.floor(Date.now() / 1_000) - 1,
+        }),
+      );
+
+      for (const answered of [used, lapsed]) {
+        expect(answered.status).toBe(409);
+        expect((answered.body as { error: { code: string } }).error.code).toBe(
+          "payment_not_verified",
+        );
+        expectNoOrderIn(answered.body, sold.orderId);
+        expect(JSON.stringify(answered.body)).not.toContain("SESAME");
+      }
+      expect(sold.network.charged).toStrictEqual([sold.paidTo]);
+    } finally {
+      await sold.close();
+    }
+  });
+
+  it("pays a repeat that is charged anew at the split the seller is paid at now, never at the one they left", async () => {
+    // The seller ran out of time and their goods came late, so the buyer's
+    // repeat is a new charge: the payment request it kept no longer says where
+    // the money goes.
+    const network = new Recording();
+    const shop = await aGatewayPayingThrough(network, {
+      SYNC_RESPONSE_MS: "80",
+      SETTLE_RESPONSE_MS: "40",
+      SYNC_BUDGET_MS: "1000",
+      HANDLER_ANSWER_MS: "1000",
+    });
+    try {
+      const itemId = await shop.publish(syncCard);
+      const challenge = await challengeFor(shop.served, itemId);
+      const paid = await present(shop.served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+      const orderId = (paid.body as { order_id: string }).order_id;
+      await reaching(shop, orderId, "expired");
+      await setPayoutWallet(
+        shop.store,
+        shop.config.payoutSplit,
+        shop.merchant.id,
+        MOVED_TO,
+        Date.now(),
+      );
+      await shop.gateway.answerOrder(shop.merchant.id, orderId, {
+        delivered: { access_code: "SESAME" },
+      });
+      const paidNow = await paidNowFor(shop.served, itemId);
+
+      const toTheOldSplit = await present(
+        shop.served,
+        itemId,
+        paymentAgainst(challenge, BUYER, "0x02"),
+      );
+      expect(toTheOldSplit.status).toBe(409);
+      expect((toTheOldSplit.body as { error: { code: string } }).error.code).toBe(
+        "payment_not_verified",
+      );
+      expect(network.charged).toStrictEqual([]);
+
+      const toTheSplitNow = await present(
+        shop.served,
+        itemId,
+        paymentAgainst(challenge, BUYER, "0x03", { payTo: paidNow }),
+      );
+      expect(toTheSplitNow.status, JSON.stringify(toTheSplitNow.body)).toBe(200);
+      expect(toTheSplitNow.body).toMatchObject({
+        order_id: orderId,
+        delivered: { access_code: "SESAME" },
+      });
+      expect(network.charged).toStrictEqual([paidNow]);
+    } finally {
+      await shop.close();
+    }
   });
 });
 
