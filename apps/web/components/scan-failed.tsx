@@ -21,9 +21,9 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
       "The scanner follows a redirect only to an address it would accept to scan on its own, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect breaks one of those rules, for example by leading to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
   },
   certificate_invalid: {
-    headline: "The scanner did not accept the site's certificate",
+    headline: "The scanner could not verify the site's certificate",
     words:
-      "The site's HTTPS certificate failed the checks a browser makes, for example because it has expired, is self-signed, or does not cover this address. Check the certificate, then scan the site again.",
+      "The scanner could not verify this site's HTTPS certificate: for example it has expired, is self-signed, does not cover this address, or the server does not send its intermediate certificate. A browser may still open the site, because browsers fetch a missing intermediate on their own; most programs, AI agents among them, do not. Check the certificate chain, then scan again.",
   },
 };
 
