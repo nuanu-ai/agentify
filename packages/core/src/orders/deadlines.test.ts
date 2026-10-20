@@ -171,7 +171,7 @@ describe("the deadlines of an order", () => {
     ]);
   });
 
-  it("runs no deadline on a closed order or on an unpaid debt", () => {
+  it("runs no deadline on a closed order or on an unfulfilled paid one", () => {
     const closed: Order = { ...newOrder("async"), state: "delivered", payment: "settled" };
     const debt: Order = { ...newOrder("async"), state: "unfulfilled", payment: "settled" };
 

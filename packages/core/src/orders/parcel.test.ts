@@ -55,7 +55,7 @@ describe("what the agent is told about a parcel", () => {
     expect(outcomeFor(shipped)).toBe("shipped");
   });
 
-  it("is the same when a late shipment closes a refund owed", () => {
+  it("is the same when a late shipment reaches an unfulfilled order", () => {
     const owed = must(handedOver(parcel()), {
       kind: "deadline_expired",
       at: T0 + 999_999_999,
@@ -117,7 +117,7 @@ describe("a parcel's address", () => {
     expect(erasures(effects)).toBe(1);
   });
 
-  it("is let go when the order becomes a refund owed without having been taken on", () => {
+  it("is let go when the order is left unfulfilled without having been taken on", () => {
     const refused = must(handedOver(parcel()), {
       kind: "handler_refused",
       at: T0 + 5,
@@ -215,7 +215,7 @@ describe("a parcel whose address is gone", () => {
     expect(accepted.order.timestamps.dispatchedAt).toBeNull();
   });
 
-  it("is not handed to a handler again once it owes a refund, though its shipment still closes the debt", () => {
+  it("is not handed to a handler again once the order is unfulfilled, though a late shipment is still recorded", () => {
     const owing = must(handedOver(parcel()), {
       kind: "handler_refused",
       at: T0 + 5,

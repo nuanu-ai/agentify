@@ -787,7 +787,7 @@ describe("an asynchronous purchase", () => {
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
-  it("owes a refund when the merchant refuses after the money moved", async () => {
+  it("leaves the order unfulfilled when the merchant refuses after the money moved", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -818,7 +818,7 @@ describe("an asynchronous purchase", () => {
     expect(events.map((e) => e.type)).toContain("order.unfulfilled");
   });
 
-  it("refuses a delivery once a refund is recorded", async () => {
+  it("refuses a delivery once the merchant closed fulfillment", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -848,7 +848,7 @@ describe("an asynchronous purchase", () => {
     });
   });
 
-  it("closes the debt when late goods arrive before a refund is recorded", async () => {
+  it("delivers late goods to an unfulfilled order the merchant has not closed", async () => {
     // To a buyer, late goods are better than a refund — as long as no refund
     // has been recorded.
     const harnessed = await started();
@@ -2408,7 +2408,7 @@ describe("the merchant's calls", () => {
     });
   });
 
-  it("still takes an order on that is owed a refund, because the goods still close it", async () => {
+  it("still takes on an unfulfilled order, because late goods can still be delivered", async () => {
     // Goods that arrive before the refund close the debt instead, so an
     // acceptance here takes on work that still exists, odd as that looks from
     // the merchant who refused. The fixture reaches the debt by a refusal; the

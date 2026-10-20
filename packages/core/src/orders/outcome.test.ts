@@ -95,7 +95,7 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(silent)).not.toBe(outcomeFor(reported));
   });
 
-  it("turns a charge that finally reports in into the debt it is", () => {
+  it("turns a charge that finally reports in into the unfulfilled paid order it is", () => {
     // The order was closed as refused because the payment network went silent,
     // and then the money turned out to have moved. The machine reopens the
     // order as a debt, and the agent must be told that too: "nobody can say

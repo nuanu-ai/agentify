@@ -217,7 +217,7 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(AgentOrderStatusSchema, { ...status, reason })).toBe(false);
   });
 
-  it("says on every order owing a refund why it is owed, in the merchant event's words", () => {
+  it("says on every unfulfilled paid order why nothing was delivered, in the merchant event's words", () => {
     // `unfulfilled` alone reads as a refund on its way. Why the money is owed
     // goes with it every time, in the word the merchant's own event carries,
     // and a word for an ending never stands in for one.
@@ -237,7 +237,7 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(AgentOrderStatusSchema, { ...owing, status: "expired" })).toBe(false);
   });
 
-  it("says a merchant's refusal left a refund owed beside the refusal, and only then", () => {
+  it("says a merchant's refusal left a paid order unfulfilled beside the refusal, and only then", () => {
     // After the money moved a merchant's refusal leaves a debt. Their words
     // say why they would not deliver; ours say what that left the buyer owed,
     // and are not sent where no merchant refused.
