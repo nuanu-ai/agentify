@@ -12,19 +12,20 @@ compiles or reads the new gateway correctly.
 Closing an order is `order.close({ message })` on any bound order in the SDK,
 and `POST /v0/orders/:order_id/close` on the wire. It stops fulfillment
 through Agentify for that order and answers `{ ok: true }`, also on a retry,
-which keeps the first closure's time and optional message. The message is the
-merchant's statement to the buyer, read by the buyer's agent as the
-merchant's own words; it is plain text of at most 2000 characters, and markup,
-character references, control characters other than the line feed and
-bidirectional control characters are refused with 400. Agentify confirms no
-refund or agreement. Closing is refused, with the order left as it is, as
-`fulfillment_complete` on an order already delivered or shipped and as
-`nothing_to_close` on one that ended without a charge. It cancels no payment
-already accepted for execution: if such a payment completes after the
-closure, the merchant receives `order.unfulfilled` with the new reason
-`paid_after_closure`, and the order is on `orders.list({ open: true })` until
-the merchant closes it again, which records that closure's own time and
-message.
+which keeps the first closure's time and optional message except after a late
+payment, described below. The message is the merchant's statement to the
+buyer, read by the buyer's agent as the merchant's own words. It is plain text
+of at most 2000 characters, an emoji counting as one: markup, character
+references, control characters other than the line feed, bidirectional
+control characters and half of a character cut in two are refused with 400.
+Agentify confirms no refund or agreement. Closing is refused, with the order
+left as it is, as `fulfillment_complete` on an order already delivered or
+shipped and as `nothing_to_close` on one that ended without a charge. It
+cancels no payment: a payment Agentify had already asked the facilitator to
+execute may still go through after the closure. If it does, the merchant
+receives `order.unfulfilled` with the new reason `paid_after_closure`, and the
+order is on `orders.list({ open: true })` until the merchant closes it again,
+which records that closure's own time and message.
 
 The words that change, old to new:
 

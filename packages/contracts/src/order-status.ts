@@ -86,7 +86,7 @@ export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 /** The original payment's verified outcome, independent of fulfillment. */
 export const PaymentStatusSchema = z.enum(["not_paid", "paid", "unresolved"]).meta({
   description:
-    "The original payment outcome: not_paid means no completed payment is recorded and no accepted execution remains unresolved; paid means payment completed; unresolved means an accepted payment execution has no known outcome yet. Merchant closure changes none of these facts, cancels no accepted execution and establishes no refund. An unresolved payment may still complete after fulfillment is closed.",
+    "What became of the buyer's original payment. not_paid: no payment went through, and none is waiting for an answer. paid: the payment went through. unresolved: Agentify asked the facilitator to execute the payment and has no answer yet; it keeps checking, and the word changes once the outcome is known. A merchant closing fulfillment changes none of this, cancels no payment and establishes no refund, so an unresolved payment may still go through after the closure.",
 });
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 
