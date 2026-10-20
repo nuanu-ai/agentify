@@ -211,26 +211,44 @@ describe("verifying a payment", () => {
     expect(client.asked).toHaveLength(0);
   });
 
-  it("allows backdated validAfter but refuses an authorization that remains usable beyond the offered timeout", async () => {
+  it.each([
+    ["remains usable beyond the offered timeout", NOW_SECONDS + 81],
+    ["has already expired", NOW_SECONDS],
+  ])(
+    "allows backdated validAfter but asks for a new signature, naming the offered timeout, when the authorization %s",
+    async (_case, validBefore) => {
+      const payload = {
+        ...signed(),
+        authorization: { ...signed().authorization, validBefore: String(validBefore) },
+      };
+      const client = new Answering();
+      const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
+      const answered = await facilitatorFor(client, edge).verify(
+        charge(encodePaymentSignatureHeader({ x402Version: 2, accepted, payload })),
+      );
+      expect(answered).toMatchObject({
+        verified: false,
+        reason: "signature",
+        message: expect.stringContaining(`${accepted.maxTimeoutSeconds} seconds`),
+      });
+      expect(client.asked).toHaveLength(0);
+    },
+  );
+
+  it("accepts an authorization expiring at the end of the offered timeout and its clock allowance", async () => {
+    const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
     const payload = {
       ...signed(),
-      authorization: { ...signed().authorization, validBefore: String(NOW_SECONDS + 81) },
+      authorization: {
+        ...signed().authorization,
+        validBefore: String(NOW_SECONDS + accepted.maxTimeoutSeconds + 30),
+      },
     };
-    const client = new Answering();
-    const answered = await facilitatorFor(client, edge).verify(
-      charge(
-        encodePaymentSignatureHeader({
-          x402Version: 2,
-          accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
-          payload,
-        }),
+    expect(
+      await facilitatorFor(new Answering(), edge).verify(
+        charge(encodePaymentSignatureHeader({ x402Version: 2, accepted, payload })),
       ),
-    );
-    expect(answered).toMatchObject({
-      verified: false,
-      message: expect.stringContaining("timeout"),
-    });
-    expect(client.asked).toHaveLength(0);
+    ).toMatchObject({ verified: true });
   });
 
   it.each(["0x", `0x${"cd".repeat(1024)}`])(

@@ -37,6 +37,9 @@ import type {
 } from "../../ports/facilitator.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
 
+/** How far an agent's clock may run ahead of ours when it sets an authorization's expiry. */
+const CLOCK_SKEW_SECONDS = 30;
+
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
   readonly #edge: PaymentEdge;
@@ -87,12 +90,21 @@ export class X402Facilitator implements Facilitator {
       authorization = authorizationOf(payload, requirements);
       const now = BigInt(Math.floor(this.#now() / 1000));
       const expires = BigInt(authorization.validBefore);
-      if (expires <= now || expires > now + BigInt(requirements.maxTimeoutSeconds + 30)) {
+      const asked = requirements.maxTimeoutSeconds;
+      // Signing again fixes both cases, and the offer still stands: answering
+      // `price_stale` would send the agent to a new purchase it signs the same way.
+      if (expires <= now) {
         return {
           verified: false,
-          reason: "price_stale",
-          message:
-            "The signed authorization must expire within the offered payment timeout, allowing 30 seconds of clock skew.",
+          reason: "signature",
+          message: `the signed authorization has already expired; sign one that stays valid for ${asked} seconds, as the offer asks`,
+        };
+      }
+      if (expires > now + BigInt(asked + CLOCK_SKEW_SECONDS)) {
+        return {
+          verified: false,
+          reason: "signature",
+          message: `the signed authorization stays valid for ${expires - now} seconds, longer than the ${asked} seconds the offer asks for (${CLOCK_SKEW_SECONDS} more are allowed for clock differences); sign one that expires within ${asked} seconds`,
         };
       }
     } catch (thrown) {
