@@ -724,7 +724,7 @@ describe("the protected product check", () => {
         merchantItemIdFor(stand.url, requested),
       );
 
-      expect(read, requested).toMatchObject({ ok: false, again: false });
+      expect(read, requested).toMatchObject({ ok: false, again: false, saidNo: false });
       await stand.close();
       stand = null;
     }
@@ -753,7 +753,11 @@ describe("the protected product check", () => {
         merchantItemIdFor(stand.url, "11"),
       );
 
-      expect(read, JSON.stringify(answered)).toMatchObject({ ok: false, again: false });
+      expect(read, JSON.stringify(answered)).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: false,
+      });
       await stand.close();
       stand = null;
     }
@@ -845,6 +849,15 @@ describe("the protected product check", () => {
       await stand.close();
       stand = null;
     }
+
+    // A card left from a shop connected before is settled without asking this
+    // one: it cannot be sold here.
+    expect(
+      await inspectProduct(
+        connectionTo("http://127.0.0.1:1"),
+        merchantItemIdFor("https://another-shop.example", "28"),
+      ),
+    ).toMatchObject({ ok: false, again: false, saidNo: true });
   });
 
   it("accepts only the one protected native download the agent can receive", async () => {
@@ -1002,6 +1015,7 @@ describe("the protected product check", () => {
 
     expect(read).toMatchObject({
       ok: false,
+      saidNo: false,
       why: expect.stringContaining("tax calculation"),
     });
   });
@@ -1058,6 +1072,45 @@ describe("the protected product check", () => {
       merchantItemIdFor(stand.url, "11"),
     );
     expect(missing.ok).toBe(false);
+  });
+
+  it("says which of a download's refusals are the shop's no", async () => {
+    // A file set up so that it cannot be handed over safely is the shop's
+    // answer; a check of its protection that broke off is not.
+    const shopWith = (product: Record<string, unknown>) =>
+      shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+        }
+        return { status: 200, body: productDocument(product) };
+      });
+    for (const [what, product] of [
+      ["no file id", { downloads: [{ id: "", name: "Guide", file: "https://x.example/x" }] }],
+      [
+        "a file elsewhere",
+        { downloads: [{ id: "dl", name: "Guide", file: "https://x.example/x" }] },
+      ],
+    ] as const) {
+      stand = await shopWith(product);
+      expect(
+        await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11")),
+        what,
+      ).toMatchObject({ ok: false, again: false, saidNo: true });
+      await stand.close();
+      stand = null;
+    }
+
+    stand = await shopWith({});
+    const broken = await inspectProductInTheShop(
+      connectionTo(stand.url),
+      merchantItemIdFor(stand.url, "11"),
+      async (url, init) => {
+        if (String(url).endsWith("/protected/guide.txt")) throw new TypeError("fetch failed");
+        return fetch(url, init);
+      },
+    );
+    expect(broken).toMatchObject({ ok: false, again: false, saidNo: false });
   });
 
   /**
@@ -1192,7 +1245,12 @@ describe("the protected product check", () => {
 
     const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
 
-    expect(read).toMatchObject({ ok: false, why: expect.stringContaining("25.001") });
+    // The merchant's own price, which Agentify cannot sell at: the shop's no.
+    expect(read).toMatchObject({
+      ok: false,
+      saidNo: true,
+      why: expect.stringContaining("25.001"),
+    });
     // The price is what the merchant changes, not the decimals setting.
     expect(read.ok === false && read.why).not.toContain("Number of decimals");
   });
@@ -1209,6 +1267,7 @@ describe("the protected product check", () => {
 
       expect(read, typed).toMatchObject({
         ok: false,
+        saidNo: false,
         why: expect.stringContaining("not a decimal amount"),
       });
       await stand.close();
@@ -1403,6 +1462,15 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         false,
       ],
       ["a page that is not JSON", null, { status: 200, raw: "not-json" }, false],
+      [
+        "two packages for one parcel",
+        null,
+        {
+          status: 200,
+          body: cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
+        },
+        false,
+      ],
       ["a cart without its rates", null, { status: 200, body: { items: [] } }, false],
       [
         "a cart holding two",
@@ -1439,6 +1507,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       await stand.close();
       stand = null;
     }
+
+    // A card naming no product is settled before the shop is asked.
+    expect(await ratesFor("http://127.0.0.1:1", "not-a-product", JAKARTA)).toMatchObject({
+      ok: false,
+      saidNo: true,
+    });
 
     // Without a token the cart cannot be asked anything, which says nothing
     // about the parcel either.
@@ -1502,6 +1576,18 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         cart([rate()], { shipping_rates: [aPackage([rate()], [{ ...PACKED, key: GIFT.key }])] }),
       ],
       ["a package shipping nothing", cart([rate()], { shipping_rates: [aPackage([rate()], [])] })],
+      // Where the line and its package disagree, neither can be taken at its
+      // word.
+      ["a line of two packed as one", cart([rate()], { items: [{ ...LINE, quantity: 2 }] })],
+      ["a gift outside the package", cart([rate()], { items: [LINE, GIFT] })],
+      [
+        "a package shipping the product and more",
+        cart([rate()], {
+          shipping_rates: [
+            aPackage([rate()], [PACKED, { key: GIFT.key, name: "Gift", quantity: 1 }]),
+          ],
+        }),
+      ],
     ] as const) {
       stand = await shopWithRates(() => ({ status: 200, body }));
 
