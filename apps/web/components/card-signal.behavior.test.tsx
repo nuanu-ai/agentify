@@ -83,6 +83,45 @@ describe("the optional card signal's presses", () => {
     expect(screen.queryByText(/confirmation failed/i)).toBeNull();
   });
 
+  it("name the address the page was loaded for with the setup", async () => {
+    // The session can change in another tab while the report stays open; the
+    // site refuses a setup that names another address than the one signed in
+    // now, or none, so the form is ready only for the press the page must send.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      if ((init?.method ?? "GET") === "GET") return json(200, { status: "setup_pending" });
+      const sent = JSON.parse(String(init?.body ?? "{}")) as { signed_in_as?: unknown };
+      return sent.signed_in_as === "owner@example.com"
+        ? json(201, {
+            signal_id: signalId,
+            status: "setup_pending",
+            client_secret: "local-secret",
+            adapter: "local",
+          })
+        : json(409, {
+            error: {
+              code: "page_not_matched",
+              message: "The page this came from could not be matched to the address signed in now.",
+              retryable: false,
+              request_id: "019f5b6a-4b9f-7000-8000-0000000000f2",
+            },
+          });
+    });
+    render(
+      <CardSignal
+        adapter="local"
+        enabled
+        publishableKey={null}
+        scanId={scanId}
+        signedInAs="owner@example.com"
+      />,
+    );
+    await userEvent.click(screen.getByRole("checkbox"));
+
+    await userEvent.click(screen.getByRole("button", { name: /secure card form/i }));
+
+    expect(await screen.findByText("Secure card form ready.")).toBeTruthy();
+  });
+
   it("pass on the site's own refusal in its own words", async () => {
     siteWith(async () =>
       json(502, {

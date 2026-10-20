@@ -26,6 +26,7 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { action as setUpCardSignalRoute } from "../../app/routes/api/v1/card-signals.setup-intents";
 import { visitorOf } from "./auth";
 import { encryptSensitiveValue, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
@@ -236,6 +237,51 @@ afterAll(async () => {
 });
 
 describe("P5 privacy and terminal scanner identity deletion", () => {
+  it("records no card signal for a press from a page loaded for another address, or none", async () => {
+    // A report page loaded for one address can still be open after the session
+    // changed in another tab to someone who also owns the scan; the consent
+    // and the card would otherwise be recorded under a person who never saw
+    // the box.
+    const fixture = await createLeadFixture("card-loaded-for");
+    const cookie = signedInAs(fixture.email);
+    const pressed = (body: object) =>
+      setUpCardSignalRoute({
+        request: new Request("http://localhost:3000/api/v1/card-signals/setup-intents", {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            "idempotency-key": `card-loaded-for-${createUuidV7()}`,
+          },
+          body: JSON.stringify(body),
+        }),
+        params: {},
+      });
+    const consented = { scan_id: fixture.scanId, card_signal_consent: true };
+    const signals = async () =>
+      (
+        await getDatabase()
+          .db.select({ id: paymentSignals.id })
+          .from(paymentSignals)
+          .where(eq(paymentSignals.leadId, fixture.leadId))
+      ).length;
+
+    for (const named of ["somebody-else@example.com", undefined]) {
+      const refused = await pressed({ ...consented, signed_in_as: named });
+      expect(refused.status, String(named)).toBe(409);
+      const { error } = (await refused.json()) as { error: { code: string; message: string } };
+      expect(error.code).toBe("page_not_matched");
+      expect(error.message).toContain(fixture.email);
+    }
+    expect(await signals()).toBe(0);
+
+    // The same press from a page loaded for the address signed in now goes through.
+    const accepted = await pressed({ ...consented, signed_in_as: fixture.email });
+    expect(accepted.status).toBe(201);
+    expect(await signals()).toBe(1);
+  });
+
   it("attaches once, hydrates current state, rejects replay drift, and detaches", async () => {
     const fixture = await createLeadFixture("card-lifecycle");
     const cookieHeader = signedInAs(fixture.email);
