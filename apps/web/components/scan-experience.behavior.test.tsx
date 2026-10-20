@@ -7,6 +7,7 @@
  */
 
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
+import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSite } from "../testing/on-site";
@@ -259,6 +260,38 @@ describe("a scan's states", () => {
       expect(screen.queryByRole("meter")).toBeNull();
     },
   );
+
+  it("tells each known stop in words of its own, and none in the words for a cause not known", async () => {
+    const told: { headline: string; words: string }[] = [];
+    for (const stopReason of [...SCAN_STOP_REASONS, undefined]) {
+      statusAsks = [];
+      apiAnswers(() =>
+        json(
+          200,
+          scan({
+            status: "failed",
+            progress: { completed: 18, total: 18 },
+            checks: checks((id) => (id === 16 ? "pass" : "unavailable")),
+            ...(stopReason ? { stop_reason: stopReason } : {}),
+          }),
+        ),
+      );
+      visit();
+      const headline = await waitFor(() => {
+        const found = document.querySelector("main h1");
+        if (!found) throw new Error("no headline yet");
+        return found;
+      });
+      told.push({
+        headline: headline.textContent ?? "",
+        words: headline.parentElement?.querySelector("p")?.textContent ?? "",
+      });
+      cleanup();
+      vi.restoreAllMocks();
+    }
+    expect(new Set(told.map(({ headline }) => headline)).size).toBe(told.length);
+    expect(new Set(told.map(({ words }) => words)).size).toBe(told.length);
+  });
 
   it("says the site blocked the reader and shows no score", async () => {
     apiAnswers(() => json(200, blockedScan));
