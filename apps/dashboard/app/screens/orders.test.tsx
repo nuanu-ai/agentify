@@ -398,11 +398,13 @@ describe("a long run of orders told in full", () => {
     expect(readable(html)).not.toContain("Showing the newest");
   });
 
-  /** The ids drawn in every list on the page, in order, each once. */
+  /** The ids drawn in each list on the page, list after list, each once in its list. */
   const listedIn = (html: string): readonly string[] =>
-    [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)]
-      .flatMap((list) => [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)].map((id) => id[0]))
-      .filter((id, at, all) => all.indexOf(id) === at);
+    [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap((list) =>
+      [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+        .map((id) => id[0])
+        .filter((id, at, all) => all.indexOf(id) === at),
+    );
 
   /**
    * The addresses the Needs you group leads to on this page, other than an
