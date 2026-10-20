@@ -79,6 +79,19 @@ describe("pending scan acceptance", () => {
     },
   );
 
+  it("does not say no scan was started when the scanner is busy, since the scan may already exist", async () => {
+    // The scanner answers busy also to a repeat whose scan was created by an
+    // earlier press whose answer was lost.
+    savePendingScan(window.sessionStorage, pending("busy-replay"));
+    installNetwork(response(errorEnvelope("temporarily_busy", true), 503));
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "The scanner is busy" });
+    expect(screen.getByRole("status").textContent).not.toMatch(/no scan was started/i);
+    expect(screen.getByRole("button", { name: "Retry scan" })).toBeTruthy();
+  });
+
   it("offers another address and no retry when the refusal says retrying cannot help", async () => {
     // An address the scanner refuses is refused again on every retry: the
     // only way on is a different address.
