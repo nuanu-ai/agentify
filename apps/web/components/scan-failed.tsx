@@ -13,7 +13,7 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
   no_public_site: {
     headline: "No public website answers at this address",
     words:
-      "The scanner reads only public websites. The name of this address, or of a page it redirects to, does not lead to one: it finds no server on the public internet or points into a private network, and the scanner requested nothing there. Check the address you entered; scanning it again gives the same answer.",
+      "The scanner reads only public websites. The name of this address, or of a page it redirects to, does not lead to one: it finds no server on the public internet or points into a private network, and the scanner requested nothing there. Check the address you entered. Unless the domain was registered or its DNS changed very recently, scanning it again gives the same answer.",
   },
   forbidden_redirect: {
     headline: "The site redirected the scanner where it does not go",
