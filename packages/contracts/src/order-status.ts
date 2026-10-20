@@ -64,7 +64,12 @@ export const ORDER_STATUSES = Object.freeze([
    * This says nothing about a refund or the parties' agreement.
    */
   "unfulfilled",
-  /** Future Agentify fulfillment is closed; payment_status describes the original payment. */
+  /**
+   * The merchant closed fulfillment through Agentify: nothing more is
+   * delivered here. `payment_status` says what happened to the original
+   * payment, and the merchant's own words are under `merchant_closure`; on a
+   * paid order Agentify's `reason` stands beside them.
+   */
   "fulfillment_closed",
   /**
    * The merchant delivered synchronously and the payment did not execute. The
