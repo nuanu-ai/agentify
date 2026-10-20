@@ -96,12 +96,14 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           Traffic, conversion, scanned sites, scanner health, and the latest self-check. Contact
           details and raw evidence are deliberately absent.
         </p>
-        <a className="button button-secondary" href="/admin">
-          Refresh data
-        </a>
-        <a className="button button-primary" href="/dashboard/admin/live-sales">
-          Manage live sales approval
-        </a>
+        <div className={styles.actions}>
+          <a className="button button-secondary" href="/admin">
+            Refresh data
+          </a>
+          <a className="button button-secondary" href="/dashboard/admin/live-sales">
+            Live sales approval
+          </a>
+        </div>
       </section>
 
       <section aria-labelledby="overview-title">

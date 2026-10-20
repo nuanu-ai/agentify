@@ -1,10 +1,19 @@
 import { Button, Field } from "@agentify/ui";
 import { Fragment } from "react";
 import { Link } from "react-router";
-import type { Shares } from "../../src/shares.js";
-import type { OrdersView, ToldOrders } from "../../src/views.js";
+import type { ClosurePressed, OrdersView, ToldOrders } from "../../src/views.js";
 import { Ident } from "../components/copy.js";
-import { Cell, DayHeading, Group, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import {
+  Cell,
+  DayHeading,
+  Fact,
+  Facts,
+  Group,
+  List,
+  ListEmpty,
+  Row,
+  RowMore,
+} from "../components/list.js";
 import { CutNote, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
@@ -23,15 +32,6 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
       <span className="tag">test</span>
     </>
   ) : null;
-
-/** Under the price, which stays the sum the buyer paid. */
-export const SharesOf = ({ shares }: Readonly<{ shares: Shares | null }>) =>
-  shares === null ? null : (
-    <>
-      <div className="under">{shares.merchant} to you</div>
-      <div className="under">{shares.commission} to Agentify</div>
-    </>
-  );
 
 /**
  * An order that needs saying in full, in a row of its own: its state, its
@@ -54,14 +54,8 @@ const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
     </p>
     <div className={styles.meta}>
       <Ident value={order.id} what="order ID" />
-      <Link
-        to={{
-          pathname: "/orders",
-          search: `?${new URLSearchParams({ q: order.id, details: order.id })}`,
-          hash: `#details-${order.id}`,
-        }}
-      >
-        Order details
+      <Link to={{ pathname: "/orders", search: order.opens.search, hash: `#details-${order.id}` }}>
+        {order.opens.words}
       </Link>
       <span>
         Price set <Moment at={order.priceSet} />
@@ -89,7 +83,12 @@ const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>
  * completed after that closure, again: the second records its own time and
  * explanation.
  */
-const CloseFulfillment = ({ id, again }: Readonly<{ id: string; again: boolean }>) => {
+const CloseFulfillment = ({
+  id,
+  again,
+  typed,
+  refusal,
+}: Readonly<{ id: string; again: boolean; typed: string; refusal: string | null }>) => {
   const press = again ? "Close again" : "Close fulfillment";
   return (
     <section className={styles.close} aria-label={press}>
@@ -108,6 +107,8 @@ const CloseFulfillment = ({ id, again }: Readonly<{ id: string; again: boolean }
               label="Explanation to the buyer (optional)"
               maxLength={2000}
               autoComplete="off"
+              defaultValue={typed}
+              {...(refusal === null ? {} : { error: refusal })}
               hint="Shown to the buyer as your words; Agentify does not check them."
             />
             <Button variant="secondary" pending={pending}>
@@ -117,6 +118,79 @@ const CloseFulfillment = ({ id, again }: Readonly<{ id: string; again: boolean }
         )}
       </PostForm>
     </section>
+  );
+};
+
+/**
+ * What the row's columns do not show, opened from the row: drawn on a wide
+ * row too only where there is something to read or do there, a closure, a
+ * press, or a payment still unknown; elsewhere, as on every list, on a narrow
+ * row alone.
+ */
+const OrderDetails = ({
+  row,
+  pressed,
+}: Readonly<{ row: OrdersView["listing"]["rows"][number]; pressed: ClosurePressed | null }>) => {
+  const said = pressed?.id === row.id ? pressed : null;
+  return (
+    <RowMore
+      summary="Order details"
+      wide={row.closing !== null || row.closure !== null || row.paymentUnresolved}
+      id={`details-${row.id}`}
+      open={row.opened || said !== null || undefined}
+      of={row.product}
+    >
+      <div className={styles.details}>
+        <Facts>
+          <Fact label="Order ID">
+            <Ident value={row.id} what="order ID" whole />
+          </Fact>
+          <Fact label="Payment">
+            {row.payment}
+            <TestMark test={row.test} />
+          </Fact>
+          <Fact label="Price set">
+            <Moment at={row.priceSet} />
+          </Fact>
+          {row.shares === null ? null : (
+            <Fact label="Shares">
+              {row.shares.merchant} to you
+              <br />
+              {row.shares.commission} to Agentify
+            </Fact>
+          )}
+          {row.closure === null ? null : (
+            <Fact label="Closed by you">
+              <Moment at={row.closure.at} />
+            </Fact>
+          )}
+          {row.closure?.message === undefined ? null : (
+            <Fact label="Your explanation">
+              <span className="words">{row.closure.message}</span>
+            </Fact>
+          )}
+        </Facts>
+        {row.paymentUnresolved ? (
+          <p className={styles.help}>
+            This payment may still complete. Closing fulfillment does not cancel it, and Agentify
+            keeps checking it.
+          </p>
+        ) : null}
+        {said?.note == null ? null : (
+          <p className="problem" role="alert">
+            {said.note}
+          </p>
+        )}
+        {row.closing === null ? null : (
+          <CloseFulfillment
+            id={row.id}
+            again={row.closing === "again"}
+            typed={said?.typed ?? ""}
+            refusal={said?.refusal ?? null}
+          />
+        )}
+      </div>
+    </RowMore>
   );
 };
 
@@ -144,11 +218,6 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         label="Search orders"
         placeholder="Search by order ID or product"
       />
-      {view.closureNote === null ? null : (
-        <p className="problem" role="status">
-          {view.closureNote}
-        </p>
-      )}
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.needsYou.of === 0 ? null : (
         <Group
@@ -211,74 +280,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                   <Cell at="aside">
                     <Ident value={row.id} what="order ID" />
                   </Cell>
-                  <RowMore
-                    summary="Order details"
-                    className={styles.orderDetails}
-                    wide
-                    id={`details-${row.id}`}
-                    open={row.opened || undefined}
-                    of={row.product}
-                  >
-                    <div className={styles.details}>
-                      <dl className={styles.facts}>
-                        <div>
-                          <dt>Order ID</dt>
-                          <dd>
-                            <Ident value={row.id} what="order ID" whole />
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Original payment</dt>
-                          <dd>
-                            {row.payment}
-                            <TestMark test={row.test} />
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Price set</dt>
-                          <dd>
-                            <Moment at={row.priceSet} />
-                          </dd>
-                        </div>
-                        {row.shares === null ? null : (
-                          <div>
-                            <dt>Original shares</dt>
-                            <dd className={styles.shares}>
-                              <span>{row.shares.merchant} to you</span>
-                              <span>{row.shares.commission} to Agentify</span>
-                            </dd>
-                          </div>
-                        )}
-                      </dl>
-                      {row.paymentUnresolved ? (
-                        <p className={styles.help}>
-                          This payment may still complete. Closing fulfillment does not cancel it,
-                          and Agentify keeps checking it.
-                        </p>
-                      ) : null}
-                      {row.closure === null ? null : (
-                        <section className={styles.closure}>
-                          <h3>Fulfillment closed by you</h3>
-                          <p className={styles.help}>
-                            <Moment at={row.closure.at} />
-                          </p>
-                          {row.closure.message === undefined ? null : (
-                            <div className={styles.statement}>
-                              <p className={styles.label}>Your explanation to the buyer</p>
-                              <p>{row.closure.message}</p>
-                            </div>
-                          )}
-                          <p className={styles.help}>
-                            Agentify records your action and statement; it does not confirm a refund
-                            or agreement.
-                          </p>
-                        </section>
-                      )}
-                      {row.closing === null ? null : (
-                        <CloseFulfillment id={row.id} again={row.closing === "again"} />
-                      )}
-                    </div>
-                  </RowMore>
+                  <OrderDetails row={row} pressed={view.pressed} />
                 </Row>
               </Fragment>
             ))}

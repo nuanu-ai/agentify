@@ -384,8 +384,8 @@ describe("merchant fulfillment closure", () => {
     const text = readable(html);
 
     expect(text).toContain("Closed by you");
-    expect(text).toContain("Original payment Paid");
-    expect(text).toContain("Your explanation to the buyer");
+    expect(text).toContain("Payment Paid");
+    expect(text).toContain("Your explanation");
     expect(text).toContain("A refund was agreed <outside Agentify>.");
     expect(html).toContain("&lt;outside Agentify&gt;");
     expect(html).not.toContain("<outside Agentify>");
@@ -400,9 +400,9 @@ describe("merchant fulfillment closure", () => {
     );
 
     expect(text).toContain("Payment outcome unknown");
-    expect(text).toContain("Fulfillment closed by you");
-    expect(text).toContain("Original payment Outcome unknown");
-    expect(text).not.toContain("Your explanation to the buyer");
+    expect(text).toContain("Closed by you 2026-10-19 09:30:00 UTC");
+    expect(text).toContain("Payment Outcome unknown");
+    expect(text).not.toContain("Your explanation");
   });
 
   it("does not invent an actor for a historical closure without metadata", () => {
@@ -415,7 +415,6 @@ describe("merchant fulfillment closure", () => {
 
     expect(text).toContain("Fulfillment closed");
     expect(text).not.toContain("Closed by you");
-    expect(text).not.toContain("Fulfillment closed by you");
   });
 
   it("counts a closed order whose payment completed afterwards as needing the merchant, and offers closing it again", () => {
@@ -487,5 +486,36 @@ describe("merchant fulfillment closure", () => {
       ).toBe(offered);
     });
     expect(html).not.toContain(`name="order_id" value="${SAME_TAIL}"`);
+  });
+});
+
+describe("an order's details", () => {
+  const detailsOf = (html: string, id: string) =>
+    new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
+
+  it("are drawn under a wide row only where they hold something its columns do not", () => {
+    const orders = ordersOf([
+      { id: FIRST, status: "unfulfilled" },
+      { id: SAME_HEAD, status: "delivered" },
+    ]);
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(detailsOf(html, FIRST)).toContain("wide");
+    expect(detailsOf(html, SAME_HEAD)).not.toBe("");
+    expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
+  });
+
+  it("are reached from Needs you without searching for an order already on the page", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
+    const opens = (address: string, open = orders) =>
+      ordersView("live", CARDS, orders, open, new URLSearchParams(address)).needsYou.rows[0]?.opens;
+
+    expect(opens("")).toStrictEqual({
+      search: `?details=${FIRST}`,
+      words: "Close fulfillment",
+    });
+    expect(opens("q=vpn&show=open")?.search).toBe(`?q=vpn&show=open&details=${FIRST}`);
+    // Where the list below does not hold it, the order is found by its ID.
+    expect(opens("show=open", ordersOf([]))?.search).toBe(`?q=${FIRST}&details=${FIRST}`);
   });
 });

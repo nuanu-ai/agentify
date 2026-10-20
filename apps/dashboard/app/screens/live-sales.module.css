@@ -3,7 +3,7 @@
   align-items: start;
 }
 
-/* The facts stack as the Orders details' do once the panel is narrow. */
+/* The facts stack, as the lists' details do, once the panel is narrow. */
 .panel {
   container-type: inline-size;
 }
@@ -22,7 +22,7 @@
 }
 
 /* Over the Orders details' own margin, whichever stylesheet comes first. */
-.panel > .facts {
+.panel > :global(.more-facts) {
   margin: var(--space-block) var(--space-card) 0;
 }
 
@@ -44,6 +44,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-control);
+  /* The height of every control in the shared tokens, for a finger. */
   min-height: 48px;
   font-size: var(--text-small);
   font-weight: 500;

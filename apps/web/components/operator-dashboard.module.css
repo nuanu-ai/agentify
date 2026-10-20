@@ -54,10 +54,13 @@
   line-height: 1.65;
 }
 
-.hero > a {
+.actions {
   grid-column: 2;
   grid-row: 1 / span 3;
   align-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-control);
 }
 
 .sectionHeading {
@@ -334,7 +337,7 @@
     display: block;
     padding: 48px 0 42px;
   }
-  .hero > a {
+  .actions {
     margin-top: 24px;
   }
   .twoColumn {

@@ -55,7 +55,6 @@ export default function LiveSales() {
       navigation={{
         label: "Admin sections",
         sections: [
-          { key: "overview", label: "Overview", href: "/admin" },
           { key: "live-sales", label: "Live sales", to: "/admin/live-sales", current: true },
         ],
       }}

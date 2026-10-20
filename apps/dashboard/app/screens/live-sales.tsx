@@ -1,9 +1,10 @@
 import { Badge, Button, Field } from "@agentify/ui";
 import type { LiveSalesView } from "../../src/live-sales.js";
+import { Ident } from "../components/copy.js";
+import { Fact, Facts } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import styles from "./live-sales.module.css";
-import orders from "./orders.module.css";
 
 export function LiveSalesScreen({ view }: Readonly<{ view: LiveSalesView }>) {
   const merchant = view.merchant;
@@ -13,22 +14,24 @@ export function LiveSalesScreen({ view }: Readonly<{ view: LiveSalesView }>) {
       <div className="lede">
         <div>
           <p>
-            Test sales need no approval. Open the live site's admin screen to approve real sales.
+            Test sales need no approval. Open the live site's admin screen to approve real sales.{" "}
+            <a href="/admin">Operator dashboard</a>
           </p>
         </div>
       </div>
     );
   }
-  // A message beside a merchant just approved is the approval's own; any other
-  // is a refusal, said under the press it answers.
-  const refusal = approved ? null : view.message;
-  const searchRefused = merchant === null ? refusal : null;
-  const approvalRefused = merchant === null ? null : refusal;
+  // Every message is a refusal, said under the press it answers.
+  const searchRefused = merchant === null ? view.message : null;
+  const approvalRefused = merchant === null ? null : view.message;
   return (
     <>
       <div className="lede">
         <div>
-          <p>Review a merchant and allow them to sell for real money.</p>
+          <p>
+            Review a merchant and allow them to sell for real money.{" "}
+            <a href="/admin">Operator dashboard</a>
+          </p>
         </div>
       </div>
       <div className={`settings-grid ${styles.layout}`}>
@@ -84,43 +87,31 @@ export function LiveSalesScreen({ view }: Readonly<{ view: LiveSalesView }>) {
           </div>
           {merchant === null ? null : (
             <>
-              <dl className={`${orders.facts} ${styles.facts}`}>
-                <div>
-                  <dt>Account</dt>
-                  <dd>{merchant.email}</dd>
-                </div>
-                <div>
-                  <dt>Merchant ID</dt>
-                  <dd className="mono">{merchant.id}</dd>
-                </div>
-                <div>
-                  <dt>Shop website</dt>
-                  <dd>
-                    {merchant.site === null ? (
-                      "Not set"
-                    ) : (
-                      <a href={merchant.site} target="_blank" rel="noreferrer">
-                        {merchant.site}
-                      </a>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Integration</dt>
-                  <dd>{merchant.integration === "api" ? "SDK / API" : "WooCommerce"}</dd>
-                </div>
+              <Facts>
+                <Fact label="Account">{merchant.email}</Fact>
+                <Fact label="Merchant ID">
+                  <Ident value={merchant.id} what="merchant ID" whole />
+                </Fact>
+                <Fact label="Shop website">
+                  {merchant.site === null ? (
+                    "Not set"
+                  ) : (
+                    <a href={merchant.site} target="_blank" rel="noreferrer">
+                      {merchant.site}
+                    </a>
+                  )}
+                </Fact>
+                <Fact label="Integration">
+                  {merchant.integration === "api" ? "SDK / API" : "WooCommerce"}
+                </Fact>
                 {merchant.approvedAt === null ? null : (
-                  <div>
-                    <dt>Approved</dt>
-                    <dd>
-                      <Moment at={merchant.approvedAt} />
-                    </dd>
-                  </div>
+                  <Fact label="Approved">
+                    <Moment at={merchant.approvedAt} />
+                  </Fact>
                 )}
-              </dl>
+              </Facts>
               {approved ? (
                 <div className="panel-messages">
-                  {view.message === null ? null : <p role="status">{view.message}</p>}
                   <p className="quiet">
                     Seller name, payout wallet and integration are still required before selling.
                   </p>

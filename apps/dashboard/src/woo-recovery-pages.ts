@@ -44,8 +44,6 @@ type Known = {
   readonly title: string;
 };
 
-const DELIVERED = "Agentify confirms that this download was delivered.";
-
 const modeOf = ({ record, order }: Known): WooRecoveryView["mode"] => {
   if (record.facts.kind !== "parcel" && record.phase === "placed" && order.status === "delivered") {
     return "delivered";
@@ -84,13 +82,7 @@ const viewOf = (
     test: known.order.test,
     mode,
     wooOrderId: known.record.placed?.id ?? said.typed ?? "",
-    message:
-      said.message ??
-      (mode === "delivered"
-        ? DELIVERED
-        : mode === "unavailable"
-          ? unavailableBecause(known)
-          : null),
+    message: said.message ?? (mode === "unavailable" ? unavailableBecause(known) : null),
     typedRefusal: said.typedRefusal ?? null,
   };
 };

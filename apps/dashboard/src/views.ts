@@ -397,6 +397,12 @@ interface OrderRow {
 interface OrderNeed extends OrderRow {
   readonly why: string;
   readonly rest: Rest | null;
+  /**
+   * Where the row's own line in the list opens: the page as it is where the
+   * line is on it, the order found by its ID where it is not. Named by the
+   * press waiting there.
+   */
+  readonly opens: Readonly<{ search: string; words: string }>;
 }
 
 /** Orders told in full, the newest first and at most a page of them, and how many there are. */
@@ -405,11 +411,24 @@ export interface ToldOrders {
   readonly of: number;
 }
 
+/**
+ * What became of a closure pressed on this page that the page cannot simply
+ * show: said beside the order's form, with what was typed kept in its box.
+ */
+export interface ClosurePressed {
+  readonly id: string;
+  /** What became of the closure, said over the form; null where only the explanation was refused. */
+  readonly note: string | null;
+  /** Why the explanation typed was refused, said under its box. */
+  readonly refusal: string | null;
+  readonly typed: string;
+}
+
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
   /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
-  readonly closureNote: string | null;
+  readonly pressed: ClosurePressed | null;
   /**
    * Said once over the orders where some are test purchases and no band over
    * the page says the channel's payments are tests; null otherwise.
@@ -572,6 +591,32 @@ export const ordersView = (
   );
   const finds = orderSearch(asked.q.toLocaleLowerCase());
   const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
+  const listing = listingOf({
+    rows: listed.map(({ row }) => row),
+    asked,
+    path: "/orders",
+    segments,
+    matches: finds,
+    noMatch: (q, within) =>
+      within === null
+        ? `No order matches “${q}”.`
+        : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
+    showAll: "Show all orders",
+  });
+  const onPage = new Set(listing.rows.map((row) => row.id));
+  const opens = (row: OrderRow) => {
+    const search = new URLSearchParams(onPage.has(row.id) ? query : { q: row.id });
+    search.set("details", row.id);
+    return {
+      search: `?${search}`,
+      words:
+        row.closing === "first"
+          ? "Close fulfillment"
+          : row.closing === "again"
+            ? "Close again"
+            : "Order details",
+    };
+  };
   const told = (which: (order: OrderList["orders"][number]) => boolean): ToldOrders => {
     const all = found.filter(({ order }) => which(order));
     return {
@@ -579,41 +624,31 @@ export const ordersView = (
         ...row,
         why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
         rest: whereTheRestIs(order.status),
+        opens: opens(row),
       })),
       of: all.length,
     };
   };
   return {
     none: orders.orders.length === 0,
-    closureNote: CLOSURE_NOTES[query.get("closure") ?? ""] ?? null,
+    pressed: null,
     testNote: testOrders(orders, mode),
-    listing: listingOf({
-      rows: listed.map(({ row }) => row),
-      asked,
-      path: "/orders",
-      segments,
-      matches: finds,
-      noMatch: (q, within) =>
-        within === null
-          ? `No order matches “${q}”.`
-          : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
-      showAll: "Show all orders",
-    }),
+    listing,
     needsYou: told((order) => needsYou(order.status) || reopened(order)),
     waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
   };
 };
 
 /**
- * Set by the close press's redirect: a write whose answer was lost and whose
- * reread did not show it, or a closure that arrived after the order ended.
+ * A closure press the page cannot simply show: a write whose answer was lost
+ * and whose reread did not show it, or a closure that arrived after the order
+ * ended.
  */
-const CLOSURE_NOTES: Readonly<Record<string, string>> = {
+export const CLOSURE_NOTES = {
   unconfirmed:
-    "Your closure could not be confirmed. Check the order below; if it is still open, closing it again is safe.",
-  ended:
-    "Nothing was closed: this order ended before your closure arrived. Its current state is below.",
-};
+    "Your closure could not be confirmed. If this order is still open, closing it again is safe.",
+  ended: "Nothing was closed: this order ended before your closure arrived.",
+} as const;
 
 /**
  * Closure stops what Agentify would still deliver, so it is offered only where

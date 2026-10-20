@@ -153,6 +153,22 @@ export function RowMore({
 }
 
 /**
+ * What a row's details hold, each fact a label beside its value, in the one
+ * look every list's details share; on a narrow box the label goes over the
+ * value.
+ */
+export const Facts = ({ children }: Readonly<{ children: ReactNode }>) => (
+  <dl className="more-facts">{children}</dl>
+);
+
+export const Fact = ({ label, children }: Readonly<{ label: string; children: ReactNode }>) => (
+  <div>
+    <dt>{label}</dt>
+    <dd>{children}</dd>
+  </div>
+);
+
+/**
  * A heading over a group of rows with how many there are; `warn` paints the
  * count in the colour of what costs the merchant money, and `aside` follows
  * the count, a hint or a link.

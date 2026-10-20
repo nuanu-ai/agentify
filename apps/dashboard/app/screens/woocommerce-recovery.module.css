@@ -1,10 +1,13 @@
-/* Layout only: the facts take the Orders details' look, and stack as they do
-   there once the panel is narrow. */
+/* Layout only. The facts stack, as the lists' details do, once the panel is
+   narrow; the form row is as wide as a short number needs. */
 .panel {
   container-type: inline-size;
 }
 
-/* Over the Orders details' own margin, whichever stylesheet comes first. */
-.panel > .facts {
+.panel > :global(.more-facts) {
   margin: var(--space-block) var(--space-card) 0;
+}
+
+.panel > :global(.issue) {
+  max-width: 34rem;
 }

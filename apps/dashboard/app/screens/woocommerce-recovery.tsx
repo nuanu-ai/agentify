@@ -1,9 +1,11 @@
 import { Button, Field } from "@agentify/ui";
 import type { WooRecoveryView } from "../../src/woo-recovery-pages.js";
+import { ORDER_WORDS } from "../../src/words.js";
 import { Ident } from "../components/copy.js";
+import { Fact, Facts } from "../components/list.js";
 import { PostForm } from "../components/post-form.js";
+import { Word } from "../components/word.js";
 import { TestMark } from "./orders.js";
-import orders from "./orders.module.css";
 import styles from "./woocommerce-recovery.module.css";
 
 /** What the merchant can do here, in a line; the rules are in the documentation. */
@@ -13,6 +15,15 @@ const INTRO: Readonly<Record<WooRecoveryView["mode"], string | null>> = {
     "The shop order and its download are saved. Retry sends the same download; no new shop order is made.",
   delivered: null,
   unavailable: null,
+};
+
+/** A shop is read by its name, which is its host, rather than by an address with a scheme. */
+const hostOf = (origin: string): string => {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return origin;
+  }
 };
 
 export function WooRecoveryScreen({
@@ -36,31 +47,24 @@ export function WooRecoveryScreen({
               {intro === null ? null : <p>{intro}</p>}
             </div>
           </div>
-          <dl className={`${orders.facts} ${styles.facts}`}>
-            <div>
-              <dt>Order ID</dt>
-              <dd>
-                <Ident value={view.orderId} what="order ID" whole />
-              </dd>
-            </div>
-            <div>
-              <dt>Price</dt>
-              <dd>
-                {view.amount}
-                <TestMark test={view.test} />
-              </dd>
-            </div>
-            <div>
-              <dt>Shop</dt>
-              <dd>{view.shopOrigin}</dd>
-            </div>
+          <Facts>
+            <Fact label="Order ID">
+              <Ident value={view.orderId} what="order ID" whole />
+            </Fact>
+            <Fact label="Price">
+              {view.amount}
+              <TestMark test={view.test} />
+            </Fact>
+            <Fact label="Shop">{hostOf(view.shopOrigin)}</Fact>
             {view.wooOrderId === "" || link ? null : (
-              <div>
-                <dt>Shop order ID</dt>
-                <dd>{view.wooOrderId}</dd>
-              </div>
+              <Fact label="Shop order ID">{view.wooOrderId}</Fact>
             )}
-          </dl>
+            {view.mode === "delivered" ? (
+              <Fact label="State">
+                <Word word={ORDER_WORDS.delivered} />
+              </Fact>
+            ) : null}
+          </Facts>
           {acts ? (
             <PostForm
               document
@@ -89,9 +93,7 @@ export function WooRecoveryScreen({
             </PostForm>
           ) : null}
           <div className="panel-messages">
-            {view.message === null ? null : view.mode === "delivered" ? (
-              <p role="status">{view.message}</p>
-            ) : (
+            {view.message === null ? null : (
               <p className="problem" role="alert">
                 {view.message}
               </p>
