@@ -1577,7 +1577,13 @@ describe("P4 dashboard-owned scanner identity", () => {
         cookie,
       ).toBe(status);
     }
-    // A check the scan could not assess is named in the file as not assessed.
+    // The file says when the scan finished reading the site, set here apart
+    // from the moment it was accepted; a check the scan could not assess is
+    // named in it as not assessed.
+    await db
+      .update(scans)
+      .set({ finishedAt: new Date("2026-10-13T07:59:10.000Z") })
+      .where(eq(scans.id, scan.id));
     await db
       .update(scanChecks)
       .set({ status: "unavailable", errorCode: "fetch_timeout" })
@@ -1594,7 +1600,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       'attachment; filename="agentify-visible-findings-prompt.md"',
     );
     const teaserFile = await verifiedDownload.text();
-    expect(teaserFile).toContain(scan.finishedAt?.toISOString().slice(0, 10) ?? "no time");
+    expect(teaserFile).toContain("2026-10-13 07:59 UTC");
     expect(teaserFile).toContain("MCP server card");
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
