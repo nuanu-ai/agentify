@@ -774,13 +774,15 @@ describe("recovering a payment without another charge", () => {
     expect((await h.store.orderById(orderId))?.paymentAttempt?.nextBlock).toBe("120");
   });
 
-  it("tells the operator on every poll that a payment is unresolved while recovery is off", async () => {
+  it("tells the operator on every poll that a payment is unresolved while recovery is off, why, and what turns it on", async () => {
     const { h, orderId } = await purchase();
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
     h.advance(5 * 60_000);
     const lines = await logged(() => h.gateway.runner.reconcilePayments());
-    expect(lines.join("\n")).toMatch(/\b1 unresolved payment\b.*\b5 minutes\b.*recovery is off/);
+    expect(lines.join("\n")).toMatch(
+      /\b1 unresolved payment\b.*\b5 minutes\b.*recovery is off.*no RPC.*PAYMENT_RPC_URL/,
+    );
   });
 
   it("says nothing while no payment is unresolved", async () => {

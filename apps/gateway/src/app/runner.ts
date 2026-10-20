@@ -1082,11 +1082,11 @@ export class OrderRunner {
       }
       if (failed > 0)
         console.error(
-          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure}`,
+          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure.replace(/\.?$/, ".")} It tries again every minute; an endpoint that keeps failing is replaced through PAYMENT_RPC_URL`,
         );
       if (unresolved > 0)
         console.warn(
-          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off" : ""}`,
+          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off because no RPC is configured, and setting PAYMENT_RPC_URL to a Base endpoint turns it on" : ""}`,
         );
     });
   }

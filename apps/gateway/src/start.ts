@@ -41,9 +41,10 @@ const QUEUE_POLL_INTERVAL_MS = 250;
  * facilitator shown to Coinbase once; the process stops if they cannot sign or
  * Coinbase refuses them. A Coinbase that does not answer stops nothing: the
  * gateway starts, and its log says the key is unconfirmed. Payment recovery is
- * the same: an RPC that does not answer this chain leaves it off and says so.
+ * the same: an RPC that does not answer this chain is reported, and recovery
+ * asks it again on every poll.
  */
-async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
+export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
     return new ScriptedFacilitator();
   }

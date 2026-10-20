@@ -543,20 +543,37 @@ describe("recovering through a JSON-RPC endpoint", () => {
     expect(asked).not.toContain("eth_getLogs");
   });
 
-  it("stays off, saying why, when the endpoint serves another chain", async () => {
+  it("says at start-up and on every poll that the endpoint serves another chain, and how to fix it", async () => {
     const chain = new Chain();
     chain.chainId = 8453;
     const { url } = await serve(chain);
     const started = await recoveryOn("eip155:84532", url);
-    expect(started.recovery).toBeUndefined();
     expect(started.broken).toBe(true);
     expect(started.said).toContain("8453");
+    expect(started.said).toContain("PAYMENT_RPC_URL");
+    await expect(started.recovery?.reconcile({ context: CONTEXT })).rejects.toThrow(
+      /8453.*PAYMENT_RPC_URL/,
+    );
   });
 
-  it("stays off when the endpoint does not answer, without revealing the address's path or query", async () => {
+  it("starts recovering once an endpoint that did not answer at start-up answers", async () => {
+    const chain = new Chain();
+    chain.failed = true;
+    const { url } = await serve(chain);
+    const started = await recoveryOn("eip155:84532", url);
+    expect(started.broken).toBe(true);
+    expect(started.said).toContain("-32011");
+    expect(started.said).not.toContain("provider-key");
+    chain.failed = false;
+    expect(await started.recovery?.reconcile({ context: CONTEXT })).toMatchObject({
+      settled: true,
+      transaction: TX,
+    });
+  });
+
+  it("names a refusing status at start-up without revealing the address's path or query", async () => {
     const { url } = await serve(new Chain(), 429);
     const started = await recoveryOn("eip155:84532", url);
-    expect(started.recovery).toBeUndefined();
     expect(started.broken).toBe(true);
     expect(started.said).toContain("429");
     expect(started.said).not.toContain("provider-key");
