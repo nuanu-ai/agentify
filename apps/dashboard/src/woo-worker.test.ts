@@ -177,6 +177,20 @@ const aCartHoldingTheTote =
     );
   };
 
+/** The shop's answers to a product check that cannot be read or trusted. */
+const UNREADABLE: readonly (readonly [string, WooRequest])[] = [
+  [
+    "a revoked key",
+    async () =>
+      Response.json(
+        { code: "woocommerce_rest_cannot_view", message: "Sorry, you cannot view this resource." },
+        { status: 401 },
+      ),
+  ],
+  ["a page that is not JSON", async () => new Response("not-json", { status: 200 })],
+  ["an incomplete document", async () => Response.json({ id: 28, type: "simple" })],
+];
+
 const filling = (
   shops: WooShops,
   place: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>,
@@ -273,6 +287,32 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(JSON.stringify(answer)).not.toMatch(/no longer/);
     expect(shop.placed).toHaveLength(0);
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+  });
+
+  it("refuses an order whose product check could not be read, and says neither that the product changed nor that the shop was silent", async () => {
+    // The shop answered, so it was not silent, and what it answered says
+    // nothing about the product, so the product is not "no longer" anything.
+    for (const [what, answering] of UNREADABLE) {
+      const shops = memoryWooShops();
+      const shop = aShopThatAccepts();
+
+      const answer = await fillFromTheShop(
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        {
+          ...filling(shops, shop.place),
+          inspectProduct: (asked, merchantItemId) =>
+            inspectProductInTheShop(asked, merchantItemId, answering),
+        },
+        NO_SPLIT,
+      );
+
+      expect(answer, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
+      expect(JSON.stringify(answer), what).not.toMatch(/no longer|did not answer/);
+      expect(shop.placed, what).toHaveLength(0);
+      expect((await shops.knownOrder("ord_1"))?.kind, what).toBe("precreate_refused");
+    }
   });
 
   it("refuses an order the shop ruled out, and does not say the shop was silent", async () => {
@@ -1584,6 +1624,64 @@ describe("a parcel's paid order", () => {
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(shop.placed).toHaveLength(0);
     expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+  });
+
+  it("refuses an order whose product or cart answer could not be read, and does not say the product or its shipping changed", async () => {
+    const unreadable: [string, Partial<Filling>][] = UNREADABLE.map(([what, answering]) => [
+      what,
+      {
+        inspectProduct: (asked: WooConnection, merchantItemId: string) =>
+          inspectProductInTheShop(asked, merchantItemId, answering),
+      },
+    ]);
+    unreadable.push([
+      "a cart holding two",
+      {
+        shippingRates: (keys, productId, where) =>
+          shippingRatesInTheShop(keys.shopUrl, productId, where, aCartHoldingTheTote(2)),
+      },
+    ]);
+    for (const [what, overrides] of unreadable) {
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(shops, shop.place, overrides),
+        NO_SPLIT,
+      );
+
+      expect(answer, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
+      expect(JSON.stringify(answer), what).not.toMatch(/no longer/);
+      expect(shop.placed, what).toHaveLength(0);
+      expect(await shops.knownOrder("ord_1"), what).toStrictEqual({ kind: "precreate_refused" });
+    }
+
+    // Where the shop did say so, the buyer is still told the product or its
+    // shipping changed.
+    for (const [what, overrides] of [
+      ["out of stock", { inspectProduct: async () => RULED_OUT }],
+      [
+        "shipping now dearer",
+        {
+          shippingRates: async () => ({
+            ok: true as const,
+            rates: [rate("Standard", "6.00", "3")],
+          }),
+        },
+      ],
+    ] as const) {
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(memoryWooShops(), aParcelShop().place, overrides),
+        NO_SPLIT,
+      );
+      expect(JSON.stringify(answer), what).toMatch(/no longer/);
+    }
   });
 
   it("answers nothing and writes nothing while the shop does not answer", async () => {
