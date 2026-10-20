@@ -1,0 +1,175 @@
+logging {
+  level = "info"
+}
+
+discovery.docker "agentify" {
+  host = "unix:///var/run/docker.sock"
+  filter {
+    name = "label"
+    values = ["com.docker.compose.project"]
+  }
+}
+
+discovery.relabel "agentify" {
+  targets = discovery.docker.agentify.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex = "agentify|agentify-edge"
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex = "app|scanner|scanner-worker|web|caddy"
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label = "service"
+  }
+}
+
+loki.source.docker "agentify" {
+  host = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.agentify.output
+  labels = {
+    app = "agentify",
+    environment = sys.env("AGENTIFY_CHANNEL"),
+    job = "agentify/docker",
+  }
+  forward_to = [loki.process.agentify.receiver]
+}
+
+loki.process "agentify" {
+  // Sandbox mail contains whole sign-in links on several lines. The legacy
+  // commerce logger prefixes its diagnostics; mail continuations have no prefix.
+  stage.match {
+    selector = "{service=\"app\"} !~ \"^\\\\[(gateway|dashboard|app)\\\\] \""
+    action = "drop"
+    drop_counter_reason = "unprefixed_commerce_log"
+  }
+  stage.match {
+    selector = "{service=\"app\"} |= \"[dashboard] no mail provider is configured\""
+    action = "drop"
+    drop_counter_reason = "sandbox_mail"
+  }
+  stage.json {
+    expressions = {level = "level"}
+  }
+  stage.labels {
+    values = {level = ""}
+  }
+  forward_to = [loki.write.joglo.receiver]
+}
+
+loki.write "joglo" {
+  endpoint {
+    url = sys.env("OBSERVABILITY_LOGS_URL")
+    basic_auth {
+      username = sys.env("OBSERVABILITY_USERNAME")
+      password = sys.env("OBSERVABILITY_PASSWORD")
+    }
+    tls_config {
+      ca_file = sys.env("OBSERVABILITY_CA_FILE")
+    }
+  }
+}
+
+prometheus.exporter.unix "host" {
+  rootfs_path = "/host"
+  procfs_path = "/host/proc"
+  sysfs_path = "/host/sys"
+  set_collectors = ["cpu", "loadavg", "meminfo", "filesystem", "diskstats", "netdev", "time", "uname"]
+}
+
+prometheus.exporter.self "collector" {}
+
+prometheus.scrape "host" {
+  targets = prometheus.exporter.unix.host.targets
+  job_name = "agentify/host"
+  scrape_interval = "30s"
+  forward_to = [prometheus.relabel.agentify.receiver]
+}
+
+prometheus.scrape "collector" {
+  targets = prometheus.exporter.self.collector.targets
+  job_name = "agentify/collector"
+  scrape_interval = "30s"
+  forward_to = [prometheus.relabel.agentify.receiver]
+}
+
+prometheus.exporter.blackbox "health" {
+  config = "modules:\n  http_2xx:\n    prober: http\n    timeout: 8s\n    http:\n      follow_redirects: false\n      preferred_ip_protocol: ip4\n"
+  target {
+    name = "scanner"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/api/health"
+    labels = {component = "scanner"}
+    module = "http_2xx"
+  }
+  target {
+    name = "gateway"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/healthz"
+    module = "http_2xx"
+    labels = {component = "gateway"}
+  }
+  target {
+    name = "dashboard"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/dashboard/healthz"
+    module = "http_2xx"
+    labels = {component = "dashboard"}
+  }
+}
+
+prometheus.scrape "health" {
+  targets = prometheus.exporter.blackbox.health.targets
+  job_name = "agentify/health"
+  scrape_interval = "30s"
+  scrape_timeout = "10s"
+  forward_to = [prometheus.relabel.agentify.receiver]
+}
+
+prometheus.relabel "agentify" {
+  rule {
+    source_labels = ["job"]
+    regex = "integrations/unix"
+    target_label = "job"
+    replacement = "agentify/host"
+  }
+  rule {
+    source_labels = ["job"]
+    regex = "integrations/self"
+    target_label = "job"
+    replacement = "agentify/collector"
+  }
+  rule {
+    source_labels = ["job"]
+    regex = "integrations/blackbox/.*"
+    target_label = "job"
+    replacement = "agentify/health"
+  }
+  rule {
+    target_label = "app"
+    replacement = "agentify"
+  }
+  rule {
+    target_label = "environment"
+    replacement = sys.env("AGENTIFY_CHANNEL")
+  }
+  rule {
+    target_label = "instance"
+    replacement = "agentify-" + sys.env("AGENTIFY_CHANNEL")
+  }
+  forward_to = [prometheus.remote_write.joglo.receiver]
+}
+
+prometheus.remote_write "joglo" {
+  endpoint {
+    url = sys.env("OBSERVABILITY_METRICS_URL")
+    basic_auth {
+      username = sys.env("OBSERVABILITY_USERNAME")
+      password = sys.env("OBSERVABILITY_PASSWORD")
+    }
+    tls_config {
+      ca_file = sys.env("OBSERVABILITY_CA_FILE")
+    }
+  }
+}
