@@ -25,8 +25,9 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 const ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const NONCE = `0x${"a".repeat(64)}` as const;
 const TX = `0x${"b".repeat(64)}` as const;
-/** Blocks come every two seconds from time zero, as on Base. */
-const timeOf = (number: bigint): bigint => number * 2n;
+/** Blocks come every two seconds from time zero, as on Base, unless a test says otherwise. */
+let secondsPerBlock = 2n;
+const timeOf = (number: bigint): bigint => number * secondsPerBlock;
 const hashOf = (number: bigint): string => `0x${number.toString(16).padStart(64, "0")}`;
 /** The authorization was checked at time 990 (block 495) and is valid until 1100 (block 550). */
 const CONTEXT: PaymentRecoveryContext = {
@@ -108,6 +109,10 @@ class Chain implements ChainReader {
 }
 
 describe("recovering an EIP-3009 payment from chain evidence", () => {
+  afterEach(() => {
+    secondsPerBlock = 2n;
+  });
+
   it("recovers a held payment accepted without RPC after a reader is configured", async () => {
     const edge = new PaymentEdge({
       payment: {
@@ -200,6 +205,24 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       settled: "unknown",
     });
     expect(chain.receiptsRead).toEqual([]);
+  });
+
+  it("starts at the first block of the window on a chain whose blocks are one second apart", async () => {
+    secondsPerBlock = 1n;
+    const chain = new Chain();
+    chain.finalized = 2000n;
+    chain.usedAt = 990n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 990n,
+      blockHash: hashOf(990n),
+      logs: [event("AuthorizationUsed", 4, 990n), event("Transfer", 5, 990n)],
+    };
+    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
+      settled: true,
+      transaction: TX,
+    });
+    expect(chain.receiptsRead).toEqual([990n]);
   });
 
   it("continues a long search on the next poll from where it stopped", async () => {
