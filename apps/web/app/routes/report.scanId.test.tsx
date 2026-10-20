@@ -50,6 +50,7 @@ const report: ReportResponse = {
   coverage: 0.78,
   level: "readable",
   benchmark: { sample_size: 42, average_score: 51.4 },
+  scanned_at: "2026-10-13T23:30:00.000Z",
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
     label_code: check.labelCode,
@@ -117,6 +118,11 @@ describe("a report's page", () => {
     expect(page).toContain("Coverage 78%");
     expect(page).toContain("Segment average 51 from 42 scans");
     expect(page).toContain("not a certification");
+  });
+
+  it("names the day its scan was made, in UTC as the scan page and the public link name it", async () => {
+    // Late on the 13th in UTC is already the 14th east of it.
+    expect(await drawn()).toContain("Oct 13, 2026");
   });
 
   it("counts its checks by state at the head of the list, an unavailable check apart from the failures", async () => {

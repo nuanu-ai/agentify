@@ -269,6 +269,7 @@ const contracts = [
       level: "ahead_of_market",
       checks: Array.from({ length: 18 }, (_, index) => reportCheck(index + 1)),
       benchmark: { sample_size: 30, average_score: 64 },
+      scanned_at: timestamp,
     },
     required: [
       "scan_id",
@@ -288,6 +289,7 @@ const contracts = [
       "benchmark",
       ["benchmark", "sample_size"],
       ["benchmark", "average_score"],
+      "scanned_at",
     ],
   },
   {

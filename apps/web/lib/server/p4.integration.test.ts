@@ -1580,6 +1580,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(verifiedDownload.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-visible-findings-prompt.md"',
     );
+    expect(await verifiedDownload.text()).toContain(
+      scan.finishedAt?.toISOString().slice(0, 10) ?? "no time",
+    );
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1643,6 +1646,28 @@ describe("P4 dashboard-owned scanner identity", () => {
       'attachment; filename="agentify-complete-implementation-prompt.md"',
     );
     expect(await fullDownload.text()).toContain("# Agentify remediation implementation prompt");
+    // The report and the file it downloads say when the site was inspected,
+    // and the file names a check the scan could not assess as not assessed.
+    const finishedAt = scan.finishedAt?.toISOString() ?? "";
+    expect(report?.scanned_at).toBe(finishedAt);
+    await withheld(9, "fetch_timeout");
+    try {
+      const withUnknown = await (
+        await downloadFullPrompt(
+          new Request(
+            `http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`,
+            { headers: { cookie: owner } },
+          ),
+          { scanId },
+        )
+      ).text();
+      expect(withUnknown).toContain(finishedAt.slice(0, 10));
+      expect(withUnknown).toContain(`${finishedAt.slice(11, 16)} UTC`);
+      expect(withUnknown).toContain("MCP server card");
+      expect(withUnknown).not.toMatch(/^## \d+\. MCP server card/m);
+    } finally {
+      await withheld(9, null);
+    }
     const verifiedView = await persistClientEvent(
       new Request("http://localhost:3000/api/v1/events", {
         method: "POST",

@@ -26,6 +26,7 @@ function report(overrides: Partial<ReportResponse> = {}): ReportResponse {
     level: "readable",
     checks: [],
     benchmark: null,
+    scanned_at: "2026-10-13T23:30:00.000Z",
     ...overrides,
   } as ReportResponse;
 }
@@ -72,7 +73,8 @@ describe("buildFixPrompts", () => {
     expect(aiPrompt).toContain("Prices unreadable");
     expect(aiPrompt).toContain("Structured data");
     expect(aiPrompt).not.toContain("Robots ok");
-    expect(aiPrompt).not.toContain("Waf blocked");
+    // An unavailable check is named among those not assessed, never as an issue.
+    expect(aiPrompt).not.toMatch(/^\d+\. Canonical check 04/m);
     expect(aiPrompt).not.toContain("Local hours");
   });
 
@@ -81,7 +83,7 @@ describe("buildFixPrompts", () => {
     expect(aiPrompt).toContain("bloomandco.com");
     expect(aiPrompt).toContain("Readable");
     expect(aiPrompt).toContain("46/100");
-    expect(aiPrompt).toContain("coverage 78%");
+    expect(aiPrompt).toContain("78%");
     expect(aiPrompt).toContain("## Safety and scope constraints");
     expect(aiPrompt).toContain("## Required workflow");
     expect(aiPrompt).toContain("## Acceptance criteria");
@@ -156,6 +158,38 @@ describe("buildFixPrompts", () => {
     expect(aiPrompt).toContain("Do not make speculative changes");
     expect(devBrief).not.toContain("[ ]");
     expect(devBrief).toContain("No open fail or partial findings");
+  });
+});
+
+describe("what the copied prompt tells a reader who has it alone", () => {
+  const partial = report({
+    checks: [
+      check({ id: 2, status: "fail", label_code: "ai_policy" }),
+      check({ id: 4, status: "unavailable", label_code: "sitemap" }),
+      check({ id: 9, status: "unavailable", label_code: "mcp_server_card" }),
+    ],
+  });
+
+  it.each(["aiPrompt", "devBrief"] as const)(
+    "the %s says when the site was inspected, the coverage, and names each check not assessed",
+    (which) => {
+      const prompt = buildFixPrompts(partial)[which];
+      expect(prompt).toContain("2026-10-13");
+      expect(prompt).toContain("23:30 UTC");
+      expect(prompt).toContain("78%");
+      expect(prompt).toContain("Sitemap");
+      expect(prompt).toContain("MCP server card");
+      expect(prompt).not.toMatch(/Canonical check 0[49]/);
+    },
+  );
+
+  it("a single check's prompt says when the site was inspected and the coverage", () => {
+    const prompt = buildCanonicalFixPrompt(
+      partial,
+      check({ id: 2, status: "fail", label_code: "ai_policy" }),
+    );
+    expect(prompt).toContain("2026-10-13");
+    expect(prompt).toContain("78%");
   });
 });
 
