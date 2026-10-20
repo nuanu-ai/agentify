@@ -44,6 +44,16 @@ export const LANDING_SHARED_CONTENT = {
   reportHeading: "No invented score",
   reportMethodologyLink: "How the scan works and what it does not do →",
   finalCta: "See what your public website makes readable.",
+  /**
+   * The line under the second door for an agent sent to buy: where it starts,
+   * which is a file the scanner serves, not one of its pages.
+   */
+  agentDoor: {
+    lead: "An agent that buys starts at",
+    label: "/llms.txt",
+    href: "/llms.txt",
+    rest: ", which names the catalogue.",
+  },
 } as const;
 
 export const LANDING_EXAMPLE_CHECKS = [

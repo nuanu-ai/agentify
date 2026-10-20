@@ -40,6 +40,12 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
             <p className={styles.secondDoor}>
               {config.secondDoor.lead}{" "}
               <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
+              <br />
+              {LANDING_SHARED_CONTENT.agentDoor.lead}{" "}
+              <a href={LANDING_SHARED_CONTENT.agentDoor.href}>
+                {LANDING_SHARED_CONTENT.agentDoor.label}
+              </a>
+              {LANDING_SHARED_CONTENT.agentDoor.rest}
             </p>
           </div>
           <ExampleSurface segmentPhase={config.segmentPhase} />
