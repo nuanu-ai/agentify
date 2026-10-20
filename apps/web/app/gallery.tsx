@@ -457,6 +457,7 @@ const reportOf = (score: number): ReportResponse => ({
   coverage: 0.94,
   level: levelForScore(score, 0.94),
   benchmark: { sample_size: 42, average_score: 51.4 },
+  scanned_at: SCANNED_AT,
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
     label_code: check.labelCode,
@@ -856,6 +857,16 @@ const SCANNING: GalleryState[] = [
         "The site answered the scanner's request for its home page with a bot challenge or a refusal.",
     },
     { status: ended("blocked"), shows: "Scan ended without a reliable result" },
+  ),
+  scan(
+    {
+      id: "scanner-scan-private-address",
+      screen: "Scan",
+      when: "No public website answers at a scanned address.",
+      cause:
+        "The site's name resolves to a private or internal address, which the scanner does not read.",
+    },
+    { status: ended("private"), shows: "Scan ended without a reliable result" },
   ),
   scan(
     {

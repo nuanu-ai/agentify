@@ -76,9 +76,16 @@ const allowlistedHeaders = (headers: IncomingHttpHeaders): FetchArtifact["header
   return output;
 };
 
+// The codes OpenSSL and Node give a certificate the scanner did not accept,
+// as against a handshake that failed or was cut short.
+const CERTIFICATE_REJECTED =
+  /^(?:CERT_|ERR_TLS_CERT_|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_(?:GET_ISSUER_CERT|VERIFY_LEAF_SIGNATURE|DECRYPT_CERT_SIGNATURE|DECODE_ISSUER_PUBLIC_KEY)|INVALID_CA|PATH_LENGTH_EXCEEDED|INVALID_PURPOSE|HOSTNAME_MISMATCH)/;
+
 export const transportErrorCode = (error: unknown, protocol: string): string => {
   if (error instanceof Error) {
     const code = (error as NodeJS.ErrnoException).code;
+    if (protocol === "https:" && code !== undefined && CERTIFICATE_REJECTED.test(code))
+      return "tls_certificate_invalid";
     if (
       protocol === "https:" &&
       ((code !== undefined &&
@@ -366,7 +373,12 @@ export class SafeFetcher {
           answers = await untilAborted(this.resolver.resolve(url.hostname), controller.signal);
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") throw error;
-          return refused(url, "dns_error");
+          // Node gives ENOTFOUND to a name that does not exist and its own
+          // code to a resolver that could not answer, which says nothing of it.
+          return refused(
+            url,
+            (error as NodeJS.ErrnoException).code === "ENOTFOUND" ? "dns_not_found" : "dns_error",
+          );
         }
         let pinnedAddress: ResolvedAddress;
         try {

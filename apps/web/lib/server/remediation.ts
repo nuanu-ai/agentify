@@ -1,4 +1,8 @@
-import { generateRemediationPrompt, type RemediationFindingInput } from "@agentify/remediation";
+import {
+  assessmentOf,
+  generateRemediationPrompt,
+  type RemediationFindingInput,
+} from "@agentify/remediation";
 import type {
   BrowserObservationFinding,
   RemediationPromptResponse,
@@ -67,6 +71,11 @@ export async function getTeaserRemediationPrompt(
   const generated = generateRemediationPrompt({
     scope: "teaser",
     host: scan.targetHost,
+    assessment: assessmentOf({
+      scanned_at: status.updated_at,
+      coverage: status.teaser.coverage,
+      checks: status.checks,
+    }),
     findings: canonicalFindings,
   });
   return {
@@ -104,6 +113,7 @@ export async function getFullRemediationPrompt(
   const generated = generateRemediationPrompt({
     scope: "full",
     host: report.host,
+    assessment: assessmentOf(report),
     findings: [...canonicalFindings, ...fromBrowser(browser?.findings)],
   });
   return {

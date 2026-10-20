@@ -546,6 +546,55 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await getScanStatus(graded.scan.id, graded.accessToken)).not.toHaveProperty("blocked");
   });
 
+  it("tells the scan page why the scanner stopped a scan, from the reasons the worker stored", async () => {
+    const { db } = getDatabase();
+    const stoppedScan = async (label: string, score: number | null, codes: (string | null)[]) => {
+      const fresh = await createFreshCompletedScan(label);
+      await db
+        .update(scans)
+        .set(score === null ? { status: "failed", score: null, level: "incomplete" } : { score })
+        .where(eq(scans.id, fresh.scan.id));
+      await db.insert(scanChecks).values(
+        codes.map((errorCode, index) => ({
+          scanId: fresh.scan.id,
+          checkId: index + 1,
+          status: errorCode ? ("unavailable" as const) : ("pass" as const),
+          nominalWeight: "5",
+          applicableWeight: "5",
+          earnedWeight: errorCode ? "0" : "5",
+          summaryCode: "robots_unavailable",
+          userImpactCode: "robots_not_assessed",
+          errorCode,
+        })),
+      );
+      return (await getScanStatus(fresh.scan.id, fresh.accessToken)) ?? {};
+    };
+    // A name that leads to a private network address, whichever address of
+    // that kind it is.
+    await expect(
+      stoppedScan("private-name", null, ["ssrf_blocked:loopback", "ssrf_blocked:private", null]),
+    ).resolves.toMatchObject({ status: "failed", stop_reason: "no_public_site" });
+    // A name that does not exist is told the same, so the two cannot be told
+    // apart; a lookup that failed says nothing of the name.
+    await expect(stoppedScan("missing-name", null, ["dns_not_found"])).resolves.toMatchObject({
+      stop_reason: "no_public_site",
+    });
+    expect(await stoppedScan("failed-lookup", null, ["dns_error"])).not.toHaveProperty(
+      "stop_reason",
+    );
+    await expect(
+      stoppedScan("redirected-to-a-number", null, ["numeric_host_blocked"]),
+    ).resolves.toMatchObject({ stop_reason: "forbidden_redirect" });
+    // Checks stopped for different reasons leave the cause unknown, and so
+    // does a scan graded all the same.
+    expect(
+      await stoppedScan("mixed-stops", null, ["ssrf_blocked:private", "tls_invalid"]),
+    ).not.toHaveProperty("stop_reason");
+    expect(
+      await stoppedScan("graded-around-a-stop", 40, ["ssrf_blocked:private", null]),
+    ).not.toHaveProperty("stop_reason");
+  });
+
   it("records nothing of a visit until its visitor allows optional measurement", async () => {
     const { db, pool } = getDatabase();
     // The browser's cookie, as the consent route sets it when the visitor
@@ -1528,6 +1577,17 @@ describe("P4 dashboard-owned scanner identity", () => {
         cookie,
       ).toBe(status);
     }
+    // The file says when the scan finished reading the site, set here apart
+    // from the moment it was accepted; a check the scan could not assess is
+    // named in it as not assessed.
+    await db
+      .update(scans)
+      .set({ finishedAt: new Date("2026-10-13T07:59:10.000Z") })
+      .where(eq(scans.id, scan.id));
+    await db
+      .update(scanChecks)
+      .set({ status: "unavailable", errorCode: "fetch_timeout" })
+      .where(and(eq(scanChecks.scanId, scan.id), eq(scanChecks.checkId, 9)));
     const verifiedDownload = await downloadTeaserPrompt(
       new Request(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
         headers: { cookie: authorizedCookie },
@@ -1539,6 +1599,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(verifiedDownload.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-visible-findings-prompt.md"',
     );
+    const teaserFile = await verifiedDownload.text();
+    expect(teaserFile).toContain("2026-10-13 07:59 UTC");
+    expect(teaserFile).toContain("MCP server card");
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1602,6 +1665,37 @@ describe("P4 dashboard-owned scanner identity", () => {
       'attachment; filename="agentify-complete-implementation-prompt.md"',
     );
     expect(await fullDownload.text()).toContain("# Agentify remediation implementation prompt");
+    // The report and the file it downloads say when the scan finished
+    // reading the site, and the file names a check the scan could not assess
+    // as not assessed.
+    const finishedAt = "2026-10-13T07:59:10.000Z";
+    await getDatabase()
+      .db.update(scans)
+      .set({ finishedAt: new Date(finishedAt) })
+      .where(eq(scans.id, scanId));
+    await withheld(9, "fetch_timeout");
+    try {
+      expect((await reportFor(scanId, owner))?.scanned_at).toBe(finishedAt);
+      const withUnknown = await (
+        await downloadFullPrompt(
+          new Request(
+            `http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`,
+            { headers: { cookie: owner } },
+          ),
+          { scanId },
+        )
+      ).text();
+      expect(withUnknown).toContain(finishedAt.slice(0, 10));
+      expect(withUnknown).toContain(`${finishedAt.slice(11, 16)} UTC`);
+      expect(withUnknown).toContain("MCP server card");
+      expect(withUnknown).not.toMatch(/^## \d+\. MCP server card/m);
+    } finally {
+      await withheld(9, null);
+      await getDatabase()
+        .db.update(scans)
+        .set({ finishedAt: scan.finishedAt })
+        .where(eq(scans.id, scanId));
+    }
     const verifiedView = await persistClientEvent(
       new Request("http://localhost:3000/api/v1/events", {
         method: "POST",

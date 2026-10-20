@@ -20,6 +20,7 @@ const reportWith = (statusOf: (id: number) => CheckStatus): ReportResponse => ({
   coverage: 0.94,
   level: "readable",
   benchmark: null,
+  scanned_at: "2026-10-13T12:00:00.000Z",
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
     label_code: check.labelCode,

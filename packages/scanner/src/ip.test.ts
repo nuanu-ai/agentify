@@ -117,6 +117,10 @@ describe("IP and URL SSRF policy", () => {
     "https://example.com:8080/",
     "https://example.com/?access_token=secret",
     "https://example.com/?signature=x",
+    // A name with an underscore is no public website's: Docker's own DNS
+    // answers such names for the containers beside the scanner.
+    "https://postgres.agentify_default/",
+    "https://db_1.example.com/",
   ])("rejects unsafe target %s", (target) => expect(() => canonicalizeTarget(target)).toThrow());
 
   it("blocks HTTPS downgrade redirects", () => {

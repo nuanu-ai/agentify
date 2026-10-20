@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ROBOTS_REASONS } from "./browser.js";
+import { ROBOTS_REASONS, SCAN_STOP_REASONS } from "./browser.js";
 import { checkIdSchema } from "./checks.js";
 import {
   checkStatusSchema,
@@ -83,6 +83,8 @@ export type CreateScanResponse = z.infer<typeof createScanResponseSchema>;
 const robotsReasonSchema = z.enum(ROBOTS_REASONS);
 export type RobotsReason = z.infer<typeof robotsReasonSchema>;
 
+export type ScanStopReason = (typeof SCAN_STOP_REASONS)[number];
+
 const scanProgressCheckSchema = z
   .object({
     id: checkIdSchema,
@@ -103,6 +105,9 @@ export const scanStatusResponseSchema = z
     // with a bot challenge or a refusal, which leaves the scan without a
     // verdict.
     blocked: z.literal(true).optional(),
+    // Present on a failed scan when every check it could not assess was
+    // stopped for the same known reason.
+    stop_reason: z.enum(SCAN_STOP_REASONS).optional(),
     teaser: z
       .object({
         score: z.number().int().min(0).max(100).nullable(),
@@ -197,6 +202,8 @@ export const reportResponseSchema = z
       })
       .strict()
       .nullable(),
+    // When the scan finished reading the site.
+    scanned_at: z.iso.datetime({ offset: true }),
   })
   .strict();
 export type ReportResponse = z.infer<typeof reportResponseSchema>;

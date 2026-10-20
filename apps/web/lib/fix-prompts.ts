@@ -1,4 +1,6 @@
 import {
+  assessmentLines,
+  assessmentOf,
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
@@ -98,7 +100,6 @@ function browserIssues(
 
 function promptPreamble(report: ReportResponse, brand: string, includeBrowser: boolean): string {
   const score = report.score ?? "not published";
-  const coverage = Math.round(report.coverage * 100);
   const browserLine = includeBrowser
     ? "- Passive browser observations are non-scoring enrichment and must not be presented as part of the 18-check score."
     : "- Scope is the canonical public HTTP diagnostic only.";
@@ -109,7 +110,10 @@ Act as a senior web engineer. Inspect the repository before changing code, repro
 ## Diagnostic context
 
 - Site: ${safeHost(report.host)}
-- ${brand} canonical HTTP diagnostic: ${formatLevel(report.level)}, ${score}/100, coverage ${coverage}%
+- ${brand} canonical HTTP diagnostic: ${formatLevel(report.level)}, ${score}/100
+${assessmentLines(assessmentOf(report))
+  .map((line) => `- ${line}`)
+  .join("\n")}
 - This is diagnostic evidence, not a certification or a guarantee about any AI model.
 ${browserLine}
 
@@ -201,7 +205,8 @@ export function buildFixPrompts(
 
   const briefLines = [
     `Agent-readiness implementation checklist — ${safeHost(report.host)}`,
-    `${brand} · ${formatLevel(report.level)} · ${report.score ?? "—"}/100 · coverage ${Math.round(report.coverage * 100)}%`,
+    `${brand} · ${formatLevel(report.level)} · ${report.score ?? "—"}/100`,
+    ...assessmentLines(assessmentOf(report)),
     "Canonical score and passive browser observations remain separate.",
     "",
     ...canonical.map((check) => `[ ] ${canonicalIssueBlock(check).replace(/^## /, "")}`),

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { FetchArtifact } from "@agentify/scanner";
+import { type FetchArtifact, scanStopReason } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
@@ -747,7 +747,7 @@ describe("bounded scan graph", () => {
     expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
     expect(
       [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
-    ).toEqual(["dns_error", "redirect_downgrade_blocked"]);
+    ).toEqual(["dns_not_found", "redirect_downgrade_blocked"]);
   });
 
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
@@ -1063,5 +1063,200 @@ describe("bounded scan graph", () => {
     expect(protocols.slice(0, 2)).toEqual(["https:", "http:"]);
     expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(true);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
+  });
+});
+
+describe("why a scan the scanner stopped has no result", () => {
+  const publicAddress = async () => [{ address: "93.184.216.34", family: 4 as const }];
+  const stopped = async (
+    resolver: ConstructorParameters<typeof ScanRunner>[0]["resolver"],
+    adapter: PinnedTransport,
+  ) => {
+    const evaluation = await new ScanRunner({
+      resolver,
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    return { terminal: evaluation.score.terminalStatus, stop: scanStopReason(evaluation.checks) };
+  };
+
+  it("names no public site when the site's name leads to a private address, and asks nothing of it", async () => {
+    const target = transport();
+    const result = await stopped(
+      { resolve: async () => [{ address: "127.0.0.1", family: 4 }] },
+      target.adapter,
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
+    expect(target.paths).toEqual([]);
+  });
+
+  it("names no public site when every page redirects to a name that leads to a private address", async () => {
+    const target = transport();
+    const result = await stopped(
+      {
+        resolve: async (hostname) =>
+          hostname === "intranet.example.com"
+            ? [{ address: "10.0.0.7", family: 4 }]
+            : publicAddress(),
+      },
+      {
+        request: async (input) =>
+          input.url.hostname === "example.com"
+            ? {
+                ...makeArtifact(input, 302, "", "text/html"),
+                redirectLocation: `https://intranet.example.com${input.url.pathname}`,
+              }
+            : target.adapter.request(input),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
+    expect(target.paths).toEqual([]);
+  });
+
+  it.each([
+    ["a bare IP address", "https://10.0.0.7/robots.txt"],
+    ["plain HTTP from HTTPS", "http://example.com/robots.txt"],
+    ["an internal name", "https://shop.internal/robots.txt"],
+    ["a name with an underscore", "https://db_1.example.com/robots.txt"],
+  ])("names a redirect it does not follow when every page redirects to %s", async (_, to) => {
+    const result = await stopped(
+      { resolve: publicAddress },
+      {
+        request: async (input) => ({
+          ...makeArtifact(input, 301, "", "text/html"),
+          redirectLocation: to,
+        }),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "forbidden_redirect" });
+  });
+
+  it("names no public site when the site's name does not exist", async () => {
+    const result = await stopped(
+      {
+        resolve: async (hostname) => {
+          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+            code: "ENOTFOUND",
+          });
+        },
+      },
+      transport().adapter,
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "no_public_site" });
+  });
+
+  it("names a certificate the scanner did not accept", async () => {
+    const result = await stopped(
+      { resolve: publicAddress },
+      {
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "tls_certificate_invalid",
+        }),
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: "certificate_invalid" });
+  });
+
+  it.each([
+    ["a site that answered", () => transport().adapter],
+    [
+      "robots.txt keeping the scanner out, which has words of its own",
+      () => transport("User-agent: *\nDisallow: /\n").adapter,
+    ],
+    [
+      "a secure handshake that failed or was cut, which a firewall causes as much as a certificate",
+      (): PinnedTransport => ({
+        request: async (input) => ({ ...makeArtifact(input, 0, "", ""), errorCode: "tls_invalid" }),
+      }),
+    ],
+    [
+      "connections the site reset, whose cause is not known",
+      (): PinnedTransport => ({
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "connection_reset",
+        }),
+      }),
+    ],
+    [
+      "requests that ran out of time, which the scanner's own deadline can cause",
+      (): PinnedTransport => ({
+        request: async (input) => ({
+          ...makeArtifact(input, 0, "", ""),
+          errorCode: "fetch_timeout",
+        }),
+      }),
+    ],
+  ])("names no stop for %s", async (_, adapter) => {
+    expect((await stopped({ resolve: publicAddress }, adapter())).stop).toBeNull();
+  });
+
+  it("tells a name that leads to a private address and a name that does not exist alike", async () => {
+    const privateName = await stopped(
+      { resolve: async () => [{ address: "172.18.0.4", family: 4 }] },
+      transport().adapter,
+    );
+    const missingName = await stopped(
+      {
+        resolve: async (hostname) => {
+          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+            code: "ENOTFOUND",
+          });
+        },
+      },
+      transport().adapter,
+    );
+    expect(privateName.stop).not.toBeNull();
+    expect(privateName).toEqual(missingName);
+  });
+
+  it("names no stop when the scanner's resolver failed for a moment, which says nothing of the name", async () => {
+    let lookups = 0;
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async (hostname) => {
+          lookups += 1;
+          if (lookups === 1)
+            throw Object.assign(new Error(`getaddrinfo EAI_AGAIN ${hostname}`), {
+              code: "EAI_AGAIN",
+            });
+          return publicAddress();
+        },
+      },
+      transport: transport().adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(evaluation.checks.find((check) => check.id === 1)?.errorCode).toBe("dns_error");
+    expect(scanStopReason(evaluation.checks)).toBeNull();
+  });
+
+  it("names no stop where the checks it could not assess were stopped for different reasons", async () => {
+    // Every page redirects to a bare IP address but the home page, which
+    // redirects to a name that finds no server.
+    const result = await stopped(
+      {
+        resolve: async (hostname) => {
+          if (hostname === "www.example.com")
+            throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+          return publicAddress();
+        },
+      },
+      {
+        request: async (input) =>
+          input.url.pathname === "/robots.txt"
+            ? { ...makeArtifact(input, 404, "", "text/plain") }
+            : input.url.hostname === "example.com" && input.url.pathname === "/"
+              ? {
+                  ...makeArtifact(input, 301, "", "text/html"),
+                  redirectLocation: "https://www.example.com/",
+                }
+              : {
+                  ...makeArtifact(input, 301, "", "text/html"),
+                  redirectLocation: "https://10.0.0.7/",
+                },
+      },
+    );
+    expect(result).toEqual({ terminal: "failed", stop: null });
   });
 });

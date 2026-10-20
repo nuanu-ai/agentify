@@ -7,4 +7,5 @@ export * from "./model.js";
 export * from "./parsers.js";
 export * from "./robots.js";
 export * from "./scoring.js";
+export * from "./stops.js";
 export * from "./url.js";

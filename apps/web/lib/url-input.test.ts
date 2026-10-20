@@ -34,6 +34,8 @@ describe("landing URL syntax validation", () => {
     "http://localhost",
     "shop",
     "shop.",
+    "postgres.agentify_default",
+    "https://db_1.example.com/",
   ])("refuses %s and names an address to type instead", (input) => {
     const result = validateSubmittedUrl(input);
     expect(result.ok).toBe(false);
