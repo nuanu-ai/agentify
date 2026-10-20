@@ -179,6 +179,7 @@ export const inspectProductInTheShop = async (
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
+  const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
   /** Null where the shop never answered; `body` is null where its answer broke off. */
   const answers = await Promise.all(
     endpoints.map(async (path) => {
@@ -221,10 +222,12 @@ export const inspectProductInTheShop = async (
         again: true,
       };
     }
-    if (indices.some((index) => answers[index]?.response.ok !== true)) {
+    const refusedAt = indices.find((index) => answers[index]?.response.ok !== true);
+    if (refusedAt !== undefined) {
+      const check = refusedAt === 0 ? "product" : `${settingAsked(refusedAt)} setting`;
       return {
         ok: false,
-        why: "The shop refused the protected product or its settings check.",
+        why: `The shop refused the protected ${check} check (HTTP ${answers[refusedAt]?.response.status}).`,
         again: false,
         saidNo: false,
       };
@@ -302,7 +305,6 @@ export const inspectProductInTheShop = async (
   }
   // As with the product, a cache that confused two settings' addresses would
   // lend one setting's answer to the other.
-  const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
   const misnamed = BEARING[kind].slice(1).find((index) => {
     const setting = settings[index];
     return setting?.success === true && setting.data.id !== settingAsked(index);
