@@ -9,9 +9,11 @@ address or left out. A payment the payment layer accepts that comes with
 another address is refused as `ship_to_changed`, and one that comes at another
 product's address or with other params as `payment_not_taken`; neither refusal
 claims or charges anything for the request it answers, and its words name no
-order. A payment that is not verified is refused before either comparison, and
-where the gateway refused it before asking the payment layer, its words do not
-say whether the order was paid. The
+order. A payment that is not verified is refused before either comparison, in
+words that are the same whether or not its order was paid and whoever refused it:
+that this payment charged nothing, what to do next, the reason it was refused,
+and that a fresh payment for the same payment request from the wallet that
+signed it returns a purchase already paid for without a second charge. The
 description no longer says that a different address is refused before the
 payment is checked: it is compared once the payment has verified. No schema,
 type or code list of the package changes, and `CONTRACT_VERSION` does not move.
