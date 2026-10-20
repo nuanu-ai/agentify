@@ -216,7 +216,7 @@ export function PublicShareActions({
           onClick={() => void downloadImage()}
           type="button"
         >
-          Download image
+          Publish image
         </button>
         {currentPublished ? (
           <span className={styles.meta}>

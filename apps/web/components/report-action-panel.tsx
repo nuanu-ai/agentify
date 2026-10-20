@@ -93,7 +93,8 @@ export function ReportActionPanel({
       </div>
       {shareShown ? (
         <p className={row.note}>
-          The public link shows only the domain, level, score, and scan date. Prompts stay private.
+          Both buttons publish a link anyone can open, which shows only the domain, level, score,
+          and scan date. You can revoke it. Prompts stay private.
         </p>
       ) : null}
     </div>
