@@ -143,10 +143,13 @@ A missed delivery deadline records that the order was not fulfilled in time;
 it does not oblige you to return the whole price. Cancellation and refund
 policy are yours, and a refund may be partial, use another currency or
 network, or be replaced by another agreement. Agentify does not send a refund,
-check one or judge whether you and the buyer have settled. Agentify gives you
-no buyer's name or way to contact them, so you can arrange a refund only with a
-buyer who reaches you. A payment's transaction, which you hold on the receipt,
-is on a public chain, and a block explorer shows the wallet that paid it.
+check one or judge whether you and the buyer have settled. You hold the
+buyer's details only where the product needs them: a parcel's address, with
+the name and phone number it carries, and whatever a purchase parameter your
+card asks for holds, such as an email. Otherwise you can arrange a refund only
+with a buyer who reaches you. A payment's transaction, which you hold on the
+receipt, is on a public chain, and a block explorer shows the wallet that paid
+it.
 
 You close fulfillment from **Orders → Order details → Close fulfillment** on
 your dashboard, or your engineer does it from your integration ([Closing
@@ -229,8 +232,9 @@ On the test channel every change applies at once and nothing is sent.
 ## What is not settled yet
 
 - How a buyer reaches your support to arrange a remedy outside Agentify.
-  Until something does, Agentify gives you no buyer's name or contact, only
-  the transaction that leads on the chain to the wallet that paid.
+  Until something does, you hold the buyer's details only where the product
+  needs them, and a payment's transaction, which leads on the chain to the
+  wallet that paid.
 - How long finding a payment whose answer was lost can take. No time is
   promised, and on the live channel it depends on a free public service.
 - Who pays the network fee on a buyer's payment and how it sits against the
