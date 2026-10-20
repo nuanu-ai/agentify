@@ -1569,6 +1569,11 @@ describe("P4 dashboard-owned scanner identity", () => {
         cookie,
       ).toBe(status);
     }
+    // A check the scan could not assess is named in the file as not assessed.
+    await db
+      .update(scanChecks)
+      .set({ status: "unavailable", errorCode: "fetch_timeout" })
+      .where(and(eq(scanChecks.scanId, scan.id), eq(scanChecks.checkId, 9)));
     const verifiedDownload = await downloadTeaserPrompt(
       new Request(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
         headers: { cookie: authorizedCookie },
@@ -1580,9 +1585,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(verifiedDownload.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-visible-findings-prompt.md"',
     );
-    expect(await verifiedDownload.text()).toContain(
-      scan.finishedAt?.toISOString().slice(0, 10) ?? "no time",
-    );
+    const teaserFile = await verifiedDownload.text();
+    expect(teaserFile).toContain(scan.finishedAt?.toISOString().slice(0, 10) ?? "no time");
+    expect(teaserFile).toContain("MCP server card");
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1646,12 +1651,17 @@ describe("P4 dashboard-owned scanner identity", () => {
       'attachment; filename="agentify-complete-implementation-prompt.md"',
     );
     expect(await fullDownload.text()).toContain("# Agentify remediation implementation prompt");
-    // The report and the file it downloads say when the site was inspected,
-    // and the file names a check the scan could not assess as not assessed.
-    const finishedAt = scan.finishedAt?.toISOString() ?? "";
-    expect(report?.scanned_at).toBe(finishedAt);
+    // The report and the file it downloads say when the scan finished
+    // reading the site, and the file names a check the scan could not assess
+    // as not assessed.
+    const finishedAt = "2026-10-13T07:59:10.000Z";
+    await getDatabase()
+      .db.update(scans)
+      .set({ finishedAt: new Date(finishedAt) })
+      .where(eq(scans.id, scanId));
     await withheld(9, "fetch_timeout");
     try {
+      expect((await reportFor(scanId, owner))?.scanned_at).toBe(finishedAt);
       const withUnknown = await (
         await downloadFullPrompt(
           new Request(
@@ -1667,6 +1677,10 @@ describe("P4 dashboard-owned scanner identity", () => {
       expect(withUnknown).not.toMatch(/^## \d+\. MCP server card/m);
     } finally {
       await withheld(9, null);
+      await getDatabase()
+        .db.update(scans)
+        .set({ finishedAt: scan.finishedAt })
+        .where(eq(scans.id, scanId));
     }
     const verifiedView = await persistClientEvent(
       new Request("http://localhost:3000/api/v1/events", {
