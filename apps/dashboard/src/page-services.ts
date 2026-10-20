@@ -1008,7 +1008,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     fulfillment: {
       async close(person, form) {
         const id = IdentifierSchema.safeParse(once(form.getAll("order_id")));
-        const typed = once(form.getAll("message"));
+        const sent = once(form.getAll("message"));
+        // A browser sends the line breaks of a box of several lines as a
+        // carriage return and a line feed; plain text breaks with the feed alone.
+        const typed = typeof sent === "string" ? sent.replaceAll("\r\n", "\n") : sent;
         const request = OrderCloseRequestSchema.safeParse(
           typeof typed === "string"
             ? typed.trim() === ""

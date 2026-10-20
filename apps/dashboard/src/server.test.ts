@@ -6747,7 +6747,7 @@ describe("closing fulfillment from Orders", () => {
     expect(form?.fields.get("message")).toBe(
       "A remedy was agreed &lt;b&gt;outside&lt;/b&gt; Agentify.",
     );
-    const box = /<input[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
+    const box = /<textarea[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
     expect(box).toContain('aria-invalid="true"');
     expect(readable(refused.html)).toContain("Your explanation carries HTML markup");
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();

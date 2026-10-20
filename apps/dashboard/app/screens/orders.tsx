@@ -115,6 +115,7 @@ const CloseFulfillment = ({
             <Field
               name="message"
               label="Explanation to the buyer (optional)"
+              rows={3}
               maxLength={2000}
               autoComplete="off"
               defaultValue={typed}
