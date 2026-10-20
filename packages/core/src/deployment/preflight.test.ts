@@ -663,6 +663,44 @@ describe("the private identity route belongs to the application and the scanner 
     }
   });
 
+  it("accepts only each service's dedicated loopback telemetry port", () => {
+    for (const [channel, fixture] of [
+      ["production", PRODUCTION_CHANNEL],
+      ["test", TEST_CHANNEL],
+    ] as const) {
+      const config = structuredClone(fixture);
+      for (const [service, published] of [
+        ["app", "19464"],
+        ["scanner", "19465"],
+        ["scanner-worker", "19466"],
+      ] as const) {
+        const definition = config.services[service];
+        if (!definition) throw new Error("fixture has no service");
+        definition.ports = [{ host_ip: "127.0.0.1", target: 9464, published, protocol: "tcp" }];
+        envFor(config, service).AGENTIFY_METRICS_PORT = "9464";
+      }
+      expect(problemsWith(channel, config)).toEqual([]);
+      for (const service of ["app", "scanner", "scanner-worker"]) {
+        for (const unsafe of [
+          { host_ip: "0.0.0.0" },
+          { host_ip: undefined },
+          { target: 3002 },
+          { published: "9999" },
+          { protocol: "udp" },
+        ]) {
+          const exposed = structuredClone(config);
+          const definition = exposed.services[service];
+          if (!definition) throw new Error("fixture has no service");
+          Object.assign(definition.ports?.[0] ?? {}, unsafe);
+          expect(problemsWith(channel, exposed).join("\n")).toMatch(/telemetry|identity/);
+        }
+      }
+      expect(
+        problemsWith(channel, withEnv(config, "app", "AGENTIFY_METRICS_PORT", "3002")).join("\n"),
+      ).toMatch(/telemetry/);
+    }
+  });
+
   it("refuses an application that publishes a port on the host", () => {
     const exposed = structuredClone(PRODUCTION_CHANNEL);
     exposed.services.app.ports = [

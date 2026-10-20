@@ -22,7 +22,7 @@ import { loadConfig as dashboardConfigOf } from "@agentify/dashboard/config";
 import { builtPages, dashboardFor, pagesFromSource } from "@agentify/dashboard/start";
 import { loadConfig as gatewayConfigOf } from "@agentify/gateway/config";
 import { startGateway } from "@agentify/gateway/start";
-import { listenForMetrics } from "@agentify/observability";
+import { listenForMetrics } from "@agentify/observability/source";
 
 const startedOrStopped = async () => {
   try {

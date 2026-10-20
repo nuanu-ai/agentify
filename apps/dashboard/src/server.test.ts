@@ -22,7 +22,7 @@ import {
   serve,
   theMerchantKey,
 } from "@agentify/gateway/testing";
-import { telemetry } from "@agentify/observability";
+import { telemetry } from "@agentify/observability/source";
 import {
   type Card,
   checksummedAddressOf,

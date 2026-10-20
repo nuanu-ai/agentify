@@ -10,7 +10,7 @@
  */
 
 import type { Gateway } from "@agentify/gateway";
-import { classifyHttpRoute, telemetry } from "@agentify/observability";
+import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";

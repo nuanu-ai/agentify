@@ -11,7 +11,7 @@
  */
 
 import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/core";
-import { telemetry } from "@agentify/observability";
+import { telemetry } from "@agentify/observability/source";
 import {
   type AuthMode,
   type ErrorCode,

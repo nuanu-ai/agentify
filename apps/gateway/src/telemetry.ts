@@ -5,7 +5,7 @@ import {
   SnapshotUnavailable,
   telemetry,
   telemetryDatabase,
-} from "@agentify/observability";
+} from "@agentify/observability/source";
 
 const COMMERCE_SNAPSHOT_LIMIT = 1_000;
 type OrderRow = { record: { order: Order } };
