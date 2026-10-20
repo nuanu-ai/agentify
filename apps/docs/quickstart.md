@@ -87,8 +87,8 @@ sequenceDiagram
 
 Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in), enter
 your email address, open the link in the message and press the confirmation
-button. The dashboard then offers one button, "Open my seller dashboard"; its
-press creates your merchant and asks for the seller name buyers will see. A
+button. The dashboard then offers one button, "Open my seller dashboard",
+whose press creates your merchant and asks for the name buyers will see. A
 returning merchant reaches the same dashboard the same way.
 
 In Settings, save the wallet where your share of the sales arrives: an address

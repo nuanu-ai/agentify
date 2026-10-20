@@ -86,7 +86,7 @@ export const AGENTIC_SHOP = {
       {
         symbol: "↗",
         title: "Open your dashboard.",
-        text: "Enter your email and use the one-time link. The first visit creates your merchant and asks for the name buyers will see.",
+        text: "Enter your email and open the one-time link. The dashboard then offers one button, “Open my seller dashboard”, whose press creates your merchant and asks for the name buyers will see.",
       },
       {
         symbol: "⇄",
@@ -162,7 +162,7 @@ export const AGENTIC_SHOP = {
   },
   start: {
     title: ["Start with", "your email."],
-    text: "The one-time link signs you in or creates your dashboard. No password, no invitation code, no review to pass before the test channel.",
+    text: "The one-time link signs you in, and one button, “Open my seller dashboard”, creates your merchant. No password, no invitation code, no review to pass before the test channel.",
     steps: [
       "Choose the seller name buyers see",
       [text("Integrate through the "), link("Agentify SDK", "/docs/quickstart")],
