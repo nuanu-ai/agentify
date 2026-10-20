@@ -284,6 +284,9 @@ describe("the counts beside a search", () => {
     // for nothing.
     expect(readable(toolsOf(`q=${FIRST}&details=${FIRST}`))).not.toContain("“");
     expect(readable(toolsOf(`q=${FIRST}`))).toContain(`“${FIRST}”`);
+    // The merchant's own search, which found one order they then opened.
+    expect(readable(toolsOf(`q=number-sms&details=${SAME_HEAD}`))).toContain("“number-sms”");
+    expect(readable(toolsOf(`q=${FIRST.toUpperCase()}&details=${FIRST}`))).not.toContain("“");
   });
 
   it("say nothing of a search where there is none", () => {
