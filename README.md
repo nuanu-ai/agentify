@@ -336,7 +336,7 @@ An administrator admits an existing merchant to live sales from `/admin` →
 **Manage live sales approval**; `pnpm approve <email>` grants the same permission.
 Approval publishes nothing and bypasses no seller or payout checks. Agentify has
 no staffed order or refund service; the self-service boundaries and remaining
-gaps are in [`docs/research/52-self-service.md`](docs/research/52-self-service.md).
+gaps are in [`docs/research/54-self-service.md`](docs/research/54-self-service.md).
 
 ## Where to read more
 

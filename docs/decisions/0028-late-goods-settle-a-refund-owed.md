@@ -54,7 +54,7 @@ merchant action remain neutral; no actor or time is invented by migration.
 Parcels remain refused on live until their closure flow and public contract
 are implemented, reviewed and tested, and their other readiness gates hold
 (ADR-0033). No goods-or-money guarantee or Agentify-funded refund is promised.
-Evidence and remaining work are in `docs/research/52-self-service.md`.
+Evidence and remaining work are in `docs/research/54-self-service.md`.
 
 Rejected: verifying or coordinating the parties' refund agreement, an
 administrator declaring it settled, a staffed reconciliation queue and a

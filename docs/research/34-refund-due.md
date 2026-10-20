@@ -2,7 +2,7 @@
 
 Historical: observations and comparisons from 2026-09-23. The accepted
 merchant-closure boundary is ADR-0028; implementation gaps are in
-`52-self-service.md`. This note is not a refund implementation plan.
+`54-self-service.md`. This note is not a refund implementation plan.
 
 ## The question
 
