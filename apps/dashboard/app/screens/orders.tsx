@@ -36,12 +36,14 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
 /**
  * An order that needs saying in full, in a row of its own: its state, its
  * product and its sum, then what happened and what is the merchant's to do,
- * then its ID and when its price was set.
+ * then its ID and when its price was set, and the way to its details or its
+ * closure; where `closure` is given, the closure opens in the row itself in
+ * place of that way.
  */
 const Told = ({
   order,
-  children,
-}: Readonly<{ order: ToldOrders["rows"][number]; children?: ReactNode }>) => (
+  closure,
+}: Readonly<{ order: ToldOrders["rows"][number]; closure?: ReactNode }>) => (
   <li className={styles.told}>
     <div className={styles.state}>
       <Word word={order.state} />
@@ -57,32 +59,38 @@ const Told = ({
     </p>
     <div className={styles.meta}>
       <Ident value={order.id} what="order ID" />
-      <Link to={{ pathname: "/orders", search: order.opens.search, hash: `#details-${order.id}` }}>
-        {order.opens.words}
-      </Link>
+      {closure === undefined ? (
+        <Link
+          to={{ pathname: "/orders", search: order.opens.search, hash: `#details-${order.id}` }}
+        >
+          {order.opens.words}
+        </Link>
+      ) : null}
       <span>
         Price set <Moment at={order.priceSet} />
       </span>
     </div>
-    {children}
+    {closure}
   </li>
 );
 
-/** Orders told in full, a row of their own each, with what `more` draws under each. */
+/** Orders told in full, a row of their own each, each with the closure `closing` draws for it. */
 const ToldRows = ({
   told,
   label,
-  more,
+  closing,
 }: Readonly<{
   told: ToldOrders;
   label: string;
-  more?: (order: ToldOrders["rows"][number]) => ReactNode;
+  closing?: (order: ToldOrders["rows"][number]) => ReactNode;
 }>) => (
   <List label={label} columns="1fr">
     {told.rows.map((order) => (
-      <Told key={order.id} order={order}>
-        {more?.(order)}
-      </Told>
+      <Told
+        key={order.id}
+        order={order}
+        {...(closing === undefined ? {} : { closure: closing(order) })}
+      />
     ))}
   </List>
 );
@@ -107,6 +115,8 @@ const ToldList = ({
   </>
 );
 
+const pressFor = (again: boolean) => (again ? "Close again" : "Close fulfillment");
+
 /**
  * The same form closes an order the first time and, where its payment
  * completed after that closure, again: the second records its own time and
@@ -118,17 +128,20 @@ const CloseFulfillment = ({
   typed,
   refusal,
   place,
+  headed = true,
 }: Readonly<{
   id: string;
   again: boolean;
   typed: string;
   refusal: string | null;
   place: OrdersView["listing"]["place"];
+  /** False where the control that opened the form already names the press. */
+  headed?: boolean;
 }>) => {
-  const press = again ? "Close again" : "Close fulfillment";
+  const press = pressFor(again);
   return (
     <section className={styles.close} aria-label={press}>
-      <h3>{press}</h3>
+      {headed ? <h3>{press}</h3> : null}
       <p className={styles.help}>
         {again
           ? "The payment arrived after you closed this order. Closing again records a new time and explanation; it moves no money."
@@ -294,6 +307,49 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
   );
 };
 
+/**
+ * A closure opened from the row it closes, on a list whose rows already say
+ * what the order's details would: named by the press it opens, and holding
+ * what became of a press made on it.
+ */
+const CloseInRow = ({
+  row,
+  pressed,
+  place,
+}: Readonly<{
+  row: OrdersView["listing"]["rows"][number];
+  pressed: ClosurePressed | null;
+  place: OrdersView["listing"]["place"];
+}>) => {
+  if (row.closing === null) return null;
+  const said = pressed?.id === row.id ? pressed : null;
+  return (
+    <RowMore
+      summary={pressFor(row.closing === "again")}
+      wide
+      id={`details-${row.id}`}
+      open={row.opened || said !== null || undefined}
+      of={row.product}
+    >
+      <div className={styles.details}>
+        {said?.note == null ? null : (
+          <p className="problem" role="alert">
+            {said.note}
+          </p>
+        )}
+        <CloseFulfillment
+          id={row.id}
+          again={row.closing === "again"}
+          typed={said?.typed ?? ""}
+          refusal={said?.refusal ?? null}
+          place={place}
+          headed={false}
+        />
+      </div>
+    </RowMore>
+  );
+};
+
 const closureHelp = (
   <a className={styles.end} href="/docs/orders#closing-fulfillment">
     Unfulfilled orders and closure
@@ -348,8 +404,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
             <ToldRows
               told={view.needsYou}
               label="Orders that need you"
-              more={(order) => (
-                <OrderDetails row={order} pressed={view.pressed} place={listing.place} />
+              closing={(order) => (
+                <CloseInRow row={order} pressed={view.pressed} place={listing.place} />
               )}
             />
           )}
