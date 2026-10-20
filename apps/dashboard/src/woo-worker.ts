@@ -434,17 +434,23 @@ const fillParcelFromTheShop = async (
     console.error(`[dashboard] ${order.id} waits: ${rates.why}`);
     return null;
   }
-  if (!rates.ok && !rates.saidNo) {
-    unreadable(order.id, rates.why);
+  if (!rates.ok) {
+    if (!rates.saidNo) {
+      unreadable(order.id, rates.why);
+      return await refuse(
+        "The shop's cart answered about shipping to this place in a way that could not be read or" +
+          " trusted, so no WooCommerce order was created.",
+      );
+    }
     return await refuse(
-      "The shop's cart answered about shipping to this place in a way that could not be read or" +
-        " trusted, so no WooCommerce order was created.",
+      "The shop's cart would not sell this parcel to this place when this order was placed, so no" +
+        " WooCommerce order was created.",
     );
   }
   const goods = centsOf(product.price.amount);
   const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
   const rate =
-    !rates.ok || goods === null || paid === null
+    goods === null || paid === null
       ? undefined
       : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
   if (rate === undefined) {
