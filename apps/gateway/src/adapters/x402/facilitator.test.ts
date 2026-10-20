@@ -41,7 +41,7 @@ const chain: ChainReader = {
     timestamp: BigInt(NOW_SECONDS - 20),
   }),
   authorizationState: async () => false,
-  authorizationLogs: async () => [],
+  blockReceipts: async () => [],
   receipt: async () => {
     throw new Error("no transaction");
   },
@@ -151,7 +151,7 @@ const namesNoOffer = (): string =>
   } as unknown as PaymentPayload);
 
 describe("verifying a payment", () => {
-  it("saves the signed recovery profile for a later full-history search", async () => {
+  it("saves the signed recovery profile and the time the chain search starts from", async () => {
     const answered = await facilitatorFor(new Answering(), edge).verify(charge(honest()));
     expect(answered).toStrictEqual({
       verified: true,
@@ -167,7 +167,7 @@ describe("verifying a payment", () => {
         validAfter: String(NOW_SECONDS - 600),
         validBefore: String(NOW_SECONDS + 50),
         nonce: signed().authorization.nonce,
-        fromBlock: "0",
+        notBefore: String(NOW_SECONDS - 30),
       },
     });
   });
@@ -319,12 +319,15 @@ describe("verifying a payment", () => {
       networkId: fail,
       block: fail,
       authorizationState: fail,
-      authorizationLogs: fail,
+      blockReceipts: fail,
       receipt: fail,
     }));
     const facilitator = facilitatorFor(new Answering(), edge, configured);
     const outcome = await facilitator.verify(charge(honest()));
-    expect(outcome).toMatchObject({ verified: true, recovery: { fromBlock: "0" } });
+    expect(outcome).toMatchObject({
+      verified: true,
+      recovery: { notBefore: String(NOW_SECONDS - 30) },
+    });
     expect(await facilitator.settle(charge(honest()))).toMatchObject({ settled: true });
     expect(chainCalls).toBe(0);
     expect(JSON.stringify(outcome)).not.toContain("credential");
@@ -342,7 +345,7 @@ describe("verifying a payment", () => {
       const facilitator = new X402Facilitator(client, edge, undefined, () => NOW_SECONDS * 1000);
       expect(await facilitator.verify(charge(honest()))).toMatchObject({
         verified: true,
-        recovery: { fromBlock: "0" },
+        recovery: { notBefore: String(NOW_SECONDS - 30) },
       });
       expect(await facilitator.settle(charge(honest()))).toMatchObject({ settled: true });
       expect(facilitator.reconcile).toBeUndefined();
@@ -361,11 +364,11 @@ describe("verifying a payment", () => {
     );
     expect(await facilitator.verify(charge(honest()))).toMatchObject({
       verified: true,
-      recovery: { fromBlock: "0", nonce: signed().authorization.nonce },
+      recovery: { notBefore: String(NOW_SECONDS - 30), nonce: signed().authorization.nonce },
     });
     expect(await facilitator.settle(charge(honest()))).toMatchObject({ settled: "unknown" });
-    expect(await facilitator.recoveryFor(charge(honest()))).toMatchObject({
-      fromBlock: "0",
+    expect(await facilitator.recoveryFor(charge(honest()), NOW_SECONDS * 1000)).toMatchObject({
+      notBefore: String(NOW_SECONDS - 30),
       nonce: signed().authorization.nonce,
     });
   });
@@ -383,11 +386,14 @@ describe("verifying a payment", () => {
       deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
     });
     expect(
-      await facilitatorFor(new Answering(), different).recoveryFor(charge(honest())),
+      await facilitatorFor(new Answering(), different).recoveryFor(
+        charge(honest()),
+        NOW_SECONDS * 1000,
+      ),
     ).toMatchObject({
       network: "eip155:84532",
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      fromBlock: "0",
+      notBefore: String(NOW_SECONDS - 30),
     });
   });
 
@@ -398,15 +404,17 @@ describe("verifying a payment", () => {
     const client = new Answering();
     const facilitator = facilitatorFor(client, edge);
     expect(await facilitator.verify(charge(payment))).toMatchObject({ verified: false });
-    expect(await facilitator.recoveryFor(charge(payment))).toMatchObject({
+    expect(await facilitator.recoveryFor(charge(payment), NOW_SECONDS * 1000)).toMatchObject({
       payer: PAYER,
       payTo: PAY_TO,
       amount: "80000000",
       nonce: signed().authorization.nonce,
-      fromBlock: "0",
+      notBefore: String(NOW_SECONDS - 30),
     });
     expect(client.asked).toHaveLength(0);
-    expect(await facilitator.recoveryFor({ ...charge(payment), amount: "81.00" })).toBeNull();
+    expect(
+      await facilitator.recoveryFor({ ...charge(payment), amount: "81.00" }, NOW_SECONDS * 1000),
+    ).toBeNull();
   });
 
   it.each([
@@ -418,7 +426,12 @@ describe("verifying a payment", () => {
     "does not reconstruct a historical payment whose saved financial offer contradicts its sale: %j",
     async (overrides) => {
       const payment = honest({ ...overrides, extra: { order_id: "old_secret_order_id" } });
-      expect(await facilitatorFor(new Answering(), edge).recoveryFor(charge(payment))).toBeNull();
+      expect(
+        await facilitatorFor(new Answering(), edge).recoveryFor(
+          charge(payment),
+          NOW_SECONDS * 1000,
+        ),
+      ).toBeNull();
     },
   );
 

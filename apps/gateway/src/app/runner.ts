@@ -1078,13 +1078,18 @@ export class OrderRunner {
       price === null
     )
       return undefined;
-    const recovery = await recoveryFor.call(this.#runtime.facilitator, {
-      paymentRef: record.paymentRef,
-      payment: record.payment,
-      payTo: record.payTo,
-      amount: price.amount,
-      currency: price.currency,
-    });
+    // The payment was checked after the order existed, so its transfer is later still.
+    const recovery = await recoveryFor.call(
+      this.#runtime.facilitator,
+      {
+        paymentRef: record.paymentRef,
+        payment: record.payment,
+        payTo: record.payTo,
+        amount: price.amount,
+        currency: price.currency,
+      },
+      record.order.timestamps.createdAt,
+    );
     if (recovery === null || record.paidBy?.toLowerCase() !== recovery.payer.toLowerCase())
       return undefined;
     const fingerprint = authorizationFingerprint(recovery);

@@ -40,7 +40,8 @@ const QUEUE_POLL_INTERVAL_MS = 250;
  * The credentials are made to sign once before this returns, and on Coinbase's
  * facilitator shown to Coinbase once; the process stops if they cannot sign or
  * Coinbase refuses them. A Coinbase that does not answer stops nothing: the
- * gateway starts, and its log says the key is unconfirmed.
+ * gateway starts, and its log says the key is unconfirmed. Payment recovery is
+ * the same: an RPC that does not answer this chain leaves it off and says so.
  */
 async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
@@ -52,11 +53,9 @@ async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<F
   if (unconfirmed !== null) {
     console.warn(`[gateway] ${unconfirmed}`);
   }
-  return new X402Facilitator(
-    client,
-    edge,
-    recoveryOn(config.payment.network, config.payment.rpcUrl),
-  );
+  const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
+  (started.broken ? console.error : console.log)(`[gateway] ${started.said}`);
+  return new X402Facilitator(client, edge, started.recovery);
 }
 
 /**

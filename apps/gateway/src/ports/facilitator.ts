@@ -48,14 +48,31 @@ export interface PaymentRecoveryContext {
   readonly validAfter: string;
   readonly validBefore: string;
   readonly nonce: string;
-  readonly fromBlock: string;
+  /**
+   * The chain time, in Unix seconds, before which the transfer cannot have
+   * happened: the authorization was still unused when it was checked, less an
+   * allowance for the difference between our clock and the chain's.
+   */
+  readonly notBefore: string;
 }
 
 export interface PaymentRecoveryRequest {
   readonly context: PaymentRecoveryContext;
   /** A search hint, never evidence that money moved. */
   readonly transaction?: string;
+  /** The next block to read, as an earlier search left it. */
   readonly nextBlock?: string;
+}
+
+/**
+ * Recovery could not reach a verdict for a reason an operator has to act on:
+ * the chain could not be read, or what was saved cannot be searched for. Its
+ * message is safe to log, since it names the call, the endpoint's host and the
+ * kind of failure, never the endpoint's path or query, where a provider key
+ * can sit.
+ */
+export class RecoveryFailure extends Error {
+  override readonly name = "RecoveryFailure";
 }
 
 export type PaymentRecoveryOutcome =
@@ -95,7 +112,16 @@ export type SettleOutcome =
 export interface Facilitator {
   verify(charge: Charge): Promise<VerifyOutcome>;
   settle(charge: Charge): Promise<SettleOutcome>;
+  /**
+   * Looks for a submitted charge's outcome on the chain, without submitting
+   * anything. It throws a `RecoveryFailure` when it cannot look, which is not
+   * an answer about the payment.
+   */
   reconcile?(request: PaymentRecoveryRequest): Promise<PaymentRecoveryOutcome>;
-  /** Reconstructs recovery from the saved charge, without submitting a payment. */
-  recoveryFor?(charge: Charge): Promise<PaymentRecoveryContext | null>;
+  /**
+   * Reconstructs recovery from the saved charge, without submitting a payment.
+   * `since` is an instant, in milliseconds, before which the payment cannot
+   * have been checked, such as the order's creation.
+   */
+  recoveryFor?(charge: Charge, since: number): Promise<PaymentRecoveryContext | null>;
 }

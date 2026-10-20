@@ -37,7 +37,10 @@ import type {
 } from "../../ports/facilitator.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
 
-/** How far an agent's clock may run ahead of ours when it sets an authorization's expiry. */
+/**
+ * How far another clock may differ from ours: an agent's when it sets an
+ * authorization's expiry, and the chain's when recovery searches by time.
+ */
 const CLOCK_SKEW_SECONDS = 30;
 
 export class X402Facilitator implements Facilitator {
@@ -110,7 +113,12 @@ export class X402Facilitator implements Facilitator {
     } catch (thrown) {
       return { verified: false, reason: "signature", message: describe(thrown) };
     }
-    const recovery: PaymentRecoveryContext = { ...authorization, fromBlock: "0" };
+    // The facilitator's check refuses a used authorization, so the transfer
+    // lands after this moment, give or take the clocks.
+    const recovery: PaymentRecoveryContext = {
+      ...authorization,
+      notBefore: String(Math.floor(this.#now() / 1000) - CLOCK_SKEW_SECONDS),
+    };
 
     let answered: VerifyResponse;
     try {
@@ -179,12 +187,15 @@ export class X402Facilitator implements Facilitator {
     return settlementFailure(answered);
   }
 
-  async recoveryFor(charge: Charge): Promise<PaymentRecoveryContext | null> {
+  async recoveryFor(charge: Charge, since: number): Promise<PaymentRecoveryContext | null> {
     try {
       const payload = decoded(charge.payment);
       if (!payload) return null;
       // Recovery binds signed financial terms to the saved sale; an old unsigned routing hint cannot establish payment.
-      return { ...authorizationOf(payload, savedRequirements(charge, payload)), fromBlock: "0" };
+      return {
+        ...authorizationOf(payload, savedRequirements(charge, payload)),
+        notBefore: String(Math.floor(since / 1000) - CLOCK_SKEW_SECONDS),
+      };
     } catch {
       return null;
     }

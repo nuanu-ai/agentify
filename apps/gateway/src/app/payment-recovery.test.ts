@@ -47,7 +47,7 @@ async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadline
     validAfter: "0",
     validBefore: String(Math.floor(h.now() / 1000) + 600),
     nonce: `0x${"1".repeat(64)}`,
-    fromBlock: "100",
+    notBefore: String(Math.floor(h.now() / 1000) - 30),
   };
   h.facilitator.willVerify({ verified: true, payer: PAYER, validUntil: null, recovery });
   const offered = await h.gateway.beginPurchase(published.id, {});
