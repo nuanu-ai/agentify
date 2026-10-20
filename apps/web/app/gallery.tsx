@@ -760,13 +760,14 @@ const SCANNING: GalleryState[] = [
       id: "scanner-pending-busy",
       screen: "Starting a scan",
       when: "Somebody asks for a scan while the scanner cannot take one.",
-      cause: "The scanner's queue or records did not answer, so no scan was started.",
+      cause:
+        "The scanner's queue or records did not answer, in its own words, and a scan from an earlier press may already exist, so the page says a retry is safe.",
     },
     {
       status: 503,
       body: refusal("temporarily_busy", "The scanner queue is temporarily unavailable.", true, 30),
     },
-    "The scanner could not take this scan just now.",
+    "The scanner queue is temporarily unavailable.",
   ),
   pending(
     {
