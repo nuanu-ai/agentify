@@ -1597,7 +1597,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant has paid orders left unfulfilled, and an order delivered without payment.",
       cause:
-        "Two paid orders are unfulfilled, one after its delivery window and one refused by the integration. Each has its cause stated; the merchant decides the remedy. Another order was delivered but not paid.",
+        "Two paid orders are unfulfilled, one after its delivery window and one refused by the integration. Each has its cause stated and the two things the merchant can still do. Another order was delivered but not paid.",
     },
     OWING,
     "/orders",

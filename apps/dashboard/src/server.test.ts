@@ -3563,7 +3563,6 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("Pause all sales");
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
-    expect(text).toContain("Paid orders left unfulfilled remain recorded");
   });
 
   it("is offered no switch on a card, not even one they paused before they left", async () => {

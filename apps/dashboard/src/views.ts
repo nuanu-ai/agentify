@@ -663,7 +663,7 @@ const whatHappened = (
   cause: UnfulfilledCause | undefined,
 ): string =>
   order.status === "unfulfilled"
-    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You decide the remedy with the buyer. A late delivery is still accepted until you close fulfillment.`
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it late, or close fulfillment with an explanation to the buyer.`
     : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
 
 const sharesIn = (

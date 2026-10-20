@@ -103,7 +103,7 @@ const recover = async (
         : "This command recovers downloads only. A parcel refused before its WooCommerce order was" +
             " made has no address left to make one with; for one whose order may exist, look in" +
             " the shop for an order carrying this identifier as its transaction id, and do not" +
-            " ship it, because the Agentify sale is unfulfilled and the remedy is yours to arrange.",
+            " ship it, because the Agentify sale is unfulfilled; close fulfillment on Orders instead.",
     );
   }
   if (person.merchant === null) {

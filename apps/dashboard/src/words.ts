@@ -149,7 +149,7 @@ export const ACCOUNT_WORDS: Readonly<
 > = Object.freeze({
   left: {
     title: "You have left Agentify",
-    says: "New sales have stopped. Paid orders left unfulfilled remain recorded; you decide their remedy with the buyer and can close future Agentify fulfillment on Orders.",
+    says: "New sales have stopped. Paid orders left unfulfilled stay on Orders, where you can close fulfillment with an explanation to the buyer.",
     fix: null,
   },
   paused: {
