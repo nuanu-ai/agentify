@@ -80,7 +80,7 @@ import {
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
 import type { Viewer } from "../src/viewer.js";
-import { cardsView, type FrameView, ordersView, receiptsView } from "../src/views.js";
+import { cardsView, type FrameView, momentView, ordersView, receiptsView } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
@@ -1576,6 +1576,72 @@ const ORDERS: GalleryState[] = [
       shows: "Close fulfillment",
     },
   },
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-close-unconfirmed",
+        screen: "Orders",
+        when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
+        cause:
+          "The press leads back to the order, opened, with a line saying the closure could not be confirmed and that closing again is safe.",
+      },
+      OWING,
+      `/orders?${new URLSearchParams({
+        q: OWING.orders[0]?.id ?? "",
+        details: OWING.orders[0]?.id ?? "",
+        closure: "unconfirmed",
+      })}`,
+      { owed: OWED_BECAUSE },
+    ),
+  },
+  orders(
+    {
+      id: "dashboard-orders-close-too-late",
+      screen: "Orders",
+      when: "A merchant pressed Close fulfillment on an order whose delivery landed a moment earlier.",
+      cause:
+        "The gateway refused the closure and the order read afterwards is delivered, so the page says nothing was closed and shows the order as it now stands.",
+    },
+    ordersOf([["esimEurope", "delivered"]]),
+    `/orders?${new URLSearchParams({ closure: "ended" })}`,
+  ),
+  at(
+    {
+      id: "dashboard-orders-need-you-recover",
+      screen: "Orders",
+      when: "A merchant selling through WooCommerce has a paid download whose shop order was not confirmed.",
+      cause:
+        "The connector holds the sale for recovery, so the unfulfilled order leads to the recovery page in place of the general link.",
+    },
+    (() => {
+      const view = ordersAt("/orders", OWING, { owed: OWED_BECAUSE });
+      const first = view.needsYou.rows[0]?.id ?? "";
+      return {
+        path: "/orders",
+        mode: "live",
+        account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
+        loaded: {
+          "routes/orders": {
+            ...view,
+            needsYou: {
+              ...view.needsYou,
+              rows: view.needsYou.rows.map((row) =>
+                row.id === first
+                  ? {
+                      ...row,
+                      rest: {
+                        href: `/integrations/woocommerce/recover/${first}`,
+                        words: "Recover WooCommerce delivery",
+                      },
+                    }
+                  : row,
+              ),
+            },
+          },
+        },
+      };
+    })(),
+  ),
   orders(
     {
       id: "dashboard-orders",
@@ -2845,28 +2911,41 @@ const PROBLEMS: GalleryState[] = [
   ),
 ];
 
+const ADMIN_PATH = "/admin/live-sales";
+
+/** The approval screen as the server draws it, opened or answering a press. */
+const liveSales = (told: Told, view: LiveSalesView, answering = false): GalleryState =>
+  at(told, {
+    path: ADMIN_PATH,
+    mode: view.live ? "live" : "test",
+    ...(answering
+      ? {
+          loaded: { "routes/admin-live-sales": null },
+          pressed: { "routes/admin-live-sales": view },
+        }
+      : { loaded: { "routes/admin-live-sales": view } }),
+  });
+
+const SELLER = {
+  email: WHO,
+  id: MERCHANT,
+  name: "Freeland",
+  site: "https://freeland.example",
+  integration: "api",
+  approvedAt: null,
+} as const;
+
 const LIVE_SALES: GalleryState[] = [
-  at(
+  liveSales(
     {
       id: "dashboard-admin-live-sales",
       screen: "Live sales approval",
       when: "An administrator opens the live sales screen from Admin.",
       cause: "Their current session has the administrative flag; no seller has been selected.",
     },
-    {
-      path: "/admin/live-sales",
-      mode: "live",
-      loaded: {
-        "routes/admin-live-sales": {
-          live: true,
-          email: "",
-          merchant: null,
-          message: null,
-        } satisfies LiveSalesView,
-      },
-    },
+    { live: true, email: "", merchant: null, message: null },
   ),
-  at(
+  liveSales(
     {
       id: "dashboard-admin-live-sales-confirm",
       screen: "Live sales approval",
@@ -2874,25 +2953,69 @@ const LIVE_SALES: GalleryState[] = [
       cause:
         "One account matches the email and names this existing merchant, which has not been admitted to live sales.",
     },
+    { live: true, email: WHO, message: null, merchant: SELLER },
+    true,
+  ),
+  liveSales(
     {
-      path: "/admin/live-sales",
-      mode: "live",
-      loaded: {
-        "routes/admin-live-sales": {
-          live: true,
-          email: WHO,
-          message: null,
-          merchant: {
-            email: WHO,
-            id: MERCHANT,
-            name: "Freeland",
-            site: "https://freeland.example",
-            integration: "api",
-            approvedAt: null,
-          },
-        } satisfies LiveSalesView,
+      id: "dashboard-admin-live-sales-approved",
+      screen: "Live sales approval",
+      when: "An administrator confirmed and approved the merchant.",
+      cause:
+        "The approval was recorded and read back, so the merchant shows as approved with its time, and no approval form remains.",
+    },
+    {
+      live: true,
+      email: WHO,
+      message: "Live sales approved.",
+      merchant: {
+        ...SELLER,
+        approvedAt: momentView("2026-10-19T09:30:00Z"),
       },
     },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-no-account",
+      screen: "Live sales approval",
+      when: "An administrator searches for an email no account signs in with.",
+      cause:
+        "No account matches, so nothing is shown to approve and the refusal is said under the search.",
+    },
+    {
+      live: true,
+      email: "nobody@example.com",
+      merchant: null,
+      message: "No account matches that email. Check the address with the seller.",
+    },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-unknown",
+      screen: "Live sales approval",
+      when: "An administrator pressed Approve and the approval could not be read back.",
+      cause:
+        "Whether the approval was recorded is unknown, so the page says so, and that finding the merchant again shows the current status.",
+    },
+    {
+      live: true,
+      email: WHO,
+      merchant: SELLER,
+      message:
+        "The approval outcome is unknown. Find this merchant again to read the current status; repeating the approval is safe.",
+    },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-test",
+      screen: "Live sales approval",
+      when: "An administrator opens the approval screen on the test site.",
+      cause: "Test sales need no approval, so the screen offers none and points to the live site.",
+    },
+    { live: false, email: "", merchant: null, message: null },
   ),
 ];
 
@@ -2901,7 +3024,6 @@ export const gallery: GallerySurface = {
   name: "Seller dashboard",
   lang: "en",
   states: [
-    ...LIVE_SALES,
     ...SIGNING_IN,
     ...SETTING_UP,
     ...CARDS,
@@ -2912,6 +3034,7 @@ export const gallery: GallerySurface = {
     ...WOO_RECOVERY,
     ...KEYS,
     ...SETTINGS,
+    ...LIVE_SALES,
     ...PROBLEMS,
   ],
 };
