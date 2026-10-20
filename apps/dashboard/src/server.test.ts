@@ -6608,6 +6608,20 @@ describe("closing fulfillment from Orders", () => {
     );
   });
 
+  it("still refuses a carriage return that is not half of a browser's line break", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const refused = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The delivery deadline was missed.\rA refund was sent outside Agentify.",
+    });
+
+    expect(refused.status).toBe(400);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
   it("rereads an unanswered write and shows the recorded closure", async () => {
     const running = await started({
       client: (real) => ({
