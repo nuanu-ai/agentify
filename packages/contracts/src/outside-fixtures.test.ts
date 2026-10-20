@@ -233,9 +233,9 @@ describe("an eSIM plan, whose profile arrives later", () => {
     expect(verdictOf(ReceiptSchema, receipt)).toBe("accepted");
   });
 
-  it("turns into a refund owed when the supplier has no SIM left", () => {
+  it("turns into an unfulfilled order when the supplier has no SIM left", () => {
     // A refusal after the money moved: the merchant hears both the refusal
-    // and the debt it created.
+    // and the unfulfilled delivery it recorded.
     expect(
       verdictOf(HandlerAnswerSchema, {
         refused: { code: "out_of_stock", message: "У поставщика не осталось профилей этого плана" },
@@ -244,7 +244,7 @@ describe("an eSIM plan, whose profile arrives later", () => {
 
     expect(
       verdictOf(OrderEventSchema, {
-        type: "order.refund_due",
+        type: "order.unfulfilled",
         order_id: "ord_88b3c1",
         at: "2026-08-26T12:11:30Z",
         price: { amount: "18.90", currency: "USD" },
@@ -383,7 +383,7 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
           id: "msg_02de55",
           sent_at: "2026-08-26T12:26:00Z",
           payload: {
-            type: "order.refund_due",
+            type: "order.unfulfilled",
             order_id: "ord_88b3c1",
             at: "2026-08-26T12:26:00Z",
             price: { amount: "18.90", currency: "USD" },
@@ -463,8 +463,8 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
 
   it("refuses the supplier's empty stock as a failure the merchant can act on", () => {
     // In this mode the money has already moved, so the refusal succeeds and
-    // the debt arrives as an event; a second attempt after the refund was paid
-    // out fails as not worth retrying.
+    // the unfulfilled order arrives as an event. After merchant closure, a
+    // further fulfillment call fails as not worth retrying.
     expect(
       verdictOf(bodyOf(API_ROUTES.refuse_order), {
         code: "out_of_stock",
@@ -476,8 +476,8 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
       verdictOf(OrderCallResponseSchema, {
         ok: false,
         error: {
-          code: "refund_already_settled",
-          message: "Возврат по этому заказу уже исполнен",
+          code: "fulfillment_closed",
+          message: "Продавец закрыл исполнение этого заказа через Agentify",
           retryable: false,
         },
       }),
@@ -488,11 +488,17 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
     expect(expandPath(API_ROUTES.get_order.path, { order_id: esimOrder.id })).toBe(
       "/v0/orders/ord_88b3c1",
     );
-    expect(verdictOf(OrderWithStatusSchema, { ...esimOrder, status: "refund_due" })).toBe(
-      "accepted",
-    );
     expect(
-      verdictOf(OrderListSchema, { orders: [{ ...esimOrder, status: "delivered_unpaid" }] }),
+      verdictOf(OrderWithStatusSchema, {
+        ...esimOrder,
+        status: "unfulfilled",
+        payment_status: "paid",
+      }),
+    ).toBe("accepted");
+    expect(
+      verdictOf(OrderListSchema, {
+        orders: [{ ...esimOrder, status: "delivered_unpaid", payment_status: "not_paid" }],
+      }),
     ).toBe("accepted");
   });
 

@@ -5,8 +5,7 @@
  * still awaiting fulfillment have no receipt. The sale price stays unchanged
  * after the merchant changes their price.
  *
- * The shape admits other outcomes of a paid purchase; it does not promise that
- * the gateway issues receipts for them.
+ * Its outcome remains the issuance fact when later fulfillment is closed.
  */
 
 import { z } from "zod";
@@ -17,20 +16,21 @@ import { IdentifierSchema, SalePriceSchema, TimestampSchema } from "./primitives
  *
  * `payment_unresolved` is absent because a receipt cannot claim payment while
  * its outcome is unknown. A late facilitator confirmation or verified chain
- * evidence can release goods already held and write their receipt. An
+ * evidence can release goods already held and write their receipt unless the
+ * merchant has closed future Agentify fulfillment. An
  * unverified assertion of payment cannot supply that evidence.
  *
  * The list does not promise that a receipt exists for every payment that
  * executed. Agentify's gateway issues only `delivered` and `shipped` receipts:
  * a prepaid order still awaiting fulfillment, including one whose late payment
- * leaves a refund owed, has no receipt.
+ * leaves fulfillment incomplete, has no receipt.
  */
 export const ReceiptOutcomeSchema = z.enum([
   "in_progress",
   "delivered",
   "shipped",
-  "refund_due",
-  "refunded",
+  "unfulfilled",
+  "fulfillment_closed",
 ]);
 
 export const ReceiptSchema = z.strictObject({

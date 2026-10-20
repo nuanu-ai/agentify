@@ -127,10 +127,25 @@ export function RowMore({
   summary,
   of,
   wide = false,
+  id,
+  open,
+  className,
   children,
-}: Readonly<{ summary: string; of: string; wide?: boolean; children: ReactNode }>) {
+}: Readonly<{
+  summary: string;
+  of: string;
+  wide?: boolean;
+  id?: string;
+  open?: boolean;
+  className?: string;
+  children: ReactNode;
+}>) {
   return (
-    <details className={wide ? "cell-more wide" : "cell-more"}>
+    <details
+      id={id}
+      open={open}
+      className={`${wide ? "cell-more wide" : "cell-more"}${className === undefined ? "" : ` ${className}`}`}
+    >
       <summary aria-label={`${summary} for ${of}`}>{summary}</summary>
       <div className="more-body">{children}</div>
     </details>

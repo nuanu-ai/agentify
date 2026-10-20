@@ -39,7 +39,7 @@ state", "an outcome" — do not go outside; everything is named in words from th
 reader's life ("you did not deliver in time", "the agent did not pay", "the
 order closed"). A word a merchant would not use in conversation about their own
 shop is a candidate for replacement. The words an engineer's code branches on
-are the exception on the engineer's pages: a status such as `refund_due`, a
+are the exception on the engineer's pages: a status such as `unfulfilled`, a
 reason, an error code is named exactly as it is written on the wire, with the
 words of the situation beside it rather than in its place.
 

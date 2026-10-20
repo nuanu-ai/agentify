@@ -50,7 +50,7 @@ config:
 ---
 sequenceDiagram
     accTitle: One purchase, from the catalogue to the goods
-    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits five seconds; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds thirty seconds. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, which answers each hand-over within three seconds and has ten seconds in all from the payment check to send back the goods; the facilitator then executes the charge into your payout contract and the agent receives the goods. A refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within three seconds, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a refund owed.
+    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits five seconds; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds thirty seconds. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, which answers each hand-over within three seconds and has ten seconds in all from the payment check to send back the goods; the facilitator then executes the charge into your payout contract and the agent receives the goods. A refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within three seconds, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a paid order unfulfilled.
     participant A as Buyer's agent
     participant G as Agentify
     participant Y as Your process
@@ -77,7 +77,7 @@ sequenceDiagram
         G->>Y: the order
         Y-->>G: accepted, or the goods<br/>(3 s per hand-over)
         Y->>G: deliver, or a parcel's<br/>shipment, by the deadline
-        Note over G,Y: a refusal or a missed<br/>deadline: refund_due
+        Note over G,Y: a refusal or a missed<br/>deadline: unfulfilled
         A->>G: reads the order again
         G-->>A: the goods, or shipped
     end
@@ -281,8 +281,7 @@ handler's answer. The delivery deadline on your card is already running, from
 the charge at purchase. A card that names none is held to a day.
 
 If the delivery cannot be made after you took the order on, say so at once
-rather than wait out the deadline; the buyer has paid, so the order then owes
-a refund:
+rather than wait out the deadline; the buyer has paid, so the order is then unfulfilled:
 
 ```ts
 await order.refuse({

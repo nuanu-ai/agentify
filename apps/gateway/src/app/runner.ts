@@ -42,12 +42,13 @@ import {
   type Delivery,
   localityOf,
   type Order as OrderDocument,
+  type PaymentStatus,
   type Receipt,
   type ReceiptOutcome,
   type RecordedShipment,
-  type RefundDueReason,
   type SalePrice,
   type Seller,
+  type UnfulfilledReason,
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
@@ -201,7 +202,7 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "dispatch_confirmation_request":
     case "release_goods_to_agent":
     case "hold_fulfillment":
-    case "mark_refund_due":
+    case "mark_unfulfilled":
     case "answer_merchant":
       return true;
     default:
@@ -444,6 +445,11 @@ export class OrderRunner {
 
         const events = eventsForVerifiedPayment(found.order, at);
         if (events.length === 0) {
+          // A merchant may close an unpaid order while payment verification is
+          // outside this lock. Its public payment reference establishes no owner.
+          if (found.paidBy !== owner) {
+            return { result: { kind: "not_owner", state: found.order.state } };
+          }
           // The owner is asking again about a purchase already under way. The
           // answer is wherever it has got to, and nothing changes.
           return { result: { kind: "already_yours", state: found.order.state } };
@@ -548,8 +554,7 @@ export class OrderRunner {
    * An arm may only re-drive an effect whose receiver is promised it can arrive
    * more than once: a hand-over, which the merchant's handler expects to see
    * again, and a receipt, one row keyed by its order. A merchant event is
-   * delivered at most once, so there is no arm for it and must not be: a debt
-   * announced twice is a second refund somebody may act on.
+   * delivered at most once, so the sweep cannot duplicate its original notice.
    */
   async sweep(): Promise<Swept | null> {
     const ran = await this.#runtime.store.runAlone(SWEEP_EFFECTS, () => this.#sweepAlone());
@@ -613,7 +618,7 @@ export class OrderRunner {
    * Puts a paid order that has reached nobody on its merchant's stream again.
    *
    * The stream is asked first: every hand-over counts toward the machine's
-   * attempt cap, whose closure is a refund, so an envelope still sitting
+   * attempt cap, whose result is an unfulfilled paid order, so an envelope still sitting
    * unclaimed is left alone rather than spend a delivery the merchant never
    * failed. An envelope already drawn is on no stream and looks the same as one
    * never written, since the order stays `paid` until the hand-over is
@@ -686,7 +691,7 @@ export class OrderRunner {
    * Starts again the clocks an order is waiting on that have already run out.
    * Only a reminder declares an order overdue, so one armed and then lost, as
    * by a handler that threw past the queue's patience, leaves an order nothing
-   * will close and a buyer nothing will refund. Repeating is safe because the
+   * will close. Repeating is safe because the
    * machine refuses an expiry for a deadline not running or not yet reached.
    */
   async #sweepTheClocks(record: StoredOrder, now: number): Promise<number> {
@@ -866,12 +871,9 @@ export class OrderRunner {
             `${effect.kind} on ${record.order.id} was written down with the order and must not be carried out again`,
           );
 
-        case "mark_refund_due":
-          // The order's state is the record of the debt, and the merchant hears
-          // of it through the event the machine asked for alongside this. No
-          // receipt ever says "refund due", although one could: receipts are
-          // issued when goods are released and this order released none, so a
-          // merchant reconciling the refund has the order and the event only.
+        case "mark_unfulfilled":
+          // The state records incomplete fulfillment; its event carries the
+          // original price. No goods were released, so no receipt is issued.
           break;
 
         case "answer_merchant":
@@ -1233,26 +1235,22 @@ export class OrderRunner {
     const common = { order_id: record.order.id, at: asTimestamp(at) } as const;
 
     switch (event) {
-      case "order.refund_due": {
-        // The sum owed is the sum that was taken, with no fallback to the
-        // card's list price: a debt is money that actually moved, and a guess
-        // would be the wrong number in the one message whose purpose is naming
-        // it.
+      case "order.unfulfilled": {
+        // The event names the original sale price, never a refund amount or
+        // the card's current list price.
         const price = record.order.price;
         if (price === null) {
-          throw new Error(
-            `a refund fell due on ${record.order.id} and the order carries no price, so there is no sum to name`,
-          );
+          throw new Error(`the paid unfulfilled order ${record.order.id} carries no sale price`);
         }
         return {
           kind: "order_event",
           id: this.#runtime.ids("env"),
           sent_at: asTimestamp(at),
           payload: {
-            type: "order.refund_due",
+            type: "order.unfulfilled",
             ...common,
             price: { amount: price.amount, currency: price.currency },
-            reason: refundReasonOf(record.order),
+            reason: unfulfilledReasonOf(record.order),
           },
         };
       }
@@ -1321,6 +1319,8 @@ export function agentOrderStatusOf(
     order_id: record.order.id,
     status_url: statusUrlOf(config, record.order.id),
     status,
+    payment_status: paymentStatusOf(record.order),
+    ...merchantClosureOf(record.order),
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.
     price: salePriceOf(record),
@@ -1351,7 +1351,7 @@ export function agentOrderStatusOf(
     seller,
     // The merchant's own code and sentence for why they would not sell, copied
     // and not rephrased. The condition is the closure, not the status word: one
-    // refusal reaches the agent as `rejected`, `declined` or `refund_due`
+    // refusal reaches the agent as `rejected`, `declined` or `unfulfilled`
     // depending on when it arrived, and the merchant's sentence belongs in all
     // three. Nothing else fills it; an ending this gateway decided is said in
     // its own voice under `reason`.
@@ -1362,20 +1362,37 @@ export function agentOrderStatusOf(
   };
 }
 
+export function paymentStatusOf(order: Order): PaymentStatus {
+  if (order.payment === "settled") return "paid";
+  return order.payment === "settling" || order.payment === "outcome_unknown"
+    ? "unresolved"
+    : "not_paid";
+}
+
+export function merchantClosureOf(order: Order): {
+  readonly merchant_closure?: { readonly closed_at: string; readonly message?: string };
+} {
+  const closed = order.merchantClosure;
+  return closed === undefined
+    ? {}
+    : {
+        merchant_closure: {
+          closed_at: asTimestamp(closed.at),
+          ...(closed.message === undefined ? {} : { message: closed.message }),
+        },
+      };
+}
+
 /**
- * Why an order ended, where this gateway and not the merchant decided it, or
- * why a refund is owed on it: a code to branch on and a sentence saying what to
- * do next. Each sentence about an ending says that nothing was charged where
- * that is so, since that is the first thing an agent holding a closed purchase
- * needs to know; each about a debt says that nothing here will record the
- * refund, since `refund_due` alone reads as one on its way.
+ * Why an order stopped: a code to branch on and a sentence explaining the
+ * observed payment and fulfillment facts. Agreements remain with the parties.
  */
 function reasonOf(order: Order): {
-  reason?: { code: EndingReason | RefundDueReason; message: string };
+  reason?: { code: EndingReason | UnfulfilledReason; message: string };
 } {
-  if (outcomeFor(order) === "refund_due") {
-    const owed = refundReasonOf(order);
-    return { reason: { code: owed, message: REFUND_WORDS[owed](order) } };
+  if (outcomeFor(order) === "unfulfilled") {
+    const reason = unfulfilledReasonOf(order);
+    return { reason: { code: reason, message: UNFULFILLED_WORDS[reason](order) } };
   }
   const code = endingReasonFor(order);
   if (code === null) {
@@ -1384,23 +1401,17 @@ function reasonOf(order: Order): {
   return { reason: { code, message: REASON_WORDS[code](order) } };
 }
 
-/** What a buyer owed a refund cannot learn here: when it has been paid back. */
-const UNRECORDED =
-  "Agentify cannot record a refund yet, so this status does not change once you are paid back: your wallet is where a refund shows.";
-
-const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> = {
+const UNFULFILLED_WORDS: Readonly<Record<UnfulfilledReason, (order: Order) => string>> = {
   refused: () =>
-    `The seller refused this order after it was paid, in their own words under refusal, so they owe you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
-  // The event's word folds in a charge reported after we closed the purchase
-  // on its silence; the sentence must not tell that buyer their goods were late.
+    "The seller refused this paid order, in their own words under refusal. Agentify has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   deadline_passed: (order) =>
     order.closure?.cause === "payment_outcome_unknown"
-      ? `This purchase was closed while its payment went unanswered, before the order was sent to the seller, and the payment was later reported to have gone through. The seller owes you the whole price back from their own wallet, unless goods they deliver anyway appear here first. ${UNRECORDED}`
+      ? "The original payment was confirmed after Agentify stopped waiting for its result. Agentify did not dispatch this order and has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
       : order.mode.parcel === true
-        ? `This parcel was paid for and not handed to a carrier in time, so the seller owes you the whole price back from their own wallet, unless a shipment they still record appears here first. ${UNRECORDED}`
-        : `This order was paid and its time ran out before the goods came, so the seller owes you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
+        ? "This paid parcel has no shipment recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
+        : "This paid order has no delivery recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   merchant_left: () =>
-    `The seller stopped selling through Agentify after this order was paid and before its goods came, so they owe you the whole price back from their own wallet. ${UNRECORDED}`,
+    "The seller stopped selling through Agentify before this paid order was fulfilled. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
 };
 
 /**
@@ -1491,18 +1502,16 @@ function shipByOf(order: Order): string | null {
 }
 
 /**
- * Why a refund is owed, in the three words the merchant's event carries. Every
- * closure that can reach a debt is named rather than left to a default, because
- * the reason a refund is filed under is what somebody reconciles against. A
+ * Why paid fulfillment stopped, in the words the merchant's event carries. A
  * charge that reported in after we gave up on it is folded into
  * `deadline_passed`, meaning our deadline on the charge and not his on the
  * goods, because the vocabulary has no word for our side losing track of the
  * money.
  */
-function refundReasonOf(order: Order): RefundDueReason {
+function unfulfilledReasonOf(order: Order): UnfulfilledReason {
   const closure = order.closure;
   if (closure === null) {
-    throw new Error(`a refund fell due on ${order.id} with nothing recording why`);
+    throw new Error(`the paid order ${order.id} is unfulfilled with nothing recording why`);
   }
 
   switch (closure.cause) {
@@ -1518,7 +1527,7 @@ function refundReasonOf(order: Order): RefundDueReason {
     case "payment_not_verified":
     case "payment_not_settled":
       throw new Error(
-        `a refund fell due on ${order.id} closed as ${closure.cause}, which takes no money and so owes none`,
+        `the order ${order.id} is marked paid and unfulfilled after ${closure.cause}, which takes no payment`,
       );
     default:
       return assertNever(closure, "closure cause");
@@ -1531,8 +1540,7 @@ function refundReasonOf(order: Order): RefundDueReason {
  * a successful `already_delivered`, and goods riding on a repeat would otherwise
  * overwrite what the agent was already handed with nothing to show it. Goods on
  * a call the machine answered with a failure for the merchant, such as on a
- * closed order or one whose refund is paid out, are not kept either, or a
- * refunded buyer's order would carry goods nobody gave him.
+ * closed order, are not kept either: they were never released to the buyer.
  */
 function goodsToKeep(
   found: StoredOrder,

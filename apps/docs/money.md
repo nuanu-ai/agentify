@@ -10,12 +10,12 @@ risk on the way, and what we take.
 ```mermaid
 flowchart TB
     accTitle: Where a buyer's payment goes
-    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: 99.9 percent to your wallet, and 0.1 percent kept in the warehouse for Agentify. A refund owed is the whole price, from your own wallet; how it reaches the buyer is not settled yet, and nothing Agentify gives you names the buyer's address.
+    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: 99.9 percent to your wallet, and 0.1 percent kept in the warehouse for Agentify. Any refund or another remedy is arranged by the merchant with the buyer, outside Agentify. Merchant closure records only the end of future Agentify fulfillment.
     B["Buyer's wallet"] -- "each sale: the whole<br/>price, in USDC" --> C["Your payout contract<br/>made from your<br/>wallet's address,<br/>with no owner"]
     C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify when it<br/>collects its share" --> W["0xSplits warehouse"]
     W -- "99.9%" --> Y["Your wallet"]
     W -- "0.1%, kept there<br/>for Agentify" --> F["Agentify"]
-    Y -. "a refund owed: the<br/>whole price, from you;<br/>how it reaches the<br/>buyer is not settled" .-> R["The buyer"]
+    Y -. "a refund or remedy<br/>you arrange with<br/>the buyer" .-> R["The buyer"]
 ```
 
 The buyer — a program, buying on behalf of a person — pays into your payout
@@ -82,7 +82,7 @@ after it.
 One rule follows from that choice. While your answer comes before the money,
 your silence costs the buyer nothing: if you do not deliver, the purchase did
 not happen. After the charge, the same silence leaves the buyer without the
-goods, and you owe them the goods or the money. What that looks like in each
+goods. Your policy and your agreement with the buyer decide the remedy; Agentify records that the order is unfulfilled. What that looks like in each
 failure is on [What can go wrong](/failures).
 
 ## You delivered and the money did not arrive
@@ -94,9 +94,9 @@ leave the buyer's wallet for something else. The order tells you whether the
 charge failed or its outcome is still unknown.
 
 After the payment's response deadline, Agentify checks an unknown outcome
-against chain evidence without charging again. A confirmed transfer releases
+against chain evidence without charging again. While fulfillment remains open, a confirmed transfer releases
 the goods already recorded; proof that the authorization expired unused or was
-cancelled allows the buyer to try payment again. If verification is unavailable
+cancelled allows the buyer to try payment again. After merchant closure, verification records only the original payment outcome: no goods are released and no fresh payment is accepted. If verification is unavailable
 or disabled, or the evidence conflicts, the payment stays unknown until its
 outcome can be established. Recovery resumes after a restart and requires no
 manual reconciliation or approval from you.
@@ -119,11 +119,11 @@ stays unchanged after your price has moved. The Receipts screen of your
 dashboard lists them, and what each field means is on
 [Orders](/orders#the-receipt).
 
-An unknown payment has no receipt. Verified recovery can release goods already
+An unknown payment has no receipt. While fulfillment remains open, verified recovery can release goods already
 held and write their receipt, using the payment's block time rather than the
 recovery time. A paid order neither delivered nor shipped leaves no receipt,
-including a late prepaid payment that leaves a refund owed; what you have for
-it is the order and the notice that a refund is owed. Receipts therefore do not
+including a late prepaid payment that leaves an unfulfilled order; what you have for
+it is the original payment status and the unfulfilled order. Receipts therefore do not
 account for all money received.
 
 When the answer to a purchase is lost on the way and the agent repeats it, it
@@ -132,32 +132,13 @@ delivery asked of you.
 
 ## If the buyer did not get the goods
 
-You owe the buyer the whole price of an undelivered product, out of your own
-wallet, although your payout contract pays you 99.9% of it: the 0.1%
-commission stays with Agentify. The refund has to come from you, because the
-contract pays only you and us and has no way to send a payment back, and it
-makes no difference whether that sale has been paid out to you yet. Our part
-is to record the obligation and hand you the record — which order, for how
-much, and why it was left undelivered — for the orders you did not deliver in
-time and for the orders still open when you leave.
+You decide cancellation and refund policy and arrange the remedy with the buyer. A refund may be partial, use another currency or network, or be replaced by another agreement. Those transfers and any fulfillment outside Agentify belong to your system. Agentify does not send the refund, verify it, or judge whether the parties have settled.
 
-Nothing Agentify gives you today names where to send that refund: the order,
-the notice that a refund is owed and the dashboard carry no address of the
-buyer's, and an undelivered order has no receipt. Your system initiates and
-executes refunds under your policy; Agentify's verified self-service recording
-of repayment is not built. Agentify has no staffed refund service and does not
-promise to reimburse the buyer from its own funds. During the pilot we take on
-only goods that can be delivered a second time, and we repeat the attempt to
-deliver up to the deadline on the card, which makes such orders rare without
-ruling them out.
+A missed delivery deadline establishes that the order was not fulfilled in time. It does not establish a whole-price refund obligation. The order records `unfulfilled`, the original price and payment status, and what caused delivery to stop. An accepted late delivery can still fulfill it until you close future Agentify fulfillment.
 
-We do not see a refund that leaves your wallet, and nothing records one on the
-order yet, so an order you have paid back stays open as owing a refund. If your
-code delivers the goods for it afterwards — a delivery that was running late,
-say — the order closes as delivered and the buyer keeps both the money and the
-goods. So once you have refunded an order, it must not be delivered; what your
-engineer does to make sure of that is on
-[Orders](/orders#confirming-a-delivery-with-a-separate-call).
+Close fulfillment from **Orders → Order details → Close fulfillment**, or through your integration, when Agentify should stop accepting delivery. You may explain the decision to the buyer. Agentify records "fulfillment closed by merchant" and attributes your explanation to you; a claim about a refund remains your statement. Closure does not move money or cancel work in your shop. It preserves the original payment and history. A payment already accepted for execution may still complete; its outcome stays unknown until verified. The [order reference](/orders#closing-fulfillment) explains the action and retries.
+
+Agentify retains its 0.1% commission on the original payment. Neither the payout contract nor the shared warehouse returns it. A receipt records the original completed fulfillment and payment; it does not become a net balance or a refund receipt. Agentify has no staffed refund service and does not promise to reimburse the buyer from its own funds.
 
 ## What we take
 
@@ -225,8 +206,7 @@ On the test channel every change applies at once and nothing is sent.
 
 ## What is not settled yet
 
-- How you send money back for an undelivered order, where to, and how a refund
-  you sent comes to be recorded on the order. Nothing records one yet.
+- How a buyer reaches your support to arrange a remedy outside Agentify.
 - Who pays the network fee on a buyer's payment and how it sits against the
   price of the goods.
 - Reconciling what came in against what was sold. Your wallet receives one

@@ -54,6 +54,8 @@ declare global {
    */
   const order: LiveOrder;
   const orderId: string;
+  /** The merchant's own explanation for the buyer, as the orders page describes. */
+  const explanationForBuyer: string;
   /** An identifier the merchant kept in their own record, without the order. */
   const savedId: string;
   const url: string;
@@ -102,9 +104,9 @@ interface Page {
 
 const PAGES: readonly Page[] = [
   { file: "apps/docs/quickstart.md", fences: 7 },
-  { file: "apps/docs/orders.md", fences: 4 },
+  { file: "apps/docs/orders.md", fences: 6 },
   { file: "apps/docs/cards.md", fences: 2, pieces: { 0: asCardResult } },
-  { file: README, fences: 3 },
+  { file: README, fences: 4 },
 ];
 
 /**

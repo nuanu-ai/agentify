@@ -44,6 +44,8 @@ import {
   type MerchantKeyList,
   type OrderAcceptResponse,
   type OrderCallResponse,
+  type OrderCloseRequest,
+  type OrderCloseResponse,
   type PayoutWallet,
   type Problem,
   type ProjectedCard,
@@ -408,7 +410,7 @@ export class Gateway {
     // conditional write. Split in two, a late answer, a worker's fresh
     // hand-over or a retried delivery of this same reminder lands in between,
     // and a duplicate spends a second delivery: running out closes an order
-    // that has been paid for, and the money is owed back.
+    // that has been paid for before the merchant can finish it.
     await this.runner.apply(
       reminder.orderId,
       { kind: "handler_undelivered", at: this.runtime.clock() },
@@ -636,7 +638,7 @@ export class Gateway {
     const now = await this.runtime.store.selling(merchantId);
     if (now === "departed") {
       // A departure is not a heavier pause and this switch does not undo one:
-      // leaving closed the open orders and left refunds owed, and reopening
+      // leaving changed the open orders and left paid ones unfulfilled; reopening
       // would put the merchant back in the catalog with none of that unwound.
       return { ok: false, why: "this merchant has left, and selling is not resumed by a switch" };
     }
@@ -1829,8 +1831,8 @@ export class Gateway {
         // The machine refused the hand-over, so nobody is given the order:
         // passing it on would ask a merchant to work on a purchase that is
         // over, or hand them a parcel whose buyer's address is already erased.
-        // An ordinary order that owes a refund is not refused, because late
-        // goods still close the debt.
+        // An ordinary unfulfilled order remains deliverable until its
+        // merchant closes fulfillment.
         finished.push(delivery.handle);
         continue;
       }
@@ -2030,6 +2032,22 @@ export class Gateway {
       { merchantId },
     );
     return this.#answerFor(applied, "refused");
+  }
+
+  /** Stops future Agentify fulfillment, preserving the original payment and goods. */
+  async closeOrder(
+    merchantId: string,
+    orderId: string,
+    request: OrderCloseRequest,
+  ): Promise<OrderCloseResponse | null> {
+    const applied = await this.runner.apply(
+      orderId,
+      { kind: "close_called", at: this.runtime.clock(), ...request },
+      { openDeliveryId: null },
+      { merchantId },
+    );
+    const answered = this.#answerFor(applied, "accepted");
+    return answered === null || !answered.ok ? answered : { ok: true };
   }
 
   /**
@@ -2516,8 +2534,7 @@ function canonical(value: unknown): string {
 /**
  * A card in a mode this channel does not sell yet, refused as a finding at
  * publication rather than discovered by the first buyer. A parcel sells only
- * on the test channel: on the live one a lost parcel would take real money
- * with no way yet to record its refund.
+ * on the test channel until its readiness gates have been accepted.
  */
 function notOnThisChannel(card: Card, environment: Environment): Problem[] {
   return card.fulfillment === "ship" && environment === "live"
@@ -2526,7 +2543,7 @@ function notOnThisChannel(card: Card, environment: Environment): Problem[] {
           path: ["fulfillment"],
           code: "not_sold_yet",
           message:
-            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel cannot be recorded anywhere yet, so publish it on the test channel, where the money is not real',
+            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet; publish it on the test channel, where the money is not real',
         },
       ]
     : [];

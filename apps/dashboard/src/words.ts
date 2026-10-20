@@ -30,7 +30,7 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the money is the merchant's. Goods delivered and not paid wait
+ * the buyer and the original payment is recorded. Goods delivered and not paid wait
  * on the buyer, who can pay again.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
@@ -42,8 +42,8 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   declined: { text: "Declined at confirmation", tone: "quiet" },
   expired: { text: "Closed on time limit", tone: "quiet" },
   cancelled: { text: "Closed when you left", tone: "quiet" },
-  refund_due: { text: "Refund due", tone: "warn" },
-  refunded: { text: "Refunded", tone: "quiet" },
+  unfulfilled: { text: "Unfulfilled", tone: "warn" },
+  fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
   delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
 });
 
@@ -76,7 +76,7 @@ export const CARD_WORDS = Object.freeze({
 } as const satisfies Readonly<Record<string, Word>>);
 
 /**
- * Money taken and nothing delivered: the one ending a merchant has to act on.
+ * Money taken and nothing delivered: the merchant decides what happens next.
  * Goods delivered against a payment that never executed are not here: the
  * merchant owes nobody anything, the buyer can pay again and the order closes
  * when they do, and whether to revoke what was delivered meanwhile is the
@@ -85,7 +85,7 @@ export const CARD_WORDS = Object.freeze({
  * second ago, so demanding attention for it would be a claim beyond the
  * evidence.
  */
-export const needsYou = (status: OrderStatus): boolean => status === "refund_due";
+export const needsYou = (status: OrderStatus): boolean => status === "unfulfilled";
 
 /** Goods delivered and held until the buyer's payment goes through. */
 export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "delivered_unpaid";
@@ -149,7 +149,7 @@ export const ACCOUNT_WORDS: Readonly<
 > = Object.freeze({
   left: {
     title: "You have left Agentify",
-    says: "The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return.",
+    says: "New sales have stopped. Paid orders left unfulfilled remain recorded; you decide their remedy with the buyer and can close future Agentify fulfillment on Orders.",
     fix: null,
   },
   paused: {

@@ -23,7 +23,7 @@ written in; the rest are in English.
 | [0019](0019-non-custodial-payout-wallet.md) | Agentify never holds the money: a payment goes to the split of the merchant's wallet in force, and replacing that wallet on the live channel waits forty-eight hours after every account of the merchant is told. |
 | [0037](0037-every-payment-goes-to-the-merchants-split.md) | Every payment goes to the merchant's own split, a contract nobody owns, which pays 99.9% to the merchant's wallet and 0.1% to Agentify whenever somebody pays it out. |
 | [0038](0038-the-registry-of-payout-splits-is-never-rewritten.md) | Every split ever named as a payment address is recorded with all its parameters, and the record is never rewritten, so the money paid into a split can always be paid out. |
-| [0028](0028-late-goods-settle-a-refund-owed.md) | The merchant closes future Agentify fulfillment; Agentify records that action, attributes their explanation and does not confirm a refund or agreement. The closure contract is not built. |
+| [0028](0028-late-goods-settle-a-refund-owed.md) | The merchant closes future Agentify fulfillment through the SDK or dashboard; Agentify records that action, attributes their explanation and preserves original payment facts without confirming a refund or agreement. |
 | [0027](0027-recording-a-silent-charge.md) | A charge nobody heard back from reads `payment_unresolved`; a late facilitator answer or verified chain evidence resolves it without submitting another charge. |
 | [0020](0020-environment-derived-from-the-chain.md) | Whether money is real follows from the payment network alone: Base Sepolia is a test deployment, Base a live one, and any other chain stops the process. |
 

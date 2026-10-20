@@ -46,10 +46,10 @@ describe("the invariants of the order's money", () => {
   // person reads when an order will not persist.
 
   it("catches an order that claims a debt without a charge behind it", () => {
-    const impossible: Order = { ...reach("dispatched"), state: "refund_due", payment: "none" };
+    const impossible: Order = { ...reach("dispatched"), state: "unfulfilled", payment: "none" };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
-      "the order is in refund_due with no charge behind the debt",
+      "the order is in unfulfilled without a confirmed original payment",
     ]);
   });
 
@@ -65,7 +65,7 @@ describe("the invariants of the order's money", () => {
     const impossible: Order = { ...reach("dispatched"), state: "expired", payment: "settled" };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
-      "the buyer paid and the order sits in expired, which records neither goods nor a debt",
+      "the buyer paid and the order sits in expired, which records neither completed nor stopped paid fulfillment",
       "the buyer paid and the order is closed as expired, owing nothing",
     ]);
   });
@@ -74,7 +74,7 @@ describe("the invariants of the order's money", () => {
     const impossible: Order = { ...reach("delivered_unpaid"), payment: "settled" };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
-      "the buyer paid and the order sits in delivered_unpaid, which records neither goods nor a debt",
+      "the buyer paid and the order sits in delivered_unpaid, which records neither completed nor stopped paid fulfillment",
       "the order is marked unpaid and the money did move",
     ]);
   });
@@ -137,7 +137,7 @@ describe("a refusal before the charge never creates a debt", () => {
   for (const [what, order] of refusalsBeforeMoney) {
     it(`leaves nothing owed after ${what}`, () => {
       expect(order.payment).not.toBe("settled");
-      expect(order.state).not.toBe("refund_due");
+      expect(order.state).not.toBe("unfulfilled");
       expect(moneyInvariantViolations(order)).toStrictEqual([]);
     });
   }
@@ -151,7 +151,7 @@ describe("money taken is always accounted for", () => {
     ]);
     const { order } = must(paid, { kind: "merchant_departed", at: T0 + 3 });
 
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
   });
 });
 

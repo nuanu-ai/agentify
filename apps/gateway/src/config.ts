@@ -234,7 +234,7 @@ const environmentSchema = z.object({
    * The same wait on an order paid before its goods (asynchronous, confirmed
    * or a parcel), which no promised ceiling contains. The payment layer
    * answers only once the transfer is in a block, so a wait near the block
-   * time closes orders whose money then arrives, each as a refund owed. The
+   * time closes orders whose later confirmed payment leaves them unfulfilled. The
    * purchase call does not wait on this; it waits on the payment layer itself.
    */
   SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
@@ -283,7 +283,7 @@ const environmentSchema = z.object({
   /**
    * How many times a failed reminder is delivered again. A reminder is the only
    * thing that declares an order overdue, so losing one to a briefly
-   * unreachable store costs a refund nobody marks; retrying forever would turn
+   * unreachable store hides unfulfilled paid orders; retrying forever would turn
    * a defect into a loop.
    */
   REMINDER_ATTEMPTS: countAbove(3),
@@ -296,16 +296,16 @@ const environmentSchema = z.object({
   SETTLE_IN_FLIGHT_RETRY_MS: durationMs(1_000),
   /**
    * How long a claim on a payment is kept. A claim guards the window between
-   * verifying a payment and executing the charge; after that the token itself
-   * refuses a second use. The route that makes claims takes no key, so they
-   * cannot be kept forever.
+   * verifying a payment and accepting it. Unaccepted claims expire because
+   * their public route takes no key. Accepted claims remain retained to prevent
+   * reuse after closure or a delayed payment outcome.
    */
   CLAIM_RETENTION_MS: durationMs(30 * 24 * 60 * 60 * 1_000),
   /**
    * How long an order may sit paid before the sweep decides its envelope
    * reached nobody and sends it out again. Too short and a busy merchant who is
    * merely between polls gets duplicates; too long and a paid order reaches
-   * nobody until its fulfillment deadline turns it into a debt.
+   * nobody until its fulfillment deadline marks it unfulfilled.
    */
   SWEEP_DISPATCH_GRACE_MS: durationMs(5 * 60 * 1_000),
   /**

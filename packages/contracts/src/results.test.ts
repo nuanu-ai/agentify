@@ -172,7 +172,7 @@ describe("what delivering or refusing an order answers with", () => {
       "accepted",
       "delivered",
       "already_delivered",
-      "debt_closed_by_delivery",
+      "delivered_late",
       "refused",
       "purchase_already_closed",
     ]);
@@ -190,7 +190,7 @@ describe("what delivering or refusing an order answers with", () => {
     for (const result of ORDER_CALL_RESULTS) {
       expect(OrderCallResultSchema.safeParse(result).success, result).toBe(true);
     }
-    for (const result of ["ok", "success", "delivered_twice", ""]) {
+    for (const result of ["ok", "success", "delivered_twice", "debt_closed_by_delivery", ""]) {
       expect(OrderCallResultSchema.safeParse(result).success, JSON.stringify(result)).toBe(false);
     }
   });
@@ -199,7 +199,7 @@ describe("what delivering or refusing an order answers with", () => {
 describe("the error codes the calls answer with", () => {
   it("names the ones the merchant is expected to branch on", () => {
     expect([...ORDER_CALL_ERROR_CODES]).toStrictEqual([
-      "refund_already_settled",
+      "fulfillment_closed",
       "order_already_closed",
       "not_applicable_in_mode",
       "delivery_does_not_match_card",
@@ -239,8 +239,8 @@ describe("the error codes the calls answer with", () => {
 
 describe("an error from a call that did not go through", () => {
   const error = {
-    code: "refund_settled",
-    message: "the refund for this order has already been paid out",
+    code: "fulfillment_closed",
+    message: "the merchant closed future Agentify fulfillment for this order",
     retryable: false,
   };
 

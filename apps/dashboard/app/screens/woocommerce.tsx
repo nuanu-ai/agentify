@@ -244,14 +244,14 @@ function ParcelRules({ base }: Readonly<{ base: string }>) {
   return (
     <section className={styles.panel}>
       <h2>Parcels</h2>
-      <p className={styles.sub}>These decide whether you keep the money for a parcel.</p>
+      <p className={styles.sub}>These describe what Agentify records about a parcel.</p>
       <ol className={styles.rules}>
         <li>
           <span>
             Ship within <b>seven days</b> of payment and mark the order <b>Completed</b> in
-            WooCommerce. Not Completed by then, it shows on Orders as a refund you owe; Completed
-            later, within thirty days of the order, still clears it unless a refund is already
-            recorded.
+            WooCommerce. Not Completed by then, it shows on Orders as unfulfilled; Completed later,
+            within thirty days of the order, still records shipment unless you have closed Agentify
+            fulfillment.
           </span>
         </li>
         <li>
@@ -263,15 +263,15 @@ function ParcelRules({ base }: Readonly<{ base: string }>) {
         </li>
         <li>
           <span>
-            An order you cancel or refund in WooCommerce has not shipped: it becomes a refund you
-            owe when its seven days run out.
+            An order you cancel or refund in WooCommerce has not shipped: it is unfulfilled when its
+            seven days run out.
           </span>
         </li>
         <li>
           <span>
-            If Orders shows a refund owed before the seven days are up while your shop holds a paid
-            order for it, <b>do not ship</b>: Agentify could not confirm it, and you owe the buyer a
-            refund instead.
+            If Orders shows an unfulfilled order before the seven days are up while your shop holds
+            a paid order for it, <b>do not ship</b>: Agentify could not confirm it, and you owe the
+            buyer a remedy you arrange with the buyer instead.
           </span>
         </li>
         <li>
@@ -383,9 +383,10 @@ function Connected({
                   Deletes Agentify's copy of the shop's keys, which stay valid in WooCommerce until
                   you revoke them there, and switches you back to your own code: the shop's cards go
                   off sale, and the cards your code published come back with selling stopped. Orders
-                  still waiting on the shop have to finish first. A parcel already owed a refund
-                  stays owed: once the shop is disconnected, marking it Completed no longer clears
-                  the debt. <a href={`${GUIDE}#disconnecting`}>What disconnecting does</a>.
+                  still waiting on the shop have to finish first. An unfulfilled parcel stays
+                  unfulfilled: once the shop is disconnected, marking it Completed no longer records
+                  shipment in Agentify.{" "}
+                  <a href={`${GUIDE}#disconnecting`}>What disconnecting does</a>.
                 </p>
                 <Button variant="secondary" pending={pending}>
                   <span className={styles.leave}>Disconnect shop</span>

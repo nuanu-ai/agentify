@@ -15,9 +15,9 @@ import {
   type Integration,
   type IntegrationSwitch,
   type MerchantScope,
+  NO_PENDING_HANDLER,
   type OrderChange,
   type OrderLookup,
-  OWING_ONLY_MONEY,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -514,7 +514,7 @@ export class MemoryStore implements Store {
         (record) =>
           record.merchantId === merchantId &&
           isOpen(record.order.state) &&
-          !(OWING_ONLY_MONEY as readonly string[]).includes(record.order.state),
+          !(NO_PENDING_HANDLER as readonly string[]).includes(record.order.state),
       )
       .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
       .map((record) => record.order.id);

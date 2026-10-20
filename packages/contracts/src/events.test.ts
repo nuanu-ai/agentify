@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ORDER_EVENT_TYPES, OrderEventSchema, RefundDueReasonSchema } from "./events.js";
+import { ORDER_EVENT_TYPES, OrderEventSchema, UnfulfilledReasonSchema } from "./events.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
-const refundDue = {
-  type: "order.refund_due",
+const unfulfilled = {
+  type: "order.unfulfilled",
   order_id: "ord_7c1e05",
   at: "2026-08-27T10:20:00Z",
   price: { amount: "5.00", currency: "USD" },
@@ -28,14 +28,14 @@ describe("the events a merchant hears without asking", () => {
 
   it("names the three", () => {
     expect(Object.values(ORDER_EVENT_TYPES)).toStrictEqual([
-      "order.refund_due",
+      "order.unfulfilled",
       "order.unpaid_after_confirmation",
       "order.payment_failed_after_delivery",
     ]);
   });
 
-  it("accepts an order marked as owing a refund", () => {
-    expect(OrderEventSchema.parse(refundDue)).toStrictEqual(refundDue);
+  it("accepts an order marked as unfulfilled", () => {
+    expect(OrderEventSchema.parse(unfulfilled)).toStrictEqual(unfulfilled);
   });
 
   it("accepts a confirmed order the agent never paid for", () => {
@@ -49,7 +49,14 @@ describe("the events a merchant hears without asking", () => {
   it("refuses an event of a kind we do not send", () => {
     // A consumer switching on the type must be able to read an unknown one as
     // a version mismatch, not a typo.
-    for (const type of ["refund_due", "order.refunded", "order.delivered", ""]) {
+    for (const type of [
+      "unfulfilled",
+      "order.refund_due",
+      "order.refunded",
+      "order.fulfillment_closed",
+      "order.delivered",
+      "",
+    ]) {
       expect(OrderEventSchema.safeParse({ ...unpaid, type }).success, JSON.stringify(type)).toBe(
         false,
       );
@@ -63,41 +70,42 @@ describe("the events a merchant hears without asking", () => {
   for (const field of ["order_id", "at"]) {
     it(`refuses an event without ${field} and names it`, () => {
       expectMissingFieldRejected(OrderEventSchema, unpaid, field);
-      expectMissingFieldRejected(OrderEventSchema, refundDue, field);
+      expectMissingFieldRejected(OrderEventSchema, unfulfilled, field);
     });
   }
 });
 
-describe("an order that owes a refund", () => {
+describe("an unfulfilled paid order", () => {
   // The promise: the merchant learns which order, how much and why in one
-  // message, since returning the money is theirs to do.
+  // message, without asserting a remedy or an amount to refund.
 
   for (const field of ["price", "reason"]) {
-    it(`refuses a refund-due event without ${field} and names it`, () => {
-      expectMissingFieldRejected(OrderEventSchema, refundDue, field);
+    it(`refuses an unfulfilled event without ${field} and names it`, () => {
+      expectMissingFieldRejected(OrderEventSchema, unfulfilled, field);
     });
   }
 
-  it("tells the three ways an order comes to owe a refund apart", () => {
+  it("tells the three ways an order becomes unfulfilled apart", () => {
     for (const reason of ["refused", "deadline_passed", "merchant_left"]) {
-      expect(RefundDueReasonSchema.safeParse(reason).success, reason).toBe(true);
-      expect(OrderEventSchema.safeParse({ ...refundDue, reason }).success, reason).toBe(true);
+      expect(UnfulfilledReasonSchema.safeParse(reason).success, reason).toBe(true);
+      expect(OrderEventSchema.safeParse({ ...unfulfilled, reason }).success, reason).toBe(true);
     }
   });
 
   it("refuses a reason that is not one of them", () => {
-    expect(errorOf(OrderEventSchema, { ...refundDue, reason: "out_of_stock" })).toContain("reason");
+    expect(errorOf(OrderEventSchema, { ...unfulfilled, reason: "out_of_stock" })).toContain(
+      "reason",
+    );
   });
 
   it("refuses a sum written as a number", () => {
     expect(
-      OrderEventSchema.safeParse({ ...refundDue, price: { amount: 5, currency: "USD" } }).success,
+      OrderEventSchema.safeParse({ ...unfulfilled, price: { amount: 5, currency: "USD" } }).success,
     ).toBe(false);
   });
 
-  it("does not carry a sum on the events where no sum is owed", () => {
-    // Neither of these leaves the merchant owing money, and attaching a sum
-    // would read as if it did.
+  it("carries the original price only on the unfulfilled paid event", () => {
+    // These events establish no paid sale and therefore carry no purchase price.
     expect(
       OrderEventSchema.safeParse({ ...unpaid, price: { amount: "5.00", currency: "USD" } }).success,
     ).toBe(false);

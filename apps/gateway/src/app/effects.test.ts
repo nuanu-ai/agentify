@@ -324,7 +324,7 @@ describe("the sweep of what an order is still owed", () => {
       at: harnessed.now(),
       deadline: "async_fulfillment",
     });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
 
     // Drain the stream, as a running worker would.
     const said = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);

@@ -32,6 +32,8 @@ import type {
   Order,
   OrderAcceptResponse,
   OrderCallResponse,
+  OrderCloseRequest,
+  OrderCloseResponse,
   OrderWithStatus,
   PublishResult,
   QuoteRequest,
@@ -121,6 +123,16 @@ export interface OrderCalls {
 
   /** Takes the order on from outside a handler. Repeating it is harmless. */
   accept(): Promise<OrderAcceptResponse>;
+
+  /**
+   * Stops future fulfillment through Agentify. Repeating preserves the first
+   * closure and message. The message is the merchant's statement to the buyer;
+   * Agentify confirms no refund or agreement. This does not cancel a payment
+   * already accepted for execution: its original outcome may still update.
+   * Closing causes no new charge, and original payment recovery remains.
+   * Already delivered or shipped orders are refused.
+   */
+  close(options?: OrderCloseRequest): Promise<OrderCloseResponse>;
 }
 
 /**
@@ -240,7 +252,7 @@ export interface OrdersNamespace {
   /**
    * Orders and the states they are in. With `open: true`, only the ones a
    * restarted worker should walk: orders it was handed and has not finished,
-   * an order owing a refund, and one delivered but never paid for. An order
+   * an unfulfilled paid order, and one delivered but never paid for. An order
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it. Throws `AgentifyError` when the call
    * fails.
@@ -363,7 +375,7 @@ export class AgentifyError extends Error {
  * statement about what this package knows, not about the order.
  *
  * The sentence saying the call may be repeated safely is added only where the
- * call is idempotent (delivering, accepting; not refusing) and repeating it
+ * call is idempotent (delivering, accepting or closing; not refusing) and repeating it
  * could get anywhere.
  */
 const failedCall = (repeatIsSafe: boolean, failure: TransportFailure): CallError => {
@@ -570,6 +582,14 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
     },
     deliver: (delivery) => orderCall("deliver_order", orderId, delivery),
     refuse: (refusal) => orderCall("refuse_order", orderId, refusal),
+    close: async (options = {}) => {
+      reachable();
+      const answer = await callRoute(gateway, "close_order", {
+        path: { order_id: orderId },
+        body: options,
+      });
+      return answer.ok ? answer.document : { ok: false, error: failedCall(true, answer.failure) };
+    },
     accept: (...given: unknown[]) => {
       if (given.length > 0) reportSafely(registry.problem, acceptanceArgumentWarning(orderId));
       return acceptCall(orderId);

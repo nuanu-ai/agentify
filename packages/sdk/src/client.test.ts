@@ -262,7 +262,7 @@ void compilerRefusesWhatPublishingRefuses;
 describe("reading orders back", () => {
   it("reads one order and the state it is in", async () => {
     const agentify = await gatewayServing({
-      get_order: () => ({ body: { ...order, status: "in_progress" } }),
+      get_order: () => ({ body: { ...order, status: "in_progress", payment_status: "paid" } }),
     });
 
     const read = await agentify.orders.get("order-1");
@@ -275,7 +275,12 @@ describe("reading orders back", () => {
     // "SKU 100/1" is a valid identifier; unencoded it is a different route.
     const agentify = await gatewayServing({
       get_order: (call) => ({
-        body: { ...order, id: call.params.order_id ?? "", status: "delivered" },
+        body: {
+          ...order,
+          id: call.params.order_id ?? "",
+          status: "delivered",
+          payment_status: "paid",
+        },
       }),
     });
 
@@ -392,8 +397,8 @@ describe("closing an order the merchant took on", () => {
     // These errors are returned with whether a repeat could help, so a
     // merchant never wraps a retry loop around a case no repeat changes.
     const error = {
-      code: "refund_already_settled",
-      message: "a refund is recorded for this order",
+      code: "fulfillment_closed",
+      message: "the merchant closed future fulfillment through Agentify",
       retryable: false,
     };
     const agentify = await gatewayServing({
@@ -542,8 +547,7 @@ describe("closing an order the merchant took on", () => {
 
   it("promises a safe repeat only where the contract promises one", async () => {
     // Delivering and accepting may be repeated; refusing is documented as
-    // neither, and retrying it on this package's say-so could open a refund
-    // debt.
+    // neither, and retrying it on this package's say-so could apply a refusal after fulfillment.
     const agentify = await gatewayServing({
       deliver_order: () => ({ text: "not an answer" }),
       refuse_order: () => ({ text: "not an answer" }),

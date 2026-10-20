@@ -18,6 +18,7 @@ import {
   MerchantCardListSchema,
   OrderAcceptResponseSchema,
   OrderCallResponseSchema,
+  OrderCloseResponseSchema,
   OrderListQuerySchema,
   OrderListSchema,
   OrderWithStatusSchema,
@@ -37,8 +38,9 @@ import {
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
+import { MerchantClosureSchema, OrderCloseRequestSchema } from "./closure.js";
 import { WorkerEnvelopeSchema } from "./envelope.js";
-import { OrderEventSchema, RefundDueReasonSchema } from "./events.js";
+import { OrderEventSchema, UnfulfilledReasonSchema } from "./events.js";
 import { EvmAddressSchema } from "./evm-address.js";
 import {
   AcceptanceSchema,
@@ -59,7 +61,7 @@ import {
   SellerNameSchema,
 } from "./merchant.js";
 import { OrderSchema } from "./order.js";
-import { OrderEndingReasonSchema, OrderStatusSchema } from "./order-status.js";
+import { OrderEndingReasonSchema, OrderStatusSchema, PaymentStatusSchema } from "./order-status.js";
 import {
   FieldSpecSchema,
   ParamNameSchema,
@@ -98,6 +100,7 @@ export type {
   MerchantCardList,
   OrderAcceptResponse,
   OrderCallResponse,
+  OrderCloseResponse,
   OrderList,
   OrderListQuery,
   OrderWithStatus,
@@ -127,6 +130,7 @@ export {
   mountableRoutes,
   OrderAcceptResponseSchema,
   OrderCallResponseSchema,
+  OrderCloseResponseSchema,
   OrderListQuerySchema,
   OrderListSchema,
   OrderWithStatusSchema,
@@ -162,14 +166,16 @@ export {
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
+export type { MerchantClosure, OrderCloseRequest } from "./closure.js";
+export { MerchantClosureSchema, OrderCloseRequestSchema } from "./closure.js";
 export type { WorkerEnvelope, WorkerEnvelopeKind } from "./envelope.js";
 export {
   WORKER_ENVELOPE_KINDS,
   WORKER_ENVELOPE_PAYLOADS,
   WorkerEnvelopeSchema,
 } from "./envelope.js";
-export type { OrderEvent, RefundDueReason } from "./events.js";
-export { ORDER_EVENT_TYPES, OrderEventSchema, RefundDueReasonSchema } from "./events.js";
+export type { OrderEvent, UnfulfilledReason } from "./events.js";
+export { ORDER_EVENT_TYPES, OrderEventSchema, UnfulfilledReasonSchema } from "./events.js";
 export type { EvmAddress } from "./evm-address.js";
 export { checksummedAddressOf, EvmAddressSchema } from "./evm-address.js";
 export type { Acceptance, Delivery, HandlerAnswer, Refusal, RefusalCode } from "./handler.js";
@@ -205,12 +211,13 @@ export {
 } from "./merchant.js";
 export type { Order } from "./order.js";
 export { OrderSchema } from "./order.js";
-export type { OrderStatus } from "./order-status.js";
+export type { OrderStatus, PaymentStatus } from "./order-status.js";
 export {
   ORDER_ENDING_REASONS,
   ORDER_STATUSES,
   OrderEndingReasonSchema,
   OrderStatusSchema,
+  PaymentStatusSchema,
 } from "./order-status.js";
 export type {
   FieldSpec,
@@ -325,12 +332,16 @@ export const schemas = Object.freeze({
   order_accept_response: OrderAcceptResponseSchema,
   order_call_response: OrderCallResponseSchema,
   order_call_result: OrderCallResultSchema,
+  order_close_request: OrderCloseRequestSchema,
+  order_close_response: OrderCloseResponseSchema,
   order_event: OrderEventSchema,
   order_list: OrderListSchema,
   order_list_query: OrderListQuerySchema,
   order_status: OrderStatusSchema,
   order_ending_reason: OrderEndingReasonSchema,
   order_with_status: OrderWithStatusSchema,
+  payment_status: PaymentStatusSchema,
+  merchant_closure: MerchantClosureSchema,
   param_name: ParamNameSchema,
   param_spec: ParamSpecSchema,
   param_type: ParamTypeSchema,
@@ -348,7 +359,7 @@ export const schemas = Object.freeze({
   receipt: ReceiptSchema,
   receipt_list: ReceiptListSchema,
   receipt_outcome: ReceiptOutcomeSchema,
-  refund_due_reason: RefundDueReasonSchema,
+  unfulfilled_reason: UnfulfilledReasonSchema,
   refusal: RefusalSchema,
   refusal_code: RefusalCodeSchema,
   sale_price: SalePriceSchema,

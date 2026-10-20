@@ -1,7 +1,7 @@
 /**
  * What the agent is told an order came to: the portal's table of endings read
  * from the buyer's side, plus a word for an order that has not ended and one
- * for a debt paid back. It is kept apart from the state because the machine
+ * for fulfillment that Agentify will no longer perform. It is kept apart from the state because the machine
  * keeps distinctions the merchant's accounting needs, and the agent is told
  * only what is true of his purchase. An order whose answer has not arrived says
  * so as `in_progress`, so the agent never reads silence as a refusal.
@@ -46,10 +46,10 @@ export const ORDER_OUTCOMES = [
   "expired",
   /** The merchant left and the order closed with him. */
   "cancelled",
-  /** The money was taken and the goods never came: a refund is owed. */
-  "refund_due",
-  /** A refund of it is recorded. */
-  "refunded",
+  /** The original payment settled and no delivery is recorded. */
+  "unfulfilled",
+  /** Agentify fulfillment is closed; this says nothing about any refund. */
+  "fulfillment_closed",
   /**
    * The merchant produced the goods for a synchronous purchase and the charge
    * did not go through. The purchase did not happen; repeating it drives the
@@ -69,9 +69,12 @@ export function outcomeFor(order: Order): OrderOutcome {
   //
   // The test reads the payment stage, not the closure. An order closed on the
   // silence keeps that closure after the charge reports in and the order
-  // becomes a debt, and reading the closure would go on claiming nobody knows
-  // about an order that now owes a refund.
-  if (order.payment === "outcome_unknown") {
+  // becomes unfulfilled, and reading the closure would keep claiming nobody
+  // knows after the payment was confirmed.
+  if (
+    order.payment === "outcome_unknown" ||
+    (order.state === "fulfillment_closed" && order.payment === "settling")
+  ) {
     return "payment_unresolved";
   }
 
@@ -88,10 +91,10 @@ export function outcomeFor(order: Order): OrderOutcome {
       return order.mode.parcel === true ? "shipped" : "delivered";
     case "delivered_unpaid":
       return "delivered_unpaid";
-    case "refund_due":
-      return "refund_due";
-    case "refunded":
-      return "refunded";
+    case "unfulfilled":
+      return "unfulfilled";
+    case "fulfillment_closed":
+      return "fulfillment_closed";
     case "failed":
       // The merchant's handler refused before any money moved. The merchant's
       // own metrics can tell this apart from a purchase that never reached
@@ -182,7 +185,7 @@ export function onTheMerchantsOpenList(order: Order): boolean {
     case "paid":
     case "dispatched":
     case "fulfilled":
-    case "refund_due":
+    case "unfulfilled":
     case "delivered_unpaid":
       return true;
     case "created":
@@ -190,7 +193,7 @@ export function onTheMerchantsOpenList(order: Order): boolean {
     case "awaiting_confirmation":
     case "confirmed":
     case "delivered":
-    case "refunded":
+    case "fulfillment_closed":
     case "failed":
     case "rejected":
     case "declined":

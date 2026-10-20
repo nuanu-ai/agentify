@@ -238,16 +238,16 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
       deadline: "async_fulfillment",
     });
 
-    expect(late.order.state).toBe("refund_due");
+    expect(late.order.state).toBe("unfulfilled");
     expect(late.order.payment).toBe("settled");
     expect(late.effects).toStrictEqual([
       {
-        kind: "mark_refund_due",
+        kind: "mark_unfulfilled",
         closure: { cause: "deadline_expired", deadline: "async_fulfillment" },
       },
-      { kind: "emit_merchant_event", event: "order.refund_due" },
+      { kind: "emit_merchant_event", event: "order.unfulfilled" },
     ]);
-    expect(outcomeFor(late.order)).toBe("refund_due");
+    expect(outcomeFor(late.order)).toBe("unfulfilled");
 
     // A profile that shows up an hour late still closes the debt: the buyer
     // paid for goods, and late goods beat a refund.
@@ -257,7 +257,7 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     expect(outcomeFor(rescued.order)).toBe("delivered");
     expect(rescued.effects).toContainEqual({
       kind: "answer_merchant",
-      answer: { ok: true, result: "debt_closed_by_delivery" },
+      answer: { ok: true, result: "delivered_late" },
     });
   });
 });

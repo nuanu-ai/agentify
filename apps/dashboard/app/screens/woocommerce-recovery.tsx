@@ -66,8 +66,8 @@ export function WooRecoveryScreen({
                   : "The existing shop order and download are saved. Retry sends that same download to Agentify; it does not create another shop order."}
               </p>
               <p className="quiet">
-                This page cannot create a shop order or record a refund. If you already refunded the
-                buyer, do not deliver the download.
+                This page cannot create a shop order or send or verify a refund. If Agentify must
+                stop delivering this order, close fulfillment on Orders before retrying recovery.
               </p>
               <PostForm
                 document

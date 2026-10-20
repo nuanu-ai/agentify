@@ -1400,13 +1400,17 @@ describe("whose purchase it is", () => {
     expect(stranger.body).toStrictEqual({
       error: {
         code: "not_this_purchase",
-        message: "this order already belongs to another payment",
+        message: expect.stringMatching(/\S/),
         // The order stays somebody else's, so this answer never changes.
         retryable: false,
       },
     });
+    const orderId = (bought.body as { order_id: string }).order_id;
+    expect(JSON.stringify(stranger.body)).not.toContain(orderId);
+    expect(JSON.stringify(stranger.body)).not.toContain("status_url");
     // The stranger was never charged, and the order is still the buyer's.
     expect(harnessed.facilitator.settles).toHaveLength(1);
+    expect((await harnessed.store.orderById(orderId))?.paidBy).toBe(BUYER);
   });
 });
 

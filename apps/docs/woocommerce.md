@@ -112,29 +112,28 @@ you no longer want buyers to see.
 
 ## Parcels
 
-These rules decide whether you keep the money for a parcel.
+These rules describe what Agentify records about a parcel; your shop owns the policy and remedy if it does not arrive.
 
 1. Ship within seven days of payment and mark the order Completed in
    WooCommerce, in the shop it was sold from. The seven days are Agentify's
    number, because WooCommerce has no field for it.
 2. An order not marked Completed within its seven days shows on your Orders
-   screen as a refund you owe. Marking it Completed later, within thirty days
-   of the order being placed, still clears that debt, unless a refund has
-   already been recorded.
+   screen as unfulfilled. Marking it Completed later, within thirty days
+   of the order being placed, still records shipment unless you have closed Agentify fulfillment.
 3. Completed tells the buyer the parcel has shipped, and it cannot be taken
    back. Where the order has a fulfilled WooCommerce fulfilment, the buyer gets
    its carrier and tracking; otherwise the buyer is told your shipping
    method's name as the carrier, with no tracking number.
 4. An order you cancel or refund in WooCommerce has not shipped, and becomes a
-   refund you owe when its seven days run out.
-5. If Orders shows a refund owed before the seven days are up while your shop
+   paid order left unfulfilled when its seven days run out.
+5. If Orders shows an unfulfilled order before the seven days are up while your shop
    holds a paid order for it, do not ship that order: Agentify could not
-   confirm it, and you owe the buyer a refund instead.
+   confirm it. Decide the remedy with the buyer, and close Agentify fulfillment if it should stop accepting delivery.
 6. A parcel's card is published only once your shop's site is set in
    Settings, because the site is where a buyer asks about a parcel that did not
    arrive.
 
-What a refund owed means for your money is on [Money](/money#if-the-buyer-did-not-get-the-goods).
+Use **Orders → Order details → Close fulfillment** to stop future Agentify delivery for the order. This shared Agentify action changes no WooCommerce setting and sends no cancellation or refund to your shop. Stop shop work and arrange the remedy yourself. A payment already accepted for execution may still complete; closure preserves its recorded outcome. The optional explanation is shown as your statement, not a refund Agentify has verified. See [Closing fulfillment](/orders#closing-fulfillment).
 
 ## Recovering a download
 
@@ -157,8 +156,7 @@ it shows the saved binding and says whether Agentify confirms delivery. An
 unavailable check leaves the result unresolved; it is not proof that nothing
 was recorded. A different shop order cannot replace a saved binding.
 
-Recovery does not send or record a refund. If you already refunded the buyer,
-do not deliver the download. A parcel and a download refused before a shop
+Recovery delivers the download; it does not send or verify a refund. Close Agentify fulfillment before retrying work that must not deliver, and arrange refunds or other remedies in your own system. A closed order has no recovery action. A parcel and a download refused before a shop
 order was created have no recovery action on this page.
 
 ## Disconnecting
@@ -171,9 +169,9 @@ on Cards.
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
 Completed in WooCommerce, an unpaid purchase when its buyer pays or lets it
-lapse, and any of them when its time runs out. A parcel already owed a refund
+lapse, or when you close Agentify fulfillment. A parcel already unfulfilled
 is no longer followed after you disconnect, so marking it Completed then does
-not clear the debt.
+not record shipment in Agentify.
 
 Disconnecting does not revoke the keys inside your shop; that is done in
 WooCommerce → Settings → Advanced → REST API.
@@ -181,8 +179,6 @@ WooCommerce → Settings → Advanced → REST API.
 ## What is not settled yet
 
 - Parcels on the live channel. A parcel sells on the test channel only until
-  the refund of a lost parcel can be recorded, and how a live parcel's time to
+  the live parcel readiness gates pass; how a live parcel's time to
   ship is set is not decided.
-- How a refund you owe goes back to the buyer. Agentify records the debt on
-  your Orders screen; how the money travels back is open
-  ([Money](/money#if-the-buyer-did-not-get-the-goods)).
+- How a buyer reaches your support to arrange a remedy outside Agentify.

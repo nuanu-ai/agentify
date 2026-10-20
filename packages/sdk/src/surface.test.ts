@@ -33,7 +33,7 @@ const order: Order = {
   test: false,
 };
 
-const openOrder: OrderWithStatus = { ...order, status: "in_progress" };
+const openOrder: OrderWithStatus = { ...order, status: "in_progress", payment_status: "paid" };
 
 const question: QuoteRequest = {
   merchant_item_id: "access-monthly",
@@ -43,7 +43,7 @@ const question: QuoteRequest = {
 };
 
 const event: OrderEvent = {
-  type: "order.refund_due",
+  type: "order.unfulfilled",
   order_id: "order-1",
   at: AT,
   price: { amount: "5.00", currency: "USD" },
@@ -99,7 +99,7 @@ describe("registering what a process answers", () => {
     await agentify.start();
 
     await waitUntil(() => seen.length === 3, "all three kinds to reach their handlers");
-    expect(seen).toStrictEqual(["order order-1", "quote price-1", "event order.refund_due"]);
+    expect(seen).toStrictEqual(["order order-1", "quote price-1", "event order.unfulfilled"]);
   });
 
   it("refuses a second handler for a kind rather than replacing the first in silence", async () => {

@@ -496,7 +496,13 @@ const gatewayOwedOneOrder = async (): Promise<{
         open && !standing
           ? []
           : handed
-            ? [{ ...OWED_ORDER, status: delivered ? "delivered" : "in_progress" }]
+            ? [
+                {
+                  ...OWED_ORDER,
+                  status: delivered ? "delivered" : "in_progress",
+                  payment_status: "paid",
+                },
+              ]
             : [];
       response.end(JSON.stringify({ orders: rows }));
       return;
@@ -616,7 +622,13 @@ const gatewayEndingAnOrderItself = async (): Promise<{
           orders:
             open && over
               ? []
-              : [{ ...OWED_ORDER, status: over ? "expired" : ("in_progress" as const) }],
+              : [
+                  {
+                    ...OWED_ORDER,
+                    status: over ? "expired" : ("in_progress" as const),
+                    payment_status: "not_paid",
+                  },
+                ],
         }),
       );
       return;

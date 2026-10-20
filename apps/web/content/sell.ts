@@ -180,7 +180,10 @@ export const SELL_LANDING = {
     parts: [
       ["Product cards", "Title, price, and availability. You can pause any card."],
       ["Orders", "What the agent bought, whether the order is paid, and how it was fulfilled."],
-      ["Receipts", "Proof of every payment and a history of completed sales."],
+      [
+        "Receipts",
+        "Original payment records for fulfilled orders and a history of completed sales.",
+      ],
       ["Integrations", "The WooCommerce connection and API keys for the SDK."],
       ["Settings", "Seller name, payout wallet, how to get paid out, and account access."],
     ],

@@ -141,6 +141,13 @@
       "when": 1792418702586,
       "tag": "0019_payment_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792422838483,
+      "tag": "0020_merchant_fulfillment_closure",
+      "breakpoints": true
     }
   ]
 }

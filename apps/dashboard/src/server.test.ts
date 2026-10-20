@@ -3563,7 +3563,7 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("Pause all sales");
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
-    expect(text).toContain("closed with you");
+    expect(text).toContain("Paid orders left unfulfilled remain recorded");
   });
 
   it("is offered no switch on a card, not even one they paused before they left", async () => {
@@ -3712,7 +3712,7 @@ describe("the orders screen", () => {
     expect(readable((await browser.get("/orders")).html)).toContain("No orders yet");
   });
 
-  it("calls out an order that owes a refund, and says what the merchant does about it", async () => {
+  it("calls out a paid unfulfilled order without prescribing a refund", async () => {
     // The one open state that costs the merchant money must be shown, not left
     // to be noticed.
     const { browser, gateway, harnessed } = await started({
@@ -3732,7 +3732,7 @@ describe("the orders screen", () => {
             headers: { authorization: `Bearer ${KEY}` },
           })
         ).body as { orders: { status: string }[] };
-        expect(listed.orders.map((order) => order.status)).toContain("refund_due");
+        expect(listed.orders.map((order) => order.status)).toContain("unfulfilled");
       },
       { timeout: 2_000, interval: 5 },
     );
@@ -3740,16 +3740,17 @@ describe("the orders screen", () => {
     await browser.signIn();
     const text = readable((await browser.get("/orders?show=open")).html);
 
-    expect(text).toContain("Refund due");
+    expect(text).toContain("Unfulfilled");
     expect(text).toContain("Needs you 1");
     // The whole price, though the split paid the merchant only their share,
     // and said to be a test purchase's, as every sale on this stack is.
-    expect(text).toContain("the full price of this test purchase, 8.00 USD");
-    // `refund_due` is what a program branches on; a merchant reads a sentence.
-    expect(text).not.toContain("refund_due");
+    expect(text).toContain("8.00 USD test");
+    expect(text).not.toContain("Return the full price");
+    // `unfulfilled` is what a program branches on; a merchant reads a sentence.
+    expect(text).not.toContain("unfulfilled");
   });
 
-  it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
+  it("says why an order was unfulfilled without guessing that a window ran out", async () => {
     // A refund falls due when the merchant refuses an order already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
     // send a merchant reconciling it looking for a deadline that never passed.
@@ -3786,7 +3787,7 @@ describe("the orders screen", () => {
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
-    expect(text).toContain("Waiting on the buyer 1 Nothing owed by you");
+    expect(text).toContain("Waiting on the buyer 1");
     expect(text).not.toMatch(/needs? you/i);
   });
 });
@@ -4005,7 +4006,7 @@ describe("the receipts screen", () => {
     // actually reads must not say this is all the money.
     expect(text).toContain("This page does not show all of your money");
     expect(text).toContain("Payments for products not yet delivered");
-    expect(text).toContain("refunds you owe are on Orders");
+    expect(text).toContain("unfulfilled orders and merchant closures are on Orders");
   });
 
   it("does not claim a receipt appears when the money moves", async () => {
@@ -4622,8 +4623,10 @@ describe("what every screen says about the address", () => {
     // kept data handed to that read would show the merchant the state before
     // what they just did. Every press therefore gives the browser a new value,
     // and the answer it leaves behind no longer matches.
-    const { browser, gateway } = await started();
+    const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, roomCard);
+    const priced = await harnessed.gateway.beginPurchase(itemId, {});
+    if (priced.step !== "pay") throw new Error("the closure order was not priced");
     await browser.signIn();
     const kept = await browser.get("/cards.data");
     expect(kept.headers.get("vary")).toMatch(/cookie/i);
@@ -4632,6 +4635,7 @@ describe("what every screen says about the address", () => {
       ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
       ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
       ["a press on another page", () => browser.post("/keys", { label: "ci" })],
+      ["closing fulfillment", () => browser.post("/orders", { order_id: priced.order.order.id })],
     ];
     const given: string[] = [];
     for (const [name, press] of presses) {
@@ -4754,7 +4758,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           payoutWallet: answer,
           integration: answer,
           standing: answer,
-          refundsOwed: answer,
+          unfulfilledOrders: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -6420,5 +6424,122 @@ describe("live sales approval in the admin screen", () => {
         .status,
     ).toBe(400);
     expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+});
+
+describe("closing fulfillment from Orders", () => {
+  const paid = async (running: Running) => {
+    const itemId = await publish(running.gateway, esimCard);
+    await buyOverHttp(running.harnessed, running.gateway, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const [record] = await running.harnessed.gateway.orders(running.theMerchant, true);
+    if (record === undefined) throw new Error("the paid order was not open");
+    return record.order.id;
+  };
+
+  it("closes through the signed-in merchant and keeps the first message and original payment", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    const before = await running.harnessed.store.orderById(id);
+    const first = await running.browser.post("/orders", {
+      order_id: id,
+      message: "A remedy was arranged outside Agentify.",
+    });
+    expect(first.status).toBe(303);
+    const read = await running.browser.get(first.to ?? "");
+    expect(readable(read.html)).toContain("Closed by you");
+    expect(readable(read.html)).toContain("Original payment Paid");
+    expect(readable(read.html)).toContain("A remedy was arranged outside Agentify.");
+    const after = await running.harnessed.store.orderById(id);
+    expect(after?.order.price).toStrictEqual(before?.order.price);
+    expect(after?.order.payment).toStrictEqual(before?.order.payment);
+    expect(after?.order.merchantClosure?.message).toBe("A remedy was arranged outside Agentify.");
+    await running.browser.post("/orders", { order_id: id, message: "A different message." });
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toStrictEqual(
+      after?.order.merchantClosure,
+    );
+    const delivered = await running.harnessed.gateway.deliverOrder(running.theMerchant, id, {
+      iccid: "late",
+    });
+    expect(delivered).toMatchObject({ ok: false, error: { code: "fulfillment_closed" } });
+    expect(
+      (await running.harnessed.gateway.orders(running.theMerchant, true)).map(
+        (record) => record.order.id,
+      ),
+    ).not.toContain(id);
+  });
+
+  it("rereads an unanswered write and shows the recorded closure", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          return lateAnswer(10);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const posted = await running.browser.post("/orders", { order_id: id });
+    const read = await running.browser.get(posted.to ?? "");
+    expect(readable(read.html)).toContain("Closed by you");
+    expect(readable(read.html)).not.toContain("closure could not be confirmed");
+  });
+
+  it("keeps an unanswered closure honest when its read also cannot confirm it", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async () => lateAnswer(10),
+        getOrder: async () => lateAnswer(10),
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const posted = await running.browser.post("/orders", { order_id: id });
+    const read = await running.browser.get(posted.to ?? "");
+    expect(readable(read.html)).toContain("closure could not be confirmed");
+    expect(readable(read.html)).not.toContain("Closed by you");
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("refuses foreign-origin, mismatched-account and unowned order posts", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect(
+      (await running.browser.from("https://elsewhere.example").post("/orders", { order_id: id }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await running.browser.post("/orders", {
+          order_id: id,
+          [DRAWN_FOR]: "someoneelse@example.com",
+        })
+      ).status,
+    ).toBe(409);
+    const foreign = await running.harnessed.gateway.registerMerchant();
+    const foreignClient = gatewayFor(running.harnessed.gateway, {
+      merchantId: foreign,
+      email: "someoneelse@example.com",
+    });
+    const attempt = await foreignClient.closeOrder(id, {});
+    expect(attempt).toMatchObject({ ok: false, status: 404 });
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("refuses a malformed explanation without closing the order", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect(
+      (await running.browser.post("/orders", { order_id: id, message: "x".repeat(2001) })).status,
+    ).toBe(400);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 });

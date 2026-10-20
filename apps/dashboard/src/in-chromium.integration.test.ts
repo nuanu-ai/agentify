@@ -625,3 +625,43 @@ describe("the site header over the pages outside the frame", () => {
     },
   );
 });
+
+it("closes fulfillment from a keyboard-accessible order form and preserves the merchant statement", async () => {
+  const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+    merchant_item_id: "esim-closure",
+    title: "eSIM Europe, 5 GB for 30 days",
+    description: "A profile delivered after purchase",
+    price: { amount: "8.00", currency: "USD" },
+    result: { activation_code: { type: "string" } },
+    fulfillment: "async",
+    fulfill_deadline_seconds: 3600,
+  });
+  if (!published.ok) throw new Error("the closure card was refused");
+  const offered = await harnessed.gateway.beginPurchase(published.id, {});
+  if (offered.step !== "pay") throw new Error("the closure order was not priced");
+  const id = offered.order.order.id;
+  await harnessed.gateway.payPurchase(id, "CLOSURE_PAYMENT", "CLOSURE_PAYMENT");
+  const page = await onTheCards({ width: 390, height: 844 }, true);
+  try {
+    await page.goto(`${origin}${BASE}/orders?q=${encodeURIComponent(id)}`);
+    const summary = page.locator("details.cell-more > summary");
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    const message = "  A remedy was agreed <outside Agentify>.  ";
+    await page.getByLabel("Explanation to the buyer (optional)").fill(message);
+    await page.getByRole("button", { name: "Close fulfillment", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(
+      `${origin}${BASE}/orders?q=${encodeURIComponent(id)}&details=${encodeURIComponent(id)}#details-${encodeURIComponent(id)}`,
+    );
+    await page.getByText("Closed by you", { exact: true }).waitFor();
+    expect(await page.locator(".more-body").innerText()).toMatch(/Original payment\s+Paid/);
+    expect(await page.locator(".more-body").textContent()).toContain(message);
+    expect(await page.getByRole("button", { name: "Close fulfillment", exact: true }).count()).toBe(
+      0,
+    );
+    expect((await harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(message);
+  } finally {
+    await page.context().close();
+  }
+});

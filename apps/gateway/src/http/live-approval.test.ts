@@ -291,7 +291,7 @@ describe("an order accepted before operator approval existed", () => {
     });
 
     expect(refused).toStrictEqual({ ok: true, result: "refused" });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);

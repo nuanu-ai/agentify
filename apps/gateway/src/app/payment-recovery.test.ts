@@ -56,6 +56,105 @@ async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadline
 }
 
 describe("recovering a payment without another charge", () => {
+  it("keeps unpaid held goods private after closure and never charges a repeat", async () => {
+    const { h, recovery, orderId } = await purchase("sync");
+    await h.store.claimPayment("fp-original", orderId);
+    await h.gateway.runner.presentVerifiedPayment(
+      orderId,
+      PAYER,
+      "PAYMENT",
+      recovery.payTo,
+      h.now(),
+      { recovery, fingerprint: "fp-original" },
+    );
+    h.facilitator.willSettle({ settled: false, reason: "payment failed" });
+    await h.gateway.runner.apply(
+      orderId,
+      { kind: "handler_delivered", at: h.now() },
+      { delivery: { activation_code: "KEPT" } },
+    );
+    const before = await h.store.orderById(orderId);
+    expect(before?.order.state).toBe("delivered_unpaid");
+    expect(await h.gateway.closeOrder(h.merchant.id, orderId, {})).toEqual({ ok: true });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    const closed = await h.store.orderById(orderId);
+    expect(closed?.order).toMatchObject({ state: "fulfillment_closed", payment: "settle_failed" });
+    expect(closed?.delivery).toEqual({ activation_code: "KEPT" });
+    expect(closed?.paymentAttempt).toEqual(before?.paymentAttempt);
+    expect(await h.store.receipts(h.merchant.id)).toEqual([]);
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it.each([true, false])(
+    "keeps an original in-flight payment after merchant closure (settled=%s)",
+    async (settled) => {
+      const { h, recovery, orderId } = await purchase();
+      h.facilitator.willSettle(
+        settled
+          ? { settled: true, transaction: TRANSACTION }
+          : { settled: false, reason: "original payment failed" },
+      );
+      const release = h.facilitator.holdSettle();
+      const buying = h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+      try {
+        await vi.waitFor(() => expect(h.facilitator.settles).toHaveLength(1));
+        const before = await h.store.orderById(orderId);
+        expect(
+          await h.gateway.closeOrder(h.merchant.id, orderId, { message: "We agreed an offset." }),
+        ).toEqual({ ok: true });
+        const closed = await h.store.orderById(orderId);
+        expect(closed?.order).toMatchObject({ state: "fulfillment_closed", payment: "settling" });
+        expect(closed?.paymentAttempt).toEqual(before?.paymentAttempt);
+        expect(closed?.payment).toBe("PAYMENT");
+        expect(closed?.paymentRef).toBe(before?.paymentRef);
+        expect(closed?.paymentRecovery).toEqual(recovery);
+        release();
+        await buying;
+        const after = await h.store.orderById(orderId);
+        expect(after?.order).toMatchObject({
+          state: "fulfillment_closed",
+          payment: settled ? "settled" : "settle_failed",
+        });
+        expect(after?.paymentAttempt?.completion?.settled).toBe(settled);
+        expect(await h.gateway.poll(h.merchant.id, 0)).toMatchObject({ envelopes: [] });
+        expect(await h.store.receipts(h.merchant.id)).toEqual([]);
+        expect((await h.store.claimPayment("fp-original", "ord_other")).claimed).toBe(false);
+        await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+        expect(h.facilitator.settles).toHaveLength(1);
+      } finally {
+        release();
+        await buying;
+      }
+    },
+  );
+
+  it("recovers an unknown original charge after merchant closure without fulfilling or charging again", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.advance(20_000);
+    const timed = await h.gateway.runner.apply(orderId, {
+      kind: "deadline_expired",
+      deadline: "settle_response",
+      at: h.now(),
+    });
+    expect(timed.outcome, JSON.stringify(timed)).toBe("moved");
+    expect((await h.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
+    expect(await h.gateway.closeOrder(h.merchant.id, orderId, {})).toEqual({ ok: true });
+    h.runtime.facilitator.reconcile = async () => ({
+      settled: true,
+      transaction: TRANSACTION,
+      executedAt: h.now() - 1000,
+    });
+    await h.gateway.runner.reconcilePayments();
+    const closed = await h.store.orderById(orderId);
+    expect(closed?.order).toMatchObject({ state: "fulfillment_closed", payment: "settled" });
+    expect(closed?.paymentAttempt?.completion).toMatchObject({ settled: true, source: "chain" });
+    expect(await h.gateway.poll(h.merchant.id, 0)).toMatchObject({ envelopes: [] });
+    expect(await h.store.receipts(h.merchant.id)).toEqual([]);
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
   it("makes no recovery reads while an ordinary settle call is still inside its response window", async () => {
     const { h, orderId } = await purchase();
     const release = h.facilitator.holdSettle();
@@ -231,12 +330,12 @@ describe("recovering a payment without another charge", () => {
       },
       "chain",
     );
-    expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     expect(await h.store.receiptForOrder(orderId)).toBeNull();
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((envelope) => envelope.kind)).toEqual(["order_event"]);
     expect(envelopes[0]).toMatchObject({
-      payload: { type: "order.refund_due", at: new Date(executedAt + 1000).toISOString() },
+      payload: { type: "order.unfulfilled", at: new Date(executedAt + 1000).toISOString() },
     });
     expect(h.facilitator.settles).toHaveLength(1);
   });
@@ -387,7 +486,7 @@ describe("recovering a payment without another charge", () => {
     });
     h.advance(60_000);
     await h.gateway.runner.reconcilePayments();
-    expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     await h.store.forgetClaimsBefore(h.now() + 100_000);
     expect(await h.store.claimPayment(authorizationFingerprint(recovery), "another-order")).toEqual(
       { claimed: false, heldBy: orderId },
@@ -462,7 +561,7 @@ describe("recovering a payment without another charge", () => {
     release();
     await buying;
     await h.gateway.runner.reconcilePayments();
-    expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     expect(await drawEverything(h, h.merchant.id)).toHaveLength(1);
     expect(h.facilitator.settles).toHaveLength(1);
     expect((await h.store.orderById(orderId))?.settlement).toBeNull();
@@ -487,7 +586,7 @@ describe("recovering a payment without another charge", () => {
     const restarted = new Gateway(h.runtime);
     await restarted.runner.reconcilePayments();
     await restarted.runner.reconcilePayments();
-    expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((each) => each.kind)).toEqual(["order_event"]);
     expect(h.facilitator.settles).toHaveLength(1);
@@ -506,7 +605,7 @@ describe("recovering a payment without another charge", () => {
     });
     const restarted = new Gateway(h.runtime);
     await restarted.runner.reconcilePayments();
-    expect((await h.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     expect((await drawEverything(h, h.merchant.id)).every((each) => each.kind !== "order")).toBe(
       true,
     );

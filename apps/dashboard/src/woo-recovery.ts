@@ -103,7 +103,7 @@ const recover = async (
         : "This command recovers downloads only. A parcel refused before its WooCommerce order was" +
             " made has no address left to make one with; for one whose order may exist, look in" +
             " the shop for an order carrying this identifier as its transaction id, and do not" +
-            " ship it, because the sale owes the buyer a refund.",
+            " ship it, because the Agentify sale is unfulfilled and the remedy is yours to arrange.",
     );
   }
   if (person.merchant === null) {
@@ -116,7 +116,7 @@ const recover = async (
     return refused("The Agentify order does not match the saved WooCommerce sale.");
   }
   if (
-    state.document.status !== "refund_due" &&
+    state.document.status !== "unfulfilled" &&
     !(record.phase === "placed" && state.document.status === "delivered")
   ) {
     return refused(

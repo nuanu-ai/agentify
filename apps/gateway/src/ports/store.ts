@@ -51,12 +51,12 @@ export const INTEGRATIONS = ["api", "woocommerce"] as const;
 export type Integration = (typeof INTEGRATIONS)[number];
 
 /**
- * The open states in which an order waits on nobody's worker: it owes the
- * buyer a refund, or the buyer owes for goods already delivered. Neither holds
+ * The open states in which no handler response is pending: late fulfillment
+ * or payment for goods already held. Neither holds
  * a switch of integration (`IntegrationSwitch`).
  */
-export const OWING_ONLY_MONEY = [
-  "refund_due",
+export const NO_PENDING_HANDLER = [
+  "unfulfilled",
   "delivered_unpaid",
 ] as const satisfies readonly OrderState[];
 
@@ -67,7 +67,7 @@ export const OWING_ONLY_MONEY = [
  * first answer, for the payment a price was quoted for, or for the goods it
  * was taken on for — because after the switch nothing of that integration
  * draws the merchant's stream again; `waiting` names those orders. An order
- * that only owes money holds nothing (`OWING_ONLY_MONEY`).
+ * with no pending handler response holds nothing (`NO_PENDING_HANDLER`).
  *
  * `sellingPaused` says whether the switch stopped the merchant's selling. A
  * switch back to the API that would put the code's cards back on sale does,

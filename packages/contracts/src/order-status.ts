@@ -58,21 +58,14 @@ export const ORDER_STATUSES = Object.freeze([
   /** The merchant left, and orders still open closed with them. */
   "cancelled",
   /**
-   * The money moved and the goods have not come: the merchant owes the buyer
-   * the goods or the money back. Not an ending, and it carries no deadline of
-   * its own. Goods the merchant delivers after it still reach the buyer, settle
-   * the debt and make the order `delivered`. The agent's status document always
-   * says why it is owed, under `reason`.
-   *
-   * It does not say whether the money has already gone back. The merchant pays
-   * back the whole price from their own wallet, although their payout contract
-   * paid them only their share and the commission stays with Agentify. The
-   * gateway has no way to record that they did, so nothing moves an order on to
-   * `refunded`, and a buyer already paid back still reads this word.
+   * The original payment completed and fulfillment did not. The reason says
+   * whether the merchant refused, left or missed the deadline. Later delivery
+   * remains possible until the merchant explicitly closes Agentify fulfillment.
+   * This says nothing about a refund or the parties' agreement.
    */
-  "refund_due",
-  /** A refund of that debt is recorded. Nothing can record one yet. */
-  "refunded",
+  "unfulfilled",
+  /** Future Agentify fulfillment is closed; payment_status describes the original payment. */
+  "fulfillment_closed",
   /**
    * The merchant delivered synchronously and the payment did not execute. The
    * goods exist, nothing was paid, and the order stays open until a repeat
@@ -84,6 +77,13 @@ export const ORDER_STATUSES = Object.freeze([
 export const OrderStatusSchema = z.enum(ORDER_STATUSES);
 
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+/** The original payment's verified outcome, independent of fulfillment. */
+export const PaymentStatusSchema = z.enum(["not_paid", "paid", "unresolved"]).meta({
+  description:
+    "The original payment outcome: not_paid means no completed payment is recorded and no accepted execution remains unresolved; paid means payment completed; unresolved means an accepted payment execution has no known outcome yet. Merchant closure changes none of these facts, cancels no accepted execution and establishes no refund. An unresolved payment may still complete after fulfillment is closed.",
+});
+export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 
 /**
  * Why an order ended, where Agentify and not its merchant decided it and one

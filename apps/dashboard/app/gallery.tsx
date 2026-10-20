@@ -302,7 +302,9 @@ const paidIntoSplit = (
 ): Readonly<Record<string, RecordedPayoutSplit>> =>
   Object.fromEntries(
     rows
-      .filter((row) => ["delivered", "shipped", "refund_due", "refunded"].includes(row.status))
+      .filter((row) =>
+        ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(row.status),
+      )
       .map((row) => [row.id, splitOf(mode, PAID_INTO)]),
   );
 
@@ -438,8 +440,8 @@ type Status =
   | "payment_unresolved"
   | "declined"
   | "expired"
-  | "refund_due"
-  | "refunded"
+  | "unfulfilled"
+  | "fulfillment_closed"
   | "delivered_unpaid";
 
 const minutesInto = (day: string, minutes: number): string =>
@@ -458,10 +460,16 @@ const ordersOf = (rows: readonly (readonly [Product, Status])[], test = false) =
       },
       test,
       status,
+      payment_status:
+        status === "payment_unresolved"
+          ? "unresolved"
+          : ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
+            ? "paid"
+            : "not_paid",
     })),
   });
 
-type Outcome = "delivered" | "refund_due" | "in_progress";
+type Outcome = "delivered" | "unfulfilled" | "in_progress";
 
 const receiptsOf = (rows: readonly (readonly [Product, Outcome, boolean?])[], test = false) =>
   ReceiptListSchema.parse({
@@ -1437,7 +1445,7 @@ const CARDS: GalleryState[] = [
 const openAmong = (listed: ReturnType<typeof ordersOf>) =>
   OrderListSchema.parse({
     orders: listed.orders.filter((order) =>
-      ["in_progress", "refund_due", "delivered_unpaid", "payment_unresolved"].includes(
+      ["in_progress", "unfulfilled", "delivered_unpaid", "payment_unresolved"].includes(
         order.status,
       ),
     ),
@@ -1445,7 +1453,7 @@ const openAmong = (listed: ReturnType<typeof ordersOf>) =>
 
 /**
  * Orders as the loader answers them at `path`, whose address carries the
- * search and the segment, with the refunds' causes where they are known.
+ * search and the segment, with the unfulfilled orders' causes where they are known.
  */
 const ordersAt = (
   path: string,
@@ -1489,16 +1497,16 @@ const orders = (
   });
 
 const OWING = ordersOf([
-  ["esimEurope", "refund_due"],
+  ["esimEurope", "unfulfilled"],
   ["number", "delivered_unpaid"],
   ["vpn", "delivered"],
-  ["esimWeek", "refund_due"],
+  ["esimWeek", "unfulfilled"],
 ]);
 
-/** The first refund due ran out of time, the second was refused by the merchant's code. */
+/** The first unfulfilled order ran out of time, the second was refused by the merchant's code. */
 const OWED_BECAUSE = Object.fromEntries(
   OWING.orders
-    .filter((order) => order.status === "refund_due")
+    .filter((order) => order.status === "unfulfilled")
     .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
 );
 
@@ -1510,7 +1518,64 @@ const SEASON = ordersOf(
   ),
 );
 
+const CLOSED = OrderListSchema.parse({
+  orders: ordersOf([
+    ["esimEurope", "fulfillment_closed"],
+    ["number", "payment_unresolved"],
+  ]).orders.map((order, at) => ({
+    ...order,
+    merchant_closure: {
+      closed_at: "2026-10-19T09:30:00Z",
+      ...(at === 0
+        ? { message: "The buyer and merchant arranged the remedy outside Agentify." }
+        : {}),
+    },
+  })),
+});
+
 const ORDERS: GalleryState[] = [
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-closed",
+        screen: "Orders",
+        when: "A merchant checks an order they closed and an original payment still unknown.",
+        cause:
+          "Merchant closure is shown separately from the original payment. The explanation is attributed to the merchant; the unknown payment remains unknown.",
+      },
+      CLOSED,
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Order details",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Your explanation to the buyer",
+    },
+  },
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-close",
+        screen: "Orders",
+        when: "A merchant opens a paid unfulfilled order to stop future Agentify delivery.",
+        cause:
+          "The shared order control offers an optional statement and says what closure does: no transfer and no shop cancellation.",
+      },
+      OWING,
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Order details",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Close fulfillment",
+    },
+  },
   orders(
     {
       id: "dashboard-orders",
@@ -1530,9 +1595,9 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-need-you",
       screen: "Orders",
-      when: "A merchant has orders that owe a refund or were delivered without payment.",
+      when: "A merchant has paid orders left unfulfilled, and an order delivered without payment.",
       cause:
-        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened, and each refund what is the merchant's to return.",
+        "Two paid orders are unfulfilled, one after its delivery window and one refused by the integration. Each has its cause stated; the merchant decides the remedy. Another order was delivered but not paid.",
     },
     OWING,
     "/orders",
@@ -1550,12 +1615,12 @@ const ORDERS: GalleryState[] = [
       ["vpn", "delivered"],
       ["esimEurope", "in_progress"],
       ["number", "payment_unresolved"],
-      ["esimEurope", "refund_due"],
+      ["esimEurope", "unfulfilled"],
       ["number", "delivered_unpaid"],
       ["vpn", "rejected"],
       ["esimEurope", "declined"],
       ["number", "expired"],
-      ["esimEurope", "refunded"],
+      ["esimEurope", "fulfillment_closed"],
       ["esimWeek", "delivered"],
       ["vpn", "shipped"],
       ["number", "cancelled"],
@@ -1577,20 +1642,20 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order ID and shares",
+          shows: "Order details",
           does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Order ID and shares",
+      shows: "Order details",
     },
   },
   orders(
     {
       id: "dashboard-orders-search",
       screen: "Orders",
-      when: "A merchant pastes the short order ID they copied from a refund due.",
+      when: "A merchant pastes the short order ID they copied from an unfulfilled order.",
       cause:
-        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its refund row and in the list.",
+        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its unfulfilled row and in the list.",
     },
     OWING,
     `/orders?q=${encodeURIComponent(shortened(OWING.orders[0]?.id ?? ""))}`,
@@ -1612,9 +1677,9 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-open",
       screen: "Orders",
-      when: "A merchant picks Open to see what is still owed goods or money.",
+      when: "A merchant picks Open to see what is still open for fulfillment or payment.",
       cause:
-        "The gateway's open list holds the two refunds due and the goods held for payment, and the list shows those three alone.",
+        "The gateway's open list holds the two unfulfilled orders and the goods held for payment, and the list shows those three alone.",
     },
     OWING,
     "/orders?show=open",
@@ -1674,12 +1739,12 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them owing a refund, and each sum carries the test mark.",
+        "Every order on the test site is a test purchase, one of them unfulfilled, and each sum carries the test mark.",
     },
     ordersOf(
       [
         ["vpn", "delivered"],
-        ["esimEurope", "refund_due"],
+        ["esimEurope", "unfulfilled"],
         ["esimEurope", "delivered"],
       ],
       true,
@@ -1726,7 +1791,7 @@ const RECEIPTS: GalleryState[] = [
       screen: "Receipts",
       when: "A reviewer checks every paid outcome the receipt contract admits.",
       cause:
-        "The contract admits receipts still in progress or owing a refund; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
+        "The contract admits receipts with historical unfulfilled or closed outcomes; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
     },
     receiptsView(
       seenBy("live"),
@@ -1734,7 +1799,7 @@ const RECEIPTS: GalleryState[] = [
       receiptsOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
-        ["esimEurope", "refund_due"],
+        ["esimEurope", "unfulfilled"],
         ["number", "delivered", false],
         ["vpn", "delivered"],
         ["esimEurope", "delivered"],

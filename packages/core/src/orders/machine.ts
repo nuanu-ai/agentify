@@ -4,8 +4,8 @@
  *
  * Money decides the shape of every failure. Where the merchant's live answer
  * still stands between the price and the charge, a failure costs the buyer
- * nothing; where the money moved first, the same failure leaves a debt that is
- * recorded rather than swept into a terminal claiming nobody owes anything.
+ * nothing; where the money moved first, the same failure remains recorded as
+ * unfulfilled, independently of any agreement between merchant and buyer.
  *
  * An answer is a fulfillment, a refusal or an acceptance, and nothing else. An
  * exception, a dead process and a broken connection are not answers: the order
@@ -28,8 +28,8 @@
  * `order_dispatched` the machine accepts, so a closed state that quietly took
  * the hand-over would send a settled order back to a handler. Where an event
  * has nothing to do, the answer is that it has no meaning here. The one closed
- * state that still takes a hand-over is `refund_due`, where late goods close
- * the debt, unless it is a parcel whose buyer's address is already gone
+ * state that still takes a hand-over is `unfulfilled`, where late goods can
+ * be delivered, unless it is a parcel whose buyer's address is already gone
  * (`transition`).
  */
 
@@ -87,9 +87,9 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
   // A parcel whose address is gone is never handed to a handler again: the
   // handler would get a parcel with nowhere to send it. That covers a repeat
   // already on the merchant's stream when they took the order on, and an order
-  // owing a refund, which an ordinary order is handed over again for; a
-  // merchant who ships late from their own copy of the address still closes the
-  // debt with the `deliver` call.
+  // unfulfilled, which an ordinary order is handed over again for; a
+  // merchant who ships late from their own copy can still record the shipment
+  // until fulfillment is closed.
   if (event.kind === "order_dispatched" && !holdsShipTo(order)) {
     return reject(
       order,
@@ -114,8 +114,32 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
 }
 
 function transitionIn(order: Order, event: OrderEvent): TransitionResult {
+  if (event.kind === "close_called") {
+    if (order.state === "delivered") {
+      return answer(order, { ok: false, error: "order_already_closed", retryable: false });
+    }
+    if (order.merchantClosure !== undefined) {
+      return answer(order, { ok: true, result: "purchase_already_closed" });
+    }
+    return answer(
+      {
+        ...order,
+        state: "fulfillment_closed",
+        merchantClosure: {
+          at: event.at,
+          ...(event.message === undefined ? {} : { message: event.message }),
+        },
+      },
+      { ok: true, result: "purchase_already_closed" },
+    );
+  }
+
   if (event.kind === "deadline_expired") {
     return onDeadline(order, event);
+  }
+
+  if (order.state === "fulfillment_closed") {
+    return fromFulfillmentClosed(order, event);
   }
 
   if (order.payment === "settling" && !allowedWhileSettling(order, event)) {
@@ -146,10 +170,8 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
       return fromDelivered(order, event);
     case "delivered_unpaid":
       return fromDeliveredUnpaid(order, event);
-    case "refund_due":
-      return fromRefundDue(order, event);
-    case "refunded":
-      return fromRefunded(order, event);
+    case "unfulfilled":
+      return fromUnfulfilled(order, event);
     case "failed":
       return fromFailed(order, event);
     case "expired":
@@ -221,8 +243,8 @@ function answer(order: Order, merchantAnswer: MerchantAnswer): TransitionResult 
  * them.
  *
  * A delivered order answers an acceptance in its own arm, because the goods are
- * not owed and saying otherwise would send him looking for them. An order owed
- * a refund gets this word from the gateway rather than from here.
+ * already released. An unfulfilled order gets this word from the gateway
+ * rather than from here.
  */
 const ACCEPTANCE_LANDED: Effect = {
   kind: "answer_merchant",
@@ -322,16 +344,16 @@ function enterPaid(order: Order, at: number, payment: "verified" | "settled"): T
 }
 
 /**
- * A fulfillment that will not happen, resolved by where the money is. After
- * the charge it is a debt; before it, the purchase simply did not happen, and
+ * A fulfillment that stopped, resolved by where the money is. After
+ * the charge it is unfulfilled; before it, the purchase did not happen, and
  * whether the agent is told "refused" or "closed on time" depends on which of
  * the two ended it.
  */
 function resolveFulfillmentFailure(order: Order, closure: Closure): TransitionResult {
   if (order.payment === "settled") {
-    return ok({ ...order, state: "refund_due", closure }, [
-      { kind: "mark_refund_due", closure },
-      { kind: "emit_merchant_event", event: "order.refund_due" },
+    return ok({ ...order, state: "unfulfilled", closure }, [
+      { kind: "mark_unfulfilled", closure },
+      { kind: "emit_merchant_event", event: "order.unfulfilled" },
     ]);
   }
 
@@ -424,14 +446,14 @@ function closedOnTheClock(
   return ok(late.order, [...closed.effects, ...late.effects]);
 }
 
-/** The merchant left. A charged order that never got its goods stays a debt. */
+/** The merchant left. A paid order without goods remains unfulfilled. */
 function onDeparture(order: Order): TransitionResult {
   const closure: Closure = { cause: "merchant_departed" };
 
   if (order.payment === "settled") {
-    return ok({ ...order, state: "refund_due", closure }, [
-      { kind: "mark_refund_due", closure },
-      { kind: "emit_merchant_event", event: "order.refund_due" },
+    return ok({ ...order, state: "unfulfilled", closure }, [
+      { kind: "mark_unfulfilled", closure },
+      { kind: "emit_merchant_event", event: "order.unfulfilled" },
     ]);
   }
 
@@ -449,7 +471,7 @@ function onDeparture(order: Order): TransitionResult {
  * order is not closed here: it waits the deadline out and the deadline closes
  * it. Closed here, a synchronous order ended a second or more before the
  * deadline its merchant was given while a slow handler's answer was still
- * allowed to count, and an asynchronous one owed a refund for a deadline that
+ * allowed to count, and an asynchronous one marked unfulfilled by a deadline that
  * had not passed.
  */
 function redeliver(
@@ -499,7 +521,7 @@ function onDeadline(
   if (event.at < armed.at) {
     // A timer that fired early, or fired twice, must not close an order the
     // merchant is still honestly inside the deadline of — in the asynchronous
-    // mode that would mark a refund due against somebody who is not late.
+    // mode that would mark an order unfulfilled before the merchant is late.
     return reject(
       order,
       event,
@@ -540,13 +562,17 @@ function onDeadline(
  *
  * That is a guess that the money did not move, and the machine says so rather
  * than pretending to know: a charge that reports in afterwards is turned into a
- * debt by `fromClosedWithoutMoney`, not thrown away.
+ * paid unfulfilled order by `fromClosedWithoutMoney`, not thrown away.
  */
 function onSilentSettle(order: Order): TransitionResult {
   // Not "the charge failed": the charge said nothing, and recording the
   // stronger claim would let a repeat of the purchase send a second charge on
   // top of a first one nobody has heard from.
   const silent: Order = { ...order, payment: "outcome_unknown" };
+
+  if (order.state === "fulfillment_closed") {
+    return ok(silent);
+  }
 
   if (order.state === "fulfilled") {
     // The merchant produced the goods and we cannot say the money arrived. He
@@ -612,7 +638,6 @@ function fromCreated(order: Order, event: StateEvent): TransitionResult {
     case "handler_undelivered":
     case "deliver_called":
     case "refuse_called":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -676,7 +701,6 @@ function fromQuoted(order: Order, event: StateEvent): TransitionResult {
     case "handler_undelivered":
     case "deliver_called":
     case "refuse_called":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -756,7 +780,6 @@ function fromAwaitingConfirmation(order: Order, event: StateEvent): TransitionRe
     case "payment_settled":
     case "payment_settle_failed":
     case "order_dispatched":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -822,7 +845,6 @@ function fromConfirmed(order: Order, event: StateEvent): TransitionResult {
     case "handler_delivered":
     case "handler_undelivered":
     case "deliver_called":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -860,8 +882,8 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
     case "handler_undelivered":
       // The order is queued and our own record of the hand-over has not landed
       // yet — but the merchant is plainly holding it, because he is answering.
-      // Dropping his answer here would run the order to its deadline and
-      // refund a buyer who was already holding the goods.
+      // Dropping his answer would misreport an already fulfilled order as
+      // unfulfilled when its deadline runs out.
       return fromDispatched(handedOver(order), event);
     case "merchant_departed":
       return onDeparture(order);
@@ -874,7 +896,6 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
     case "payment_settled":
     case "payment_settle_failed":
     case "confirmation_dispatched":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -962,8 +983,8 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // A silence noticed about an order already taken on is not a delivery
       // that failed: the merchant answered, only later than we waited.
       // Counting it would spend a delivery he never missed, and enough of
-      // those close a paid order into a refund while he is filling it. So it
-      // is taken and changes nothing, the way an order owing a refund takes
+      // those mark a paid order unfulfilled while he is filling it. So it
+      // is taken and changes nothing, the way an unfulfilled order takes
       // one: the hand-over it names is over all the same, and what holds him
       // to his word from here is the order's own deadline.
       if (order.dispatch.accepted) return ok(order);
@@ -1027,7 +1048,6 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
     case "payment_settled":
     case "payment_settle_failed":
     case "confirmation_dispatched":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1076,7 +1096,6 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     case "handler_accepted":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1122,7 +1141,6 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "confirmation_dispatched":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1152,7 +1170,7 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
     case "payment_settled":
       // The second of these is the payment layer finally answering about a
       // charge we had given up on. The goods are made and the money did move
-      // after all, so the purchase is a success rather than a debt.
+      // after all, so the purchase is a completed sale.
       return order.payment === "settling" || order.payment === "outcome_unknown"
         ? ok({ ...order, state: "delivered", payment: "settled" }, [
             { kind: "release_goods_to_agent" },
@@ -1188,37 +1206,26 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
     case "handler_accepted":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
   }
 }
 
-function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
+function fromUnfulfilled(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
-      // The money for the goods has been paid, and to the buyer late goods are
-      // better than a refund, as long as no refund has been recorded.
-      // The reason the order was marked for a refund goes with it: an order
-      // that ended in success may not carry "the merchant refused" as the
-      // record of how it ended.
-      //
-      // A known race: a refund already on its way but not yet reported is
-      // invisible here and loses to this delivery, because a refund ends the
-      // debt only once it is recorded.
+      // Late goods remain deliverable until the merchant explicitly closes fulfillment.
       return ok({ ...order, state: "delivered", closure: null }, [
         { kind: "release_goods_to_agent" },
         { kind: "issue_receipt" },
-        { kind: "answer_merchant", answer: { ok: true, result: "debt_closed_by_delivery" } },
+        { kind: "answer_merchant", answer: { ok: true, result: "delivered_late" } },
       ]);
     case "handler_delivered":
       return ok({ ...order, state: "delivered", closure: null }, [
         { kind: "release_goods_to_agent" },
         { kind: "issue_receipt" },
       ]);
-    case "refund_settled":
-      return ok({ ...order, state: "refunded" });
     case "refuse_called":
       return answer(order, { ok: true, result: "refused" });
     case "handler_refused":
@@ -1228,7 +1235,7 @@ function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
     case "purchase_repeated":
       return ok(order);
     case "merchant_departed":
-      // A debt survives the departure of the merchant who owes it.
+      // Leaving the service does not record a delivery or close fulfillment.
       return ok(order);
     case "quote_answered":
     case "quote_silent":
@@ -1243,33 +1250,23 @@ function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
   }
 }
 
-function fromRefunded(order: Order, event: StateEvent): TransitionResult {
+function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
+    case "payment_settled":
+    case "payment_settle_failed":
+      return order.payment === "settling" || order.payment === "outcome_unknown"
+        ? ok({ ...order, payment: event.kind === "payment_settled" ? "settled" : "settle_failed" })
+        : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
-      // A refund is recorded, so there is nothing left to deliver against.
-      // Repeating the call would change nothing.
-      return answer(order, { ok: false, error: "refund_already_settled", retryable: false });
+      return answer(order, { ok: false, error: "fulfillment_closed", retryable: false });
     case "refuse_called":
       return closedToMerchant(order);
     case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
-    case "quote_answered":
-    case "quote_silent":
-    case "payment_verified":
-    case "payment_verification_failed":
-    case "payment_settled":
-    case "payment_settle_failed":
-    case "confirmation_dispatched":
-    case "order_dispatched":
-    case "handler_accepted":
-    case "handler_refused":
-    case "handler_undelivered":
-    case "refund_settled":
-      return notApplicable(order, event);
     default:
-      return assertNever(event, "order event");
+      return notApplicable(order, event);
   }
 }
 
@@ -1296,7 +1293,6 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
     case "handler_accepted":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1370,7 +1366,6 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
     case "handler_accepted":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1386,8 +1381,8 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
     case "payment_settled":
       // The purchase was refused because the execution of the payment never
       // reported back, and now it has. Closing on that silence was a guess
-      // that the money had not moved; the guess was wrong, and the buyer is
-      // owed it back rather than left with a refusal and an empty wallet.
+      // that the money had not moved; the actual charge must be recorded on
+      // an unfulfilled order rather than concealed behind a refusal.
       //
       // Only the guess can be overturned this way. An order closed because the
       // payment layer said the charge failed is not reopened by a later claim
@@ -1396,9 +1391,9 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
       if (order.closure?.cause !== "payment_outcome_unknown") {
         return notApplicable(order, event);
       }
-      return ok({ ...order, state: "refund_due", payment: "settled" }, [
-        { kind: "mark_refund_due", closure: order.closure },
-        { kind: "emit_merchant_event", event: "order.refund_due" },
+      return ok({ ...order, state: "unfulfilled", payment: "settled" }, [
+        { kind: "mark_unfulfilled", closure: order.closure },
+        { kind: "emit_merchant_event", event: "order.unfulfilled" },
       ]);
     case "payment_settle_failed":
       // The same late answer, saying the money did not move after all. It
@@ -1420,7 +1415,6 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
     case "handler_delivered":
     case "handler_refused":
     case "handler_undelivered":
-    case "refund_settled":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");

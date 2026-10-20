@@ -2163,7 +2163,7 @@ describe("merchant delivery recovery", () => {
       body: "",
     });
     expect(crossOrigin.status).toBe(403);
-    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("refund_due");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
   });
 
   it("does not offer the recovery route on live", async () => {

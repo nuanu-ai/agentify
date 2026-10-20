@@ -9,8 +9,8 @@
  *
  * Every open state in which the machine waits for somebody has exactly one
  * clock, so an overdue order goes to an ending the agent is told rather than
- * hanging. Three open states deliberately carry none: `refund_due` and
- * `delivered_unpaid` are debts a deadline cannot settle, and an order whose
+ * hanging. Three open states deliberately carry none: `unfulfilled` and
+ * `delivered_unpaid` require a merchant or buyer action, and an order whose
  * charge never reported back waits for the payment layer, which alone has that
  * fact.
  *
@@ -102,8 +102,8 @@ export function deadlines(order: Order): readonly Deadline[] {
       return [];
 
     case "delivered":
-    case "refund_due":
-    case "refunded":
+    case "unfulfilled":
+    case "fulfillment_closed":
     case "failed":
     case "rejected":
     case "declined":

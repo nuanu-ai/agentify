@@ -35,7 +35,7 @@ type Known = {
 
 const viewOf = (known: Known, message: string | null = null, typed = ""): WooRecoveryView => {
   const { record, order } = known;
-  const available = order.status === "refund_due";
+  const available = order.status === "unfulfilled";
   const delivered =
     record.facts.kind !== "parcel" && record.phase === "placed" && order.status === "delivered";
   const mode = delivered

@@ -806,7 +806,7 @@ describe("an asynchronous purchase", () => {
 
     expect(answered).toStrictEqual({ ok: true, result: "refused" });
     const owing = await harnessed.store.orderById(offered.order.order.id);
-    expect(owing?.order.state).toBe("refund_due");
+    expect(owing?.order.state).toBe("unfulfilled");
 
     // No receipt, and that is a known gap: the receipt vocabulary has a word
     // for an order that owes money back, but receipts are written only when
@@ -815,7 +815,7 @@ describe("an asynchronous purchase", () => {
 
     const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
-    expect(events.map((e) => e.type)).toContain("order.refund_due");
+    expect(events.map((e) => e.type)).toContain("order.unfulfilled");
   });
 
   it("refuses a delivery once a refund is recorded", async () => {
@@ -830,7 +830,7 @@ describe("an asynchronous purchase", () => {
       message: "none",
     });
     await harnessed.gateway.runner.apply(orderId, {
-      kind: "refund_settled",
+      kind: "close_called",
       at: harnessed.now(),
     });
 
@@ -841,7 +841,7 @@ describe("an asynchronous purchase", () => {
     expect(late).toStrictEqual({
       ok: false,
       error: {
-        code: "refund_already_settled",
+        code: "fulfillment_closed",
         message: expect.any(String),
         retryable: false,
       },
@@ -866,7 +866,7 @@ describe("an asynchronous purchase", () => {
       activation_code: "A",
     });
 
-    expect(late).toStrictEqual({ ok: true, result: "debt_closed_by_delivery" });
+    expect(late).toStrictEqual({ ok: true, result: "delivered_late" });
     const closed = await harnessed.store.orderById(orderId);
     expect(closed?.order.state).toBe("delivered");
     expect(closed?.order.closure).toBeNull();
@@ -1283,7 +1283,7 @@ describe("the goods against the card that sold them", () => {
       code: "out_of_stock",
       message: "none",
     });
-    await harnessed.gateway.runner.apply(orderId, { kind: "refund_settled", at: harnessed.now() });
+    await harnessed.gateway.runner.apply(orderId, { kind: "close_called", at: harnessed.now() });
 
     const wrongGoods = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {});
     if (wrongGoods?.ok !== false) throw new Error("an empty delivery was taken");
@@ -1300,7 +1300,7 @@ describe("the goods against the card that sold them", () => {
       activation_code: "LPA:1$LATE",
     });
     if (rightGoods?.ok !== false) throw new Error("a settled refund took a delivery");
-    expect(rightGoods.error.code).toBe("refund_already_settled");
+    expect(rightGoods.error.code).toBe("fulfillment_closed");
     expect(rightGoods.error.retryable).toBe(false);
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
   });
@@ -2141,7 +2141,7 @@ describe("the worker's stream", () => {
       code: "out_of_stock",
       message: "none",
     });
-    await harnessed.gateway.runner.apply(orderId, { kind: "refund_settled", at: harnessed.now() });
+    await harnessed.gateway.runner.apply(orderId, { kind: "close_called", at: harnessed.now() });
 
     const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
@@ -2182,7 +2182,7 @@ describe("the worker's stream", () => {
     const drawn = await drawEverything(harnessed);
     expect(
       drawn.flatMap((each) => (each.kind === "order_event" ? [each.payload.type] : [])),
-    ).toStrictEqual(["order.refund_due"]);
+    ).toStrictEqual(["order.unfulfilled"]);
 
     harnessed.advance(60_000);
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 50)).envelopes).toStrictEqual([]);
@@ -2190,7 +2190,7 @@ describe("the worker's stream", () => {
     // What the merchant can still find out for himself.
     const owing = await harnessed.gateway.orders(harnessed.merchant.id, true);
     expect(owing.map((held) => held.order.id)).toStrictEqual([orderId]);
-    expect(owing[0]?.order.state).toBe("refund_due");
+    expect(owing[0]?.order.state).toBe("unfulfilled");
   });
 
   it("hands nobody an order the late answer already closed", async () => {
@@ -2424,7 +2424,7 @@ describe("the merchant's calls", () => {
       code: "out_of_stock",
       message: "none",
     });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
 
     expect(
       await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, { accepted: {} }),

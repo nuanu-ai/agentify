@@ -17,9 +17,9 @@ orders. Maintenance tools can exist without being a required step in a sale.
 | Payout | The merchant or anyone sending the immutable split's payout | The contract's fixed recipients; wallet confirmation authorizes the transaction | Merchant payout screen; no Agentify signer |
 | Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Quickstart step 6 runs an x402 buyer with the merchant's own test wallet and Base Sepolia faucet funds |
 | Full offboarding | The merchant | Accepted orders and payment history remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |
-| Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; merchant closure is missing |
+| Late delivery | The merchant's integration | The order's delivery rules | SDK and WooCommerce worker; delivery is refused after merchant closure |
 | Refund or another agreement | The merchant and buyer | Their policy and agreement; Agentify does not confirm either | Policy, transfers and external fulfillment belong to the merchant; ADR-0028 |
-| Close Agentify fulfillment | The merchant | An authenticated, idempotent action, with an optional buyer explanation | Not built; requires the contract changes in ADR-0028 |
+| Close Agentify fulfillment | The merchant | An authenticated, idempotent action, with an optional buyer explanation | SDK `order.close()` and the shared Orders action in the Agentify dashboard; ADR-0028 |
 | Silent payment | Automatic reconciliation | Finalized chain evidence bound to the saved authorization and reserved attempt | Configured RPC enables minutely recovery, including closed orders and lost hashes; facilitator-only payments retain unresolved outcomes; ADR-0027 |
 | WooCommerce recovery | The merchant, with system checks | The original shop and sale match exactly; an uncertain creation is never repeated blindly | Authenticated page from the merchant's Orders links an existing download order or retries its saved delivery; no shop creation action; ADR-0023 |
 
@@ -42,7 +42,76 @@ A missed deadline means unfulfilled by that deadline, not a mandated return of
 the whole price. Partial refunds, another currency or network and offsets need
 no Agentify exception or database repair. The original payment and history
 remain, and Agentify retains its 0.1% commission. This direction is accepted in
-ADR-0028; the closure action and corresponding public contract are not built.
+ADR-0028.
+
+## Closing fulfillment
+
+The SDK's bound `order.close()` method and the Orders page in the Agentify
+dashboard call the same merchant-authenticated action. Its optional `message`
+is preserved as written and shown as the merchant's explanation to the buyer.
+The API accepts no financial evidence or refund amount. Repetition preserves
+the first recorded time and explanation. A lost response can be checked by
+reading the order or retried safely; it does not establish failure.
+
+The action stops future dispatch, redelivery and release of held goods through
+Agentify. It refuses an order whose delivery or shipment is already recorded.
+It does not cancel a shop order, a running merchant handler or a payment
+already accepted for execution. The WooCommerce integration uses the same
+Agentify action; it requires no WooCommerce setting and makes no cancellation
+or refund call to the shop.
+
+An overdue paid order reads `unfulfilled`; merchant closure reads
+`fulfillment_closed` with an attributed `merchant_closure`. Reads carry original
+`payment_status` separately as `not_paid`, `paid` or `unresolved`. An unresolved
+payment retains `payment_unresolved` as the main status even after closure.
+Late original payment evidence updates these facts without restarting
+fulfillment or creating another charge. Accepted payment authorizations remain
+reserved, and the existing address-erasure rules continue to apply.
+
+The database migration changes exact stored status, receipt outcome and queued
+event fields. It preserves payment records, original closure reasons, goods and
+merchant text. Historical terminal rows without an authenticated merchant
+closure remain neutral: no merchant actor, explanation or action time is
+invented. The gateway issues receipts for recorded delivery or shipment, not
+for closure or a claimed refund.
+
+### Closure acceptance evidence
+
+The focused core, gateway, contracts and SDK checks cover immutable closure,
+concurrent delivery, queued handovers, held goods, pending payments, late
+original payment recovery, parcel address erasure and the delivered/shipped
+refusal. An independent technical review exercised 270 post-closure state/event
+combinations. Its HTTP probe found a private-order disclosure when an unpaid
+order closed before or during payment verification; the ownership decision now
+requires the recorded payer under the same order lock. Negative HTTP probes
+confirm that a public payment reference reveals no private order or merchant
+message. The original buyer can still recover a paid closed order through a
+fresh verified authorization without another charge. The second review accepted
+the fix, with 59 focused tests passing.
+
+Three core/gateway mutations were applied and killed: accepting a dispatch
+after closure, releasing held goods after closure, and removing the ownership
+guard. Restored controls passed. Twelve independently constructed mode/payment
+histories passed outside fixture modules. The contracts' message-bound mutation
+was also killed, and packed npm packages passed an authenticated loopback
+probe. The complete database suite passed 328 tests on disposable local
+Postgres, including state/receipt/event migration and retained original data;
+the container and credentials were removed. None of these checks sent money
+or contacted a live shop.
+
+The dashboard keeps the existing form controls and typography. Independent
+browser review accepted order details at 320, 390 and 1440 px, including keyboard
+disclosure, focus and both paid and unresolved closures. An actual keyboard
+submission and reload preserved the merchant's literal explanation, left the
+original payment unchanged and removed the action after closure. The lost-write
+response mutation was killed by an HTTP check and its restored control passed.
+All 206 gallery states passed overflow and serious/critical accessibility checks
+at 390, 768 and 1440 px. All 41 dashboard browser scenarios passed, including
+prefetched navigation and fresh data after a closure. The integrated offline
+suite passed 5514 tests in 315 files, plus 14 Node and 14 Python operations
+tests; workspace build, typecheck and static checks passed. These checks use
+local authenticated routes and memory stores; Safari, screen readers and live
+shop operations were not exercised.
 
 ## Admission to real sales
 
@@ -100,10 +169,9 @@ silently reclassified as unpaid.
 
 Completion races the original callback under the same order lock and attempt
 identifier. The due payment deadline is applied first. Held synchronous goods
-can be released once; a prepaid order past its payment deadline enters the
-existing `refund_due` state without a fresh handover. ADR-0028 requires that
-state's refund semantics to change, while original payment recovery stays
-unchanged. Receipt and merchant messages commit with the state. A chain-recovered receipt carries the block's execution time and
+can be released once unless the merchant has closed fulfillment; a prepaid
+order past its payment deadline enters `unfulfilled` without a fresh handover.
+Receipt and merchant messages commit with the state. A chain-recovered receipt carries the block's execution time and
 transaction; it supplies no fabricated facilitator response header.
 
 The proof relies on the canonical Circle USDC event sequence, checked in
@@ -141,37 +209,12 @@ these read-only checks.
 
 ## Remaining work
 
-Merchant closure needs implementation under ADR-0028. It must record the
-merchant's authenticated action idempotently and reliably stop future
-Agentify fulfillment under retries and concurrent delivery. It cannot cancel a
-merchant handler, shop email or external fulfillment already in flight; the
-merchant owns that work. An optional explanation must remain attributed to the
-merchant, including any assertion that money was returned or an agreement
-reached. No refund transfer, proof reader, reservation or recovery protocol is
-part of this work.
-
-The current machine still uses `refund_due` for an overdue paid order and
-`refund_settled` to reach `refunded`. Those names and their existing semantics
-are not the accepted closure contract. There is no merchant closure action.
-The machine, API and SDK, public status and errors, receipts, portal examples
-and tests need one coherent implementation before it is offered. Its API shape,
-state names and eligibility for already-delivered orders remain design work;
-this decision authorizes neither deleting exposed goods nor inventing a refund
-amount or accounting schema.
-
-Original payment verification and recovery continue to establish payment
-facts and outcomes, including for closed orders. Late payment recovery must
-not restart fulfillment closed by the merchant. A closure must not imply
-nonpayment, release the original payment authorization for reuse or trigger
-another charge. Payment facts and
-history remain available. Address erasure keeps ADR-0032's existing triggers.
-Parcels remain refused on live until the closure flow and public contract are
-implemented, reviewed and tested, and their other readiness gates hold.
+Parcels remain refused on live. Closure alone does not satisfy their other
+readiness gates in ADR-0033 and `00-open-questions.md`.
 
 Full offboarding also needs a self-service path. Pausing sales and revoking
 keys are available; neither cancels accepted orders, resolves the merchant's
 obligations or deletes an account. Accepted orders and payment history must
 remain accounted for, without requiring a nonexistent support process.
 
-These are implementation gaps, not a claim that self-service closure exists.
 Agentify promises neither manual intervention nor a refund from its own funds.

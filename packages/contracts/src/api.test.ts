@@ -48,7 +48,7 @@ const order = {
   test: false,
 };
 
-const openOrder = { ...order, status: "in_progress" };
+const openOrder = { ...order, status: "in_progress", payment_status: "paid" };
 
 const publicCard = publicCardOf(
   CardSchema.parse({
@@ -109,8 +109,12 @@ describe("an order read back with its state", () => {
     // A state under a word nobody publishes would be a second answer to "what
     // became of it".
     expect(errorOf(OrderWithStatusSchema, { ...order, status: "dispatched" })).toContain("status");
-    expect(OrderWithStatusSchema.safeParse({ ...order, status: "delivered" }).success).toBe(true);
-    expect(OrderWithStatusSchema.safeParse({ ...order, status: "refund_due" }).success).toBe(true);
+    expect(OrderWithStatusSchema.safeParse({ ...openOrder, status: "delivered" }).success).toBe(
+      true,
+    );
+    expect(OrderWithStatusSchema.safeParse({ ...openOrder, status: "unfulfilled" }).success).toBe(
+      true,
+    );
   });
 
   it("refuses a field it does not know", () => {
@@ -126,7 +130,7 @@ describe("the list of orders", () => {
 
   it("accepts a list of orders read back with their states", () => {
     expect(
-      OrderListSchema.safeParse({ orders: [openOrder, { ...order, status: "refund_due" }] })
+      OrderListSchema.safeParse({ orders: [openOrder, { ...openOrder, status: "unfulfilled" }] })
         .success,
     ).toBe(true);
   });
@@ -227,7 +231,7 @@ describe("the merchant's own receipts", () => {
   it("accepts the receipts of purchases that were paid for", () => {
     expect(
       ReceiptListSchema.safeParse({
-        receipts: [receipt, { ...receipt, id: "rcp_c30f45", outcome: "refund_due" }],
+        receipts: [receipt, { ...receipt, id: "rcp_c30f45", outcome: "unfulfilled" }],
       }).success,
     ).toBe(true);
   });
@@ -353,7 +357,7 @@ describe("what a poll answers with", () => {
           id: "msg_1f77a0",
           sent_at: "2026-08-27T10:20:00Z",
           payload: {
-            type: "order.refund_due",
+            type: "order.unfulfilled",
             order_id: "ord_7c1e05",
             at: "2026-08-27T10:20:00Z",
             price: { amount: "5.00", currency: "USD" },
@@ -528,6 +532,7 @@ describe("the status an agent reads", () => {
   const status = {
     order_id: "ord_7c1e05",
     status: "in_progress",
+    payment_status: "paid",
     price,
     delivered: null,
     test: true,
@@ -573,8 +578,8 @@ describe("the status an agent reads", () => {
     ).toBe(false);
   });
 
-  it("lists, for a generated client to switch on, why a refund is owed beside why an order ended", () => {
-    // An agent holding refund_due branches on why it is owed; a word known
+  it("lists, for a generated client to switch on, why fulfillment failed beside why an order ended", () => {
+    // An agent holding unfulfilled branches on why fulfillment failed; a word known
     // only to the gateway would reach a generated client as any string at all.
     const reason = toJsonSchemas().agent_order_status.properties?.reason as
       | { properties: { code: { anyOf: { enum?: string[] }[] } } }
@@ -586,8 +591,11 @@ describe("the status an agent reads", () => {
     );
     const owing = {
       ...status,
-      status: "refund_due",
-      reason: { code: "deadline_passed", message: "The seller owes you the price." },
+      status: "unfulfilled",
+      reason: {
+        code: "deadline_passed",
+        message: "The delivery deadline passed without fulfillment.",
+      },
     };
     expect(AgentOrderStatusSchema.parse(owing)).toStrictEqual(owing);
   });
@@ -604,6 +612,7 @@ describe("the status an agent reads", () => {
   for (const field of [
     "order_id",
     "status",
+    "payment_status",
     "price",
     "delivered",
     "test",
@@ -825,7 +834,7 @@ describe("the catalog an agent reads", () => {
       expect(exported[name].additionalProperties, name).not.toBe(false);
     }
     expect(known(exported.public_card.properties?.fulfillment)).toContain("async");
-    expect(known(exported.agent_order_status.properties?.status)).toContain("refund_due");
+    expect(known(exported.agent_order_status.properties?.status)).toContain("unfulfilled");
     expect(
       exported.agent_order_status.properties?.status,
       "an open word sits beside the known ones",
@@ -1012,6 +1021,15 @@ describe("the route table", () => {
       "-",
       "delivery",
       "order_call_response",
+    ],
+    [
+      "close_order",
+      "POST",
+      "/v0/orders/:order_id/close",
+      "merchant_key",
+      "-",
+      "order_close_request",
+      "order_close_response",
     ],
     [
       "refuse_order",
@@ -1202,7 +1220,7 @@ describe("the route table", () => {
 
   it("pauses and resumes with verbs, so leaving cannot be reached by a side door", () => {
     // One route taking a selling word would accept "departed" as easily as
-    // "paused", and leaving closes open orders and leaves refunds owed; no
+    // "paused", and leaving closes open orders and leaves paid orders unfulfilled; no
     // route takes the word in a body.
     const switches: RouteDefinition[] = [
       API_ROUTES.pause_card,

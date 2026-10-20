@@ -173,7 +173,7 @@ describe("the deadlines of an order", () => {
 
   it("runs no deadline on a closed order or on an unpaid debt", () => {
     const closed: Order = { ...newOrder("async"), state: "delivered", payment: "settled" };
-    const debt: Order = { ...newOrder("async"), state: "refund_due", payment: "settled" };
+    const debt: Order = { ...newOrder("async"), state: "unfulfilled", payment: "settled" };
 
     expect(deadlines(closed)).toStrictEqual([]);
     expect(deadlines(debt)).toStrictEqual([]);

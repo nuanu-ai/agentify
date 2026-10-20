@@ -70,7 +70,7 @@
   }
 }
 
-/* The way to how refunds are made stands at the end of its group's heading. */
+/* The way to unfulfilled orders and closure work stands at the end of its group's heading. */
 :global(.group-aside):has(> .end) {
   margin-left: auto;
 }
@@ -97,4 +97,121 @@
    test mark or a word of its share, and never inside a number. */
 .sum {
   white-space: normal;
+}
+
+.orderDetails:global(.cell-more) {
+  scroll-margin-top: 80px;
+  margin-top: 0;
+  color: var(--fg-2);
+  font-size: 1rem;
+}
+
+.orderDetails > summary {
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.orderDetails > :global(.more-body) {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.details {
+  display: grid;
+  gap: 24px;
+  max-width: 44rem;
+  padding: 16px 0 12px;
+  border-top: var(--hairline) solid var(--line);
+  line-height: 1.5;
+}
+
+.details p,
+.details h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.details h3 {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.facts > div {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 16px;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-2);
+}
+
+.facts :global(.ident) {
+  max-width: 100%;
+}
+
+.facts :global(.ident) > span:first-child {
+  min-width: 0;
+}
+
+.shares {
+  display: grid;
+  gap: 4px;
+}
+
+.close,
+.closure {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  margin: 0;
+  padding-top: 24px;
+  border-top: var(--hairline) solid var(--line);
+}
+
+.close :global(.field) {
+  width: 100%;
+}
+
+.details .help,
+.label {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.statement {
+  display: grid;
+  gap: 8px;
+}
+
+.statement > p:last-child {
+  white-space: pre-wrap;
+}
+
+@container (max-width: 560px) {
+  .facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
 }

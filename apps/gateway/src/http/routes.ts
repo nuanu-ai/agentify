@@ -280,6 +280,18 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         ),
     },
 
+    close_order: {
+      serve: async (call) =>
+        answeredOrder(
+          call.response,
+          await gateway.closeOrder(
+            merchantOf(call),
+            call.params.order_id ?? "",
+            call.body as never,
+          ),
+        ),
+    },
+
     accept_order: {
       serve: async (call) =>
         answeredOrder(
@@ -644,7 +656,7 @@ async function answerPurchase(
       return written(
         response,
         CONFLICT,
-        refusal("not_this_purchase", "this order already belongs to another payment"),
+        refusal("not_this_purchase", "this payment does not establish ownership of this purchase"),
       );
 
     case "payment_not_verified":

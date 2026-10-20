@@ -27,7 +27,7 @@ describe("the order vocabulary", () => {
 
   it("keeps every state that is not a resting place of the purchase open", () => {
     expect(isOpen("dispatched")).toBe(true);
-    expect(isOpen("refund_due")).toBe(true);
+    expect(isOpen("unfulfilled")).toBe(true);
     expect(isOpen("delivered_unpaid")).toBe(true);
     expect(isOpen("delivered")).toBe(false);
   });

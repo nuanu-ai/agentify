@@ -12,7 +12,9 @@ import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agen
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
+  IdentifierSchema,
   IssueKeyRequestSchema,
+  OrderCloseRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
@@ -192,11 +194,11 @@ export interface PageServices {
     page(): Outcome<ChooseNameView>;
     choose(person: Person, form: FormData): Promise<Outcome<ChooseNameView>>;
   };
-  /**
-   * A switch pressed on the cards, named in the address the press is posted
-   * to: `pause` or `resume` with a card, or `selling` with either way. The
-   * form carries the list it was drawn on, which the press leads back to.
-   */
+  /** Stops this merchant's future Agentify fulfillment for one order. */
+  readonly fulfillment: {
+    close(person: Person, form: FormData): Promise<Outcome<never>>;
+  };
+  /** The card switches; each form carries the list it was drawn on. */
   readonly selling: {
     press(person: Person, query: URLSearchParams, form: FormData): Promise<Outcome<never>>;
   };
@@ -948,6 +950,45 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
     },
 
+    fulfillment: {
+      async close(person, form) {
+        const id = IdentifierSchema.safeParse(once(form.getAll("order_id")));
+        const typed = once(form.getAll("message"));
+        const request = OrderCloseRequestSchema.safeParse(
+          typeof typed === "string"
+            ? typed.trim() === ""
+              ? {}
+              : { message: typed }
+            : form.has("message")
+              ? { message: typed }
+              : {},
+        );
+        if (!id.success || !request.success || form.getAll("message").length > 1) {
+          return {
+            kind: "problem",
+            problem: {
+              status: 400,
+              said: "Choose one order and an optional explanation of at most 2000 characters.",
+            },
+          };
+        }
+        const gateway = gatewayAs(person);
+        const closed = await gateway.closeOrder(id.data, request.data);
+        const destination = new URLSearchParams({ q: id.data, details: id.data });
+        if (!closed.ok) {
+          if (closed.status !== 0 && closed.status < 500) return problemOf(closed);
+          // A timed-out write may have committed. Only a fresh read proves it.
+          const read = await gateway.getOrder(id.data);
+          if (!read.ok || read.document.merchant_closure === undefined)
+            destination.set("closure", "unconfirmed");
+        }
+        return {
+          kind: "redirect",
+          location: `${base}/orders?${destination}#details-${encodeURIComponent(id.data)}`,
+        };
+      },
+    },
+
     selling: {
       async press(person, query, form) {
         const pressed = switchIn(query);
@@ -999,7 +1040,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           gateway.cards(),
           gateway.orders(false),
           gateway.orders(true),
-          gateway.refundsOwed(),
+          gateway.unfulfilledOrders(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);

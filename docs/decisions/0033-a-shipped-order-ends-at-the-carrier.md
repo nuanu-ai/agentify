@@ -2,7 +2,7 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28 and 2026-10-09). Built, and
-sold on the test channel only; merchant closure under ADR-0028 is not built.
+sold on the test channel only. Merchant closure is governed by ADR-0028.
 
 ## Context
 
@@ -47,9 +47,9 @@ A lost parcel and any refund or other agreement remain the merchant's
 responsibility. Agentify records no verified refund or settlement of that
 agreement (ADR-0028). The live channel continues to refuse a `ship` card until
 the merchant closure flow and its public contract are implemented, reviewed
-and tested, and the other parcel readiness gates hold. The state and receipt
-representation of closure, including an already-shipped parcel, still need
-design; no such transition is offered. Who may read a parcel's tracking is
+and tested, and the other parcel readiness gates hold. Closure applies only
+before shipment is recorded: an already-shipped parcel keeps its shipment and
+receipt, and any subsequent agreement stays outside Agentify. Who may read a parcel's tracking is
 ADR-0011's rule: the holder of the order identifier, which no payment
 requirement or listing carries.
 

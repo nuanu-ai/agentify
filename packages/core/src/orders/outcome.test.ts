@@ -112,14 +112,14 @@ describe("what the agent is told an order came to", () => {
     // The machine keeps the old closure as the record of why the order was
     // first closed. The projection must not read it as the money still being
     // lost.
-    expect(owed.state).toBe("refund_due");
+    expect(owed.state).toBe("unfulfilled");
     expect(owed.payment).toBe("settled");
     expect(owed.closure).toStrictEqual({ cause: "payment_outcome_unknown" });
-    expect(outcomeFor(owed)).toBe("refund_due");
+    expect(outcomeFor(owed)).toBe("unfulfilled");
 
-    const repaid = walk(owed, [{ kind: "refund_settled", at: T0 + 1_000_001 }]);
+    const repaid = walk(owed, [{ kind: "close_called", at: T0 + 1_000_001 }]);
 
-    expect(outcomeFor(repaid)).toBe("refunded");
+    expect(outcomeFor(repaid)).toBe("fulfillment_closed");
   });
 
   it("keeps an unpaid quote off the list a restarted worker walks, and keeps one he took on", () => {
@@ -129,7 +129,7 @@ describe("what the agent is told an order came to", () => {
     const unpaid = reach("quoted");
     const takenOn = walk(reach("dispatched"), [{ kind: "handler_accepted", at: T0 + 4 }]);
     const handed = reach("paid");
-    const debt = reach("refund_due");
+    const debt = reach("unfulfilled");
     const goodsUnpaid = reach("delivered_unpaid");
     const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
@@ -153,9 +153,9 @@ describe("what the agent is told an order came to", () => {
   });
 
   it("shows the two endings where money is owed as what they are", () => {
-    expect(outcomeFor(reach("refund_due"))).toBe("refund_due");
+    expect(outcomeFor(reach("unfulfilled"))).toBe("unfulfilled");
     expect(outcomeFor(reach("delivered_unpaid"))).toBe("delivered_unpaid");
-    expect(outcomeFor(reach("refunded"))).toBe("refunded");
+    expect(outcomeFor(reach("fulfillment_closed"))).toBe("fulfillment_closed");
   });
 
   it("calls a success a success only once the money has actually moved", () => {
@@ -170,7 +170,7 @@ describe("what the agent is told an order came to", () => {
   });
 
   it("changes its answer the moment a late delivery closes a debt", () => {
-    const closed = walk(reach("refund_due"), [{ kind: "deliver_called", at: T0 + 999 }]);
+    const closed = walk(reach("unfulfilled"), [{ kind: "deliver_called", at: T0 + 999 }]);
 
     expect(outcomeFor(closed)).toBe("delivered");
   });
@@ -228,7 +228,7 @@ describe("why an order ended, where its merchant did not say", () => {
       "created",
       "dispatched",
       "delivered",
-      "refund_due",
+      "unfulfilled",
       "delivered_unpaid",
     ] as const) {
       expect(endingReasonFor(reach(state)), state).toBeNull();

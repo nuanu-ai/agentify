@@ -40,10 +40,10 @@ A merchant takes an order on by answering `accepted`, from the handler or by
 the `accept` call, and the merchant stores `ship_to` before either: that answer
 erases our copy. We hold the address from the priced request until the first of
 these: the order is taken on, its shipment is recorded, it closes, or it
-enters `refund_due` without having been taken on (ADR-0028). Then it leaves
+enters `unfulfilled` without having been taken on (ADR-0028). Then it leaves
 the order, and every envelope carrying any of the address — the order's hand-overs and its
 price questions — is deleted from the queue; the events about the order, the
-`refund_due` notice among them, carry no address and are kept, as are the
+`order.unfulfilled` notice among them, carry no address and are kept, as are the
 reminders that keep its deadlines. The order then reads `ship_to: {
 "erased_at": … }`, never absent, and is never handed to a handler again.
 Nothing of the address is kept, neither a masked fragment nor a fingerprint,

@@ -47,6 +47,7 @@ const PRODUCT: EligibleWooProduct = {
 };
 
 const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
+  payment_status: status === "payment_unresolved" ? "unresolved" : "paid",
   id: "ord_1",
   merchant_item_id: FACTS.merchantItemId,
   params: {},
@@ -115,7 +116,7 @@ const parts = (
   let delivered = 0;
   let created = 0;
   let read = 0;
-  let status: "refund_due" | "delivered" = "refund_due";
+  let status: "unfulfilled" | "delivered" = "unfulfilled";
   const sold: SoldItem[] = [];
   const made: OrderMade = {
     ok: true,
@@ -146,7 +147,7 @@ const parts = (
         status = "delivered";
         return {
           ok: true as const,
-          document: { ok: true as const, result: "debt_closed_by_delivery" as const },
+          document: { ok: true as const, result: "delivered_late" as const },
         };
       },
       paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
@@ -317,7 +318,7 @@ describe("merchant recovery pages", () => {
     const test = parts(shops, {
       gatewayFor: (acting) => ({
         ...base.value.gatewayFor(acting),
-        getOrder: async () => ({ ok: true, document: gatewayOrder("refund_due") }),
+        getOrder: async () => ({ ok: true, document: gatewayOrder("unfulfilled") }),
         deliverOrder: async () => ({ ok: false, status: 0, why: "the answer was lost" }),
       }),
     });
@@ -370,7 +371,7 @@ describe("merchant recovery pages", () => {
         ...base.value.gatewayFor(acting),
         getOrder: async () => ({
           ok: true,
-          document: gatewayOrder(landed ? "delivered" : "refund_due"),
+          document: gatewayOrder(landed ? "delivered" : "unfulfilled"),
         }),
         deliverOrder: async () => {
           landed = true;
@@ -397,7 +398,7 @@ describe("merchant recovery pages", () => {
         getOrder: async () =>
           submitted
             ? { ok: false, status: 0, why: "the gateway is unavailable" }
-            : { ok: true, document: gatewayOrder("refund_due") },
+            : { ok: true, document: gatewayOrder("unfulfilled") },
         deliverOrder: async () => {
           submitted = true;
           return { ok: false, status: 0, why: "no response" };
@@ -589,7 +590,7 @@ describe("exact Woo order recovery", () => {
 });
 
 describe("a parcel's order", () => {
-  it("is not recovered: its address was erased when it became a refund owed", async () => {
+  it("is not recovered: its address was erased when it became an unfulfilled order", async () => {
     // Nothing of where a parcel goes is kept, so recovery has nothing to create
     // an order from.
     const shops = memoryWooShops();

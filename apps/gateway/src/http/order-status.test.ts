@@ -344,6 +344,7 @@ describe("a refusal the merchant made", () => {
       expect(Object.keys(answered as object).sort()).toStrictEqual([
         "delivered",
         "order_id",
+        "payment_status",
         "price",
         "refusal",
         "seller",
@@ -387,7 +388,7 @@ describe("a refusal the merchant made", () => {
 });
 
 describe("an order that owes a refund", () => {
-  // `refund_due` alone reads as "a refund is on its way". The agent has to be
+  // `unfulfilled` alone reads as "a refund is on its way". The agent has to be
   // told why the money is owed, in the words the merchant's own event uses,
   // and in a sentence that nothing here will say when it has been paid back.
   const owingOf = async (served: Served, orderId: string): Promise<AgentOrderStatus> => {
@@ -397,7 +398,7 @@ describe("an order that owes a refund", () => {
         const answered = await statusOf(served, orderId);
         expect(answered.status).toBe(200);
         read = answered.body as AgentOrderStatus;
-        expect(read.status).toBe("refund_due");
+        expect(read.status).toBe("unfulfilled");
       },
       { timeout: 2_000, interval: 5 },
     );
@@ -568,6 +569,7 @@ describe("what the answer carries", () => {
     expect(Object.keys(answered.body as object).sort()).toStrictEqual([
       "delivered",
       "order_id",
+      "payment_status",
       "price",
       "seller",
       "status",
@@ -685,6 +687,7 @@ describe("the goods as the merchant wrote them", () => {
       order_id: orderId,
       status_url: collectedAt(orderId),
       status: "delivered",
+      payment_status: "paid",
       price: {
         amount: "80.00",
         currency: "USD",

@@ -93,6 +93,12 @@ const ordersOf = (orders: readonly Ordered[]) =>
       },
       test,
       status,
+      payment_status:
+        status === "payment_unresolved"
+          ? "unresolved"
+          : ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
+            ? "paid"
+            : "not_paid",
     })),
   });
 
@@ -227,8 +233,8 @@ describe("searching the orders", () => {
 
   it("narrows the orders that need the merchant by the same search", () => {
     const owing = ordersOf([
-      { id: FIRST, status: "refund_due" },
-      { id: SAME_TAIL, status: "refund_due" },
+      { id: FIRST, status: "unfulfilled" },
+      { id: SAME_TAIL, status: "unfulfilled" },
     ]);
 
     const view = ordersView("live", CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
@@ -237,19 +243,14 @@ describe("searching the orders", () => {
   });
 });
 
-describe("a refund due on a test purchase", () => {
-  it("says the sum to return is a test purchase's, and says nothing of tests for a real one", () => {
-    const owing = ordersOf([
-      { id: FIRST, status: "refund_due", test: true },
-      { id: SAME_TAIL, status: "refund_due" },
-    ]);
-
-    const [test, real] = ordersView("live", CARDS, owing, owing).needsYou.rows;
-
-    // The test word stands with the sum itself.
-    expect(test?.why).toMatch(/test purchase, 5\.00 USD/);
-    expect(real?.why).toContain("5.00 USD");
-    expect(real?.why).not.toMatch(/test/i);
+describe("an unfulfilled test purchase", () => {
+  it("marks the original amount as a test without prescribing a transfer", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const text = readable(html);
+    expect(text).toContain("5.00 USD test");
+    expect(text).not.toContain("Return the full price");
+    expect(text).not.toContain("from your own wallet");
   });
 });
 
@@ -340,7 +341,7 @@ describe("a long run of orders told in full", () => {
   };
 
   it.each([
-    ["refund_due", "Needs you", "Orders that need you"],
+    ["unfulfilled", "Needs you", "Orders that need you"],
     ["delivered_unpaid", "Waiting on the buyer", "Orders waiting on the buyer"],
   ])("draws the newest fifty orders %s and says which of how many", (status, title, label) => {
     const orders = sixtyOf(status);
@@ -355,11 +356,90 @@ describe("a long run of orders told in full", () => {
   });
 
   it("says nothing of a cut where the group holds every order", () => {
-    const orders = ordersOf([{ id: FIRST, status: "refund_due" }]);
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
 
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
+  });
+});
+
+describe("merchant fulfillment closure", () => {
+  const closedAt = "2026-10-19T09:30:00Z";
+  const closed = (status = "fulfillment_closed", payment = "paid", message?: string) =>
+    OrderListSchema.parse({
+      orders: [
+        {
+          ...THREE.orders[0],
+          status,
+          payment_status: payment,
+          merchant_closure: { closed_at: closedAt, ...(message === undefined ? {} : { message }) },
+        },
+      ],
+    });
+
+  it("keeps the original payment fact and attributes the explanation to the merchant", () => {
+    const orders = closed("fulfillment_closed", "paid", "A refund was agreed <outside Agentify>.");
+    const html = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
+    ));
+    const text = readable(html);
+
+    expect(text).toContain("Closed by you");
+    expect(text).toContain("Original payment Paid");
+    expect(text).toContain("Your explanation to the buyer");
+    expect(text).toContain("A refund was agreed <outside Agentify>.");
+    expect(html).toContain("&lt;outside Agentify&gt;");
+    expect(html).not.toContain("<outside Agentify>");
+    expect(text).toContain("2026-10-19 09:30:00 UTC");
+    expect(text).not.toContain("Refunded");
+  });
+
+  it("shows closure without pretending an unresolved payment is known", () => {
+    const orders = closed("payment_unresolved", "unresolved");
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+    );
+
+    expect(text).toContain("Payment outcome unknown");
+    expect(text).toContain("Fulfillment closed by you");
+    expect(text).toContain("Original payment Outcome unknown");
+    expect(text).not.toContain("Your explanation to the buyer");
+  });
+
+  it("does not invent an actor for a historical closure without metadata", () => {
+    const orders = OrderListSchema.parse({
+      orders: [{ ...THREE.orders[0], status: "fulfillment_closed", payment_status: "paid" }],
+    });
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+    );
+
+    expect(text).toContain("Fulfillment closed");
+    expect(text).not.toContain("Closed by you");
+    expect(text).not.toContain("Fulfillment closed by you");
+  });
+
+  it("offers closure only while Agentify fulfillment can still be stopped", () => {
+    const orders = OrderListSchema.parse({
+      orders: [
+        { ...THREE.orders[0], id: FIRST, status: "unfulfilled", payment_status: "paid" },
+        { ...THREE.orders[0], id: SAME_HEAD, status: "delivered", payment_status: "paid" },
+        {
+          ...THREE.orders[0],
+          id: SAME_TAIL,
+          status: "payment_unresolved",
+          payment_status: "unresolved",
+          merchant_closure: { closed_at: closedAt },
+        },
+      ],
+    });
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(html).toContain(`name="order_id" value="${FIRST}"`);
+    expect(html).not.toContain(`name="order_id" value="${SAME_HEAD}"`);
+    expect(html).not.toContain(`name="order_id" value="${SAME_TAIL}"`);
+    expect(html).toContain('name="message"');
   });
 });

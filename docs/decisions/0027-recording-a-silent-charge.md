@@ -54,10 +54,11 @@ locate an old consumed nonce; unavailable history leaves the scan progressing.
 The original answer and recovery share one conditional completion under the
 order lock. It checks the attempt and applies any due settlement deadline
 before the result. State, receipt and merchant messages commit together.
-Synchronous goods already held are released once. A payment discovered after
+Synchronous goods already held are released once unless the merchant has closed
+fulfillment. A payment discovered after
 a prepaid order's deadline records payment without dispatching new fulfillment.
-The current `refund_due` semantics require the changes in ADR-0028; refund
-policy and execution remain the merchant's business.
+Merchant closure preserves payment recovery without restarting fulfillment
+(ADR-0028); refund policy and execution remain the merchant's business.
 
 A recovered receipt uses the transaction block's time. Chain evidence is kept
 separate from the facilitator's answer and cannot manufacture its payment

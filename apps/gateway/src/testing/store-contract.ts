@@ -508,7 +508,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_quoted", "quoted", { merchantId: A, createdAt: 1 }));
         await store.addOrder(anOrder("ord_paid", "paid", { merchantId: A, createdAt: 2 }));
-        await store.addOrder(anOrder("ord_owed", "refund_due", { merchantId: A, createdAt: 3 }));
+        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 3 }));
         await store.addOrder(anOrder("ord_done", "delivered", { merchantId: A, createdAt: 4 }));
         await store.addOrder(anOrder("ord_theirs", "paid", { merchantId: B, createdAt: 5 }));
 
@@ -521,7 +521,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("is not held by an order that owes nothing but money", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_owed", "refund_due", { merchantId: A }));
+        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A }));
         await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { merchantId: A }));
 
         expect((await store.switchIntegration(A, "woocommerce")).switched).toBe(true);
@@ -1751,7 +1751,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // column that fell behind the document.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_open", "dispatched", { createdAt: 1_000 }));
-        await store.addOrder(anOrder("ord_debt", "refund_due", { createdAt: 2_000 }));
+        await store.addOrder(anOrder("ord_debt", "unfulfilled", { createdAt: 2_000 }));
         await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { createdAt: 3_000 }));
         await store.addOrder(anOrder("ord_done", "delivered", { createdAt: 4_000 }));
         // Another merchant's open order, which must be in neither of A's lists.
@@ -1993,9 +1993,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.putReceipt(A, aReceipt("rcp_1", "ord_1", "delivered"));
 
         // Written again, and named for the wrong merchant.
-        await store.putReceipt(B, aReceipt("rcp_1", "ord_1", "refund_due"));
+        await store.putReceipt(B, aReceipt("rcp_1", "ord_1", "unfulfilled"));
 
-        expect((await store.receipts(A)).map((held) => held.outcome)).toStrictEqual(["refund_due"]);
+        expect((await store.receipts(A)).map((held) => held.outcome)).toStrictEqual([
+          "unfulfilled",
+        ]);
         expect(await store.receipts(B)).toStrictEqual([]);
       });
     });

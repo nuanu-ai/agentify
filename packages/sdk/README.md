@@ -99,11 +99,27 @@ again.
 
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings
-under `problems`. `deliver`, `refuse` and `accept` hand every failure back in
+under `problems`. `deliver`, `refuse`, `accept` and `close` hand every failure back in
 that same envelope, and throw only on a client built with no address. `catalog.publish`, `orders.get` and
 `orders.list` throw an `AgentifyError` whenever no publish result or order came
 back — a refused key included — with the same codes, the flag and the call it
 happened on.
+
+To stop future fulfillment through Agentify, call the order's `close` method.
+The optional message is your statement to the buyer. Repeating the call keeps
+the first closure time and message. An order already delivered or shipped is
+refused.
+
+```ts
+const order = await agentify.orders.get(orderId)
+const closed = await order.close({ message: 'Please contact our shop to continue.' })
+```
+
+An order read back carries `payment_status` for its original payment and
+`merchant_closure` for this action. Closure confirms no refund or agreement and
+does not cancel a payment already accepted for execution: that payment may
+still complete and update afterward. Closing causes no new charge. You and
+the buyer handle any refund or other agreement outside Agentify.
 
 ## The check that needs no key
 

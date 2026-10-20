@@ -518,7 +518,7 @@ describe("the address a charge is sent to", () => {
 
     const told = await drawEverything(open);
     const owed = told.flatMap((envelope) =>
-      envelope.kind === "order_event" && envelope.payload.type === "order.refund_due"
+      envelope.kind === "order_event" && envelope.payload.type === "order.unfulfilled"
         ? [envelope.payload]
         : [],
     );

@@ -647,7 +647,7 @@ describe("once the address is gone, nothing puts it back", () => {
 
     await vi.waitFor(
       async () =>
-        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due"),
+        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled"),
       { timeout: 3_000, interval: 20 },
     );
 
@@ -763,7 +763,7 @@ describe("the shipment", () => {
 
   it.each([
     { status: "shipped", httpStatus: 200 },
-    { status: "refund_due", httpStatus: 409 },
+    { status: "unfulfilled", httpStatus: 409 },
     { status: "rejected", httpStatus: 409 },
   ])(
     "answers a repeated $status purchase with HTTP $httpStatus without another charge",
@@ -786,7 +786,7 @@ describe("the shipment", () => {
         });
         expect(accepted.status).toBe(200);
         expect((await ship(served, orderId, shipment)).status).toBe(200);
-      } else if (status === "refund_due") {
+      } else if (status === "unfulfilled") {
         const refused = await served.call("POST", `/v0/orders/${orderId}/refuse`, {
           headers: asMerchant,
           body: { code: "out_of_stock", message: "The parcel cannot be fulfilled." },

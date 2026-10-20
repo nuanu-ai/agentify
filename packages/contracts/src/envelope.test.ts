@@ -30,7 +30,7 @@ const quoteRequest = {
 };
 
 const orderEvent = {
-  type: "order.refund_due",
+  type: "order.unfulfilled",
   order_id: "ord_7c1e05",
   at: "2026-08-27T10:20:00Z",
   price: { amount: "5.00", currency: "USD" },

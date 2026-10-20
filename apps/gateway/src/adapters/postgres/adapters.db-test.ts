@@ -1384,7 +1384,7 @@ if (databaseUrl === null) {
           }
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
-          expect((await store.orderById(orderId))?.order.state).toBe("refund_due");
+          expect((await store.orderById(orderId))?.order.state).toBe("unfulfilled");
           expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
             "order_event",
           ]);

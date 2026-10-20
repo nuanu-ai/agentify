@@ -64,15 +64,15 @@ responsibility; unverified payment outcomes remain unknown.
 
 The merchant owns stock, fulfillment, cancellation and refund policy, money
 transfers and fulfillment outside Agentify. Agentify does not confirm refunds
-or adjudicate an agreement between the parties. The accepted direction is one
-authenticated, idempotent merchant action that stops future Agentify fulfillment,
+or adjudicate an agreement between the parties. One authenticated, idempotent
+merchant action stops future Agentify fulfillment,
 with an optional explanation to the buyer. Agentify records "fulfillment closed
 by merchant", preserves the original payment and history, and attributes any
 refund or agreement claim to the merchant. A missed deadline establishes
 unfulfilled delivery, not a required whole-price refund. A shop connector adapts
 the shop to the public contracts; the core and SDK acquire no shop-specific
-business rules. The closure action and corresponding contract changes are not
-built (ADR-0028; the product owner, 2026-10-19).
+business rules. Closure does not undo delivery or cancel a payment already
+accepted for execution (ADR-0028; the product owner, 2026-10-19).
 
 ## Git
 - Main branch: `main`. Every change is made on a branch and reaches `main`

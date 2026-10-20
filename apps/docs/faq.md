@@ -71,13 +71,11 @@ connected](/#after-you-are-connected)).
 Full offboarding is not available yet, and there is no staffed process to
 arrange it. You can pause all sales and revoke your Agentify API keys in the
 dashboard, but that does not cancel accepted orders, settle debts or delete
-your account. Fulfill or refund accepted orders before disabling the
-integration they need. A connected shop's keys stay valid until you revoke them
+your account. Fulfill accepted orders, or arrange the remedy with the buyer and close Agentify fulfillment on Orders, before disabling the integration they need. A connected shop's keys stay valid until you revoke them
 in WooCommerce → Settings → Advanced → REST API.
 
 Money in your payout contract can be paid out at any time to its fixed
-recipients, including after you pause. Refund obligations and the current
-limits on recording a refund are described on
+recipients, including after you pause. Merchant remedies and closure are described on
 [Money](/money#if-the-buyer-did-not-get-the-goods).
 
 ### The buyer is unhappy — who settles the dispute?

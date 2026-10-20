@@ -61,7 +61,7 @@ describe("what the agent is told about a parcel", () => {
       at: T0 + 999_999_999,
       deadline: "async_fulfillment",
     }).order;
-    expect(owed.state).toBe("refund_due");
+    expect(owed.state).toBe("unfulfilled");
 
     const shipped = must(owed, { kind: "deliver_called", at: T0 + 1_000_000_000 }).order;
 
@@ -70,6 +70,22 @@ describe("what the agent is told about a parcel", () => {
 });
 
 describe("a parcel's address", () => {
+  it("is erased on merchant closure once, and a recorded shipment cannot be closed", () => {
+    const { order, effects } = must(handedOver(parcel()), { kind: "close_called", at: T0 + 5 });
+    expect(holdsShipTo(order)).toBe(false);
+    expect(erasures(effects)).toBe(1);
+    expect(erasures(must(order, { kind: "close_called", at: T0 + 6 }).effects)).toBe(0);
+    expect(transition(order, { kind: "order_dispatched", at: T0 + 6 }).ok).toBe(false);
+    const shipped = must(takenOn(), { kind: "deliver_called", at: T0 + 60 }).order;
+    const attempted = must(shipped, { kind: "close_called", at: T0 + 61 });
+    expect(attempted.order).toEqual(shipped);
+    expect(outcomeFor(attempted.order)).toBe("shipped");
+    expect(attempted.effects).toContainEqual({
+      kind: "answer_merchant",
+      answer: { ok: false, error: "order_already_closed", retryable: false },
+    });
+  });
+
   it("is held from the priced request until the merchant has it", () => {
     expect(parcel().state).toBe("created");
     expect(holdsShipTo(parcel())).toBe(true);
@@ -116,7 +132,7 @@ describe("a parcel's address", () => {
     });
 
     for (const { order, effects } of [refused, departed, ranOut]) {
-      expect(order.state).toBe("refund_due");
+      expect(order.state).toBe("unfulfilled");
       expect(erasures(effects)).toBe(1);
     }
   });
@@ -150,7 +166,7 @@ describe("a parcel's address", () => {
     });
 
     expect(erasures(shipped.effects)).toBe(0);
-    expect(ranOut.order.state).toBe("refund_due");
+    expect(ranOut.order.state).toBe("unfulfilled");
     expect(erasures(ranOut.effects)).toBe(0);
   });
 

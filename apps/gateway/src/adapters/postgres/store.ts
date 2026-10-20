@@ -23,9 +23,9 @@ import {
   type Integration,
   type IntegrationSwitch,
   type MerchantScope,
+  NO_PENDING_HANDLER,
   type OrderChange,
   type OrderLookup,
-  OWING_ONLY_MONEY,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -641,7 +641,7 @@ export class PostgresStore implements Store {
           and(
             eq(orders.merchantId, merchantId),
             eq(orders.open, true),
-            not(inArray(orders.state, [...OWING_ONLY_MONEY])),
+            not(inArray(orders.state, [...NO_PENDING_HANDLER])),
           ),
         )
         .orderBy(orders.createdAt);

@@ -40,11 +40,10 @@ import { assertNever } from "../index.js";
  * - `delivered_unpaid` — the merchant produced the goods after a synchronous
  *   purchase whose settle then failed. Rare, open, and closed by the agent
  *   repeating the purchase; no second fulfillment is ever asked for.
- * - `refund_due` — the money was taken and the goods were not delivered. It
- *   stays open: the machine records the debt and knows nothing about how a
- *   refund is made.
- * - `refunded` — the debt was closed by a refund. The machine learns of it as
- *   a fact and knows nothing about how it was executed.
+ * - `unfulfilled` — the original payment settled and no delivery is recorded.
+ *   It remains open to late fulfillment until the merchant closes it.
+ * - `fulfillment_closed` — Agentify will perform no further fulfillment.
+ *   The original payment outcome is independent of this state.
  * - `failed` — the merchant's handler refused a purchase whose money had not
  *   moved. The agent sees a refusal; the merchant's own metrics can still tell
  *   this apart from a purchase that never reached his handler.
@@ -55,7 +54,7 @@ import { assertNever } from "../index.js";
  *   Free for the agent.
  * - `expired` — a deadline ran out. Free for the agent in every case it can
  *   reach, because every deadline whose expiry would leave money taken sends
- *   the order to `refund_due` instead.
+ *   the order to `unfulfilled` instead.
  * - `cancelled` — the merchant left and the order was open with no money taken.
  */
 export const ORDER_STATES = [
@@ -68,8 +67,8 @@ export const ORDER_STATES = [
   "fulfilled",
   "delivered",
   "delivered_unpaid",
-  "refund_due",
-  "refunded",
+  "unfulfilled",
+  "fulfillment_closed",
   "failed",
   "rejected",
   "declined",
@@ -80,10 +79,8 @@ export const ORDER_STATES = [
 export type OrderState = (typeof ORDER_STATES)[number];
 
 /**
- * The states in which the order is still owed something — either work or
- * money. `refund_due` and `delivered_unpaid` are here even though the purchase
- * itself is over: the portal calls them the two cases that stay open, and the
- * merchant's list of unclosed orders has to show them.
+ * Orders that can still progress through Agentify. `unfulfilled` allows late
+ * delivery; `delivered_unpaid` allows payment against goods already held.
  */
 export const OPEN_ORDER_STATES = [
   "created",
@@ -93,14 +90,14 @@ export const OPEN_ORDER_STATES = [
   "paid",
   "dispatched",
   "fulfilled",
-  "refund_due",
+  "unfulfilled",
   "delivered_unpaid",
 ] as const;
 
-/** The states in which nothing further is owed to anybody. */
+/** The states in which Agentify no longer expects fulfillment. */
 export const CLOSED_ORDER_STATES = [
   "delivered",
-  "refunded",
+  "fulfillment_closed",
   "failed",
   "rejected",
   "declined",
@@ -353,7 +350,7 @@ export type Closure =
  * would otherwise learn about only by reconciling by hand.
  */
 export const MERCHANT_EVENTS = [
-  "order.refund_due",
+  "order.unfulfilled",
   "order.unpaid_after_confirmation",
   "order.payment_failed_after_delivery",
 ] as const;
@@ -374,7 +371,7 @@ export const MERCHANT_ANSWER_RESULTS = [
   "accepted",
   "delivered",
   "already_delivered",
-  "debt_closed_by_delivery",
+  "delivered_late",
   "refused",
   "purchase_already_closed",
 ] as const;
@@ -382,7 +379,7 @@ export const MERCHANT_ANSWER_RESULTS = [
 export type MerchantAnswerResult = (typeof MERCHANT_ANSWER_RESULTS)[number];
 
 export const MERCHANT_ANSWER_ERRORS = [
-  "refund_already_settled",
+  "fulfillment_closed",
   "order_already_closed",
   "not_applicable_in_mode",
 ] as const;
@@ -409,7 +406,7 @@ export type Effect =
   | { readonly kind: "release_goods_to_agent" }
   | { readonly kind: "issue_receipt" }
   | { readonly kind: "hold_fulfillment" }
-  | { readonly kind: "mark_refund_due"; readonly closure: Closure }
+  | { readonly kind: "mark_unfulfilled"; readonly closure: Closure }
   | { readonly kind: "emit_merchant_event"; readonly event: MerchantEvent }
   | { readonly kind: "answer_merchant"; readonly answer: MerchantAnswer }
   /**
@@ -425,8 +422,8 @@ export type Effect =
  * Only a parcel ever holds one, and it holds it from the priced request until
  * the first of four moments: the merchant takes the order on (they store the
  * address before answering `accepted`), its shipment is recorded, it closes, or
- * it becomes a refund owed without having been taken on. Each of those leaves
- * the order closed, owing a refund or taken on, so the rule is read off the
+ * it becomes unfulfilled without having been taken on. Each leaves
+ * the order closed, unfulfilled or taken on, so the rule is read off the
  * order rather than kept beside it. It only ever goes from true to false
  * because a parcel's money moves first (`OrderMode`): no repeat of the purchase
  * reopens such an order, and an acceptance, once given, stays.
@@ -435,7 +432,7 @@ export function holdsShipTo(order: Order): boolean {
   return (
     order.mode.parcel === true &&
     isOpen(order.state) &&
-    order.state !== "refund_due" &&
+    order.state !== "unfulfilled" &&
     !order.dispatch.accepted
   );
 }
@@ -500,7 +497,7 @@ export type OrderEvent =
       readonly code: string;
       readonly message: string;
     }
-  | { readonly kind: "refund_settled"; readonly at: number }
+  | { readonly kind: "close_called"; readonly at: number; readonly message?: string }
   | { readonly kind: "merchant_departed"; readonly at: number }
   | { readonly kind: "deadline_expired"; readonly at: number; readonly deadline: DeadlineKind };
 
@@ -527,7 +524,7 @@ const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
   handler_undelivered: true,
   deliver_called: true,
   refuse_called: true,
-  refund_settled: true,
+  close_called: true,
   merchant_departed: true,
   deadline_expired: true,
 };
@@ -539,7 +536,7 @@ export const ORDER_EVENT_KINDS = Object.keys(EVENT_KIND_INDEX) as readonly Order
  * expiry of a deadline is answered once, centrally, because a deadline that is
  * not currently running may not close an order in any state whatsoever.
  */
-export type StateEvent = Exclude<OrderEvent, { kind: "deadline_expired" }>;
+export type StateEvent = Exclude<OrderEvent, { kind: "deadline_expired" | "close_called" }>;
 
 /** When each step of the order happened. Written from the events, never read
  * from a clock. */
@@ -597,6 +594,7 @@ export type Order = {
    */
   readonly heldFulfillment: boolean;
   readonly closure: Closure | null;
+  readonly merchantClosure?: { readonly at: number; readonly message?: string };
   readonly test: boolean;
   readonly timestamps: OrderTimestamps;
 };

@@ -55,7 +55,7 @@ owner's to decide before a WooCommerce shop's parcels sell for real money.
 
 | Question | Who decides | Read |
 | --- | --- | --- |
-| How the authenticated, idempotent merchant closure in ADR-0028 is represented in the state machine, API, SDK, statuses and receipts, including already-delivered orders; the accepted boundary is not built | architect | ADR-0028, `52-self-service.md` |
+| ~~How merchant closure is represented in the state machine, API, SDK, statuses and receipts~~ — `order.close()` and the Agentify Orders action record attributed closure, retain independent original payment facts, and refuse already-delivered or shipped orders (2026-10-19) | architect | ADR-0028, `52-self-service.md` |
 | Which of Agentify's deadlines a merchant must see or name: two default silently from the gateway's settings and the synchronous budget is not expressed in a card at all | architect, as a decision | — |
 | Which rules the rewrite of the decision on signing in dropped that the code still keeps — the process log as the only record of who stopped sales, one person per merchant with no roles — and recording those that stand | architect | ADR-0026 |
 | When to stop reading a card as it is now for orders recorded before 2026-10-10, which keep no result of their own: once no channel holds such an order | engineering, by a query on each channel | — |

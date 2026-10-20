@@ -22,7 +22,7 @@
  * named in `status_url` until the goods arrive. When the ceiling below runs out
  * or the reader interrupts, the order is still the merchant's to finish, and the
  * command says where to collect it rather than reporting a sale that ended. An
- * order that owes a refund is not an ending either: the merchant can still
+ * unfulfilled order is not an ending either: the merchant can still
  * deliver against it, and the goods then arrive at the same address.
  */
 
@@ -65,21 +65,20 @@ const WATCH_MS = 60_000;
 const ASK_EVERY_MS = 1_000;
 
 /** The word for a paid order whose goods have not come. */
-const OWES_A_REFUND = "refund_due";
+const UNFULFILLED = "unfulfilled";
 
 /**
  * The words under which goods can still arrive at the status address.
  *
- * `in_progress` is a purchase that has not finished. `refund_due` is a paid
+ * `in_progress` is a purchase that has not finished. `unfulfilled` is a paid
  * order whose goods have not come (its deadline passed, or the merchant refused
- * or left), and it is not an ending: the merchant owes the goods or the money
- * back, a late delivery is accepted and settles the debt, and the goods then
+ * or left), and late delivery remains possible until explicit merchant closure; goods then
  * appear at the same address. Every other word this buyer was built with is an
  * ending, so watching stops on it and the command prints what it was told
  * rather than deciding what it meant. A word it was not built with is not an
  * ending it knows, since the storefront's words grow without a version.
  */
-const GOODS_CAN_STILL_ARRIVE: readonly string[] = ["in_progress", OWES_A_REFUND];
+const GOODS_CAN_STILL_ARRIVE: readonly string[] = ["in_progress", UNFULFILLED];
 
 /** What the door calls an identifier it has no order for. */
 const NO_SUCH_ORDER = "no_such_order";
@@ -310,8 +309,8 @@ process.on("SIGINT", () => {
   process.exit(INTERRUPTED);
 });
 
-/** Whether the operator has been told that this order owes a refund. */
-let toldOfTheDebt = false;
+/** Whether the operator has been told that this order is unfulfilled. */
+let toldOfUnfulfilled = false;
 
 /**
  * One look at the door, or an end to the watching.
@@ -323,17 +322,16 @@ let toldOfTheDebt = false;
  * matters most: the money has already moved, so a stack trace here would end
  * the wait without telling anybody where the order went.
  *
- * The first answer that says the order owes a refund is said out loud as it
- * arrives, while the watching goes on, because it changes what the reader is
- * waiting for: not only the goods now, but the goods or the money back.
+ * The first unfulfilled answer is said aloud while watching continues. The
+ * failed delivery is a fact; the merchant and buyer decide any remedy.
  */
 const look = async (): Promise<OrderStatus> => {
   try {
     const seen = await buyer.status(where);
-    if (seen.state === OWES_A_REFUND && !toldOfTheDebt) {
-      toldOfTheDebt = true;
+    if (seen.state === UNFULFILLED && !toldOfUnfulfilled) {
+      toldOfUnfulfilled = true;
       console.log(
-        `[buyer] ${orderId} owes a refund: the merchant owes the buyer the goods or the money back, and the word does not say whether the money has already gone back. Goods the merchant delivers late still arrive at ${where}, so this goes on watching`,
+        `[buyer] ${orderId} is unfulfilled. Agentify establishes no refund or agreement. Late goods can still arrive at ${where} until the merchant closes fulfillment, so this goes on watching`,
       );
     }
     return seen;
@@ -377,8 +375,7 @@ if (GOODS_CAN_STILL_ARRIVE.includes(seen.state)) {
   // the purchase either, and the lines above are where that is said — an exit
   // code has no room for the difference, and the one thing a script must not
   // read from this command is that a sale completed when nobody has seen it.
-  // An order that owes a refund lands here too: its goods can still come, and
-  // the line said when the debt was first seen is where the difference is.
+  // An unfulfilled order lands here too: goods can still arrive until closure.
   process.exit(1);
 }
 
@@ -386,9 +383,8 @@ console.log(`[buyer] the order closed as ${seen.state}, as the agent's own door 
 console.log(JSON.stringify(seen.body, null, 2));
 
 if (seen.state !== "delivered") {
-  // Every other ending is an ending without goods, and this command does not
-  // rank them: the word above is the merchant's and the gateway's, printed
-  // whole. A run that ends here bought nothing.
+  // Every other ending has no digital goods to print. The whole document
+  // preserves the original payment outcome and any merchant closure statement.
   process.exit(1);
 }
 

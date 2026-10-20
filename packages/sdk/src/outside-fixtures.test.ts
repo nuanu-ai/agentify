@@ -87,8 +87,8 @@ const numberQuestion: QuoteRequest = {
   expires_at: "2026-08-26T11:05:00Z",
 };
 
-const refundDue: OrderEvent = {
-  type: "order.refund_due",
+const unfulfilled: OrderEvent = {
+  type: "order.unfulfilled",
   order_id: soldOutOrder.id,
   at: AT,
   price: { amount: "18.90", currency: "USD" },
@@ -149,7 +149,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     // The same eSIM order again: delivery is at least once.
     carrying(envelope("order", "env-o2", esimOrder)),
     carrying(envelope("order", "env-o3", soldOutOrder)),
-    carrying(envelope("order_event", "env-e1", refundDue)),
+    carrying(envelope("order_event", "env-e1", unfulfilled)),
   ];
 
   const parked = new Promise<GatewayAnswer>(() => {});
@@ -272,8 +272,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
 
   expect(refused).toStrictEqual({ ok: true, result: "refused" });
 
-  // The debt that refusal created came back as an event, with nothing sent in
+  // The unfulfilled state that refusal recorded came back as an event, with nothing sent in
   // reply.
-  expect(events).toStrictEqual([refundDue]);
+  expect(events).toStrictEqual([unfulfilled]);
   expect(problems).toStrictEqual([]);
 });

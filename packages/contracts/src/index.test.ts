@@ -241,8 +241,8 @@ describe("the contract as JSON Schema", () => {
       "in_progress",
       "delivered",
       "shipped",
-      "refund_due",
-      "refunded",
+      "unfulfilled",
+      "fulfillment_closed",
     ]);
   });
 

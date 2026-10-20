@@ -17,18 +17,20 @@ import {
   AgentOrderStatusSchema,
   CatalogPageSchema,
   type Delivery,
+  MerchantClosureSchema,
   MoneySchema,
   OrderEndingReasonSchema,
   OrderStatusSchema,
   ParamNameSchema,
   ParamSpecSchema,
+  PaymentStatusSchema,
   PublicCardSchema,
   RecordedShipmentSchema,
-  RefundDueReasonSchema,
   RefusalSchema,
   SalePriceSchema,
   SellerSchema,
   TimestampSchema,
+  UnfulfilledReasonSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { type ZodType, z } from "zod";
 
@@ -91,6 +93,8 @@ const WrittenDeliverySchema = z.record(
  */
 const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   status: OrderStatusSchema,
+  payment_status: PaymentStatusSchema,
+  merchant_closure: MerchantClosureSchema.optional(),
   price: SalePriceSchema.nullable(),
   delivered: WrittenDeliverySchema.nullable(),
   shipment: RecordedShipmentSchema.nullable().optional(),
@@ -98,7 +102,7 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   refusal: RefusalSchema.optional(),
   reason: z
     .strictObject({
-      code: z.union([OrderEndingReasonSchema, RefundDueReasonSchema]),
+      code: z.union([OrderEndingReasonSchema, UnfulfilledReasonSchema]),
       message: z.string().regex(/\S/),
     })
     .optional(),
@@ -108,20 +112,19 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   .superRefine((written, context) => {
     // Our own reason is said where the status word blurs what to do next: why
     // we ended a rejected or expired order, never in the same breath as a
-    // merchant's refusal, and why a refund is owed, on every debt, beside the
-    // merchant's refusal exactly where that refusal is what left it.
+    // merchant's refusal. Every paid unfulfilled order records why it stopped.
     const { reason } = written;
-    const debt = written.status === "refund_due";
-    if (debt && reason === undefined) {
+    const unfulfilled = written.status === "unfulfilled";
+    if (unfulfilled && reason === undefined) {
       context.addIssue({
         code: "custom",
         path: ["reason"],
-        message: "an order owing a refund always says why it is owed",
+        message: "an unfulfilled paid order always says why fulfillment stopped",
       });
     }
     if (reason !== undefined) {
-      const words = debt ? RefundDueReasonSchema : OrderEndingReasonSchema;
-      if (!debt && written.status !== "rejected" && written.status !== "expired") {
+      const words = unfulfilled ? UnfulfilledReasonSchema : OrderEndingReasonSchema;
+      if (!unfulfilled && written.status !== "rejected" && written.status !== "expired") {
         context.addIssue({
           code: "custom",
           path: ["reason"],
@@ -134,14 +137,14 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
           message: `"${reason.code}" is not a reason an order whose status is "${written.status}" is given`,
         });
       }
-      const besideTheirWords = debt && reason.code === "refused";
+      const besideTheirWords = unfulfilled && reason.code === "refused";
       if ((written.refusal !== undefined) !== besideTheirWords) {
         context.addIssue({
           code: "custom",
           path: ["reason"],
           message: besideTheirWords
-            ? "a refund owed because the merchant refused carries the merchant's refusal"
-            : "a merchant's refusal carries no reason of ours, except to say what it left owed",
+            ? "an unfulfilled order because the merchant refused carries the merchant's refusal"
+            : "a merchant's refusal carries no reason of ours, except to describe incomplete fulfillment",
         });
       }
     }

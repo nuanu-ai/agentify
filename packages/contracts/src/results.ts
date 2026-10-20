@@ -25,22 +25,22 @@ import { IdentifierSchema } from "./primitives.js";
  * `accepted`: a handler took the order on, and the goods will follow through
  * `deliver`. `delivered`: the sale closed. `already_delivered`: a retry landed
  * twice; nothing is delivered or charged twice, so treat it as success, not as
- * a failure because it is not `delivered`. `debt_closed_by_delivery`: the
- * delivery deadline had passed and the goods went out anyway, closing a debt
- * instead of completing a sale. `refused`: the refusal took effect.
+ * a failure because it is not `delivered`. `delivered_late`: the
+ * delivery deadline had passed and the goods went out anyway. `refused`: the refusal took effect.
  * `purchase_already_closed`: a synchronous handler answered after its
  * deadline; the work exists and a repeat purchase will collect it.
  *
  * Branch on `ok` and record the word. A client that checks answers against its
  * own copy of this schema, as the SDK does, reads a word it does not know as an
- * unreadable answer, so a new word here comes with a new `CONTRACT_VERSION`
- * and an older worker stops at its version check instead.
+ * unreadable answer. From the first external merchant, such a change moves
+ * `CONTRACT_VERSION` so an older worker stops at its version check. During
+ * the pilot, keep workers current with the gateway.
  */
 export const ORDER_CALL_RESULTS = Object.freeze([
   "accepted",
   "delivered",
   "already_delivered",
-  "debt_closed_by_delivery",
+  "delivered_late",
   "refused",
   "purchase_already_closed",
 ] as const);
@@ -51,16 +51,11 @@ export const OrderCallResultSchema = z.enum(ORDER_CALL_RESULTS);
  * The error codes the order calls answer with. The code on the wire stays an
  * open string, so an unanticipated error reaches the merchant in its own words.
  *
- * `refund_already_settled`: a refund is recorded for this order, so there is
- * nothing left to deliver against. A refund the merchant sends from their own
- * wallet is not seen and records nothing, and no refund can be recorded yet, so
- * nothing is answered with this code today. `order_already_closed`: the order reached an ending that no
- * call reopens. `not_applicable_in_mode`: the call or answer does not exist for
- * this card's mode; in synchronous fulfillment the handler's own answer is the
- * delivery or the refusal. `shipment_already_recorded`: a parcel's shipment is
- * recorded and cannot be changed; the same shipment sent again succeeds as
- * already delivered, and a different one is refused with this, never
- * retryable.
+ * `fulfillment_closed`: the merchant closed future fulfillment through Agentify.
+ * `order_already_closed`: this order reached an ending that this call cannot
+ * change. `not_applicable_in_mode`: this mode has no such call or answer.
+ * `shipment_already_recorded`: a different shipment is already recorded;
+ * repeating the same shipment succeeds without changing it.
  *
  * `delivery_does_not_match_card`: the goods are not what the order was sold
  * with, nothing was written down, and `problems` names the fields that did not
@@ -69,7 +64,7 @@ export const OrderCallResultSchema = z.enum(ORDER_CALL_RESULTS);
  * order that has already ended it is not retryable, and the message says so.
  */
 export const ORDER_CALL_ERROR_CODES = Object.freeze([
-  "refund_already_settled",
+  "fulfillment_closed",
   "order_already_closed",
   "not_applicable_in_mode",
   "delivery_does_not_match_card",
@@ -118,14 +113,14 @@ export const ProblemSchema = z
  *
  * `problems` is present where the call refuses what it was handed, and never
  * empty when present. It is absent where the failure is about the state of the
- * world, such as a refund already settled.
+ * world, such as fulfillment already closed.
  */
 export const CallErrorSchema = z.strictObject({
   code: z.string().regex(/\S/, "an error carries a code").meta({
     // The promised codes travel in the description, so that a client generated
     // from the JSON Schema export learns them.
     description:
-      'Why the call did not go through. The set is open, and six are promised to mean one thing each — but not on the same calls, and which call a code can arrive on is part of what is promised about it. Publishing a card is refused with one word and no other: "card_rejected" (the card was not published, and every finding standing between it and the catalog is named in the error\'s problems — the fields at fault, and the merchant\'s own missing name, payout wallet or live operator approval where those are what is missing, and for a parcel\'s card their shop\'s site; it is never retryable, because the same card gets the same answer and what changes the outcome is fixing what the problems name). The calls that close an order — delivering, refusing, taking one on — are refused with the other four, and never with the first: "refund_already_settled" (a refund is recorded for this order, so there is nothing left to deliver against; a refund the merchant sends from their own wallet is not seen and records nothing, and no refund can be recorded yet, so nothing is answered with this code today). "order_already_closed" (the order reached an ending that no call reopens). "not_applicable_in_mode" (the call or the answer does not exist for this card\'s mode — in the synchronous one the handler\'s own answer is the delivery or the refusal, so delivering or refusing separately does not exist there, and neither does taking an order on while it waits for its goods, which promises them later through a call that mode does not have). "delivery_does_not_match_card" (the goods are not the ones this order was sold with — the result its card declared when the order was made, which a card republished since does not change — nothing was written down, the problems name the fields that did not fit, and the message says whether the order still stands or has already ended). The last of those is retryable in a different sense from a lost connection: the call arrived and was understood, so sending the same goods again gives the same refusal, and what clears it is delivering what the order was sold with. It is not retryable at all where the order has already ended, because there is nothing left to deliver against. On a parcel\'s order the deliver call has one more: "shipment_already_recorded" (a shipment is recorded on this order and cannot be changed; the same one sent again succeeds as already delivered, and this refusal is never retryable).',
+      "Why the call did not go through. Codes are open strings. card_rejected means publication failed and error.problems names every finding, including the merchant's missing name, payout wallet, live approval or parcel shop site. Order calls promise fulfillment_closed (the merchant stopped future Agentify fulfillment), order_already_closed (the call cannot change the order's ending), not_applicable_in_mode (the mode has no such call or answer), delivery_does_not_match_card (the goods do not match the card sold with the order; problems names the fields, and retryable is true only while delivery can still be corrected), and shipment_already_recorded (a different shipment is recorded and cannot be replaced; repeating the same one succeeds). No code establishes a refund or settlement.",
   }),
   message: z.string().regex(/\S/, "an error carries an explanation a person can read"),
   retryable: z.boolean(),
@@ -137,7 +132,7 @@ export const CallErrorSchema = z.strictObject({
    */
   problems: z.array(ProblemSchema).min(1).optional().meta({
     description:
-      "What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: a refund already settled is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error's \"message\" is a single line written to be read in a log and does not carry the list. Where what stands in the way is the merchant's own — no seller name, no payout wallet, no operator approval — the message names each of those plainly; for the rest it says how many findings there are, quotes one of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.",
+      "What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: fulfillment already closed is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error's \"message\" is a single line written to be read in a log and does not carry the list. Where what stands in the way is the merchant's own — no seller name, no payout wallet, no operator approval — the message names each of those plainly; for the rest it says how many findings there are, quotes one of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.",
   }),
 });
 

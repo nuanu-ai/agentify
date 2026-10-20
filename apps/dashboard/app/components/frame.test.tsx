@@ -46,6 +46,7 @@ const ORDERS = OrderListSchema.parse({
       },
       test: false,
       status: "in_progress",
+      payment_status: "not_paid",
     },
   ],
 });

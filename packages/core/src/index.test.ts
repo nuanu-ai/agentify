@@ -12,10 +12,10 @@ describe("@agentify/core", () => {
     // The value arrives from the database, which the case analysis knows
     // nothing about. The promise is a visible refusal rather than carrying on
     // with an order nobody handled.
-    const fromDatabase = "refunded" as never;
+    const fromDatabase = "fulfillment_closed" as never;
 
     expect(() => assertNever(fromDatabase, "order status")).toThrowError(/order status/);
-    expect(() => assertNever(fromDatabase, "order status")).toThrowError(/refunded/);
+    expect(() => assertNever(fromDatabase, "order status")).toThrowError(/fulfillment_closed/);
   });
 
   it("drags in not a single runtime dependency", () => {

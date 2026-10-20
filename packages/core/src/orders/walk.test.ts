@@ -150,7 +150,7 @@ const EFFECTS_WORTH_REACHING: readonly Effect["kind"][] = [
   "execute_payment",
   "release_goods_to_agent",
   "issue_receipt",
-  "mark_refund_due",
+  "mark_unfulfilled",
 ];
 
 /**
@@ -273,7 +273,7 @@ function accountFor(seed: number, trace: readonly Step[]): void {
       if (kind === "execute_payment") chargesInFlight += 1;
       if (kind === "release_goods_to_agent") goodsReleased += 1;
       if (kind === "issue_receipt") receipts += 1;
-      if (kind === "mark_refund_due" && step.order.payment !== "settled") {
+      if (kind === "mark_unfulfilled" && step.order.payment !== "settled") {
         // A debt is a claim that the buyer's money is with the merchant.
         expect(step.order.payment, `${where()}: a refund marked without a charge`).toBe("settled");
       }

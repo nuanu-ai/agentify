@@ -243,7 +243,7 @@ the agent sees it before it buys.
 
 Leaving it out does not leave you off a clock. A day applies instead, the
 agent sees that day on your card in the catalog as if you had named it, and an
-order that runs past it owes a refund exactly as one past a number of your
+order that runs past it is unfulfilled exactly as one past a number of your
 own would. That day is ours to set rather than the card's, so naming your own
 is the way to keep the time yours.
 
@@ -280,8 +280,7 @@ Two things are asked of you rather than of the card. A parcel's card is
 published only once you have given the site of your shop, because a parcel
 that does not arrive is a question its buyer takes there (`no_seller_site`).
 And it is published on the test channel only, where the money is not real: on
-the live one it is refused (`not_sold_yet`) until the refund of a lost parcel
-can be recorded, which is not built yet.
+the live one it is refused (`not_sold_yet`) while the live parcel readiness gates remain incomplete. Merchant closure alone does not enable live parcels.
 
 ## A price worked out at the moment of purchase
 
