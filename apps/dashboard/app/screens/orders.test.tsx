@@ -267,6 +267,7 @@ describe("the open orders", () => {
     expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
       ["All", 3],
       ["Open", 1],
+      ["Needs you", 0],
     ]);
   });
 
@@ -490,12 +491,12 @@ describe("merchant fulfillment closure", () => {
     const settled = served(() => (
       <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
     ));
-    const needs = (html: string) => {
-      const text = readable(html);
-      return text.includes("Needs you")
-        ? text.slice(text.indexOf("Needs you"), text.indexOf("All orders"))
-        : "";
-    };
+    const needs = (html: string) =>
+      readable(
+        /<section class="group">(?:(?!<\/section>)[\s\S])*?aria-label="Orders that need you"[\s\S]*?<\/section>/.exec(
+          html,
+        )?.[0] ?? "",
+      );
 
     expect(needs(reopened)).toContain("Needs you 1");
     expect(needs(reopened)).toContain("payment completed after you closed fulfillment");

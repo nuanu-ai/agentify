@@ -427,10 +427,12 @@ describe("an order delivered and not paid", () => {
   });
 
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
-    const text = readable(ordersPage(held));
+    const html = ordersPage(held);
+    const text = readable(html);
 
     expect(text).toContain("Waiting on the buyer 1");
-    expect(text).not.toMatch(/needs? you/i);
+    expect(text).toContain("Needs you 0");
+    expect(html).not.toContain('aria-label="Orders that need you"');
     expect(text).toContain("the payment failed, so the goods are held");
     // Paid again for the same order, never bought again, which would deliver
     // twice.

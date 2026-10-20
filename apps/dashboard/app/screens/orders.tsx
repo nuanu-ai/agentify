@@ -64,8 +64,15 @@ const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
   </li>
 );
 
-/** Orders told in full, and under them how many of how many where they were cut. */
-const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>) => (
+/**
+ * Orders told in full, and under them how many of how many where they were
+ * cut, with the way to the list of them all where there is one.
+ */
+const ToldList = ({
+  told,
+  label,
+  all,
+}: Readonly<{ told: ToldOrders; label: string; all?: string }>) => (
   <>
     <List label={label} columns="1fr">
       {told.rows.map((order) => (
@@ -73,7 +80,10 @@ const ToldList = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>
       ))}
     </List>
     {told.rows.length === told.of ? null : (
-      <p className="cut">{`Showing the newest ${told.rows.length} of ${told.of}`}</p>
+      <p className="cut">
+        <span>{`Showing the newest ${told.rows.length} of ${told.of}`}</span>
+        {all === undefined ? null : <Link to={all} prefetch="intent">{`Show all ${told.of}`}</Link>}
+      </p>
     )}
   </>
 );
@@ -194,9 +204,77 @@ const OrderDetails = ({
   );
 };
 
+/** Every order the address asks for, a row each, with the details each opens. */
+const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
+  const { listing } = view;
+  const here = listing.segments.find((one) => one.here);
+  const title = here?.key === "open" ? "Open orders" : "All orders";
+  return (
+    <Group title={title} count={here?.count ?? listing.rows.length}>
+      {listing.rows.length === 0 ? (
+        <NothingHere listing={listing} />
+      ) : (
+        <List
+          label={title}
+          columns="6rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9rem"
+          // "Price set", not "Bought": the moment is when the price was
+          // fixed, and where the price is checked at purchase the buyer may
+          // pay well after it.
+          head={["Price set", "Product", { text: "Amount", end: true }, "State", "Order"]}
+        >
+          {listing.rows.map((row, at) => (
+            <Fragment key={row.id}>
+              {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
+              <Row>
+                <Cell at="fact">
+                  {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
+                </Cell>
+                <Cell at="title">{row.product}</Cell>
+                <Cell at="amount">
+                  <span className={styles.sum}>
+                    {row.amount}
+                    <TestMark test={row.test} />
+                  </span>
+                  {row.shares === null ? null : (
+                    <Cell at="aside">
+                      <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
+                    </Cell>
+                  )}
+                </Cell>
+                <Cell at="state">
+                  <span className={styles.wraps}>
+                    <Word word={row.state} />
+                  </span>
+                </Cell>
+                <Cell at="aside">
+                  <Ident value={row.id} what="order ID" />
+                </Cell>
+                <OrderDetails row={row} pressed={view.pressed} />
+              </Row>
+            </Fragment>
+          ))}
+        </List>
+      )}
+      <CutNote cut={listing.cut} />
+    </Group>
+  );
+};
+
+const closureHelp = (
+  <a className={styles.end} href="/docs/orders#closing-fulfillment">
+    Unfulfilled orders and closure
+  </a>
+);
+
+/**
+ * Where the segment shown is the orders that need the merchant, they are the
+ * list, told in full a page at a time; elsewhere the newest of them are told
+ * over the list, with the way to all of them where they are cut.
+ */
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
   const here = listing.segments.find((one) => one.here);
+  const needs = listing.segments.find((one) => one.key === "needs");
   const note = (
     <p className="note">
       Purchases that closed before they had a price are not listed; nothing was charged for them.
@@ -219,75 +297,34 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         placeholder="Search by order ID or product"
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
-      {view.needsYou.of === 0 ? null : (
-        <Group
-          title="Needs you"
-          count={view.needsYou.of}
-          warn
-          aside={
-            <a className={styles.end} href="/docs/orders#closing-fulfillment">
-              Unfulfilled orders and closure
-            </a>
-          }
-        >
-          <ToldList told={view.needsYou} label="Orders that need you" />
+      {here?.key === "needs" ? (
+        <Group title="Needs you" count={here.count} warn aside={closureHelp}>
+          {listing.rows.length === 0 ? (
+            <NothingHere listing={listing} />
+          ) : (
+            <ToldList told={view.needsYou} label="Orders that need you" />
+          )}
+          <CutNote cut={listing.cut} />
         </Group>
+      ) : (
+        <>
+          {view.needsYou.of === 0 ? null : (
+            <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>
+              <ToldList
+                told={view.needsYou}
+                label="Orders that need you"
+                {...(needs === undefined ? {} : { all: needs.to })}
+              />
+            </Group>
+          )}
+          {view.waitsOnTheBuyer.of === 0 ? null : (
+            <Group title="Waiting on the buyer" count={view.waitsOnTheBuyer.of}>
+              <ToldList told={view.waitsOnTheBuyer} label="Orders waiting on the buyer" />
+            </Group>
+          )}
+          <OrderList view={view} />
+        </>
       )}
-      {view.waitsOnTheBuyer.of === 0 ? null : (
-        <Group title="Waiting on the buyer" count={view.waitsOnTheBuyer.of}>
-          <ToldList told={view.waitsOnTheBuyer} label="Orders waiting on the buyer" />
-        </Group>
-      )}
-      <Group
-        title={here?.key === "open" ? "Open orders" : "All orders"}
-        count={here?.count ?? listing.rows.length}
-      >
-        {listing.rows.length === 0 ? (
-          <NothingHere listing={listing} />
-        ) : (
-          <List
-            label={here?.key === "open" ? "Open orders" : "All orders"}
-            columns="6rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9rem"
-            // "Price set", not "Bought": the moment is when the price was
-            // fixed, and where the price is checked at purchase the buyer may
-            // pay well after it.
-            head={["Price set", "Product", { text: "Amount", end: true }, "State", "Order"]}
-          >
-            {listing.rows.map((row, at) => (
-              <Fragment key={row.id}>
-                {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
-                <Row>
-                  <Cell at="fact">
-                    {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
-                  </Cell>
-                  <Cell at="title">{row.product}</Cell>
-                  <Cell at="amount">
-                    <span className={styles.sum}>
-                      {row.amount}
-                      <TestMark test={row.test} />
-                    </span>
-                    {row.shares === null ? null : (
-                      <Cell at="aside">
-                        <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
-                      </Cell>
-                    )}
-                  </Cell>
-                  <Cell at="state">
-                    <span className={styles.wraps}>
-                      <Word word={row.state} />
-                    </span>
-                  </Cell>
-                  <Cell at="aside">
-                    <Ident value={row.id} what="order ID" />
-                  </Cell>
-                  <OrderDetails row={row} pressed={view.pressed} />
-                </Row>
-              </Fragment>
-            ))}
-          </List>
-        )}
-        <CutNote cut={listing.cut} />
-      </Group>
       {note}
     </>
   );

@@ -3827,7 +3827,8 @@ describe("the orders screen", () => {
     });
     await browser.signIn();
 
-    const text = readable((await browser.get("/orders?show=open")).html);
+    const { html } = await browser.get("/orders?show=open");
+    const text = readable(html);
 
     expect(text).toContain("the goods are held");
     // Still open, with nothing owed by the merchant. What can still happen is
@@ -3838,7 +3839,8 @@ describe("the orders screen", () => {
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
     expect(text).toContain("Waiting on the buyer 1");
-    expect(text).not.toMatch(/needs? you/i);
+    expect(text).toContain("Needs you 0");
+    expect(html).not.toContain('aria-label="Orders that need you"');
   });
 });
 
@@ -6591,7 +6593,8 @@ describe("closing fulfillment from Orders", () => {
     });
     expect(again.status).toBe(303);
     const after = await running.browser.get("/orders");
-    expect(readable(after.html)).not.toContain("Needs you");
+    expect(readable(after.html)).toContain("Needs you 0");
+    expect(after.html).not.toContain('aria-label="Orders that need you"');
     expect(formsIn(after.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(
       "The payment arrived late; it will be returned.",

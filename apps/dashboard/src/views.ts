@@ -440,7 +440,10 @@ export interface OrdersView {
    * cut, and why none is drawn where the merchant has some.
    */
   readonly listing: Listing<OrderRow>;
-  /** The unfulfilled paid orders the search finds. */
+  /**
+   * The orders that need the merchant that the search finds: the newest of
+   * them over the list, or, where the list shown is of them, its page.
+   */
   readonly needsYou: ToldOrders;
   /**
    * Goods delivered and held until the buyer pays: nothing owed by the
@@ -458,7 +461,10 @@ export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
  * "In progress" reads the same for an order the merchant was handed and for a
  * price nobody paid.
  */
-const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
+const orderSegments = (
+  open: OrderList,
+  needing: ReadonlySet<string>,
+): readonly SegmentRule<OrderRow>[] => {
   const ids = new Set(open.orders.map((order) => order.id));
   return [
     { key: "all", label: "All", holds: () => true, none: "" },
@@ -467,6 +473,12 @@ const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
       label: "Open",
       holds: (row) => ids.has(row.id),
       none: "Nothing is open. A purchase still at its price question or waiting to be paid is not counted as open.",
+    },
+    {
+      key: "needs",
+      label: "Needs you",
+      holds: (row) => needing.has(row.id),
+      none: "Nothing needs you.",
     },
   ];
 };
@@ -584,7 +596,11 @@ export const ordersView = (
         day: dayOf(order.price.at),
       } satisfies OrderRow,
     }));
-  const segments = orderSegments(open);
+  const needing = (order: OrderList["orders"][number]) => needsYou(order.status) || reopened(order);
+  const segments = orderSegments(
+    open,
+    new Set(orders.orders.filter(needing).map((order) => order.id)),
+  );
   const asked = askedIn(
     query,
     segments.map((one) => one.key),
@@ -600,10 +616,15 @@ export const ordersView = (
     noMatch: (q, within) =>
       within === null
         ? `No order matches “${q}”.`
-        : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
+        : asked.show === "needs"
+          ? `No order that needs you matches “${q}”.`
+          : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
     showAll: "Show all orders",
   });
-  const onPage = new Set(listing.rows.map((row) => row.id));
+  // Where the list is the orders that need the merchant, they are told in
+  // full in its place, so no row of the list is drawn to open.
+  const needsHere = asked.show === "needs";
+  const onPage = new Set(needsHere ? [] : listing.rows.map((row) => row.id));
   const opens = (row: OrderRow) => {
     const search = new URLSearchParams(onPage.has(row.id) ? query : { q: row.id });
     search.set("details", row.id);
@@ -617,24 +638,31 @@ export const ordersView = (
             : "Order details",
     };
   };
+  const tell = ({ order, row }: (typeof listed)[number]): OrderNeed => ({
+    ...row,
+    why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
+    rest: whereTheRestIs(order.status),
+    opens: opens(row),
+  });
   const told = (which: (order: OrderList["orders"][number]) => boolean): ToldOrders => {
     const all = found.filter(({ order }) => which(order));
-    return {
-      rows: all.slice(0, PAGE_ROWS).map(({ order, row }) => ({
-        ...row,
-        why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
-        rest: whereTheRestIs(order.status),
-        opens: opens(row),
-      })),
-      of: all.length,
-    };
+    return { rows: all.slice(0, PAGE_ROWS).map(tell), of: all.length };
   };
+  const byId = new Map(listed.map((one) => [one.row.id, one]));
   return {
     none: orders.orders.length === 0,
     pressed: null,
     testNote: testOrders(orders, mode),
     listing,
-    needsYou: told((order) => needsYou(order.status) || reopened(order)),
+    needsYou: needsHere
+      ? {
+          rows: listing.rows.flatMap((row) => {
+            const one = byId.get(row.id);
+            return one === undefined ? [] : [tell(one)];
+          }),
+          of: listing.segments.find((one) => one.here)?.count ?? 0,
+        }
+      : told(needing),
     waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
   };
 };
