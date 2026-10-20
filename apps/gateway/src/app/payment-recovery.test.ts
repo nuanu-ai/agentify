@@ -493,8 +493,13 @@ describe("recovering a payment without another charge", () => {
       } = found;
       return { save: saved, result: null };
     });
-    h.runtime.facilitator.recoveryFor = async (charge) => {
+    // The search may start no later than the order's creation: the payment
+    // was checked after the order existed, and anything later could skip it.
+    const created = (await h.store.orderById(orderId))?.order.timestamps.createdAt;
+    let searchedSince: number | undefined;
+    h.runtime.facilitator.recoveryFor = async (charge, since) => {
       expect(charge).toMatchObject({ payment: "PAYMENT", payTo: recovery.payTo, amount: "12.00" });
+      searchedSince = since;
       return recovery;
     };
     h.runtime.facilitator.reconcile = async () => ({
@@ -504,6 +509,7 @@ describe("recovering a payment without another charge", () => {
     });
     h.advance(60_000);
     await h.gateway.runner.reconcilePayments();
+    expect(searchedSince).toBe(created);
     expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     await h.store.forgetClaimsBefore(h.now() + 100_000);
     expect(await h.store.claimPayment(authorizationFingerprint(recovery), "another-order")).toEqual(
@@ -791,5 +797,20 @@ describe("recovering a payment without another charge", () => {
       throw new Error("no payment should be searched for");
     };
     expect(await logged(() => h.gateway.runner.reconcilePayments())).toEqual([]);
+  });
+
+  it("does not count a payment it resolves in the same poll as unresolved", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.runtime.facilitator.reconcile = async () => ({
+      settled: true,
+      transaction: TRANSACTION,
+      executedAt: h.now(),
+    });
+    h.advance(60_000);
+    const lines = await logged(() => h.gateway.runner.reconcilePayments());
+    expect((await h.store.orderById(orderId))?.order.payment).toBe("settled");
+    expect(lines.join("\n")).not.toMatch(/unresolved payment/);
   });
 });
