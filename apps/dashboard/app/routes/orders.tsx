@@ -2,7 +2,6 @@ import {
   type ActionFunctionArgs,
   createContext,
   type LoaderFunctionArgs,
-  type ShouldRevalidateFunction,
   useActionData,
   useLoaderData,
 } from "react-router";
@@ -38,12 +37,6 @@ export async function action(asked: ActionFunctionArgs) {
     asked,
   );
 }
-
-/** Where script sent the press, the page is drawn from its answer alone as well. */
-export const shouldRevalidate: ShouldRevalidateFunction = ({
-  actionResult,
-  defaultShouldRevalidate,
-}) => actionResult === undefined && defaultShouldRevalidate;
 
 export default function Orders() {
   const loaded = useLoaderData<typeof loader>();
