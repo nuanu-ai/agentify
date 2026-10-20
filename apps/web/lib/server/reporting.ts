@@ -145,6 +145,12 @@ export async function getFullReport(
     level: scan.level,
     checks,
     benchmark,
+    scanned_at: (
+      scan.finishedAt ??
+      scan.workerHeartbeatAt ??
+      scan.queuedAt ??
+      scan.acceptedAt
+    ).toISOString(),
   };
 }
 

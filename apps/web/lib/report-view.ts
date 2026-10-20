@@ -23,6 +23,7 @@ import type {
 import { isActionableBrowserFinding } from "./browser-observation-ui";
 import type { CardSignalState } from "./card-signal-ui";
 import { buildBrowserFixPrompt, buildCanonicalFixPrompt, buildFixPrompts } from "./fix-prompts";
+import { scanDay } from "./levels";
 
 type ReportCheckView = Readonly<{
   id: number;
@@ -56,6 +57,8 @@ export type ReportView = Readonly<{
   level: DiagnosticLevel;
   score: number | null;
   coverage: number;
+  /** The day the scan was made, in UTC, or null where its time is not a date. */
+  scannedDay: string | null;
   benchmark: ReportResponse["benchmark"];
   actions: Readonly<{
     aiPrompt: string;
@@ -150,6 +153,7 @@ export function reportView(
     level: report.level,
     score: report.score,
     coverage: report.coverage,
+    scannedDay: scanDay(report.scanned_at),
     benchmark: report.benchmark,
     actions: {
       aiPrompt,

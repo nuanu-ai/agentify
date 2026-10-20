@@ -1,8 +1,10 @@
 import {
+  assessmentLines,
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
   canonicalSummaryCopy,
+  type ScanAssessment,
 } from "@agentify/remediation";
 import {
   BROWSER_OBSERVATION_VERSION,
@@ -41,6 +43,17 @@ const SAFE_CODE = /^[a-z0-9][a-z0-9_:-]{0,199}$/i;
 /** Fail + partial are the actionable findings; unavailable is never a defect. */
 function openIssues(report: ReportResponse): Check[] {
   return report.checks.filter((check) => check.status === "fail" || check.status === "partial");
+}
+
+/** When the report's scan read the site, how much it assessed, and which checks it could not. */
+export function reportAssessment(report: ReportResponse): ScanAssessment {
+  return {
+    inspectedAt: report.scanned_at,
+    coverage: report.coverage,
+    unassessed: report.checks
+      .filter((check) => check.status === "unavailable")
+      .map((check) => check.label_code),
+  };
 }
 
 function safeHost(host: string): string {
@@ -98,7 +111,6 @@ function browserIssues(
 
 function promptPreamble(report: ReportResponse, brand: string, includeBrowser: boolean): string {
   const score = report.score ?? "not published";
-  const coverage = Math.round(report.coverage * 100);
   const browserLine = includeBrowser
     ? "- Passive browser observations are non-scoring enrichment and must not be presented as part of the 18-check score."
     : "- Scope is the canonical public HTTP diagnostic only.";
@@ -109,7 +121,10 @@ Act as a senior web engineer. Inspect the repository before changing code, repro
 ## Diagnostic context
 
 - Site: ${safeHost(report.host)}
-- ${brand} canonical HTTP diagnostic: ${formatLevel(report.level)}, ${score}/100, coverage ${coverage}%
+- ${brand} canonical HTTP diagnostic: ${formatLevel(report.level)}, ${score}/100
+${assessmentLines(reportAssessment(report))
+  .map((line) => `- ${line}`)
+  .join("\n")}
 - This is diagnostic evidence, not a certification or a guarantee about any AI model.
 ${browserLine}
 
@@ -201,7 +216,8 @@ export function buildFixPrompts(
 
   const briefLines = [
     `Agent-readiness implementation checklist — ${safeHost(report.host)}`,
-    `${brand} · ${formatLevel(report.level)} · ${report.score ?? "—"}/100 · coverage ${Math.round(report.coverage * 100)}%`,
+    `${brand} · ${formatLevel(report.level)} · ${report.score ?? "—"}/100`,
+    ...assessmentLines(reportAssessment(report)),
     "Canonical score and passive browser observations remain separate.",
     "",
     ...canonical.map((check) => `[ ] ${canonicalIssueBlock(check).replace(/^## /, "")}`),

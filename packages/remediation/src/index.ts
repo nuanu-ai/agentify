@@ -1,3 +1,4 @@
+export * from "./assessment.js";
 export * from "./canonical-copy.js";
 export * from "./catalog/browser-observations.js";
 export * from "./catalog/http-checks.js";

@@ -29,7 +29,9 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
                 coverage={view.coverage}
                 host={view.host}
                 level={view.level}
-                line="Private report"
+                line={
+                  view.scannedDay ? `Private report · Scanned ${view.scannedDay}` : "Private report"
+                }
                 score={view.score}
               />
               <ReportActionPanel

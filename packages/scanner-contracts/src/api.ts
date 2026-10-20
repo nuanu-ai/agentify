@@ -202,6 +202,8 @@ export const reportResponseSchema = z
       })
       .strict()
       .nullable(),
+    // When the scan finished reading the site.
+    scanned_at: z.iso.datetime({ offset: true }),
   })
   .strict();
 export type ReportResponse = z.infer<typeof reportResponseSchema>;

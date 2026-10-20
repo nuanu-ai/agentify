@@ -457,6 +457,7 @@ const reportOf = (score: number): ReportResponse => ({
   coverage: 0.94,
   level: levelForScore(score, 0.94),
   benchmark: { sample_size: 42, average_score: 51.4 },
+  scanned_at: SCANNED_AT,
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
     label_code: check.labelCode,
