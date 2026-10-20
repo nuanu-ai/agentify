@@ -258,7 +258,9 @@ describe("safe fetch policy", () => {
   });
 
   it("does not take a site that closes the connection during the handshake for a bad certificate", async () => {
-    const server = createTcpServer((socket) => socket.destroy());
+    // The connection is closed once the scanner's greeting arrives, which is
+    // how a firewall that drops the scanner cuts the handshake.
+    const server = createTcpServer((socket) => socket.once("data", () => socket.end()));
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
     try {
@@ -272,9 +274,7 @@ describe("safe fetch policy", () => {
         maxDecodedBytes: 1_024,
         signal: new AbortController().signal,
       });
-      expect(artifact.status).toBe(0);
-      expect(artifact.errorCode).toBeDefined();
-      expect(artifact.errorCode).not.toBe("tls_certificate_invalid");
+      expect(artifact).toMatchObject({ status: 0, errorCode: "tls_invalid" });
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
