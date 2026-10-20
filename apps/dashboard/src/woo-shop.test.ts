@@ -830,6 +830,59 @@ describe("the protected product check", () => {
     expect(reasons.size).toBe(4);
   });
 
+  it("names in the reason for every failed answer which check it was and the status it came with", async () => {
+    // The reason is what the operator's log says of the shop; the status and
+    // the address it came from are what they take to the merchant's host.
+    const failures = [
+      { status: 503, body: { message: "later" } },
+      { status: 429, body: { message: "later" } },
+      { status: 408, body: { message: "later" } },
+      { status: 401, body: { code: "woocommerce_rest_cannot_view" } },
+      { status: 404, body: { code: "rest_no_route" } },
+      { status: 200, raw: "not-json" },
+      { status: 200, body: { id: 28 } },
+    ] as const;
+    const file = "/protected/guide.txt";
+    const checks = [
+      ["/wc/v3/products/", productDocument],
+      ["woocommerce_downloads_require_login", productDocument],
+      ["woocommerce_ship_to_destination", parcelDocument],
+      [file, productDocument],
+    ] as const;
+    for (const failure of failures) {
+      const reasons = new Set<string>();
+      for (const [where, product] of checks) {
+        // Every answer from the raw file is a verdict except a refusal.
+        if (where === file && failure.status === 401) continue;
+        stand = await shopAnswering((asked) => {
+          if (asked.url.includes(where)) return failure;
+          if (asked.url === file) return { status: 403, body: {} };
+          if (asked.url.includes("/settings/")) {
+            const setting = product === parcelDocument ? parcelSettingFor : settingFor;
+            return { status: 200, body: settingAt(asked.url, setting(asked.url)) };
+          }
+          return { status: 200, body: product() };
+        });
+
+        const read = await inspectProduct(
+          connectionTo(stand.url),
+          merchantItemIdFor(stand.url, product === parcelDocument ? "28" : "11"),
+        );
+
+        const said = `${where} ${failure.status}`;
+        expect(read.ok, said).toBe(false);
+        if (!read.ok) {
+          expect(read.why, said).toContain(String(failure.status));
+          reasons.add(read.why);
+        }
+        await stand.close();
+        stand = null;
+      }
+      const asked = checks.filter(([where]) => where !== file || failure.status !== 401);
+      expect(reasons.size, `${failure.status}`).toBe(asked.length);
+    }
+  });
+
   it("says the shop ruled a product out only where its own readable answer did", async () => {
     // What the buyer is told hangs on this: "not available" is the seller's
     // word, and a revoked key or a page that is not WooCommerce's said nothing
@@ -1583,6 +1636,50 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     // about the parcel either.
     stand = await shopAnswering(() => ({ status: 200, body: cart([]) }));
     expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, saidNo: false });
+  });
+
+  it("names in the reason for every failed cart answer which question it was and the status it came with", async () => {
+    // What the operator's log says of the shop's cart, and nothing of the
+    // place that was asked about.
+    const steps = [
+      "/wp-json/wc/store/v1/cart",
+      "/wp-json/wc/store/v1/cart/add-item",
+      "/wp-json/wc/store/v1/cart/update-customer",
+    ] as const;
+    const failures = [
+      [steps, { status: 503, body: { message: "later" } }],
+      [steps, { status: 429, body: { message: "later" } }],
+      [steps, { status: 408, body: { message: "later" } }],
+      [steps, { status: 403, body: { code: "woocommerce_rest_invalid_nonce" } }],
+      [steps.slice(2), { status: 200, raw: "not-json" }],
+      [steps.slice(2), { status: 200, body: { items: [] } }],
+    ] as const;
+    for (const [where, failure] of failures) {
+      const reasons = new Set<string>();
+      for (const step of where) {
+        stand = await shopAnswering((asked) => {
+          if (asked.url === step) return failure;
+          if (asked.method === "GET") {
+            return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+          }
+          if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+          return { status: 200, body: cart([rate()]) };
+        });
+
+        const read = await ratesFor(stand.url, "28", JAKARTA);
+
+        const said = `${step} ${failure.status}`;
+        expect(read.ok, said).toBe(false);
+        if (!read.ok) {
+          expect(read.why, said).toContain(String(failure.status));
+          expect(read.why, said).not.toMatch(/jakarta/i);
+          reasons.add(read.why);
+        }
+        await stand.close();
+        stand = null;
+      }
+      expect(reasons.size, `${failure.status}`).toBe(where.length);
+    }
   });
 
   it("reads no rate from a cart answer missing any field it is judged by", async () => {
