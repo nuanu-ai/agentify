@@ -179,7 +179,8 @@ on Cards.
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
 Completed in WooCommerce, an unpaid purchase when its buyer pays or lets it
-lapse, and any of them when you close fulfillment of it on Orders. A parcel
+lapse, any of them when its time runs out, and a paid one when you close
+fulfillment of it on Orders. A parcel
 already unfulfilled is no longer followed after you disconnect, so marking it
 Completed then records no shipment in Agentify.
 

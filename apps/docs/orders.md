@@ -273,8 +273,8 @@ the rule is refused before anything is recorded, with words naming what is
 wrong.
 
 The dashboard offers the same action under **Orders → Order details → Close
-fulfillment**, for SDK and WooCommerce orders alike, and it changes nothing in
-a WooCommerce shop.
+fulfillment** for every order the buyer has paid or may have paid, SDK and
+WooCommerce orders alike, and it changes nothing in a WooCommerce shop.
 
 What `close` does depends on where the order stands:
 
@@ -282,7 +282,7 @@ What `close` does depends on where the order stands:
 | --- | --- | --- |
 | still open — `in_progress`, `unfulfilled`, `delivered_unpaid` — or `expired` with late goods held for a repeat purchase | `{ ok: true }` | it reads `fulfillment_closed`, a late `deliver` is refused with `fulfillment_closed`, goods held for it are never released, and it leaves the open list |
 | `payment_unresolved` | `{ ok: true }` | it reads `payment_unresolved` until the payment is known, then `fulfillment_closed`; if the payment went through, you are sent `order.unfulfilled` and the order is on the open list again |
-| already closed by you | `{ ok: true }` | nothing changes: the first time and message stay, unless a payment went through after you closed, when closing again records your new message and takes the order off the open list |
+| already closed by you | `{ ok: true }` | nothing changes: the first time and message stay, except after a payment that went through once you closed (below) |
 | delivered or shipped | `fulfillment_complete`, not retryable | nothing changes, and the receipt stands |
 | ended with nothing charged and nothing held: `rejected`, `expired`, `cancelled` | `nothing_to_close`, not retryable | nothing changes, and the agent keeps the reason it was given |
 
@@ -296,10 +296,13 @@ A charge Agentify had already sent to the facilitator when you closed can
 still go through, because closing cancels no payment. If it does, the order
 keeps `fulfillment_closed`, its `payment_status` becomes `paid`, you are sent
 `order.unfulfilled` with the reason `paid_after_closure`, and the order is on
-the open list again. Your earlier message may now be
-wrong, so once you have settled things with the buyer, close it again with a
-message that says what you did; that takes it off the list. Closing never
-releases goods held for the order and never lets the buyer pay a second time.
+the open list again.
+
+Your earlier message may now be wrong. Once you have settled things with the
+buyer, close the order again with a message that says what you did: that
+closure records its own time and message and takes the order off the list.
+Closing never releases goods held for the order and never lets the buyer pay a
+second time.
 
 After closing, the order you read back carries
 `merchant_closure: { closed_at, message? }` beside its
@@ -310,19 +313,20 @@ you closed fulfillment, and Agentify confirms no refund.
 
 ## When a call on an order does not go through
 
-`deliver`, `refuse`, `accept` and `close` hand their failures back rather than throwing
-them, unless the client was built with no address: `ok` is false, and one `error` beside it carries a code to branch on, a
-sentence a person can read, and `retryable`. Ten codes are promised to mean
-one thing each — seven sent by us, and three the tools produce when no answer
-they could read came back. The set is open beyond those ten, so a case
-nobody anticipated reaches you in its own words.
+`deliver`, `refuse`, `accept` and `close` hand their failures back rather
+than throwing them, unless the client was built with no address: `ok` is
+false, and one `error` beside it carries a code to branch on, a sentence a
+person can read, and `retryable`. Ten codes are promised to mean one thing
+each — seven sent by us, and three the tools produce when no answer they could
+read came back. The set is open beyond those ten, so a case nobody anticipated
+reaches you in its own words.
 
 | Code | When it arrives | Repeating could change it |
 | --- | --- | --- |
-| `fulfillment_closed` | the merchant closed future Agentify fulfillment for this order | no |
+| `fulfillment_closed` | you closed fulfillment of this order, so a delivery is no longer accepted | no |
 | `fulfillment_complete` | `close` on an order whose goods were delivered or whose parcel's shipment is recorded; the order was not changed | no |
 | `nothing_to_close` | `close` on an order that ended without a charge and holds nothing for its buyer; the order was not changed | no |
-| `order_already_closed` | the order reached an ending that no call reopens | no |
+| `order_already_closed` | the order has ended, and no call reopens it | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal | no |
 | `delivery_does_not_match_card` | the goods are not the ones the order was sold with, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
 | `shipment_already_recorded` | a parcel's shipment is already recorded on this order, and a recorded shipment cannot be changed; the same shipment sent again succeeds | no |
@@ -420,14 +424,18 @@ Where the refusal was yours, your code and your message travel with the status
 instead. An `unfulfilled` order carries a `reason` saying why nothing was
 delivered: `refused`, `deadline_passed` or `merchant_left`. A payment confirmed
 only after its own response deadline also reads `deadline_passed`, although no
-deadline of yours passed. None of these words obliges you to refund, and a
-word you do not know is not an ending: read the order again later.
+deadline of yours passed. None of these words obliges you to refund.
 
 Beside `status`, every order you read back carries `payment_status`, what
 became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
-still have been paid. Like `status`, it is an open set of words, and one you
-do not know means read the order again later.
+still have been paid.
+
+On the orders you read back, `status` and `payment_status` are fixed lists.
+Your release of the SDK knows every word it can receive, a new word arrives
+with a new release whose notes name it, and an answer carrying a word your
+release does not know makes `orders.get` and `orders.list` throw. Only the
+agent's copy of these fields is an open set.
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -546,7 +554,7 @@ settles the order as well. What it finds decides where the order goes:
 
 | What Agentify finds | A synchronous order you delivered | An order charged at purchase | An order whose fulfillment you closed |
 | --- | --- | --- | --- |
-| the transfer happened | `delivered`: the goods are released and a receipt is written | `unfulfilled`, and you are sent `order.unfulfilled`; the order never reached your handler, so deliver it from the open list or close fulfillment | `fulfillment_closed` with `payment_status: 'paid'`, and you are sent `order.unfulfilled` with `paid_after_closure`; no goods are released |
+| the transfer happened | `delivered`: the goods are released and a receipt is written | `unfulfilled`, and you are sent `order.unfulfilled`; the order never reached your handler, so deliver it from the open list or close fulfillment; a parcel's address is erased by then, so close it | `fulfillment_closed` with `payment_status: 'paid'`, and you are sent `order.unfulfilled` with `paid_after_closure`; no goods are released |
 | the transfer can no longer happen: the authorization was cancelled, or its window passed unused | `delivered_unpaid`, and the buyer can pay again | `rejected`, with the reason `payment_not_settled` | `fulfillment_closed` with `payment_status: 'not_paid'`; the buyer cannot pay again |
 
 Until Agentify finds one or the other, the order stays `payment_unresolved`.
@@ -604,7 +612,7 @@ The agent is promised a synchronous purchase within twenty seconds of the
 payment check, and your ten seconds and the facilitator's ten fit inside them.
 Asking your price comes before the payment, so it is outside all three
 numbers. A late synchronous answer is not an error and does not come back as
-an exception: the purchase is already closed with nothing charged, and goods
+an exception: the purchase has already ended with nothing charged, and goods
 that fit the card are kept for a repeat purchase without your code being told.
 
 ## Telling a repeat apart
@@ -634,7 +642,7 @@ you that.
 
 A repeat of an asynchronous order you have already delivered is answered with
 what you answered the first time, taking the order on; there is no need to
-call `deliver` again, because the order is already closed. Answers that are
+call `deliver` again, because the order has already ended. Answers that are
 not the goods may differ freely between attempts.
 
 ## Running the handler in several instances
