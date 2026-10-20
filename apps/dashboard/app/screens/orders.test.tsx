@@ -452,6 +452,21 @@ describe("a long run of orders told in full", () => {
     expect(reached).not.toContain(done);
   });
 
+  it("says once which of how many it shows where the list is the orders that need the merchant", () => {
+    const owing = sixtyOf("unfulfilled");
+
+    const text = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, owing, owing, new URLSearchParams("show=needs"))}
+        />
+      )),
+    );
+
+    expect(text.match(/Showing/g)).toHaveLength(1);
+    expect(text).toContain("Showing 1–50 of 60");
+  });
+
   it("offers no other way on where Needs you already holds every order", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }, { id: SAME_HEAD }]);
 
