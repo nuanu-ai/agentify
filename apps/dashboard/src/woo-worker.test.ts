@@ -38,6 +38,7 @@ import {
   type ShipmentRead,
   type ShopKeys,
   type SoldItem,
+  shippingRatesInTheShop,
 } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import {
@@ -132,6 +133,48 @@ const aShopThatAccepts = () => {
     },
   };
 };
+
+/**
+ * A shop's Store API cart, answering the place with a cart that holds
+ * `quantity` of product 28 and charges 5.00 to ship it, as a shop does whose
+ * plugin raised a minimum quantity.
+ */
+const aCartHoldingTheTote =
+  (quantity: number): WooRequest =>
+  async (url, init) => {
+    const asked = new URL(url).pathname;
+    if ((init?.method ?? "GET") === "GET") {
+      return Response.json(
+        { items: [], needs_shipping: false, shipping_rates: [] },
+        { headers: { "Cart-Token": "cart-token-1" } },
+      );
+    }
+    return Response.json(
+      {
+        items: [{ key: "line-28", id: 28, quantity }],
+        needs_shipping: true,
+        shipping_rates: [
+          {
+            package_id: 0,
+            items: [{ key: "line-28", name: "Canvas tote bag", quantity }],
+            shipping_rates: [
+              {
+                rate_id: "flat_rate:3",
+                name: "Standard",
+                method_id: "flat_rate",
+                instance_id: 3,
+                price: "500",
+                taxes: "0",
+                currency_code: "USD",
+                currency_minor_unit: 2,
+              },
+            ],
+          },
+        ],
+      },
+      { status: asked.endsWith("/add-item") ? 201 : 200 },
+    );
+  };
 
 const filling = (
   shops: WooShops,
@@ -1257,6 +1300,24 @@ describe("a parcel's price question", () => {
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
+  it("offers no price from a cart that does not hold the one parcel the question is about", async () => {
+    const shops = memoryWooShops();
+    const fromTheCart = (quantity: number) => (where: unknown) =>
+      shippingRatesInTheShop(
+        "https://shop.example.com",
+        "28",
+        where as typeof place,
+        aCartHoldingTheTote(quantity),
+      );
+
+    expect(await answering(memoryWooShops(), fromTheCart(1))).toMatchObject({
+      available: true,
+      price: { amount: "25.00" },
+    });
+    expect(await answering(shops, fromTheCart(2))).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+  });
+
   it("says nothing when the shop's cart could not answer just now", async () => {
     const answer = await answering(memoryWooShops(), async () => ({
       ok: false,
@@ -1463,6 +1524,28 @@ describe("a parcel's paid order", () => {
       expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
       expect(shop.placed).toHaveLength(0);
     }
+  });
+
+  it("refuses an order whose cart at fulfilment holds other than the one parcel paid for, and posts nothing", async () => {
+    // The rate is asked again when the order is filled, so a cart a plugin
+    // changed then is caught then, before anything reaches the shop.
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: (keys, productId, where) =>
+          shippingRatesInTheShop(keys.shopUrl, productId, where, aCartHoldingTheTote(2)),
+      }),
+      NO_SPLIT,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
   });
 
   it("answers nothing and writes nothing while the shop does not answer", async () => {

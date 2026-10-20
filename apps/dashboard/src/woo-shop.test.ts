@@ -1195,10 +1195,20 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     selected: true,
     ...overrides,
   });
+  // A cart line and the package that ships it name each other by the line's
+  // key, as WooCommerce 11.2 answered; a package's item carries no product id.
+  const LINE = { key: "line-28", id: 28, quantity: 1 };
+  const PACKED = { key: "line-28", name: "Canvas tote bag", quantity: 1 };
+  const aPackage = (rates: unknown[], items: unknown[] = [PACKED]) => ({
+    package_id: 0,
+    name: "Shipment 1",
+    items,
+    shipping_rates: rates,
+  });
   const cart = (rates: unknown[], overrides: Record<string, unknown> = {}) => ({
-    items: [{ id: 28, quantity: 1 }],
+    items: [LINE],
     needs_shipping: true,
-    shipping_rates: [{ package_id: 0, name: "Shipment 1", shipping_rates: rates }],
+    shipping_rates: [aPackage(rates)],
     ...overrides,
   });
   const shopWithRates = (answered: () => { status: number; body: unknown }) =>
@@ -1305,17 +1315,57 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       cart([rate({ currency_minor_unit: 0, price: "5" })]),
       cart([rate({ taxes: "50" })]),
       cart([rate({ price: "five" })]),
-      cart([rate()], {
-        shipping_rates: [
-          { package_id: 0, shipping_rates: [rate()] },
-          { package_id: 1, shipping_rates: [rate()] },
-        ],
-      }),
+      cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
       cart([rate()], { needs_shipping: false }),
     ]) {
       stand = await shopWithRates(() => ({ status: 200, body }));
 
       expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
+        ok: false,
+        again: false,
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("takes a rate only from a cart that holds this product alone, once", async () => {
+    // A shop's plugins can change a cart while it is asked: a minimum quantity,
+    // a gift, a bundle. What the cart then charges to ship is the rate of what
+    // it holds, not of the one parcel sold.
+    const GIFT = { key: "line-31", id: 31, quantity: 1 };
+    for (const [holding, body] of [
+      [
+        "two of the product",
+        cart([rate()], {
+          items: [{ ...LINE, quantity: 2 }],
+          shipping_rates: [aPackage([rate()], [{ ...PACKED, quantity: 2 }])],
+        }),
+      ],
+      ["nothing", cart([rate()], { items: [], shipping_rates: [aPackage([rate()], [])] })],
+      ["another product", cart([rate()], { items: [{ ...LINE, id: 22 }] })],
+      [
+        "the product and a gift",
+        cart([rate()], {
+          items: [LINE, GIFT],
+          shipping_rates: [
+            aPackage([rate()], [PACKED, { key: GIFT.key, name: "Gift", quantity: 1 }]),
+          ],
+        }),
+      ],
+      [
+        "a package shipping two",
+        cart([rate()], { shipping_rates: [aPackage([rate()], [{ ...PACKED, quantity: 2 }])] }),
+      ],
+      [
+        "a package shipping another line",
+        cart([rate()], { shipping_rates: [aPackage([rate()], [{ ...PACKED, key: GIFT.key }])] }),
+      ],
+      ["a package shipping nothing", cart([rate()], { shipping_rates: [aPackage([rate()], [])] })],
+    ] as const) {
+      stand = await shopWithRates(() => ({ status: 200, body }));
+
+      expect(await ratesFor(stand.url, "28", JAKARTA), holding).toMatchObject({
         ok: false,
         again: false,
       });
