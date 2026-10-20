@@ -798,6 +798,36 @@ describe("the protected product check", () => {
     expect(read).toMatchObject({ ok: false, again: false });
   });
 
+  it("tells a revoked key, a firewall and a missing settings route apart in the reason it gives", async () => {
+    // The reason is all whoever reads the log has to go on: one reconnects, one
+    // asks their host, one repairs the shop.
+    const reasons = new Set<string>();
+    for (const [where, status, code] of [
+      ["/products/", 401, "woocommerce_rest_cannot_view"],
+      ["/products/", 403, "forbidden"],
+      ["woocommerce_ship_to_destination", 404, "rest_no_route"],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes(where)) return { status, body: { code } };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        }
+        return { status: 200, body: parcelDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "28"),
+      );
+
+      expect(read, `${status}`).toMatchObject({ ok: false, again: false, saidNo: false });
+      if (!read.ok) reasons.add(read.why);
+      await stand.close();
+      stand = null;
+    }
+    expect(reasons.size).toBe(3);
+  });
+
   it("says the shop ruled a product out only where its own readable answer did", async () => {
     // What the buyer is told hangs on this: "not available" is the seller's
     // word, and a revoked key or a page that is not WooCommerce's said nothing
