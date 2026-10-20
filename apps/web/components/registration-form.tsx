@@ -1,8 +1,8 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
-import { refusalIn } from "../lib/api-answers";
-import { linkAnswerFailure, waitLabel } from "../lib/link-answer";
+import { waitLabel } from "../lib/link-answer";
+import { press } from "../lib/press";
 import { useVisitor } from "../lib/visitor";
 import styles from "./registration-form.module.css";
 
@@ -68,41 +68,55 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       return;
     }
     const form = new FormData(event.currentTarget);
-    const email = visitor.status === "signed_in" ? visitor.email : form.get("email");
+    const signedIn = visitor.status === "signed_in";
+    const email = signedIn ? visitor.email : String(form.get("email") ?? "");
     setState("sending");
-    const response = await fetch(`/api/v2/scans/${encodeURIComponent(scanId)}/registrations`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    setMessage("");
+    const outcome = await press(
+      `/api/v2/scans/${encodeURIComponent(scanId)}/registrations`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          phone: form.get("phone") || undefined,
+          role: form.get("role"),
+          site_is_mine: form.get("site_is_mine") === "on",
+          marketing_email_opt_in: form.get("marketing_email_opt_in") === "on",
+          dataset_reuse_acknowledged: form.get("dataset_reuse_acknowledged") === "on",
+        }),
       },
-      body: JSON.stringify({
-        email,
-        phone: form.get("phone") || undefined,
-        role: form.get("role"),
-        site_is_mine: form.get("site_is_mine") === "on",
-        marketing_email_opt_in: form.get("marketing_email_opt_in") === "on",
-        dataset_reuse_acknowledged: form.get("dataset_reuse_acknowledged") === "on",
-      }),
-    });
-    const payload: unknown = await response.json().catch(() => null);
-    const parsed = registrationResponseSchema.safeParse(payload);
-    if (response.ok && parsed.success && parsed.data.status === "report_ready") {
+      (answer) => {
+        const parsed = registrationResponseSchema.safeParse(answer);
+        return parsed.success ? parsed.data : null;
+      },
+    );
+    if (outcome.kind === "done" && outcome.answer.status === "report_ready") {
       setState("opening");
-      window.location.assign(parsed.data.report_url);
+      window.location.assign(outcome.answer.report_url);
       return;
     }
-    if (response.ok && parsed.success) {
+    if (outcome.kind === "done") {
       setState("sent");
       setResendWait(0);
-      setSentTo(typeof form.get("email") === "string" ? String(form.get("email")) : "");
-      setMessage("");
-    } else {
-      const failure = linkAnswerFailure(payload);
-      setState(refusalIn(payload)?.code === "signed_in_as_another_address" ? "stale" : "error");
-      setMessage(failure.message);
-      setResendWait(failure.waitSeconds);
+      setSentTo(email);
+      return;
     }
+    if (outcome.kind === "refused") {
+      setState(outcome.refusal.code === "signed_in_as_another_address" ? "stale" : "error");
+      setMessage(outcome.refusal.message);
+      setResendWait(outcome.refusal.retry_after_seconds ?? 0);
+      return;
+    }
+    setState("error");
+    setMessage(
+      signedIn
+        ? `No answer came back, so we cannot tell whether the report was filed under ${email}. Press “Open the full report” again: if it was filed, the same report opens.`
+        : `No answer came back, so we cannot tell whether a link was sent to ${email}. Check your inbox; if no link arrives in a few minutes, ask again.`,
+    );
   }
 
   if (visitor.status === "loading")
@@ -210,7 +224,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         disabled={state === "sending" || state === "opening" || resendWait > 0}
         type="submit"
       >
-        {signedIn && resendWait === 0 && state !== "opening"
+        {signedIn && resendWait === 0 && state !== "sending" && state !== "opening"
           ? "Open the full report"
           : registrationSubmitLabel(state, resendWait)}
       </button>
