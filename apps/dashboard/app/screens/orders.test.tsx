@@ -421,8 +421,15 @@ describe("a long run of orders told in full", () => {
   };
 
   it("leads from a cut Needs you to every order that needs the merchant, a page at a time and each drawn once", () => {
-    const owing = sixtyOf("unfulfilled");
     const done = idOf("ffff", "1111");
+    // Closed, then paid: the gateway keeps it open until it is closed again.
+    const reopened = {
+      ...ordersOf([{ id: idOf("eeee", "2222"), status: "fulfillment_closed" }]).orders[0],
+      merchant_closure: { closed_at: "2026-10-12T16:41:00Z" },
+    };
+    const owing = OrderListSchema.parse({
+      orders: [...sixtyOf("unfulfilled").orders, reopened],
+    });
     const orders = OrderListSchema.parse({
       orders: [...owing.orders, ...ordersOf([{ id: done }]).orders],
     });
@@ -449,7 +456,7 @@ describe("a long run of orders told in full", () => {
       if (address !== null) expect(html).toContain(`href="${address.replaceAll("&", "&amp;")}"`);
     }
 
-    expect(reached).toHaveLength(60);
+    expect(reached).toHaveLength(61);
     expect([...reached].sort()).toStrictEqual(owing.orders.map((order) => order.id).sort());
     expect(reached).not.toContain(done);
   });
