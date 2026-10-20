@@ -9,7 +9,7 @@ import {
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsentBanner } from "./banner.js";
 import { PrivacyChoicesButton } from "./privacy-choices.js";
 
@@ -111,6 +111,22 @@ describe("consent persistence", () => {
     const told = await screen.findByRole("status");
     expect(told.textContent).toMatch(/cannot tell whether/i);
     expect(told.textContent).not.toMatch(/no optional analytics were enabled/i);
+  });
+
+  it("does not say the choice was not saved when the site saved it and the browser would not keep it", async () => {
+    globalThis.fetch = async () => new Response(null, { status: 201 });
+    const keep = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    });
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    keep.mockRestore();
+    expect(told.textContent).not.toMatch(/could not save|cannot tell/i);
+    expect(told.textContent).toMatch(/saved/i);
   });
 
   it("says the choice was not saved when the site refuses it in its own words", async () => {
