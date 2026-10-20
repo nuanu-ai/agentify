@@ -80,7 +80,12 @@ const paymentAgainst = (
   challenge: string,
   from: string,
   nonce: string,
-  terms: { readonly payTo?: string; readonly validBefore?: number } = {},
+  terms: {
+    readonly payTo?: string;
+    readonly validBefore?: number;
+    /** The signer's clock, in milliseconds, where it is not the test's own. */
+    readonly signedAt?: number;
+  } = {},
 ): string => {
   const offered = decodePaymentRequiredHeader(challenge);
   const asked = offered.accepts[0];
@@ -99,7 +104,8 @@ const paymentAgainst = (
         value: accepted.amount,
         validAfter: "0",
         validBefore: String(
-          terms.validBefore ?? Math.floor(Date.now() / 1_000) + accepted.maxTimeoutSeconds,
+          terms.validBefore ??
+            Math.floor((terms.signedAt ?? Date.now()) / 1_000) + accepted.maxTimeoutSeconds,
         ),
         nonce: `0x${nonce.slice(2).padStart(64, "0")}`,
       },
@@ -156,20 +162,23 @@ class Recording implements FacilitatorClient {
  * A gateway whose payments go through the facilitator adapter production uses,
  * with only the network behind it swapped, and identifiers as production
  * issues them, so an identifier found in a call is that order's and no other's.
+ * Its clock is the wall clock until `advance` moves it on.
  */
 async function aGatewayPayingThrough(
   network: FacilitatorClient,
   overrides: Record<string, string> = {},
 ) {
   const config = testConfig({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
+  let ahead = 0;
+  const clock = () => Date.now() + ahead;
   const queue = new MemoryQueue();
-  const store = new MemoryStore(config.payment.network, randomIds, Date.now, queue.envelopes());
+  const store = new MemoryStore(config.payment.network, randomIds, clock, queue.envelopes());
   const gateway = new Gateway({
     config,
     store,
     queue,
-    facilitator: new X402Facilitator(network, new PaymentEdge(config)),
-    clock: Date.now,
+    facilitator: new X402Facilitator(network, new PaymentEdge(config), undefined, clock),
+    clock,
     ids: randomIds,
     announcer: nobodyAnnounces,
     widestChallenge: widestChallengeOn(config),
@@ -183,9 +192,9 @@ async function aGatewayPayingThrough(
     keyId: "unused",
     wallet: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
   };
-  await store.addMerchant({ id: merchant.id, name: merchant.name }, Date.now());
-  await setServiceName(store, merchant.id, merchant.name, Date.now());
-  await setPayoutWallet(store, config.payoutSplit, merchant.id, merchant.wallet, Date.now());
+  await store.addMerchant({ id: merchant.id, name: merchant.name }, clock());
+  await setServiceName(store, merchant.id, merchant.name, clock());
+  await setPayoutWallet(store, config.payoutSplit, merchant.id, merchant.wallet, clock());
   const served = await serve({ gateway });
 
   return {
@@ -194,6 +203,10 @@ async function aGatewayPayingThrough(
     config,
     merchant,
     served,
+    now: clock,
+    advance(ms: number) {
+      ahead += ms;
+    },
     async publish(card: Card): Promise<string> {
       const published = await gateway.publishCard(merchant.id, card);
       if (!published.ok)
@@ -607,7 +620,7 @@ async function deliveredThenTheWalletMoved() {
     shop.config.payoutSplit,
     shop.merchant.id,
     MOVED_TO,
-    Date.now(),
+    shop.now(),
   );
   const paidTo = payToIn(challenge);
   expect(network.charged).toStrictEqual([paidTo]);
@@ -678,7 +691,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
         sold.shop.served,
         sold.itemId,
         paymentAgainst(sold.challenge, BUYER, "0x03", {
-          validBefore: Math.floor(Date.now() / 1_000) - 1,
+          validBefore: Math.floor(sold.shop.now() / 1_000) - 1,
         }),
       );
 
@@ -690,6 +703,41 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
         expectNoOrderIn(answered.body, sold.orderId);
         expect(JSON.stringify(answered.body)).not.toContain("SESAME");
       }
+      expect(sold.network.charged).toStrictEqual([sold.paidTo]);
+    } finally {
+      await sold.close();
+    }
+  });
+
+  it("is told its saved payment has expired, sent again once its window passed, and the advice in that answer gets the order back", async () => {
+    const sold = await deliveredThenTheWalletMoved();
+    try {
+      sold.shop.advance(10 * 60_000);
+
+      const replayed = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, BUYER, "0x01"),
+      );
+
+      expect(replayed.status).toBe(409);
+      const { error } = replayed.body as { error: { code: string; message: string } };
+      expect(error.code).toBe("payment_not_verified");
+      expect(error.message).toMatch(/expired/);
+      expect(error.message).not.toMatch(/different address/);
+      expectNoOrderIn(replayed.body, sold.orderId);
+      expect(JSON.stringify(replayed.body)).not.toContain("SESAME");
+
+      const renewed = await present(
+        sold.shop.served,
+        sold.itemId,
+        paymentAgainst(sold.challenge, BUYER, "0x02", { signedAt: sold.shop.now() }),
+      );
+      expect(renewed.status, JSON.stringify(renewed.body)).toBe(200);
+      expect(renewed.body).toMatchObject({
+        order_id: sold.orderId,
+        delivered: { access_code: "SESAME" },
+      });
       expect(sold.network.charged).toStrictEqual([sold.paidTo]);
     } finally {
       await sold.close();
@@ -718,7 +766,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
         shop.config.payoutSplit,
         shop.merchant.id,
         MOVED_TO,
-        Date.now(),
+        shop.now(),
       );
       await shop.gateway.answerOrder(shop.merchant.id, orderId, {
         delivered: { access_code: "SESAME" },
