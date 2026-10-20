@@ -77,6 +77,49 @@ describe("consent persistence", () => {
     expect(screen.queryByRole("complementary", { name: "Privacy choices" })).not.toBeNull();
   });
 
+  it("says it cannot tell whether the choice was saved when the answer was lost", async () => {
+    // The site may have recorded the choice, an allowing one included, before
+    // the answer was lost, so "nothing was enabled" may not be true there.
+    globalThis.fetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    expect((await screen.findByRole("status")).textContent).toMatch(/cannot tell whether/i);
+    expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Allow optional analytics" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("says the choice was not saved when the site refuses it in its own words", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "consent_unavailable",
+            message: "Consent preferences could not be saved.",
+            retryable: true,
+            retry_after_seconds: 5,
+            request_id: "019f5b6a-4b9f-7000-8000-0000000000f1",
+          },
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      );
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    expect(told.textContent).not.toMatch(/cannot tell/i);
+    expect(told.textContent).toMatch(/could not save/i);
+  });
+
   it("stores only the optional categories the visitor selected", async () => {
     globalThis.fetch = async () => new Response(null, { status: 201 });
     const user = userEvent.setup();
