@@ -5141,6 +5141,23 @@ describe("when the gateway will not answer", () => {
 });
 
 describe("the page that says a call to the gateway failed", () => {
+  it("tries the page the merchant was on again, not another one", async () => {
+    // A merchant reading Settings who presses "Try again" wants Settings
+    // again; sent to Cards, they lose their place and press their way back.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await browser.get("/settings");
+    const again =
+      /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
+        failed.html,
+      )?.[1];
+
+    expect(failed.status).toBe(504);
+    expect(again).toMatch(/\/settings$/);
+  });
+
   it("offers the page again, not its data, when the page was opened inside the application", async () => {
     // A click inside the application asks for the page's data alone; the way
     // back the failed page offers is still the page, with what it was asked
