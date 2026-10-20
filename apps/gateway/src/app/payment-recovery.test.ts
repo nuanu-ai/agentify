@@ -758,6 +758,22 @@ describe("recovering a payment without another charge", () => {
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
   });
 
+  it("keeps the place a rate-limited poll reached and still names the failure to the operator", async () => {
+    const { h, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.runtime.facilitator.reconcile = async () => ({
+      settled: "unknown",
+      reason: "still reading",
+      nextBlock: "120",
+      failure: "eth_getBlockReceipts at rpc.example failed: HTTP 429.",
+    });
+    h.advance(60_000);
+    const lines = await logged(() => h.gateway.runner.reconcilePayments());
+    expect(lines.join("\n")).toContain("eth_getBlockReceipts at rpc.example failed: HTTP 429.");
+    expect((await h.store.orderById(orderId))?.paymentAttempt?.nextBlock).toBe("120");
+  });
+
   it("tells the operator on every poll that a payment is unresolved while recovery is off", async () => {
     const { h, orderId } = await purchase();
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });

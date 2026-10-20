@@ -80,7 +80,15 @@ class Chain implements ChainReader {
   finalized = 1000n;
   usedAt: bigint | null = 500n;
   failed = false;
+  /** Reads allowed before the endpoint answers 429, as a rate limit does; null is no limit. */
+  budget: number | null = null;
+  calls = 0;
   receiptsRead: bigint[] = [];
+  spend() {
+    this.calls += 1;
+    if (this.budget !== null && this.calls > this.budget)
+      throw new RecoveryFailure("eth_getBlockReceipts at rpc.invalid failed: HTTP 429.");
+  }
   receiptValue: ChainReceipt = {
     transactionHash: TX,
     blockNumber: 500n,
@@ -93,13 +101,16 @@ class Chain implements ChainReader {
   }
   async block(number?: bigint): Promise<ChainBlock> {
     if (this.failed) throw new RecoveryFailure("eth_getBlockByNumber at rpc.invalid failed.");
+    this.spend();
     const at = number ?? this.finalized;
     return { number: at, hash: hashOf(at), timestamp: timeOf(at) };
   }
   async authorizationState(_context: unknown, number: bigint) {
+    this.spend();
     return this.usedAt !== null && number >= this.usedAt;
   }
   async blockReceipts(number: bigint) {
+    this.spend();
     this.receiptsRead.push(number);
     return number === this.receiptValue.blockNumber ? [this.receiptValue] : [];
   }
@@ -238,6 +249,35 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       transaction: TX,
     });
     expect(chain.receiptsRead[0]).toBe(464n);
+  });
+
+  it("keeps the place a rate-limited poll reached, so a transfer at the window's end is found", async () => {
+    const chain = new Chain();
+    chain.usedAt = 549n;
+    chain.receiptValue = {
+      ...chain.receiptValue,
+      blockNumber: 549n,
+      blockHash: hashOf(549n),
+      logs: [event("AuthorizationUsed", 4, 549n), event("Transfer", 5, 549n)],
+    };
+    const recovery = new Eip3009Recovery(() => chain);
+    let cursor: string | undefined;
+    for (let poll = 1; poll <= 10; poll += 1) {
+      chain.calls = 0;
+      chain.budget = 40;
+      const outcome = await recovery.reconcile({
+        context: CONTEXT,
+        ...(cursor === undefined ? {} : { nextBlock: cursor }),
+      });
+      if (outcome.settled !== "unknown") {
+        expect(outcome).toMatchObject({ settled: true, transaction: TX });
+        expect(new Set(chain.receiptsRead).size).toBe(chain.receiptsRead.length);
+        return;
+      }
+      expect(outcome.failure).toContain("HTTP 429");
+      cursor = outcome.nextBlock;
+    }
+    throw new Error("ten polls under the rate limit never reached the transfer");
   });
 
   it("proves nonpayment only after an unused authorization has irreversibly expired", async () => {

@@ -1091,7 +1091,10 @@ export class OrderRunner {
     });
   }
 
-  /** Whether the chain settled this record's payment one way or the other. */
+  /**
+   * Whether the chain settled this record's payment one way or the other. It
+   * throws when the chain could not be read, after keeping any progress.
+   */
   async #reconcileOne(record: StoredOrder, reconcile: Facilitator["reconcile"]): Promise<boolean> {
     if (reconcile === undefined) return false;
     const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
@@ -1102,6 +1105,9 @@ export class OrderRunner {
       ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
     });
     await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+    // The progress is saved; the read that stopped it still counts as a failure.
+    if (outcome.settled === "unknown" && outcome.failure !== undefined)
+      throw new RecoveryFailure(outcome.failure);
     return outcome.settled !== "unknown";
   }
 

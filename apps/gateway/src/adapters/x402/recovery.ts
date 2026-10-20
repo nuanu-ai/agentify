@@ -71,6 +71,7 @@ const EXPIRED_UNUSED: PaymentRecoveryOutcome = {
   settled: false,
   reason: "The original payment authorization expired unused on the finalized chain.",
 };
+const STILL_READING = "The blocks where the original authorization was valid are still being read.";
 const NOT_FOUND =
   "The original authorization was used, but no transfer or cancellation of it was found in the blocks where it was valid.";
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -173,7 +174,6 @@ export class Eip3009Recovery {
     finalized: ChainBlock,
     cursor: string | undefined,
   ): Promise<PaymentRecoveryOutcome> {
-    const validBefore = BigInt(context.validBefore);
     let earliest = BigInt(context.notBefore);
     if (BigInt(context.validAfter) + 1n > earliest) earliest = BigInt(context.validAfter) + 1n;
     if (cursor === undefined && finalized.timestamp < earliest)
@@ -181,37 +181,56 @@ export class Eip3009Recovery {
     let next =
       cursor === undefined ? await firstBlockAt(reader, finalized, earliest) : BigInt(cursor);
     for (let read = 0n; read < BLOCKS_PER_POLL; read += 1n) {
-      if (next > finalized.number)
-        return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
-      const block = await reader.block(next);
-      if (block.timestamp >= validBefore) {
-        // Unused before this block, it can no longer pay: every later block
-        // is past its validBefore, and a later cancellation marked it used.
-        if (next > 0n && !(await reader.authorizationState(context, next - 1n)))
-          return EXPIRED_UNUSED;
-        return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
-      }
-      const receipts = (await reader.blockReceipts(next)).filter((receipt) =>
-        receipt.logs.some((log) => this.authorizationEvent(log, context) !== null),
-      );
-      for (const receipt of receipts) {
-        const proof = this.proof(context, receipt, block);
-        if (proof) return proof;
-      }
-      if (receipts.length > 0)
+      let outcome: PaymentRecoveryOutcome | null;
+      try {
+        outcome = await this.blockOutcome(reader, context, finalized, next);
+      } catch (thrown) {
+        if (!(thrown instanceof RecoveryFailure)) throw thrown;
         return {
           settled: "unknown",
-          reason:
-            "The original authorization was found, but its complete finalized receipt could not be verified.",
+          reason: STILL_READING,
           nextBlock: next.toString(),
+          failure: thrown.message,
         };
+      }
+      if (outcome) return outcome;
       next += 1n;
     }
-    return {
-      settled: "unknown",
-      reason: "The blocks where the original authorization was valid are still being read.",
-      nextBlock: next.toString(),
-    };
+    return { settled: "unknown", reason: STILL_READING, nextBlock: next.toString() };
+  }
+
+  /** What block `next` of the search shows, or null to read on. */
+  private async blockOutcome(
+    reader: ChainReader,
+    context: PaymentRecoveryContext,
+    finalized: ChainBlock,
+    next: bigint,
+  ): Promise<PaymentRecoveryOutcome | null> {
+    if (next > finalized.number)
+      return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
+    const block = await reader.block(next);
+    if (block.timestamp >= BigInt(context.validBefore)) {
+      // Unused before this block, it can no longer pay: every later block
+      // is past its validBefore, and a later cancellation marked it used.
+      if (next > 0n && !(await reader.authorizationState(context, next - 1n)))
+        return EXPIRED_UNUSED;
+      return { settled: "unknown", reason: NOT_FOUND, nextBlock: next.toString() };
+    }
+    const receipts = (await reader.blockReceipts(next)).filter((receipt) =>
+      receipt.logs.some((log) => this.authorizationEvent(log, context) !== null),
+    );
+    for (const receipt of receipts) {
+      const proof = this.proof(context, receipt, block);
+      if (proof) return proof;
+    }
+    if (receipts.length > 0)
+      return {
+        settled: "unknown",
+        reason:
+          "The original authorization was found, but its complete finalized receipt could not be verified.",
+        nextBlock: next.toString(),
+      };
+    return null;
   }
 
   private async reader(context: PaymentRecoveryContext): Promise<ChainReader> {

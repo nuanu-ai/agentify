@@ -78,7 +78,17 @@ export class RecoveryFailure extends Error {
 export type PaymentRecoveryOutcome =
   | { readonly settled: true; readonly transaction: string; readonly executedAt: number }
   | { readonly settled: false; readonly reason: string }
-  | { readonly settled: "unknown"; readonly reason: string; readonly nextBlock?: string };
+  | {
+      readonly settled: "unknown";
+      readonly reason: string;
+      readonly nextBlock?: string;
+      /**
+       * Why the search stopped before it was done, in a `RecoveryFailure`'s
+       * words: a read the endpoint refused. What it read before is kept in
+       * `nextBlock`, so a rate-limited endpoint still makes progress.
+       */
+      readonly failure?: string;
+    };
 
 export type VerifyOutcome =
   | {
