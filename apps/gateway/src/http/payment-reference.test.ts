@@ -25,6 +25,7 @@ import { Gateway } from "../app/gateway.js";
 import { setPayoutWallet, setServiceName } from "../app/merchants.js";
 import { nobodyAnnounces } from "../ports/announcer.js";
 import { randomIds } from "../ports/clock.js";
+import type { VerifyOutcome } from "../ports/facilitator.js";
 import {
   type Harness,
   harness,
@@ -893,6 +894,49 @@ const cardCard: Card = {
 
 const ORIGINAL = { email: "original-recipient@example.invalid" };
 const CHANGED = { email: "changed-recipient@example.invalid" };
+
+describe("a payment the payment layer refuses", () => {
+  it("is answered the same before and after its order is paid, naming no order", async () => {
+    // Anyone holding the payment request can make up a payment that is in its
+    // window and send it to the payment layer, which refuses the signature;
+    // its answer must not say whether the purchase was bought.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, syncCard);
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    try {
+      const challenge = await challengeFor(served, itemId);
+      const refusedSignature: VerifyOutcome = {
+        verified: false,
+        reason: "signature",
+        message: "invalid_exact_evm_payload_signature",
+      };
+      harnessed.facilitator.willVerify(
+        refusedSignature,
+        { verified: true, payer: BUYER, validUntil: null },
+        refusedSignature,
+      );
+      const madeUp = paymentAgainst(challenge, STRANGER, "0x09");
+
+      const beforeTheSale = await present(served, itemId, madeUp);
+      const bought = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+      expect(bought.status).toBe(200);
+      const orderId = (bought.body as { order_id: string }).order_id;
+      const afterTheSale = await present(served, itemId, madeUp);
+
+      expect(harnessed.facilitator.verifies).toHaveLength(3);
+      expect(afterTheSale.status).toBe(409);
+      expect(afterTheSale.body).toMatchObject({ error: { code: "payment_not_verified" } });
+      expect(afterTheSale.body).toStrictEqual(beforeTheSale.body);
+      expectNoOrderIn(afterTheSale.body, orderId);
+      expect(JSON.stringify(afterTheSale.body)).not.toContain("SESAME");
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+    } finally {
+      await worker.stop();
+    }
+  });
+});
 
 describe("a payment whose authorization has expired", () => {
   it("is answered the same before and after its order is paid, and the buyer's renewal still returns the order", async () => {
