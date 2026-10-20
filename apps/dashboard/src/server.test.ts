@@ -9,6 +9,7 @@
  * can see and do, never markup.
  */
 
+import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
@@ -21,6 +22,7 @@ import {
   serve,
   theMerchantKey,
 } from "@agentify/gateway/testing";
+import { telemetry } from "@agentify/observability/source";
 import {
   type Card,
   checksummedAddressOf,
@@ -611,6 +613,58 @@ const actionIn = (message: Message | undefined): URL => {
   if (found === undefined) throw new Error("the message carried no action URL");
   return new URL(found);
 };
+
+it("keeps mounted dashboard assets separate from interactive traffic", async () => {
+  const running = await started({ base: "/dashboard" });
+  const app = buildApp(
+    loadConfig({
+      DATABASE_URL: "postgres://nobody@nowhere/unused",
+      AUTH_SECRET: TEST_AUTH_SECRET,
+      BASE_PATH: "/dashboard",
+      PAYMENT_NETWORK: "eip155:84532",
+      FACILITATOR_URL: "sandbox:scripted",
+    }),
+    {
+      pages: {
+        ...running.pages,
+        assets: {
+          path: "/dashboard/assets",
+          handle: (_request, response) => response.end("asset"),
+        },
+      },
+      gateway: running.harnessed.gateway,
+      identity: running.identity,
+    },
+  );
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const count = async () => {
+    const body = await telemetry.metrics();
+    return Number(
+      body.match(
+        /^agentify_http_requests_total\{component="dashboard",route="asset",method="GET",status_class="2xx",traffic="client"\} ([\d.]+)$/m,
+      )?.[1] ?? 0,
+    );
+  };
+  try {
+    const before = await count();
+    expect(
+      (await fetch(`${url}/dashboard/assets/private-build-name.js?token=private-token`)).status,
+    ).toBe(200);
+    expect((await fetch(`${url}/dashboard/healthz`)).status).toBe(200);
+    expect(await count()).toBe(before + 1);
+    const metrics = await telemetry.metrics();
+    expect(metrics).toContain(
+      'component="dashboard",route="/dashboard/healthz",method="GET",status_class="2xx"',
+    );
+    expect(metrics).not.toMatch(/private-build-name|private-token/);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
 
 describe("the passwordless dashboard door", () => {
   it.each(["", "/dashboard"])(

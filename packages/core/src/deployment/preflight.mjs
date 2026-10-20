@@ -296,10 +296,27 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  if ((resolved.services?.app?.ports ?? []).length > 0) {
-    problems.push(
-      "app: it publishes a port on the host, and the dashboard's identity listener answers only inside the stack",
-    );
+  for (const [service, published] of [
+    ["app", "19464"],
+    ["scanner", "19465"],
+    ["scanner-worker", "19466"],
+  ]) {
+    const ports = resolved.services?.[service]?.ports ?? [];
+    const enabled = envOf(resolved, service).AGENTIFY_METRICS_PORT;
+    if (ports.length === 0 && enabled === undefined) continue;
+    const binding = ports[0];
+    if (
+      ports.length !== 1 ||
+      binding?.host_ip !== "127.0.0.1" ||
+      binding.target !== 9464 ||
+      String(binding.published) !== published ||
+      binding.protocol !== "tcp" ||
+      enabled !== "9464"
+    ) {
+      problems.push(
+        `${service}: only its dedicated loopback telemetry port may be published; the identity listener stays inside the stack`,
+      );
+    }
   }
 
   // The scanner itself refuses to start below this length, which activation

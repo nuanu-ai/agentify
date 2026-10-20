@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { scannerSourceAlias } from "./vitest.config.js";
 
 /**
  * The suite that needs a database, kept out of `pnpm test` because a Postgres
@@ -22,6 +23,7 @@ import { defineConfig } from "vitest/config";
  * schema.
  */
 export default defineConfig({
+  resolve: { alias: scannerSourceAlias },
   test: {
     environment: "node",
     // A run with no server reachable fails here rather than skipping every file

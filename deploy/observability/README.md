@@ -1,7 +1,7 @@
 # Agentify telemetry
 
 This separate Compose project sends Agentify logs to the shared self-hosted
-Loki and host, collector and public readiness metrics to Mimir. Grafana reads
+Loki and application, host, collector and readiness metrics to Mimir. Grafana reads
 both through the existing Joglo data sources. It defines no alerts or external
 notifications. Application releases do not restart this collector.
 
@@ -12,9 +12,10 @@ collector can deliver data. On the owner's instruction the Agentify overview
 is created directly in Grafana for later adoption. Delivery does not depend on
 dashboard provisioning. A running collector alone does not establish delivery.
 
-The [Agentify overview](https://grafana.nuanu.ai/d/agentify-overview/agentify)
-compares both environments and filters logs by service. Until the collectors
-deliver, its panels correctly report missing data.
+The [Service health dashboard](https://grafana.nuanu.ai/d/agentify-overview/service-health)
+opens on production and lets the operator select TEST separately. Its questions
+and signal definitions are in the [design note](../../docs/research/53-self-hosted-observability.md).
+Missing measurements mean unknown. They do not establish that the product works.
 
 ## What is collected
 
@@ -34,14 +35,63 @@ remain available on the host. Caddy keeps its existing URI/header redaction. PRO
 access log; TEST has Caddy runtime logs and scanner request logs, with no
 separate Caddy access log.
 
-Metrics describe CPU, memory, filesystem, disks and network; the collector's
-own scrape and write status; and three public readiness checks. `/api/health`
+Host metrics describe CPU, memory, filesystem, disks and network; the collector's
+own metrics describe scrape and write status. Three same-host public checks remain
+under `job="agentify/health"`. `/api/health`
 also checks the scanner worker, database, queue and analytics outbox.
 `/healthz` and `/dashboard/healthz` check their respective listeners. These
 requests do not make purchases or start scans. A public probe can fail because
 of the producer's egress as well as the application itself; this is not an
 independent external uptime service. TEST shares a machine with other
 workloads, so its host metrics describe that whole machine.
+
+Application metrics use `job="agentify/application"`, with services `app`,
+`scanner` and `scanner-worker`. They are available only after an application
+image containing this instrumentation is released. Their private container
+listener is port 9464; Compose publishes it on host loopback ports 19464,
+19465 and 19466 respectively. The public router exposes none of these routes.
+Local development opens no listener unless `AGENTIFY_METRICS_PORT` is set.
+CI bakes the full source commit into `agentify_build_info{revision}`. A local
+build without that argument reports `unknown`.
+
+HTTP counters and histograms use bounded component, route template, method,
+response-class and `traffic=client|probe` labels. Public probes send the fixed
+`Agentify-Observability-Probe/1.0` user agent; raw user agents are never exported.
+The tag separates diagnostic populations and grants no authority. Exclude
+`traffic="probe"` from client traffic and latency; synthetic traffic stays
+available separately. Expected payment challenges are 4xx, not server errors.
+Abandoned answers have the separate `aborted` class. Exclude health, assets and
+the intentional `/v0/worker/poll` long poll from interactive request latency;
+show its sample count beside p50/p95. No requests, identifiers or payloads are
+added to logs by this instrumentation.
+
+Commerce gauges read durable order records. They count open orders, overdue
+core deadlines and every `payment=outcome_unknown`, including closed rejected
+orders. Unknown settlement age starts at `settleStartedAt`; overdue age uses
+the order's stored policy through the core deadline function. Recent orders
+are a fifteen-minute creation cohort grouped by their current state, not a
+purchase-success rate or cumulative counter. Reads stop at 1,001 matching rows;
+above the 1,000-row observation limit the whole commerce snapshot is unavailable.
+
+Scanner gauges describe queued/running/stale-running work, oldest queued age
+and durable outcomes finished in the last fifteen minutes. Completion duration
+is acceptance to completion for completed/partial scans; quantiles are absent
+when their observation count is zero. Analytics metrics include pending,
+processing and dead-letter rows; retry lag includes expired processing leases.
+Worker readiness, dependency state and heartbeat remain separately observable
+when its database snapshot cannot be read.
+
+Each database reader uses its own single-connection, read-only pool with a
+1.5-second connection/statement timeout and a two-second query timeout. Scrapes
+coalesce while an export is running. Check `agentify_snapshot_success`, last
+successful `agentify_snapshot_timestamp_seconds`, and `agentify_snapshot_error`
+alongside business gauges. A failed or incomplete snapshot removes those gauges
+instead of repeating stale values or replacing them with zero.
+
+[Independent public probes](public-probes/README.md) run on Joglo under
+`job="agentify/public",vantage="joglo"`. They check the scanner HTML page,
+catalog JSON and sign-in HTML page over public DNS and verified TLS. They do
+not submit a scan, authenticate, invoke a payment or prove those journeys work.
 
 ## Install after the shared changes are accepted
 
@@ -93,14 +143,35 @@ Docker reading positions and the metrics write-ahead log across restarts.
 Loki writes use the standard in-memory retry queue: an extended outage or
 collector restart can lose pending log batches, visible in delivery counters.
 
-## Verify delivery and stop the failed Cloud collector
+## Application release and collector rollout
+
+Keep the ordinary release discipline: CI builds the reviewed commit once,
+TEST follows the coordinated `deploy-test` tag, and production receives an
+approved `app-v*` release. Updating this collector does not release application
+code. Before rolling out, check that host ports 19464–19466 are unused. After
+releasing the images, verify loopback-only binds and fetch all three local
+`/metrics` endpoints without a public proxy. Verify their `revision` matches
+the actual deployed image's source commit.
+
+Then copy the reviewed collector files and validate/restart the separate
+Compose project with the commands above. Its application scrape may be
+installed before the app release, but `up=0` then means missing instrumentation,
+not a product outage. Install the Joglo probes separately using their runbook.
+Neither step changes a writer identity, tenant, network ACL or shared receiver.
+
+## Verify delivery
 
 Check the deployed source revision against the merged Agentify revision. Make
 one ordinary GET to each public health route and one scanner page on
 each channel. From the Grafana Agentify dashboard, verify fresh log entries
 under both environments, including a real scanner request and PRODUCTION's
 edge log. Verify three distinct `probe_success` series per environment and
-fresh host and collector metrics. A missing series is unknown, not healthy.
+fresh host and collector metrics. Verify three fresh application targets,
+matching image revisions, successful commerce/scanner/worker snapshots and
+three independent public probes per environment. A missing series is unknown,
+not healthy. Probe failures identify their vantage point: TEST's current
+same-host public probes time out while its public site is reachable externally.
+Do not infer product downtime from that path alone.
 
 Bounded queries in Explore include:
 
@@ -111,6 +182,10 @@ Bounded queries in Explore include:
 ```promql
 probe_success{app="agentify",job="agentify/health"}
 up{app="agentify",job=~"agentify/(host|collector)"}
+up{app="agentify",job="agentify/application"}
+agentify_build_info{app="agentify"}
+agentify_snapshot_success{app="agentify"}
+probe_success{app="agentify",job="agentify/public",vantage="joglo"}
 sum by (environment, reason) (increase(loki_write_dropped_entries_total{app="agentify",component_id="loki.write.joglo"}[5m]))
 ```
 
@@ -119,9 +194,9 @@ read data or write traces, and a client tenant override is refused. Inspect coll
 errors and delivery counters as well as container status. Sign in on TEST and
 verify its sandbox mail is still available locally and absent from Loki.
 
-After both destinations are verified on PRODUCTION, disable only its old
-`alloy.service`. Keep the new Compose collector running. Cloud writes already
-return 401; enabling the old service is not a verified recovery destination.
+PRODUCTION's old Cloud `alloy.service` is stopped and disabled after verified
+self-hosted delivery. Retain its files; enabling it is not a verified recovery
+destination.
 
 Rollback stops this separate project with `docker compose --env-file
 /etc/agentify-observability/collector.env stop`. Keep its volume and the

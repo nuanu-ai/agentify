@@ -26,7 +26,6 @@ output
 /apps/browser-observer-actor
 /packages/scanner-database
 /packages/analytics
-/packages/observability
 /packages/remediation
 /ops
 /fixtures

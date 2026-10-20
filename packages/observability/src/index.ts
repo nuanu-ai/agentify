@@ -1,5 +1,15 @@
 type LogLevel = "debug" | "info" | "warn" | "error";
 
+export { telemetryDatabase } from "./database.js";
+export {
+  listenForMetrics,
+  type MetricSample,
+  type SnapshotMetric,
+  SnapshotUnavailable,
+  Telemetry,
+  telemetry,
+} from "./metrics.js";
+
 export type LogSink = (line: string, level: LogLevel) => void;
 
 export type StructuredLogger = {
@@ -145,6 +155,10 @@ export function createLogger(input: {
 }
 
 const routePatterns: readonly [RegExp, string][] = [
+  [/^\/(?:dashboard|cabinet)\/(?:assets|styles)\//, "asset"],
+  [/^\/(?:dashboard|cabinet)\/auth(?:\/.*)?$/, "dashboard_auth"],
+  [/^\/(?:dashboard|cabinet)\/healthz$/, "dashboard_health"],
+  [/^\/(?:dashboard|cabinet)(?:\/.*)?$/, "dashboard_page"],
   [/^\/(store|local)?$/, "page_landing"],
   [/^\/(methodology|privacy|scanner|terms|data-request)$/, "page_trust"],
   [/^\/admin(?:\/.*)?$/, "page_admin"],

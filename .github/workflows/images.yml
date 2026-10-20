@@ -119,6 +119,8 @@ jobs:
           platforms: linux/amd64
           pull: true
           provenance: false
+          build-args: |
+            AGENTIFY_SOURCE_REVISION=${{ github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/nuanu-ai/agentify

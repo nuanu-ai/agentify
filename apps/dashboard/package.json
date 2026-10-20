@@ -20,6 +20,7 @@
     "db:migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
+    "@agentify/observability": "workspace:*",
     "@agentify/core": "workspace:*",
     "@agentify/gateway": "workspace:*",
     "@agentify/scanner": "workspace:*",

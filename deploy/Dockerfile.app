@@ -35,6 +35,8 @@ RUN pnpm --filter @agentify/dashboard build
 
 # Not root. The application is reached from outside through Caddy, and none of
 # the three has any reason to be able to write to its own source.
+ARG AGENTIFY_SOURCE_REVISION=unknown
+ENV AGENTIFY_SOURCE_REVISION=$AGENTIFY_SOURCE_REVISION
 USER node
 RUN test -r packages/core/src/deployment/preflight.mjs
 

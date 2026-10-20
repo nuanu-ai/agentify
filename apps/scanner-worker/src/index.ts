@@ -1,8 +1,14 @@
-import { createLogger, safeErrorCode, safeErrorType } from "@agentify/observability";
+import {
+  createLogger,
+  listenForMetrics,
+  safeErrorCode,
+  safeErrorType,
+} from "@agentify/observability";
 
 import { readWorkerEnv } from "./env.js";
 import { startHealthServer, type WorkerHealth } from "./health.js";
 import { startWorkerInfrastructure } from "./infrastructure.js";
+import { startScannerTelemetry } from "./telemetry.js";
 
 const env = readWorkerEnv();
 const logger = createLogger({
@@ -40,11 +46,19 @@ const healthServer = startHealthServer(env.WORKER_HEALTH_PORT, health);
 
 try {
   const stopInfrastructure = await startWorkerInfrastructure(env, health, logger);
+  const stopTelemetry =
+    process.env.AGENTIFY_METRICS_PORT === undefined
+      ? async () => {}
+      : startScannerTelemetry(env.DATABASE_URL, health);
+  const metrics = listenForMetrics();
   const shutdown = async () => {
     logger.info("worker_process_shutdown_requested", {
       worker_id: env.WORKER_ID,
     });
     health.live = false;
+    metrics?.close();
+    metrics?.closeAllConnections();
+    await stopTelemetry();
     await stopInfrastructure();
     healthServer.close(() => process.exit(0));
   };

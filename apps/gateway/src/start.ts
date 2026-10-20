@@ -22,6 +22,7 @@ import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 import { REMINDER_POLL_MS } from "./ports/queue.js";
+import { startCommerceTelemetry } from "./telemetry.js";
 
 /**
  * Fixed rather than read from `PORT`: the dashboard shares this process's
@@ -235,6 +236,10 @@ export async function startGateway(
   const server = buildApp(gateway).listen(GATEWAY_PORT, () => {
     console.log(`[gateway] listening on ${GATEWAY_PORT}, answering as ${config.publicBaseUrl}`);
   });
+  const stopTelemetry =
+    process.env.AGENTIFY_METRICS_PORT === undefined
+      ? async () => {}
+      : startCommerceTelemetry(config.databaseUrl);
 
   return {
     application: gateway,
@@ -242,6 +247,7 @@ export async function startGateway(
       server.close();
     },
     async stop() {
+      await stopTelemetry();
       await gateway.stop();
       await pool.end();
     },

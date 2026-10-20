@@ -18,6 +18,7 @@
 import { METHODS, type Server } from "node:http";
 import { join } from "node:path";
 import * as build from "virtual:react-router/server-build";
+import { classifyHttpRoute, listenForMetrics, telemetry } from "@agentify/observability";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { createRequestHandler } from "@react-router/express";
 import express, {
@@ -112,6 +113,11 @@ const plainly = (response: Response, status: number, words: string): void => {
 
 export function scannerApp(parts: ScannerParts): Express {
   const app = express();
+  app.use((request, response, next) => {
+    const routeClass = classifyHttpRoute(request.path);
+    telemetry.observeHttp("scanner", request, response, () => routeClass);
+    next();
+  });
   app.disable("x-powered-by");
   app.set("etag", false);
   const routes = routeTree(build);
@@ -241,6 +247,7 @@ export async function serve({ client }: Readonly<{ client: string }>): Promise<S
     server.once("error", reject);
   });
   console.log(`[web] listening on ${host}:${port}`);
+  const metrics = listenForMetrics();
   const retries = startDeletionRetries(process.env, retryPendingScannerIdentityDeletions);
   for (const [signal, code] of [
     ["SIGTERM", 143],
@@ -248,6 +255,8 @@ export async function serve({ client }: Readonly<{ client: string }>): Promise<S
   ] as const) {
     process.once(signal, () => {
       retries.stop();
+      metrics?.close();
+      metrics?.closeAllConnections();
       server.close(() => process.exit(code));
       server.closeIdleConnections();
       setTimeout(() => process.exit(code), CLOSING_GRACE_MS).unref();

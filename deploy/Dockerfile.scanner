@@ -48,6 +48,9 @@ CMD ["pnpm", "--filter", "@agentify/web", "privacy:cleanup"]
 # installed beside it.
 FROM node:24.21.0-alpine AS runner
 
+ARG AGENTIFY_SOURCE_REVISION=unknown
+ENV AGENTIFY_SOURCE_REVISION=$AGENTIFY_SOURCE_REVISION
+
 ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000

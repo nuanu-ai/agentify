@@ -10,6 +10,7 @@
  */
 
 import type { Gateway } from "@agentify/gateway";
+import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
@@ -61,6 +62,17 @@ export interface DashboardParts {
 
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
+  app.use((request, response, next) => {
+    const routeClass = classifyHttpRoute(request.path);
+    telemetry.observeHttp("dashboard", request, response, () =>
+      routeClass === "asset"
+        ? routeClass
+        : typeof request.route?.path === "string"
+          ? request.route.path
+          : routeClass,
+    );
+    next();
+  });
   const base = config.basePath;
   // Where the connector is not offered none of its screens is mounted, so
   // nothing invites an owner into what does not work there.

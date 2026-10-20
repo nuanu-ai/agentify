@@ -35,6 +35,7 @@ const scannerSources = [
   ["@agentify/analytics", "./packages/analytics/src/index.ts"],
   ["@agentify/analytics/browser", "./packages/analytics/src/browser-entry.ts"],
   ["@agentify/observability", "./packages/observability/src/index.ts"],
+  ["@agentify/observability/source", "./packages/observability/src/index.ts"],
   ["@agentify/scanner", "./packages/scanner/src/index.ts"],
   ["@agentify/remediation", "./packages/remediation/src/index.ts"],
 ] as const;
