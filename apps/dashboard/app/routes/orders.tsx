@@ -1,18 +1,21 @@
 import {
   type ActionFunctionArgs,
+  isRouteErrorResponse,
   type LoaderFunctionArgs,
   useActionData,
   useLoaderData,
+  useRouteError,
 } from "react-router";
-import { acted, answer, formOf } from "../answer.js";
+import { acted, formOf, readOnly, type Trouble } from "../answer.js";
 import { Frame } from "../components/frame.js";
+import { ErrorBoundary as PageTrouble } from "../root.js";
 import { OrdersScreen } from "../screens/orders.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
   const { url, context } = asked;
-  return answer(
-    await context.get(services).screens.orders(context.get(signedIn), url.searchParams),
+  return readOnly(
+    async () => await context.get(services).screens.orders(context.get(signedIn), url.searchParams),
     asked,
   );
 }
@@ -32,6 +35,29 @@ export default function Orders() {
   return (
     <Frame tab="orders" title="Orders">
       <OrdersScreen view={view} />
+    </Frame>
+  );
+}
+
+/**
+ * A read of the orders that failed changed nothing, so it is said in the
+ * frame, the sections beside it, with the same list offered again. A press
+ * that failed may have been done, and is the dashboard's own page about that.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const trouble = isRouteErrorResponse(error) ? (error.data as Trouble | undefined) : undefined;
+  const again =
+    trouble?.kind === "unread" || trouble?.kind === "problem" ? trouble.again : undefined;
+  if (again === undefined) return <PageTrouble />;
+  return (
+    <Frame tab="orders" title="Orders">
+      <p className="problem" role="alert">
+        Your orders could not be loaded. Loading them changed nothing.
+      </p>
+      <a className="button button-primary" href={again}>
+        Load again
+      </a>
     </Frame>
   );
 }

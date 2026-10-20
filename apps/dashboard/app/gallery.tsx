@@ -2915,6 +2915,28 @@ const PROBLEMS: GalleryState[] = [
   ),
   at(
     {
+      id: "dashboard-orders-not-loaded",
+      screen: "Orders",
+      when: "A merchant opens Orders while the read of their orders fails.",
+      cause:
+        "An exception inside Agentify while reading the orders. A read changes nothing, so the page says so in the dashboard's frame and offers the same list again.",
+    },
+    {
+      path: "/orders?show=open",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/orders": null },
+      failed: {
+        "routes/orders": thrown(500, {
+          kind: "unread",
+          chrome: chromeIn("live"),
+          again: "/orders?show=open",
+        }),
+      },
+    },
+  ),
+  at(
+    {
       id: "dashboard-press-not-answered",
       screen: "Something went wrong",
       when: "A merchant presses Pause on a card while Agentify is not answering.",
