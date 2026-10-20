@@ -54,11 +54,24 @@ the first recorded time and explanation. A lost response can be checked by
 reading the order or retried safely; it does not establish failure.
 
 The action stops future dispatch, redelivery and release of held goods through
-Agentify. It refuses an order whose delivery or shipment is already recorded.
-It does not cancel a shop order, a running merchant handler or a payment
-already accepted for execution. The WooCommerce integration uses the same
-Agentify action; it requires no WooCommerce setting and makes no cancellation
-or refund call to the shop.
+Agentify. It refuses an order whose delivery or shipment is already recorded
+(`fulfillment_complete`), and an order that ended with nothing charged and
+nothing held (`nothing_to_close`), since closing that would only replace the
+reason its agent acts on. An ended order whose charge went unanswered, and an
+expired one still holding late goods for a repeat purchase, stay closable. It
+does not cancel a shop order, a running merchant handler or a charge already
+sent to the facilitator. The WooCommerce integration uses the same Agentify
+action; it requires no WooCommerce setting and makes no cancellation or refund
+call to the shop.
+
+The message is held to the plain-text rule of a card's description, bounded at
+2000 characters, and refused with words otherwise, because a stranger's agent
+reads it. On a paid closed order the agent also reads Agentify's own reason
+sentence, so the merchant's words are never the only voice beside
+`payment_status: paid`. When a payment unresolved at closure completes, the
+merchant is sent `order.unfulfilled` with the reason `paid_after_closure`,
+and the order returns to their open list until they close it again with a new
+message.
 
 An overdue paid order reads `unfulfilled`; merchant closure reads
 `fulfillment_closed` with an attributed `merchant_closure`. Reads carry original
@@ -146,26 +159,34 @@ states.
 
 Real payment admission accepts x402 v2 exact EIP-3009 USDC on Base and Base
 Sepolia. It validates the signed terms and saves recovery context without
-calling RPC. Recovery starts its search from genesis when it has no transaction
-hint, with historical nonce reads as an optimization. Unsupported methods are
-refused before submission. The immutable attempt and permanent authorization ownership
-commit before settlement submission; a restart does not submit again.
+calling RPC. Unsupported methods are refused before submission. The immutable
+attempt and the permanent reservation of the authorization commit before
+settlement is submitted, so a restart does not submit again.
 
-With RPC configured, the existing queue checks overdue unanswered attempts every minute, including orders
-closed at their payment deadline. Pending and unfamiliar facilitator failures
-remain unknown. Recovery reads finalized nonce state, events and the complete
-transaction receipt. It checks the exact adjacent USDC authorization and
-transfer events. Cancellation or finalized unused expiry establishes
-nonpayment; unavailable or conflicting evidence does not. A transaction hash is
-only a lookup hint. Without one, a bounded event scan persists its progress;
-historical nonce reads can locate an older consumed authorization faster.
+With RPC configured, the existing queue checks overdue unanswered attempts
+every minute, including orders the merchant closed. Pending and unfamiliar
+facilitator failures remain unknown. A settlement can only land while its
+authorization is valid, which is under a minute from the attempt's start to
+its `validBefore`. Recovery therefore finds the first block at or after the
+attempt's start by bisecting block timestamps, reads the receipts of the few
+blocks up to the first one past `validBefore`, and looks there for the exact
+adjacent USDC `AuthorizationUsed` and `Transfer` events. It does not depend on
+`eth_getLogs`, which the public mainnet endpoint refuses. A transaction hash is
+only a lookup hint. Cancellation or a finalized unused expiry establishes
+nonpayment; unavailable or conflicting evidence does not.
 
 Old unresolved records are reconstructed from their saved payment and order,
 never today's merchant wallet or payment settings. Ambiguous ownership, an
-unknown payer, unsupported methods or missing terms stay unresolved. The scan
-can begin at genesis where an old record has no earlier checkpoint, including
-cancellations before its signed validity window. No unsupported record is
-silently reclassified as unpaid.
+unknown payer, unsupported methods or missing terms stay unresolved, and no
+unsupported record is silently reclassified as unpaid.
+
+A failed poll is logged with the class of its error, and each run logs how
+many payments are unresolved and the age of the oldest, so an operator can see
+that recovery is stuck. At start-up the gateway checks that the RPC answers the
+channel's chain identifier; on a mismatch or no answer it says so and leaves
+recovery off, while facilitator payments continue. Whoever serves that address
+is trusted for payment evidence beside the facilitator: ADR-0027 records what
+recovery checks and what it cannot.
 
 Completion races the original callback under the same order lock and attempt
 identifier. The due payment deadline is applied first. Held synchronous goods
@@ -199,18 +220,29 @@ On 2026-10-19 the Base Sepolia probe recovered existing transaction
 without a hash hint, with its block time, and rejected an altered amount.
 A separate unused expired nonce returned proven nonpayment. Base mainnet's
 public endpoint returned HTTP 429 for log queries, including one finalized
-block with an exact payer and nonce filter; mainnet positive acceptance is
-unavailable. Public RPC is the chosen best-effort recovery source, without a
-completion-time guarantee; a replacement provider is optional. This is
-consistent with Base's
-[public RPC guidance](https://www.base.org/blog/base-mainnet-is-open-for-builders).
+block with an exact payer and nonce filter, so a real mainnet transfer without
+its hash could not be found that way.
+
+A later read-only probe against both public endpoints confirmed the
+limits the search now works within: mainnet answers `eth_chainId`, historical
+`eth_call`, `eth_getTransactionReceipt` and `eth_getBlockReceipts`, and
+refuses `eth_getLogs` with HTTP 429 even for one block; Base Sepolia caps a
+log query at 200 blocks with HTTP 413. Public RPC gives no completion-time
+guarantee: a rate-limited endpoint can leave a payment unknown for a long
+time, and nothing else on Agentify's side resolves it. A replacement provider
+is optional and is then trusted as the public one is. This is consistent with
+Base's [public RPC guidance](https://www.base.org/blog/base-mainnet-is-open-for-builders).
 A real paid purchase remains a separate capped smoke; no payment was sent by
 these read-only checks.
 
 ## Remaining work
 
-Parcels remain refused on live. Closure alone does not satisfy their other
-readiness gates in ADR-0033 and `00-open-questions.md`.
+Parcels remain refused on the live channel until the product owner admits
+them. Closure is built; the open parcel questions are named in ADR-0033 and
+kept in `00-open-questions.md`.
+
+How long a lost payment answer stays unknown has no bound, and the portal
+says so to both the owner and the engineer.
 
 Full offboarding also needs a self-service path. Pausing sales and revoking
 keys are available; neither cancels accepted orders, resolves the merchant's

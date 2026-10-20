@@ -3,7 +3,10 @@
 Date: 2026-09-28. A research note that may be rewritten. It supports ADR-0032
 (the buyer's address), ADR-0033 (a shipped order ends at the carrier) and
 ADR-0034 (the seller's name and site), and records how their field names were
-chosen; the names themselves are fixed in the decisions. The pilot has no
+chosen; the names themselves are fixed in the decisions. Its passages on a
+refund owed and a recorded refund (`refund_due`, `refunded`) describe rules
+since replaced: an overdue parcel reads `unfulfilled`, and the merchant closes
+fulfillment rather than recording a refund (ADR-0028). The pilot has no
 merchant who sells parcels; the product owner's word is to lay the foundation
 anyway, far enough for a demonstration, because merchants will not come to a
 path that does not exist.
