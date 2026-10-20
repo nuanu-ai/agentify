@@ -59,6 +59,7 @@ import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
+import { CLOSURE_NOTES } from "./views.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
@@ -6675,6 +6676,55 @@ describe("closing fulfillment from Orders", () => {
     // The open list and the whole one, read once, by the press's own answer.
     expect(readsAfter).toBe(2);
   });
+
+  it.each([
+    ["fails", async (): Promise<never> => Promise.reject(new Error("the list could not be read"))],
+    ["is not answered", async () => lateAnswer(10)],
+  ] as const)(
+    "keeps an unconfirmed closure in the dashboard when every list read after it %s",
+    async (_, failed) => {
+      // The closure is recorded, but its answer and the read that would
+      // confirm it are lost, and none of the lists beside it can be drawn.
+      let down = false;
+      const running = await started({
+        client: (real) => ({
+          ...real,
+          closeOrder: async (id, request) => {
+            await real.closeOrder(id, request);
+            down = true;
+            return lateAnswer(10);
+          },
+          getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
+          cards: async () => (down ? await failed() : await real.cards()),
+          orders: async (open) => (down ? await failed() : await real.orders(open)),
+          unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+          paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
+        }),
+      });
+      const id = await paid(running);
+      await running.browser.signIn();
+      const typed = "Payment returned outside Agentify.";
+
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+      error.mockRestore();
+
+      expect(posted.status).toBe(503);
+      expect(posted.html).toContain('aria-label="Dashboard sections"');
+      const main = readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(posted.html)?.[1] ?? "");
+      expect(main).toContain(CLOSURE_NOTES.unconfirmed);
+      expect(main).toContain(typed);
+      expect(main).not.toMatch(/changed nothing/i);
+      const back = [...posted.html.matchAll(/<a\b[^>]*href="([^"]*)"/g)]
+        .map((link) => (link[1] ?? "").replaceAll("&amp;", "&"))
+        .find((href) => href.includes(`details=${id}`));
+      expect(back).toBeDefined();
+
+      down = false;
+      const later = await running.browser.get(back ?? "");
+      expect(readable(later.html)).toContain("Closed by you");
+    },
+  );
 
   it("leads back to the list the closure was pressed on, with the order opened", async () => {
     const running = await started();
