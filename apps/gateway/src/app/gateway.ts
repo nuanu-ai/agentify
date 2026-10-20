@@ -219,6 +219,15 @@ export interface PaidResource {
   readonly payTo: string | null;
 }
 
+/**
+ * The request a payment was sent with: the product whose address it reached,
+ * and the parameters its body carried, where it carried any.
+ */
+export interface PaidRequest {
+  readonly itemId: string;
+  readonly params?: Readonly<Record<string, unknown>>;
+}
+
 /** What a purchase attempt came to. */
 export type PurchaseAttempt =
   /** The order is priced and waiting to be paid for: here is what it costs. */
@@ -233,6 +242,8 @@ export type PurchaseAttempt =
   | { readonly step: "ship_to_rejected"; readonly message: string }
   /** A payment carrying an address other than the one its order was priced for. */
   | { readonly step: "ship_to_changed" }
+  /** A payment sent at another product's address, or with other parameters, than its order's. */
+  | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
   | {
@@ -1313,6 +1324,7 @@ export class Gateway {
     payment: string,
     fingerprint: string,
     shipTo?: ShipTo,
+    asked?: PaidRequest,
   ): Promise<PurchaseAttempt> {
     let before = await this.runtime.store.orderById(orderId);
     if (before === null) {
@@ -1482,6 +1494,16 @@ export class Gateway {
       !sameAddress(held, shipTo)
     ) {
       return { step: "ship_to_changed" };
+    }
+    // The product and its parameters are held to the same rule and compared at
+    // the same moment, for the same reason: parameters can carry the buyer's
+    // own details, such as where the goods are sent.
+    if (
+      asked !== undefined &&
+      (asked.itemId !== before.itemId ||
+        (asked.params !== undefined && canonical(asked.params) !== canonical(before.params)))
+    ) {
+      return { step: "another_purchase" };
     }
 
     // The park below waits `syncBudgetMs` from this instant, where the ceiling

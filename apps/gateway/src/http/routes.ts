@@ -520,10 +520,11 @@ async function purchase(
   if (presented !== null && presented !== "unreadable" && presented.paymentRef !== null) {
     const named = await gateway.orderForPayment(presented.paymentRef);
     if (named !== null) {
-      // A paid request's body is read only for an address sent again, which
-      // must be the one the order was priced for. A malformed one is refused,
-      // or the payment would go through for a place the agent did not mean.
-      if (!held.ok && carriesAnAddress(body)) {
+      // A paid request's body is read only for the parameters and address sent
+      // again, which must be the ones the order was priced for. A malformed one
+      // is refused, or the payment would go through for something the agent did
+      // not mean.
+      if (!held.ok && carriesWhatWasPriced(body)) {
         return written(
           response,
           BAD_REQUEST,
@@ -546,6 +547,10 @@ async function purchase(
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
           held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
+          {
+            itemId,
+            ...(held.ok ? { params: (held.value as PurchaseRequest).params } : {}),
+          },
         ),
         seller,
       );
@@ -588,9 +593,9 @@ async function purchase(
   );
 }
 
-/** Whether a body that did not read as a purchase was trying to send an address. */
-function carriesAnAddress(body: unknown): boolean {
-  return typeof body === "object" && body !== null && "ship_to" in body;
+/** Whether a body that did not read as a purchase was trying to say what was bought. */
+function carriesWhatWasPriced(body: unknown): boolean {
+  return typeof body === "object" && body !== null && ("ship_to" in body || "params" in body);
 }
 
 async function answerPurchase(
@@ -628,6 +633,19 @@ async function answerPurchase(
         refusal(
           "ship_to_changed",
           "this payment carries an address other than the one this purchase was priced for: start a new purchase for that address, which is priced for it",
+        ),
+      );
+
+    case "another_purchase":
+      // Decided as `ship_to_changed` is, and named in words that say nothing of
+      // the purchase the payment belongs to.
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "payment_not_taken",
+          "this payment was not taken and nothing was charged: it belongs to another purchase; send it with the request it was made for, or start a new purchase",
+          { retryable: false },
         ),
       );
 
