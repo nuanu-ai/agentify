@@ -3000,7 +3000,7 @@ const LIVE_SALES: GalleryState[] = [
     {
       live: true,
       email: WHO,
-      message: "Live sales approved.",
+      message: null,
       merchant: {
         ...SELLER,
         approvedAt: momentView("2026-10-19T09:30:00Z"),

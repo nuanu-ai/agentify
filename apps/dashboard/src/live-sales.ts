@@ -146,17 +146,11 @@ export function liveSalesFor(
           administrator,
           `${granted.changed ? "approved" : "confirmed existing approval for"} live sales for merchant ${merchant.id}`,
         );
-        return view(
-          email,
-          granted.changed
-            ? "Live sales approved."
-            : "This merchant is already approved for live sales.",
-          200,
-          {
-            ...merchant,
-            approvedAt: momentView(new Date(granted.merchant.liveApprovedAt).toISOString()),
-          },
-        );
+        // The merchant drawn approved, with the time, is the answer.
+        return view(email, null, 200, {
+          ...merchant,
+          approvedAt: momentView(new Date(granted.merchant.liveApprovedAt).toISOString()),
+        });
       } catch {
         return view(
           email,
