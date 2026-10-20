@@ -237,6 +237,26 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(AgentOrderStatusSchema, { ...owing, status: "expired" })).toBe(false);
   });
 
+  it("says on every order holding goods unpaid that they are held and why, in that one word", () => {
+    // `delivered_unpaid` alone reads as a delivery. That the charge did not go
+    // through and the goods are waiting for a payment goes with it every time.
+    const held = {
+      ...unrefused,
+      status: "delivered_unpaid",
+      reason: { code: "payment_not_settled", message: "The charge did not go through." },
+    };
+
+    expect(sendable(AgentOrderStatusSchema, held)).toBe(true);
+    const { reason: _none, ...unexplained } = held;
+    expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);
+    expect(
+      sendable(AgentOrderStatusSchema, {
+        ...held,
+        reason: { code: "price_expired", message: "The price ran out." },
+      }),
+    ).toBe(false);
+  });
+
   it("says a merchant's refusal left a paid order unfulfilled beside the refusal, and only then", () => {
     // After the money moved a merchant's refusal leaves a debt. Their words
     // say why they would not deliver; ours say what that left the buyer owed,

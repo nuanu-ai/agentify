@@ -74,7 +74,8 @@ export const ORDER_STATUSES = Object.freeze([
   /**
    * The merchant delivered synchronously and the payment did not execute. The
    * goods exist, nothing was paid, and the order stays open until a repeat
-   * purchase carries the payment through.
+   * purchase carries the payment through. The agent's status document says so
+   * under `reason`, with `payment_not_settled`.
    */
   "delivered_unpaid",
 ] as const);
@@ -110,7 +111,12 @@ export const ORDER_ENDING_REASONS = Object.freeze([
    * use — it did not answer in time, or its answer could not be accepted.
    */
   "price_check_unanswered",
-  /** `rejected`: the payment layer said the charge did not go through. */
+  /**
+   * `rejected`: the payment layer said the charge did not go through. The
+   * same on `delivered_unpaid`, which is not an ending: the merchant made the
+   * goods, Agentify holds them, and a payment for this same purchase from the
+   * wallet that signed it releases them.
+   */
   "payment_not_settled",
   /** `expired`: the price ran out before a payment for it was taken. */
   "price_expired",
