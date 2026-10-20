@@ -422,7 +422,7 @@ comes with `price_expired` (the price ran out before the payment was taken) or
 `delivered_unpaid` order is still open and comes with `payment_not_settled`
 too, so that the agent does not read the word as a delivery: the reason tells
 it that nothing was taken, that Agentify holds the goods you made, and that
-paying for the same purchase again from the wallet that paid releases them.
+paying for the same purchase again from the wallet that signed it releases them.
 
 Where the refusal was yours, your code and your message travel with the status
 instead. An `unfulfilled` order carries a `reason` saying why nothing was
@@ -634,7 +634,7 @@ To recover a lost answer, the agent signs a new payment for that same payment
 request from the same wallet, and once the facilitator verifies it, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
-is charged again, so recovery always signs the kept request again. The payment
+is charged again once paid, so recovery always signs the kept request again. The payment
 reference is public and opens nothing by itself: a payment already used, or one whose
 window has passed, sent again reveals neither the order nor where to read it.
 

@@ -1517,7 +1517,7 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
     "The seller's price check gave no price this purchase could use: it did not answer in time, or its answer could not be accepted. Nothing was charged. Trying again later may work if the seller's price check recovers.",
   payment_not_settled: (order) =>
     order.state === "delivered_unpaid"
-      ? "The seller made the goods, but the charge did not go through, so nothing was taken, and Agentify is holding the goods. Check the paying wallet, then pay for this same purchase again from the wallet that paid, by signing the same payment request again: the goods are released without being delivered a second time. If the seller has changed where they are paid since, that payment is refused with nothing charged, and a new purchase is the way to buy it."
+      ? "The seller made the goods, but the charge did not go through, so nothing was taken, and Agentify is holding the goods. Check the paying wallet, then pay for this same purchase again from the wallet that signed it, by signing the same payment request again: the goods are released without being delivered a second time. If the seller has changed where they are paid since, that payment is refused with nothing charged, and a new purchase is the way to buy it."
       : "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
     "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",

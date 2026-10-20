@@ -115,7 +115,7 @@ export const ORDER_ENDING_REASONS = Object.freeze([
    * `rejected`: the payment layer said the charge did not go through. The
    * same on `delivered_unpaid`, which is not an ending: the merchant made the
    * goods, Agentify holds them, and a payment for this same purchase from the
-   * wallet that paid releases them.
+   * wallet that signed it releases them.
    */
   "payment_not_settled",
   /** `expired`: the price ran out before a payment for it was taken. */
