@@ -776,9 +776,12 @@ export const shippingRatesInTheShop = async (
       return { ok: false, why: "The shop's cart was too busy to answer.", again: true };
     }
     if (!response.ok) {
-      // The Store API refuses a product it will not sell or a place it will not
-      // ship to with a 400 naming its error; a login, a firewall or a missing
-      // route in front of the cart said nothing about either.
+      // Add-item refuses a product it will not sell with a 400 under one of
+      // WooCommerce's own codes, and update-customer an address it cannot take
+      // with WordPress's `rest_invalid_param`. A place the shop does not ship
+      // to is not refused here at all: it comes back as a cart with no rates.
+      // Anything else, a nonce, a firewall or a missing route, said nothing
+      // about the parcel.
       let code: unknown;
       try {
         code = codeOf(JSON.parse(body));
@@ -789,7 +792,10 @@ export const shippingRatesInTheShop = async (
         ok: false,
         why: `The shop's cart refused the question (HTTP ${response.status}).`,
         again: false,
-        saidNo: response.status === 400 && typeof code === "string",
+        saidNo:
+          response.status === 400 &&
+          typeof code === "string" &&
+          (code === "rest_invalid_param" || code.startsWith("woocommerce_rest_")),
       };
     }
     return { ok: true, response, body };
