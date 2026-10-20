@@ -125,12 +125,19 @@ const signedBy = (payload: PaymentPayload) =>
  * A facilitator that says yes to every authorisation it has not charged,
  * names its signer as the payer, and keeps, whole, everything it was sent. An
  * authorisation it charged is used, and it refuses that one as the chain does.
+ * Told to, it refuses the first charges it is asked for, before anything is
+ * sent to the chain.
  */
 class Recording implements FacilitatorClient {
   readonly sent: string[] = [];
   /** Where each charge it executed was paid to. */
   readonly charged: string[] = [];
   readonly #used = new Set<string | undefined>();
+  #refusing: number;
+
+  constructor({ refusingCharges = 0 }: { readonly refusingCharges?: number } = {}) {
+    this.#refusing = refusingCharges;
+  }
 
   async verify(
     payload: PaymentPayload,
@@ -148,6 +155,15 @@ class Recording implements FacilitatorClient {
     requirements: PaymentRequirements,
   ): Promise<SettleResponse> {
     this.sent.push(JSON.stringify({ settle: { payload, requirements } }));
+    if (this.#refusing > 0) {
+      this.#refusing -= 1;
+      return {
+        success: false,
+        errorReason: "invalid_exact_evm_payload_authorization_value_mismatch",
+        network: requirements.network,
+        transaction: "",
+      };
+    }
     this.#used.add(signedBy(payload)?.nonce);
     this.charged.push(requirements.payTo);
     return { success: true, transaction: "0xtx", network: requirements.network };
@@ -998,6 +1014,107 @@ describe("a payment presented with a request other than the one it was made for"
       expect(sale.handled).toStrictEqual([ORIGINAL]);
     } finally {
       await sale.worker.stop();
+    }
+  });
+});
+
+describe("goods made for a purchase whose charge did not go through", () => {
+  /**
+   * A purchase delivered in the answer whose charge the payment layer refused,
+   * so the seller's goods are made and nothing was paid; read back as its buyer
+   * reads it.
+   */
+  async function deliveredUnpaid() {
+    const network = new Recording({ refusingCharges: 1 });
+    const shop = await aGatewayPayingThrough(network);
+    const handled: string[] = [];
+    const worker = workUntilStopped(shop, {
+      onOrder: (order) => {
+        handled.push(order.id);
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+    const itemId = await shop.publish(syncCard);
+    const challenge = await challengeFor(shop.served, itemId);
+    const bought = await present(shop.served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+    const orderId = (bought.body as { order_id: string }).order_id;
+    const status = await shop.served.call("GET", `/x402/orders/${orderId}/status`);
+    expect(status.body).toMatchObject({
+      status: "delivered_unpaid",
+      payment_status: "not_paid",
+      delivered: null,
+    });
+    return {
+      network,
+      shop,
+      handled,
+      itemId,
+      challenge,
+      orderId,
+      reason: (status.body as { reason?: { code: string; message: string } }).reason,
+      async close() {
+        await worker.stop();
+        await shop.close();
+      },
+    };
+  }
+
+  it("tells the buyer why, and paying this same purchase again as it says releases the goods with one charge", async () => {
+    const sale = await deliveredUnpaid();
+    try {
+      expect(sale.reason?.code).toBe("payment_not_settled");
+      expect(sale.reason?.message).toMatch(/nothing was taken/i);
+      expect(sale.reason?.message).toMatch(/holding the goods/i);
+      expect(sale.reason?.message).toMatch(/same purchase again/i);
+      expect(JSON.stringify(sale.reason)).not.toContain("SESAME");
+
+      const again = await present(
+        sale.shop.served,
+        sale.itemId,
+        paymentAgainst(sale.challenge, BUYER, "0x02"),
+      );
+
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(again.body).toMatchObject({
+        order_id: sale.orderId,
+        status: "delivered",
+        payment_status: "paid",
+        delivered: { access_code: "SESAME" },
+      });
+      expect(sale.network.charged).toStrictEqual([payToIn(sale.challenge)]);
+      expect(sale.handled).toStrictEqual([sale.orderId]);
+    } finally {
+      await sale.close();
+    }
+  });
+
+  it("warns that a seller who has changed where they are paid since cannot be paid this way, and that payment is refused with nothing charged", async () => {
+    const sale = await deliveredUnpaid();
+    try {
+      expect(sale.reason?.message).toMatch(/changed where they are paid/i);
+      await setPayoutWallet(
+        sale.shop.store,
+        sale.shop.config.payoutSplit,
+        sale.shop.merchant.id,
+        MOVED_TO,
+        sale.shop.now(),
+      );
+
+      const again = await present(
+        sale.shop.served,
+        sale.itemId,
+        paymentAgainst(sale.challenge, BUYER, "0x02"),
+      );
+
+      expect(again.status).toBe(409);
+      expect(again.body).toMatchObject({
+        error: { code: "payment_not_verified", retryable: false },
+      });
+      expect(JSON.stringify(again.body)).toMatch(/nothing was charged/i);
+      expect(JSON.stringify(again.body)).toMatch(/start a new purchase/i);
+      expect(sale.network.charged).toStrictEqual([]);
+    } finally {
+      await sale.close();
     }
   });
 });
