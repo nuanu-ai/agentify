@@ -1,7 +1,13 @@
 # 0028. The merchant closes fulfillment; Agentify does not confirm a refund
 
 Date: 2026-09-23
-Status: accepted (the product owner, 2026-10-19).
+Status: accepted. The product owner's word of 2026-10-19 decided the
+merchant's closure action, that Agentify confirms no refund and staffs no
+service, and that payment facts stay apart from fulfillment. What closure
+refuses, the plain-text message, the notice of a payment completed after
+closure with the second closure it allows, and Agentify's own reason on a paid
+closed order were added on 2026-10-20, when the change was corrected on the
+product owner's instruction to correct it and accept it.
 
 ## Context
 
@@ -17,9 +23,9 @@ The merchant has one authenticated, idempotent action that stops future
 fulfillment through Agentify, with an optional explanation to the buyer: the
 SDK's `order.close()` and the dashboard's Orders, for either integration, both
 calling `POST /v0/orders/:order_id/close`. A repeat keeps the first time and
-words. The public claim is "fulfillment closed by merchant"; a claim of a
-refund or agreement stays the merchant's, never "refund verified" or "parties
-settled". The merchant owns cancellation and refund policy, transfers and
+words, except after a payment completed after closure (below). The public
+claim is "fulfillment closed by merchant"; a claim of a refund or agreement
+stays the merchant's, never "refund verified" or "parties settled". The merchant owns cancellation and refund policy, transfers and
 fulfillment outside Agentify, and a missed deadline means unfulfilled, not a
 mandatory whole-price refund. There is no refund proof protocol, transfer
 reservation, refund RPC or staffed service, and Agentify signs no merchant
