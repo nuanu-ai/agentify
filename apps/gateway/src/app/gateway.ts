@@ -11,13 +11,13 @@ import type {
   Environment,
   MerchantSelling,
   Order,
-  OrderState,
   PaymentVerificationFailure,
   TransitionRejection,
 } from "@agentify/core";
 import {
   createOrder,
   deadlines,
+  endedWithNothingHeld,
   fulfillmentDeadline,
   isOpen,
   onTheMerchantsOpenList,
@@ -1321,7 +1321,7 @@ export class Gateway {
     // not been checked and the reference it carries can be published. A buyer
     // who lost its first answer learns from it all the order would tell it:
     // that nothing was charged, or that whether anything was is not known.
-    if (overWithNothingHeld(before.order)) {
+    if (overWithNothingHeld(before)) {
       return noPaymentTakenFor(before.order);
     }
 
@@ -1346,7 +1346,7 @@ export class Gateway {
       if (after === null) {
         return { step: "no_such_item" };
       }
-      if (overWithNothingHeld(after.order)) {
+      if (overWithNothingHeld(after)) {
         return noPaymentTakenFor(after.order);
       }
       // Another payment took the order between the read above and the lapse,
@@ -1551,7 +1551,12 @@ export class Gateway {
     if (taken.kind === "not_owner") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
-      return { step: "not_this_purchase" };
+      // The merchant may have closed an unpaid order while this payment was
+      // being checked, and nobody owns it: it is over, not somebody else's.
+      const now = await this.runtime.store.orderById(orderId);
+      return now !== null && overWithNothingHeld(now)
+        ? noPaymentTakenFor(now.order)
+        : { step: "not_this_purchase" };
     }
     if (taken.kind === "refused") {
       this.runner.purchases.giveUp(key);
@@ -2352,14 +2357,6 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   signature: "sign a new payment for this order and present it while its price holds",
 };
 
-/**
- * The endings in which nothing is held for the buyer, so a payment has
- * nothing left to buy. Nothing was taken in them either, except on a
- * `rejected` order whose charge went unanswered, where nobody knows whether
- * it was. `expired` is one only without held goods, and is asked separately.
- */
-const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
-
 const unresolvedPayment = (order: Order): boolean =>
   order.payment === "settling" || order.payment === "outcome_unknown";
 
@@ -2385,9 +2382,15 @@ function noPaymentTakenFor(order: Order): PurchaseAttempt {
   };
 }
 
-/** Whether an order is over with nothing held for its buyer, so a payment has nothing to buy. */
-const overWithNothingHeld = (order: Order): boolean =>
-  NOTHING_TO_PAY_FOR.includes(order.state) || (order.state === "expired" && !order.heldFulfillment);
+/**
+ * Whether an order is over with nothing held for its buyer, so a payment has
+ * nothing to buy: an ending that holds nothing, or an order its merchant closed
+ * before anyone paid for it. A closed order somebody paid for is that payer's
+ * to read, and a payment from anyone else is turned away as somebody else's.
+ */
+const overWithNothingHeld = (record: StoredOrder): boolean =>
+  endedWithNothingHeld(record.order) ||
+  (record.order.state === "fulfillment_closed" && record.paidBy === null);
 
 /**
  * Why the machine would not take a merchant's call. Only a closed order gets
