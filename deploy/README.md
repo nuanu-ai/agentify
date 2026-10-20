@@ -717,10 +717,14 @@ empty value disables chain checks. The gateway receives it as `PAYMENT_RPC_URL`.
 Local Compose and the standalone gateway have no default RPC.
 
 RPC is read only and is called for unanswered payments after their response
-deadline, never for ordinary verification or settlement. At start-up the gateway
-asks the endpoint for its chain id. An endpoint that answers another chain, or
-does not answer, leaves recovery off until the next start, and the log's first
-lines say so; payments through the facilitator go on either way.
+deadline, never for ordinary verification or settlement. The gateway asks the
+endpoint for its chain id at start-up, and the log's first lines say whether it
+serves the channel's network; it asks again on every recovery poll, so an
+endpoint that did not answer at start-up is used as soon as it does, without a
+restart. One that serves another chain fails every poll with a line saying to
+point `PAYMENT_RPC_URL`, which the channels set through
+`AGENTIFY_PAYMENT_RPC_URL`, at the channel's network. Payments through the
+facilitator go on either way.
 
 Recovery reads the finalized block and the USDC nonce state there. When the
 nonce was used and no transaction hash is known, it finds the first block at or
@@ -730,9 +734,12 @@ payment accepted here is about two minutes of blocks. It sends no log queries:
 Base mainnet's public endpoint refuses them and Base Sepolia's caps them at 200
 blocks. The endpoint must therefore support `eth_chainId`,
 `eth_getBlockByNumber`, `eth_call`, `eth_getBlockReceipts` and
-`eth_getTransactionReceipt`. A read of nonce state at an older block, which
-needs historical state, is needed only to prove that an authorization
-canceled after its expiry never paid; the public Base endpoints serve it. The
+`eth_getTransactionReceipt`, and it must serve contract state at old blocks.
+Every recovery reads nonce state at the finalized block, which on Base is
+several hundred blocks, about twenty minutes, behind the head, and the end of a
+search reads it at a block older still. A full node that keeps state only for
+the most recent 128 blocks fails every poll; the public Base endpoints and
+archive providers serve it. The
 URL can contain a provider key and belongs in the protected environment file,
 never in a public diagnostic or PR; log lines name only its host.
 
@@ -753,7 +760,8 @@ available, and missing recovery evidence keeps an existing payment unresolved.
 Every minute while any payment is unresolved, the gateway logs how many there
 are and how long the oldest has waited, says when recovery is off, and names
 the failure when the chain could not be read, for example an HTTP 429 from a
-rate limit. The public Base RPCs are rate limited and promise nothing about
+rate limit. A poll stopped by a refused read keeps the blocks it had already
+read, so a rate-limited endpoint is slow rather than stuck. The public Base RPCs are rate limited and promise nothing about
 time, so recovery has no guaranteed completion time. If those lines persist,
 this same setting can select a provider with enough capacity. Changing the
 endpoint must preserve its network. This setting changes no merchant SDK
