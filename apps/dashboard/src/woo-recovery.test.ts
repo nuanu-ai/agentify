@@ -4,10 +4,12 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@ag
 import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { percentOf, sharesOf } from "./shares.js";
+import { merchantItemIdFor } from "./woo-catalog.js";
 import { recoverWooOrder, recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
 import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
 import {
   type EligibleWooProduct,
+  inspectProductInTheShop,
   type OrderMade,
   readTheOrderInTheShop,
   type SoldItem,
@@ -577,6 +579,50 @@ describe("exact Woo order recovery", () => {
       state: "unresolved",
     });
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("leaves a recovery unresolved when the shop's product answer could not be read, rather than saying the product changed", async () => {
+    // A revoked key or a page in front of the shop said nothing about the
+    // product. The merchant is to reconnect and ask again, not to go looking
+    // for a change to the product.
+    for (const [what, answer] of [
+      [
+        "a revoked key",
+        () => Response.json({ code: "woocommerce_rest_cannot_view" }, { status: 401 }),
+      ],
+      ["a page that is not JSON", () => new Response("not-json", { status: 200 })],
+    ] as const) {
+      const shops = await setup("precreate_refused");
+      const test = parts(shops, {
+        // The fixture's item id is not one the shop would name, so the check is
+        // asked of this shop's own id for the product.
+        inspectProduct: (keys) =>
+          inspectProductInTheShop(keys, merchantItemIdFor(keys.shopUrl, "22"), async () =>
+            answer(),
+          ),
+      });
+
+      expect(await recoverWooOrder({ orderId: "ord_1" }, test.value), what).toMatchObject({
+        ok: false,
+        state: "unresolved",
+      });
+      expect(test.counts(), what).toEqual({ delivered: 0, created: 0, read: 0 });
+    }
+
+    // The shop's own no is still a refusal.
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: false,
+        why: "This product cannot be imported: it is out of stock.",
+        again: false,
+        saidNo: true,
+      }),
+    });
+    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
   });
 
   it("does not recover a changed download that no longer matches the accepted quote", async () => {

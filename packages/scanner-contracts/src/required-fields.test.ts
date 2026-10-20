@@ -210,9 +210,9 @@ const contracts = [
     ],
   },
   {
-    // The address is not required here: a signed-in person's own ask files the
-    // report under the session's address and sends none. The route refuses a
-    // stranger's ask without one, in its own words.
+    // The address is not required here so that the route can refuse an ask
+    // without one in its own words, a signed-in person's as well as a
+    // stranger's.
     name: "registrationRequestSchema",
     schema: registrationRequestSchema,
     valid: {
@@ -269,6 +269,7 @@ const contracts = [
       level: "ahead_of_market",
       checks: Array.from({ length: 18 }, (_, index) => reportCheck(index + 1)),
       benchmark: { sample_size: 30, average_score: 64 },
+      scanned_at: timestamp,
     },
     required: [
       "scan_id",
@@ -288,6 +289,7 @@ const contracts = [
       "benchmark",
       ["benchmark", "sample_size"],
       ["benchmark", "average_score"],
+      "scanned_at",
     ],
   },
   {

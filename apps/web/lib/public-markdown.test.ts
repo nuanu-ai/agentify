@@ -28,4 +28,13 @@ describe("public Markdown variants", () => {
     expect(front).toContain("](https://agentify.ad/agentic-shop)");
     expect(front).toContain("](https://agentify.ad/docs/scanner/methodology)");
   });
+
+  it.each(["/", "/store", "/local"] as const)(
+    "leads an agent that buys from %s to where it starts, by its whole address",
+    (path) => {
+      process.env.APP_BASE_URL = "https://agentify.ad";
+
+      expect(getPublicPageMarkdown(path)).toContain("](https://agentify.ad/llms.txt)");
+    },
+  );
 });

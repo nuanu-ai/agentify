@@ -1019,6 +1019,7 @@ const LISTED_INSTANT = "1970-01-01T00:00:00Z";
  */
 const LISTED_ORDER = {
   payment_status: "paid",
+  transaction: "string",
   order_id: "string",
   status_url: "string",
   price: { amount: "string", currency: "string", at: LISTED_INSTANT, as_of: LISTED_INSTANT },

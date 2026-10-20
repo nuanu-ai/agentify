@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
-import { readable } from "../../src/testing/html.js";
+import { formsIn, readable } from "../../src/testing/html.js";
 import { ordersView } from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
@@ -243,6 +243,60 @@ describe("searching the orders", () => {
   });
 });
 
+describe("the counts beside a search", () => {
+  /** The search box and the counts beside it, apart from the lists under them. */
+  const toolsOf = (address: string): string =>
+    /<div class="list-tools">([\s\S]*?)<section class="group">/.exec(
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams(address))}
+        />
+      )),
+    )?.[1] ?? "";
+  const linksIn = (html: string): readonly string[] =>
+    [...html.matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((link) =>
+      (link[1] ?? "").replaceAll("&amp;", "&"),
+    );
+
+  it("are said to be the search's, with the way back to every order's", () => {
+    // A status word finds nothing, and a count of none under it is not a
+    // merchant with nothing to do.
+    expect(readable(toolsOf("q=unfulfilled"))).toContain("“unfulfilled”");
+    expect(linksIn(toolsOf("q=vpn"))).toContain("/orders");
+  });
+
+  it("lead back to the segment the search was made in", () => {
+    expect(linksIn(toolsOf("q=virtual&show=open"))).toContain("/orders?show=open");
+  });
+
+  it("offer one way back where the search found nothing", () => {
+    const page = served(() => (
+      <OrdersScreen
+        view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams("q=unfulfilled"))}
+      />
+    ));
+
+    expect(linksIn(page).filter((href) => href === "/orders")).toHaveLength(1);
+  });
+
+  it("say nothing more where the page searched for the one order it opens", () => {
+    // The page's own links to an order search for it; the merchant searched
+    // for nothing.
+    expect(readable(toolsOf(`q=${FIRST}&details=${FIRST}`))).not.toContain("“");
+    expect(readable(toolsOf(`q=${FIRST}`))).toContain(`“${FIRST}”`);
+    // The merchant's own search, which found one order they then opened.
+    expect(readable(toolsOf(`q=number-sms&details=${SAME_HEAD}`))).toContain("“number-sms”");
+    expect(readable(toolsOf(`q=${FIRST.toUpperCase()}&details=${FIRST}`))).not.toContain("“");
+  });
+
+  it("say nothing of a search where there is none", () => {
+    const tools = toolsOf("");
+
+    expect(linksIn(tools)).not.toContain("/orders");
+    expect(readable(tools)).not.toContain("“");
+  });
+});
+
 describe("an unfulfilled test purchase", () => {
   it("marks the original amount as a test", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
@@ -267,6 +321,7 @@ describe("the open orders", () => {
     expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
       ["All", 3],
       ["Open", 1],
+      ["Needs you", 0],
     ]);
   });
 
@@ -360,6 +415,120 @@ describe("a long run of orders told in full", () => {
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
   });
+
+  /** The ids drawn in each list on the page, list after list, each once in its list. */
+  const listedIn = (html: string): readonly string[] =>
+    [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap((list) =>
+      [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+        .map((id) => id[0])
+        .filter((id, at, all) => all.indexOf(id) === at),
+    );
+
+  /**
+   * The addresses the Needs you group leads to on this page, other than an
+   * order's own details and the documentation.
+   */
+  const waysOnFrom = (html: string): readonly string[] => {
+    const group =
+      /<section class="group">(?:(?!<\/section>)[\s\S])*?aria-label="Orders that need you"[\s\S]*?<\/section>/.exec(
+        html,
+      )?.[0] ?? "";
+    return [...group.matchAll(/<a [^>]*href="([^"]*)"/g)]
+      .map((link) => (link[1] ?? "").replaceAll("&amp;", "&"))
+      .filter((href) => href.startsWith("/orders") && !href.includes("details="));
+  };
+
+  it("leads from a cut Needs you to every order that needs the merchant, a page at a time and each drawn once", () => {
+    const done = idOf("ffff", "1111");
+    // Closed, then paid: the gateway keeps it open until it is closed again.
+    const reopened = {
+      ...ordersOf([{ id: idOf("eeee", "2222"), status: "fulfillment_closed" }]).orders[0],
+      merchant_closure: { closed_at: "2026-10-12T16:41:00Z" },
+    };
+    const owing = OrderListSchema.parse({
+      orders: [...sixtyOf("unfulfilled").orders, reopened],
+    });
+    const orders = OrderListSchema.parse({
+      orders: [...owing.orders, ...ordersOf([{ id: done }]).orders],
+    });
+    const preview = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, owing)} />);
+
+    const [way, ...more] = waysOnFrom(preview);
+    expect(more).toStrictEqual([]);
+    const reached: string[] = [];
+    let address: string | null = way ?? null;
+    for (let pages = 0; address !== null && pages < 3; pages += 1) {
+      const view = ordersView(
+        "live",
+        CARDS,
+        orders,
+        owing,
+        new URL(address, "https://agentify.ad").searchParams,
+      );
+      const html = served(() => <OrdersScreen view={view} />);
+      const told = toldIn(html, "Orders that need you");
+      // The group's own count, apart from the segment's beside the search.
+      expect(readable(/<h2>Needs you[\s\S]*?<\/h2>/.exec(html)?.[0] ?? "")).toBe("Needs you 61");
+      // Nothing else on the page draws the same orders again.
+      expect(listedIn(html)).toStrictEqual(told);
+      reached.push(...told);
+      address = view.listing.cut?.next ?? null;
+      if (address !== null) expect(html).toContain(`href="${address.replaceAll("&", "&amp;")}"`);
+    }
+
+    expect(reached).toHaveLength(61);
+    expect([...reached].sort()).toStrictEqual(owing.orders.map((order) => order.id).sort());
+    expect(reached).not.toContain(done);
+  });
+
+  it("closes an order on the page of Needs you it is on, from one control on its row, carrying that page in the form", () => {
+    // A merchant working through the orders that need them comes back where
+    // they were after each closure, and each row has one way to it.
+    const owing = sixtyOf("unfulfilled");
+    const drawnAt = (address: string) =>
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, owing, owing, new URLSearchParams(address))}
+        />
+      ));
+    const second = drawnAt("show=needs&page=2");
+    const [id = ""] = toldIn(second, "Orders that need you");
+    const rowOf = (html: string) =>
+      html.split("<li ").find((row) => row.includes(`name="order_id" value="${id}"`)) ?? "";
+    const row = rowOf(second);
+    const form = formsIn(second).find((one) => one.fields.get("order_id") === id);
+
+    expect(row.match(/<summary aria-label=/g)).toHaveLength(1);
+    expect(row).toMatch(/<summary[^>]*aria-label="Close fulfillment for /);
+    expect(row).not.toMatch(/<a [^>]*href="[^"]*details=/);
+    expect(form?.fields.get("show")).toBe("needs");
+    expect(form?.fields.get("page")).toBe("2");
+    // Named by the address, as the closure's answer names it, it is open.
+    expect(rowOf(drawnAt(`show=needs&page=2&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
+  });
+
+  it("says once which of how many it shows where the list is the orders that need the merchant", () => {
+    const owing = sixtyOf("unfulfilled");
+
+    const text = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView("live", CARDS, owing, owing, new URLSearchParams("show=needs"))}
+        />
+      )),
+    );
+
+    expect(text.match(/Showing/g)).toHaveLength(1);
+    expect(text).toContain("Showing 1–50 of 60");
+  });
+
+  it("offers no other way on where Needs you already holds every order", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }, { id: SAME_HEAD }]);
+
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(waysOnFrom(html)).toStrictEqual([]);
+  });
 });
 
 describe("merchant fulfillment closure", () => {
@@ -428,12 +597,12 @@ describe("merchant fulfillment closure", () => {
     const settled = served(() => (
       <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
     ));
-    const needs = (html: string) => {
-      const text = readable(html);
-      return text.includes("Needs you")
-        ? text.slice(text.indexOf("Needs you"), text.indexOf("All orders"))
-        : "";
-    };
+    const needs = (html: string) =>
+      readable(
+        /<section class="group">(?:(?!<\/section>)[\s\S])*?aria-label="Orders that need you"[\s\S]*?<\/section>/.exec(
+          html,
+        )?.[0] ?? "",
+      );
 
     expect(needs(reopened)).toContain("Needs you 1");
     expect(needs(reopened)).toContain("payment completed after you closed fulfillment");
@@ -486,6 +655,44 @@ describe("merchant fulfillment closure", () => {
       ).toBe(offered);
     });
     expect(html).not.toContain(`name="order_id" value="${SAME_TAIL}"`);
+  });
+});
+
+describe("a closure made from the Needs you list", () => {
+  // The closure leads back to the list it was pressed on with the order named,
+  // and a closed order has left that list.
+  const owing = ordersOf([
+    { id: FIRST, status: "unfulfilled" },
+    { id: SAME_HEAD, status: "delivered" },
+  ]);
+  const orders = OrderListSchema.parse({
+    orders: [
+      ...owing.orders,
+      {
+        ...ordersOf([{ id: SAME_TAIL, status: "fulfillment_closed" }]).orders[0],
+        merchant_closure: { closed_at: "2026-10-19T09:30:00Z" },
+      },
+    ],
+  });
+  const drawnAt = (address: string) =>
+    served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, owing, new URLSearchParams(address))} />
+    ));
+  const leadsTo = (html: string, id: string) =>
+    html.includes(`href="/orders?q=${id}&amp;details=${id}"`);
+
+  it("says the order named was closed, where it is no longer on the list, and leads to it", () => {
+    const html = drawnAt(`show=needs&details=${SAME_TAIL}`);
+
+    expect(readable(html)).toContain(shortened(SAME_TAIL));
+    expect(leadsTo(html, SAME_TAIL)).toBe(true);
+  });
+
+  it("says nothing of an order the list still draws, or of one nobody closed", () => {
+    expect(leadsTo(drawnAt(`show=needs&details=${FIRST}`), FIRST)).toBe(false);
+    expect(leadsTo(drawnAt(`show=needs&details=${SAME_HEAD}`), SAME_HEAD)).toBe(false);
+    // On All the closed order is drawn, its details opened in place.
+    expect(leadsTo(drawnAt(`details=${SAME_TAIL}`), SAME_TAIL)).toBe(false);
   });
 });
 

@@ -7,6 +7,7 @@
  */
 
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
+import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSite } from "../testing/on-site";
@@ -231,6 +232,65 @@ describe("a scan's states", () => {
 
     expect(await screen.findByText("No reliable diagnostic was produced")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it.each(["no_public_site", "forbidden_redirect", "certificate_invalid"])(
+    "says why the scanner stopped a scan it knows the reason for (%s), and offers a new scan rather than the same one again",
+    async (stopReason) => {
+      apiAnswers(() =>
+        json(
+          200,
+          scan({
+            status: "failed",
+            progress: { completed: 18, total: 18 },
+            checks: checks((id) => (id === 16 ? "pass" : "unavailable")),
+            stop_reason: stopReason,
+          }),
+        ),
+      );
+
+      visit();
+
+      await waitFor(() =>
+        expect(document.querySelector(`h1[data-stop-reason="${stopReason}"]`)).not.toBeNull(),
+      );
+      expect(screen.queryByText("No reliable diagnostic was produced")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe("/");
+      expect(screen.queryByRole("meter")).toBeNull();
+    },
+  );
+
+  it("tells each known stop in words of its own, and none in the words for a cause not known", async () => {
+    const told: { headline: string; words: string }[] = [];
+    for (const stopReason of [...SCAN_STOP_REASONS, undefined]) {
+      statusAsks = [];
+      apiAnswers(() =>
+        json(
+          200,
+          scan({
+            status: "failed",
+            progress: { completed: 18, total: 18 },
+            checks: checks((id) => (id === 16 ? "pass" : "unavailable")),
+            ...(stopReason ? { stop_reason: stopReason } : {}),
+          }),
+        ),
+      );
+      visit();
+      const headline = await waitFor(() => {
+        const found = document.querySelector("main h1");
+        if (!found) throw new Error("no headline yet");
+        return found;
+      });
+      told.push({
+        headline: headline.textContent ?? "",
+        words: headline.parentElement?.querySelector("p")?.textContent ?? "",
+      });
+      cleanup();
+      vi.restoreAllMocks();
+    }
+    expect(new Set(told.map(({ headline }) => headline)).size).toBe(told.length);
+    expect(new Set(told.map(({ words }) => words)).size).toBe(told.length);
   });
 
   it("says the site blocked the reader and shows no score", async () => {

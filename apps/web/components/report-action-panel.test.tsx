@@ -40,6 +40,16 @@ describe("ReportActionPanel", () => {
     expect(renderToStaticMarkup(<ReportActionPanel {...baseProps} {...overrides} />)).toBe("");
   });
 
+  it("says before either share button is pressed that both publish a link that can be revoked", () => {
+    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
+
+    expect(markup).toMatch(/<button[^>]*>[^<]*publish[^<]*image[^<]*<\/button>/i);
+    // The note sits under four or five buttons, so it names the two it means.
+    const note = markup.match(/<p[^>]*>([^<]*revoke[^<]*)<\/p>/i)?.[1] ?? "";
+    expect(note).toContain("Copy share link");
+    expect(note).toContain("Publish image");
+  });
+
   it("drops prompt actions when the export flag is off", () => {
     const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} promptEnabled={false} />);
     expect(markup).toContain("Copy share link");

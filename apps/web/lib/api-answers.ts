@@ -20,6 +20,7 @@ import {
   DIAGNOSTIC_LEVELS,
   ROBOTS_REASONS,
   SCAN_STATUSES,
+  SCAN_STOP_REASONS,
 } from "@agentify/scanner-contracts/browser";
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -121,6 +122,7 @@ export function scanStatusIn(answer: unknown): ScanStatusResponse | null {
     !text(scan.updated_at) ||
     !absentOr(scan.target_host, (host) => text(host)) ||
     !absentOr(scan.blocked, (blocked) => blocked === true) ||
+    !absentOr(scan.stop_reason, (reason) => oneOf(SCAN_STOP_REASONS, reason)) ||
     !absentOr(scan.teaser, teaser)
   ) {
     return null;

@@ -27,6 +27,7 @@ export interface Chrome {
 /** What a page that could not be drawn is drawn from instead. */
 export type Trouble =
   | Readonly<{ kind: "problem"; chrome: Chrome; said: string; again?: string }>
+  | Readonly<{ kind: "unread"; chrome: Chrome; again: string }>
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>
   | Readonly<{ kind: "broken"; chrome: Chrome }>;
 
@@ -163,6 +164,31 @@ export async function acted<View>(run: () => Promise<Outcome<View>>, asked: Aske
     throw data({ kind: "broken", chrome: chromeOf(asked.context) } satisfies Trouble, {
       status: 500,
     });
+  }
+  return answer(outcome, asked);
+}
+
+/**
+ * A loader's server half that only reads, answered as `answer` answers it. A
+ * failure inside it changed nothing, so the page drawn instead offers the
+ * same address again. The exception is not logged, for the reason the server
+ * entry gives.
+ */
+export async function readOnly<View>(run: () => Promise<Outcome<View>>, asked: Asked) {
+  let outcome: Outcome<View>;
+  try {
+    outcome = await run();
+  } catch {
+    console.error("[dashboard] a request failed");
+    const { url, context } = asked;
+    throw data(
+      {
+        kind: "unread",
+        chrome: chromeOf(context),
+        again: `${url.pathname}${url.search}`,
+      } satisfies Trouble,
+      { status: 500 },
+    );
   }
   return answer(outcome, asked);
 }

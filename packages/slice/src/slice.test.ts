@@ -168,12 +168,10 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(answered.delivered).toBeNull();
     expect(answered.price?.amount).toBe("8.00");
 
-    // No settlement rides back on this answer, though the money moved: the
-    // payment layer signs its receipt onto the answer that follows the charge,
-    // and here the charge happened while the order was being opened. So the
-    // agent is told the price and the test word and nothing else, and the buy
-    // command must not credit a settlement that only the synchronous sale gets.
-    expect(bought.settlement).toBeNull();
+    // The charge happened while the order was being opened, so the answer
+    // carries its settlement, and the order names the same transaction.
+    expect(bought.settlement?.success).toBe(true);
+    expect(answered.transaction).toBe(bought.settlement?.transaction);
 
     // The merchant's own worker takes the order on. Its status to the agent is
     // "in progress": taken on is not delivered, and an unfinished order must
@@ -287,6 +285,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       "status",
       "status_url",
       "test",
+      "transaction",
     ]);
     expect(fields(collected.body).payment_status).toBe("paid");
     expect(fields(fields(collected.body).price).amount).toBe("8.00");
@@ -374,6 +373,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       "status",
       "status_url",
       "test",
+      "transaction",
     ];
 
     expect(Object.keys(purchased).sort()).toStrictEqual(owed);

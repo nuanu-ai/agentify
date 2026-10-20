@@ -1,5 +1,5 @@
 import { type ConsentCategories, consentAllowsMeasurement } from "@agentify/analytics";
-import { baseBlocked, canonicalizeTarget, selectFindings } from "@agentify/scanner";
+import { baseBlocked, canonicalizeTarget, scanStopReason, selectFindings } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationStatusResponse,
@@ -322,6 +322,7 @@ async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanSta
     ];
   });
   const findings = selectFindings(scan.segment, parsedResults);
+  const stopReason = scan.status === "failed" ? scanStopReason(rows) : null;
   const resultById = new Map(rows.map((row) => [row.checkId, row]));
   return {
     status: scan.status,
@@ -337,6 +338,7 @@ async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanSta
     // Only where the score was withheld for it: stored scans can carry a home
     // page marked unreachable that was graded all the same, and those were read.
     ...(baseBlocked(rows) && scan.score === null ? { blocked: true as const } : {}),
+    ...(stopReason ? { stop_reason: stopReason } : {}),
     ...(terminal && scan.coverage !== null && scan.level
       ? {
           teaser: {

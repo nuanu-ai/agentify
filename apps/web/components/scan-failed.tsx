@@ -1,21 +1,56 @@
-import type { ScanStatusResponse } from "@agentify/scanner-contracts";
+import type { ScanStatusResponse, ScanStopReason } from "@agentify/scanner-contracts";
 
 import { robotsHeadline } from "../lib/robots-notice";
 import layout from "./result-layout.module.css";
 import { RobotsNotice } from "./robots-notice";
 import styles from "./scan-experience.module.css";
+import { SiteLink } from "./site-link";
 
-/** Why a scan ended without a result, and the way to try again. */
+// What the scanner knows stopped a scan, and what the person can do about it.
+// Running the same address again meets the same stop, so these offer a new
+// scan rather than a retry.
+const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words: string }>>> = {
+  no_public_site: {
+    headline: "No public website answers at this address",
+    words:
+      "The scanner reads only public websites. The name of this address, or of a page it redirects to, does not lead to one: it finds no server on the public internet or points into a private network, and the scanner requested nothing there. Check the address you entered. Unless the domain was registered or its DNS changed very recently, scanning it again gives the same answer.",
+  },
+  forbidden_redirect: {
+    headline: "The site redirected the scanner where it does not go",
+    words:
+      "The scanner follows a redirect only to an address it would accept to scan on its own, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect breaks one of those rules, for example by leading to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
+  },
+  certificate_invalid: {
+    headline: "The scanner could not verify the site's certificate",
+    words:
+      "The scanner could not verify this site's HTTPS certificate: for example it has expired, is self-signed, does not cover this address, or the server does not send its intermediate certificate. A browser may still open the site, because browsers fetch a missing intermediate on their own; most programs, AI agents among them, do not. Check the certificate chain, then scan again.",
+  },
+};
+
+/** Why a scan ended without a result, and the way to try again or start anew. */
 export function ScanFailed({
   blocked,
   checks,
   onRetry,
+  stopReason,
 }: Readonly<{
   blocked: boolean;
   checks: ScanStatusResponse["checks"];
   onRetry: () => void;
+  stopReason?: ScanStopReason;
 }>) {
   const headline = robotsHeadline(checks);
+  const stop = !headline && !blocked && stopReason ? STOPS[stopReason] : undefined;
+  if (stop)
+    return (
+      <div className={`${layout.message} ${styles.state}`}>
+        <h1 data-stop-reason={stopReason}>{stop.headline}</h1>
+        <p>{stop.words}</p>
+        <SiteLink className="button button-primary" to="/">
+          Start a new scan
+        </SiteLink>
+      </div>
+    );
   return (
     <div className={`${layout.message} ${styles.state}`}>
       <h1

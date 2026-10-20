@@ -259,6 +259,8 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     const order = reach("delivered_unpaid");
 
     expect(statusOf(ENDINGS[6])).toStrictEqual([outcomeFor(order)]);
+    // The agent is told why, which the page's last cell promises.
+    expect(endingReasonFor(order)).toBe("payment_not_settled");
 
     const closed = walk(order, [
       { kind: "purchase_repeated", at: T0 + 6 },

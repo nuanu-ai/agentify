@@ -457,6 +457,7 @@ const reportOf = (score: number): ReportResponse => ({
   coverage: 0.94,
   level: levelForScore(score, 0.94),
   benchmark: { sample_size: 42, average_score: 51.4 },
+  scanned_at: SCANNED_AT,
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
     label_code: check.labelCode,
@@ -506,6 +507,7 @@ const report = (
           cardSignal: {
             adapter: "local",
             publishableKey: null,
+            signedInAs: WHO,
             ...(card === undefined
               ? {}
               : {
@@ -759,13 +761,14 @@ const SCANNING: GalleryState[] = [
       id: "scanner-pending-busy",
       screen: "Starting a scan",
       when: "Somebody asks for a scan while the scanner cannot take one.",
-      cause: "The scanner's queue or records did not answer, so no scan was started.",
+      cause:
+        "The scanner's queue or records did not answer, in its own words, and a scan from an earlier press may already exist, so the page says a retry is safe.",
     },
     {
       status: 503,
       body: refusal("temporarily_busy", "The scanner queue is temporarily unavailable.", true, 30),
     },
-    "The scanner could not take this scan just now.",
+    "The scanner queue is temporarily unavailable.",
   ),
   pending(
     {
@@ -856,6 +859,16 @@ const SCANNING: GalleryState[] = [
         "The site answered the scanner's request for its home page with a bot challenge or a refusal.",
     },
     { status: ended("blocked"), shows: "Scan ended without a reliable result" },
+  ),
+  scan(
+    {
+      id: "scanner-scan-private-address",
+      screen: "Scan",
+      when: "No public website answers at a scanned address.",
+      cause:
+        "The site's name resolves to a private or internal address, which the scanner does not read.",
+    },
+    { status: ended("private"), shows: "Scan ended without a reliable result" },
   ),
   scan(
     {
@@ -1419,7 +1432,8 @@ const ACCOUNT: GalleryState[] = [
       id: "scanner-unsubscribe-not-answered",
       screen: "Email preferences",
       when: "A signed-in person presses Unsubscribe while the site is failing.",
-      cause: "The site's answer could not be read, so the page says nothing was changed.",
+      cause:
+        "The site's answer could not be read, so the page says it cannot tell whether the press went through, and that pressing again is safe.",
     },
     "/email/unsubscribe",
     "routes/email.unsubscribe",
@@ -1431,7 +1445,7 @@ const ACCOUNT: GalleryState[] = [
           does: (page) => press(page, "Unsubscribe from marketing"),
         },
       ],
-      shows: "Nothing was changed",
+      shows: "cannot tell whether this went through",
     },
   ),
   at(

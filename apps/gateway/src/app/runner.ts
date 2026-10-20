@@ -123,6 +123,8 @@ export type PresentResult =
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
+  /** A payment fit only to return a paid purchase, for an order that would now charge it. */
+  | { readonly kind: "payee_left" }
   | { readonly kind: "no_such_order" };
 
 /** What one hold on an order came to, before its effects are carried out. */
@@ -144,7 +146,8 @@ type PresentDecided =
     }
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
-  | { readonly kind: "refused"; readonly rejection: TransitionRejection };
+  | { readonly kind: "refused"; readonly rejection: TransitionRejection }
+  | { readonly kind: "payee_left" };
 
 export type Applied =
   | {
@@ -434,7 +437,16 @@ export class OrderRunner {
     payment: string,
     payTo: string | null,
     at: number,
-    verified?: { readonly recovery?: PaymentRecoveryContext; readonly fingerprint: string },
+    verified?: {
+      readonly recovery?: PaymentRecoveryContext;
+      readonly fingerprint: string;
+      /**
+       * Checked against the split a paid order's money went to, which is no
+       * longer where its merchant is paid, so the payment may return the
+       * purchase and must not be charged.
+       */
+      readonly onlyReturns?: boolean;
+    },
   ): Promise<PresentResult> {
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
@@ -456,6 +468,11 @@ export class OrderRunner {
           // The owner is asking again about a purchase already under way. The
           // answer is wherever it has got to, and nothing changes.
           return { result: { kind: "already_yours", state: found.order.state } };
+        }
+        // The order came to take a new charge while the payment was checked,
+        // and charged now its money would go to a wallet the merchant left.
+        if (verified?.onlyReturns === true) {
+          return { result: { kind: "payee_left" } };
         }
 
         let order = found.order;
@@ -1242,10 +1259,7 @@ export class OrderRunner {
         : moneyMovedNow
           ? at
           : (record.order.timestamps.paidAt ?? at);
-    const transaction =
-      completion?.settled && completion.executedAt !== null
-        ? completion.transaction
-        : record.settlement?.transaction;
+    const transaction = paidTransactionOf(record);
 
     // The merchant comes from the order, not through the card: a card can be
     // republished or taken off sale, and a receipt names who made the sale
@@ -1263,9 +1277,7 @@ export class OrderRunner {
       ...(record.priceId === null ? {} : { price_id: record.priceId }),
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
-      // An empty transaction is left off: the contract refuses one, and a
-      // single refused receipt would break the merchant's whole list.
-      ...(transaction === undefined || transaction.trim() === "" ? {} : { transaction }),
+      ...(transaction === undefined ? {} : { transaction }),
       test: record.order.test,
     };
   }
@@ -1368,6 +1380,7 @@ export function agentOrderStatusOf(
     status_url: statusUrlOf(config, record.order.id),
     status,
     payment_status: paymentStatusOf(record.order),
+    ...transactionOf(record),
     ...merchantClosureOf(record.order),
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.
@@ -1408,6 +1421,28 @@ export function agentOrderStatusOf(
       : {}),
     ...reasonOf(record.order),
   };
+}
+
+/**
+ * The transaction that paid this order: the one the chain showed for a payment
+ * recovery found there, otherwise the one the facilitator named when it
+ * confirmed the charge. Neither is recorded for a charge that failed or went
+ * unanswered. An empty one is left off: the contract refuses one, and a single
+ * refused document would break a whole list.
+ */
+export function paidTransactionOf(record: StoredOrder): string | undefined {
+  const completion = record.paymentAttempt?.completion;
+  const transaction =
+    completion?.settled && completion.executedAt !== null
+      ? completion.transaction
+      : record.settlement?.transaction;
+  return transaction === undefined || transaction.trim() === "" ? undefined : transaction;
+}
+
+/** The transaction field of a document about this order, where it has one. */
+function transactionOf(record: StoredOrder): { readonly transaction?: string } {
+  const transaction = paidTransactionOf(record);
+  return transaction === undefined ? {} : { transaction };
 }
 
 export function paymentStatusOf(order: Order): PaymentStatus {
@@ -1480,8 +1515,10 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
     "The seller's price check said this is not available, and gave no reason; nothing was charged. Buy it elsewhere, or ask the seller at their site.",
   price_check_unanswered: () =>
     "The seller's price check gave no price this purchase could use: it did not answer in time, or its answer could not be accepted. Nothing was charged. Trying again later may work if the seller's price check recovers.",
-  payment_not_settled: () =>
-    "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
+  payment_not_settled: (order) =>
+    order.state === "delivered_unpaid"
+      ? "The seller made the goods, but the charge did not go through, so nothing was taken, and Agentify is holding the goods. Check the paying wallet, then pay for this same purchase again from the wallet that signed it, by signing the same payment request again: the goods are released without being delivered a second time. If the seller has changed where they are paid since, that payment is refused with nothing charged, and a new purchase is the way to buy it."
+      : "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
     "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
   merchant_closed: (order) =>
@@ -1681,6 +1718,13 @@ function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
   }
   return null;
 }
+
+/**
+ * Whether a verified payment presented for this order now would be charged,
+ * rather than only answered with where the purchase stands.
+ */
+export const takesANewPayment = (order: Order): boolean =>
+  eventsForVerifiedPayment(order, 0).length > 0;
 
 /**
  * The events a verified payment drives an order with, from where it stands:

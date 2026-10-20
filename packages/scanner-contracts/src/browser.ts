@@ -46,3 +46,17 @@ export const DIAGNOSTIC_LEVELS = [
  * check reads, or it could not be read or decided for it.
  */
 export const ROBOTS_REASONS = ["disallowed", "unassessed"] as const;
+
+/**
+ * Why the scanner stopped a scan that ended without a result, where it knows:
+ * no public website answers at the address or one it redirects to, a redirect
+ * leads where the scanner does not follow, or the scanner did not accept the
+ * site's HTTPS certificate. A name that leads to a private address and a name that does not
+ * exist share one reason, so that the answer never tells which names exist on
+ * the scanner's own network.
+ */
+export const SCAN_STOP_REASONS = [
+  "no_public_site",
+  "forbidden_redirect",
+  "certificate_invalid",
+] as const;

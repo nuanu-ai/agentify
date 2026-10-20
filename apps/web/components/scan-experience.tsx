@@ -219,6 +219,7 @@ export function ScanExperience({
                 blocked={data.blocked === true}
                 checks={data.checks}
                 onRetry={() => window.location.assign("/")}
+                stopReason={data.stop_reason}
               />
             ) : null}
             {finished && !data.teaser ? (

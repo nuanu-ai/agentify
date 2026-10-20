@@ -111,7 +111,11 @@ export class X402Facilitator implements Facilitator {
         };
       }
     } catch (thrown) {
-      return { verified: false, reason: "signature", message: describe(thrown) };
+      return {
+        verified: false,
+        reason: "signature",
+        message: describe(thrown),
+      };
     }
     // The facilitator's check refuses a used authorization, so the transfer
     // lands after this moment, give or take the clocks.

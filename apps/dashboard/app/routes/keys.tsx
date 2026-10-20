@@ -15,8 +15,9 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { acted, answer, formOf } from "../answer.js";
+import { acted, formOf, readOnly } from "../answer.js";
 import { Frame } from "../components/frame.js";
+import { readFailedIn } from "../components/not-loaded.js";
 import { KeysScreen, NewKeyScreen } from "../screens/keys.js";
 import { services, signedIn } from "../services.js";
 
@@ -37,8 +38,8 @@ const pressed = createContext(false);
 export async function loader(asked: LoaderFunctionArgs) {
   const { url, context } = asked;
   if (context.get(pressed)) return null;
-  return answer(
-    await context.get(services).keys.list(context.get(signedIn), url.searchParams),
+  return readOnly(
+    async () => await context.get(services).keys.list(context.get(signedIn), url.searchParams),
     asked,
   );
 }
@@ -75,3 +76,5 @@ export default function Keys() {
     </Frame>
   );
 }
+
+export const ErrorBoundary = readFailedIn({ tab: "keys", title: "API keys", what: "API keys" });

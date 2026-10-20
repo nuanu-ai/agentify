@@ -1339,7 +1339,8 @@ describe("a payment the payment layer would not vouch for", () => {
   // is the only place it learns which: a payment against a stale offer — a
   // price that moved, a seller who changed where they are paid — needs a new
   // purchase, an empty wallet needs funding, a bad signature needs signing
-  // again. Each refusal says nothing was charged and which of these to do.
+  // again. Each refusal says this payment charged nothing and which of these
+  // to do.
   const cases = [
     ["price_stale", "the payment was made out to a different address", "start a new purchase"],
     ["insufficient_funds", "the wallet is empty", "fund the paying wallet"],
@@ -1358,7 +1359,7 @@ describe("a payment the payment layer would not vouch for", () => {
 
       if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
       expect(bought.why).toContain(said);
-      expect(bought.why).toContain("nothing was charged");
+      expect(bought.why).toContain("this payment charged nothing");
       expect(bought.why).toContain(next);
     });
   }
@@ -1379,7 +1380,7 @@ describe("a refused payment's words, when the payment layer says a great deal", 
     const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
 
     if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
-    expect(bought.why.indexOf("nothing was charged")).toBe(0);
+    expect(bought.why.indexOf("this payment charged nothing")).toBe(0);
     expect(bought.why.indexOf("fund the paying wallet")).toBeLessThan(80);
     expect(bought.why).toContain("transfer amount exceeds balance");
     expect(bought.why.length).toBeLessThan(400);

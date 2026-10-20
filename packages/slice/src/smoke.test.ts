@@ -45,12 +45,11 @@ describe("the smoke's verdict on a purchase through the gateway", () => {
     return verdictOnPurchase(bought, (id) => booted.gateway.runtime.store.orderById(id));
   };
 
-  it("counts an asynchronous charge as settled from the order, though the answer carries no settlement", async () => {
+  it("counts an asynchronous charge as settled from the settlement its answer carries", async () => {
     const verdict = await buyTheEsim();
 
-    // The scripted facilitator names its first settlement 0xtx1; the smoke has
-    // to have read it off the order, since the answer carried none.
-    expect(verdict).toStrictEqual({ kind: "settled", transaction: "0xtx1", readFrom: "order" });
+    // The scripted facilitator names its first settlement 0xtx1.
+    expect(verdict).toStrictEqual({ kind: "settled", transaction: "0xtx1", readFrom: "answer" });
   });
 
   it("reports a payment the gateway refused as not charged", async () => {

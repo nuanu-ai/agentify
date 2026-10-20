@@ -107,7 +107,13 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
-import { endingSentenceOf, OrderRunner, RECONCILE_PAYMENTS, SWEEP_EFFECTS } from "./runner.js";
+import {
+  endingSentenceOf,
+  OrderRunner,
+  RECONCILE_PAYMENTS,
+  SWEEP_EFFECTS,
+  takesANewPayment,
+} from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -213,6 +219,15 @@ export interface PaidResource {
   readonly payTo: string | null;
 }
 
+/**
+ * The request a payment was sent with: the product whose address it reached,
+ * and the parameters its body carried, where it carried any.
+ */
+export interface PaidRequest {
+  readonly itemId: string;
+  readonly params?: Readonly<Record<string, unknown>>;
+}
+
 /** What a purchase attempt came to. */
 export type PurchaseAttempt =
   /** The order is priced and waiting to be paid for: here is what it costs. */
@@ -227,6 +242,8 @@ export type PurchaseAttempt =
   | { readonly step: "ship_to_rejected"; readonly message: string }
   /** A payment carrying an address other than the one its order was priced for. */
   | { readonly step: "ship_to_changed" }
+  /** A payment sent at another product's address, or with other parameters, than its order's. */
+  | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
   | {
@@ -1307,6 +1324,7 @@ export class Gateway {
     payment: string,
     fingerprint: string,
     shipTo?: ShipTo,
+    asked?: PaidRequest,
   ): Promise<PurchaseAttempt> {
     let before = await this.runtime.store.orderById(orderId);
     if (before === null) {
@@ -1382,15 +1400,25 @@ export class Gateway {
     // Used authorizations and signatures can be read from the chain, so even
     // the exact saved payment is no private credential for an order or goods.
     //
-    // The payee is this order's merchant's recorded split, read once here at
-    // the instant of verification, and the same string is kept on the order
+    // A payment that will be charged is checked against the merchant's split
+    // in force now, read once here, and the same string is kept on the order
     // for the charge, so the money goes where the payer signed for it to go
-    // rather than wherever the merchant's wallet has moved by then.
+    // rather than wherever the merchant's wallet has moved by then. A payment
+    // for an order already paid, which only returns the purchase to its payer,
+    // is checked against where that order's money went: the payment request
+    // its payer kept names that split, whatever the merchant is paid at today.
+    // Where that split is one the merchant has left, the payment is fit only
+    // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
-    const payTo =
+    const payeeNow =
       payingMerchant === null
         ? null
         : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
+    const payTo =
+      before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order)
+        ? before.payTo
+        : payeeNow;
+    const onlyReturns = payTo?.toLowerCase() !== payeeNow?.toLowerCase();
 
     const verified = await this.runtime.facilitator.verify({
       paymentRef: before.paymentRef,
@@ -1410,12 +1438,13 @@ export class Gateway {
       // failed and nothing else tells the agent, and it says whether anything
       // was charged. On an order already paid for, the payer is most likely
       // presenting a payment it already used, having lost the answer.
+      // Anyone holding the payment request can make up a payment that is
+      // refused, so its answer is the same whether or not the order was paid,
+      // and says only what this payment did.
       const why =
         verified.verified === "unknown"
           ? verified.message
-          : before.order.payment === "settled"
-            ? `nothing more was charged: this order is already paid for, and the payment layer refused this payment, saying: ${briefly(verified.message)}; a payment from the wallet that paid it that the payment layer accepts returns the order without charging it again`
-            : `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`;
+          : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
       // The layer's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
       // client put in it, newlines included.
@@ -1466,6 +1495,16 @@ export class Gateway {
       !sameAddress(held, shipTo)
     ) {
       return { step: "ship_to_changed" };
+    }
+    // The product and its parameters are held to the same rule and compared at
+    // the same moment, for the same reason: parameters can carry the buyer's
+    // own details, such as where the goods are sent.
+    if (
+      asked !== undefined &&
+      (asked.itemId !== before.itemId ||
+        (asked.params !== undefined && canonical(asked.params) !== canonical(before.params)))
+    ) {
+      return { step: "another_purchase" };
     }
 
     // The park below waits `syncBudgetMs` from this instant, where the ceiling
@@ -1536,10 +1575,14 @@ export class Gateway {
       payment,
       payTo,
       this.runtime.clock(),
-      { fingerprint, ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }) },
+      {
+        fingerprint,
+        onlyReturns,
+        ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }),
+      },
     );
 
-    // These two turned the payment away before it spent anything, so the claim
+    // These turned the payment away before it spent anything, so the claim
     // is released; held, it would tell the buyer who lost the race that their
     // next attempt was already spent on somebody else's order. `refused` keeps
     // its claim, because some of its causes have moved money.
@@ -1557,6 +1600,17 @@ export class Gateway {
       return now !== null && overWithNothingHeld(now)
         ? noPaymentTakenFor(now.order)
         : { step: "not_this_purchase" };
+    }
+    if (taken.kind === "payee_left") {
+      this.runner.purchases.giveUp(key);
+      await this.runtime.store.releaseClaim(fingerprint, orderId);
+      // What this payment is told if it is presented again, now that the order
+      // checks it against where the merchant is paid today.
+      return {
+        step: "payment_not_verified",
+        why: `nothing was charged: ${NEXT_STEP_AFTER.price_stale}`,
+        retryable: false,
+      };
     }
     if (taken.kind === "refused") {
       this.runner.purchases.giveUp(key);

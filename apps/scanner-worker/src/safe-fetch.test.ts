@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer as createTcpServer } from "node:net";
 import { gzipSync } from "node:zlib";
 import { evaluateChecks, type FetchArtifact, type ScanArtifacts } from "@agentify/scanner";
 import { describe, expect, it } from "vitest";
@@ -229,14 +229,55 @@ describe("safe fetch policy", () => {
   });
 
   it.each([
+    "CERT_HAS_EXPIRED",
+    "CERT_NOT_YET_VALID",
+    "DEPTH_ZERO_SELF_SIGNED_CERT",
     "SELF_SIGNED_CERT_IN_CHAIN",
     "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
-    "ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE",
-    "EPROTO",
-  ])("classifies %s as TLS failure before fallback policy", (code) => {
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    "ERR_TLS_CERT_ALTNAME_INVALID",
+  ])("classifies %s as a certificate the scanner did not accept", (code) => {
     expect(
       transportErrorCode(Object.assign(new Error("transport failed"), { code }), "https:"),
-    ).toBe("tls_invalid");
+    ).toBe("tls_certificate_invalid");
+  });
+
+  // A handshake that failed or was cut short says nothing of the certificate:
+  // a firewall that drops the scanner cuts it the same way.
+  it.each([
+    ["ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE", "handshake failure"],
+    ["EPROTO", "wrong version number"],
+    [
+      "ECONNRESET",
+      "Client network socket disconnected before secure TLS connection was established",
+    ],
+  ])("classifies %s apart from a certificate it did not accept", (code, message) => {
+    expect(transportErrorCode(Object.assign(new Error(message), { code }), "https:")).toBe(
+      "tls_invalid",
+    );
+  });
+
+  it("does not take a site that closes the connection during the handshake for a bad certificate", async () => {
+    // The connection is closed once the scanner's greeting arrives, which is
+    // how a firewall that drops the scanner cuts the handshake.
+    const server = createTcpServer((socket) => socket.once("data", () => socket.end()));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const artifact = await new NodePinnedTransport().request({
+        url: new URL(`https://closes-the-door.example:${port}/`),
+        address: { address: "127.0.0.1", family: 4 },
+        method: "GET",
+        headers: { connection: "close" },
+        timeoutMs: 2_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: 1_024,
+        signal: new AbortController().signal,
+      });
+      expect(artifact).toMatchObject({ status: 0, errorCode: "tls_invalid" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("does not downgrade after any HTTPS redirect has succeeded", async () => {
@@ -421,7 +462,7 @@ describe("safe fetch policy", () => {
     expect(calls).toBe(1);
   });
 
-  it("answers a name that does not resolve with the request's own error", async () => {
+  it("answers a name that does not exist with the request's own error", async () => {
     const fetcher = new SafeFetcher(
       {
         resolve: async () => {
@@ -436,9 +477,37 @@ describe("safe fetch policy", () => {
     );
     await expect(fetcher.fetch("https://cdn.example.com/sitemap.xml")).resolves.toMatchObject({
       status: 0,
-      errorCode: "dns_error",
+      errorCode: "dns_not_found",
     });
   });
+
+  // Only "no such name" says something of the site: a resolver that could
+  // not answer says nothing of whether the name exists.
+  it.each([
+    ["a temporary failure", { code: "EAI_AGAIN" }],
+    ["a server failure", { code: "ESERVFAIL" }],
+    ["a refused query", { code: "EREFUSED" }],
+    ["a resolver timeout", { code: "ETIMEOUT" }],
+    ["an error with no code", {}],
+  ])(
+    "answers a lookup that failed with %s apart from a name that does not exist",
+    async (_, failure) => {
+      const fetcher = new SafeFetcher(
+        {
+          resolve: async () => {
+            throw Object.assign(new Error("lookup failed"), failure);
+          },
+        },
+        { request: async (input) => response(input) },
+        new RequestBudget(),
+        "scanner",
+      );
+      await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+        status: 0,
+        errorCode: "dns_error",
+      });
+    },
+  );
 
   it("stops waiting for a name that never resolves when the scan is cut short", async () => {
     const fetcher = new SafeFetcher(

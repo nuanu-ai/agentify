@@ -52,8 +52,8 @@ async function register(request: Request, params: Params): Promise<Response> {
       "invalid_registration",
       "Check the email, the phone if given, and the consent fields.",
     );
-  // A signed-in person's ask is filed under the session's address at once and
-  // sends nothing; a stranger's waits for the link sent to the address typed.
+  // A signed-in person's ask is filed under their address at once and sends
+  // nothing; a stranger's waits for the link sent to the address typed.
   // A dashboard that does not answer is neither, and nothing is asked on a guess.
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown")
@@ -66,19 +66,25 @@ async function register(request: Request, params: Params): Promise<Response> {
       30,
     );
   const email = parsed.data.email;
-  // An address typed beside a session is never silently swapped for the
-  // session's: the person is told which address the report is filed under.
-  if (
-    visitor.kind === "person" &&
-    email !== undefined &&
-    normalizeEmail(email) !== normalizeEmail(visitor.email)
-  )
-    return errorResponse(
-      request,
-      409,
-      "signed_in_as_another_address",
-      `You are signed in as ${visitor.email}, so a report you ask for is filed under that address. To ask with ${email}, sign out first.`,
-    );
+  // A signed-in ask names the address its page showed. A page left open while
+  // the session changed in another tab would otherwise file the report, and
+  // the ownership claim, under an address the person never saw on it.
+  if (visitor.kind === "person") {
+    if (email === undefined)
+      return errorResponse(
+        request,
+        409,
+        "signed_in_as_another_address",
+        `You are signed in as ${visitor.email}, and this ask did not say which address it was for, so nothing was filed. Reload the page to ask as ${visitor.email}.`,
+      );
+    if (normalizeEmail(email) !== normalizeEmail(visitor.email))
+      return errorResponse(
+        request,
+        409,
+        "signed_in_as_another_address",
+        `You are signed in as ${visitor.email} now, so nothing was filed under ${email}. Reload the page to ask as ${visitor.email}, or sign out to ask with ${email}.`,
+      );
+  }
   if (visitor.kind === "stranger" && email === undefined)
     return errorResponse(
       request,

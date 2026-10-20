@@ -1,6 +1,11 @@
 import type { Params } from "react-router";
 import { visitorOf } from "../../../../lib/server/auth";
-import { errorResponse, hasSameOrigin, visitorUnknownResponse } from "../../../../lib/server/http";
+import {
+  errorResponse,
+  hasSameOrigin,
+  pageNotMatched,
+  visitorUnknownResponse,
+} from "../../../../lib/server/http";
 import { methods } from "../../../../lib/server/methods";
 import { confirmLocalCardSignal } from "../../../../lib/server/stripe-card-signal";
 
@@ -9,6 +14,16 @@ async function confirmLocally(request: Request, params: Params): Promise<Respons
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown") return visitorUnknownResponse(request);
+  // The report page names the address it was loaded for, so a page left open
+  // across a change of session acts for nobody else.
+  if (visitor.kind === "person") {
+    const unmatched = pageNotMatched(
+      request,
+      await request.json().catch(() => null),
+      visitor.email,
+    );
+    if (unmatched !== null) return unmatched;
+  }
   try {
     const result = await confirmLocalCardSignal({
       signalId: params.signalId ?? "",

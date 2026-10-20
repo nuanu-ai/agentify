@@ -2,6 +2,7 @@ import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationId,
 } from "@agentify/scanner-contracts";
+import { assessmentLines, type ScanAssessment } from "./assessment.js";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
@@ -39,9 +40,18 @@ const evidenceLine = (evidence: SafeEvidence): string | undefined => {
   return values.length ? values.join("; ") : undefined;
 };
 
+// The tier of access a prompt was drawn from, said as which findings it holds:
+// "full" alone would read as a claim that the whole site was assessed.
+const INCLUDED = {
+  full: "Findings included: every failed or partial check in the full report.",
+  teaser:
+    "Findings included: only those shown with the free result; the full report has every check.",
+} as const;
+
 export function generateRemediationPrompt(input: {
   scope: "teaser" | "full";
   host: string;
+  assessment: ScanAssessment;
   findings: RemediationFindingInput[];
   platform?: string | null;
 }): GeneratedRemediationPrompt {
@@ -103,7 +113,8 @@ export function generateRemediationPrompt(input: {
     "# Agentify remediation implementation prompt",
     "",
     `Site: ${host || "public site"}`,
-    `Scope: ${input.scope}`,
+    INCLUDED[input.scope],
+    ...assessmentLines(input.assessment),
     `Diagnostic versions: gtm-v1.0.0 and ${BROWSER_OBSERVATION_VERSION} (browser findings are non-scoring).`,
     input.platform && safeCode(input.platform)
       ? `Detected platform hint: ${safeCode(input.platform)}`

@@ -19,6 +19,12 @@ const json = (status: number, body: unknown) =>
     headers: { "content-type": "application/json" },
   });
 
+/** A refusal in the shape the site's own routes answer in. */
+const refusal = (status: number, code: string, message: string) =>
+  json(status, {
+    error: { code, message, retryable: false, request_id: "019f5b6a-4b9f-7000-8000-0000000000bb" },
+  });
+
 /**
  * The site as these buttons meet it: who the page is told is signed in, and
  * the two account routes, which hold a body to the same contracts the real
@@ -40,14 +46,13 @@ function siteWith({
     const parsed = (
       unsubscribe ? accountUnsubscribeRequestSchema : accountDataRequestSchema
     ).safeParse(sent);
-    if (!parsed.success) return json(400, { error: { code: "invalid", message: "Invalid." } });
+    if (!parsed.success) return refusal(400, "invalid", "Invalid.");
     if (parsed.data.signed_in_as !== signedInNow) {
-      return json(409, {
-        error: {
-          code: "page_not_matched",
-          message: `The page this came from could not be matched to the address signed in now, ${signedInNow}, so nothing was changed. Reload the page to act as this address.`,
-        },
-      });
+      return refusal(
+        409,
+        "page_not_matched",
+        `The page this came from could not be matched to the address signed in now, ${signedInNow}, so nothing was changed. Reload the page to act as this address.`,
+      );
     }
     return unsubscribe
       ? json(200, { status: "unsubscribed" })
@@ -108,15 +113,61 @@ describe("the account requests on the site's own pages", () => {
     expect(screen.getByRole("link", { name: /reload/i })).toBeTruthy();
   });
 
-  it("say nothing was changed when the press never got an answer", async () => {
+  it("say they cannot tell whether a deletion went through when its answer was lost, and what a reload shows if it did", async () => {
+    // The deletion may have been carried out before the answer was lost;
+    // "nothing was changed" would invite repeating an irreversible step
+    // on a promise that may be false.
+    siteWith({ visitor: signedIn });
+    render(<AccountActions mode="data" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete my data" }));
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm deletion" }));
+
+    const told = await screen.findByText(/cannot tell whether/i);
+    expect(told.textContent).toMatch(/reload/i);
+    expect(told.textContent).toMatch(/sign in/i);
+    expect(screen.queryByText(/nothing was changed/i)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Confirm deletion" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("say they cannot tell, not that nothing changed, when the answer is not one the site gives", async () => {
+    // A proxy's error page in place of the site's answer says nothing about
+    // whether the site recorded the request.
     siteWith({ visitor: signedIn });
     render(<AccountActions mode="data" />);
     const pressed = await screen.findByRole("button", { name: "Request data access" });
-    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response("<html>Bad gateway</html>", {
+        status: 502,
+        headers: { "content-type": "text/html" },
+      }),
+    );
 
     await userEvent.click(pressed);
 
-    expect(await screen.findByText(/nothing was changed/i)).toBeTruthy();
+    expect(await screen.findByText(/cannot tell whether/i)).toBeTruthy();
+    expect(screen.queryByText(/nothing was changed/i)).toBeNull();
+  });
+
+  it("pass on the site's own refusal in its own words", async () => {
+    siteWith({ visitor: signedIn });
+    render(<AccountActions mode="data" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete my data" }));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      refusal(
+        503,
+        "deletion_cleanup_failed",
+        "Deletion could not be recorded, so report access remains unchanged. Try again shortly.",
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm deletion" }));
+
+    expect(await screen.findByText(/report access remains unchanged/)).toBeTruthy();
+    expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
 
   it("offer nothing to press to somebody not signed in", async () => {

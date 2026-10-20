@@ -95,10 +95,12 @@ describe("asking the scanner for a verification link", () => {
     expect(button().textContent).not.toMatch(/\d/);
   });
 
-  it("files a signed-in person's own ask under their address, sends none, and says so first", async () => {
-    // The ask carries no address: the session decides whose it is. The API
-    // here refuses an ask that names one, or that does not acknowledge the
-    // data notice, so the report opens only for the ask the form must send.
+  it("files a signed-in person's own ask under the address it showed, sends none, and says so first", async () => {
+    // The ask names the address the form showed, so a session changed in
+    // another tab is refused rather than given the report. The API here
+    // refuses an ask that names another address or none, or that does not
+    // acknowledge the data notice, so the report opens only for the ask the
+    // form must send.
     let settled = () => {};
     const answered = new Promise<void>((resolve) => {
       settled = resolve;
@@ -109,7 +111,7 @@ describe("asking the scanner for a verification link", () => {
       }
       const ask = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       settled();
-      return "email" in ask || ask.dataset_reuse_acknowledged !== true
+      return ask.email !== "owner@example.com" || ask.dataset_reuse_acknowledged !== true
         ? json(400, {
             error: {
               code: "invalid_request",
@@ -137,6 +139,103 @@ describe("asking the scanner for a verification link", () => {
     // Opening the report keeps the button waiting; a refusal would say why.
     expect(screen.getByRole("button").textContent).toBe("Sending…");
     expect(screen.queryByText(/not one the form should send/)).toBeNull();
+  });
+
+  it("offers only a reload once the site says somebody else is signed in now", async () => {
+    // The form still says the report goes under the address it was loaded
+    // for; leaving its button there would invite pressing it again for nothing.
+    answerWith(
+      409,
+      {
+        error: {
+          code: "signed_in_as_another_address",
+          message:
+            "You are signed in as somebody-else@example.com, so nothing was filed under owner@example.com.",
+          retryable: false,
+          request_id: "019f5b6a-4b9f-7000-8000-000000000004",
+        },
+      },
+      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
+    );
+    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+    render(<RegistrationForm scanId={scanId} />);
+    await userEvent.click(await screen.findByLabelText(/acknowledge the scanner data notice/i));
+    await userEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByText(/somebody-else@example\.com/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("link", { name: /reload/i })).toBeTruthy();
+  });
+
+  it.each([
+    ["never arrived", () => Promise.reject(new TypeError("Failed to fetch"))],
+    [
+      "was a success the form cannot read, such as a sign-in portal's page",
+      async () =>
+        new Response("<html>Sign in to the network</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    ],
+    [
+      "came from something other than the site",
+      async () =>
+        new Response("<html>Bad gateway</html>", {
+          status: 502,
+          headers: { "content-type": "text/html" },
+        }),
+    ],
+  ])(
+    "says it cannot tell whether a signed-in ask was filed when the answer %s, and lets it be pressed again",
+    async (_case, lost) => {
+      // The site may have filed the report before the answer was lost, so
+      // neither "nothing happened" nor silence is true.
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+        String(input).endsWith("/api/v2/session")
+          ? json(200, { status: "signed_in", email: "owner@example.com", operator: false })
+          : await lost(),
+      );
+      sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+      render(<RegistrationForm scanId={scanId} />);
+      await userEvent.click(await screen.findByLabelText(/acknowledge the scanner data notice/i));
+      await userEvent.click(screen.getByRole("button"));
+
+      expect(await screen.findByText(/cannot tell whether/i)).toBeTruthy();
+      expect(screen.getByText(/press .* again/i)).toBeTruthy();
+      expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    },
+  );
+
+  it("says it cannot tell whether a link was sent when a stranger's answer never arrived", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/api/v2/session")) return json(200, { status: "signed_out" });
+      throw new TypeError("Failed to fetch");
+    });
+
+    const button = await askForALink();
+
+    expect(await screen.findByText(/cannot tell whether/i)).toBeTruthy();
+    expect(screen.getByText(/inbox/i)).toBeTruthy();
+    expect(button().disabled).toBe(false);
+  });
+
+  it("says a link was sent, and no longer that the report opens without one, when the session ended in another tab", async () => {
+    // The page was loaded signed in; by the press the session had ended, so the
+    // site took the ask as a stranger's and mailed a link to the address shown.
+    answerWith(
+      202,
+      { status: "verification_sent" },
+      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
+    );
+    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+    render(<RegistrationForm scanId={scanId} />);
+    expect(await screen.findByText(/without a message/)).toBeTruthy();
+    await userEvent.click(screen.getByLabelText(/acknowledge the scanner data notice/i));
+    await userEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByText(/Check your inbox/)).toBeTruthy();
+    expect(screen.queryByText(/without a message/)).toBeNull();
+    expect(screen.getByRole("button").textContent).not.toBe("Open the full report");
   });
 
   it("links the data notice from the box that acknowledges it", async () => {

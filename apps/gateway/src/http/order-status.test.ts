@@ -575,6 +575,7 @@ describe("what the answer carries", () => {
       "status",
       "status_url",
       "test",
+      "transaction",
     ]);
     expect((answered.body as { seller: unknown }).seller).toStrictEqual({
       name: "Not the harness's own seller",
@@ -694,6 +695,7 @@ describe("the goods as the merchant wrote them", () => {
         at: "2026-08-26T12:00:00.000Z",
         as_of: "2026-08-26T12:00:00.000Z",
       },
+      transaction: "0xtx1",
       delivered: goods,
       // Only this field tells a test order from a real one; every other field
       // reads the same whether the charge was real or not.

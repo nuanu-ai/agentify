@@ -20,7 +20,8 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
-import { agentOrderStatusOf } from "../app/runner.js";
+import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
+import type { StoredOrder } from "../ports/store.js";
 import {
   BAD_REQUEST,
   bodyRefused,
@@ -520,10 +521,11 @@ async function purchase(
   if (presented !== null && presented !== "unreadable" && presented.paymentRef !== null) {
     const named = await gateway.orderForPayment(presented.paymentRef);
     if (named !== null) {
-      // A paid request's body is read only for an address sent again, which
-      // must be the one the order was priced for. A malformed one is refused,
-      // or the payment would go through for a place the agent did not mean.
-      if (!held.ok && carriesAnAddress(body)) {
+      // A paid request's body is read only for the parameters and address sent
+      // again, which must be the ones the order was priced for. A malformed one
+      // is refused, or the payment would go through for something the agent did
+      // not mean.
+      if (!held.ok && carriesWhatWasPriced(body)) {
         return written(
           response,
           BAD_REQUEST,
@@ -546,6 +548,10 @@ async function purchase(
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
           held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
+          {
+            itemId,
+            ...(held.ok ? { params: (held.value as PurchaseRequest).params } : {}),
+          },
         ),
         seller,
       );
@@ -588,9 +594,9 @@ async function purchase(
   );
 }
 
-/** Whether a body that did not read as a purchase was trying to send an address. */
-function carriesAnAddress(body: unknown): boolean {
-  return typeof body === "object" && body !== null && "ship_to" in body;
+/** Whether a body that did not read as a purchase was trying to say what was bought. */
+function carriesWhatWasPriced(body: unknown): boolean {
+  return typeof body === "object" && body !== null && ("ship_to" in body || "params" in body);
 }
 
 async function answerPurchase(
@@ -628,6 +634,19 @@ async function answerPurchase(
         refusal(
           "ship_to_changed",
           "this payment carries an address other than the one this purchase was priced for: start a new purchase for that address, which is priced for it",
+        ),
+      );
+
+    case "another_purchase":
+      // Decided as `ship_to_changed` is, and named in words that say nothing of
+      // the purchase the payment belongs to.
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "payment_not_taken",
+          "this payment belongs to another purchase and is not taken for this request: send it with the request it was made for, or start a new purchase",
+          { retryable: false },
         ),
       );
 
@@ -718,6 +737,7 @@ async function answerPurchase(
       // the charge has not reported back yet. Where the goods come later, 200
       // is honest, and `status_url` is the only place the agent learns where to
       // collect them.
+      sayWhatPaid(edge, response, attempt.order, gateway.runtime.config.payment.network);
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
@@ -728,19 +748,7 @@ async function answerPurchase(
       };
 
     case "settled": {
-      const settlement = attempt.order.settlement;
-      if (settlement !== null) {
-        // The payment layer's receipt, the agent's proof that money moved.
-        response.setHeader(
-          PAYMENT_RESPONSE_HEADER,
-          edge.receiptHeader({
-            success: true,
-            transaction: settlement.transaction,
-            network: gateway.runtime.config.payment.network as `${string}:${string}`,
-          }),
-        );
-      }
-
+      sayWhatPaid(edge, response, attempt.order, gateway.runtime.config.payment.network);
       return {
         status: ["delivered", "shipped"].includes(outcomeFor(attempt.order.order)) ? OK : CONFLICT,
         document: agentOrderStatusOf(
@@ -751,6 +759,25 @@ async function answerPurchase(
       };
     }
   }
+}
+
+/**
+ * The standard x402 payment response, the agent's proof that money moved, on
+ * any answer about an order whose charge has gone through by now, whether or
+ * not the goods have come.
+ */
+function sayWhatPaid(
+  edge: PaymentEdge,
+  response: RouteCall["response"],
+  order: StoredOrder,
+  network: string,
+): void {
+  const transaction = paidTransactionOf(order);
+  if (transaction === undefined) return;
+  response.setHeader(
+    PAYMENT_RESPONSE_HEADER,
+    edge.receiptHeader({ success: true, transaction, network: network as `${string}:${string}` }),
+  );
 }
 
 function written(response: RouteCall["response"], status: number, document: unknown): RouteAnswer {

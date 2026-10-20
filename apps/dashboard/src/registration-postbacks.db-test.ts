@@ -85,13 +85,19 @@ if (databaseUrl === null) {
   /** The test's clock, moved by the pauses the code asks for and by the tests. */
   let clock = START.getTime();
   const now = (): Date => new Date(clock);
+  const pausing = new Set<Promise<void>>();
   /**
    * A pause moves the clock only once a little real time has passed, so a
    * second loop that is not held back by the lock gets to post inside it.
    */
-  const wait = async (ms: number): Promise<void> => {
-    await sleep(5);
-    clock += ms;
+  const wait = (ms: number): Promise<void> => {
+    const pause = (async () => {
+      await sleep(5);
+      clock += ms;
+    })();
+    pausing.add(pause);
+    void pause.finally(() => pausing.delete(pause));
+    return pause;
   };
 
   /** Everything any part of the process wrote to the console during a test. */
@@ -108,7 +114,11 @@ if (databaseUrl === null) {
     await pool.query("delete from dashboard_accounts");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Stopping a loop cuts its idle short but not the pause it asked for, which
+    // still moves the clock a moment later; that has to happen before the next
+    // test resets the clock.
+    await Promise.all(pausing);
     // Nothing about whose registration it was, and never the key, in any line
     // any of these tests made the code write.
     for (const line of told) {

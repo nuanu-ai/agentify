@@ -169,6 +169,9 @@ export function ConsentPreferencesPanel(props: {
   );
 }
 
+/** A choice sent whose answer never came, or could not be read: it may have been recorded. */
+class ChoiceUnanswered extends Error {}
+
 /**
  * The bar that asks a visitor how their visit may be measured, until they
  * choose, and the preferences it and the page's "Privacy choices" open. The
@@ -254,20 +257,34 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   }, [closePreferences, preferencesOpen]);
 
   const persist = async (snapshot: ConsentSnapshot) => {
-    const response = await fetch("/api/v1/consent", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        policy_version: snapshot.policyVersion,
-        categories: snapshot.categories,
-      }),
-    });
-    if (!response.ok) throw new Error("consent_save_failed");
+    let response: Response;
+    try {
+      response = await fetch("/api/v1/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          policy_version: snapshot.policyVersion,
+          categories: snapshot.categories,
+        }),
+      });
+    } catch {
+      throw new ChoiceUnanswered();
+    }
+    if (response.ok) return;
+    // Only the site's own refusal, in its error shape, says the choice was not
+    // recorded; a proxy's error page in its place says nothing either way.
+    const body = (await response.json().catch(() => null)) as {
+      error?: { message?: unknown };
+    } | null;
+    if (typeof body?.error?.message !== "string") throw new ChoiceUnanswered();
+    throw new Error("consent_refused");
   };
 
   const save = async (product: boolean, ads: boolean) => {
     setSaving(true);
     setError(undefined);
+    // Set once the site has recorded the choice, which the browser keeping it can still fail after.
+    let recorded = false;
     const snapshot = createConsentSnapshot({
       policy,
       decisions: decisions(product, ads),
@@ -277,7 +294,10 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       await saveConsentDecision({
         storage: window.localStorage,
         snapshot,
-        persistAppendOnly: persist,
+        persistAppendOnly: async (choice) => {
+          await persist(choice);
+          recorded = true;
+        },
       });
       setProductAnalytics(product);
       setAdsMeasurement(ads);
@@ -285,8 +305,14 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       else window.requestAnimationFrame(() => returnFocus(null));
       setVisible(false);
       window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
-    } catch {
-      setError("We could not save your choices. No optional analytics were enabled.");
+    } catch (failure) {
+      setError(
+        recorded
+          ? "Your choices were saved, but this browser would not keep them, so you may be asked again."
+          : failure instanceof ChoiceUnanswered
+            ? "No answer came back, so we cannot tell whether your choices were saved. Choose again: the choice saved last is the one that holds."
+            : "We could not save your choices. No optional analytics were enabled.",
+      );
     } finally {
       setSaving(false);
     }

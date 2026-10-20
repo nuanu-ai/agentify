@@ -180,14 +180,18 @@ export const fillFromTheShop = async (
   };
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-    // Refused either way, with the true reason: a shop that did not answer has
-    // said nothing about the product.
+    // Refused either way, with the true reason: a shop that did not answer, or
+    // whose answer could not be read, has said nothing about the product.
+    const silent = !inspected.ok && inspected.again;
+    const unread = !inspected.ok && !inspected.again && !inspected.saidNo;
+    if (!inspected.ok && unread) unreadable(order.id, inspected.why);
     return {
       refused: {
         code: "cannot_fulfill",
-        message:
-          !inspected.ok && inspected.again
-            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+        message: silent
+          ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+          : unread
+            ? UNREADABLE_PRODUCT
             : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
@@ -411,6 +415,10 @@ const fillParcelFromTheShop = async (
     console.error(`[dashboard] ${order.id} waits: ${inspected.why}`);
     return null;
   }
+  if (!inspected.ok && !inspected.saidNo) {
+    unreadable(order.id, inspected.why);
+    return await refuse(UNREADABLE_PRODUCT);
+  }
   if (!inspected.ok || inspected.product.kind !== "parcel") {
     return await refuse(
       "This shop product is no longer a parcel this connector sells, so no WooCommerce order was created.",
@@ -426,10 +434,23 @@ const fillParcelFromTheShop = async (
     console.error(`[dashboard] ${order.id} waits: ${rates.why}`);
     return null;
   }
+  if (!rates.ok) {
+    if (!rates.saidNo) {
+      unreadable(order.id, rates.why);
+      return await refuse(
+        "The shop's cart answered about shipping to this place in a way that could not be read or" +
+          " trusted, so no WooCommerce order was created.",
+      );
+    }
+    return await refuse(
+      "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
+        " WooCommerce order was created.",
+    );
+  }
   const goods = centsOf(product.price.amount);
   const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
   const rate =
-    !rates.ok || goods === null || paid === null
+    goods === null || paid === null
       ? undefined
       : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
   if (rate === undefined) {
@@ -512,6 +533,19 @@ const fillParcelFromTheShop = async (
     `[dashboard] ${order.id} has no verifiable WooCommerce creation result${inTheShop}`,
   );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
+};
+
+const UNREADABLE_PRODUCT =
+  "The shop's answer to the product check could not be read or trusted when this order was" +
+  " placed, so no WooCommerce order was created.";
+
+/**
+ * The buyer is told only that the answer could not be read. Why goes to the
+ * dashboard's own log, which the operator reads and the merchant cannot; a
+ * reason carries no address.
+ */
+const unreadable = (orderId: string, why: string): void => {
+  console.error(`[dashboard] ${orderId} is refused, the shop's answer unread: ${why}`);
 };
 
 const samePermission = (left: WooPermission, right: WooPermission): boolean =>
@@ -709,11 +743,13 @@ export const quoteFromTheShop = async (
     Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
     parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
   );
-  // A shop that did not answer is not a shop that has none: "not available"
-  // would send the agent elsewhere, while null lets the gateway's wait run out
-  // and tells the agent the price check went unanswered. On a WooCommerce card
-  // (asynchronous or a parcel) that silence refuses the sale; on a synchronous
-  // card it would sell at the listed price instead.
+  // "Not available" is the seller's no, so it is said only where the shop's
+  // own readable answer ruled the sale out. A shop that did not answer, or
+  // whose answer could not be read or trusted, said nothing: null lets the
+  // gateway's wait run out and tells the agent the price check went
+  // unanswered. On a WooCommerce card (asynchronous or a parcel) that silence
+  // refuses the sale; on a `sync` or a `confirm` card it would sell at
+  // the listed price instead.
   const silent = (why: string): null => {
     console.error(
       `[dashboard] ${question.merchant_item_id} is not priced for ${question.price_id}, and nothing is said: ${why}`,
@@ -722,7 +758,9 @@ export const quoteFromTheShop = async (
   };
   if (read === null) return silent("the shop did not answer in time");
   const [inspected, rates] = read;
-  if (!inspected.ok) return inspected.again ? silent(inspected.why) : unavailable;
+  if (!inspected.ok) {
+    return inspected.again || !inspected.saidNo ? silent(inspected.why) : unavailable;
+  }
   const product = inspected.product;
   // A question with a place is a parcel's card, and the goods alone are not a
   // price it can be sold at.
@@ -732,7 +770,7 @@ export const quoteFromTheShop = async (
   let price = product.price;
   if (product.kind === "parcel") {
     if (rates === null) return unpriced("the question carries no place to ship to");
-    if (!rates.ok) return rates.again ? silent(rates.why) : unpriced(rates.why);
+    if (!rates.ok) return rates.again || !rates.saidNo ? silent(rates.why) : unpriced(rates.why);
     const goods = centsOf(product.price.amount);
     const carriage = cheapestCents(rates.rates);
     if (goods === null || carriage === null) {

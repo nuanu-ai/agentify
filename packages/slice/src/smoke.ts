@@ -118,10 +118,10 @@ const orderIdIn = (body: unknown): string | null => {
 /**
  * Judges the purchase from its answer and the order it opened.
  *
- * A synchronous sale carries the settlement on the answer. An asynchronous one
- * charges while the order is opened and answers with the order alone, so the
- * settlement is read from the order the in-process gateway recorded, once its
- * charge has been answered or the wait has run out.
+ * An answer given once its charge has gone through carries the settlement.
+ * One given before then answers with the order alone, so the settlement is
+ * read from the order the in-process gateway recorded, once its charge has
+ * been answered or the wait has run out.
  */
 export async function verdictOnPurchase(
   bought: Pick<Bought, "status" | "body" | "settlement">,
