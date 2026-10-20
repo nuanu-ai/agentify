@@ -1,7 +1,23 @@
+import type { ReactNode } from "react";
 import { isRouteErrorResponse, useRouteError } from "react-router";
 import type { Trouble } from "../answer.js";
 import { ErrorBoundary as PageTrouble } from "../root.js";
 import { Frame, type Tab } from "./frame.js";
+
+/** A list that could not be read, said where it would stand, with the way to read it again. */
+export const NotLoaded = ({
+  again,
+  children,
+}: Readonly<{ again: string; children: ReactNode }>) => (
+  <div className="not-loaded">
+    <div className="callout" role="alert">
+      {children}
+    </div>
+    <a className="button button-primary" href={again}>
+      Load again
+    </a>
+  </div>
+);
 
 /**
  * The error page of a screen whose loader only reads. A read that failed
@@ -27,15 +43,10 @@ export const readFailedIn = ({
     if (again === undefined) return <PageTrouble />;
     return (
       <Frame tab={tab} title={title}>
-        <div className="not-loaded">
-          <div className="callout" role="alert">
-            <div className="what">{`Your ${what} could not be loaded.`}</div>
-            <p className="why">Loading them changed nothing.</p>
-          </div>
-          <a className="button button-primary" href={again}>
-            Load again
-          </a>
-        </div>
+        <NotLoaded again={again}>
+          <div className="what">{`Your ${what} could not be loaded.`}</div>
+          <p className="why">Loading them changed nothing.</p>
+        </NotLoaded>
       </Frame>
     );
   };

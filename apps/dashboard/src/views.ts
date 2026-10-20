@@ -424,6 +424,16 @@ export interface ClosurePressed {
   readonly typed: string;
 }
 
+/**
+ * What became of a closure, drawn where the lists beside it could not be
+ * read: the press's own answer stands, and the lists are offered again.
+ */
+export interface ClosureUnlisted {
+  readonly pressed: ClosurePressed & { readonly note: string };
+  /** The list the closure was pressed on, the order opened there. */
+  readonly again: string;
+}
+
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;

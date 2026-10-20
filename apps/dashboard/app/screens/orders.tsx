@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { ClosurePressed, OrdersView, ToldOrders } from "../../src/views.js";
+import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
 import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
@@ -16,6 +16,7 @@ import {
 } from "../components/list.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
+import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
@@ -444,3 +445,20 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
     </>
   );
 }
+
+/**
+ * A closure's answer where the orders could not be read after it: what was
+ * typed is kept on the page, since no form is drawn to keep it in.
+ */
+export const ClosureUnlistedScreen = ({ view }: Readonly<{ view: ClosureUnlisted }>) => (
+  <NotLoaded again={view.again}>
+    <div className="what">{view.pressed.note}</div>
+    {view.pressed.typed === "" ? null : (
+      <>
+        <p className="why">The explanation you typed:</p>
+        <p className="why words">{view.pressed.typed}</p>
+      </>
+    )}
+    <p className="why">Your orders could not be loaded.</p>
+  </NotLoaded>
+);

@@ -55,6 +55,7 @@ import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
   CLOSURE_NOTES,
+  type ClosureUnlisted,
   cardsPlace,
   cardsView,
   closable,
@@ -199,7 +200,7 @@ export interface PageServices {
   };
   /** Stops this merchant's future Agentify fulfillment for one order. */
   readonly fulfillment: {
-    close(person: Person, form: FormData): Promise<Outcome<OrdersView>>;
+    close(person: Person, form: FormData): Promise<Outcome<OrdersView | ClosureUnlisted>>;
   };
   /** The card switches; each form carries the list it was drawn on. */
   readonly selling: {
@@ -1070,23 +1071,24 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           return { kind: "redirect", location: drawn };
         }
         if (refused && (!read.ok || closable(read.document))) return problemOf(closed);
-        // Drawn here rather than redirected to, so what was typed stays in
-        // the box and a reload does not repeat the note.
-        const page = await ordersScreen(person, order);
-        if (page.kind !== "view") return page;
-        return {
-          kind: "view",
-          status: refused ? 409 : 503,
-          view: {
-            ...page.view,
-            pressed: {
-              id: id.data,
-              note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
-              refusal: null,
-              typed: said,
-            },
-          },
+        const pressed = {
+          id: id.data,
+          note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
+          refusal: null,
+          typed: said,
         };
+        const status = refused ? 409 : 503;
+        // Drawn here rather than redirected to, so what was typed stays in
+        // the box and a reload does not repeat the note. Lists that cannot be
+        // read beside it do not take the press's answer away.
+        const page = await ordersScreen(person, order).catch(() => {
+          console.error("[dashboard] the orders beside a closure could not be read");
+          return null;
+        });
+        if (page?.kind !== "view") {
+          return { kind: "view", status, view: { pressed, again: drawn } };
+        }
+        return { kind: "view", status, view: { ...page.view, pressed } };
       },
     },
 

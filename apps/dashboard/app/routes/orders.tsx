@@ -8,7 +8,7 @@ import {
 import { acted, formOf, readOnly } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
-import { OrdersScreen } from "../screens/orders.js";
+import { ClosureUnlistedScreen, OrdersScreen } from "../screens/orders.js";
 import { services, signedIn } from "../services.js";
 
 /**
@@ -46,7 +46,7 @@ export default function Orders() {
   }
   return (
     <Frame tab="orders" title="Orders">
-      <OrdersScreen view={view} />
+      {"listing" in view ? <OrdersScreen view={view} /> : <ClosureUnlistedScreen view={view} />}
     </Frame>
   );
 }
