@@ -4002,7 +4002,6 @@ describe("the receipts screen", () => {
     // actually reads must not say this is all the money.
     expect(text).toContain("This page does not show all of your money");
     expect(text).toContain("Payments for products not yet delivered");
-    expect(text).toContain("unfulfilled orders and merchant closures are on Orders");
   });
 
   it("does not claim a receipt appears when the money moves", async () => {

@@ -88,10 +88,10 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
           .
         </p>
         <p>
-          This page does not show all of your money. Payments for products not yet delivered,
-          unfulfilled orders and merchant closures are on Orders. A purchase that was never paid
-          leaves no receipt, and no receipt appears while it is unknown whether the buyer was
-          charged.
+          This page does not show all of your money. Payments for products not yet delivered, and
+          orders that were not delivered or that you closed, are on Orders. A purchase that was
+          never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer
+          was charged.
         </p>
       </div>
       {view.rows.length === 0 ? (
