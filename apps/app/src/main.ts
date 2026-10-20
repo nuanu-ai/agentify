@@ -22,6 +22,7 @@ import { loadConfig as dashboardConfigOf } from "@agentify/dashboard/config";
 import { builtPages, dashboardFor, pagesFromSource } from "@agentify/dashboard/start";
 import { loadConfig as gatewayConfigOf } from "@agentify/gateway/config";
 import { startGateway } from "@agentify/gateway/start";
+import { listenForMetrics } from "@agentify/observability";
 
 const startedOrStopped = async () => {
   try {
@@ -46,6 +47,7 @@ const startedOrStopped = async () => {
 };
 
 const { gateway, dashboard } = await startedOrStopped();
+const metrics = listenForMetrics();
 
 /**
  * A shutdown in the order that lets each part finish what the others need.
@@ -63,6 +65,8 @@ const shutDown = async (signal: string): Promise<void> => {
   }
   stopping = true;
   console.log(`[app] ${signal}: stopping`);
+  metrics?.close();
+  metrics?.closeAllConnections();
   await dashboard.closeListeners();
   gateway.closeListener();
   await Promise.all([dashboard.stopWorker(), gateway.stop()]);

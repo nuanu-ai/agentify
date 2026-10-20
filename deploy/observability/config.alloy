@@ -83,6 +83,18 @@ prometheus.exporter.unix "host" {
 
 prometheus.exporter.self "collector" {}
 
+prometheus.scrape "application" {
+  targets = [
+    {__address__ = "127.0.0.1:19464", service = "app"},
+    {__address__ = "127.0.0.1:19465", service = "scanner"},
+    {__address__ = "127.0.0.1:19466", service = "scanner-worker"},
+  ]
+  job_name = "agentify/application"
+  scrape_interval = "30s"
+  scrape_timeout = "8s"
+  forward_to = [prometheus.relabel.agentify.receiver]
+}
+
 prometheus.scrape "host" {
   targets = prometheus.exporter.unix.host.targets
   job_name = "agentify/host"

@@ -1,75 +1,92 @@
-# Self-hosted observability
+# Agentify service health
 
-The owner requests logs and necessary telemetry for TEST and PRODUCTION in
-the shared self-hosted stack, without alerts. The collector and its operating
-procedure live in [deploy/observability](../../deploy/observability/README.md).
-Shared destination deployment belongs to `nuanu-ai/observability`; mesh access
-belongs to `nuanu-ai/infra`. The owner explicitly directs that the overview be
-created directly in self-hosted Grafana and adopted afterward.
+The primary reader is the owner acting as the on-call operator. The dashboard
+answers whether the product is serving users, which workflow is stalled and
+where to investigate next. The folder is `Agentify`; the dashboard is
+[`Service health`](https://grafana.nuanu.ai/d/agentify-overview/service-health).
+It opens on production, with TEST selected separately. The owner manages it
+directly in Grafana and adopts it afterward. No dashboard provisioning change,
+alert rule or notification route belongs to this work.
 
-Read-only inspection on 2026-10-19 finds TEST's application containers healthy
-with local Docker logs and no collector. PRODUCTION's `alloy.service` is
-active but attempts to write to Grafana Cloud: over a sampled twenty minutes,
-its journal contains 864 error lines, including 844 HTTP 401 lines. Its
-running counters report zero delivered Loki entries and 401,472 entries
-dropped because the receiver rejected them. These are counters for that
-process lifetime, not a twenty-minute loss estimate.
+The design follows [Google SRE's monitoring guidance](https://sre.google/sre-book/monitoring-distributed-systems/):
+user-visible symptoms precede causes, and traffic, errors, latency and saturation
+answer different questions. [Grafana's RED guidance](https://grafana.com/blog/2018/08/02/the-red-method-how-to-instrument-your-services/)
+organizes HTTP request measurements. [Prometheus instrumentation guidance](https://prometheus.io/docs/practices/instrumentation/)
+requires bounded dimensions and distinguishes absent observations from zero.
+These methods structure the questions; the application state machine and actual
+measurements determine the signals.
 
-The Joglo backend is running and serves existing producers, but its live writer
-inventory has no Agentify identity. Network access is delivered by
-[infra PR 370](https://github.com/nuanu-ai/infra/pull/370), merged as
-`11988e5039c03def21de22a56ce18fdf499305ae`. Its exact-commit apply and convergence
-pass. Both producer hosts resolve the private gateway, connect to TCP/8443,
-verify its hostname with the pinned CA, and receive HTTP 401 for unauthenticated
-log and metric writes. TCP/8444 remains unreachable. This is access acceptance;
-authenticated ingestion and destination readback remain pending.
+## Questions and evidence
 
-The prepared connection gives each channel its own metrics/logs writer,
-allows only the two inspected mesh identities to Joglo TCP/8443, pins Joglo's
-TLS root, and installs one separate collector per host. The Grafana view
-compares readiness, host capacity and collector delivery. No alert rules or
-notification routes are added. TEST email links and raw database logs stay
-local. Trace collection and application metric endpoints are outside this
-connection; the existing health route already reads the scanner's operational
-signals without exposing a new public surface.
+| Operator question | Evidence | Interpretation and limit |
+| --- | --- | --- |
+| Can someone reach the product? | Public DNS/TLS/HTTP/body checks from Joglo for the scanner, catalog and sign-in page | Independent of both app hosts; anonymous surface checks do not prove sign-in, scanning or payment completion. |
+| Are requests arriving and failing? | HTTP request counts by bounded route/method/response class; 5xx and abandoned answers separate | Expected x402 payment challenges are 4xx. No requests means idle, not demonstrated success. Health/assets and merchant long polling are excluded from interactive latency. |
+| Is it responsive? | Request-duration histogram p50/p95 and observation count, split by component | No latency without observations. A percentile with few requests is weak evidence. No invented SLO or arbitrary healthy-latency threshold. |
+| Are scans progressing? | Queue length/oldest age, running/stale workers, accepted and finished outcomes over fifteen minutes, completion p50/p95 and count | Durable scan rows avoid double-counting retries. Acceptance-to-finish duration differs from HTTP response time. |
+| Is commerce stuck or financially uncertain? | Open and overdue orders, oldest overdue age, unknown payment outcomes and oldest settlement uncertainty | Core deadlines use each order's stored policy. Unknown payments include closed orders. These gauges are neither payment retry instructions nor purchase-success rates. |
+| What version and evidence am I looking at? | Source SHA from each image, target reachability, snapshot success and last-success timestamp | A reachable listener can still have a failed business snapshot. Missing or incomplete data stays unknown. |
+| What explains the symptom? | Worker dependencies/heartbeat, analytics leases and dead letters, host capacity, collector delivery and scoped error logs | These are diagnosis signals below the product view. TEST host capacity covers a shared VM. Log volume is not a count of purchases. |
 
-Live activation remains pending the reviewed shared changes. Acceptance means
-fresh real log readback and metrics from both channels at the destination,
-with negative authorization and privacy checks. Local checks are evidence for
-the configuration, not a claim that either channel is delivering.
+## Layout and interpretation
 
-Local verification uses the pinned Alloy image. Both channel configurations
-validate. Docker fixtures preserve the production selector structure, deliver
-commerce/scanner diagnostics and edge logs from both allowed projects, and
-exclude sandbox mail, an unrelated project and an unrelated service. Removing either mail exclusion causes
-the smoke check to fail. A separate full collector run delivers real exporter
-samples to an isolated HTTP receiver: decoded Prometheus remote-write samples
-contain the three canonical jobs, three distinct readiness components, and the
-expected channel labels. Removing writer onboarding also causes its behavioral
-test to fail. The separate adversarial review found a Docker filter error:
-multiple values for the same label key require all values to match. The
-corrected configuration discovers the project label and explicitly keeps
-either allowed project through relabeling. The revised smoke fails on the
-broken selector and passes on the corrected source. The reviewer independently
-re-ran it and reports no unresolved findings.
+The first row presents independent public access, telemetry coverage and
+request symptoms. The workflow row shows scans and commerce, with the meaning
+of the fifteen-minute cohort stated beside its charts. Diagnostics and
+telemetry delivery are collapsed by default. Log panels preserve the selected
+environment and time range; the service filter applies to log investigation,
+not to the product-level questions above it.
 
-Removing project isolation also fails the smoke on the unrelated project's
-synthetic log. A full production-channel collector run against an isolated
-receiver exercises both accepted and rejected Loki batches; every metric name
-and `component_id` used by the overview matches actual exported samples. All
-nine overview expressions pass authenticated read-only queries on Joglo with
-empty results, as expected before producer installation. The overview is
-created directly at
-[`/d/agentify-overview/agentify`](https://grafana.nuanu.ai/d/agentify-overview/agentify),
-in folder UID `cg1pizzl7hl34c`; the owner will adopt it afterward. No dashboard
-infrastructure PR or validation-pipeline change is published. `pnpm test` passes
-5,250 unit cases and both 14-case operational suites; Biome reports no errors.
+Public probes and same-host readiness have separate labels and panels.
+`job="agentify/public",vantage="joglo"` answers the public-access question.
+`job="agentify/health"` describes the producer's path to its own public
+health routes. TEST's same-host checks currently time out even though its
+public surfaces answer externally; the cause of that path failure is not
+proved. It must not become a product-down verdict.
 
-The destination's complete local validation passes 213 tests, Ansible lint and
-playbook syntax checks; both CI runs for
-[observability PR 27](https://github.com/nuanu-ai/observability/pull/27) pass.
-The accepted access change passed the current infra repository validator and
-the full Headscale shell suite under Linux. Its owner-dispatched exact-head
-plan updated only `headscale_policy.main`; the merged-commit apply, convergence
-and acceptance checks pass. Destination writer activation and producer
-installation remain pending the reviewed source changes.
+A missing series is unknown, and a failed snapshot removes business gauges.
+A current successful snapshot with a zero count establishes an empty queue or
+cohort. HTTP 5xx, abandoned answers and expected 4xx remain distinct. Request
+latency excludes intentional worker long polling; scan completion latency is
+shown independently. No aggregate success percentage mixes these denominators.
+
+## Collection and delivery
+
+Producer collectors send filtered Docker logs to self-hosted Loki, and host,
+collector, readiness and private application measurements to Mimir. Each
+channel uses its own existing write-only identity and the pinned Joglo CA.
+Shared receiver ownership stays in `nuanu-ai/observability`; narrow mesh access
+stays in `nuanu-ai/infra`. Neither needs a further change for these measurements.
+The [producer runbook](../../deploy/observability/README.md) and
+[public-probe runbook](../../deploy/observability/public-probes/README.md)
+define installation, readback and rollback.
+
+The installed collectors already deliver logs and baseline metrics from both
+channels. The application instrumentation and Joglo probe source in this change
+are pending review and rollout. The dashboard prepares their queries but reports
+missing data until those measurements arrive. Dashboard existence, a successful
+build or a running collector is not acceptance of live telemetry.
+
+Application instrumentation adds no user events or request payload logs.
+Database snapshots use a separate read-only pool with bounded execution time.
+Commerce observes at most 1,000 matching orders; exceeding that limit marks
+coverage unavailable rather than reporting a truncated healthy count.
+[The security boundary](../decisions/0040-operational-metrics-stay-private.md)
+keeps listeners private and prohibits observability from modifying business state.
+
+## Acceptance
+
+Unit checks cover actual HTTP completion/abandonment, bounded routing, expected
+payment challenges, snapshot failures and time semantics. Disposable Postgres
+checks exercise the real queries, migrations, read-only enforcement and statement
+timeout. A separate adversarial reader checks the source and deployment boundary.
+Local Alloy validation and positive/negative probe-content checks establish the
+configuration's behavior without sending credentials or writes to a live receiver.
+
+After the reviewed source is released, verify the exact image source SHA, the
+three private listeners and application scrapes per channel, successful business
+snapshots, and six independent public checks. Read back fresh samples through
+Mimir and actual logs through Loki. Inspect missing-data behavior as well as
+successful samples. A real end-to-end paid purchase, authenticated sign-in or
+completed scan remains a separate acceptance exercise with its own authority
+and spending limits; this dashboard does not claim to perform those exercises.

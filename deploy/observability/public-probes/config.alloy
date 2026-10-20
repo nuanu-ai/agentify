@@ -1,0 +1,70 @@
+logging {
+  level = "warn"
+}
+
+prometheus.exporter.blackbox "public" {
+  config_file = "/etc/alloy/blackbox.yaml"
+  target {
+    name = "scanner_page"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/"
+    module = "http_page"
+    labels = {component = "scanner_page"}
+  }
+  target {
+    name = "catalog"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/x402/catalog"
+    module = "http_catalog"
+    labels = {component = "catalog"}
+  }
+  target {
+    name = "sign_in_page"
+    address = {test = "https://test.agentify.ad", production = "https://agentify.ad"}[sys.env("AGENTIFY_CHANNEL")] + "/dashboard/sign-in"
+    module = "http_page"
+    labels = {component = "sign_in_page"}
+  }
+}
+
+prometheus.scrape "public" {
+  targets = prometheus.exporter.blackbox.public.targets
+  job_name = "agentify/public"
+  scrape_interval = "30s"
+  scrape_timeout = "10s"
+  forward_to = [prometheus.relabel.public.receiver]
+}
+
+prometheus.relabel "public" {
+  rule {
+    target_label = "job"
+    replacement = "agentify/public"
+  }
+  rule {
+    target_label = "app"
+    replacement = "agentify"
+  }
+  rule {
+    target_label = "environment"
+    replacement = sys.env("AGENTIFY_CHANNEL")
+  }
+  rule {
+    target_label = "vantage"
+    replacement = "joglo"
+  }
+  rule {
+    target_label = "instance"
+    replacement = "joglo"
+  }
+  forward_to = [prometheus.remote_write.joglo.receiver]
+}
+
+prometheus.remote_write "joglo" {
+  endpoint {
+    url = sys.env("OBSERVABILITY_METRICS_URL")
+    basic_auth {
+      username = sys.env("OBSERVABILITY_USERNAME")
+      password = sys.env("OBSERVABILITY_PASSWORD")
+    }
+    tls_config {
+      ca_file = sys.env("OBSERVABILITY_CA_FILE")
+    }
+  }
+}

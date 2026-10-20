@@ -14,7 +14,10 @@ services:
   # rather than a variable, so an environment file naming AGENTIFY_SEED_KEY
   # seeds nothing either; the release's preflight also refuses a rendered seed.
   app:
+    ports:
+      - "127.0.0.1:19464:9464"
     environment:
+      AGENTIFY_METRICS_PORT: "9464"
       SANDBOX_MERCHANT_KEY: ""
 
   merchant:
@@ -25,9 +28,12 @@ services:
     profiles: ["fixtures"]
 
   scanner:
+    ports:
+      - "127.0.0.1:19465:9464"
     # Closed unless the channel's own file says otherwise: what a public site
     # accepts from strangers is the operator's decision, not the packaging's.
     environment:
+      AGENTIFY_METRICS_PORT: "9464"
       REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-false}"
       # compose.yaml gives these two sandbox values that are public in this
       # repository: one signs every report link, the other encrypts the address
@@ -38,6 +44,12 @@ services:
       # stored address stops decrypting.
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/README.md, Setting up a host}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/README.md, Setting up a host}"
+
+  scanner-worker:
+    ports:
+      - "127.0.0.1:19466:9464"
+    environment:
+      AGENTIFY_METRICS_PORT: "9464"
 
   scanner-privacy:
     # The scheduled job reads the same two, because deleting what retention

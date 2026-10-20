@@ -11,6 +11,7 @@
  */
 
 import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/core";
+import { telemetry } from "@agentify/observability";
 import {
   type AuthMode,
   type ErrorCode,
@@ -78,6 +79,12 @@ export function buildApp(
   routes: readonly [RouteName, RouteDefinition][] = mountableRoutes(),
 ): Express {
   const app = express();
+  app.use((request, response, next) => {
+    telemetry.observeHttp("gateway", request, response, () =>
+      typeof request.route?.path === "string" ? request.route.path : "unmatched",
+    );
+    next();
+  });
   const handlers = handlersFor(gateway);
 
   // Only affects the client address in logs: the challenge names the public

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
+import { telemetry } from "@agentify/observability";
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
 import { API_ROUTES, ERROR_CODES, mountableRoutes } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
@@ -73,6 +74,19 @@ const publish = async (served: Served, card: Card): Promise<string> => {
 };
 
 describe("the surface is the table", () => {
+  it("exports bounded route templates without order identifiers or query tokens", async () => {
+    const { served } = await started();
+    await served.call(
+      "GET",
+      "/x402/orders/private-order-identifier/status?token=private-query-token",
+    );
+    await served.call("GET", "/unknown/private-unmatched-path");
+    const exported = await telemetry.metrics();
+    expect(exported).toContain('route="/x402/orders/:order_id/status"');
+    expect(exported).not.toMatch(
+      /private-order-identifier|private-query-token|private-unmatched-path/,
+    );
+  });
   it("serves every call the contract says may be served", async () => {
     // Catches a route express mounts but does not match at its own literal path,
     // which would answer "no such call" at the address the contract publishes.

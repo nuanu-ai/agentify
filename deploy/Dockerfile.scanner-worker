@@ -31,6 +31,8 @@ RUN pnpm --filter @agentify/scanner-contracts build \
   && pnpm --filter @agentify/scanner build \
   && pnpm --filter @agentify/scanner-worker build
 
+ARG AGENTIFY_SOURCE_REVISION=unknown
+ENV AGENTIFY_SOURCE_REVISION=$AGENTIFY_SOURCE_REVISION
 USER node
 EXPOSE 8081
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \

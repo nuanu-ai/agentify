@@ -24,6 +24,7 @@
     "listing": "tsx src/listing.ts"
   },
   "dependencies": {
+    "@agentify/observability": "workspace:*",
     "@coinbase/cdp-sdk": "1.55.0",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "@agentify/core": "workspace:*",

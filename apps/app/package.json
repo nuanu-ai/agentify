@@ -10,6 +10,7 @@
     "dev": "tsx src/main.ts --dashboard-from-source"
   },
   "dependencies": {
+    "@agentify/observability": "workspace:*",
     "@agentify/dashboard": "workspace:*",
     "@agentify/gateway": "workspace:*"
   },
