@@ -621,10 +621,8 @@ export const ordersView = (
           : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
     showAll: "Show all orders",
   });
-  // Where the list is the orders that need the merchant, they are told in
-  // full in its place, so no row of the list is drawn to open.
   const needsHere = asked.show === "needs";
-  const onPage = new Set(needsHere ? [] : listing.rows.map((row) => row.id));
+  const onPage = new Set(listing.rows.map((row) => row.id));
   const opens = (row: OrderRow) => {
     const search = new URLSearchParams(onPage.has(row.id) ? query : { q: row.id });
     search.set("details", row.id);
@@ -666,6 +664,14 @@ export const ordersView = (
     waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
   };
 };
+
+/** Where a closure leads back to: the list its form's fields name. */
+export const ordersPlace = (fields: URLSearchParams): string =>
+  placeOf(
+    "/orders",
+    fields,
+    orderSegments({ orders: [] }, new Set()).map((one) => one.key),
+  );
 
 /**
  * A closure press the page cannot simply show: a write whose answer was lost

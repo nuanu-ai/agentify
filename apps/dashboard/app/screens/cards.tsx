@@ -2,7 +2,7 @@ import { Button } from "@agentify/ui";
 import type { CardControl, CardPrice, CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
 import { Cell, List, ListEmpty, Row } from "../components/list.js";
-import { CutNote, ListTools, NothingHere } from "../components/listing.js";
+import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
@@ -10,15 +10,6 @@ import { Word } from "../components/word.js";
 import styles from "./cards.module.css";
 
 type Place = CardsView["listing"]["place"];
-
-/**
- * The list a switch is pressed on, carried in its form, so the press leads
- * back to the search, the segment and the page the merchant was reading.
- */
-const Kept = ({ place }: Readonly<{ place: Place }>) =>
-  Object.entries(place).map(([name, value]) => (
-    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
-  ));
 
 /**
  * A fixed price opens to the moment it holds from, which the browser does at
@@ -49,7 +40,7 @@ const Control = ({
       <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
         {(pending) => (
           <>
-            <Kept place={place} />
+            <KeptPlace place={place} />
             <Button
               compact
               variant={control.verb === "resume" ? "primary" : "secondary"}
@@ -75,7 +66,7 @@ export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
     <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
       {(pending) => (
         <>
-          <Kept place={listing.place} />
+          <KeptPlace place={listing.place} />
           <Button
             compact
             variant={allSelling.verb === "resume" ? "primary" : "secondary"}

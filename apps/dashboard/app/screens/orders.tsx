@@ -1,5 +1,5 @@
 import { Button, Field } from "@agentify/ui";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, OrdersView, ToldOrders } from "../../src/views.js";
 import { Ident } from "../components/copy.js";
@@ -14,7 +14,7 @@ import {
   Row,
   RowMore,
 } from "../components/list.js";
-import { CutNote, ListTools, NothingHere } from "../components/listing.js";
+import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
@@ -38,7 +38,10 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
  * product and its sum, then what happened and what is the merchant's to do,
  * then its ID and when its price was set.
  */
-const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
+const Told = ({
+  order,
+  children,
+}: Readonly<{ order: ToldOrders["rows"][number]; children?: ReactNode }>) => (
   <li className={styles.told}>
     <div className={styles.state}>
       <Word word={order.state} />
@@ -61,14 +64,25 @@ const Told = ({ order }: Readonly<{ order: ToldOrders["rows"][number] }>) => (
         Price set <Moment at={order.priceSet} />
       </span>
     </div>
+    {children}
   </li>
 );
 
-/** Orders told in full, a row of their own each. */
-const ToldRows = ({ told, label }: Readonly<{ told: ToldOrders; label: string }>) => (
+/** Orders told in full, a row of their own each, with what `more` draws under each. */
+const ToldRows = ({
+  told,
+  label,
+  more,
+}: Readonly<{
+  told: ToldOrders;
+  label: string;
+  more?: (order: ToldOrders["rows"][number]) => ReactNode;
+}>) => (
   <List label={label} columns="1fr">
     {told.rows.map((order) => (
-      <Told key={order.id} order={order} />
+      <Told key={order.id} order={order}>
+        {more?.(order)}
+      </Told>
     ))}
   </List>
 );
@@ -103,7 +117,14 @@ const CloseFulfillment = ({
   again,
   typed,
   refusal,
-}: Readonly<{ id: string; again: boolean; typed: string; refusal: string | null }>) => {
+  place,
+}: Readonly<{
+  id: string;
+  again: boolean;
+  typed: string;
+  refusal: string | null;
+  place: OrdersView["listing"]["place"];
+}>) => {
   const press = again ? "Close again" : "Close fulfillment";
   return (
     <section className={styles.close} aria-label={press}>
@@ -117,6 +138,7 @@ const CloseFulfillment = ({
         {(pending) => (
           <>
             <input type="hidden" name="order_id" value={id} />
+            <KeptPlace place={place} />
             <Field
               name="message"
               label="Explanation to the buyer (optional)"
@@ -146,7 +168,12 @@ const CloseFulfillment = ({
 const OrderDetails = ({
   row,
   pressed,
-}: Readonly<{ row: OrdersView["listing"]["rows"][number]; pressed: ClosurePressed | null }>) => {
+  place,
+}: Readonly<{
+  row: OrdersView["listing"]["rows"][number];
+  pressed: ClosurePressed | null;
+  place: OrdersView["listing"]["place"];
+}>) => {
   const said = pressed?.id === row.id ? pressed : null;
   return (
     <RowMore
@@ -203,6 +230,7 @@ const OrderDetails = ({
             again={row.closing === "again"}
             typed={said?.typed ?? ""}
             refusal={said?.refusal ?? null}
+            place={place}
           />
         )}
       </div>
@@ -255,7 +283,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
                 <Cell at="aside">
                   <Ident value={row.id} what="order ID" />
                 </Cell>
-                <OrderDetails row={row} pressed={view.pressed} />
+                <OrderDetails row={row} pressed={view.pressed} place={listing.place} />
               </Row>
             </Fragment>
           ))}
@@ -305,11 +333,17 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {here?.key === "needs" ? (
-        <Group title="Needs you" count={here.count} warn aside={closureHelp}>
+        <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>
           {listing.rows.length === 0 ? (
             <NothingHere listing={listing} />
           ) : (
-            <ToldRows told={view.needsYou} label="Orders that need you" />
+            <ToldRows
+              told={view.needsYou}
+              label="Orders that need you"
+              more={(order) => (
+                <OrderDetails row={order} pressed={view.pressed} place={listing.place} />
+              )}
+            />
           )}
           <CutNote cut={listing.cut} />
         </Group>

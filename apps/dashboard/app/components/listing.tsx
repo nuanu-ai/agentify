@@ -90,6 +90,15 @@ export function ListTools({
   );
 }
 
+/**
+ * The list a press is made on, carried in its form, so the press leads back
+ * to the search, the segment and the page the merchant was reading.
+ */
+export const KeptPlace = ({ place }: Readonly<{ place: Listing<unknown>["place"] }>) =>
+  Object.entries(place).map(([name, value]) => (
+    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
+  ));
+
 /** Under a list cut short: which rows of how many, and the ways to the rest. */
 export function CutNote({ cut }: Readonly<{ cut: CutView | null }>) {
   if (cut === null) return null;
