@@ -133,13 +133,11 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         label="Search orders"
         placeholder="Search by order ID or product"
       />
-      {view.closureUnconfirmed ? (
+      {view.closureNote === null ? null : (
         <p className="problem" role="status">
-          The closure could not be confirmed. Read this order's current state below; if fulfillment
-          is still open, you can safely try closing it again. The first recorded closure keeps its
-          time and explanation.
+          {view.closureNote}
         </p>
-      ) : null}
+      )}
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.needsYou.of === 0 ? null : (
         <Group

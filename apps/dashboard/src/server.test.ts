@@ -6507,6 +6507,28 @@ describe("closing fulfillment from Orders", () => {
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 
+  it("leads back to the order in its own words when a delivery lands before the closure", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.deliverOrder(id, { iccid: "arrived first" });
+          return await real.closeOrder(id, request);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const posted = await running.browser.post("/orders", { order_id: id, message: "Too late." });
+    expect(posted.status).toBe(303);
+    const read = await running.browser.get(posted.to ?? "");
+    const text = readable(read.html);
+    expect(text).toContain("Nothing was closed: this order ended before your closure arrived.");
+    expect(text).toContain("Delivered");
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
   it("refuses foreign-origin, mismatched-account and unowned order posts", async () => {
     const running = await started();
     const id = await paid(running);

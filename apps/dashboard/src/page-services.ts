@@ -56,6 +56,7 @@ import {
   type CardsView,
   cardsPlace,
   cardsView,
+  closable,
   type FrameView,
   type OrdersView,
   ordersView,
@@ -976,11 +977,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const closed = await gateway.closeOrder(id.data, request.data);
         const destination = new URLSearchParams({ q: id.data, details: id.data });
         if (!closed.ok) {
-          if (closed.status !== 0 && closed.status < 500) return problemOf(closed);
-          // A timed-out write may have committed. Only a fresh read proves it.
+          const refused = closed.status !== 0 && closed.status < 500;
+          if (refused && closed.status !== 409) return problemOf(closed);
+          // A timed-out write may have committed, and a refused one may have
+          // lost to a delivery or an ending: only a fresh read says which.
           const read = await gateway.getOrder(id.data);
-          if (!read.ok || read.document.merchant_closure === undefined)
+          if (refused) {
+            if (!read.ok || closable(read.document)) return problemOf(closed);
+            if (read.document.merchant_closure === undefined) destination.set("closure", "ended");
+          } else if (!read.ok || read.document.merchant_closure === undefined) {
             destination.set("closure", "unconfirmed");
+          }
         }
         return {
           kind: "redirect",
