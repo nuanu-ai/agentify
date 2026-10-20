@@ -25,7 +25,7 @@ export function ListTools({
   /**
    * Where a search was made, the sentence saying what it reads and that the
    * counts are its own, given the words searched for; the way back to the
-   * whole list follows it.
+   * whole list follows it, unless the empty list under it offers that way.
    */
   searched?: (q: string) => string;
 }>) {
@@ -74,16 +74,21 @@ export function ListTools({
       )}
       {searched === undefined || listing.search.q === "" ? null : (
         <p className="search-cut">
-          {searched(listing.search.q)}{" "}
-          <Link
-            to={
-              listing.search.show === null
-                ? path
-                : `${path}?${new URLSearchParams({ show: listing.search.show })}`
-            }
-          >
-            Clear the search
-          </Link>
+          {searched(listing.search.q)}
+          {listing.nothing === null ? (
+            <>
+              {" "}
+              <Link
+                to={
+                  listing.search.show === null
+                    ? path
+                    : `${path}?${new URLSearchParams({ show: listing.search.show })}`
+                }
+              >
+                Clear the search
+              </Link>
+            </>
+          ) : null}
         </p>
       )}
     </div>

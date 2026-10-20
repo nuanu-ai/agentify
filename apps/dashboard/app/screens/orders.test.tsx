@@ -261,10 +261,8 @@ describe("the counts beside a search", () => {
   it("are said to be the search's, with the way back to every order's", () => {
     // A status word finds nothing, and a count of none under it is not a
     // merchant with nothing to do.
-    const tools = toolsOf("q=unfulfilled");
-
-    expect(readable(tools)).toContain("“unfulfilled”");
-    expect(linksIn(tools)).toContain("/orders");
+    expect(readable(toolsOf("q=unfulfilled"))).toContain("“unfulfilled”");
+    expect(linksIn(toolsOf("q=vpn"))).toContain("/orders");
   });
 
   it("lead back to the segment the search was made in", () => {

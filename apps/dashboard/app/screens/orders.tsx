@@ -309,6 +309,9 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
   const here = listing.segments.find((one) => one.here);
   const needs = listing.segments.find((one) => one.key === "needs");
+  // The page's own links to an order search for it and open it; the merchant
+  // searched for nothing there, so nothing is said of the search.
+  const opening = listing.rows.length === 1 && listing.rows[0]?.opened === true;
   const note = (
     <p className="note">
       Purchases that closed before they had a price are not listed; nothing was charged for them.
@@ -329,7 +332,12 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         path="/orders"
         label="Search orders by ID or product"
         placeholder="Search by order ID or product"
-        searched={(q) => `Only orders whose ID or product matches “${q}” are counted and shown.`}
+        {...(opening
+          ? {}
+          : {
+              searched: (q: string) =>
+                `Only orders whose ID or product matches “${q}” are counted and shown.`,
+            })}
       />
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {here?.key === "needs" ? (
