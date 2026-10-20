@@ -195,6 +195,15 @@ describe("verifying a payment", () => {
     },
   );
 
+  it("does not accept a payment whose facilitator names a payer other than the signer", async () => {
+    const other = "0x00000000000000000000000000000000000000ff";
+    const answered = await facilitatorFor(
+      new Answering({ verify: { isValid: true, payer: other } }),
+      edge,
+    ).verify(charge(honest()));
+    expect(answered).toMatchObject({ verified: "unknown" });
+  });
+
   it("refuses Permit2 before verification or settlement", async () => {
     const client = new Answering();
     const payment = encodePaymentSignatureHeader({

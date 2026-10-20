@@ -494,6 +494,35 @@ describe("recovering a payment without another charge", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
+  it("does not search the chain for an old payment whose signer is not the order's buyer", async () => {
+    const { h, recovery, orderId } = await purchase();
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.store.withOrder(orderId, (found) => {
+      const {
+        paymentAttempt: _attempt,
+        paymentRecovery: _recovery,
+        paymentFingerprint: _fingerprint,
+        ...saved
+      } = found;
+      return { save: saved, result: null };
+    });
+    const stranger = { ...recovery, payer: "0x00000000000000000000000000000000000000ff" };
+    h.runtime.facilitator.recoveryFor = async () => stranger;
+    let searched = 0;
+    h.runtime.facilitator.reconcile = async () => {
+      searched += 1;
+      return { settled: true, transaction: TRANSACTION, executedAt: h.now() };
+    };
+    h.advance(60_000);
+    await h.gateway.runner.reconcilePayments();
+    expect(searched).toBe(0);
+    expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
+    expect(
+      (await h.store.claimPayment(authorizationFingerprint(stranger), "another-order")).claimed,
+    ).toBe(true);
+  });
+
   it("leaves a legacy authorization assigned to two saved purchases unknown", async () => {
     const { h, recovery, orderId } = await purchase();
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
