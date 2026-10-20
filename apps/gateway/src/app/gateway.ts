@@ -107,7 +107,13 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
-import { endingSentenceOf, OrderRunner, RECONCILE_PAYMENTS, SWEEP_EFFECTS } from "./runner.js";
+import {
+  endingSentenceOf,
+  OrderRunner,
+  RECONCILE_PAYMENTS,
+  SWEEP_EFFECTS,
+  takesANewPayment,
+} from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -1382,15 +1388,20 @@ export class Gateway {
     // Used authorizations and signatures can be read from the chain, so even
     // the exact saved payment is no private credential for an order or goods.
     //
-    // The payee is this order's merchant's recorded split, read once here at
-    // the instant of verification, and the same string is kept on the order
+    // A payment that will be charged is checked against the merchant's split
+    // in force now, read once here, and the same string is kept on the order
     // for the charge, so the money goes where the payer signed for it to go
-    // rather than wherever the merchant's wallet has moved by then.
+    // rather than wherever the merchant's wallet has moved by then. A payment
+    // for an order already paid, which only returns the purchase to its payer,
+    // is checked against where that order's money went: the payment request
+    // its payer kept names that split, whatever the merchant is paid at today.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
     const payTo =
-      payingMerchant === null
-        ? null
-        : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
+      before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order)
+        ? before.payTo
+        : payingMerchant === null
+          ? null
+          : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
 
     const verified = await this.runtime.facilitator.verify({
       paymentRef: before.paymentRef,

@@ -1683,6 +1683,13 @@ function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
 }
 
 /**
+ * Whether a verified payment presented for this order now would be charged,
+ * rather than only answered with where the purchase stands.
+ */
+export const takesANewPayment = (order: Order): boolean =>
+  eventsForVerifiedPayment(order, 0).length > 0;
+
+/**
  * The events a verified payment drives an order with, from where it stands:
  * `payment_verified` for an order waiting to be paid, preceded by
  * `purchase_repeated` for one a repeat reopens. An empty list tells the owner
