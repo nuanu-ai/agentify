@@ -127,9 +127,11 @@ const phoneE164Schema = z
   .pipe(z.string().regex(/^\+[1-9]\d{7,14}$/));
 
 /**
- * A request for the full report of one scan. The address is absent from a
- * signed-in person's own ask, which is filed under the session's address and
- * sends no message; the route refuses a stranger's ask without one.
+ * A request for the full report of one scan, naming the address it is for: the
+ * one a stranger typed, or the one a signed-in person's page showed. The schema
+ * leaves the address optional so that the route can refuse an ask without one
+ * in its own words; the route files a signed-in ask only when the address
+ * matches the session's, and sends a stranger's a link.
  */
 export const registrationRequestSchema = z
   .object({
