@@ -37,6 +37,7 @@ export class MemoryQueue implements Queue {
   readonly #patience: ReminderPatience;
   /** What would run daily, by name, so a test can run it when it wants to. */
   readonly daily = new Map<string, () => Promise<unknown>>();
+  readonly minutely = new Map<string, () => Promise<unknown>>();
 
   constructor(patience: ReminderPatience = { attempts: 3, retryDelayMs: 5 }) {
     this.#patience = patience;
@@ -173,6 +174,10 @@ export class MemoryQueue implements Queue {
   /** Records what would run daily and never runs it. */
   async everyDay(name: string, work: () => Promise<unknown>): Promise<void> {
     this.daily.set(name, work);
+  }
+
+  async everyMinute(name: string, work: () => Promise<unknown>): Promise<void> {
+    this.minutely.set(name, work);
   }
 
   async start(): Promise<void> {

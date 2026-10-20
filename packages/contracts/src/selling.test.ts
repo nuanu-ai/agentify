@@ -16,7 +16,7 @@ describe("whether a merchant is taking new orders", () => {
 
   it("says in the exported document that leaving is not a heavier pause", () => {
     // Pausing lets open orders play out; leaving closes them and leaves the
-    // merchant owing refunds. A reader of the exported document sees only
+    // merchant with paid purchases unfulfilled. A reader of the exported document sees only
     // three strings, so the description has to say it.
     const description = toJsonSchemas().selling_state.description ?? "";
 

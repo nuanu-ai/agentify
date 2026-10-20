@@ -710,6 +710,63 @@ other service holds it or it opens any other door. TEST adds
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`.
 
+The channel overlays use free public Base RPC for background payment recovery:
+`https://sepolia.base.org` on TEST and `https://mainnet.base.org` on PRODUCTION.
+`AGENTIFY_PAYMENT_RPC_URL` replaces that address; setting it explicitly to an
+empty value disables chain checks. The gateway receives it as `PAYMENT_RPC_URL`.
+Local Compose and the standalone gateway have no default RPC.
+
+RPC is read only and is called for unanswered payments after their response
+deadline, never for ordinary verification or settlement. The gateway asks the
+endpoint for its chain id at start-up, and the log's first lines say whether it
+serves the channel's network; it asks again on every recovery poll, so an
+endpoint that did not answer at start-up is used as soon as it does, without a
+restart. One that serves another chain fails every poll with a line saying to
+point `PAYMENT_RPC_URL`, which the channels set through
+`AGENTIFY_PAYMENT_RPC_URL`, at the channel's network. Payments through the
+facilitator go on either way.
+
+Recovery reads the finalized block and the USDC nonce state there. When the
+nonce was used and no transaction hash is known, it finds the first block at or
+after the moment the payment was verified by bisecting block times, then reads
+the receipts of the blocks up to the authorization's expiry, which for a
+payment accepted here is about two minutes of blocks. It sends no log queries:
+Base mainnet's public endpoint refuses them and Base Sepolia's caps them at 200
+blocks. The endpoint must therefore support `eth_chainId`,
+`eth_getBlockByNumber`, `eth_call`, `eth_getBlockReceipts` and
+`eth_getTransactionReceipt`, and it must serve contract state at old blocks.
+Every recovery reads nonce state at the finalized block, which on Base is
+several hundred blocks, about twenty minutes, behind the head, and the end of a
+search reads it at a block older still. A full node that keeps state only for
+the most recent 128 blocks fails every poll; the public Base endpoints and
+archive providers serve it. The
+URL can contain a provider key and belongs in the protected environment file,
+never in a public diagnostic or PR; log lines name only its host.
+
+The endpoint's answers are trusted as payment evidence, as the facilitator's
+are. Recovery checks the token contract, the chain, the payer, the merchant's
+split, the amount, the nonce, finality and that the block is the canonical one,
+but an endpoint that serves a consistent false receipt could release goods
+without payment, and one that misreports nonce state could end a paid order as
+unpaid. Choose a provider you trust as much as the facilitator.
+
+With RPC disabled, payments use the facilitator's verification and settlement.
+Its confirmed answer completes the payment as usual; a lost or pending answer
+remains unresolved and forbids a second charge. Enabling RPC later starts
+checking those saved attempts without submitting again.
+
+An unavailable configured RPC also leaves ordinary facilitator payments
+available, and missing recovery evidence keeps an existing payment unresolved.
+Every minute while any payment is unresolved, the gateway logs how many there
+are and how long the oldest has waited, says when recovery is off, and names
+the failure when the chain could not be read, for example an HTTP 429 from a
+rate limit. A poll stopped by a refused read keeps the blocks it had already
+read, so a rate-limited endpoint is slow rather than stuck. The public Base RPCs are rate limited and promise nothing about
+time, so recovery has no guaranteed completion time. If those lines persist,
+this same setting can select a provider with enough capacity. Changing the
+endpoint must preserve its network. This setting changes no merchant SDK
+configuration.
+
 Both channels settle through Coinbase's facilitator, so a payment that passes
 on TEST has met the facilitator live buyers meet, and a TEST product can enter
 Coinbase's testnet catalogue. Each channel holds its own Coinbase secret API
@@ -832,6 +889,23 @@ confirm that an existing email-link account retains the same account and
 merchant, and check sign-out and an intelligible return after cancellation.
 The email-link route must still work. These checks require the channel's
 Google client and real acceptance accounts; offline tests do not prove them.
+
+## Live sales approval in the admin screen
+
+Sign in on the live site with an account carrying the administrative flag
+below. Open `/admin`, follow **Manage live sales approval**, and find the seller
+by their account email. Check the displayed seller name and merchant ID, then
+confirm **Allow this merchant to sell for real money** and press **Approve live
+sales**. The account must already have a merchant. Approval creates none,
+changes no order and moves no money. The seller must still meet all other
+publication and selling requirements.
+
+Only live grants approval; a test or sandbox screen explains that none is
+needed there. A repeated grant preserves the original approval time. If the
+write's answer is lost, the result is unknown: find the merchant again to read
+the status, or repeat the same approval safely. The existing `pnpm approve
+<email>` terminal command grants the same permission. Neither route proves that
+a particular payment occurred.
 
 ## Who opens /admin
 

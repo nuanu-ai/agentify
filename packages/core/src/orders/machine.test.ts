@@ -161,7 +161,7 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
   // A debt, and the widest row in the table. Everything the merchant can say
   // about the order is heard: late goods close the debt, and the rest are
   // taken and change nothing rather than being dismissed as meaningless.
-  refund_due: [
+  unfulfilled: [
     "purchase_repeated",
     "order_dispatched",
     "handler_accepted",
@@ -170,13 +170,13 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_undelivered",
     "deliver_called",
     "refuse_called",
-    "refund_settled",
+    "close_called",
     "merchant_departed",
     "deadline_expired",
   ],
   // The debt is paid back. There is nothing left to deliver against, and
   // saying so is the answer.
-  refunded: [
+  fulfillment_closed: [
     "purchase_repeated",
     "handler_delivered",
     "deliver_called",
@@ -287,7 +287,7 @@ describe("the shape of the machine", () => {
     // the other side. A pairing that quietly became meaningful, or quietly
     // stopped being, is one of those rows changing with nobody saying so.
     for (const state of ORDER_STATES) {
-      const answered = new Set(ANSWERED[state]);
+      const answered = new Set([...ANSWERED[state], "close_called"]);
 
       for (const kind of ORDER_EVENT_KINDS) {
         const result = transition(reach(state), sampleEvent(kind));
@@ -624,7 +624,7 @@ describe("the asynchronous mode: the money moves first", () => {
     ]);
   });
 
-  it("marks the debt the moment the merchant refuses after the charge", () => {
+  it("marks the order unfulfilled the moment the merchant refuses after the charge", () => {
     // Waiting for the deadline to reach the same result by silence helps
     // nobody: the buyer learns of the debt the minute the merchant does.
     const sync = must(reach("dispatched"), {
@@ -649,10 +649,10 @@ describe("the asynchronous mode: the money moves first", () => {
       message: "the supplier did not confirm the number",
     });
 
-    expect(refused.order.state).toBe("refund_due");
+    expect(refused.order.state).toBe("unfulfilled");
     expect(refused.order.payment).toBe("settled");
     expect(kinds(refused.effects)).toStrictEqual([
-      "mark_refund_due",
+      "mark_unfulfilled",
       "emit_merchant_event",
       "answer_merchant",
     ]);
@@ -947,7 +947,7 @@ describe("when the time runs out", () => {
     expect(order.closure).toStrictEqual({ cause: "deadline_expired", deadline: "sync_response" });
   });
 
-  it("marks a debt when an asynchronous order misses its fulfillment deadline", () => {
+  it("marks an asynchronous order unfulfilled when it misses its fulfillment deadline", () => {
     const dispatched = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },
@@ -960,8 +960,8 @@ describe("when the time runs out", () => {
       deadline: "async_fulfillment",
     });
 
-    expect(order.state).toBe("refund_due");
-    expect(kinds(effects)).toStrictEqual(["mark_refund_due", "emit_merchant_event"]);
+    expect(order.state).toBe("unfulfilled");
+    expect(kinds(effects)).toStrictEqual(["mark_unfulfilled", "emit_merchant_event"]);
   });
 
   it("refuses a deadline that is not running", () => {
@@ -1050,7 +1050,7 @@ describe("an order that never reached the handler", () => {
     expect(closed.order.payment).toBe("verified");
   });
 
-  it("leaves an asynchronous order open when the repeats run out, owing a refund only at its deadline", () => {
+  it("leaves an asynchronous order open when the repeats run out, unfulfilled only at its deadline", () => {
     // Out of repeats is not out of time. The merchant may still deliver until
     // the deadline the card named, and the refund owed after it says the
     // deadline passed because it did.
@@ -1072,7 +1072,7 @@ describe("an order that never reached the handler", () => {
       at: due.at,
       deadline: due.kind,
     });
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
     expect(order.closure).toStrictEqual({
       cause: "deadline_expired",
       deadline: "async_fulfillment",
@@ -1093,25 +1093,25 @@ describe("delivering twice, and delivering late", () => {
     ]);
   });
 
-  it("closes an outstanding debt with a late delivery", () => {
+  it("delivers an unfulfilled order late", () => {
     // Portal: the money for the goods has been paid, and to the buyer late
     // goods are better than a refund.
-    const { order, effects } = must(reach("refund_due"), { kind: "deliver_called", at: T0 + 999 });
+    const { order, effects } = must(reach("unfulfilled"), { kind: "deliver_called", at: T0 + 999 });
 
     expect(order.state).toBe("delivered");
     expect(order.payment).toBe("settled");
     expect(effects).toContainEqual({
       kind: "answer_merchant",
-      answer: { ok: true, result: "debt_closed_by_delivery" },
+      answer: { ok: true, result: "delivered_late" },
     });
   });
 
-  it("hands the buyer the goods and the receipt when the handler delivers into a debt", () => {
+  it("hands the buyer the goods and the receipt when the handler delivers to an unfulfilled order", () => {
     // The late delivery can come from the handler as well as from the
     // merchant's separate call, and the buyer is owed the same either way: he
     // paid, so the goods go to him and the receipt says so. A debt closed on
     // paper with nothing handed over loses him the refund and the goods both.
-    const { order, effects } = must(reach("refund_due"), {
+    const { order, effects } = must(reach("unfulfilled"), {
       kind: "handler_delivered",
       at: T0 + 999,
     });
@@ -1121,12 +1121,12 @@ describe("delivering twice, and delivering late", () => {
     expect(effects).toStrictEqual([{ kind: "release_goods_to_agent" }, { kind: "issue_receipt" }]);
   });
 
-  it("tells a merchant refusing a debt that his refusal stands", () => {
+  it("tells a merchant refusing an unfulfilled order that his refusal stands", () => {
     // Portal: repeating a call after a broken connection is safe. The order is
     // exactly where his handler's refusal put it, so a refusal called in on top
     // of it is answered `ok: true`. An error here would have his code retrying
     // or escalating an order on which he has nothing left to do.
-    const debt = reach("refund_due");
+    const debt = reach("unfulfilled");
     const { order, effects } = must(debt, sampleEvent("refuse_called"));
 
     expect(order).toStrictEqual(debt);
@@ -1135,14 +1135,17 @@ describe("delivering twice, and delivering late", () => {
     ]);
   });
 
-  it("has nothing left to deliver once a refund is recorded", () => {
-    const { order, effects } = must(reach("refunded"), { kind: "deliver_called", at: T0 + 999 });
+  it("has nothing left to deliver once the merchant closed fulfillment", () => {
+    const { order, effects } = must(reach("fulfillment_closed"), {
+      kind: "deliver_called",
+      at: T0 + 999,
+    });
 
-    expect(order.state).toBe("refunded");
+    expect(order.state).toBe("fulfillment_closed");
     expect(effects).toStrictEqual([
       {
         kind: "answer_merchant",
-        answer: { ok: false, error: "refund_already_settled", retryable: false },
+        answer: { ok: false, error: "fulfillment_closed", retryable: false },
       },
     ]);
   });
@@ -1332,7 +1335,7 @@ describe("delivering twice, and delivering late", () => {
       const { order, effects } = must(accepted, { kind, at: due + 1_500 });
 
       expect(order.state).toBe("delivered");
-      expect(kinds(effects)).not.toContain("mark_refund_due");
+      expect(kinds(effects)).not.toContain("mark_unfulfilled");
     }
   });
 });
@@ -1472,7 +1475,7 @@ describe("the merchant leaves", () => {
     });
   }
 
-  it("turns an open order that was charged into a debt", () => {
+  it("turns an open order that was charged into an unfulfilled one", () => {
     // For what was not delivered the merchant refunds, so the debt has to be
     // recorded, not swept into a terminal that claims nobody owes anything.
     const paid = walk(newOrder("async"), [
@@ -1482,13 +1485,13 @@ describe("the merchant leaves", () => {
     ]);
     const { order, effects } = must(paid, { kind: "merchant_departed", at: T0 + 5 });
 
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
     expect(order.closure).toStrictEqual({ cause: "merchant_departed" });
-    expect(kinds(effects)).toStrictEqual(["mark_refund_due", "emit_merchant_event"]);
+    expect(kinds(effects)).toStrictEqual(["mark_unfulfilled", "emit_merchant_event"]);
   });
 
-  it("leaves an existing debt exactly where it was", () => {
-    const debt = reach("refund_due");
+  it("leaves an unfulfilled order exactly where it was", () => {
+    const debt = reach("unfulfilled");
     const { order } = must(debt, { kind: "merchant_departed", at: T0 + 999 });
 
     expect(order).toStrictEqual(debt);
@@ -1740,7 +1743,7 @@ describe("while the settle is in flight", () => {
     ]);
   });
 
-  it("turns a charge that lands after that into a debt rather than losing it", () => {
+  it("turns a charge that lands after that into an unfulfilled paid order rather than losing it", () => {
     // The closed failure is a guess that the money did not move. If the guess
     // turns out wrong, the buyer is owed his money back — and the machine has
     // to record that rather than carry on insisting the purchase never was.
@@ -1749,9 +1752,9 @@ describe("while the settle is in flight", () => {
     ]);
     const { order, effects } = must(closed, { kind: "payment_settled", at: T0 + 1_000_000 });
 
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
     expect(order.payment).toBe("settled");
-    expect(kinds(effects)).toStrictEqual(["mark_refund_due", "emit_merchant_event"]);
+    expect(kinds(effects)).toStrictEqual(["mark_unfulfilled", "emit_merchant_event"]);
   });
 
   it("never sends a second charge while the first one's outcome is unknown", () => {
@@ -1925,7 +1928,7 @@ describe("an answer that arrives before we recorded handing the order over", () 
       message: "none",
     });
 
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
     expect(order.dispatch.attempts).toBe(0);
   });
 
@@ -1976,7 +1979,7 @@ describe("an answer that arrives before we recorded handing the order over", () 
       message: "none",
     });
 
-    expect(order.state).toBe("refund_due");
+    expect(order.state).toBe("unfulfilled");
   });
 });
 
@@ -2066,7 +2069,7 @@ describe("records that would say something untrue", () => {
   it("does not leave a refusal written on an order that ended in success", () => {
     // The closure is what a receipt, a dispute and the merchant's dashboard
     // render from. "The merchant refused" on a delivered order is a lie.
-    const { order } = must(reach("refund_due"), { kind: "deliver_called", at: T0 + 999 });
+    const { order } = must(reach("unfulfilled"), { kind: "deliver_called", at: T0 + 999 });
 
     expect(order.state).toBe("delivered");
     expect(order.closure).toBeNull();
@@ -2255,7 +2258,11 @@ describe("events that do not belong where they arrived", () => {
       { kind: "payment_settled", at: T0 + 1 },
       "a charge for a confirmation the merchant refused",
     ],
-    ["refunded", { kind: "payment_settled", at: T0 + 1 }, "a charge after the refund"],
+    [
+      "fulfillment_closed",
+      { kind: "payment_settled", at: T0 + 1 },
+      "a second charge on a paid order the merchant closed",
+    ],
     [
       "cancelled",
       { kind: "payment_verified", at: T0 + 1 },

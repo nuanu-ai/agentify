@@ -71,9 +71,19 @@ download; a placed parcel is followed until it ships or the shop ends it. A
 private command for one order, not a public route or SDK method, closes a
 download's paid failures: a pre-create refusal may create once after the
 merchant reconnects the same shop and the product still qualifies; an unknown
-create binds only an order id an operator supplies, read back and matched on
-every fact of the sale. A mismatch stays a refund owed, and so does a parcel's,
+create binds only an order id the merchant supplies, read back and matched on
+every fact of the sale. A mismatch stays unfulfilled, and so does a parcel's,
 whose address is gone by then.
+
+The merchant's Orders screen offers recovery for their own unfulfilled downloads.
+The authenticated account must own the saved sale before its details are
+disclosed or a gateway or shop call runs. The merchant supplies the exact
+existing shop order ID, or retries a download already saved; this screen never
+creates a shop order. A confirmed delivery ends the recovery, while an unknown
+result keeps its saved binding visible for another read or retry. Parcels and
+pre-create refusals have no recovery action here. The private maintenance
+command retains its creation rule; no staffed recovery queue is part of the
+service (the product owner, 2026-10-19).
 
 ## Consequences
 
@@ -81,7 +91,7 @@ The WooCommerce order carries the merchant's own email, since WooCommerce mails
 whatever address is on it; whose address belongs there is an open product
 question, and no buyer email is asked for. A card whose product changed or went
 stays listed until the merchant pauses it; the price check refuses it before
-payment, and a change after the quote becomes a refund owed, as does a
+payment, and a change after the quote leaves the order unfulfilled, as does a
 parcel's rate changed in between. A parcel's price question leaves a two-day
 guest session with the locality in the shop, a state WooCommerce writes its own
 way (`DE-BE`) is no price, and Completed tells the buyer it shipped, for good.

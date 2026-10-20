@@ -1,82 +1,70 @@
-# 0028. Late goods settle a refund owed until a refund is recorded
+# 0028. The merchant closes fulfillment; Agentify does not confirm a refund
 
 Date: 2026-09-23
-Status: accepted (the product owner, 2026-09-23, 2026-09-28 and, for the
-commission, 2026-10-14). The order state machine follows the rule; the refund
-command, the operator's pause, the merchant's view and the published words for
-a recorded refund are not built.
+Status: accepted. The product owner's word of 2026-10-19 decided the
+merchant's closure action, that Agentify confirms no refund and staffs no
+service, and that payment facts stay apart from fulfillment. What closure
+refuses, the plain-text message, the notice of a payment completed after
+closure with the second closure it allows, and Agentify's own reason on a paid
+closed order were added on 2026-10-20, when the change was corrected on the
+product owner's instruction to correct it and accept it.
 
 ## Context
 
-When an asynchronous order passes its delivery deadline with no goods, it
-becomes `refund_due`: the buyer has paid, and the merchant owes the goods or
-the whole price back from their own wallet (ADR-0019), a refund paid outside
-Agentify that nothing in the system sees. A late delivery can still arrive,
-even from the merchant's own worker with nobody deciding it, because a
-`refund_due` order stays on the list of open orders a worker walks.
+A missed delivery deadline establishes that an order was not fulfilled in
+time. It does not establish the remedy the merchant and buyer agree: a refund
+can be partial, use another asset or network, or be replaced by an offset or
+another agreement. Deciding whether that settles the parties' obligations
+would make Agentify responsible for shop policy and adjudication.
 
 ## Decision
 
-Late goods settle the debt until a refund is recorded. Before that, a delivery
-closes the order as `delivered`, and the agent reads `refund_due` as not an
-end: goods may still arrive at the order's `status_url`, and `refund_due` has
-no deadline of its own. A recorded refund makes the order `refunded`, which is
-final, and a later delivery gets a final error. A refund nobody reports cannot
-be seen, so the contract and the portal promise that error once a refund is
-recorded, not once it has gone out.
+The merchant has one authenticated, idempotent action that stops future
+fulfillment through Agentify, with an optional explanation to the buyer: the
+SDK's `order.close()` and the dashboard's Orders, for either integration, both
+calling `POST /v0/orders/:order_id/close`. A repeat keeps the first time and
+words, except after a payment completed after closure (below). The public
+claim is "fulfillment closed by merchant"; a claim of a refund or agreement
+stays the merchant's, never "refund verified" or "parties settled". The merchant owns cancellation and refund policy, transfers and
+fulfillment outside Agentify, and a missed deadline means unfulfilled, not a
+mandatory whole-price refund. There is no refund proof protocol, transfer
+reservation, refund RPC or staffed service, and Agentify signs no merchant
+transfer (ADR-0019).
 
-The operator, whoever runs this deployment, records a refund with a terminal
-command, as ADR-0027 records a silent charge. The transaction is kept beside
-the order in a field of its own, marked as a report rather than a reading of
-the chain, with who paid: the merchant, or Agentify where it paid the buyer
-the whole price back itself and settles the merchant's share with them outside
-the system. The same command records a refund on a shipped order (ADR-0033)
-whose parcel the merchant admits lost. That order is not reopened into a
-refund owed, because a stale delivery from the merchant's worker would close
-the debt with nothing sent, and a replacement parcel is the merchant's to
-send, unrecorded here.
+The original payment and order history remain. Closure is not nonpayment, does
+not free an accepted authorization for reuse and causes no other charge. A
+charge already sent may still complete under ADR-0027. Reads carry
+`payment_status` apart from fulfillment, and an unknown payment keeps
+`payment_unresolved` precedence with `merchant_closure` visible. A payment
+that completes after closure reaches the merchant as `order.unfulfilled` with
+the reason `paid_after_closure`, and the order is listed as open for them until
+they close it again. On a paid closed order the agent reads Agentify's own
+reason beside the merchant's words: paid, fulfillment closed by the merchant,
+no refund confirmed. Agentify keeps its 0.1% commission, which neither the
+split nor its warehouse returns (ADR-0037).
 
-The merchant refunds the whole price, although their split paid them only
-their share, and the commission stays with Agentify (the product owner,
-2026-10-14): the goods were the merchant's to deliver, and the commission on a
-sale that failed is their reason to deliver. Neither the split nor its
-warehouse gives a commission back (ADR-0037), so this is policy, and no money
-moves differently for it; money still waiting in the split changes nothing.
+## Consequences and alternatives
 
-The merchant sees, on a `refund_due` order and on a shipped one, the payer's
-checksummed wallet address where the payment layer named one, with the amount
-and the network. On a `refund_due` order they also see the two ways out,
-deliver or report the refund to the operator, the timeline below, and a warning
-that a refund paid but not reported does not stop a late delivery.
+An overdue paid order reads `unfulfilled`, a closed one `fulfillment_closed`
+with the merchant's time and words in `merchant_closure`. The words are plain
+text of bounded length, refused at the door otherwise, because a stranger's
+agent reads them. Closure accepts an order whose fulfillment or payment is
+still open, held goods and an unknown payment included. An order that ended
+with nothing charged refuses it, since nothing is left to stop and closing
+would erase the reason its agent acts on; a delivered or shipped order refuses
+it with words saying so, and its receipt remains. Closing cancels no work
+already running in the merchant's system or shop. Stored terminal orders with
+no merchant action stay neutral: the migration invents no actor or time. No
+net accounting or partial-refund schema is added, and address retention is
+unchanged (ADR-0032).
 
-The operator keeps the time from the delivery deadline, by numbers adapted from
-practice (`docs/research/34-refund-due.md`). After three business days with
-neither goods nor a recorded refund, they contact the merchant and pause their
-selling until the debt is settled. By fourteen calendar days the buyer holds
-the goods or the money, settled by the operator by hand if need be, and at
-pilot prices Agentify may pay the buyer back itself. Where no payer was named,
-only goods close the debt and the fourteen days cannot be kept. Agents are told
-nothing of these days; if ever they are, it is as an absolute instant, never in
-business days, which an agent has no time zone to count.
+Closure is built for parcels as for every order, so it no longer holds parcels
+off the live channel; ADR-0033 names what still does. Evidence and remaining
+work are in `docs/research/54-self-service.md`.
 
-## Consequences
-
-A buyer can still get the goods after the deadline, a merchant has a way out of
-the debt, and for an undelivered order Agentify stands between merchant and
-buyer. A recorded refund cannot be undone. The cost is showing the payer's
-address, a field on each order, two operator commands, the operator's attention
-and, at worst, Agentify's money. A refund paid but not reported and followed by
-a late delivery leaves the buyer with both, at most one purchase. The timeline
-moves into the machine the first time an operator misses it.
-
-Rejected: refusing late goods (with no refund payable or recordable, the buyer
-is left with nothing); a grace window (a second deadline and a knob, which does
-not stop the double outcome); the buyer choosing between money and late goods,
-as practice allows (it needs a route an agent writes through, where the only
-proof is the order identifier, ADR-0011); a merchant button to record a refund
-(one more surface to secure, while one operator can record for few merchants);
-Agentify sending its commission to the merchant after a recorded refund (a
-transfer from the commission wallet on every refund, and an accounting that
-otherwise does not exist); a refund in two transfers, the share from the
-merchant and the commission from Agentify (the same, plus a buyer left to work
-out why two sums came from two addresses).
+Rejected: verifying or coordinating the parties' agreement, an administrator
+declaring it settled, a staffed reconciliation queue and a mandatory
+whole-price return, each of which gives Agentify authority over shop policy or
+claims an outcome it does not establish; and leaving a payment that completes
+after closure to be found by reading, which hides money from the merchant who
+received it.

@@ -34,6 +34,7 @@ export default [
   layout("routes/gate.tsx", [
     index("routes/start.ts"),
     route("merchant", "routes/merchant.tsx"),
+    route("admin/live-sales", "routes/admin-live-sales.tsx"),
     layout("routes/merchant-only.tsx", [
       route("choose-name", "routes/choose-name.tsx"),
       route("cards", "routes/cards.tsx"),
@@ -49,6 +50,7 @@ export default [
       route("keys", "routes/keys.tsx"),
       route("keys/:key_id/disable", "routes/keys-disable.ts"),
       route("woocommerce", "routes/woocommerce.tsx"),
+      route("integrations/woocommerce/recover/:order_id", "routes/woocommerce-recovery.tsx"),
       layout("routes/woocommerce-presses.tsx", [
         route("woocommerce/connect", "routes/woocommerce-connect.tsx"),
         route("woocommerce/import", "routes/woocommerce-import.tsx"),

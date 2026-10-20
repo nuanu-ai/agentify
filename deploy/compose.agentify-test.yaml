@@ -18,6 +18,8 @@ services:
   app:
     environment:
       REGISTRATION_POSTBACK_ENABLED: "false"
+      # An explicitly empty value disables background chain recovery.
+      PAYMENT_RPC_URL: "${AGENTIFY_PAYMENT_RPC_URL-https://sepolia.base.org}"
 
   # What the test channel's scanner does is fixed here rather than read from
   # the host's environment file, so no line in that file can change it. It takes

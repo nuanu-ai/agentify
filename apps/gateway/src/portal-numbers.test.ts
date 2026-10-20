@@ -257,11 +257,6 @@ const PINS: readonly Pin[] = [
     { page: "packages/contracts/src/merchant.ts" },
     "and then sends {merchant}% of it to this wallet and {agentify}% to Agentify",
   ),
-  ...sharesIn(
-    "the shares, where a refund owed is described to merchant code",
-    { page: "packages/contracts/src/events.ts" },
-    "which sends {merchant}% of it to the merchant and {agentify}% to Agentify",
-  ),
 
   // --- the commission, in the READMEs an engineer opens first ---------------
   ...sharesIn(
@@ -296,11 +291,13 @@ const PINS: readonly Pin[] = [
     { page: "apps/docs/money.md" },
     "a payout gives you about {merchant}% of what came in",
   ),
-  ...sharesIn(
-    "the commission a refund of the whole price leaves with us",
-    { page: "apps/docs/money.md" },
-    "although your payout contract pays you {merchant}% of it: the {agentify}% commission stays with Agentify",
-  ),
+  {
+    what: "the commission retained after a merchant closes fulfillment",
+    page: "apps/docs/money.md",
+    anchor: /Agentify retains its (0\.1)% commission/,
+    reads: "percent",
+    is: commission,
+  },
   ...sharesIn(
     "the shares, where the owner decides whether to connect",
     { page: "apps/docs/index.md" },
@@ -519,17 +516,6 @@ const PINS: readonly Pin[] = [
     what: "the same, where the handler is written",
     page: "apps/docs/quickstart.md",
     anchor: /A card that names none is held to a (\w+)\./,
-    reads: "period",
-    is: deadlines.defaultAsyncFulfillmentMs,
-  },
-  {
-    // The agent's side of the same number: how long an order whose goods come
-    // later can run before the merchant owes a refund, said where the agent
-    // reads about the route it collects them on.
-    what: "the same, told to the agent where it comes back for goods that come later",
-    page: "API_ROUTES.get_order_status.description",
-    text: API_ROUTES.get_order_status.description,
-    anchor: /fulfill_deadline_seconds where the card names one, and a (\w+) where it names none/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },

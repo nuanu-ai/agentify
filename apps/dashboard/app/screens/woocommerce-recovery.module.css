@@ -1,0 +1,13 @@
+/* Layout only. The facts stack, as the lists' details do, once the panel is
+   narrow; the form row is as wide as a short number needs. */
+.panel {
+  container-type: inline-size;
+}
+
+.panel > :global(.more-facts) {
+  margin: var(--space-block) var(--space-card) 0;
+}
+
+.panel > :global(.issue) {
+  max-width: 34rem;
+}

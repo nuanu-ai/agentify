@@ -210,7 +210,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The happy asynchronous path carries no wire event: the event channel is
     // for the things a merchant would otherwise only find by reconciling by
-    // hand — a refund owed, a confirmation left unpaid — and none of those
+    // hand — unfulfilled delivery, a confirmation left unpaid — and none of those
     // happened here.
     expect(merchant.events).toStrictEqual([]);
 
@@ -281,12 +281,14 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual([
       "delivered",
       "order_id",
+      "payment_status",
       "price",
       "seller",
       "status",
       "status_url",
       "test",
     ]);
+    expect(fields(collected.body).payment_status).toBe("paid");
     expect(fields(fields(collected.body).price).amount).toBe("8.00");
     // The word that keeps this from reading as proof of a payment that moved
     // money. On the scripted facilitator none did.
@@ -363,10 +365,21 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     if (bought.statusUrl === null) throw new Error("the purchase named nowhere to read it again");
 
     const collected = await buyer.status(bought.statusUrl);
-    const owed = ["delivered", "order_id", "price", "seller", "status", "status_url", "test"];
+    const owed = [
+      "delivered",
+      "order_id",
+      "payment_status",
+      "price",
+      "seller",
+      "status",
+      "status_url",
+      "test",
+    ];
 
     expect(Object.keys(purchased).sort()).toStrictEqual(owed);
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(owed);
+    expect(purchased.payment_status).toBe("paid");
+    expect(fields(collected.body).payment_status).toBe("paid");
 
     // Read off the whole body rather than off a field name, because the cost
     // is the value escaping and not the name it escaped under.

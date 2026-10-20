@@ -344,6 +344,7 @@ describe("a refusal the merchant made", () => {
       expect(Object.keys(answered as object).sort()).toStrictEqual([
         "delivered",
         "order_id",
+        "payment_status",
         "price",
         "refusal",
         "seller",
@@ -386,8 +387,8 @@ describe("a refusal the merchant made", () => {
   });
 });
 
-describe("an order that owes a refund", () => {
-  // `refund_due` alone reads as "a refund is on its way". The agent has to be
+describe("a paid order left unfulfilled", () => {
+  // `unfulfilled` alone reads as "a refund is on its way". The agent has to be
   // told why the money is owed, in the words the merchant's own event uses,
   // and in a sentence that nothing here will say when it has been paid back.
   const owingOf = async (served: Served, orderId: string): Promise<AgentOrderStatus> => {
@@ -397,7 +398,7 @@ describe("an order that owes a refund", () => {
         const answered = await statusOf(served, orderId);
         expect(answered.status).toBe(200);
         read = answered.body as AgentOrderStatus;
-        expect(read.status).toBe("refund_due");
+        expect(read.status).toBe("unfulfilled");
       },
       { timeout: 2_000, interval: 5 },
     );
@@ -471,7 +472,7 @@ describe("an order that owes a refund", () => {
     harnessed.facilitator.willSettle({ settled: "unknown", reason: "the facilitator timed out" });
     const silent = await buyOverHttp(harnessed, served, itemId, {});
     const reported = (silent.body as AgentOrderStatus).order_id;
-    // Closed on the silence, as an operator finds it before recording the charge.
+    // Wait for the response silence to close the order before the late result.
     await vi.waitFor(
       async () =>
         expect((await harnessed.store.orderById(reported))?.order.closure?.cause).toBe(
@@ -497,7 +498,7 @@ describe("an order that owes a refund", () => {
     expect(owingReported.reason?.message).not.toBe(owingLate.reason?.message);
   });
 
-  it("gives each way of coming to owe a sentence of its own", async () => {
+  it("gives each way of being left unfulfilled a sentence of its own", async () => {
     // One sentence for all three would tell an agent waiting on a late
     // delivery the same thing as one whose seller has gone.
     const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });
@@ -568,6 +569,7 @@ describe("what the answer carries", () => {
     expect(Object.keys(answered.body as object).sort()).toStrictEqual([
       "delivered",
       "order_id",
+      "payment_status",
       "price",
       "seller",
       "status",
@@ -685,6 +687,7 @@ describe("the goods as the merchant wrote them", () => {
       order_id: orderId,
       status_url: collectedAt(orderId),
       status: "delivered",
+      payment_status: "paid",
       price: {
         amount: "80.00",
         currency: "USD",

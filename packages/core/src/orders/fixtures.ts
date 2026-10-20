@@ -164,14 +164,14 @@ export function reach(state: OrderState): Order {
       return walk(reach("fulfilled"), [{ kind: "payment_settled", at: T0 + 5 }]);
     case "delivered_unpaid":
       return walk(reach("fulfilled"), [{ kind: "payment_settle_failed", at: T0 + 5 }]);
-    case "refund_due":
+    case "unfulfilled":
       return walk(newOrder("async"), [
         ...PAID_ASYNC,
         { kind: "order_dispatched", at: T0 + 3 },
         { kind: "handler_refused", at: T0 + 4, code: "out_of_stock", message: "none left" },
       ]);
-    case "refunded":
-      return walk(reach("refund_due"), [{ kind: "refund_settled", at: T0 + 9 }]);
+    case "fulfillment_closed":
+      return walk(reach("unfulfilled"), [{ kind: "close_called", at: T0 + 9 }]);
     case "failed":
       return walk(newOrder("sync"), [
         ...PAID_SYNC,

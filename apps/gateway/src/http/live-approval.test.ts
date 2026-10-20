@@ -274,7 +274,7 @@ describe("an order accepted before operator approval existed", () => {
     expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
   });
 
-  it("still reaches refund due when a paid asynchronous order is refused", async () => {
+  it("still leaves a paid asynchronous order unfulfilled when it is refused", async () => {
     const { served, harnessed } = await started();
     const { merchantId, orderId } = await acceptedOrderWithoutApproval(
       harnessed,
@@ -291,7 +291,7 @@ describe("an order accepted before operator approval existed", () => {
     });
 
     expect(refused).toStrictEqual({ ok: true, result: "refused" });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);

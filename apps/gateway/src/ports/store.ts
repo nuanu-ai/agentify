@@ -20,6 +20,26 @@ import type {
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import type { PayoutSplit } from "../split/parameters.js";
+import type { PaymentRecoveryContext } from "./facilitator.js";
+
+export type PaymentCompletion =
+  | {
+      readonly settled: true;
+      readonly transaction: string;
+      readonly executedAt: number | null;
+      readonly source: "facilitator" | "chain";
+    }
+  | { readonly settled: false; readonly reason: string; readonly source: "facilitator" | "chain" };
+
+/** One submitted charge. A callback and chain recovery must complete this same identity. */
+export interface PaymentAttempt {
+  readonly id: string;
+  readonly startedAt: number;
+  readonly recovery?: PaymentRecoveryContext;
+  readonly transaction?: string;
+  readonly nextBlock?: string;
+  readonly completion: PaymentCompletion | null;
+}
 
 /**
  * How a merchant's products reach Agentify and their orders are filled: their
@@ -31,13 +51,15 @@ export const INTEGRATIONS = ["api", "woocommerce"] as const;
 export type Integration = (typeof INTEGRATIONS)[number];
 
 /**
- * The open states in which an order waits on nobody's worker: it owes the
- * buyer a refund, or the buyer owes for goods already delivered. Neither holds
- * a switch of integration (`IntegrationSwitch`).
+ * The states on the open list in which no handler response is pending: late
+ * fulfillment, payment for goods already held, and a closed order whose payment
+ * completed after the closure. None of them holds a switch of integration
+ * (`IntegrationSwitch`).
  */
-export const OWING_ONLY_MONEY = [
-  "refund_due",
+export const NO_PENDING_HANDLER = [
+  "unfulfilled",
   "delivered_unpaid",
+  "fulfillment_closed",
 ] as const satisfies readonly OrderState[];
 
 /**
@@ -47,7 +69,7 @@ export const OWING_ONLY_MONEY = [
  * first answer, for the payment a price was quoted for, or for the goods it
  * was taken on for — because after the switch nothing of that integration
  * draws the merchant's stream again; `waiting` names those orders. An order
- * that only owes money holds nothing (`OWING_ONLY_MONEY`).
+ * with no pending handler response holds nothing (`NO_PENDING_HANDLER`).
  *
  * `sellingPaused` says whether the switch stopped the merchant's selling. A
  * switch back to the API that would put the code's cards back on sale does,
@@ -131,6 +153,10 @@ export interface StoredOrder {
   readonly delivery: Delivery | null;
   /** What the agent presented to pay with, verbatim, until the charge is done. */
   readonly payment: string | null;
+  /** Immutable token and authorization terms established during verification. */
+  readonly paymentRecovery?: PaymentRecoveryContext;
+  readonly paymentFingerprint?: string;
+  readonly paymentAttempt?: PaymentAttempt;
   /**
    * The address the payment was verified against: the merchant's split as
    * recorded then, or, on an order verified before payments went to splits,
@@ -141,14 +167,13 @@ export interface StoredOrder {
    */
   readonly payTo: string | null;
   /**
-   * The order's owner: the payer the payment layer named when it verified the
-   * first payment for the order (never the address a payment declares of
-   * itself), or that payment's fingerprint where the layer names none. A
-   * payment reference is not secret, since a listing can publish it, and the
-   * payment route takes no key, so without an owner anyone holding a
-   * reference could pay against, take the goods of, or close someone else's
-   * order. It is set inside the store's hold on the order, so two racing
-   * payments cannot both become the owner.
+   * The order's owner: the payer bound to the first verified authorization,
+   * or that payment's fingerprint where the adapter supplies no verified payer.
+   * A payment reference is not secret, since a listing can publish it, and the
+   * payment route takes no key, so without an owner anyone holding a reference
+   * could pay against, take the goods of, or close someone else's order.
+   * It is set inside the store's hold on the order, so two racing payments
+   * cannot both become the owner.
    */
   readonly paidBy: string | null;
   /**
@@ -159,9 +184,8 @@ export interface StoredOrder {
    */
   readonly settlement: { readonly transaction: string } | null;
   /**
-   * Everything the payment layer has said about this order, in its own words
-   * and in order. The machine keeps only a coarse verdict, and this is what an
-   * operator reconciles a charge that went quiet from.
+   * Bounded diagnostics from verification, settlement and recovery. They are
+   * never proof of payment or the identity of an attempt.
    */
   readonly paymentWords: readonly PaymentWord[];
   /**
@@ -197,6 +221,7 @@ export interface PaymentWord {
  * delivered at most once and must never be sent a second time.
  */
 export type WithTheOrder =
+  | { readonly kind: "retain_payment"; readonly fingerprint: string; readonly orderId: string }
   | {
       readonly kind: "envelope";
       readonly merchantId: string;
@@ -717,7 +742,10 @@ export interface Store {
   /** One of this merchant's orders. Another merchant's order is not found. */
   merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null>;
 
-  /** This merchant's orders, or with `open` only the ones still owed work or money. */
+  /**
+   * This merchant's orders, or with `open` only the ones still owed work or
+   * money and the closed ones whose payment completed after the closure.
+   */
   orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
 
   /**
@@ -727,6 +755,12 @@ export interface Store {
    * open order waits on a deadline that closes it.
    */
   openOrders(): Promise<readonly StoredOrder[]>;
+
+  /** Unanswered charges, including closed purchases, in bounded identifier order. */
+  unresolvedPayments(afterId?: string, limit?: number): Promise<readonly StoredOrder[]>;
+
+  /** Saved authorizations, bounded, for detecting ambiguous ownership before old charges are recovered. */
+  paymentOrders(afterId?: string, limit?: number): Promise<readonly StoredOrder[]>;
 
   /**
    * Runs `work` only if nothing anywhere in the gateway is running the work
@@ -786,10 +820,8 @@ export interface Store {
   releaseClaim(fingerprint: string, orderId: string): Promise<void>;
 
   /**
-   * Forgets claims older than an instant and returns how many went. Anyone can
-   * make claims without a key, so the table must be pruned; a claim only
-   * matters between verification and charge, after which the token itself
-   * refuses a second use.
+   * Forgets unaccepted claims older than an instant. Accepted authorizations
+   * remain tied to their order permanently, including when their charge is unknown.
    */
   forgetClaimsBefore(instant: number): Promise<number>;
 

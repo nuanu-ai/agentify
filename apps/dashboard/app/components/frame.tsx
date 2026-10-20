@@ -53,6 +53,7 @@ export function Frame({
   title,
   heading = title,
   action,
+  navigation,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections. */
@@ -60,6 +61,8 @@ export function Frame({
   title: string;
   heading?: string;
   action?: ReactNode;
+  /** The administrative workspace uses the same frame with its own sections. */
+  navigation?: Readonly<{ label: string; sections: readonly Section[] }>;
   children: ReactNode;
 }>) {
   const chrome = useChrome();
@@ -75,12 +78,14 @@ export function Frame({
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
   const framed = useRouteLoaderData<FrameView>("routes/merchant-only");
-  const sections: Section[] = TABS.map(([key, label]) => ({
-    key,
-    label,
-    current: key === marked,
-    to: `/${key}`,
-  }));
+  const sections: readonly Section[] =
+    navigation?.sections ??
+    TABS.map(([key, label]) => ({
+      key,
+      label,
+      current: key === marked,
+      to: `/${key}`,
+    }));
   const signedIn = (
     <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
   );
@@ -96,7 +101,7 @@ export function Frame({
           <HeaderMenu>
             <SectionNav
               className="app-menu-sections"
-              label="Dashboard sections"
+              label={navigation?.label ?? "Dashboard sections"}
               sections={sections}
             />
             <a className="app-menu-docs" href="/docs/">
@@ -109,7 +114,11 @@ export function Frame({
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
+            <SectionNav
+              className="tabs"
+              label={navigation?.label ?? "Dashboard sections"}
+              sections={sections}
+            />
           </div>
         </aside>
         <div className="app-workspace">

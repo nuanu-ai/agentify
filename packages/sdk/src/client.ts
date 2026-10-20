@@ -32,6 +32,8 @@ import type {
   Order,
   OrderAcceptResponse,
   OrderCallResponse,
+  OrderCloseRequest,
+  OrderCloseResponse,
   OrderWithStatus,
   PublishResult,
   QuoteRequest,
@@ -121,6 +123,27 @@ export interface OrderCalls {
 
   /** Takes the order on from outside a handler. Repeating it is harmless. */
   accept(): Promise<OrderAcceptResponse>;
+
+  /**
+   * Stops future fulfillment through Agentify for this order. The message is
+   * your statement to the buyer, plain text of at most 2000 characters, which
+   * their agent reads as your words; Agentify confirms no refund or agreement.
+   * Closing cannot be undone, and it causes no new charge.
+   *
+   * Calling it again succeeds and keeps the first closure's time and message,
+   * with one exception. Closing cancels no payment: a payment Agentify had
+   * already asked the facilitator to execute may still go through after you
+   * close. If it does, you receive `order.unfulfilled` with reason
+   * `paid_after_closure`, the order is on `orders.list({ open: true })`, and
+   * closing it again then records that closure's own time and message and
+   * takes it off the list.
+   *
+   * Resolves to `{ ok: true }`, or to `ok: false` with an `error`, leaving the
+   * order unchanged: `fulfillment_complete` where its goods were delivered or
+   * its parcel's shipment is recorded, and `nothing_to_close` where it ended
+   * without a charge and holds nothing for its buyer. Neither is retryable.
+   */
+  close(options?: OrderCloseRequest): Promise<OrderCloseResponse>;
 }
 
 /**
@@ -240,7 +263,8 @@ export interface OrdersNamespace {
   /**
    * Orders and the states they are in. With `open: true`, only the ones a
    * restarted worker should walk: orders it was handed and has not finished,
-   * an order owing a refund, and one delivered but never paid for. An order
+   * an unfulfilled paid order, one delivered but never paid for, and a closed
+   * one whose payment completed after you closed it. An order
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it. Throws `AgentifyError` when the call
    * fails.
@@ -363,7 +387,7 @@ export class AgentifyError extends Error {
  * statement about what this package knows, not about the order.
  *
  * The sentence saying the call may be repeated safely is added only where the
- * call is idempotent (delivering, accepting; not refusing) and repeating it
+ * call is idempotent (delivering, accepting or closing; not refusing) and repeating it
  * could get anywhere.
  */
 const failedCall = (repeatIsSafe: boolean, failure: TransportFailure): CallError => {
@@ -570,6 +594,14 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
     },
     deliver: (delivery) => orderCall("deliver_order", orderId, delivery),
     refuse: (refusal) => orderCall("refuse_order", orderId, refusal),
+    close: async (options = {}) => {
+      reachable();
+      const answer = await callRoute(gateway, "close_order", {
+        path: { order_id: orderId },
+        body: options,
+      });
+      return answer.ok ? answer.document : { ok: false, error: failedCall(true, answer.failure) };
+    },
     accept: (...given: unknown[]) => {
       if (given.length > 0) reportSafely(registry.problem, acceptanceArgumentWarning(orderId));
       return acceptCall(orderId);

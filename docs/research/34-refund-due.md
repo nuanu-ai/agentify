@@ -1,7 +1,8 @@
 # A refund owed: what the system does, what practice says, what was weighed
 
-Date: 2026-09-23. A research note that may be rewritten. The decision it
-supports is ADR-0028.
+Historical: observations and comparisons from 2026-09-23. The accepted
+merchant-closure boundary is ADR-0028; implementation gaps are in
+`54-self-service.md`. This note is not a refund implementation plan.
 
 ## The question
 
@@ -107,36 +108,3 @@ Letting the buyer choose between late goods and money would need a route
 through which an agent writes to its order. The order identifier would be the
 only proof of who is asking (ADR-0011), and that is too much surface for the
 pilot.
-
-The option taken is to allow late goods until a refund is recorded. It keeps
-most of what the contract already promises and adds the missing pieces: a
-way to record a refund, the payer's address in front of the merchant, and
-honest words. It narrows one promise. The error for a late delivery now comes
-once a refund is recorded, instead of once it has gone out, because a refund
-nobody reports cannot be seen here. That leaves one case open, which the order
-machine's own comments also name: a refund already on its way and not yet
-reported races a late delivery, and the buyer may end up with both.
-
-## The numbers
-
-The operator steps in after three business days, and the buyer holds the goods
-or the money within fourteen calendar days of the deadline. The first number
-follows eBay; the second follows the EU directive and agrees with
-Cryptorefills. The operator applies them by hand, with no timer, because there
-are few merchants and the charter moves a rule into a machine only after it has
-slipped past people. Business days are the operator's measure alone. Agents are
-told nothing about either number today. The agent's order carries neither the
-deadline nor the time of payment. If agents are ever told, it is an absolute
-time they can read. An agent has no time zone to count business days in. At
-pilot prices of a few dollars, paying the buyer back from Agentify's own funds
-as a last resort costs less than a buyer left with neither goods nor money.
-
-## Still open
-
-A merchant who signed themselves up has no way to reach the operator today.
-Until the cabinet names one, such a merchant can report a refund only after the
-operator has contacted them. An order whose payer was never named can be closed
-only with goods, and the fourteen days cannot be kept for it.
-Whether and when agents are told the fourteen days depends on the system
-keeping them. When the timeline moves into the machine, a mail to the merchant
-about the debt comes with it.

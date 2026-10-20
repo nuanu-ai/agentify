@@ -101,7 +101,8 @@ export const OpenWordSchema = z
  *
  * Neither is when the money moved: an agent may pay long after the price was
  * fixed, and in synchronous fulfillment the charge executes after the goods.
- * The moment of payment is the receipt's `paid_at`.
+ * The receipt's `paid_at` records facilitator confirmation or verified chain
+ * execution time.
  */
 export const SalePriceSchema = z.strictObject({
   amount: AmountSchema,

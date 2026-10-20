@@ -167,8 +167,8 @@ and the list leaves nothing out. A field your card declares and your handler got
 wrong is one finding there, carrying the path to it, a code and words a person
 can act on. The fields your card never declared are one finding between them,
 with an empty path — there is no path to a name the card never had — and all of
-those names inside its own words ([when a closing call does not go
-through](/orders#when-a-closing-call-does-not-go-through)).
+those names inside its own words ([when a call on an order does not go
+through](/orders#when-a-call-on-an-order-does-not-go-through)).
 
 Every field of the result is required until you mark it `required: false`. The
 result is a promise, and a delivery missing a promised field does not go
@@ -243,7 +243,7 @@ the agent sees it before it buys.
 
 Leaving it out does not leave you off a clock. A day applies instead, the
 agent sees that day on your card in the catalog as if you had named it, and an
-order that runs past it owes a refund exactly as one past a number of your
+order that runs past it is unfulfilled exactly as one past a number of your
 own would. That day is ours to set rather than the card's, so naming your own
 is the way to keep the time yours.
 
@@ -280,8 +280,8 @@ Two things are asked of you rather than of the card. A parcel's card is
 published only once you have given the site of your shop, because a parcel
 that does not arrive is a question its buyer takes there (`no_seller_site`).
 And it is published on the test channel only, where the money is not real: on
-the live one it is refused (`not_sold_yet`) until the refund of a lost parcel
-can be recorded, which is not built yet.
+the live one it is refused (`not_sold_yet`), because parcels are not sold on
+the live channel yet.
 
 ## A price worked out at the moment of purchase
 
@@ -540,8 +540,8 @@ codes.
 
 These are the words you send us about an order you cannot fill, and they are a
 different set from the ones we send you when a call of yours does not go through
-at all ([when a closing call does not go
-through](/orders#when-a-closing-call-does-not-go-through)).
+at all ([when a call on an order does not go
+through](/orders#when-a-call-on-an-order-does-not-go-through)).
 
 The set is open, and a code of your own is fine where none of the common ones
 fits. Three we understand the same way every time, and those are the ones to

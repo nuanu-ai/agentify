@@ -55,6 +55,25 @@ words at the door fix it. Automation earns trust by being reliable; a knob
 that can silently take a deployment down is a defect in the knob, not in the
 operator.
 
+## Product operation
+Agentify has no staffed purchase or refund service. Human approval admits a
+merchant to live sales; it does not establish a payment outcome. Administrative
+and maintenance access must not become a required staffed step in an ordinary
+sale. Original payment verification and automatic recovery remain Agentify's
+responsibility; unverified payment outcomes remain unknown.
+
+The merchant owns stock, fulfillment, cancellation and refund policy, money
+transfers and fulfillment outside Agentify. Agentify does not confirm refunds
+or adjudicate an agreement between the parties. One authenticated, idempotent
+merchant action stops future Agentify fulfillment,
+with an optional explanation to the buyer. Agentify records "fulfillment closed
+by merchant", preserves the original payment and history, and attributes any
+refund or agreement claim to the merchant. A missed deadline establishes
+unfulfilled delivery, not a required whole-price refund. A shop connector adapts
+the shop to the public contracts; the core and SDK acquire no shop-specific
+business rules. Closure does not undo delivery or cancel a payment already
+accepted for execution (ADR-0028; the product owner, 2026-10-19).
+
 ## Git
 - Main branch: `main`. Every change is made on a branch and reaches `main`
   through a pull request with a review; nobody pushes to `main` directly.

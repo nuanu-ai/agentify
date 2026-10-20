@@ -1,56 +1,69 @@
-# 0027. A silent charge is recorded by an operator, not asked again
+# 0027. A silent charge is recovered from payment evidence
 
 Date: 2026-09-22
-Status: accepted
+Status: accepted (automatic recovery: the product owner, 2026-10-19).
 
 ## Context
 
-A settle that times out may have moved the money. The facilitator client can
-verify, settle and list what it supports, and cannot ask what became of a
-charge already sent. The machine forbids a second settle. It can still accept
-a later `payment_settled` or `payment_settle_failed`, and nothing in the
-running gateway produced those events. While the order stayed open, the
-status said `in_progress`, which is what a restarted worker treats as work it
-owes. This amends ADR-0002 §3, which records a silent decision about the
-charge as always a closed failure: after the goods are made it is not one,
-and the order stays open with the buyer holding them.
+A settle that times out may have moved money. The facilitator has no outcome
+lookup for a submitted charge, and settling again is not a safe lookup. No
+person is assigned to investigate these orders. Recovery uses chain evidence
+without making an RPC a condition for ordinary facilitator payments.
 
 ## Decision
 
-The status of a charge nobody heard back from is `payment_unresolved`,
-whether or not the order is still open. No new wire value: the word already
-existed, and it no longer claims the order is closed.
+Real payments use x402 version 2, exact USDC on Base or Base Sepolia, and an
+EIP-3009 authorization; other methods, Permit2 included, are refused before
+verification. The signed recipient and amount must match the order, and the
+expiry is bounded by the offered timeout plus a clock allowance; smart-wallet
+signatures are allowed. Acceptance reserves the network, token, payer and nonce
+for the order, atomically with its saved payment. Before submission the order
+stores an attempt identifier and recovery terms, including when the
+authorization was verified unused. Ordinary verification and settlement make no
+RPC requests; neither restarts nor recovery submit again.
 
-A later fact enters through an operator command, `report-payment`, not
-through a merchant route and not through another call to the facilitator.
-It writes only after the charge now out has returned — a settle word is on
-the order, written no earlier than the moment the payment was last handed
-over for execution — because the deadline can declare a silence while that
-call is still in flight, and the second writer is dropped. A repeat of the
-purchase sends a second charge, so any settle word is not enough. It does not
-record a failure on an open order: that would allow a second charge on a
-guess about the first. It does not check the chain. The word stored beside
-the order says the facilitator was not asked and the chain was not read.
-The purchase header that carries the facilitator's receipt is left empty.
-No receipt is written: its paid_at would be a time nobody observed. A wrong
-transaction cannot be taken back.
+An indeterminate result is `payment_unresolved`, including on closed orders.
+Pending, unfamiliar and contradictory failure answers stay unknown; only an
+established refusal before broadcast establishes nonpayment at once. A
+configured RPC, by default the channel's public Base RPC, is checked in the
+background after the response deadline; an empty address disables it. Its chain
+id is asked at start-up and on every poll, so a wrong or silent endpoint is
+reported and a recovered one resumes without a restart. Every poll logs read
+failures and the count and age of unresolved payments. RPC errors and missing
+evidence never establish failure.
 
-`open=true` is the list a restarted worker walks. An order that was priced
-and never paid, and never reached the handler, is not on it. The buyer's
-status of that order stays `in_progress`.
+Success requires a successful receipt in a canonical finalized block where the
+canonical USDC token's `AuthorizationUsed(payer, nonce)` is immediately followed
+by its `Transfer(payer, recipient, amount)` at the next log index, as Circle's
+implementation emits them. A finalized cancellation, or an unused nonce in a
+finalized block at or after the expiry, proves nonpayment; a reverted
+transaction, an elapsed timer or a failed search does not.
 
-## Consequences
+Without a hash, recovery reads the receipts of only the blocks where the
+authorization could execute, from its verification time (found by bisecting
+block times) to its `validBefore`, with a cursor kept across polls and through a
+refused read; it sends no log queries. A used nonce absent from that window is
+unpaid only if it was unused at the window's last block. Orders saved before
+recovery terms existed search from their creation and reserve their nonce first;
+missing or conflicting context stays unresolved.
 
-What this buys: a silence can be finished, and it is not offered to a
-merchant as an order waiting on them. What it costs: whoever can run the
-command can assert that a charge landed. That is the same terminal that
-already holds the database, and the assertion is marked as one. A refund
-event from that assertion still carries `deadline_passed`: the wire has no
-word for it, and inventing one is not this decision.
+The RPC is trusted as payment evidence, as the facilitator is. Recovery checks
+the token contract, chain id, payer, merchant split, amount, nonce, finality and
+canonical block hash, but cannot detect an endpoint serving a consistent false
+receipt or nonce state; choosing the endpoint is a security decision.
 
-Rejected: asking the facilitator again; writing while the original call
-is still out; recording a failure that would lift the second-charge guard;
-a new status word; a merchant button; reading the chain to confirm a hash
-this gateway does not know how to decode; a receipt dated from a time the
-payment layer did not name; putting the operator's string in the
-payment-layer header.
+The original answer and recovery share one conditional completion under the
+order lock, which applies a due settlement deadline first; state, receipt and
+merchant messages commit together. Held goods are released once unless the
+merchant closed fulfillment (ADR-0028); a payment found after a prepaid order's
+deadline is recorded without new fulfillment. A recovered receipt uses the
+block's time and never manufactures the facilitator's payment response header.
+No merchant, administrator or command may declare success or failure without
+verification; refunds remain the merchant's business.
+
+## Alternatives rejected
+
+A second settle; outcome buttons; staffed reconciliation; an inspection-time
+receipt; reading an unavailable RPC as nonpayment; a log search from genesis,
+which public Base endpoints refuse or cap at 200 blocks. Public RPC gives no
+recovery-time guarantee. Details: `../research/54-self-service.md`.

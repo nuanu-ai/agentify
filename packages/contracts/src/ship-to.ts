@@ -65,7 +65,7 @@ export const ErasedShipToSchema = z
   })
   .meta({
     description:
-      "An address Agentify has erased, because nothing of Agentify's needs it any more: the merchant took the order on or recorded its shipment, or the order ended or came to owe a refund without being taken on. Only when it was erased is kept, and nothing of what it was. The merchant holds the address only as they stored it from the paid order, and an order that ended before it was paid never gave it to them.",
+      "An address Agentify has erased, because nothing of Agentify's needs it any more: the merchant took the order on or recorded its shipment, or the order ended or became unfulfilled without being taken on. Only when it was erased is kept, and nothing of what it was. The merchant holds the address only as they stored it from the paid order, and an order that ended before it was paid never gave it to them.",
   });
 
 export type ShipTo = z.infer<typeof ShipToSchema>;

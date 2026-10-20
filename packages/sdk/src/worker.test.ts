@@ -42,7 +42,7 @@ const question: QuoteRequest = {
 };
 
 const event: OrderEvent = {
-  type: "order.refund_due",
+  type: "order.unfulfilled",
   order_id: "order-1",
   at: AT,
   price: { amount: "5.00", currency: "USD" },

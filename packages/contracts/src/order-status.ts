@@ -58,21 +58,19 @@ export const ORDER_STATUSES = Object.freeze([
   /** The merchant left, and orders still open closed with them. */
   "cancelled",
   /**
-   * The money moved and the goods have not come: the merchant owes the buyer
-   * the goods or the money back. Not an ending, and it carries no deadline of
-   * its own. Goods the merchant delivers after it still reach the buyer, settle
-   * the debt and make the order `delivered`. The agent's status document always
-   * says why it is owed, under `reason`.
-   *
-   * It does not say whether the money has already gone back. The merchant pays
-   * back the whole price from their own wallet, although their payout contract
-   * paid them only their share and the commission stays with Agentify. The
-   * gateway has no way to record that they did, so nothing moves an order on to
-   * `refunded`, and a buyer already paid back still reads this word.
+   * The original payment completed and fulfillment did not. The reason says
+   * whether the merchant refused, left or missed the deadline. Later delivery
+   * remains possible until the merchant explicitly closes Agentify fulfillment.
+   * This says nothing about a refund or the parties' agreement.
    */
-  "refund_due",
-  /** A refund of that debt is recorded. Nothing can record one yet. */
-  "refunded",
+  "unfulfilled",
+  /**
+   * The merchant closed fulfillment through Agentify: nothing more is
+   * delivered here. `payment_status` says what happened to the original
+   * payment, and the merchant's own words are under `merchant_closure`; on a
+   * paid order Agentify's `reason` stands beside them.
+   */
+  "fulfillment_closed",
   /**
    * The merchant delivered synchronously and the payment did not execute. The
    * goods exist, nothing was paid, and the order stays open until a repeat
@@ -85,11 +83,20 @@ export const OrderStatusSchema = z.enum(ORDER_STATUSES);
 
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
+/** The original payment's verified outcome, independent of fulfillment. */
+export const PaymentStatusSchema = z.enum(["not_paid", "paid", "unresolved"]).meta({
+  description:
+    "What became of the buyer's original payment. not_paid: no payment went through, and none is waiting for an answer. paid: the payment went through. unresolved: Agentify asked the facilitator to execute the payment and has no answer yet; it keeps checking, and the word changes once the outcome is known. A merchant closing fulfillment changes none of this, cancels no payment and establishes no refund, so an unresolved payment may still go through after the closure.",
+});
+export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
+
 /**
- * Why an order ended, where Agentify and not its merchant decided it and one
- * status word would otherwise cover endings that call for different next
- * steps. A merchant's refusal travels in their own words and never gets one of
- * these beside it.
+ * Why an order ended, in Agentify's words: where Agentify and not its merchant
+ * decided it and one status word would otherwise cover endings that call for
+ * different next steps, and where a merchant closed fulfillment of a paid
+ * order, whose own words could otherwise be read as more than they establish.
+ * A merchant's refusal travels in their own words and gets one of these beside
+ * it only where they later closed the paid order.
  */
 export const ORDER_ENDING_REASONS = Object.freeze([
   /**
@@ -109,6 +116,11 @@ export const ORDER_ENDING_REASONS = Object.freeze([
   "price_expired",
   /** `expired`: the merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
+  /**
+   * `fulfillment_closed` on a paid order: the merchant closed fulfillment with
+   * no delivery recorded, and Agentify has verified no refund or agreement.
+   */
+  "merchant_closed",
 ] as const);
 
 export const OrderEndingReasonSchema = z.enum(ORDER_ENDING_REASONS);

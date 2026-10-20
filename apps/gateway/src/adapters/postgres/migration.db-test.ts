@@ -1228,4 +1228,170 @@ if (databaseUrl === null) {
       expect((await store.orderByPaymentRef(String(given)))?.order.id).toBe("ord_unpaid");
     });
   });
+
+  describe("the migration retaining accepted payment authorizations", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 19)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("keeps accepted claims while leaving unaccepted and orphan claims pruneable", async () => {
+      await pool.query(
+        "insert into merchants (id, name, selling, created_at, updated_at) values ('mch_recovery', 'Recovery', 'open', now(), now())",
+      );
+      for (const [id, payment] of [
+        ["ord_accepted", "SAVED-AUTHORIZATION"],
+        ["ord_unpaid", null],
+      ]) {
+        await pool.query(
+          "insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record, created_at, updated_at) values ($1, 'rejected', false, 'mch_recovery', 'item_1', 'sku-1', $2, now(), now())",
+          [id, JSON.stringify({ payment, paymentRef: `pay_for_${id}` })],
+        );
+      }
+      await pool.query(
+        "insert into payment_claims (fingerprint, order_id, claimed_at) values ('fp-accepted', 'ord_accepted', now()), ('fp-unpaid', 'ord_unpaid', now()), ('fp-orphan', 'ord_missing', now())",
+      );
+      for (const statement of await statementsOf("0019_payment_recovery.sql"))
+        await pool.query(statement);
+      expect(
+        (await pool.query("select fingerprint, retained from payment_claims order by fingerprint"))
+          .rows,
+      ).toEqual([
+        { fingerprint: "fp-accepted", retained: true },
+        { fingerprint: "fp-orphan", retained: false },
+        { fingerprint: "fp-unpaid", retained: false },
+      ]);
+      expect(
+        (
+          await pool.query(
+            "select record ->> 'payment' as payment, record ->> 'paymentRef' as payment_ref from orders where id = 'ord_accepted'",
+          )
+        ).rows,
+      ).toEqual([{ payment: "SAVED-AUTHORIZATION", payment_ref: "pay_for_ord_accepted" }]);
+    });
+  });
+
+  describe("the migration recording fulfillment without claiming a refund", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      await pool.query("drop schema if exists pgboss cascade");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 20)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_closure','Closure','open',now(),now())",
+      );
+      await pool.query("create schema pgboss");
+      await pool.query("create table pgboss.job (data jsonb not null)");
+    }, 60_000);
+    afterAll(async () => {
+      await pool.query("drop schema if exists pgboss cascade");
+      await pool.end();
+    });
+
+    it("preserves payment, private goods, merchant words and terminalness while replacing only status vocabulary", async () => {
+      const originals = ["refund_due", "refunded", "delivered"].map((state) => ({
+        order: {
+          id: `ord_${state}`,
+          state,
+          payment: "settled",
+          closure: { cause: "merchant_refused", code: "refund_due", message: "refunded" },
+        },
+        merchantId: "mch_closure",
+        paymentRef: `pay_${state}`,
+        payment: "ORIGINAL_AUTHORIZATION",
+        paymentAttempt: {
+          id: "pay_original",
+          startedAt: 123,
+          completion: { settled: true, transaction: "ORIGINAL_TRANSACTION" },
+        },
+        params: { refund_due: "refunded" },
+        delivery: { code: "refund_due" },
+      }));
+      for (const original of originals) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,$3,'mch_closure','itm_old','sku',$4,now(),now())",
+          [
+            original.order.id,
+            original.order.state,
+            original.order.state === "refund_due",
+            JSON.stringify(original),
+          ],
+        );
+        await pool.query(
+          "insert into receipts (order_id,merchant_id,receipt,updated_at) values ($1,'mch_closure',$2,now())",
+          [
+            original.order.id,
+            JSON.stringify({
+              order_id: original.order.id,
+              outcome: original.order.state,
+              transaction: "ORIGINAL_TRANSACTION",
+            }),
+          ],
+        );
+      }
+      await pool.query("insert into pgboss.job (data) values ($1),($2)", [
+        JSON.stringify({
+          kind: "order_event",
+          payload: { type: "order.refund_due", message: "refund_due" },
+        }),
+        JSON.stringify({ kind: "order", payload: { params: { type: "order.refund_due" } } }),
+      ]);
+      for (const statement of await statementsOf("0020_merchant_fulfillment_closure.sql"))
+        await pool.query(statement);
+      const rows = (await pool.query("select state,open,record from orders order by id")).rows;
+      for (const original of originals) {
+        const row = rows.find((row) => row.record.order.id === original.order.id);
+        const state =
+          original.order.state === "refund_due"
+            ? "unfulfilled"
+            : original.order.state === "refunded"
+              ? "fulfillment_closed"
+              : "delivered";
+        expect(row.state).toBe(state);
+        expect(row.open).toBe(original.order.state === "refund_due");
+        expect(row.record).toEqual({ ...original, order: { ...original.order, state } });
+        expect(row.record.order).not.toHaveProperty("merchantClosure");
+      }
+      expect(
+        (
+          await pool.query(
+            "select receipt ->> 'outcome' as outcome from receipts order by order_id",
+          )
+        ).rows,
+      ).toEqual([
+        { outcome: "delivered" },
+        { outcome: "unfulfilled" },
+        { outcome: "fulfillment_closed" },
+      ]);
+      expect(
+        (await pool.query("select data from pgboss.job order by data ->> 'kind'")).rows,
+      ).toEqual([
+        { data: { kind: "order", payload: { params: { type: "order.refund_due" } } } },
+        {
+          data: {
+            kind: "order_event",
+            payload: { type: "order.unfulfilled", message: "refund_due" },
+          },
+        },
+      ]);
+    });
+  });
 }

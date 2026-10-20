@@ -9,7 +9,6 @@ and git keeps the entries that were here.
 
 | Question | Who decides | Read |
 | --- | --- | --- |
-| How small Agentify's part in a dispute between a buyer and a merchant can be, with the merchant's as large as possible | product owner | — |
 | How a merchant answers a buyer in a dispute when the buyer is a program and no person writes to support | product owner | — |
 | Whose contact details a purchase carries, the agent's or the person's behind it, and so whom the merchant writes to | product owner | — |
 | What happens when a subscription good runs out: an agent bought a month of access, and what then | product owner | — |
@@ -28,6 +27,7 @@ and git keeps the entries that were here.
 | How a "not available" answer to a price check gives its reason, so an agent can tell "out of stock" from "not shipped there" and from "the address lacks what the merchant needs" | product owner | `37-physical-goods.md` |
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
 | A seller's name and site are read as they are now, also in orders already delivered, so a renamed seller shows the new name on an old order | product owner | ADR-0034 |
+| How a merchant completes full offboarding without staff, preserving accepted orders and payment history; pausing and revoking keys do not delete an account | product owner | `54-self-service.md` |
 
 ## Money
 
@@ -37,7 +37,6 @@ and git keeps the entries that were here.
 | Whether Coinbase Wallet pays the network fee in USDC with no paymaster of ours, and what a first payout does when the wallet holds no USDC yet; checked by hand on the test channel | product owner | `48-merchant-wallet-onboarding.md` |
 | The smallest price production settles: the facilitator refuses amounts under a minimum it does not publish while publication accepts 0.001 USD, and production is not to be measured (2026-09-25), so this returns when a merchant prices under a cent | product owner | `36-zero-price.md` |
 | Who pays for the purchase that first lists a card in the Bazaar, which at a real price sends the merchant its own price from Agentify's wallet | product owner, when a merchant with expensive goods arrives | `04-spike-bazaar-listing.md` |
-| `refunded` is in the order's vocabulary, but nothing produces it, because the command that records a refund is not built | product owner | ADR-0028 |
 
 ## Before parcels sell on the live channel
 
@@ -56,6 +55,7 @@ owner's to decide before a WooCommerce shop's parcels sell for real money.
 
 | Question | Who decides | Read |
 | --- | --- | --- |
+| ~~How merchant closure is represented in the state machine, API, SDK, statuses and receipts~~ — `order.close()` and the Agentify Orders action record attributed closure, retain independent original payment facts, and refuse already-delivered or shipped orders (2026-10-19) | architect | ADR-0028, `54-self-service.md` |
 | Which of Agentify's deadlines a merchant must see or name: two default silently from the gateway's settings and the synchronous budget is not expressed in a card at all | architect, as a decision | — |
 | Which rules the rewrite of the decision on signing in dropped that the code still keeps — the process log as the only record of who stopped sales, one person per merchant with no roles — and recording those that stand | architect | ADR-0026 |
 | When to stop reading a card as it is now for orders recorded before 2026-10-10, which keep no result of their own: once no channel holds such an order | engineering, by a query on each channel | — |

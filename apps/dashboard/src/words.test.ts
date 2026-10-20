@@ -23,7 +23,7 @@ describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
     for (const status of ORDER_STATUSES) {
       expect(ORDER_WORDS[status]?.text, status).toBeTruthy();
-      // `refund_due` on a screen is a field name, not a sentence.
+      // `unfulfilled` on a screen is a field name, not a sentence.
       expect(ORDER_WORDS[status]?.text, status).not.toContain("_");
     }
   });
@@ -51,7 +51,7 @@ describe("the words a merchant reads", () => {
     expect(waitsOnTheBuyer("payment_unresolved")).toBe(false);
   });
 
-  it("counts an order as needing the merchant only while a refund is due", () => {
+  it("counts an order as needing the merchant only while a paid order remains unfulfilled", () => {
     // Goods delivered against a payment that failed wait on the buyer, who can
     // pay again; the merchant has nothing to do there. An order merely under
     // way may be the merchant's to deliver, but this API cannot tell it from
@@ -59,7 +59,7 @@ describe("the words a merchant reads", () => {
     // beyond the evidence.
     const needing = ORDER_STATUSES.filter((status) => needsYou(status));
 
-    expect(needing).toStrictEqual(["refund_due"]);
+    expect(needing).toStrictEqual(["unfulfilled"]);
   });
 
   it("does not name a duty for an order that may be nobody's yet", () => {

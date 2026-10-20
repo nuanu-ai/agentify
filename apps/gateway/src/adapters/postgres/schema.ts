@@ -189,6 +189,9 @@ export const orders = pgTable(
     // asks of every split it might cover; without it each question reads
     // every document of that merchant's.
     index("orders_pay_to_idx").on(table.merchantId, sql`lower(${table.record} ->> 'payTo')`),
+    index("orders_unresolved_payment_idx")
+      .on(table.id)
+      .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
     // The order a payment is for, found by the reference its challenge
     // carried, and never two orders under one reference.
     uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),
@@ -223,6 +226,7 @@ export const paymentClaims = pgTable(
     fingerprint: text("fingerprint").primaryKey(),
     orderId: text("order_id").notNull(),
     claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "date" }).notNull(),
+    retained: boolean("retained").notNull().default(false),
   },
   // Claims are swept by age, and read back by order when somebody is working
   // out what an order was paid with.

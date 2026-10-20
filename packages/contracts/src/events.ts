@@ -11,8 +11,11 @@ import { z } from "zod";
 import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
 
 export const ORDER_EVENT_TYPES = Object.freeze({
-  /** The money moved and the delivery did not happen. */
-  REFUND_DUE: "order.refund_due",
+  /**
+   * The money moved and the delivery did not happen, including a payment that
+   * completed after the merchant closed fulfillment.
+   */
+  UNFULFILLED: "order.unfulfilled",
   /** The merchant said they would deliver and the agent never paid. */
   UNPAID_AFTER_CONFIRMATION: "order.unpaid_after_confirmation",
   /** The merchant delivered synchronously and the payment did not execute. */
@@ -20,29 +23,34 @@ export const ORDER_EVENT_TYPES = Object.freeze({
 } as const);
 
 /**
- * How an order came to owe a refund: the merchant refused after the money had
- * moved, a deadline passed, or they left and their open orders closed with
- * them. `deadline_passed` is the merchant's delivery deadline after the money
+ * Why a paid order remains unfulfilled: the merchant refused, a deadline
+ * passed, they left, or the payment completed after they had closed
+ * fulfillment. `deadline_passed` is the delivery deadline after the money
  * moved, or Agentify's wait for word of a charge that was later reported to
  * have gone through, on an order the merchant was never sent.
+ * `paid_after_closure` is a payment that was still unresolved when the merchant
+ * closed fulfillment and completed afterwards: the order stays closed, nothing
+ * is delivered, and it waits on the merchant's open list until they close it
+ * again.
  */
-export const RefundDueReasonSchema = z.enum(["refused", "deadline_passed", "merchant_left"]);
+export const UnfulfilledReasonSchema = z
+  .enum(["refused", "deadline_passed", "merchant_left", "paid_after_closure"])
+  .meta({
+    description:
+      "Why a paid order has no delivery. refused: the merchant refused it after it was paid. deadline_passed: its delivery deadline passed, or the payment was confirmed only after Agentify had stopped waiting for it and the order was never sent to the merchant. merchant_left: the merchant stopped selling through Agentify before fulfilling it. paid_after_closure: the payment was still unresolved when the merchant closed fulfillment and completed afterwards; the order stays closed, nothing is delivered, and it is on the merchant's open order list until they close it again.",
+  });
 
 export const OrderEventSchema = z.discriminatedUnion("type", [
   z.strictObject({
-    type: z.literal(ORDER_EVENT_TYPES.REFUND_DUE),
+    type: z.literal(ORDER_EVENT_TYPES.UNFULFILLED),
     order_id: IdentifierSchema,
     at: TimestampSchema,
     /**
-     * The sum owed: the whole price the sale went through at, which the
-     * merchant pays back to the buyer from their own wallet. The buyer paid it
-     * into the merchant's payout contract, which sends 99.9% of it to the
-     * merchant and 0.1% to Agentify when it is paid out, and the commission is
-     * not given back, so the sum owed is more than the merchant's share of the
-     * sale, whether or not that sale has been paid out yet.
+     * The original purchase price. It is not an amount owed as a refund;
+     * the merchant and buyer determine their remedy outside Agentify.
      */
     price: MoneySchema,
-    reason: RefundDueReasonSchema,
+    reason: UnfulfilledReasonSchema,
   }),
 
   z.strictObject({
@@ -58,5 +66,5 @@ export const OrderEventSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export type RefundDueReason = z.infer<typeof RefundDueReasonSchema>;
+export type UnfulfilledReason = z.infer<typeof UnfulfilledReasonSchema>;
 export type OrderEvent = z.infer<typeof OrderEventSchema>;

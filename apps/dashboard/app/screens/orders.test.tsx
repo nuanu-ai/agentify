@@ -93,6 +93,12 @@ const ordersOf = (orders: readonly Ordered[]) =>
       },
       test,
       status,
+      payment_status:
+        status === "payment_unresolved"
+          ? "unresolved"
+          : ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
+            ? "paid"
+            : "not_paid",
     })),
   });
 
@@ -227,8 +233,8 @@ describe("searching the orders", () => {
 
   it("narrows the orders that need the merchant by the same search", () => {
     const owing = ordersOf([
-      { id: FIRST, status: "refund_due" },
-      { id: SAME_TAIL, status: "refund_due" },
+      { id: FIRST, status: "unfulfilled" },
+      { id: SAME_TAIL, status: "unfulfilled" },
     ]);
 
     const view = ordersView("live", CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
@@ -237,19 +243,11 @@ describe("searching the orders", () => {
   });
 });
 
-describe("a refund due on a test purchase", () => {
-  it("says the sum to return is a test purchase's, and says nothing of tests for a real one", () => {
-    const owing = ordersOf([
-      { id: FIRST, status: "refund_due", test: true },
-      { id: SAME_TAIL, status: "refund_due" },
-    ]);
-
-    const [test, real] = ordersView("live", CARDS, owing, owing).needsYou.rows;
-
-    // The test word stands with the sum itself.
-    expect(test?.why).toMatch(/test purchase, 5\.00 USD/);
-    expect(real?.why).toContain("5.00 USD");
-    expect(real?.why).not.toMatch(/test/i);
+describe("an unfulfilled test purchase", () => {
+  it("marks the original amount as a test", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    expect(readable(html)).toContain("5.00 USD test");
   });
 });
 
@@ -340,7 +338,7 @@ describe("a long run of orders told in full", () => {
   };
 
   it.each([
-    ["refund_due", "Needs you", "Orders that need you"],
+    ["unfulfilled", "Needs you", "Orders that need you"],
     ["delivered_unpaid", "Waiting on the buyer", "Orders waiting on the buyer"],
   ])("draws the newest fifty orders %s and says which of how many", (status, title, label) => {
     const orders = sixtyOf(status);
@@ -355,11 +353,169 @@ describe("a long run of orders told in full", () => {
   });
 
   it("says nothing of a cut where the group holds every order", () => {
-    const orders = ordersOf([{ id: FIRST, status: "refund_due" }]);
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
 
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
+  });
+});
+
+describe("merchant fulfillment closure", () => {
+  const closedAt = "2026-10-19T09:30:00Z";
+  const closed = (status = "fulfillment_closed", payment = "paid", message?: string) =>
+    OrderListSchema.parse({
+      orders: [
+        {
+          ...THREE.orders[0],
+          status,
+          payment_status: payment,
+          merchant_closure: { closed_at: closedAt, ...(message === undefined ? {} : { message }) },
+        },
+      ],
+    });
+
+  it("keeps the original payment fact and attributes the explanation to the merchant", () => {
+    const orders = closed("fulfillment_closed", "paid", "A refund was agreed <outside Agentify>.");
+    const html = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
+    ));
+    const text = readable(html);
+
+    expect(text).toContain("Closed by you");
+    expect(text).toContain("Payment Paid");
+    expect(text).toContain("Your explanation");
+    expect(text).toContain("A refund was agreed <outside Agentify>.");
+    expect(html).toContain("&lt;outside Agentify&gt;");
+    expect(html).not.toContain("<outside Agentify>");
+    expect(text).toContain("2026-10-19 09:30:00 UTC");
+    expect(text).not.toContain("Refunded");
+  });
+
+  it("shows closure without pretending an unresolved payment is known", () => {
+    const orders = closed("payment_unresolved", "unresolved");
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+    );
+
+    expect(text).toContain("Payment outcome unknown");
+    expect(text).toContain("Closed by you 2026-10-19 09:30:00 UTC");
+    expect(text).toContain("Payment Outcome unknown");
+    expect(text).not.toContain("Your explanation");
+  });
+
+  it("does not invent an actor for a historical closure without metadata", () => {
+    const orders = OrderListSchema.parse({
+      orders: [{ ...THREE.orders[0], status: "fulfillment_closed", payment_status: "paid" }],
+    });
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+    );
+
+    expect(text).toContain("Fulfillment closed");
+    expect(text).not.toContain("Closed by you");
+  });
+
+  it("counts a closed order whose payment completed afterwards as needing the merchant, and offers closing it again", () => {
+    // The gateway keeps such an order on the open list until the merchant
+    // closes it again; one it no longer lists is settled.
+    const orders = closed("fulfillment_closed", "paid", "Your payment did not go through.");
+    const id = orders.orders[0]?.id ?? "";
+    const reopened = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />
+    ));
+    const settled = served(() => (
+      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
+    ));
+    const needs = (html: string) => {
+      const text = readable(html);
+      return text.includes("Needs you")
+        ? text.slice(text.indexOf("Needs you"), text.indexOf("All orders"))
+        : "";
+    };
+
+    expect(needs(reopened)).toContain("Needs you 1");
+    expect(needs(reopened)).toContain("payment completed after you closed fulfillment");
+    expect(reopened).toContain(`name="order_id" value="${id}"`);
+    expect(readable(reopened)).toContain("Close again");
+    expect(needs(settled)).toBe("");
+    expect(settled).not.toContain(`name="order_id" value="${id}"`);
+  });
+
+  it("offers closure only while fulfillment can still be stopped", () => {
+    // Each order is named by its own hexadecimal tail, so a form is found by the order it closes.
+    const cases = [
+      ["unfulfilled", "paid", true],
+      ["payment_unresolved", "unresolved", true],
+      ["delivered_unpaid", "not_paid", true],
+      ["in_progress", "paid", true],
+      ["in_progress", "not_paid", false],
+      ["rejected", "not_paid", false],
+      ["declined", "not_paid", false],
+      ["expired", "not_paid", false],
+      ["cancelled", "not_paid", false],
+      ["delivered", "paid", false],
+      ["shipped", "paid", false],
+      ["fulfillment_closed", "paid", false],
+    ] as const;
+    const idAt = (at: number) => idOf("c1a5", at.toString(16).padStart(4, "0"));
+    const orders = OrderListSchema.parse({
+      orders: [
+        ...cases.map(([status, payment], at) => ({
+          ...THREE.orders[0],
+          id: idAt(at),
+          status,
+          payment_status: payment,
+        })),
+        {
+          ...THREE.orders[0],
+          id: SAME_TAIL,
+          status: "payment_unresolved",
+          payment_status: "unresolved",
+          merchant_closure: { closed_at: closedAt },
+        },
+      ],
+    });
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    cases.forEach(([status, payment, offered], at) => {
+      expect(
+        html.includes(`name="order_id" value="${idAt(at)}"`),
+        `${status} with payment ${payment}`,
+      ).toBe(offered);
+    });
+    expect(html).not.toContain(`name="order_id" value="${SAME_TAIL}"`);
+  });
+});
+
+describe("an order's details", () => {
+  const detailsOf = (html: string, id: string) =>
+    new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
+
+  it("are drawn under a wide row only where they hold something its columns do not", () => {
+    const orders = ordersOf([
+      { id: FIRST, status: "unfulfilled" },
+      { id: SAME_HEAD, status: "delivered" },
+    ]);
+    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+
+    expect(detailsOf(html, FIRST)).toContain("wide");
+    expect(detailsOf(html, SAME_HEAD)).not.toBe("");
+    expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
+  });
+
+  it("are reached from Needs you without searching for an order already on the page", () => {
+    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
+    const opens = (address: string, open = orders) =>
+      ordersView("live", CARDS, orders, open, new URLSearchParams(address)).needsYou.rows[0]?.opens;
+
+    expect(opens("")).toStrictEqual({
+      search: `?details=${FIRST}`,
+      words: "Close fulfillment",
+    });
+    expect(opens("q=vpn&show=open")?.search).toBe(`?q=vpn&show=open&details=${FIRST}`);
+    // Where the list below does not hold it, the order is found by its ID.
+    expect(opens("show=open", ordersOf([]))?.search).toBe(`?q=${FIRST}&details=${FIRST}`);
   });
 });

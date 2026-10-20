@@ -24,7 +24,7 @@ describe("what a receipt says became of the purchase", () => {
   // own words, and "paid, delivery still running" reads as neither
   // "delivered" nor "paid and never delivered".
   it("tells apart the four states a paid purchase can be in", () => {
-    for (const outcome of ["in_progress", "delivered", "refund_due", "refunded"]) {
+    for (const outcome of ["in_progress", "delivered", "unfulfilled", "fulfillment_closed"]) {
       expect(ReceiptOutcomeSchema.safeParse(outcome).success, outcome).toBe(true);
     }
   });
@@ -55,10 +55,10 @@ describe("what a receipt says became of the purchase", () => {
     );
   });
 
-  it("has no value for a purchase whose money never moved", () => {
+  it("has no value for an unpaid purchase or an unknown payment", () => {
     // A refused, declined, expired or cancelled purchase leaves no receipt,
-    // and neither does a synchronous delivery whose payment failed: no payment
-    // executed.
+    // and neither does a synchronous delivery whose payment failed. An unknown
+    // outcome cannot establish that a payment executed.
     for (const outcome of [
       "rejected",
       "payment_unresolved",
@@ -82,8 +82,10 @@ describe("receipt", () => {
     expect(ReceiptSchema.safeParse({ ...receipt, outcome: "in_progress" }).success).toBe(true);
   });
 
-  it("accepts a receipt for a debt that has since been paid back", () => {
-    expect(ReceiptSchema.safeParse({ ...receipt, outcome: "refunded" }).success).toBe(true);
+  it("accepts a historical receipt for fulfillment that was later closed", () => {
+    expect(ReceiptSchema.safeParse({ ...receipt, outcome: "fulfillment_closed" }).success).toBe(
+      true,
+    );
   });
 
   it("accepts a receipt for a sale that had no price question behind it", () => {
@@ -101,10 +103,12 @@ describe("receipt", () => {
   }
 
   it("refuses a field it does not know", () => {
-    expect(errorOf(ReceiptSchema, { ...receipt, refunded: true })).toContain("refunded");
+    expect(errorOf(ReceiptSchema, { ...receipt, fulfillment_closed: true })).toContain(
+      "fulfillment_closed",
+    );
   });
 
-  it("names the transfer the payment layer reported, and never an empty one", () => {
+  it("names the recorded payment transaction, and never an empty one", () => {
     // Without it a receipt is matched to the payment on the chain by its time
     // alone, which is a guess.
     const named = { ...receipt, transaction: `0x${"ab".repeat(32)}` };

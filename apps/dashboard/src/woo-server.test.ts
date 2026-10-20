@@ -24,10 +24,15 @@ import { formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
-import type { StoreProduct } from "./woo-catalog.js";
+import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
 import type { WooRequest } from "./woo-request.js";
-import { type CatalogueRead, inspectProductInTheShop, type ProductInspection } from "./woo-shop.js";
+import {
+  type CatalogueRead,
+  inspectProductInTheShop,
+  type ProductInspection,
+  type WooOrderLookup,
+} from "./woo-shop.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
@@ -126,6 +131,7 @@ interface Standing {
     keys: Parameters<typeof inspectProductInTheShop>[0],
     merchantItemId: string,
   ) => Promise<ProductInspection>;
+  readonly readOrder?: (orderId: string) => Promise<WooOrderLookup>;
   /**
    * Fails every read of the connections table, as an unreachable Postgres
    * would. Only the screens' reads break; the Connect path's writes still work,
@@ -286,6 +292,9 @@ const started = async (standing: Standing = {}): Promise<Running> => {
             fingerprint: "accepted-download-fingerprint",
           },
         })),
+      ...(standing.readOrder === undefined
+        ? {}
+        : { readOrder: (_keys, id) => standing.readOrder?.(id) as Promise<WooOrderLookup> }),
     },
   });
 
@@ -2020,6 +2029,187 @@ describe("a press that fails inside the dashboard", () => {
     );
     expect(said).toContain("Back to Cards");
     expect(pressed.html).not.toContain("the shops table is not answering");
+  });
+});
+
+describe("merchant delivery recovery", () => {
+  const sale = async (
+    running: Running,
+    accountId = running.accountId,
+    placed = false,
+    neverAsked = false,
+  ) => {
+    const merchantItemId = merchantItemIdFor(SHOP, "11");
+    const published = await running.harnessed.gateway.publishCard(running.harnessed.merchant.id, {
+      merchant_item_id: merchantItemId,
+      title: "Merchant download",
+      description: "The merchant's own downloadable product",
+      price: { amount: "25.00", currency: "USD" },
+      fulfillment: "async",
+      result: {
+        download_url: { type: "string" },
+        file_name: { type: "string" },
+        order_number: { type: "string" },
+      },
+    });
+    if (!published.ok) throw new Error("the recovery test's card was refused");
+    const offered = await running.harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("the recovery test's sale was not priced");
+    const orderId = offered.order.order.id;
+    await running.harnessed.gateway.payPurchase(orderId, "PAYMENT", `payment_${orderId}`);
+    const priceId = `prc_${orderId}`;
+    await running.harnessed.store.withOrder(orderId, (found) => ({
+      save: { ...found, priceId },
+      result: null,
+    }));
+    await running.harnessed.gateway.refuseOrder(running.harnessed.merchant.id, orderId, {
+      code: "cannot_fulfill",
+      message: "The shop's creation response was not received.",
+    });
+    const now = new Date(running.harnessed.now());
+    const facts = {
+      shopOrigin: SHOP,
+      connectionRevision: "grant_recovery",
+      merchantItemId,
+      priceId,
+      productId: "11",
+      productFingerprint: "accepted-download-fingerprint",
+      amount: "25.00",
+      currency: "USD",
+    };
+    await running.shops.recordQuote(
+      accountId,
+      priceId,
+      merchantItemId,
+      facts.productFingerprint,
+      new Date(now.getTime() + 3600000),
+      now,
+    );
+    if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
+    else await running.shops.claimOrder(accountId, orderId, facts, now);
+    await running.shops.connect({
+      accountId,
+      shopUrl: SHOP,
+      consumerKey: "ck_recovery",
+      consumerSecret: "cs_recovery",
+      permissions: "read_write",
+      // A shop connected again since the refusal: the one condition under
+      // which the operator's command would create the order.
+      revision: neverAsked ? "grant_again" : "grant_recovery",
+      connectedAt: now,
+    });
+    if (placed)
+      await running.shops.recordOrder(
+        orderId,
+        {
+          id: "13",
+          number: "WOO-13",
+          permission: {
+            shopOrigin: SHOP,
+            productId: "11",
+            orderKey: "wc_private_order",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            emailUid: "a".repeat(64),
+            orderNumber: "WOO-13",
+          },
+        },
+        now,
+      );
+    return { orderId, facts, path: `/integrations/woocommerce/recover/${orderId}` };
+  };
+
+  it("leads from own Orders to a saved-delivery retry without admin approval or the shop integration selected", async () => {
+    const running = await started();
+    await running.signIn();
+    const own = await sale(running, running.accountId, true);
+    const orders = await running.get("/orders");
+    expect(orders.html).toContain(`href="${own.path}"`);
+    const page = await running.get(own.path);
+    expect(page.status).toBe(200);
+    expect(formTo(page.html, "post", own.path)?.fields.has("woo_order_id")).toBe(false);
+    expect(page.html).not.toContain("wc_private_order");
+    expect(page.html).not.toContain("cs_recovery");
+
+    const recovered = await running.post(own.path);
+    expect(recovered.status).toBe(200);
+    expect(formTo(recovered.html, "post", own.path)).toBeUndefined();
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
+    expect((await running.get("/orders")).html).not.toContain(`href="${own.path}"`);
+  });
+
+  it("turns away a press for a sale its shop was never asked to create, without asking the shop anything", async () => {
+    let inspected = 0;
+    const running = await started({
+      inspectProduct: async (_keys, merchantItemId) => {
+        inspected += 1;
+        return {
+          ok: true,
+          product: {
+            kind: "download",
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+          },
+        };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, true);
+    const page = await running.get(own.path);
+    expect(formTo(page.html, "post", own.path)).toBeUndefined();
+
+    const pressed = await running.post(own.path);
+
+    expect(pressed.status).toBe(409);
+    expect(formTo(pressed.html, "post", own.path)).toBeUndefined();
+    expect(inspected).toBe(0);
+    expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("precreate_refused");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
+  });
+
+  it("answers another account's exact sale like a missing sale on GET and POST", async () => {
+    const running = await started();
+    await running.signIn();
+    const foreign = await sale(running, "another_account");
+    const missingPath = "/integrations/woocommerce/recover/ord_missing";
+    const ownOrders = await running.get("/orders");
+    expect(ownOrders.html).not.toContain(`href="${foreign.path}"`);
+    const foreignPage = await running.get(foreign.path);
+    const missingPage = await running.get(missingPath);
+    expect(foreignPage.status).toBe(404);
+    expect(readable(foreignPage.html)).toBe(readable(missingPage.html));
+    const foreignPost = await running.post(foreign.path, { woo_order_id: "13" });
+    const missingPost = await running.post(missingPath, { woo_order_id: "13" });
+    expect(foreignPost.status).toBe(404);
+    expect(readable(foreignPost.html)).toBe(readable(missingPost.html));
+    expect((await running.shops.recoveryOrder(foreign.orderId))?.phase).toBe("create_unknown");
+  });
+
+  it("keeps the standard drawn-for and origin guards on the new action", async () => {
+    const running = await started();
+    await running.signIn();
+    const own = await sale(running, running.accountId, true);
+    const oldForm = await running.post(own.path, { [DRAWN_FOR]: "another@example.com" });
+    expect(oldForm.status).toBe(409);
+    const crossOrigin = await fetch(`${running.url}${own.path}`, {
+      method: "POST",
+      headers: {
+        origin: "https://elsewhere.example.com",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: "",
+    });
+    expect(crossOrigin.status).toBe(403);
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
+  });
+
+  it("does not offer the recovery route on live", async () => {
+    const running = await started({ channel: "live" });
+    await running.signIn();
+    expect((await running.get("/integrations/woocommerce/recover/ord_missing")).status).toBe(404);
   });
 });
 

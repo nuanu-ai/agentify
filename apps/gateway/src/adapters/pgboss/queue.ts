@@ -307,11 +307,19 @@ export class PgBossQueue implements Queue {
     await this.#boss.schedule(name, "17 3 * * *");
   }
 
+  async everyMinute(name: string, work: () => Promise<unknown>): Promise<void> {
+    await this.#boss.createQueue(name);
+    await this.#boss.work(name, { batchSize: 1 }, async () => {
+      await work();
+    });
+    await this.#boss.schedule(name, "* * * * *");
+  }
+
   /**
    * Starts the library so this process can send, without consuming. A second
    * process calling {@link start} would take reminders away from the gateway
-   * that must apply them; the operator command that records a payment fact
-   * uses this instead.
+   * that must apply them. WooCommerce recovery uses a writing command
+   * application instead.
    */
   async startWriter(): Promise<void> {
     await this.#boss.start();

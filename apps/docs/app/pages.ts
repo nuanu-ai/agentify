@@ -33,7 +33,7 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
     file: "money.md",
     title: "Merchant payments, USDC and payouts",
     description:
-      "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and refunds for merchant orders.",
+      "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and merchant remedies for unfulfilled orders.",
   },
   "/payout": {
     file: "payout.md",

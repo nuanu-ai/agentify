@@ -11,6 +11,7 @@ import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
+import { recoveryOn } from "./adapters/x402/recovery.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import { RefusedToStart } from "./app/recorded-splits.js";
@@ -40,9 +41,11 @@ const QUEUE_POLL_INTERVAL_MS = 250;
  * The credentials are made to sign once before this returns, and on Coinbase's
  * facilitator shown to Coinbase once; the process stops if they cannot sign or
  * Coinbase refuses them. A Coinbase that does not answer stops nothing: the
- * gateway starts, and its log says the key is unconfirmed.
+ * gateway starts, and its log says the key is unconfirmed. Payment recovery is
+ * the same: an RPC that does not answer this chain is reported, and recovery
+ * asks it again on every poll.
  */
-async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
+export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
     return new ScriptedFacilitator();
   }
@@ -52,7 +55,9 @@ async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<F
   if (unconfirmed !== null) {
     console.warn(`[gateway] ${unconfirmed}`);
   }
-  return new X402Facilitator(client, edge);
+  const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
+  (started.broken ? console.error : console.log)(`[gateway] ${started.said}`);
+  return new X402Facilitator(client, edge, started.recovery);
 }
 
 /**

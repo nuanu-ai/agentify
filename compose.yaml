@@ -66,6 +66,7 @@
 #   AGENTIFY_COOKIE_SECURE  Secure on the session cookie     false
 #   AGENTIFY_FACILITATOR_URL  how payments are facilitated   sandbox:scripted
 #   AGENTIFY_PAYMENT_NETWORK  the chain payments use         eip155:84532
+#   AGENTIFY_PAYMENT_RPC_URL  chain reads for payment recovery  disabled
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
@@ -200,6 +201,7 @@ services:
       # describes these and has no defaults of its own.
       FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
       PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
+      PAYMENT_RPC_URL: "${AGENTIFY_PAYMENT_RPC_URL:-}"
       # Required on a live chain, where the gateway refuses to start without both;
       # empty everywhere else. No colon, as above: empty means no credential.
       CDP_API_KEY_ID: "${CDP_API_KEY_ID-}"

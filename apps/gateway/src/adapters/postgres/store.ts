@@ -9,7 +9,7 @@
  * are the same answer.
  */
 
-import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
+import { listedAsOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -23,9 +23,9 @@ import {
   type Integration,
   type IntegrationSwitch,
   type MerchantScope,
+  NO_PENDING_HANDLER,
   type OrderChange,
   type OrderLookup,
-  OWING_ONLY_MONEY,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -641,7 +641,7 @@ export class PostgresStore implements Store {
           and(
             eq(orders.merchantId, merchantId),
             eq(orders.open, true),
-            not(inArray(orders.state, [...OWING_ONLY_MONEY])),
+            not(inArray(orders.state, [...NO_PENDING_HANDLER])),
           ),
         )
         .orderBy(orders.createdAt);
@@ -766,6 +766,31 @@ export class PostgresStore implements Store {
     return rows.map((row) => row.record);
   }
 
+  async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    const rows = await this.#db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          sql`${orders.id} > ${afterId}`,
+          sql`${orders.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`,
+        ),
+      )
+      .orderBy(orders.id)
+      .limit(limit);
+    return rows.map((row) => row.record);
+  }
+
+  async paymentOrders(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
+    const rows = await this.#db
+      .select()
+      .from(orders)
+      .where(and(sql`${orders.id} > ${afterId}`, sql`${orders.record} ->> 'payment' is not null`))
+      .orderBy(orders.id)
+      .limit(limit);
+    return rows.map((row) => row.record);
+  }
+
   async runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>> {
     // A session advisory lock on one connection held for the whole run: the
     // unlock must go out on the session that took the lock, and a transaction
@@ -877,6 +902,21 @@ export class PostgresStore implements Store {
       // included.
       for (const write of decided.alongside ?? []) {
         switch (write.kind) {
+          case "retain_payment": {
+            const retained = await tx
+              .update(paymentClaims)
+              .set({ retained: true })
+              .where(
+                and(
+                  eq(paymentClaims.fingerprint, write.fingerprint),
+                  eq(paymentClaims.orderId, write.orderId),
+                ),
+              )
+              .returning({ fingerprint: paymentClaims.fingerprint });
+            if (retained.length !== 1)
+              throw new Error("the payment claim no longer belongs to this order");
+            break;
+          }
           case "receipt":
             await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
             break;
@@ -944,13 +984,19 @@ export class PostgresStore implements Store {
     // A claim another order holds is never released by this one.
     await this.#db
       .delete(paymentClaims)
-      .where(and(eq(paymentClaims.fingerprint, fingerprint), eq(paymentClaims.orderId, orderId)));
+      .where(
+        and(
+          eq(paymentClaims.fingerprint, fingerprint),
+          eq(paymentClaims.orderId, orderId),
+          eq(paymentClaims.retained, false),
+        ),
+      );
   }
 
   async forgetClaimsBefore(instant: number): Promise<number> {
     const gone = await this.#db
       .delete(paymentClaims)
-      .where(lt(paymentClaims.claimedAt, new Date(instant)))
+      .where(and(lt(paymentClaims.claimedAt, new Date(instant)), eq(paymentClaims.retained, false)))
       .returning({ fingerprint: paymentClaims.fingerprint });
     return gone.length;
   }
@@ -1294,7 +1340,7 @@ function rowFor(record: StoredOrder) {
   return {
     id: record.order.id,
     state: record.order.state,
-    open: isOpen(record.order.state),
+    open: listedAsOpen(record.order),
     merchantId: record.merchantId,
     itemId: record.itemId,
     merchantItemId: record.merchantItemId,

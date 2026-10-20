@@ -13,21 +13,21 @@ in the synchronous mode, your silence costs the buyer nothing and the sale can
 go on at a known price. Where the money moves at the moment of purchase, as in
 the asynchronous mode and for a parcel, the same silence would leave a buyer
 who paid with nothing, so the sale stops before the money moves, or the order
-owes a refund after.
+is recorded as unfulfilled after.
 
 ## Every failure, mode by mode
 
 | Situation | Synchronous | Asynchronous | A parcel | What you do |
 | --- | --- | --- | --- | --- |
 | The price check is silent | the sale goes on at the card's price | the purchase is refused before payment, and no order reaches you | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
-| You refused | the purchase did not happen and nothing was charged | the order owes a refund (`refund_due`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
+| You refused | the purchase did not happen and nothing was charged | the paid order is unfulfilled (`unfulfilled`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
 | Your handler threw, or your process fell over | the order comes again after a pause that grows with each attempt, up to five deliveries in all, while its deadline lasts | as in the synchronous mode | as in the synchronous mode | throw for a failure that may pass, and keep refusals for "this cannot be delivered" |
-| No answer by the deadline | nothing was charged (`expired`) | the order owes a refund (`refund_due`) | the order owes a refund (`refund_due`) | name a deadline you can keep; goods or a shipment delivered late still close the debt |
+| No answer by the deadline | nothing was charged (`expired`) | the paid order is unfulfilled (`unfulfilled`) | the paid order is unfulfilled (`unfulfilled`) | name a deadline you can keep; a late delivery still counts until you close fulfillment |
 | The same order arrived twice | answer with the result you gave the first time | as in the synchronous mode | record the same shipment | key your delivery on `order.id` and hand back the first result |
-| The answer to the agent was lost | the agent signs the same payment request again from the same wallet and receives what you delivered, with no second charge | the agent signs the same payment request again from the same wallet and is answered with the order, with no second charge | as in the asynchronous mode | nothing; a repeat that does reach your handler gets the first result |
-| The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a refund owed | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
+| The answer to the agent was lost | the agent signs a new payment for the same payment request from the same wallet and receives what you delivered, with no second charge | the agent signs a new payment for the same payment request from the same wallet and is answered with the order, with no second charge | as in the asynchronous mode | nothing; a repeat that does reach your handler gets the first result |
+| The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
 | The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
-| Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and owes a refund if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait |
+| Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
 
 Silence from a price check is any of three things: no answer within five
 seconds, a server error or a network failure in place of an answer, or an
@@ -48,9 +48,10 @@ because nothing on our side sends one order twice on purpose.
 
 - Stopping your selling when your side goes quiet for a long time. Nothing
   does it today: pausing and resuming are yours, on the Cards screen of your
-  dashboard. The stop is designed to work as that same pause, and neither its
-  conditions — how many failures in a row and over what period — nor the way
-  selling comes back afterwards is settled.
+  dashboard, and nobody at Agentify watches your orders for you. The stop is
+  designed to work as that same pause, and neither its conditions — how many
+  failures in a row and over what period — nor the way selling comes back
+  afterwards is settled.
 - The limit on the share of purchases that run into missing goods, which we
   mean to measure because to an agent such a purchase looks like a promise the
   catalogue did not keep. Nothing counts it yet.
@@ -59,3 +60,7 @@ because nothing on our side sends one order twice on purpose.
   decided.
 - What happens when it is we who go quiet: how your side sees it, and what we
   promise in that case.
+- How long a payment whose answer was lost stays unknown. Agentify looks for it
+  on the network in the background without charging again, and promises no
+  time for that ([When nobody knows whether the charge went
+  through](/orders#when-nobody-knows-whether-the-charge-went-through)).

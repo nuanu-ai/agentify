@@ -318,6 +318,48 @@ describe("buying a parcel", () => {
     expect(await tried("0x03", address)).toStrictEqual({ status: 409, code: "not_this_purchase" });
   });
 
+  it("does not disclose a paid parcel or its address to a replay of its public used authorization", async () => {
+    const { harnessed, served, itemId } = await started();
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await worker.stop();
+    const accepted = decodePaymentRequiredHeader(
+      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (accepted === undefined) throw new Error("no payment was offered");
+    const payment = encodePaymentSignatureHeader({
+      x402Version: 2,
+      accepted,
+      payload: {
+        signature: "0xused-public-signature",
+        authorization: { from: `0x${"a".repeat(40)}`, nonce: "0x01" },
+      },
+    });
+    const present = (shipTo: ShipTo) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {}, ship_to: shipTo },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    const bought = await present(address);
+    expect(bought.status).toBeLessThan(300);
+    const orderId = (bought.body as { order_id: string }).order_id;
+    harnessed.facilitator.willRefuseVerification("signature", "authorization already used");
+
+    const changed = await present({ ...address, line_one: "Jl. Pantai Nyanyi" });
+    const same = await present(address);
+
+    for (const answer of [changed, same]) {
+      expect(answer.status).toBe(409);
+      expect((answer.body as Refused).error.code).toBe("payment_not_verified");
+      expect(JSON.stringify(answer.body)).not.toContain(orderId);
+      expect(JSON.stringify(answer.body)).not.toContain(address.line_one);
+      expect(JSON.stringify(answer.body)).not.toMatch(/nothing was charged/i);
+    }
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+
   it("pays for the address it was priced for when the payment carries none", async () => {
     const { harnessed, served, itemId } = await started();
 
@@ -605,7 +647,7 @@ describe("once the address is gone, nothing puts it back", () => {
 
     await vi.waitFor(
       async () =>
-        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due"),
+        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled"),
       { timeout: 3_000, interval: 20 },
     );
 
@@ -721,7 +763,7 @@ describe("the shipment", () => {
 
   it.each([
     { status: "shipped", httpStatus: 200 },
-    { status: "refund_due", httpStatus: 409 },
+    { status: "unfulfilled", httpStatus: 409 },
     { status: "rejected", httpStatus: 409 },
   ])(
     "answers a repeated $status purchase with HTTP $httpStatus without another charge",
@@ -744,7 +786,7 @@ describe("the shipment", () => {
         });
         expect(accepted.status).toBe(200);
         expect((await ship(served, orderId, shipment)).status).toBe(200);
-      } else if (status === "refund_due") {
+      } else if (status === "unfulfilled") {
         const refused = await served.call("POST", `/v0/orders/${orderId}/refuse`, {
           headers: asMerchant,
           body: { code: "out_of_stock", message: "The parcel cannot be fulfilled." },

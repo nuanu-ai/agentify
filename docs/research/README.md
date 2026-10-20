@@ -43,7 +43,7 @@ name. Notes written in Russian stay in Russian.
 | [31-user-journey](31-user-journey.md) | the path through the site's screens, as designed in September 2026 | — | English | historical |
 | [33-woo-connect-probe](33-woo-connect-probe.md) | a probe of connecting WooCommerce without a plugin | ADR-0023 | Russian | historical |
 | [34-one-database](34-one-database.md) | how two databases became one | ADR-0003 | English | current |
-| [34-refund-due](34-refund-due.md) | how working sellers handle a refund owed for goods not delivered | ADR-0028 | English | current |
+| [34-refund-due](34-refund-due.md) | September observations and comparisons of unfulfilled orders | ADR-0028 | English | historical |
 | [35-one-process](35-one-process.md) | the gateway and the dashboard in one process, and the survey before the move | ADR-0003, ADR-0005, ADR-0006, ADR-0014, ADR-0019, ADR-0023, ADR-0026 | English | current |
 | [36-zero-price](36-zero-price.md) | what a zero or tiny price means in x402 | ADR-0002 | Russian | current |
 | [37-physical-goods](37-physical-goods.md) | selling physical goods: the address, the shipment, the seller's site | ADR-0032 | English | current |
@@ -63,6 +63,8 @@ name. Notes written in Russian stay in Russian.
 | [49-lighthouse](49-lighthouse.md) | Lighthouse scores of the public pages, with [the raw results](49-lighthouse-results.csv) | — | English | historical |
 | [50-commerce-correctness-test](50-commerce-correctness-test.md) | defects a correctness test found in the purchase path, and their fixes | ADR-0012 | English | current |
 | [52-release-delivery](52-release-delivery.md) | what the move to images built once in CI measured | ADR-0016 | English | current |
+| [53-self-hosted-observability](53-self-hosted-observability.md) | how the logs and host telemetry of both channels reach the shared self-hosted observability stack | — | English | current |
+| [54-self-service](54-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

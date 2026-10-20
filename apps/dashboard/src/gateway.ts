@@ -46,6 +46,8 @@ import {
   type MerchantKey,
   MerchantKeySchema,
   type OrderCallResponse,
+  type OrderCloseRequest,
+  type OrderCloseResponse,
   type OrderList,
   type OrderWithStatus,
   type PayoutWallet,
@@ -84,12 +86,16 @@ export type Answer<T> =
     };
 
 /**
- * Why a refund fell due: the merchant refused an order already paid for, its
+ * Why a paid order was left unfulfilled: the merchant refused an order already paid for, its
  * delivery deadline passed, the merchant left, or the payment network
  * confirmed the charge only after the gateway had stopped waiting for it and
  * closed the order.
  */
-export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "charge_confirmed_late";
+export type UnfulfilledCause =
+  | "refused"
+  | "deadline_passed"
+  | "merchant_left"
+  | "charge_confirmed_late";
 
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
@@ -132,10 +138,9 @@ export interface GatewayClient {
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   orders(open: boolean): Promise<Answer<OrderList>>;
   /**
-   * Why each order owing a refund owes it, by order, for the row that says so
-   * under Needs you. The order document carries the debt and not its cause.
+   * Why each paid order was left unfulfilled, by order, for Needs you.
    */
-  refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
+  unfulfilledOrders(): Promise<Answer<Readonly<Record<string, UnfulfilledCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The payout split this order's payment was checked against, as recorded,
@@ -217,6 +222,7 @@ export interface GatewayClient {
   pollWorker(waitSeconds: number): Promise<Answer<WorkerPollResponse>>;
   answerOrder(orderId: string, answer: HandlerAnswer): Promise<Answer<OrderCallResponse>>;
   getOrder(orderId: string): Promise<Answer<OrderWithStatus>>;
+  closeOrder(orderId: string, request: OrderCloseRequest): Promise<Answer<OrderCloseResponse>>;
   /** Idempotent. */
   deliverOrder(orderId: string, delivery: Delivery): Promise<Answer<OrderCallResponse>>;
   answerQuote(priceId: string, answer: QuoteResponse): Promise<Answer<QuoteAnswerAck>>;
@@ -390,14 +396,14 @@ const sent = <T>(
 const answered = <T>(route: RouteDefinition, document: T): Answer<T> =>
   done(route.response.document.parse(document) as T);
 
-const orderCallAnswer = (
+const orderCallAnswer = <T extends OrderCallResponse | OrderCloseResponse>(
   route: RouteDefinition,
-  response: OrderCallResponse | null,
-): Answer<OrderCallResponse> => {
+  response: T | null,
+): Answer<T> => {
   if (response === null) {
     return refusedAs(NO_SUCH_ORDER);
   }
-  const held = route.response.document.parse(response) as OrderCallResponse;
+  const held = route.response.document.parse(response) as T;
   return held.ok
     ? done(held)
     : { ok: false, status: CONFLICT, why: held.error.message, code: held.error.code };
@@ -489,12 +495,12 @@ export const gatewayFor = (
           merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
         ),
       ),
-    refundsOwed: () =>
-      call("reading why refunds are owed", async () => {
-        const owed: Record<string, RefundCause> = {};
+    unfulfilledOrders: () =>
+      call("reading why orders are unfulfilled", async () => {
+        const owed: Record<string, UnfulfilledCause> = {};
         for (const record of await application.orders(merchantId, true)) {
           const cause =
-            record.order.state === "refund_due" ? record.order.closure?.cause : undefined;
+            record.order.state === "unfulfilled" ? record.order.closure?.cause : undefined;
           const said =
             cause === "merchant_refused"
               ? "refused"
@@ -693,6 +699,15 @@ export const gatewayFor = (
       call("reading an order", async () => {
         const read = merchantOrderAnswer(await application.merchantOrder(merchantId, orderId));
         return read.ok ? answered(API_ROUTES.get_order, read.document) : refusedAs(read.refused);
+      }),
+    closeOrder: (orderId, request) =>
+      call("closing fulfillment", async () => {
+        const asked = sent(API_ROUTES.close_order, request);
+        if (!asked.ok) return asked.refused;
+        return orderCallAnswer(
+          API_ROUTES.close_order,
+          await application.closeOrder(merchantId, orderId, asked.value),
+        );
       }),
     deliverOrder: (orderId, delivery) =>
       call("delivering an order", async () => {

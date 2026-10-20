@@ -335,7 +335,7 @@ export const fillFromTheShop = async (
  * what was paid above the goods: the cart is asked again for the paid-for
  * place, and the rate costing exactly that difference is the one sold. Where
  * none does, the order is refused before anything reaches the shop, and is a
- * refund owed.
+ * unfulfilled order.
  *
  * A shop that does not answer is not a refusal: a parcel has days to ship, so
  * the order comes round again and nothing is written until the shop says
@@ -496,8 +496,8 @@ const fillParcelFromTheShop = async (
     );
     return null;
   }
-  // From here the shop may hold a paid order while the sale is refused and owes
-  // a refund, so the log names the shop's order, where known, as one not to
+  // From here the shop may hold a paid order while the sale is refused and remains
+  // unfulfilled, so the log names the shop's order, where known, as one not to
   // ship.
   const inTheShop =
     made.id === undefined
@@ -763,7 +763,7 @@ const productInTheShop = (
  * A parcel marked Completed is recorded with the gateway as shipped, the last
  * thing the agent hears, and is followed no further. One the shop ended without
  * completing is let go without a word to the gateway: it never shipped, and its
- * time to ship running out makes it a refund owed. A gateway that did not
+ * time to ship running out makes it a unfulfilled order. A gateway that did not
  * answer is asked again next pass; a refused shipment is in the merchant's log.
  *
  * Shops are read one after another, and one that throws is skipped for this
@@ -807,7 +807,7 @@ export const followShipments = async (
           await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
           console.error(
             `[dashboard] the shop ended ${parcel.orderId} as ${said.status} without completing it;` +
-              " it is followed no further and becomes a refund owed when its time to ship runs out",
+              " it is followed no further and becomes an unfulfilled order when its time to ship runs out",
           );
           continue;
         }
@@ -844,7 +844,7 @@ const SHIPMENTS_EVERY_MS = 5 * 60_000;
 
 /**
  * Thirty days, the longest time to ship any card may name. A shipment recorded
- * late still closes a refund owed until a refund is recorded.
+ * late still closes a unfulfilled order until the merchant closes Agentify fulfillment.
  */
 const FOLLOWED_FOR_MS = 30 * 24 * 60 * 60 * 1_000;
 

@@ -52,6 +52,7 @@ import {
 } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import type { LiveSalesView } from "../src/live-sales.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -79,9 +80,17 @@ import {
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
 import type { Viewer } from "../src/viewer.js";
-import { cardsView, type FrameView, ordersView, receiptsView } from "../src/views.js";
+import {
+  CLOSURE_NOTES,
+  cardsView,
+  type FrameView,
+  momentView,
+  ordersView,
+  receiptsView,
+} from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
+import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
 import {
   type ShopAnswer,
   type ShopRead,
@@ -300,7 +309,9 @@ const paidIntoSplit = (
 ): Readonly<Record<string, RecordedPayoutSplit>> =>
   Object.fromEntries(
     rows
-      .filter((row) => ["delivered", "shipped", "refund_due", "refunded"].includes(row.status))
+      .filter((row) =>
+        ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(row.status),
+      )
       .map((row) => [row.id, splitOf(mode, PAID_INTO)]),
   );
 
@@ -436,8 +447,8 @@ type Status =
   | "payment_unresolved"
   | "declined"
   | "expired"
-  | "refund_due"
-  | "refunded"
+  | "unfulfilled"
+  | "fulfillment_closed"
   | "delivered_unpaid";
 
 const minutesInto = (day: string, minutes: number): string =>
@@ -456,10 +467,16 @@ const ordersOf = (rows: readonly (readonly [Product, Status])[], test = false) =
       },
       test,
       status,
+      payment_status:
+        status === "payment_unresolved"
+          ? "unresolved"
+          : ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
+            ? "paid"
+            : "not_paid",
     })),
   });
 
-type Outcome = "delivered" | "refund_due" | "in_progress";
+type Outcome = "delivered" | "unfulfilled" | "in_progress";
 
 const receiptsOf = (rows: readonly (readonly [Product, Outcome, boolean?])[], test = false) =>
   ReceiptListSchema.parse({
@@ -1435,7 +1452,7 @@ const CARDS: GalleryState[] = [
 const openAmong = (listed: ReturnType<typeof ordersOf>) =>
   OrderListSchema.parse({
     orders: listed.orders.filter((order) =>
-      ["in_progress", "refund_due", "delivered_unpaid", "payment_unresolved"].includes(
+      ["in_progress", "unfulfilled", "delivered_unpaid", "payment_unresolved"].includes(
         order.status,
       ),
     ),
@@ -1443,7 +1460,7 @@ const openAmong = (listed: ReturnType<typeof ordersOf>) =>
 
 /**
  * Orders as the loader answers them at `path`, whose address carries the
- * search and the segment, with the refunds' causes where they are known.
+ * search and the segment, with the unfulfilled orders' causes where they are known.
  */
 const ordersAt = (
   path: string,
@@ -1486,17 +1503,39 @@ const orders = (
     loaded: { "routes/orders": ordersAt(path, listed, more) },
   });
 
+/** Orders as the close press answers it: the pressed order found and opened, the note by it. */
+const closurePressed = (
+  told: Told,
+  listed: ReturnType<typeof ordersOf>,
+  said: Readonly<{ note: string | null; refusal?: string; typed: string }>,
+): GalleryState => {
+  const id = listed.orders[0]?.id ?? "";
+  const path = `/orders?${new URLSearchParams({ q: id, details: id })}`;
+  return at(told, {
+    path,
+    mode: "live",
+    account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+    loaded: { "routes/orders": null },
+    pressed: {
+      "routes/orders": {
+        ...ordersAt(path, listed, { owed: OWED_BECAUSE }),
+        pressed: { id, ...said },
+      },
+    },
+  });
+};
+
 const OWING = ordersOf([
-  ["esimEurope", "refund_due"],
+  ["esimEurope", "unfulfilled"],
   ["number", "delivered_unpaid"],
   ["vpn", "delivered"],
-  ["esimWeek", "refund_due"],
+  ["esimWeek", "unfulfilled"],
 ]);
 
-/** The first refund due ran out of time, the second was refused by the merchant's code. */
+/** The first unfulfilled order ran out of time, the second was refused by the merchant's code. */
 const OWED_BECAUSE = Object.fromEntries(
   OWING.orders
-    .filter((order) => order.status === "refund_due")
+    .filter((order) => order.status === "unfulfilled")
     .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
 );
 
@@ -1508,7 +1547,175 @@ const SEASON = ordersOf(
   ),
 );
 
+const CLOSED = OrderListSchema.parse({
+  orders: ordersOf([
+    ["esimEurope", "fulfillment_closed"],
+    ["number", "payment_unresolved"],
+  ]).orders.map((order, at) => ({
+    ...order,
+    merchant_closure: {
+      closed_at: "2026-10-19T09:30:00Z",
+      ...(at === 0
+        ? { message: "The buyer and merchant arranged the remedy outside Agentify." }
+        : {}),
+    },
+  })),
+});
+
+/** An order closed while its payment was unknown, which then completed, beside an ordinary sale. */
+const PAID_AFTER_CLOSURE = OrderListSchema.parse({
+  orders: ordersOf([
+    ["esimEurope", "fulfillment_closed"],
+    ["vpn", "delivered"],
+  ]).orders.map((order, at) =>
+    at === 0
+      ? {
+          ...order,
+          payment_status: "paid",
+          merchant_closure: {
+            closed_at: "2026-10-19T09:30:00Z",
+            message: "Your payment did not arrive, so this order is closed.",
+          },
+        }
+      : order,
+  ),
+});
+
 const ORDERS: GalleryState[] = [
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-closed",
+        screen: "Orders",
+        when: "A merchant checks an order they closed and an original payment still unknown.",
+        cause:
+          "Merchant closure is shown separately from the original payment. The explanation is attributed to the merchant; the unknown payment remains unknown.",
+      },
+      CLOSED,
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Order details",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Your explanation",
+    },
+  },
+  {
+    ...orders(
+      {
+        id: "dashboard-orders-close",
+        screen: "Orders",
+        when: "A merchant opens a paid unfulfilled order to stop future Agentify delivery.",
+        cause:
+          "The shared order control offers an optional statement and says what closure does: no transfer and no shop cancellation.",
+      },
+      OWING,
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Order details",
+          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+        },
+      ],
+      shows: "Close fulfillment",
+    },
+  },
+  closurePressed(
+    {
+      id: "dashboard-orders-close-unconfirmed",
+      screen: "Orders",
+      when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
+      cause:
+        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the explanation typed is still in the box.",
+    },
+    OWING,
+    {
+      note: CLOSURE_NOTES.unconfirmed,
+      typed: "Your payment was returned to your wallet.",
+    },
+  ),
+  closurePressed(
+    {
+      id: "dashboard-orders-close-refused",
+      screen: "Orders",
+      when: "A merchant typed markup into the explanation and pressed Close fulfillment.",
+      cause:
+        "The explanation is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
+    },
+    OWING,
+    {
+      note: null,
+      refusal:
+        "Your explanation carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
+      typed: "Your payment was <b>returned</b>.",
+    },
+  ),
+  closurePressed(
+    {
+      id: "dashboard-orders-close-too-late",
+      screen: "Orders",
+      when: "A merchant pressed Close fulfillment on an order whose delivery landed a moment earlier.",
+      cause:
+        "The gateway refused the closure and the order read afterwards is delivered, so the order is opened with a line saying nothing was closed, and no form.",
+    },
+    ordersOf([["esimEurope", "delivered"]]),
+    { note: CLOSURE_NOTES.ended, typed: "" },
+  ),
+  at(
+    {
+      id: "dashboard-orders-need-you-recover",
+      screen: "Orders",
+      when: "A merchant selling through WooCommerce has a paid download whose shop order was not confirmed.",
+      cause:
+        "The connector holds the sale for recovery, so the unfulfilled order leads to the recovery page in place of the general link.",
+    },
+    (() => {
+      const view = ordersAt("/orders", OWING, { owed: OWED_BECAUSE });
+      const first = view.needsYou.rows[0]?.id ?? "";
+      return {
+        path: "/orders",
+        mode: "live",
+        account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
+        loaded: {
+          "routes/orders": {
+            ...view,
+            needsYou: {
+              ...view.needsYou,
+              rows: view.needsYou.rows.map((row) =>
+                row.id === first
+                  ? {
+                      ...row,
+                      rest: {
+                        href: `/integrations/woocommerce/recover/${first}`,
+                        words: "Recover WooCommerce delivery",
+                      },
+                    }
+                  : row,
+              ),
+            },
+          },
+        },
+      };
+    })(),
+  ),
+  orders(
+    {
+      id: "dashboard-orders-paid-after-closure",
+      screen: "Orders",
+      when: "A merchant closed an order while its payment was unknown, and the payment then completed.",
+      cause:
+        "The gateway lists the closed order as open again, so it needs the merchant: one line says the payment arrived after the closure, and its details offer Close again with the same form.",
+    },
+    PAID_AFTER_CLOSURE,
+    `/orders?${new URLSearchParams({ details: PAID_AFTER_CLOSURE.orders[0]?.id ?? "" })}`,
+    {
+      open: OrderListSchema.parse({ orders: PAID_AFTER_CLOSURE.orders.slice(0, 1) }),
+    },
+  ),
   orders(
     {
       id: "dashboard-orders",
@@ -1528,9 +1735,9 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-need-you",
       screen: "Orders",
-      when: "A merchant has orders that owe a refund or were delivered without payment.",
+      when: "A merchant has paid orders left unfulfilled, and an order delivered without payment.",
       cause:
-        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened, and each refund what is the merchant's to return.",
+        "Two paid orders are unfulfilled, one after its delivery window and one refused by the integration. Each has its cause stated and the two things the merchant can still do. Another order was delivered but not paid.",
     },
     OWING,
     "/orders",
@@ -1548,12 +1755,12 @@ const ORDERS: GalleryState[] = [
       ["vpn", "delivered"],
       ["esimEurope", "in_progress"],
       ["number", "payment_unresolved"],
-      ["esimEurope", "refund_due"],
+      ["esimEurope", "unfulfilled"],
       ["number", "delivered_unpaid"],
       ["vpn", "rejected"],
       ["esimEurope", "declined"],
       ["number", "expired"],
-      ["esimEurope", "refunded"],
+      ["esimEurope", "fulfillment_closed"],
       ["esimWeek", "delivered"],
       ["vpn", "shipped"],
       ["number", "cancelled"],
@@ -1575,20 +1782,20 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order ID and shares",
+          shows: "Order details",
           does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Order ID and shares",
+      shows: "Order details",
     },
   },
   orders(
     {
       id: "dashboard-orders-search",
       screen: "Orders",
-      when: "A merchant pastes the short order ID they copied from a refund due.",
+      when: "A merchant pastes the short order ID they copied from an unfulfilled order.",
       cause:
-        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its refund row and in the list.",
+        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its unfulfilled row and in the list.",
     },
     OWING,
     `/orders?q=${encodeURIComponent(shortened(OWING.orders[0]?.id ?? ""))}`,
@@ -1610,9 +1817,9 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-open",
       screen: "Orders",
-      when: "A merchant picks Open to see what is still owed goods or money.",
+      when: "A merchant picks Open to see what is still open for fulfillment or payment.",
       cause:
-        "The gateway's open list holds the two refunds due and the goods held for payment, and the list shows those three alone.",
+        "The gateway's open list holds the two unfulfilled orders and the goods held for payment, and the list shows those three alone.",
     },
     OWING,
     "/orders?show=open",
@@ -1672,12 +1879,12 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them owing a refund, and each sum carries the test mark.",
+        "Every order on the test site is a test purchase, one of them unfulfilled, and each sum carries the test mark.",
     },
     ordersOf(
       [
         ["vpn", "delivered"],
-        ["esimEurope", "refund_due"],
+        ["esimEurope", "unfulfilled"],
         ["esimEurope", "delivered"],
       ],
       true,
@@ -1696,7 +1903,8 @@ const RECEIPTS: GalleryState[] = [
       id: "dashboard-receipts",
       screen: "Receipts",
       when: "A merchant whose products have been bought and delivered opens Receipts.",
-      cause: "The gateway lists receipts, each with the transfer the payment layer reported.",
+      cause:
+        "The gateway lists receipts with transactions reported by the facilitator or verified from chain evidence.",
     },
     ((listed) =>
       receiptsView(
@@ -1721,9 +1929,9 @@ const RECEIPTS: GalleryState[] = [
     {
       id: "dashboard-receipts-many",
       screen: "Receipts",
-      when: "A merchant with a season of sales scrolls through Receipts.",
+      when: "A reviewer checks every paid outcome the receipt contract admits.",
       cause:
-        "Many receipts, one still in progress, one owing a refund and one without a recorded transfer.",
+        "The contract admits receipts with historical unfulfilled or closed outcomes; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
     },
     receiptsView(
       seenBy("live"),
@@ -1731,7 +1939,7 @@ const RECEIPTS: GalleryState[] = [
       receiptsOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
-        ["esimEurope", "refund_due"],
+        ["esimEurope", "unfulfilled"],
         ["number", "delivered", false],
         ["vpn", "delivered"],
         ["esimEurope", "delivered"],
@@ -2135,6 +2343,125 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The shop was opened in another browser, or the session ended meanwhile.",
     },
     { path: "/woocommerce/return", mode: "test", loaded: { "routes/woocommerce-return": null } },
+  ),
+];
+
+const RECOVERY_SALE = {
+  orderId: idOf("ord", "Coffee & Brunch Gift Card recovery"),
+  product: imported("Coffee & Brunch Gift Card").title,
+  shopOrigin: SHOP,
+  amount: "25.00 USD",
+  test: true,
+};
+
+const RECOVERY_FRAME = {
+  path: `/integrations/woocommerce/recover/${RECOVERY_SALE.orderId}`,
+  mode: "test" as const,
+  account: bannerOf(seenBy("test"), { through: "woocommerce", selling: "open" }),
+};
+
+/** A recovery page as the server draws it: drawn on opening, or answering a press. */
+const recovery = (
+  told: Told,
+  view: Omit<WooRecoveryView, keyof typeof RECOVERY_SALE | "typedRefusal"> &
+    Partial<Pick<WooRecoveryView, "typedRefusal">>,
+  answering = false,
+): GalleryState => {
+  const drawn = { ...RECOVERY_SALE, typedRefusal: null, ...view } satisfies WooRecoveryView;
+  return at(told, {
+    ...RECOVERY_FRAME,
+    ...(answering
+      ? {
+          loaded: { "routes/woocommerce-recovery": null },
+          pressed: { "routes/woocommerce-recovery": drawn },
+        }
+      : { loaded: { "routes/woocommerce-recovery": drawn } }),
+  });
+};
+
+const WOO_RECOVERY: GalleryState[] = [
+  recovery(
+    {
+      id: "dashboard-woo-recovery-link",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for their download whose shop order creation was not confirmed.",
+      cause:
+        "The saved sale has no linked shop order; the merchant can name the exact existing order for the connector to verify before delivering its download, or close fulfillment if the shop holds none.",
+    },
+    { mode: "link", wooOrderId: "", message: null },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-mismatch",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant enters a shop order that is not this sale's.",
+      cause:
+        "The connector read the order and it differs from the sale; each fact that differs is named under the box, and nothing was linked or delivered.",
+    },
+    {
+      mode: "link",
+      wooOrderId: "14",
+      message: null,
+      typedRefusal:
+        "That order does not match this sale: its status is cancelled, not Processing or Completed; it was not paid with Agentify.",
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-retry",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant linked the matching shop order, but Agentify did not confirm the delivery.",
+      cause:
+        "The shop order and its download were saved before the delivery answer was lost; their ID stays visible and the next press retries the same delivery.",
+    },
+    { mode: "retry", wooOrderId: "13", message: "Agentify did not confirm the late delivery." },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A press of Link and deliver failed inside Agentify partway.",
+      cause:
+        "Whether a shop order or a delivery was recorded is not known, so the page says so and asks for a reload before another press.",
+    },
+    {
+      mode: "link",
+      wooOrderId: "13",
+      message:
+        "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-unavailable",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
+      cause:
+        "This page cannot create a shop order, so it offers no press and says what the merchant can do instead.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message:
+        "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders.",
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-delivered",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant reloads recovery after their download was delivered.",
+      cause:
+        "The saved shop order and Agentify's fresh delivered readback agree; the page confirms delivery and offers no further recovery press.",
+    },
+    {
+      mode: "delivered",
+      wooOrderId: "13",
+      message: null,
+    },
   ),
 ];
 
@@ -2658,6 +2985,114 @@ const PROBLEMS: GalleryState[] = [
   ),
 ];
 
+const ADMIN_PATH = "/admin/live-sales";
+
+/** The approval screen as the server draws it, opened or answering a press. */
+const liveSales = (told: Told, view: LiveSalesView, answering = false): GalleryState =>
+  at(told, {
+    path: ADMIN_PATH,
+    mode: view.live ? "live" : "test",
+    ...(answering
+      ? {
+          loaded: { "routes/admin-live-sales": null },
+          pressed: { "routes/admin-live-sales": view },
+        }
+      : { loaded: { "routes/admin-live-sales": view } }),
+  });
+
+const SELLER = {
+  email: WHO,
+  id: MERCHANT,
+  name: "Freeland",
+  site: "https://freeland.example",
+  integration: "api",
+  approvedAt: null,
+} as const;
+
+const LIVE_SALES: GalleryState[] = [
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales",
+      screen: "Live sales approval",
+      when: "An administrator opens the live sales screen from Admin.",
+      cause: "Their current session has the administrative flag; no seller has been selected.",
+    },
+    { live: true, email: "", merchant: null, message: null },
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-confirm",
+      screen: "Live sales approval",
+      when: "An administrator has found the merchant to approve.",
+      cause:
+        "One account matches the email and names this existing merchant, which has not been admitted to live sales.",
+    },
+    { live: true, email: WHO, message: null, merchant: SELLER },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-approved",
+      screen: "Live sales approval",
+      when: "An administrator confirmed and approved the merchant.",
+      cause:
+        "The approval was recorded and read back, so the merchant shows as approved with its time, and no approval form remains.",
+    },
+    {
+      live: true,
+      email: WHO,
+      message: null,
+      merchant: {
+        ...SELLER,
+        approvedAt: momentView("2026-10-19T09:30:00Z"),
+      },
+    },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-no-account",
+      screen: "Live sales approval",
+      when: "An administrator searches for an email no account signs in with.",
+      cause:
+        "No account matches, so nothing is shown to approve and the refusal is said under the search.",
+    },
+    {
+      live: true,
+      email: "nobody@example.com",
+      merchant: null,
+      message: "No account matches that email. Check the address with the seller.",
+    },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-unknown",
+      screen: "Live sales approval",
+      when: "An administrator pressed Approve and the approval could not be read back.",
+      cause:
+        "Whether the approval was recorded is unknown, so the page says so, and that finding the merchant again shows the current status.",
+    },
+    {
+      live: true,
+      email: WHO,
+      merchant: SELLER,
+      message:
+        "The approval outcome is unknown. Find this merchant again to read the current status; repeating the approval is safe.",
+    },
+    true,
+  ),
+  liveSales(
+    {
+      id: "dashboard-admin-live-sales-test",
+      screen: "Live sales approval",
+      when: "An administrator opens the approval screen on the test site.",
+      cause: "Test sales need no approval, so the screen offers none and points to the live site.",
+    },
+    { live: false, email: "", merchant: null, message: null },
+  ),
+];
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
@@ -2670,8 +3105,10 @@ export const gallery: GallerySurface = {
     ...RECEIPTS,
     ...INTEGRATIONS,
     ...WOOCOMMERCE,
+    ...WOO_RECOVERY,
     ...KEYS,
     ...SETTINGS,
+    ...LIVE_SALES,
     ...PROBLEMS,
   ],
 };

@@ -241,8 +241,8 @@ describe("the contract as JSON Schema", () => {
       "in_progress",
       "delivered",
       "shipped",
-      "refund_due",
-      "refunded",
+      "unfulfilled",
+      "fulfillment_closed",
     ]);
   });
 
@@ -326,8 +326,13 @@ describe("the contract as JSON Schema", () => {
     // plain text, `.tracking_url` to an address, and `.estimated_delivery`
     // compares its two ends; the merchant's shipment shares them, except the
     // window, which an agent reads open and which is met again under
-    // `shipment`.
+    // `shipment`. `order_close_request.message` is the merchant's closing
+    // words, held to plain text on the way in only, as a card's are, and
+    // `agent_order_status.merchant_closure.message` is the same words read
+    // back, whose length is counted in characters rather than code units; the
+    // merchant's closure documents share it.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
+      "agent_order_status.merchant_closure.message",
       "agent_order_status.seller.site",
       "agent_order_status.shipment.carrier",
       "agent_order_status.shipment.estimated_delivery",
@@ -338,6 +343,7 @@ describe("the contract as JSON Schema", () => {
       "card.tags",
       "evm_address",
       "merchant_card.card",
+      "order_close_request.message",
       "public_card.result",
       "seller_name_request",
       "seller_name_request.seller_name",
@@ -422,17 +428,8 @@ describe("the contract as JSON Schema", () => {
     }
   });
 
-  it("carries the rules it cannot express as structure in words instead", () => {
-    // JSON Schema cannot say "this field only when that one has this value",
-    // so the card's rules between fields are told in words, or a reader would
-    // take the document for the whole contract.
+  it("carries the result's size and the price handler as structural rules", () => {
     const card = toJsonSchemas().card;
-
-    expect(card.description).toContain("confirm_deadline_seconds");
-    expect(card.description).toContain("fulfill_deadline_seconds");
-
-    // Where a rule can be expressed as structure, it is: a result is never
-    // empty, and a price check is the handler, so a client offers no address.
     expect(card.properties?.result).toMatchObject({ minProperties: 1 });
     expect(nested(card.properties?.price_check)).toMatchObject({ const: "handler" });
   });

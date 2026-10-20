@@ -417,6 +417,9 @@ form.inline {
 
 .cell-more {
   display: none;
+  /* Reached by its address, a row's details stand clear of the working
+     header, which stays 68px tall over the page on a laptop. */
+  scroll-margin-top: 80px;
 }
 
 .cell-more.wide {
@@ -436,6 +439,47 @@ form.inline {
   margin-top: 4px;
   color: var(--fg-2);
   font-size: 0.875rem;
+}
+
+/* A row's facts, a label beside each value; a box narrower than a label and an
+   identifier puts the label over its value. Panels that list facts the same
+   way are containers too. */
+.more-facts {
+  display: grid;
+  gap: var(--space-tight);
+  margin: 0;
+  font-size: var(--text-small);
+}
+.more-facts > div {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-block);
+}
+.more-facts dt {
+  color: var(--muted);
+}
+.more-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+/* Somebody's own words, kept on the lines they wrote them on. */
+.more-facts .words {
+  white-space: pre-wrap;
+}
+.more-facts .ident {
+  max-width: 100%;
+}
+.more-facts .ident > span:first-child {
+  min-width: 0;
+}
+@container (max-width: 560px) {
+  .more-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-snug);
+  }
 }
 
 /* A cell's own label where no head is over it: read out beside a wide row's

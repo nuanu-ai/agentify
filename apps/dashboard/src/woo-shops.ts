@@ -8,7 +8,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { and, asc, desc, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js";
@@ -196,6 +196,8 @@ export interface WooShops {
   ): Promise<boolean>;
   /** Rows without an exact recovery state are not recoverable. */
   recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
+  /** A bounded local lookup for links on this account's visible Orders rows. */
+  recoverableOrders(accountId: string, orderIds: readonly string[]): Promise<readonly string[]>;
   /** Placed and neither shipped nor ended. */
   parcelsToFollow(accountId: string): Promise<readonly ParcelToFollow[]>;
   /**
@@ -512,6 +514,27 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       };
     },
 
+    async recoverableOrders(accountId, orderIds) {
+      if (orderIds.length === 0) return [];
+      const rows = await db
+        .select({ orderId: wooOrders.orderId })
+        .from(wooOrders)
+        .where(
+          and(
+            eq(wooOrders.accountId, accountId),
+            inArray(wooOrders.orderId, [...orderIds]),
+            isNotNull(wooOrders.facts),
+            sql`${wooOrders.facts} ->> 'kind' is distinct from 'parcel'`,
+            or(
+              eq(wooOrders.phase, "create_unknown"),
+              and(eq(wooOrders.phase, "placed"), isNotNull(wooOrders.result)),
+            ),
+          ),
+        )
+        .orderBy(asc(wooOrders.orderId));
+      return rows.map((row) => row.orderId);
+    },
+
     async parcelsToFollow(accountId) {
       return await db
         .select({
@@ -760,6 +783,21 @@ export const memoryWooShops = (): WooShops => {
       if (found === undefined || found.phase === "shipped" || found.phase === "closed") return null;
       const { placedAt: _placedAt, ...kept } = found;
       return { orderId, ...kept, phase: found.phase };
+    },
+
+    async recoverableOrders(accountId, orderIds) {
+      const asked = new Set(orderIds);
+      return [...orders.entries()]
+        .flatMap(([orderId, found]) =>
+          asked.has(orderId) &&
+          found.accountId === accountId &&
+          found.facts.kind !== "parcel" &&
+          (found.phase === "create_unknown" ||
+            (found.phase === "placed" && found.placed?.permission != null))
+            ? [orderId]
+            : [],
+        )
+        .sort();
     },
 
     async parcelsToFollow(accountId) {

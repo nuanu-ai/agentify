@@ -99,11 +99,37 @@ again.
 
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings
-under `problems`. `deliver`, `refuse` and `accept` hand every failure back in
+under `problems`. `deliver`, `refuse`, `accept` and `close` hand every failure back in
 that same envelope, and throw only on a client built with no address. `catalog.publish`, `orders.get` and
 `orders.list` throw an `AgentifyError` whenever no publish result or order came
 back — a refused key included — with the same codes, the flag and the call it
 happened on.
+
+To stop Agentify accepting deliveries for an order, call its `close` method.
+The optional message is your statement to the buyer, which their agent reads
+as your words: plain text of at most 2000 characters, with no markup and no
+control characters. A message that breaks that rule is refused before anything
+is recorded.
+
+```ts
+const order = await agentify.orders.get(orderId)
+const closed = await order.close({ message: 'Please contact our shop to continue.' })
+```
+
+Closing cannot be undone, moves no money and confirms no refund; you and the
+buyer handle any refund or other agreement outside Agentify. A repeat of the
+call keeps the first closure time and message. Two refusals leave the order as
+it was: `fulfillment_complete` where the goods were delivered or the parcel's
+shipment is recorded, and `nothing_to_close` where the order ended with
+nothing charged.
+
+An order read back carries `payment_status` for its original payment and
+`merchant_closure` for your closure. Closing does not cancel a charge Agentify
+had already sent to the facilitator. If that charge completes after you
+closed, you receive `order.unfulfilled` with the reason `paid_after_closure`,
+and the order stays on `orders.list({ open: true })` until you close it again;
+that second closure records its own time and message. The whole rule is on
+[Orders](https://agentify.ad/docs/orders#closing-fulfillment).
 
 ## The check that needs no key
 

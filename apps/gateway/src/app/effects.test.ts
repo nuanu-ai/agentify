@@ -180,6 +180,26 @@ describe("the sweep of what an order is still owed", () => {
     expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(written);
   });
 
+  it("leaves an assertion-only saved charge without a receipt", async () => {
+    const harnessed = await started();
+    const orderId = await quoted(harnessed, syncCard);
+    await harnessed.store.withOrder(orderId, (found) => ({
+      save: {
+        ...found,
+        order: deliveredWithMoneyIn(found.order),
+        paymentWords: [
+          { about: "settle", at: harnessed.now(), said: "the facilitator was not asked" },
+        ],
+      },
+      result: null,
+    }));
+
+    const repaired = await sweep(harnessed);
+
+    expect(repaired.receipted).toBe(0);
+    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+  });
+
   it("starts the clock again on an open order whose deadline has passed", async () => {
     // Only a reminder declares an order overdue. A reminder lost to a handler
     // that kept throwing leaves an order nothing will close and a buyer nothing
@@ -304,7 +324,7 @@ describe("the sweep of what an order is still owed", () => {
       at: harnessed.now(),
       deadline: "async_fulfillment",
     });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
 
     // Drain the stream, as a running worker would.
     const said = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);

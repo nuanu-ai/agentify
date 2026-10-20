@@ -72,7 +72,7 @@ const RETIRED: readonly Retired[] = [
   {
     words: "if the refund has gone out",
     instead:
-      "a late delivery closes an order owing a refund as delivered until a refund is recorded on it; a refund the merchant sends from their own wallet is not seen and nothing records one yet, so only a recorded refund makes a later delivery fail with refund_already_settled",
+      "late delivery remains possible on an unfulfilled paid order until the merchant closes Agentify fulfillment; any refund or other agreement remains between the merchant and buyer",
   },
 ];
 

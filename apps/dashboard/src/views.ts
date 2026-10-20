@@ -20,7 +20,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { AccountNote } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
-import type { RefundCause } from "./gateway.js";
+import type { UnfulfilledCause } from "./gateway.js";
 import {
   askedIn,
   type Listing,
@@ -102,8 +102,7 @@ const spanOf = (seconds: number): string => {
 
 /**
  * How the goods come and the window they are owed within: a promise the
- * merchant answers for, since an order still without goods at its end owes
- * the buyer their money back. A card whose goods come later and that names no
+ * merchant answers for; an order still without goods at its end is unfulfilled. A card whose goods come later and that names no
  * window is held to Agentify's own, which the merchant's list of cards does
  * not carry, so the words say whose window it is and the link where it is
  * written, rather than reading as no window at all. A parcel's window is the
@@ -270,7 +269,7 @@ export const cardsView = (
 ): CardsView => {
   // "Departed" is not folded into "stopped": that would offer a merchant who
   // has left a button back on sale and a note saying accepted orders are
-  // playing out, when leaving closed those orders and left refunds owed
+  // playing out, when leaving stopped those orders and left paid orders unfulfilled
   // (`selling.ts` explains).
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
@@ -386,12 +385,24 @@ interface OrderRow {
   readonly priceSet: MomentView;
   /** The day of `priceSet`, for the heading over that day's orders. */
   readonly day: string;
+  readonly payment: string;
+  readonly paymentUnresolved: boolean;
+  readonly opened: boolean;
+  readonly closure: Readonly<{ at: MomentView; message?: string }> | null;
+  /** Whether the closure form is offered, and whether it closes the order a second time. */
+  readonly closing: "first" | "again" | null;
 }
 
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
 interface OrderNeed extends OrderRow {
   readonly why: string;
   readonly rest: Rest | null;
+  /**
+   * Where the row's own line in the list opens: the page as it is where the
+   * line is on it, the order found by its ID where it is not. Named by the
+   * press waiting there.
+   */
+  readonly opens: Readonly<{ search: string; words: string }>;
 }
 
 /** Orders told in full, the newest first and at most a page of them, and how many there are. */
@@ -400,9 +411,24 @@ export interface ToldOrders {
   readonly of: number;
 }
 
+/**
+ * What became of a closure pressed on this page that the page cannot simply
+ * show: said beside the order's form, with what was typed kept in its box.
+ */
+export interface ClosurePressed {
+  readonly id: string;
+  /** What became of the closure, said over the form; null where only the explanation was refused. */
+  readonly note: string | null;
+  /** Why the explanation typed was refused, said under its box. */
+  readonly refusal: string | null;
+  readonly typed: string;
+}
+
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
+  /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
+  readonly pressed: ClosurePressed | null;
   /**
    * Said once over the orders where some are test purchases and no band over
    * the page says the channel's payments are tests; null otherwise.
@@ -414,7 +440,7 @@ export interface OrdersView {
    * cut, and why none is drawn where the merchant has some.
    */
   readonly listing: Listing<OrderRow>;
-  /** The refunds due the search finds: the orders the merchant has to act on. */
+  /** The unfulfilled paid orders the search finds. */
   readonly needsYou: ToldOrders;
   /**
    * Goods delivered and held until the buyer pays: nothing owed by the
@@ -440,7 +466,7 @@ const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
       key: "open",
       label: "Open",
       holds: (row) => ids.has(row.id),
-      none: "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not counted as open.",
+      none: "Nothing is open. A purchase still at its price question or waiting to be paid is not counted as open.",
     },
   ];
 };
@@ -511,12 +537,13 @@ export const ordersView = (
   orders: OrderList,
   open: OrderList,
   query: URLSearchParams = new URLSearchParams(),
-  owed: Readonly<Record<string, RefundCause>> = {},
+  owed: Readonly<Record<string, UnfulfilledCause>> = {},
   paidInto: PaidIntoSplits = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
+  const reopened = paidAfterClosureIn(open);
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
   const listed = [...orders.orders]
@@ -530,7 +557,29 @@ export const ordersView = (
         amount: money(order.price),
         test: order.test,
         shares: sharesIn(order.price, paidInto[order.id]),
-        state: ORDER_WORDS[order.status],
+        state: reopened(order)
+          ? { text: "Paid after closure", tone: "warn" as const }
+          : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
+            ? { text: "Closed by you", tone: "quiet" as const }
+            : ORDER_WORDS[order.status],
+        paymentUnresolved: order.payment_status === "unresolved",
+        opened: query.get("details") === order.id,
+        payment:
+          order.payment_status === "paid"
+            ? "Paid"
+            : order.payment_status === "unresolved"
+              ? "Outcome unknown"
+              : "Not paid",
+        closure:
+          order.merchant_closure === undefined
+            ? null
+            : {
+                at: momentView(order.merchant_closure.closed_at),
+                ...(order.merchant_closure.message === undefined
+                  ? {}
+                  : { message: order.merchant_closure.message }),
+              },
+        closing: reopened(order) ? "again" : closable(order) ? "first" : null,
         priceSet: momentView(order.price.at),
         day: dayOf(order.price.at),
       } satisfies OrderRow,
@@ -542,36 +591,107 @@ export const ordersView = (
   );
   const finds = orderSearch(asked.q.toLocaleLowerCase());
   const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
-  const told = (which: (status: OrderStatus) => boolean): ToldOrders => {
-    const all = found.filter(({ order }) => which(order.status));
+  const listing = listingOf({
+    rows: listed.map(({ row }) => row),
+    asked,
+    path: "/orders",
+    segments,
+    matches: finds,
+    noMatch: (q, within) =>
+      within === null
+        ? `No order matches “${q}”.`
+        : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
+    showAll: "Show all orders",
+  });
+  const onPage = new Set(listing.rows.map((row) => row.id));
+  const opens = (row: OrderRow) => {
+    const search = new URLSearchParams(onPage.has(row.id) ? query : { q: row.id });
+    search.set("details", row.id);
+    return {
+      search: `?${search}`,
+      words:
+        row.closing === "first"
+          ? "Close fulfillment"
+          : row.closing === "again"
+            ? "Close again"
+            : "Order details",
+    };
+  };
+  const told = (which: (order: OrderList["orders"][number]) => boolean): ToldOrders => {
+    const all = found.filter(({ order }) => which(order));
     return {
       rows: all.slice(0, PAGE_ROWS).map(({ order, row }) => ({
         ...row,
-        why: whatHappened(order, owed[order.id], paidInto[order.id] !== undefined),
+        why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
         rest: whereTheRestIs(order.status),
+        opens: opens(row),
       })),
       of: all.length,
     };
   };
   return {
     none: orders.orders.length === 0,
+    pressed: null,
     testNote: testOrders(orders, mode),
-    listing: listingOf({
-      rows: listed.map(({ row }) => row),
-      asked,
-      path: "/orders",
-      segments,
-      matches: finds,
-      noMatch: (q, within) =>
-        within === null
-          ? `No order matches “${q}”.`
-          : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
-      showAll: "Show all orders",
-    }),
-    needsYou: told(needsYou),
-    waitsOnTheBuyer: told(waitsOnTheBuyer),
+    listing,
+    needsYou: told((order) => needsYou(order.status) || reopened(order)),
+    waitsOnTheBuyer: told((order) => waitsOnTheBuyer(order.status)),
   };
 };
+
+/**
+ * A closure press the page cannot simply show: a write whose answer was lost
+ * and whose reread did not show it, or a closure that arrived after the order
+ * ended.
+ */
+export const CLOSURE_NOTES = {
+  unconfirmed:
+    "Your closure could not be confirmed. If this order is still open, closing it again is safe.",
+  ended: "Nothing was closed: this order ended before your closure arrived.",
+} as const;
+
+/**
+ * Closure stops what Agentify would still deliver, so it is offered only where
+ * something is left to stop: a paid or possibly paid order that has not ended,
+ * and goods held for a payment the buyer may still make. An order that ended
+ * with nothing charged has nothing to stop, and closing it would only replace
+ * the ending its buyer's agent reads.
+ */
+const STOPPABLE: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  "in_progress",
+  "payment_unresolved",
+  "unfulfilled",
+  "delivered_unpaid",
+]);
+
+export const closable = (
+  order: Pick<OrderList["orders"][number], "status" | "payment_status" | "merchant_closure">,
+): boolean =>
+  order.merchant_closure === undefined &&
+  STOPPABLE.has(order.status) &&
+  !(order.status === "in_progress" && order.payment_status === "not_paid");
+
+/**
+ * An order the merchant closed, now paid, that the gateway still lists as
+ * open: its payment completed after the closure, and it stays open until the
+ * merchant closes it again.
+ */
+const paidAfterClosureIn = (open: OrderList) => {
+  const listed = new Set(open.orders.map((order) => order.id));
+  return (
+    order: Pick<
+      OrderList["orders"][number],
+      "id" | "status" | "payment_status" | "merchant_closure"
+    >,
+  ): boolean =>
+    order.status === "fulfillment_closed" &&
+    order.payment_status === "paid" &&
+    order.merchant_closure !== undefined &&
+    listed.has(order.id);
+};
+
+const PAID_AFTER_CLOSURE =
+  "The payment completed after you closed fulfillment, so the buyer paid and nothing was delivered. Close it again, with an explanation to the buyer.";
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -589,34 +709,21 @@ const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
     : `${countOf(tests, "order")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no real money moved for ${tests === 1 ? "it" : "those"}.`;
 };
 
-/**
- * How a refund came to be owed, said as it happened. Where the cause could not
- * be read the sentence says only what holds for every debt, rather than
- * guessing the commonest cause.
- */
-const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
+/** Missing cause means unknown cause, rather than a guessed missed deadline. */
+const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
   refused: "Paid, then your integration refused the order, so nothing was delivered.",
   deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
-  merchant_left: "Paid, and the order closed undelivered when you left Agentify.",
+  merchant_left: "Paid, and the order was left unfulfilled when you left Agentify.",
   charge_confirmed_late:
-    "Paid, but the payment network confirmed the payment only after we had stopped waiting for it and closed the order, so nothing was delivered.",
+    "Paid, but the payment network confirmed the payment only after we had stopped waiting for it, so nothing was delivered.",
 };
 
-/**
- * A refund owes the buyer the whole price, though a payout split paid the
- * merchant only their share of it: the split gives Agentify's commission back
- * to nobody. The sum is a test purchase's where it is one, since an unmarked
- * sum reads as money that moved. Held goods are released by the buyer's own
- * second payment for the same order, never by a new purchase, which would
- * deliver twice.
- */
 const whatHappened = (
   order: OrderList["orders"][number],
-  cause: RefundCause | undefined,
-  intoASplit: boolean,
+  cause: UnfulfilledCause | undefined,
 ): string =>
-  order.status === "refund_due"
-    ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price${order.test ? " of this test purchase" : ""}, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
+  order.status === "unfulfilled"
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it late, or close fulfillment with an explanation to the buyer.`
     : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
 
 const sharesIn = (
@@ -625,29 +732,27 @@ const sharesIn = (
 ): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
 
 /**
- * How a refund is made is linked once, over the refunds. Held goods owe
+ * Merchant closure is linked once over unfulfilled orders. Held goods owe
  * nobody anything: what can still happen is a payment the buyer makes, and the
  * documentation says what settles it and what the merchant's choice is.
  */
 const whereTheRestIs = (status: OrderStatus): Rest | null =>
-  status === "refund_due"
-    ? null
-    : {
+  status === "delivered_unpaid"
+    ? {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
         words: "What can still happen",
-      };
+      }
+    : null;
 
 // --- receipts ----------------------------------------------------------------
 
 /**
- * The transfer behind a receipt, as the payment layer named it: a link to the
- * chain's page for it where this deployment has one and the name is a
- * transaction hash, the name as written otherwise. The view holds it whole, for
- * the copy button and the link: a shortened hash is a different string to
- * whoever pastes it. A receipt without
- * one says only that this receipt does not carry it, not that there was no
- * transfer: older receipts and payments an operator recorded by hand had one
- * all the same.
+ * The transfer behind a receipt, reported by the facilitator or verified from
+ * chain evidence: a link to the chain's page where this deployment has one and
+ * the name is a transaction hash, the name as written otherwise. The view holds
+ * it whole, for the copy button and the link: a shortened hash is a different
+ * string to whoever pastes it. An absent transaction means none was recorded on this
+ * receipt; it does not establish that no transfer occurred.
  */
 export type TransferView =
   | Readonly<{ kind: "none" }>

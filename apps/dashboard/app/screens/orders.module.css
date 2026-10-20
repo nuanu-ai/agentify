@@ -70,7 +70,7 @@
   }
 }
 
-/* The way to how refunds are made stands at the end of its group's heading. */
+/* The way to unfulfilled orders and closure work stands at the end of its group's heading. */
 :global(.group-aside):has(> .end) {
   margin-left: auto;
 }
@@ -97,4 +97,44 @@
    test mark or a word of its share, and never inside a number. */
 .sum {
   white-space: normal;
+}
+
+/* An order's details hold its facts, then what can still be done with it. */
+.details {
+  display: grid;
+  gap: var(--space-block);
+  max-width: 44rem;
+  padding-bottom: var(--space-tight);
+}
+
+.details p,
+.details h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.details h3 {
+  color: var(--fg);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+
+.close {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-tight);
+  margin: 0;
+  padding-top: var(--space-block);
+  border-top: var(--hairline) solid var(--line);
+}
+
+/* The settings screens' row of a box and its button, inset by the details, not again by itself. */
+.close > :global(.issue) {
+  width: 100%;
+  padding: var(--space-tight) 0 0;
+}
+
+.help {
+  color: var(--muted);
+  font-size: var(--text-small);
 }

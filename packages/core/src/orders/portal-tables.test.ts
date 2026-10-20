@@ -118,6 +118,7 @@ const ENDINGS = [
   "The money was charged and no delivery happened",
   "You delivered synchronously and the payment did not execute",
   "The facilitator did not say whether the money was charged",
+  "You closed fulfillment",
 ] as const;
 
 /** The status words the page promises for one of its endings. */
@@ -146,6 +147,14 @@ function paidParcel(): Order {
 }
 
 describe('apps/docs/orders.md, "How an order can end"', () => {
+  it(`${ENDINGS[8]}: closure preserves payment and stops future fulfillment`, () => {
+    const paid = reach("unfulfilled");
+    const closed = must(paid, { kind: "close_called", at: T0 + 10 }).order;
+    const unresolved = must(reach("fulfilled"), { kind: "close_called", at: T0 + 10 }).order;
+    expect(statusOf(ENDINGS[8])).toStrictEqual([outcomeFor(closed), outcomeFor(unresolved)]);
+    expect(closed.payment).toBe(paid.payment);
+  });
+
   it(`${ENDINGS[0]}: the money is the merchant's, the agent has goods and a receipt`, () => {
     const { order } = must(paidAsync(), { kind: "deliver_called", at: T0 + 60 });
 
@@ -217,11 +226,11 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     // the agent as a different word: closing it as though nobody owed anything
     // would lose the buyer's money.
     expect(statusOf(ENDINGS[4])).toStrictEqual([outcomeFor(free), outcomeFor(charged)]);
-    expect(outcomeFor(charged)).toBe("refund_due");
+    expect(outcomeFor(charged)).toBe("unfulfilled");
   });
 
-  it(`${ENDINGS[5]}: the money is the merchant's and the order waits for a refund`, () => {
-    expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(reach("refund_due"))]);
+  it(`${ENDINGS[5]}: the money is the merchant's and the order is unfulfilled`, () => {
+    expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(reach("unfulfilled"))]);
   });
 
   it(`${ENDINGS[7]}: the agent is told the outcome is unknown, not that he was refused`, () => {
@@ -382,31 +391,31 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     expect(outcomeFor(beforeTheGoods)).toBe("payment_unresolved");
   });
 
-  it(`${TIME_LIMITS[5]}: the money is already the merchant's and a refund is owed`, () => {
+  it(`${TIME_LIMITS[5]}: the money is already the merchant's and the order is unfulfilled`, () => {
     const { order } = must(paidAsync(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    expect(outcomeFor(order)).toBe("refund_due");
+    expect(outcomeFor(order)).toBe("unfulfilled");
   });
 
-  it(`${TIME_LIMITS[6]}: a parcel not shipped in time owes a refund as well`, () => {
+  it(`${TIME_LIMITS[6]}: a parcel not shipped in time is unfulfilled as well`, () => {
     const { order } = must(paidParcel(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    expect(outcomeFor(order)).toBe("refund_due");
+    expect(outcomeFor(order)).toBe("unfulfilled");
   });
 });
 
 // --- apps/docs/orders.md, "Events on the same subscription" -------------------
 
 const EVENTS = [
-  "An order was marked as needing a refund",
+  "A paid order was left unfulfilled",
   "A payment did not execute after a synchronous delivery",
 ] as const;
 
@@ -492,7 +501,7 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
     }).order;
 
     expect(outcomeFor(inSync)).toBe("rejected");
-    expect(outcomeFor(afterTheCharge)).toBe("refund_due");
+    expect(outcomeFor(afterTheCharge)).toBe("unfulfilled");
   });
 
   it(`${FAILURES[2]}: the order comes again rather than closing`, () => {
@@ -516,7 +525,7 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
     }).order;
 
     expect(outcomeFor(sync)).toBe("expired");
-    expect(outcomeFor(async)).toBe("refund_due");
+    expect(outcomeFor(async)).toBe("unfulfilled");
   });
 
   it(`${FAILURES[4]}: no second fulfillment and no second charge`, () => {
@@ -582,7 +591,7 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
     // "and owes a refund if the charge reports in later"
     const late = must(beforeTheGoods, { kind: "payment_settled", at: T0 + 1_000_000 }).order;
 
-    expect(outcomeFor(late)).toBe("refund_due");
+    expect(outcomeFor(late)).toBe("unfulfilled");
   });
 });
 
@@ -590,7 +599,11 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
 
 describe("the portal and this machine cannot drift apart quietly", () => {
   it('has exactly the encoded rows in "How an order can end"', () => {
-    expect(tableRows(ORDERS_PAGE, "How an order can end")).toStrictEqual([...ENDINGS]);
+    expect(tableRows(ORDERS_PAGE, "How an order can end")).toStrictEqual([
+      ...ENDINGS.slice(0, 7),
+      ENDINGS[8],
+      ENDINGS[7],
+    ]);
   });
 
   it('has exactly the encoded rows in "Every time limit"', () => {

@@ -179,6 +179,25 @@ class ChannelRender(unittest.TestCase):
                 checked = self.preflight(channel, document)
                 self.assertEqual(checked.returncode, 0, checked.stderr)
 
+    def test_payment_recovery_defaults_to_the_channels_public_rpc(self):
+        for channel, endpoint in {
+            "test": "https://sepolia.base.org",
+            "production": "https://mainnet.base.org",
+        }.items():
+            with self.subTest(channel=channel):
+                environment = self.render(channel)["services"]["app"]["environment"]
+                self.assertEqual(environment.get("PAYMENT_RPC_URL"), endpoint)
+
+    def test_payment_rpc_can_be_disabled_or_replaced_only_for_the_application(self):
+        for channel in CHANNELS:
+            for endpoint in ("", "https://rpc.example.invalid/private-key"):
+                with self.subTest(channel=channel, enabled=bool(endpoint)):
+                    services = self.render(channel, {"AGENTIFY_PAYMENT_RPC_URL": endpoint})["services"]
+                    self.assertEqual(services["app"]["environment"].get("PAYMENT_RPC_URL"), endpoint)
+                    for name, service in services.items():
+                        if name != "app":
+                            self.assertNotIn("PAYMENT_RPC_URL", service.get("environment", {}))
+
     def test_google_credentials_reach_only_the_application_and_pass_preflight(self):
         google = {
             "GOOGLE_CLIENT_ID": "synthetic-google-client.apps.googleusercontent.com",

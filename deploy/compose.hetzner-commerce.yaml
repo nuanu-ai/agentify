@@ -22,6 +22,8 @@ services:
   app:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
+      # An explicitly empty value disables background chain recovery.
+      PAYMENT_RPC_URL: "${AGENTIFY_PAYMENT_RPC_URL-https://mainnet.base.org}"
 
   # One database and one account for every process.
   scanner-migrate:

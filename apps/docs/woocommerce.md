@@ -112,29 +112,62 @@ you no longer want buyers to see.
 
 ## Parcels
 
-These rules decide whether you keep the money for a parcel.
+These rules describe what Agentify records about a parcel. Whether it arrives,
+and what you do for the buyer if it does not, are yours and your shop's.
 
 1. Ship within seven days of payment and mark the order Completed in
    WooCommerce, in the shop it was sold from. The seven days are Agentify's
    number, because WooCommerce has no field for it.
 2. An order not marked Completed within its seven days shows on your Orders
-   screen as a refund you owe. Marking it Completed later, within thirty days
-   of the order being placed, still clears that debt, unless a refund has
-   already been recorded.
+   screen as unfulfilled. Marking it Completed later, within thirty days of the
+   order being placed, still records the shipment, unless you have closed
+   fulfillment of it.
 3. Completed tells the buyer the parcel has shipped, and it cannot be taken
    back. Where the order has a fulfilled WooCommerce fulfilment, the buyer gets
    its carrier and tracking; otherwise the buyer is told your shipping
    method's name as the carrier, with no tracking number.
-4. An order you cancel or refund in WooCommerce has not shipped, and becomes a
-   refund you owe when its seven days run out.
-5. If Orders shows a refund owed before the seven days are up while your shop
-   holds a paid order for it, do not ship that order: Agentify could not
-   confirm it, and you owe the buyer a refund instead.
+4. An order you cancel or refund in WooCommerce has not shipped, and shows as
+   unfulfilled when its seven days run out.
+5. If Orders shows an order as unfulfilled before its seven days are up while
+   your shop holds a paid order for it, do not ship that order: Agentify could
+   not confirm it with your shop. Close fulfillment of it on Orders with an
+   explanation for the buyer, and settle the shop order by your own policy.
 6. A parcel's card is published only once your shop's site is set in
    Settings, because the site is where a buyer asks about a parcel that did not
    arrive.
 
-What a refund owed means for your money is on [Money](/money#if-the-buyer-did-not-get-the-goods).
+To stop Agentify accepting delivery for an order, use **Orders → Order details
+→ Close fulfillment** ([what closing does](/money#if-the-buyer-did-not-get-the-goods)).
+It changes nothing in your shop — no setting, no cancellation, no refund — so
+stop the shop's own work on that order yourself. Your explanation, if you give
+one, is shown to the buyer as your words.
+
+## Recovering a download
+
+If a paid download was not delivered and the connector has a saved sale it can
+check, your Orders screen offers **Recover WooCommerce delivery** on that
+order. The recovery page shows the Agentify order ID, the product, the amount
+and the shop the sale came from, and a test purchase keeps its test mark.
+
+When the shop's answer to creating the order never arrived, find the order in
+that same shop whose Transaction ID is this Agentify order ID, and enter its
+**WooCommerce order ID**: the internal number in the order's address, which can
+differ from the order number customers see. **Link order and deliver download**
+checks that exact order and product against the saved sale, then delivers the
+download; it does not search for another order or create one. If your shop
+holds no order with that Transaction ID, nothing can be delivered from this
+page: close fulfillment on Orders with an explanation for the buyer.
+
+When the shop order and its download are already saved, **Retry delivery**
+sends that same download to Agentify, even after you disconnect the shop or
+switch to your own code. If an answer was lost, reload the page: it shows the
+saved order and says whether Agentify confirms the delivery. A check that could
+not be made leaves the result unknown, which is not proof that nothing was
+recorded, and a saved order cannot be replaced by a different one.
+
+Recovery delivers the download and does nothing else. To stop delivery
+instead, close fulfillment on Orders; a closed order has no recovery action,
+and neither has a parcel or a download refused before a shop order was created.
 
 ## Disconnecting
 
@@ -146,18 +179,16 @@ on Cards.
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
 Completed in WooCommerce, an unpaid purchase when its buyer pays or lets it
-lapse, and any of them when its time runs out. A parcel already owed a refund
-is no longer followed after you disconnect, so marking it Completed then does
-not clear the debt.
+lapse, any of them when its time runs out, and a paid one when you close
+fulfillment of it on Orders. A parcel
+already unfulfilled is no longer followed after you disconnect, so marking it
+Completed then records no shipment in Agentify.
 
 Disconnecting does not revoke the keys inside your shop; that is done in
 WooCommerce → Settings → Advanced → REST API.
 
 ## What is not settled yet
 
-- Parcels on the live channel. A parcel sells on the test channel only until
-  the refund of a lost parcel can be recorded, and how a live parcel's time to
-  ship is set is not decided.
-- How a refund you owe goes back to the buyer. Agentify records the debt on
-  your Orders screen; how the money travels back is open
-  ([Money](/money#if-the-buyer-did-not-get-the-goods)).
+- Parcels on the live channel. A parcel sells on the test channel only, and
+  how a live parcel's time to ship is set is not decided.
+- How a buyer reaches your support to arrange a remedy outside Agentify.

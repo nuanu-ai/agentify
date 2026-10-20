@@ -19,6 +19,8 @@
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… \
  *     CDP_API_KEY_ID=… CDP_API_KEY_SECRET=… pnpm smoke --confirm
  *
+ * PAYMENT_RPC_URL optionally selects a dedicated read-only Base Sepolia RPC.
+ *
  * The first is a dry run: it boots the gateway, publishes the card, reads the
  * real payment challenge and prints exactly what a payment would be, then stops
  * without signing. The second, with credentials and the flag, executes one real
@@ -30,6 +32,7 @@ import {
   type Facilitator,
   type GatewayConfig,
   PaymentEdge,
+  recoveryOn,
   type StoredOrder,
   X402Facilitator,
 } from "@agentify/gateway";
@@ -178,7 +181,7 @@ export async function verdictOnPurchase(
 }
 
 /** The real facilitator, built from the loaded config exactly as production does. */
-export function realFacilitator(config: GatewayConfig): Facilitator {
+export async function realFacilitator(config: GatewayConfig): Promise<Facilitator> {
   const edge = new PaymentEdge(config);
   const { cdpApiKeyId, cdpApiKeySecret } = config.payment;
   const client = new HTTPFacilitatorClient({
@@ -195,7 +198,9 @@ export function realFacilitator(config: GatewayConfig): Facilitator {
           },
         }),
   });
-  return new X402Facilitator(client, edge);
+  const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
+  console.log(started.said);
+  return new X402Facilitator(client, edge, started.recovery);
 }
 
 async function main(): Promise<void> {
@@ -266,6 +271,9 @@ async function main(): Promise<void> {
   const env = sliceEnv({
     PAY_TO_ADDRESS: payTo,
     PAYMENT_NETWORK: network,
+    ...(process.env.PAYMENT_RPC_URL === undefined
+      ? {}
+      : { PAYMENT_RPC_URL: process.env.PAYMENT_RPC_URL }),
     FACILITATOR_URL: facilitatorUrl,
     ...(haveCdp ? { CDP_API_KEY_ID: cdpApiKeyId, CDP_API_KEY_SECRET: cdpApiKeySecret } : {}),
   });

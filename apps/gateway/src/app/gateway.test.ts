@@ -787,7 +787,7 @@ describe("an asynchronous purchase", () => {
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
-  it("owes a refund when the merchant refuses after the money moved", async () => {
+  it("leaves the order unfulfilled when the merchant refuses after the money moved", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -806,7 +806,7 @@ describe("an asynchronous purchase", () => {
 
     expect(answered).toStrictEqual({ ok: true, result: "refused" });
     const owing = await harnessed.store.orderById(offered.order.order.id);
-    expect(owing?.order.state).toBe("refund_due");
+    expect(owing?.order.state).toBe("unfulfilled");
 
     // No receipt, and that is a known gap: the receipt vocabulary has a word
     // for an order that owes money back, but receipts are written only when
@@ -815,10 +815,10 @@ describe("an asynchronous purchase", () => {
 
     const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
-    expect(events.map((e) => e.type)).toContain("order.refund_due");
+    expect(events.map((e) => e.type)).toContain("order.unfulfilled");
   });
 
-  it("refuses a delivery once a refund is recorded", async () => {
+  it("refuses a delivery once the merchant closed fulfillment", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -830,7 +830,7 @@ describe("an asynchronous purchase", () => {
       message: "none",
     });
     await harnessed.gateway.runner.apply(orderId, {
-      kind: "refund_settled",
+      kind: "close_called",
       at: harnessed.now(),
     });
 
@@ -841,14 +841,14 @@ describe("an asynchronous purchase", () => {
     expect(late).toStrictEqual({
       ok: false,
       error: {
-        code: "refund_already_settled",
+        code: "fulfillment_closed",
         message: expect.any(String),
         retryable: false,
       },
     });
   });
 
-  it("closes the debt when late goods arrive before a refund is recorded", async () => {
+  it("delivers late goods to an unfulfilled order the merchant has not closed", async () => {
     // To a buyer, late goods are better than a refund — as long as no refund
     // has been recorded.
     const harnessed = await started();
@@ -866,7 +866,7 @@ describe("an asynchronous purchase", () => {
       activation_code: "A",
     });
 
-    expect(late).toStrictEqual({ ok: true, result: "debt_closed_by_delivery" });
+    expect(late).toStrictEqual({ ok: true, result: "delivered_late" });
     const closed = await harnessed.store.orderById(orderId);
     expect(closed?.order.state).toBe("delivered");
     expect(closed?.order.closure).toBeNull();
@@ -1283,7 +1283,7 @@ describe("the goods against the card that sold them", () => {
       code: "out_of_stock",
       message: "none",
     });
-    await harnessed.gateway.runner.apply(orderId, { kind: "refund_settled", at: harnessed.now() });
+    await harnessed.gateway.runner.apply(orderId, { kind: "close_called", at: harnessed.now() });
 
     const wrongGoods = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {});
     if (wrongGoods?.ok !== false) throw new Error("an empty delivery was taken");
@@ -1300,7 +1300,7 @@ describe("the goods against the card that sold them", () => {
       activation_code: "LPA:1$LATE",
     });
     if (rightGoods?.ok !== false) throw new Error("a settled refund took a delivery");
-    expect(rightGoods.error.code).toBe("refund_already_settled");
+    expect(rightGoods.error.code).toBe("fulfillment_closed");
     expect(rightGoods.error.retryable).toBe(false);
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
   });
@@ -2141,7 +2141,7 @@ describe("the worker's stream", () => {
       code: "out_of_stock",
       message: "none",
     });
-    await harnessed.gateway.runner.apply(orderId, { kind: "refund_settled", at: harnessed.now() });
+    await harnessed.gateway.runner.apply(orderId, { kind: "close_called", at: harnessed.now() });
 
     const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
@@ -2182,7 +2182,7 @@ describe("the worker's stream", () => {
     const drawn = await drawEverything(harnessed);
     expect(
       drawn.flatMap((each) => (each.kind === "order_event" ? [each.payload.type] : [])),
-    ).toStrictEqual(["order.refund_due"]);
+    ).toStrictEqual(["order.unfulfilled"]);
 
     harnessed.advance(60_000);
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 50)).envelopes).toStrictEqual([]);
@@ -2190,7 +2190,7 @@ describe("the worker's stream", () => {
     // What the merchant can still find out for himself.
     const owing = await harnessed.gateway.orders(harnessed.merchant.id, true);
     expect(owing.map((held) => held.order.id)).toStrictEqual([orderId]);
-    expect(owing[0]?.order.state).toBe("refund_due");
+    expect(owing[0]?.order.state).toBe("unfulfilled");
   });
 
   it("hands nobody an order the late answer already closed", async () => {
@@ -2408,7 +2408,7 @@ describe("the merchant's calls", () => {
     });
   });
 
-  it("still takes an order on that is owed a refund, because the goods still close it", async () => {
+  it("still takes on an unfulfilled order, because late goods can still be delivered", async () => {
     // Goods that arrive before the refund close the debt instead, so an
     // acceptance here takes on work that still exists, odd as that looks from
     // the merchant who refused. The fixture reaches the debt by a refusal; the
@@ -2424,7 +2424,7 @@ describe("the merchant's calls", () => {
       code: "out_of_stock",
       message: "none",
     });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
 
     expect(
       await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, { accepted: {} }),
@@ -2436,12 +2436,7 @@ describe("the merchant's calls", () => {
 });
 
 describe("the claims on payments", () => {
-  it("forgets the ones too old to be guarding anything, and keeps the rest", async () => {
-    // A claim covers the window between a payment being verified and the charge
-    // being executed; after that the token itself refuses the same
-    // authorisation. They cannot be kept forever — the route that makes them
-    // takes no key — and they cannot be thrown away early either, or the guard
-    // is off for every payment presented since the last sweep.
+  it("keeps accepted authorizations bound to their purchases after the retention window", async () => {
     const harnessed = await started({ CLAIM_RETENTION_MS: "60000" });
     const itemId = await published(harnessed, asyncCard);
 
@@ -2455,17 +2450,17 @@ describe("the claims on payments", () => {
     if (fresh.step !== "pay") throw new Error("no price was offered");
     await harnessed.gateway.payPurchase(fresh.order.order.id, "FRESH", "FRESH");
 
-    expect(await harnessed.gateway.forgetOldClaims()).toBe(1);
+    expect(await harnessed.gateway.forgetOldClaims()).toBe(0);
 
-    // The old payment is nobody's again; the fresh one is still spoken for.
+    // Age cannot make either accepted authorization available to a second order.
     const takingOld = await harnessed.gateway.beginPurchase(itemId, {});
     const takingFresh = await harnessed.gateway.beginPurchase(itemId, {});
     if (takingOld.step !== "pay" || takingFresh.step !== "pay") {
       throw new Error("no price was offered");
     }
-    expect(
-      (await harnessed.gateway.payPurchase(takingOld.order.order.id, "OLD", "OLD")).step,
-    ).not.toBe("payment_already_spent");
+    expect((await harnessed.gateway.payPurchase(takingOld.order.order.id, "OLD", "OLD")).step).toBe(
+      "payment_already_spent",
+    );
     expect(
       (await harnessed.gateway.payPurchase(takingFresh.order.order.id, "FRESH", "FRESH")).step,
     ).toBe("payment_already_spent");

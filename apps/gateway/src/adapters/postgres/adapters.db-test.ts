@@ -45,6 +45,7 @@ import {
   authorisation,
   countedIds,
   loggedWhile,
+  serve,
   testConfig,
   workUntilStopped,
 } from "../../testing/harness.js";
@@ -503,6 +504,44 @@ if (databaseUrl === null) {
       expect(await idsOf({ open: true })).not.toContain(orderId);
       // Closed is not deleted: reconciling a day's orders reads the full list.
       expect(await idsOf()).toContain(orderId);
+    });
+
+    it("refuses a closing message cut in the middle of a character before the database sees it", async () => {
+      // Postgres refuses half a surrogate pair in a document, so a message
+      // that reached it would fail the write and answer as a retryable fault
+      // a merchant's code could repeat forever.
+      const published = await store.publishCard(
+        A,
+        { ...syncCard, merchant_item_id: "closed-with-half-a-character" },
+        now,
+      );
+      const offered = await gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      const orderId = offered.order.order.id;
+      const { secret } = await gateway.issueMerchantKey(A, "closing", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
+      const served = await serve({ gateway });
+      try {
+        const close = (message: string) =>
+          served.call("POST", `/v0/orders/${orderId}/close`, {
+            headers: { authorization: `Bearer ${secret}` },
+            body: { message },
+          });
+
+        const cut = await close(`${"We are sorry ".repeat(10)}\uD83D`);
+        expect(cut.status).toBe(400);
+        expect(cut.body).toMatchObject({ error: { code: "malformed_body", retryable: false } });
+        expect((await store.orderById(orderId))?.order.state).toBe("quoted");
+
+        expect((await close("We are sorry \u{1F64F}")).body).toEqual({ ok: true });
+        expect((await store.orderById(orderId))?.order.merchantClosure?.message).toBe(
+          "We are sorry \u{1F64F}",
+        );
+      } finally {
+        await served.close();
+      }
     });
 
     it("leaves the row alone when a decision asked for nothing to be written", async () => {
@@ -1345,6 +1384,55 @@ if (databaseUrl === null) {
         await queue.draw(A, 100, 0);
       });
 
+      it("commits recovered late payment and its debt event together without a fulfillment handover", async () => {
+        const card = await store.publishCard(
+          A,
+          { ...asyncCard, merchant_item_id: "recovered-late", fulfill_deadline_seconds: 1 },
+          now,
+        );
+        const offered = await gateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const orderId = offered.order.order.id;
+        facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+        try {
+          await gateway.runner.presentVerifiedPayment(
+            orderId,
+            "payer",
+            "authorization",
+            PAID_AT,
+            now,
+          );
+          const attempt = (await store.orderById(orderId))?.paymentAttempt;
+          if (attempt === undefined) throw new Error("no submitted attempt");
+          const executedAt = now;
+          now += 2000;
+          const proof = { settled: true as const, transaction: `0x${"a".repeat(64)}`, executedAt };
+          const publish = queue.publishWithin.bind(queue);
+          queue.publishWithin = async () => {
+            throw new Error("debt event write interrupted");
+          };
+          try {
+            await expect(
+              gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain"),
+            ).rejects.toThrow();
+            expect((await store.orderById(orderId))?.order.payment).toBe("settling");
+            expect((await store.orderById(orderId))?.paymentAttempt?.completion).toBeNull();
+            expect(await queue.draw(A, 100, 0)).toEqual([]);
+          } finally {
+            queue.publishWithin = publish;
+          }
+          await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
+          await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
+          expect((await store.orderById(orderId))?.order.state).toBe("unfulfilled");
+          expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
+            "order_event",
+          ]);
+          expect(await store.receiptForOrder(orderId)).toBeNull();
+        } finally {
+          facilitator.willSettle();
+        }
+      });
+
       it("is a no-op on the second run once the first has been acted on", async () => {
         // Two of the three arms are no-ops on a second run for a reason in the
         // orders themselves: an order with a receipt is not missing one, and an
@@ -1806,7 +1894,7 @@ if (databaseUrl === null) {
         });
 
         it("opens a command's application that reads each wallet's split on that network", async () => {
-          // The operator's payout and the payment report run through it.
+          // WooCommerce recovery uses this writing command application.
           await store.recordPayoutSplits([payoutSplitFor(base, MERCHANT, W1)], now);
 
           const opened = await openCommandApplication(onBase());

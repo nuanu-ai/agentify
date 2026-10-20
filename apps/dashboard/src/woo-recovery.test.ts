@@ -1,10 +1,11 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
-import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
+import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { percentOf, sharesOf } from "./shares.js";
-import { recoverWooOrder, type WooRecoveryParts } from "./woo-recovery.js";
+import { recoverWooOrder, recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
+import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
 import {
   type EligibleWooProduct,
   type OrderMade,
@@ -46,6 +47,7 @@ const PRODUCT: EligibleWooProduct = {
 };
 
 const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
+  payment_status: status === "payment_unresolved" ? "unresolved" : "paid",
   id: "ord_1",
   merchant_item_id: FACTS.merchantItemId,
   params: {},
@@ -59,6 +61,30 @@ const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
   test: true,
   status,
 });
+
+/** The merchant's catalogue, holding the card the sale was made from. */
+const CARDS = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    {
+      id: "itm_22",
+      as_of: "2026-09-18T09:00:00Z",
+      card: {
+        merchant_item_id: FACTS.merchantItemId,
+        title: "Agentify test download",
+        description: "A file delivered by the merchant's WooCommerce shop",
+        price: { amount: FACTS.amount, currency: FACTS.currency },
+        result: { download_url: { type: "string" } },
+        fulfillment: "async",
+      },
+      selling: "open",
+      paused: false,
+    },
+  ],
+});
+
+/** The recovery's parts, whose gateway also lists the cards the recovery page names the product from. */
+type Parts = Omit<WooRecoveryParts, "gatewayFor"> & Pick<WooRecoveryPageParts, "gatewayFor">;
 
 const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
   id: "13",
@@ -107,14 +133,11 @@ const setup = async (phase: "precreate_refused" | "create_unknown") => {
   return shops;
 };
 
-const parts = (
-  shops: Awaited<ReturnType<typeof setup>>,
-  overrides: Partial<WooRecoveryParts> = {},
-) => {
+const parts = (shops: Awaited<ReturnType<typeof setup>>, overrides: Partial<Parts> = {}) => {
   let delivered = 0;
   let created = 0;
   let read = 0;
-  let gatewayReads = 0;
+  let status: "unfulfilled" | "delivered" = "unfulfilled";
   const sold: SoldItem[] = [];
   const made: OrderMade = {
     ok: true,
@@ -123,7 +146,7 @@ const parts = (
     orderKey: "wc_order_13",
     downloadId: PRODUCT.downloadId,
   };
-  const value: WooRecoveryParts = {
+  const value: Parts = {
     shops,
     identity: {
       byId: async () => ({
@@ -135,20 +158,21 @@ const parts = (
     },
     gatewayFor: () => ({
       getOrder: async () => {
-        gatewayReads += 1;
         return {
           ok: true as const,
-          document: gatewayOrder(gatewayReads === 1 ? "refund_due" : "delivered"),
+          document: gatewayOrder(status),
         };
       },
       deliverOrder: async () => {
         delivered += 1;
+        status = "delivered";
         return {
           ok: true as const,
-          document: { ok: true as const, result: "debt_closed_by_delivery" as const },
+          document: { ok: true as const, result: "delivered_late" as const },
         };
       },
       paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
+      cards: async () => ({ ok: true as const, document: CARDS }),
     }),
     inspectProduct: async () => ({ ok: true, product: PRODUCT }),
     createOrder: async (_keys, item) => {
@@ -165,6 +189,317 @@ const parts = (
   };
   return { value, counts: () => ({ delivered, created, read }), sold };
 };
+
+const OWNER = {
+  id: "acc_1",
+  email: EMAIL,
+  confirmed: true,
+  merchant: { id: "m_1" },
+};
+
+describe("a merchant recovering their own WooCommerce delivery", () => {
+  it("answers another account's order like an unknown one before calling the gateway or shop", async () => {
+    const shops = await setup("create_unknown");
+    let gatewayCalls = 0;
+    const test = parts(shops, {
+      gatewayFor: () => {
+        gatewayCalls += 1;
+        throw new Error("a stranger's merchant must never become the caller");
+      },
+    });
+    const stranger = { ...OWNER, id: "acc_other", merchant: { id: "m_other" } };
+
+    const foreign = await recoverWooOrderAs(
+      stranger,
+      { orderId: "ord_1", wooOrderId: "13" },
+      test.value,
+    );
+    const missing = await recoverWooOrderAs(
+      stranger,
+      { orderId: "ord_missing", wooOrderId: "13" },
+      test.value,
+    );
+
+    expect(foreign).toEqual(missing);
+    expect(foreign).toMatchObject({ ok: false, state: "refused" });
+    expect(gatewayCalls).toBe(0);
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("uses the authenticated merchant and never creates a shop order", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      identity: {
+        byId: async () => {
+          throw new Error("the saved account is not authority");
+        },
+      },
+    });
+
+    expect(
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
+    expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 1 });
+  });
+
+  it("does not expose pre-create retry as a merchant recovery action", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("replays the same exact binding after a lost answer without reading or creating in the shop again", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops);
+    const request = { orderId: "ord_1", wooOrderId: "13" };
+
+    expect(await recoverWooOrderAs(OWNER, request, test.value)).toMatchObject({ ok: true });
+    expect(await recoverWooOrderAs(OWNER, request, test.value)).toMatchObject({ ok: true });
+    expect(
+      await recoverWooOrderAs(OWNER, { ...request, wooOrderId: "14" }, test.value),
+    ).toMatchObject({ ok: false, state: "refused" });
+    expect(test.counts()).toEqual({ delivered: 2, created: 0, read: 1 });
+    expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
+  });
+
+  it("names each fact of a typed shop order that differs from the sale, and only those", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      readOrder: async () => ({
+        ok: true,
+        order: shopOrder({ status: "cancelled", paymentMethod: "bacs" }),
+      }),
+    });
+
+    const outcome = await recoverWooOrderAs(
+      OWNER,
+      { orderId: "ord_1", wooOrderId: "13" },
+      test.value,
+    );
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused", typed: true });
+    const why = outcome.ok ? "" : outcome.why;
+    expect(why).toContain("cancelled");
+    expect(why).toContain("not paid with Agentify");
+    expect(why).not.toContain("Transaction ID");
+    expect(why).not.toContain("billing email");
+    expect(why).not.toContain("total");
+    expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("keeps an unreadable exact shop order unresolved and allows the same check again", async () => {
+    const shops = await setup("create_unknown");
+    let available = false;
+    const test = parts(shops, {
+      readOrder: async () =>
+        available
+          ? { ok: true, order: shopOrder() }
+          : { ok: false, why: "The shop did not answer." },
+    });
+    const request = { orderId: "ord_1", wooOrderId: "13" };
+
+    expect(await recoverWooOrderAs(OWNER, request, test.value)).toMatchObject({
+      ok: false,
+      state: "unresolved",
+    });
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
+    available = true;
+    expect(await recoverWooOrderAs(OWNER, request, test.value)).toMatchObject({ ok: true });
+    expect(test.counts().created).toBe(0);
+  });
+});
+
+describe("merchant recovery pages", () => {
+  it("hides unknown and other-account sales before any gateway or shop call", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      gatewayFor: () => {
+        throw new Error("a stranger must not reach the gateway");
+      },
+    });
+    const pages = wooRecoveryPagesFor(test.value);
+    const stranger = { ...OWNER, id: "acc_other" };
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+
+    expect(await pages.page(stranger, "ord_1")).toEqual(await pages.page(stranger, "ord_missing"));
+    expect(await pages.recover(stranger, "ord_1", form)).toEqual(
+      await pages.recover(stranger, "ord_missing", form),
+    );
+    expect(await pages.page(stranger, "ord_1")).toMatchObject({
+      kind: "problem",
+      problem: { status: 404 },
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("only reads our saved sale on GET and tells the merchant which exact shop ID to enter", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops);
+    const page = await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1");
+
+    expect(page).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "link",
+        orderId: "ord_1",
+        product: "Agentify test download",
+        shopOrigin: FACTS.shopOrigin,
+        amount: "0.01 USD",
+        test: true,
+        wooOrderId: "",
+      },
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("says a refused shop order under its box and keeps what was typed, with nothing linked", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      readOrder: async () => ({ ok: true, order: shopOrder({ paymentMethod: "bacs" }) }),
+    });
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+
+    expect(await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", form)).toMatchObject({
+      kind: "view",
+      status: 409,
+      view: {
+        mode: "link",
+        wooOrderId: "13",
+        message: null,
+        typedRefusal: expect.stringContaining("not paid with Agentify"),
+      },
+    });
+    expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("names the product by its product code when the catalogue cannot be read, and still offers recovery", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        cards: async () => ({ ok: false, status: 0, why: "not answered" }),
+      }),
+    });
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "link", product: FACTS.merchantItemId },
+    });
+  });
+
+  it("reads back a durable binding when delivery is unknown, then offers retry rather than another binding", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({ ok: true, document: gatewayOrder("unfulfilled") }),
+        deliverOrder: async () => ({ ok: false, status: 0, why: "the answer was lost" }),
+      }),
+    });
+    const pages = wooRecoveryPagesFor(test.value);
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+
+    expect(await pages.recover(OWNER, "ord_1", form)).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "retry",
+        wooOrderId: "13",
+        message: expect.stringMatching(/not confirm/i),
+      },
+    });
+    expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "retry",
+        wooOrderId: "13",
+      },
+    });
+    expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
+    expect(test.counts().created).toBe(0);
+  });
+
+  it("does not call an unreadable gateway result a missing sale", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({ ok: false, status: 0, why: "not answered" }),
+      }),
+    });
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "problem",
+      problem: { status: 504 },
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
+  it("uses confirmed delivered readback after the delivery response was lost", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    let landed = false;
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({
+          ok: true,
+          document: gatewayOrder(landed ? "delivered" : "unfulfilled"),
+        }),
+        deliverOrder: async () => {
+          landed = true;
+          return { ok: false, status: 0, why: "the response was lost" };
+        },
+      }),
+    });
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+    const result = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", form);
+
+    expect(result).toMatchObject({ kind: "view", view: { mode: "delivered", wooOrderId: "13" } });
+    expect(result.kind === "view" && result.status).not.toBe(503);
+    expect(result.kind === "view" && result.view.message).toBeNull();
+  });
+
+  it("keeps the saved binding visible when the final gateway reread is unavailable", async () => {
+    const shops = await setup("create_unknown");
+    const base = parts(shops);
+    let submitted = false;
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () =>
+          submitted
+            ? { ok: false, status: 0, why: "the gateway is unavailable" }
+            : { ok: true, document: gatewayOrder("unfulfilled") },
+        deliverOrder: async () => {
+          submitted = true;
+          return { ok: false, status: 0, why: "no response" };
+        },
+      }),
+    });
+    const form = new FormData();
+    form.set("woo_order_id", "13");
+
+    expect(await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", form)).toMatchObject({
+      kind: "view",
+      status: 503,
+      view: { mode: "retry", wooOrderId: "13" },
+    });
+    expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
+  });
+});
 
 describe("exact Woo order recovery", () => {
   it("retries a definite pre-create refusal once after a same-origin reconnect", async () => {
@@ -339,7 +674,7 @@ describe("exact Woo order recovery", () => {
 });
 
 describe("a parcel's order", () => {
-  it("is not recovered: its address was erased when it became a refund owed", async () => {
+  it("is not recovered: its address was erased when it became an unfulfilled order", async () => {
     // Nothing of where a parcel goes is kept, so recovery has nothing to create
     // an order from.
     const shops = memoryWooShops();

@@ -6,7 +6,7 @@
  *
  * The promise is that this buyer never reports an order as over while goods can
  * still arrive. An order still without goods at its delivery deadline becomes
- * `refund_due`, and the merchant can still deliver after that.
+ * `unfulfilled`, and the merchant can still deliver after that.
  *
  * Every document this server hands out is held to the contract's schema, so a
  * run that goes wrong here goes wrong for the buyer's reasons and not because
@@ -54,6 +54,7 @@ const orderAt = (
     order_id: ORDER,
     status_url: `${base}${STATUS_PATH}`,
     status,
+    payment_status: "paid",
     price: {
       amount: "8.00",
       currency: "USD",
@@ -145,13 +146,13 @@ const buy = (): Promise<{ readonly code: number | null; readonly printed: string
   });
 
 describe("the buy command watching an order whose goods come later", () => {
-  it("keeps watching an order that owes a refund, and collects the goods that arrive after it", async () => {
-    script = [orderAt("refund_due"), orderAt("delivered", GOODS)];
+  it("keeps watching an unfulfilled order, and collects the goods that arrive after it", async () => {
+    script = [orderAt("unfulfilled"), orderAt("delivered", GOODS)];
 
     const run = await buy();
 
     // The goods reached the operator, which only a buyer still watching after
-    // the debt could have done: the purchase answer carried none.
+    // the unfulfilled state could have done: the purchase answer carried none.
     expect(run.printed).toContain(GOODS.iccid);
     expect(run.code).toBe(0);
     expect(asks).toBe(2);
@@ -170,11 +171,11 @@ describe("the buy command watching an order whose goods come later", () => {
   });
 
   it("stops at an order that is over, rather than watching it to the ceiling", async () => {
-    // The negative control. `refunded` is the debt paid back: a delivery after
+    // The negative control. `fulfillment_closed` is an explicit end to Agentify fulfillment: a delivery after
     // it is refused, so nothing can arrive and there is nothing to wait for.
     // A buyer that watched every word but `delivered` would sit here for its
     // whole ceiling and then say what it could have said at once.
-    script = [orderAt("refunded")];
+    script = [orderAt("fulfillment_closed")];
 
     const run = await buy();
 

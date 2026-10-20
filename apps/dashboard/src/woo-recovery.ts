@@ -1,7 +1,7 @@
 /**
  * Deliberately not a scanner. A definite refusal before the order was created
  * may make one POST after the merchant reconnects the same shop; an uncertain
- * create may only bind the exact WooCommerce order id an operator supplied and
+ * create may only bind the exact WooCommerce order id its merchant supplied and
  * verified.
  */
 
@@ -31,19 +31,53 @@ export interface WooRecoveryRequest {
 
 export type WooRecoveryOutcome =
   | Readonly<{ ok: true; state: "delivered"; orderId: string; wooOrderId: string }>
-  | Readonly<{ ok: false; state: "refused" | "unresolved"; why: string }>;
+  | Readonly<{
+      ok: false;
+      state: "refused" | "unresolved";
+      why: string;
+      /** Set where the refusal is about the WooCommerce order ID the merchant typed. */
+      typed?: true;
+    }>;
 
-type RecoveryGateway = Pick<GatewayClient, "getOrder" | "deliverOrder" | "paidInto">;
+type MakeOrder = (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
+
+export type RecoveryGateway = Pick<GatewayClient, "getOrder" | "deliverOrder" | "paidInto">;
 
 export interface WooRecoveryParts {
   readonly shops: WooShops;
   readonly identity: { byId(personId: string): Promise<Person | null> };
   readonly gatewayFor: (acting: Acting) => RecoveryGateway;
   readonly inspectProduct?: (keys: ShopKeys, itemId: string) => Promise<ProductInspection>;
-  readonly createOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
+  /** The operator's command alone creates a shop order; the shop's own creation is the default. */
+  readonly createOrder?: MakeOrder;
   readonly readOrder?: (keys: ShopKeys, wooOrderId: string) => Promise<WooOrderLookup>;
   readonly now: () => Date;
 }
+
+export type MerchantWooRecoveryParts = Omit<WooRecoveryParts, "identity" | "createOrder">;
+
+/** Ownership is established before disclosing sale details or acting as its merchant. */
+const CANNOT_CREATE =
+  "This recovery links an existing shop order or retries a saved delivery. It cannot create a shop order.";
+
+export const ownWooRecoveryOrder = async (person: Person, orderId: string, shops: WooShops) => {
+  const record = await shops.recoveryOrder(orderId);
+  return person.merchant !== null && record?.accountId === person.id ? record : null;
+};
+
+export const recoverWooOrderAs = async (
+  person: Person,
+  request: WooRecoveryRequest,
+  parts: MerchantWooRecoveryParts,
+): Promise<WooRecoveryOutcome> => {
+  const record = await ownWooRecoveryOrder(person, request.orderId, parts.shops);
+  if (record === null) return refused("No recoverable WooCommerce order has that id.");
+  if (record.phase === "precreate_refused") return refused(CANNOT_CREATE);
+  if (request.wooOrderId !== undefined && !/^[1-9][0-9]*$/.test(request.wooOrderId)) {
+    return typedWrong("Enter the exact numeric WooCommerce order ID.");
+  }
+  return recover(record, person, request, parts, undefined);
+};
 
 export const recoverWooOrder = async (
   request: WooRecoveryRequest,
@@ -51,6 +85,25 @@ export const recoverWooOrder = async (
 ): Promise<WooRecoveryOutcome> => {
   const record = await parts.shops.recoveryOrder(request.orderId);
   if (record === null) return refused("No recoverable WooCommerce order has that id.");
+  const person = await parts.identity.byId(record.accountId);
+  if (person === null || person.merchant === null) {
+    return refused("The WooCommerce order no longer belongs to a merchant account.");
+  }
+  return recover(record, person, request, parts, parts.createOrder ?? createTheOrderInTheShop);
+};
+
+/**
+ * `create` is absent on the merchant's path, so a sale its shop was never
+ * asked to create stays refused there even past the check that turns it away
+ * before any call.
+ */
+const recover = async (
+  record: NonNullable<Awaited<ReturnType<WooShops["recoveryOrder"]>>>,
+  person: Person,
+  request: WooRecoveryRequest,
+  parts: Omit<WooRecoveryParts, "identity" | "createOrder">,
+  create: MakeOrder | undefined,
+): Promise<WooRecoveryOutcome> => {
   if (record.facts.kind === "parcel") {
     // Recovery makes or binds a download's order. A placed parcel is a sale
     // already taken on and followed in its shop; one refused before its order
@@ -64,27 +117,32 @@ export const recoverWooOrder = async (
         : "This command recovers downloads only. A parcel refused before its WooCommerce order was" +
             " made has no address left to make one with; for one whose order may exist, look in" +
             " the shop for an order carrying this identifier as its transaction id, and do not" +
-            " ship it, because the sale owes the buyer a refund.",
+            " ship it, because the Agentify sale is unfulfilled; close fulfillment on Orders instead.",
     );
   }
-  const person = await parts.identity.byId(record.accountId);
-  if (person?.merchant === null || person === null) {
+  if (person.merchant === null) {
     return refused("The WooCommerce order no longer belongs to a merchant account.");
   }
   const gateway = parts.gatewayFor({ merchantId: person.merchant.id, email: person.email });
   const state = await gateway.getOrder(request.orderId);
   if (!state.ok) return unresolved("The Agentify order state could not be read.");
-  if (!sameSoldOrder(state.document, record.facts, request.orderId)) {
+  if (!matchesSavedWooSale(state.document, record.facts, request.orderId)) {
     return refused("The Agentify order does not match the saved WooCommerce sale.");
   }
   if (
-    state.document.status !== "refund_due" &&
+    state.document.status !== "unfulfilled" &&
     !(record.phase === "placed" && state.document.status === "delivered")
   ) {
-    return refused("Only an unpaid delivery debt can be recovered this way.");
+    return refused(
+      "Only a paid order still awaiting delivery, or a saved delivery being checked again, can be recovered this way.",
+    );
   }
 
-  if (request.wooOrderId !== undefined && record.phase !== "create_unknown") {
+  if (
+    request.wooOrderId !== undefined &&
+    record.phase !== "create_unknown" &&
+    !(record.phase === "placed" && record.placed?.id === request.wooOrderId)
+  ) {
     return refused("A WooCommerce order id applies only when creation is uncertain.");
   }
 
@@ -127,6 +185,7 @@ export const recoverWooOrder = async (
   }
 
   if (record.phase === "precreate_refused") {
+    if (create === undefined) return refused(CANNOT_CREATE);
     if (request.wooOrderId !== undefined) {
       return refused("No WooCommerce order id is expected for a definite pre-create refusal.");
     }
@@ -147,7 +206,7 @@ export const recoverWooOrder = async (
       parts.now(),
     );
     if (!claimed) return unresolved("Another recovery already claimed this order.");
-    const made = await (parts.createOrder ?? createTheOrderInTheShop)(
+    const made = await create(
       keysOf(connection),
       soldItem(request.orderId, person.email, record.facts, inspected.product, paid.document),
     );
@@ -173,11 +232,20 @@ export const recoverWooOrder = async (
     keysOf(connection),
     request.wooOrderId,
   );
-  if (
-    !looked.ok ||
-    !sameWooOrder(looked.order, record.facts, person.email, request.orderId, request.wooOrderId)
-  ) {
-    return refused("That WooCommerce order does not exactly match this Agentify sale.");
+  if (!looked.ok) {
+    return unresolved(
+      "The exact WooCommerce order could not be verified. Check the shop connection and try this same order ID again.",
+    );
+  }
+  const differences = differencesOf(
+    looked.order,
+    record.facts,
+    person.email,
+    request.orderId,
+    request.wooOrderId,
+  );
+  if (differences.length > 0) {
+    return typedWrong(`That order does not match this sale: ${differences.join("; ")}.`);
   }
   const permission: WooPermission = {
     shopOrigin: record.facts.shopOrigin,
@@ -203,7 +271,7 @@ const bindAndDeliver = async (
   permission: WooPermission,
   wooOrderId: string,
   number: string,
-  parts: WooRecoveryParts,
+  parts: Omit<WooRecoveryParts, "identity">,
   gateway: RecoveryGateway,
 ): Promise<WooRecoveryOutcome> => {
   const bound = await parts.shops.recordOrder(
@@ -244,7 +312,11 @@ const deliverSaved = async (
   return { ok: true, state: "delivered", orderId, wooOrderId };
 };
 
-const sameSoldOrder = (order: OrderWithStatus, facts: WooOrderFacts, orderId: string): boolean =>
+export const matchesSavedWooSale = (
+  order: OrderWithStatus,
+  facts: WooOrderFacts,
+  orderId: string,
+): boolean =>
   order.id === orderId &&
   order.merchant_item_id === facts.merchantItemId &&
   order.price_id === facts.priceId &&
@@ -264,29 +336,41 @@ const sameProduct = (
   product.price.amount === facts.amount &&
   product.price.currency === facts.currency;
 
-const sameWooOrder = (
+/** What the merchant can check in their shop, one clause for each fact that differs. */
+const differencesOf = (
   order: WooOrderRead,
   facts: WooOrderFacts,
   email: string,
   orderId: string,
   wooOrderId: string,
-): boolean =>
-  order.id === wooOrderId &&
-  ["processing", "completed"].includes(order.status) &&
-  order.currency === facts.currency &&
-  order.total === facts.amount &&
-  order.totalTax === "0.00" &&
-  order.paymentMethod === "agentify" &&
-  order.transactionId === orderId &&
-  order.billingEmail === email &&
-  order.productId === facts.productId &&
-  order.quantity === 1 &&
-  order.subtotal === facts.amount &&
-  order.lineTotal === facts.amount &&
-  order.lineTax === "0.00" &&
-  order.agentifyOrderIds.length === 1 &&
-  order.agentifyOrderIds[0] === orderId &&
-  order.orderKey !== "";
+): string[] => {
+  const price = `${facts.amount} ${facts.currency}`;
+  return [
+    order.id !== wooOrderId || order.orderKey === ""
+      ? "the shop answered with a different order"
+      : null,
+    ["processing", "completed"].includes(order.status)
+      ? null
+      : `its status is ${order.status}, not Processing or Completed`,
+    order.currency === facts.currency &&
+    order.total === facts.amount &&
+    order.subtotal === facts.amount &&
+    order.lineTotal === facts.amount &&
+    order.totalTax === "0.00" &&
+    order.lineTax === "0.00"
+      ? null
+      : `its total is not ${price} with no tax`,
+    order.paymentMethod === "agentify" ? null : "it was not paid with Agentify",
+    order.transactionId === orderId ? null : "its Transaction ID is not this Agentify order ID",
+    order.billingEmail === email ? null : `its billing email is not ${email}`,
+    order.productId === facts.productId && order.quantity === 1
+      ? null
+      : "it does not hold exactly one of this product",
+    order.agentifyOrderIds.length === 1 && order.agentifyOrderIds[0] === orderId
+      ? null
+      : "its Agentify order mark is missing or names another order",
+  ].filter((clause): clause is string => clause !== null);
+};
 
 const soldItem = (
   orderId: string,
@@ -327,4 +411,10 @@ const keysOf = (connection: WooConnection): ShopKeys => ({
 const originOf = (url: string): string => new URL(url).origin;
 const emailUid = (email: string): string => createHash("sha256").update(email).digest("hex");
 const refused = (why: string): WooRecoveryOutcome => ({ ok: false, state: "refused", why });
+const typedWrong = (why: string): WooRecoveryOutcome => ({
+  ok: false,
+  state: "refused",
+  why,
+  typed: true,
+});
 const unresolved = (why: string): WooRecoveryOutcome => ({ ok: false, state: "unresolved", why });

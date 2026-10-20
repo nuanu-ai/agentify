@@ -1,10 +1,19 @@
 import { Fragment } from "react";
 import type { ReceiptsView, TransferView } from "../../src/views.js";
 import { Ident, shortened } from "../components/copy.js";
-import { Cell, DayHeading, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import {
+  Cell,
+  DayHeading,
+  Fact,
+  Facts,
+  List,
+  ListEmpty,
+  Row,
+  RowMore,
+} from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
-import { SharesOf, TestMark } from "./orders.js";
+import { TestMark } from "./orders.js";
 import styles from "./orders.module.css";
 
 /** An arrow out of a box, for a page on another site. */
@@ -79,9 +88,10 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
           .
         </p>
         <p>
-          This page does not show all of your money. Payments for products not yet delivered and
-          refunds you owe are on Orders. A purchase that was never paid leaves no receipt, and no
-          receipt appears while it is unknown whether the buyer was charged.
+          This page does not show all of your money. Payments for products not yet delivered, and
+          orders that were not delivered or that you closed, are on Orders. A purchase that was
+          never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer
+          was charged.
         </p>
       </div>
       {view.rows.length === 0 ? (
@@ -118,22 +128,30 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
                   <Transfer transfer={row.transfer} />
                 </Cell>
                 <RowMore summary="Receipt, order and price times" of={row.product} wide>
-                  <div>
-                    Receipt <Ident value={row.id} what="receipt ID" whole />
-                  </div>
-                  <div>
-                    Order <Ident value={row.orderId} what="order ID" whole />
-                  </div>
-                  <SharesOf shares={row.shares} />
-                  <div className="under">
-                    Paid <Moment at={row.paid} />
-                  </div>
-                  <div className="under">
-                    Price set <Moment at={row.priceSet} />
-                  </div>
-                  <div className="under">
-                    Price as of <Moment at={row.priceAsOf} />
-                  </div>
+                  <Facts>
+                    <Fact label="Receipt">
+                      <Ident value={row.id} what="receipt ID" whole />
+                    </Fact>
+                    <Fact label="Order">
+                      <Ident value={row.orderId} what="order ID" whole />
+                    </Fact>
+                    {row.shares === null ? null : (
+                      <Fact label="Shares">
+                        {row.shares.merchant} to you
+                        <br />
+                        {row.shares.commission} to Agentify
+                      </Fact>
+                    )}
+                    <Fact label="Paid">
+                      <Moment at={row.paid} />
+                    </Fact>
+                    <Fact label="Price set">
+                      <Moment at={row.priceSet} />
+                    </Fact>
+                    <Fact label="Price as of">
+                      <Moment at={row.priceAsOf} />
+                    </Fact>
+                  </Facts>
                 </RowMore>
               </Row>
             </Fragment>

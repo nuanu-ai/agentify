@@ -188,7 +188,7 @@ describe("MemoryStore writes that go with an order", () => {
             id: "env_1",
             sent_at: "2026-08-26T12:00:00.000Z",
             payload: {
-              type: "order.refund_due",
+              type: "order.unfulfilled",
               order_id: "ord_1",
               at: "2026-08-26T12:00:00.000Z",
               price: { amount: "5.00", currency: "USD" },

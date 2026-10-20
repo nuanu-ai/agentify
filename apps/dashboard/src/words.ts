@@ -30,7 +30,7 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the money is the merchant's. Goods delivered and not paid wait
+ * the buyer and the original payment is recorded. Goods delivered and not paid wait
  * on the buyer, who can pay again.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
@@ -42,8 +42,8 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   declined: { text: "Declined at confirmation", tone: "quiet" },
   expired: { text: "Closed on time limit", tone: "quiet" },
   cancelled: { text: "Closed when you left", tone: "quiet" },
-  refund_due: { text: "Refund due", tone: "warn" },
-  refunded: { text: "Refunded", tone: "quiet" },
+  unfulfilled: { text: "Unfulfilled", tone: "warn" },
+  fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
   delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
 });
 
@@ -76,7 +76,7 @@ export const CARD_WORDS = Object.freeze({
 } as const satisfies Readonly<Record<string, Word>>);
 
 /**
- * Money taken and nothing delivered: the one ending a merchant has to act on.
+ * Money taken and nothing delivered: the merchant decides what happens next.
  * Goods delivered against a payment that never executed are not here: the
  * merchant owes nobody anything, the buyer can pay again and the order closes
  * when they do, and whether to revoke what was delivered meanwhile is the
@@ -85,7 +85,7 @@ export const CARD_WORDS = Object.freeze({
  * second ago, so demanding attention for it would be a claim beyond the
  * evidence.
  */
-export const needsYou = (status: OrderStatus): boolean => status === "refund_due";
+export const needsYou = (status: OrderStatus): boolean => status === "unfulfilled";
 
 /** Goods delivered and held until the buyer's payment goes through. */
 export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "delivered_unpaid";
@@ -140,16 +140,16 @@ export interface Way {
 /**
  * One title and one sentence each, and the page that puts it right where one
  * does. The approval says what is known, that there is none, and not that a
- * review is under way, since nothing records one; nobody sets it on a page,
- * so it leads on to the test channel's own dashboard, where the first sale is
- * made under another account.
+ * review is under way, since nothing records one. The merchant cannot grant
+ * it, so the banner leads to the test channel's own dashboard, where the first
+ * sale is made under another account.
  */
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
 > = Object.freeze({
   left: {
     title: "You have left Agentify",
-    says: "The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return.",
+    says: "New sales have stopped. Paid orders left unfulfilled stay on Orders, where you can close fulfillment with an explanation to the buyer.",
     fix: null,
   },
   paused: {
@@ -159,7 +159,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents cannot buy your cards on the live site until Agentify approves your merchant; if an Agentify operator is coordinating your pilot, ask them for the approval. Your first test sale happens on the test channel, under an account of its own.",
+    says: "Agents cannot buy your cards on the live site until an Agentify administrator approves your merchant. Test sales need no approval; your first test sale happens on the test channel, under an account of its own.",
     fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Open the test dashboard" },
   },
   no_seller_name: {

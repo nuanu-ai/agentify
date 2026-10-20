@@ -47,8 +47,9 @@ connector is offered on the test channel only, until its orders pass end to
 end there. Either way the first sale happens on the test channel, where
 payments settle on Base Sepolia with test funds. Publishing there needs a
 seller name and a payout wallet, and live publication also needs the
-operator's one-time approval of that merchant; publication lists whatever is
-still missing.
+operator's one-time approval of that merchant, given from `/admin` or with
+`pnpm approve <email>`; publication lists whatever is still missing. The
+approval publishes nothing and bypasses no seller or payout check.
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
 `/`, the merchant documentation at `/docs`, the dashboard at `/dashboard`, the
@@ -210,6 +211,14 @@ with an order identifier, which is the whole of its proof when it comes back
 for the goods (ADR-0011). A parcel, the `ship` mode, is paid at the purchase
 too, carries the buyer's address to the merchant and ends when the merchant
 records the shipment; it sells on the test channel only (ADR-0032, ADR-0033).
+A paid order not delivered in time reads `unfulfilled`, and a late delivery
+still counts until the merchant closes fulfillment, which stops Agentify
+accepting deliveries and confirms no refund (ADR-0028). A charge whose answer
+was lost reads `payment_unresolved` until a late answer or the chain settles
+it; Agentify looks for the transfer in the background, with no promise of
+when (ADR-0027). Nobody at Agentify staffs orders, payments or refunds; what
+the merchant does for themselves and what is still missing are in
+[`docs/research/54-self-service.md`](docs/research/54-self-service.md).
 Fulfillment against the merchant's confirmation is designed in the machine and
 refused at the door: a card asking for it is not published, because the
 message that would tell the agent it may now pay does not exist yet

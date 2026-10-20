@@ -46,8 +46,10 @@ function openObjectsIn(node: unknown, at: string, found: string[]): string[] {
  * The shape a check takes as input, which is the one that matters here: the
  * document is sent as it was written, not as the check would have parsed it, so
  * an object that quietly drops an unknown field still lets it out.
+ * Metadata can constrain an already closed object through conditional fragments
+ * that do not repeat its closure; this audit reads the runtime structure alone.
  */
-const asInput = (check: ZodType) => z.toJSONSchema(check, { io: "input" });
+const asInput = (check: ZodType) => z.toJSONSchema(check, { io: "input", metadata: z.registry() });
 
 /** The path to every object inside a document, the document itself included. */
 function objectsIn(node: unknown, path: readonly (string | number)[] = []): (string | number)[][] {
@@ -118,6 +120,7 @@ const status = {
   order_id: "ord_7c1e05",
   status_url: "https://agentify.ad/x402/orders/ord_7c1e05/status",
   status: "rejected",
+  payment_status: "not_paid",
   price: {
     amount: "25.00",
     currency: "USD",
@@ -195,7 +198,7 @@ describe("what this gateway checks before it sends a document", () => {
 
   it("refuses to send a shipment on an order whose status says it has not shipped", () => {
     // A shipment beside any other status word could only be a mistake.
-    for (const word of ["in_progress", "refund_due", "delivered"]) {
+    for (const word of ["in_progress", "unfulfilled", "delivered"]) {
       expect(sendable(AgentOrderStatusSchema, { ...shipped, status: word }), word).toBe(false);
     }
   });
@@ -208,18 +211,18 @@ describe("what this gateway checks before it sends a document", () => {
     const ended = { ...unrefused, status: "expired", reason };
 
     expect(sendable(AgentOrderStatusSchema, ended)).toBe(true);
-    for (const word of ["delivered", "in_progress", "refund_due"]) {
+    for (const word of ["delivered", "in_progress", "unfulfilled"]) {
       expect(sendable(AgentOrderStatusSchema, { ...ended, status: word }), word).toBe(false);
     }
     expect(sendable(AgentOrderStatusSchema, { ...status, reason })).toBe(false);
   });
 
-  it("says on every order owing a refund why it is owed, in the merchant event's words", () => {
-    // `refund_due` alone reads as a refund on its way. Why the money is owed
+  it("says on every unfulfilled paid order why nothing was delivered, in the merchant event's words", () => {
+    // `unfulfilled` alone reads as a refund on its way. Why the money is owed
     // goes with it every time, in the word the merchant's own event carries,
     // and a word for an ending never stands in for one.
     const owed = (code: string) => ({ code, message: "The seller owes you the price." });
-    const owing = { ...unrefused, status: "refund_due", reason: owed("deadline_passed") };
+    const owing = { ...unrefused, status: "unfulfilled", reason: owed("deadline_passed") };
 
     expect(sendable(AgentOrderStatusSchema, owing)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("merchant_left") })).toBe(
@@ -234,13 +237,13 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(AgentOrderStatusSchema, { ...owing, status: "expired" })).toBe(false);
   });
 
-  it("says a merchant's refusal left a refund owed beside the refusal, and only then", () => {
+  it("says a merchant's refusal left a paid order unfulfilled beside the refusal, and only then", () => {
     // After the money moved a merchant's refusal leaves a debt. Their words
     // say why they would not deliver; ours say what that left the buyer owed,
     // and are not sent where no merchant refused.
     const refusedAfterPaying = {
       ...status,
-      status: "refund_due",
+      status: "unfulfilled",
       reason: { code: "refused", message: "The seller refused after you paid." },
     };
 
@@ -255,10 +258,37 @@ describe("what this gateway checks before it sends a document", () => {
     ).toBe(false);
   });
 
+  it("says in our words what is true of a paid order the merchant closed, beside any refusal, and of no other closed order", () => {
+    // The merchant's closing words can contradict the payment, so a paid order
+    // they closed always carries our reason too; an unpaid one has nothing for
+    // it to correct.
+    const closure = { closed_at: "2026-10-08T10:00:00Z", message: "Nothing was charged." };
+    const reason = { code: "merchant_closed", message: "This order is paid; no delivery." };
+    const closedPaid = {
+      ...status,
+      status: "fulfillment_closed",
+      payment_status: "paid",
+      merchant_closure: closure,
+      reason,
+    };
+
+    expect(sendable(AgentOrderStatusSchema, closedPaid)).toBe(true);
+    const { refusal: _theirs, ...closedUnrefused } = closedPaid;
+    expect(sendable(AgentOrderStatusSchema, closedUnrefused)).toBe(true);
+    const { reason: _ours, ...unexplained } = closedUnrefused;
+    expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);
+    expect(
+      sendable(AgentOrderStatusSchema, { ...closedUnrefused, payment_status: "not_paid" }),
+    ).toBe(false);
+    expect(sendable(AgentOrderStatusSchema, { ...unexplained, payment_status: "not_paid" })).toBe(
+      true,
+    );
+  });
+
   it("refuses to send goods on an order whose status says there are none", () => {
     // The goods are the buyer's only once the status says delivered; on any
     // other word something in this field could only be a mistake.
-    for (const word of ["rejected", "in_progress", "refund_due", "delivered_unpaid"]) {
+    for (const word of ["rejected", "in_progress", "unfulfilled", "delivered_unpaid"]) {
       expect(sendable(AgentOrderStatusSchema, { ...collected, status: word }), word).toBe(false);
     }
   });

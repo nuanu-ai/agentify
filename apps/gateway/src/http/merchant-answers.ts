@@ -6,7 +6,7 @@
 
 import { outcomeFor } from "@agentify/core";
 import type { ErrorCode, OrderList, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
-import { orderDocumentOf } from "../app/runner.js";
+import { merchantClosureOf, orderDocumentOf, paymentStatusOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 
 /**
@@ -74,7 +74,7 @@ export const GATEWAY_FAILED: Refused = {
 
 /**
  * A departed merchant asking to sell again, refused in the flow's words:
- * leaving closed their open orders and left refunds owed, none of which
+ * leaving changed their open orders and left paid ones unfulfilled, which
  * selling again would unwind.
  */
 export const merchantDeparted = (why: string): Refused => ({
@@ -123,7 +123,15 @@ export function merchantOrderAnswer(
       },
     };
   }
-  return { ok: true, document: { ...orderDocumentOf(record), status } };
+  return {
+    ok: true,
+    document: {
+      ...orderDocumentOf(record),
+      status,
+      payment_status: paymentStatusOf(record.order),
+      ...merchantClosureOf(record.order),
+    },
+  };
 }
 
 /**
@@ -135,6 +143,11 @@ export function merchantOrderList(records: readonly StoredOrder[]): OrderList {
   return {
     orders: records
       .filter((record) => record.order.price !== null)
-      .map((record) => ({ ...orderDocumentOf(record), status: outcomeFor(record.order) })),
+      .map((record) => ({
+        ...orderDocumentOf(record),
+        status: outcomeFor(record.order),
+        payment_status: paymentStatusOf(record.order),
+        ...merchantClosureOf(record.order),
+      })),
   };
 }

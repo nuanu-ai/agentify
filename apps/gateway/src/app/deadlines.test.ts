@@ -161,7 +161,7 @@ describe("when the time runs out", () => {
     expect(refused.error.retryable).toBe(true);
   });
 
-  it("marks an asynchronous order for a refund, because the money is already gone", async () => {
+  it("marks an asynchronous order unfulfilled, because the money has already moved", async () => {
     // Unlike the synchronous case the charge went through at the purchase, so an
     // ending that said "nothing happened" would leave the buyer out of pocket.
     const harnessed = await started();
@@ -169,7 +169,7 @@ describe("when the time runs out", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       {
         timeout: 2_000,
         interval: 5,
@@ -185,7 +185,7 @@ describe("when the time runs out", () => {
 
     const told = await drawEverything(harnessed);
     const events = told.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
-    expect(events.map((e) => e.type)).toContain("order.refund_due");
+    expect(events.map((e) => e.type)).toContain("order.unfulfilled");
   });
 
   it("collects goods already made with an authorisation too short for goods still to be made", async () => {
@@ -270,7 +270,7 @@ describe("when the time runs out", () => {
     expect(refused.error.code).toBe("delivery_does_not_match_card");
 
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       { timeout: 2_000, interval: 5 },
     );
 
@@ -352,7 +352,7 @@ describe("fulfillment after a delayed charge", () => {
 
   it.each([
     { waitMs: 999, ending: "delivered" },
-    { waitMs: 1_000, ending: "refund_due" },
+    { waitMs: 1_000, ending: "unfulfilled" },
   ])(
     "ends as $ending after $waitMs ms of the merchant's full second",
     async ({ waitMs, ending }) => {
@@ -600,7 +600,7 @@ describe("a card that names no delivery deadline", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       {
         timeout: 2_000,
         interval: 5,
@@ -669,7 +669,7 @@ describe("when a delivery goes unanswered", () => {
     expect(new Set(seen.map((each) => each.message)).size).toBe(seen.length);
   });
 
-  it("stops repeating once the attempts are spent, and leaves the debt to the deadline", async () => {
+  it("stops repeating once the attempts are spent, and leaves the order to its deadline", async () => {
     // Running out of attempts is not running out of time: the merchant may
     // still deliver until the deadline, and the debt comes from the deadline
     // passing. The money moved at the purchase, so what is left is a debt
@@ -690,7 +690,7 @@ describe("when a delivery goes unanswered", () => {
     );
     expect((await state(harnessed, orderId))?.state).toBe("dispatched");
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       { timeout: 2_000, interval: 5 },
     );
     await silent.stop();
@@ -727,7 +727,7 @@ describe("when a delivery goes unanswered", () => {
     // machine where the reminder had not run yet. The deadline is a later
     // reminder on the same queue, so reaching it means the earlier one has fired.
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       { timeout: 5_000, interval: 5 },
     );
     await taking.stop();
@@ -1049,7 +1049,7 @@ describe("a reminder that could not be carried out", () => {
     }) as typeof harnessed.store.withOrder;
 
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
       {
         timeout: 2_000,
         interval: 5,

@@ -73,6 +73,7 @@ const order = (id: string, test: boolean) => ({
   },
   test,
   status: "delivered",
+  payment_status: "paid",
 });
 
 const receipt = (id: string, test: boolean) => ({
@@ -201,7 +202,7 @@ describe("a list where some of the money was real and some was not", () => {
   it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
     const orders: OrderList = OrderListSchema.parse({
       orders: [
-        { ...order("ord_1", true), status: "refund_due" },
+        { ...order("ord_1", true), status: "unfulfilled" },
         order("ord_2", false),
         order("ord_3", false),
       ],
@@ -307,9 +308,8 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
     );
     expect(openedIn(html)).toStrictEqual(
-      SHARES.map(
-        ([price, merchant, commission]) =>
-          `ord_${price} ${merchant} to you ${commission} to Agentify Price set 2026-08-26 10:20:00 UTC`,
+      SHARES.map(([, merchant, commission]) =>
+        expect.stringContaining(`${merchant} to you ${commission} to Agentify`),
       ),
     );
   });
@@ -379,54 +379,40 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   });
 });
 
-describe("a refund owed", () => {
-  it("names the full price as owed back, although the merchant's share was less", () => {
-    // The commission is not given back by the split, and the buyer is owed
-    // what they paid.
-    const owing: OrderList = OrderListSchema.parse({
-      orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
+describe("a paid order left unfulfilled", () => {
+  it("reports the missing delivery and names no sum for the merchant to send", () => {
+    const unfulfilled: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
     });
-
     const text = readable(
       served(() => (
         <OrdersScreen
           view={ordersView(
             SEEN_BY.mode,
             cards,
-            owing,
-            owing,
+            unfulfilled,
+            unfulfilled,
             undefined,
-            { ord_owed: "deadline_passed" },
-            {
-              ord_owed: SPLIT,
-            },
+            { ord_unfulfilled: "deadline_passed" },
+            { ord_unfulfilled: SPLIT },
           )}
         />
       )),
     );
     const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
-
-    expect(callout).toMatch(/the full price, 80\.00 USD/);
-    expect(callout).toMatch(/the commission stays with Agentify/);
-    expect(callout).not.toContain("79.92");
+    expect(callout).toContain("delivery window ran out");
+    // The order's own price is the one sum told; neither its share nor any
+    // amount owed back is put to the merchant as a transfer to make.
+    expect(callout.match(/\d+\.\d{2} USD/g)).toStrictEqual(["80.00 USD"]);
   });
 
-  it("says nothing of a commission on a refund owed for a payment to the wallet itself", () => {
-    // Paid before payments went to splits: no commission was taken. Where the
-    // cause could not be read, the sentence says only what holds for every
-    // debt.
-    const owing: OrderList = OrderListSchema.parse({
-      orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
+  it("does not guess why delivery was missing when no cause was read", () => {
+    const unfulfilled: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
     });
-
-    const text = readable(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY.mode, cards, owing, owing)} />),
-    );
-    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
-
-    expect(callout).toMatch(/Paid, and the product was not delivered/);
-    expect(callout).toMatch(/the full price, 80\.00 USD/);
-    expect(callout).not.toMatch(/commission/);
+    const text = readable(ordersPage(unfulfilled));
+    expect(text).toContain("Paid, and the product was not delivered");
+    expect(text).not.toContain("delivery window ran out");
   });
 });
 
@@ -435,13 +421,15 @@ describe("an order delivered and not paid", () => {
   // that need them; but whether to revoke what was delivered or to wait is
   // theirs to decide, as the documentation says, and the screen says so.
   const held: OrderList = OrderListSchema.parse({
-    orders: [{ ...order("ord_held", false), status: "delivered_unpaid" }],
+    orders: [
+      { ...order("ord_held", false), status: "delivered_unpaid", payment_status: "not_paid" },
+    ],
   });
 
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("Waiting on the buyer 1 Nothing owed by you");
+    expect(text).toContain("Waiting on the buyer 1");
     expect(text).not.toMatch(/needs? you/i);
     expect(text).toContain("the payment failed, so the goods are held");
     // Paid again for the same order, never bought again, which would deliver
@@ -458,7 +446,7 @@ describe("an order delivered and not paid", () => {
 
   it("is told apart from a refund due listed beside it", () => {
     const both: OrderList = OrderListSchema.parse({
-      orders: [...held.orders, { ...order("ord_owed", false), status: "refund_due" }],
+      orders: [...held.orders, { ...order("ord_owed", false), status: "unfulfilled" }],
     });
 
     const text = readable(ordersPage(both));
@@ -583,7 +571,7 @@ describe("how a card is delivered", () => {
   });
 
   it("says a card that names no window of its own is held to Agentify's, not to none", () => {
-    // An order that runs past the default window owes a refund as one past a
+    // An order that runs past the default window is unfulfilled as one past a
     // window of the card's own would, so "Later" alone would read as no
     // deadline at all.
     const html = served(() => (

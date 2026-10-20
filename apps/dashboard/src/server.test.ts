@@ -31,6 +31,7 @@ import {
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ApprovalDirectory } from "./approval-command.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
@@ -226,6 +227,7 @@ interface Running {
 let open: Running | null = null;
 
 interface Starting {
+  readonly approvalDirectory?: ApprovalDirectory;
   readonly base?: string;
   readonly gateway?: Record<string, string>;
   readonly dashboard?: Record<string, string>;
@@ -345,6 +347,18 @@ async function visiting(
   const app = buildApp(config, {
     pages: await testPages(),
     gateway: application,
+    approvalDirectory: options.approvalDirectory ?? {
+      resolve: async (email) => {
+        const found = await identity.byEmail(email.trim().toLowerCase());
+        return found === null
+          ? []
+          : [
+              found.merchant === null
+                ? { email: found.email, binding: "unbound" as const }
+                : { email: found.email, binding: "bound" as const, merchantId: found.merchant.id },
+            ];
+      },
+    },
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
     ...(options.wooShops === undefined ? {} : { wooShops: options.wooShops }),
@@ -3603,7 +3617,6 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("Pause all sales");
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
-    expect(text).toContain("closed with you");
   });
 
   it("is offered no switch on a card, not even one they paused before they left", async () => {
@@ -3752,8 +3765,8 @@ describe("the orders screen", () => {
     expect(readable((await browser.get("/orders")).html)).toContain("No orders yet");
   });
 
-  it("calls out an order that owes a refund, and says what the merchant does about it", async () => {
-    // The one open state that costs the merchant money must be shown, not left
+  it("calls out a paid unfulfilled order", async () => {
+    // The one open state that costs the buyer money must be shown, not left
     // to be noticed.
     const { browser, gateway, harnessed } = await started({
       gateway: { DEFAULT_ASYNC_FULFILLMENT_MS: "40" },
@@ -3772,7 +3785,7 @@ describe("the orders screen", () => {
             headers: { authorization: `Bearer ${KEY}` },
           })
         ).body as { orders: { status: string }[] };
-        expect(listed.orders.map((order) => order.status)).toContain("refund_due");
+        expect(listed.orders.map((order) => order.status)).toContain("unfulfilled");
       },
       { timeout: 2_000, interval: 5 },
     );
@@ -3780,17 +3793,15 @@ describe("the orders screen", () => {
     await browser.signIn();
     const text = readable((await browser.get("/orders?show=open")).html);
 
-    expect(text).toContain("Refund due");
+    expect(text).toContain("Unfulfilled");
     expect(text).toContain("Needs you 1");
     // The whole price, though the split paid the merchant only their share,
     // and said to be a test purchase's, as every sale on this stack is.
-    expect(text).toContain("the full price of this test purchase, 8.00 USD");
-    // `refund_due` is what a program branches on; a merchant reads a sentence.
-    expect(text).not.toContain("refund_due");
+    expect(text).toContain("8.00 USD test");
   });
 
-  it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
-    // A refund falls due when the merchant refuses an order already paid for;
+  it("says why an order was unfulfilled without guessing that a window ran out", async () => {
+    // An order is unfulfilled too when the merchant refuses one already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
     // send a merchant reconciling it looking for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();
@@ -3826,7 +3837,7 @@ describe("the orders screen", () => {
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
-    expect(text).toContain("Waiting on the buyer 1 Nothing owed by you");
+    expect(text).toContain("Waiting on the buyer 1");
     expect(text).not.toMatch(/needs? you/i);
   });
 });
@@ -4045,7 +4056,6 @@ describe("the receipts screen", () => {
     // actually reads must not say this is all the money.
     expect(text).toContain("This page does not show all of your money");
     expect(text).toContain("Payments for products not yet delivered");
-    expect(text).toContain("refunds you owe are on Orders");
   });
 
   it("does not claim a receipt appears when the money moves", async () => {
@@ -4662,8 +4672,10 @@ describe("what every screen says about the address", () => {
     // kept data handed to that read would show the merchant the state before
     // what they just did. Every press therefore gives the browser a new value,
     // and the answer it leaves behind no longer matches.
-    const { browser, gateway } = await started();
+    const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, roomCard);
+    const priced = await harnessed.gateway.beginPurchase(itemId, {});
+    if (priced.step !== "pay") throw new Error("the closure order was not priced");
     await browser.signIn();
     const kept = await browser.get("/cards.data");
     expect(kept.headers.get("vary")).toMatch(/cookie/i);
@@ -4672,6 +4684,7 @@ describe("what every screen says about the address", () => {
       ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
       ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
       ["a press on another page", () => browser.post("/keys", { label: "ci" })],
+      ["closing fulfillment", () => browser.post("/orders", { order_id: priced.order.order.id })],
     ];
     const given: string[] = [];
     for (const [name, press] of presses) {
@@ -4794,7 +4807,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           payoutWallet: answer,
           integration: answer,
           standing: answer,
-          refundsOwed: answer,
+          unfulfilledOrders: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -6263,5 +6276,402 @@ describe("the screen a signed-out person was going to", () => {
     for (const path of ["/no-such-page", "/cards", "/keysmith"]) {
       expect((await running.browser.get(path)).to, path).toBe("/sign-in");
     }
+  });
+});
+
+describe("live sales approval in the admin screen", () => {
+  const path = "/admin/live-sales";
+  const live = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const asAdmin = async (options: Starting = {}) => {
+    const running = await started({
+      gateway: { ...live, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+      dashboard: live,
+      ...options,
+    });
+    await running.identity.setOperator(PERSON, true);
+    await running.browser.signIn();
+    const seller = await running.harnessed.store.addMerchant(
+      { id: "mer_approval", name: "Registered merchant" },
+      Date.now(),
+    );
+    if (seller === null) throw new Error("merchant already exists");
+    await running.identity.make(OTHER, seller.id);
+    await running.harnessed.store.setServiceName(seller.id, "Freeland", Date.now());
+    return { ...running, seller: seller.id };
+  };
+  const confirmation = (seller: string) => ({
+    intent: "approve",
+    email: OTHER,
+    merchant_id: seller,
+    confirm: "live-sales",
+  });
+
+  it("lets an administrator inspect an existing seller, then grant live approval idempotently", async () => {
+    const running = await asAdmin();
+    const { browser, seller, harnessed } = running;
+    expect((await browser.get(path)).status).toBe(200);
+    const preview = await browser.post(path, { intent: "lookup", email: OTHER });
+    expect(preview.status).toBe(200);
+    expect(readable(preview.html)).toContain("Freeland");
+    expect(readable(preview.html)).toContain(seller);
+    expect((await harnessed.store.merchantById(seller))?.liveApprovedAt).toBeNull();
+    const approved = await browser.post(path, confirmation(seller));
+    expect(approved.status).toBe(200);
+    const first = (await harnessed.store.merchantById(seller))?.liveApprovedAt;
+    expect(first).toBeTypeOf("number");
+    harnessed.advance(1_000);
+    expect((await browser.post(path, confirmation(seller))).status).toBe(200);
+    expect((await harnessed.store.merchantById(seller))?.liveApprovedAt).toBe(first);
+    expect((await browser.get(`${path}.data`)).headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("does not require the administrator to register as a merchant", async () => {
+    const running = await asAdmin();
+    running.forgetMerchant(PERSON);
+    expect((await running.browser.get(path)).status).toBe(200);
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(200);
+    expect(
+      (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+    ).not.toBeNull();
+  });
+
+  it("refuses ordinary accounts and revoked administrators on reads and writes", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    await running.identity.setOperator(PERSON, false);
+    for (const target of [path, `${path}.data`]) {
+      expect((await running.browser.get(target)).status).toBe(404);
+      expect((await running.browser.post(target, confirmation(running.seller))).status).toBe(404);
+    }
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("does not grant approval from a test or sandbox screen", async () => {
+    const running = await asAdmin({ gateway: {}, dashboard: {} });
+    expect((await running.browser.get(path)).status).toBe(200);
+    const refused = await running.browser.post(path, confirmation(running.seller));
+    expect(refused.status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it.each(["email", "merchant_id", "confirm", "intent"])(
+    "requires %s before granting real sales",
+    async (field) => {
+      const running = await asAdmin();
+      await running.browser.get(path);
+      const form: Record<string, string> = confirmation(running.seller);
+      delete form[field];
+      const refused = await running.browser.post(path, form);
+      expect(refused.status).toBe(400);
+      // The refusal is said where the screen says refusals, not left to a status code.
+      expect(/<p class="problem" role="alert">[^<]+<\/p>/.test(refused.html)).toBe(true);
+      expect(
+        (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+      ).toBeNull();
+    },
+  );
+
+  it("refuses a merchant identifier that differs from the account being approved", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const refused = await running.browser.post(path, {
+      ...confirmation(running.seller),
+      merchant_id: running.theMerchant,
+    });
+    expect(refused.status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("refuses an ambiguous account lookup instead of approving either merchant", async () => {
+    const running = await asAdmin({
+      approvalDirectory: {
+        resolve: async () => [
+          { email: OTHER, binding: "bound", merchantId: "mer_approval" },
+          { email: OTHER, binding: "bound", merchantId: "another_merchant" },
+        ],
+      },
+    });
+    await running.browser.get(path);
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("refuses foreign origins and forms drawn for a different account", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    expect(
+      (await running.browser.from("https://other.invalid").post(path, confirmation(running.seller)))
+        .status,
+    ).toBe(403);
+    expect(
+      (await running.browser.post(path, { ...confirmation(running.seller), [DRAWN_FOR]: OTHER }))
+        .status,
+    ).toBe(409);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+
+  it("does not turn a directory outage into an approval or a missing account", async () => {
+    const running = await asAdmin({
+      approvalDirectory: {
+        resolve: async () => {
+          throw new Error("database unavailable");
+        },
+      },
+    });
+    await running.browser.get(path);
+    const result = await running.browser.post(path, confirmation(running.seller));
+    expect(result.status).toBe(503);
+    expect(readable(result.html)).toMatch(/could not|unavailable/i);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+  it("leaves the outcome unknown when the response is lost after the approval commits", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const store = running.harnessed.store;
+    const grant = store.grantLiveApproval.bind(store);
+    vi.spyOn(store, "grantLiveApproval").mockImplementationOnce(async (id, at) => {
+      await grant(id, at);
+      throw new Error("connection lost after commit");
+    });
+    const result = await running.browser.post(path, confirmation(running.seller));
+    expect(result.status).toBe(503);
+    expect(readable(result.html)).toMatch(/outcome is unknown/i);
+    const recorded = (await store.merchantById(running.seller))?.liveApprovedAt;
+    expect(recorded).toBeTypeOf("number");
+    const inspected = await running.browser.post(path, { intent: "lookup", email: OTHER });
+    expect(inspected.status).toBe(200);
+    expect(readable(inspected.html)).toContain(
+      new Date(recorded as number).toISOString().slice(0, 10),
+    );
+    expect((await running.browser.post(path, confirmation(running.seller))).status).toBe(200);
+    expect((await store.merchantById(running.seller))?.liveApprovedAt).toBe(recorded);
+  });
+
+  it("does not approve a missing account or an account without a merchant", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    for (const email of ["absent@example.com", OTHER]) {
+      if (email === OTHER) running.forgetMerchant(OTHER);
+      expect(
+        (await running.browser.post(path, { ...confirmation(running.seller), email })).status,
+      ).toBe(409);
+      expect(
+        (await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt,
+      ).toBeNull();
+    }
+  });
+
+  it("does not accept duplicate confirmation fields", async () => {
+    const running = await asAdmin();
+    await running.browser.get(path);
+    const form = new URLSearchParams({ ...confirmation(running.seller), [DRAWN_FOR]: PERSON });
+    form.append("confirm", "live-sales");
+    expect(
+      (await running.browser.postRaw(path, "application/x-www-form-urlencoded", form.toString()))
+        .status,
+    ).toBe(400);
+    expect((await running.harnessed.store.merchantById(running.seller))?.liveApprovedAt).toBeNull();
+  });
+});
+
+describe("closing fulfillment from Orders", () => {
+  const paid = async (running: Running) => {
+    const itemId = await publish(running.gateway, esimCard);
+    await buyOverHttp(running.harnessed, running.gateway, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const [record] = await running.harnessed.gateway.orders(running.theMerchant, true);
+    if (record === undefined) throw new Error("the paid order was not open");
+    return record.order.id;
+  };
+
+  it("closes through the signed-in merchant and keeps the first message and original payment", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    const before = await running.harnessed.store.orderById(id);
+    const first = await running.browser.post("/orders", {
+      order_id: id,
+      message: "A remedy was arranged outside Agentify.",
+    });
+    expect(first.status).toBe(303);
+    const read = await running.browser.get(first.to ?? "");
+    expect(readable(read.html)).toContain("Closed by you");
+    expect(readable(read.html)).toContain("Payment Paid");
+    expect(readable(read.html)).toContain("A remedy was arranged outside Agentify.");
+    const after = await running.harnessed.store.orderById(id);
+    expect(after?.order.price).toStrictEqual(before?.order.price);
+    expect(after?.order.payment).toStrictEqual(before?.order.payment);
+    expect(after?.order.merchantClosure?.message).toBe("A remedy was arranged outside Agentify.");
+    await running.browser.post("/orders", { order_id: id, message: "A different message." });
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toStrictEqual(
+      after?.order.merchantClosure,
+    );
+    const delivered = await running.harnessed.gateway.deliverOrder(running.theMerchant, id, {
+      iccid: "late",
+    });
+    expect(delivered).toMatchObject({ ok: false, error: { code: "fulfillment_closed" } });
+    expect(
+      (await running.harnessed.gateway.orders(running.theMerchant, true)).map(
+        (record) => record.order.id,
+      ),
+    ).not.toContain(id);
+  });
+
+  it("rereads an unanswered write and shows the recorded closure", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          return lateAnswer(10);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const posted = await running.browser.post("/orders", { order_id: id });
+    const read = await running.browser.get(posted.to ?? "");
+    expect(readable(read.html)).toContain("Closed by you");
+    expect(readable(read.html)).not.toContain("closure could not be confirmed");
+  });
+
+  it("keeps an unanswered closure honest when its read also cannot confirm it", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async () => lateAnswer(10),
+        getOrder: async () => lateAnswer(10),
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "Payment returned outside Agentify.";
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+    // The page itself answers, so the note sits by the order's form and what
+    // was typed is still in its box; a reload does not repeat the note.
+    expect(posted.status).toBe(503);
+    expect(readable(posted.html)).toContain("closure could not be confirmed");
+    expect(readable(posted.html)).not.toContain("Closed by you");
+    const form = formsIn(posted.html).find((one) => one.fields.get("order_id") === id);
+    expect(form?.fields.get("message")).toBe(typed);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("brings back an order paid after its closure until the merchant closes it again", async () => {
+    const running = await started();
+    const itemId = await publish(running.gateway, esimCard);
+    const priced = await running.harnessed.gateway.beginPurchase(itemId, {});
+    if (priced.step !== "pay") throw new Error("the order was not priced");
+    const id = priced.order.order.id;
+    running.harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await running.harnessed.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await running.browser.signIn();
+    await running.browser.post("/orders", { order_id: id, message: "Payment did not arrive." });
+    const pending = await running.harnessed.store.orderById(id);
+    if (pending?.paymentAttempt === undefined) throw new Error("the payment attempt is missing");
+    await running.harnessed.gateway.runner.completePaymentAttempt(
+      id,
+      pending.paymentAttempt.id,
+      { settled: true, transaction: "late-transaction" },
+      "facilitator",
+    );
+
+    const back = await running.browser.get("/orders");
+    expect(readable(back.html)).toContain("Needs you 1");
+    expect(readable(back.html)).toContain("payment completed after you closed fulfillment");
+    expect(formsIn(back.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
+
+    const again = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The payment arrived late; it will be returned.",
+    });
+    expect(again.status).toBe(303);
+    const after = await running.browser.get("/orders");
+    expect(readable(after.html)).not.toContain("Needs you");
+    expect(formsIn(after.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(
+      "The payment arrived late; it will be returned.",
+    );
+  });
+
+  it("leads back to the order in its own words when a delivery lands before the closure", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.deliverOrder(id, { iccid: "arrived first" });
+          return await real.closeOrder(id, request);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const read = await running.browser.post("/orders", { order_id: id, message: "Too late." });
+    expect(read.status).toBe(409);
+    const text = readable(read.html);
+    expect(text).toContain("Nothing was closed: this order ended before your closure arrived.");
+    expect(text).toContain("Delivered");
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("refuses foreign-origin, mismatched-account and unowned order posts", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect(
+      (await running.browser.from("https://elsewhere.example").post("/orders", { order_id: id }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await running.browser.post("/orders", {
+          order_id: id,
+          [DRAWN_FOR]: "someoneelse@example.com",
+        })
+      ).status,
+    ).toBe(409);
+    const foreign = await running.harnessed.gateway.registerMerchant();
+    const foreignClient = gatewayFor(running.harnessed.gateway, {
+      merchantId: foreign,
+      email: "someoneelse@example.com",
+    });
+    const attempt = await foreignClient.closeOrder(id, {});
+    expect(attempt).toMatchObject({ ok: false, status: 404 });
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("says why an explanation was refused under its box and keeps what was typed", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "A remedy was agreed <b>outside</b> Agentify.";
+
+    const refused = await running.browser.post("/orders", { order_id: id, message: typed });
+
+    expect(refused.status).toBe(400);
+    const form = formsIn(refused.html).find((one) => one.fields.get("order_id") === id);
+    // Kept in the box, and escaped there like any other text.
+    expect(form?.fields.get("message")).toBe(
+      "A remedy was agreed &lt;b&gt;outside&lt;/b&gt; Agentify.",
+    );
+    const box = /<input[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
+    expect(box).toContain('aria-invalid="true"');
+    expect(readable(refused.html)).toContain("Your explanation carries HTML markup");
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  it("refuses a malformed explanation without closing the order", async () => {
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect(
+      (await running.browser.post("/orders", { order_id: id, message: "x".repeat(2001) })).status,
+    ).toBe(400);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 });

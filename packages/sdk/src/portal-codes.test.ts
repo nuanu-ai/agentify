@@ -18,7 +18,7 @@ const page = fileURLToPath(new URL("../../../apps/docs/orders.md", import.meta.u
 const FROM_THE_TOOLS = [CALL_DID_NOT_REACH_US, ANSWER_NOT_UNDERSTOOD, OUTCOME_UNKNOWN];
 
 /** The heading the table belongs to, so a table added elsewhere is not read as this one. */
-const SECTION = "### When a closing call does not go through";
+const SECTION = "## When a call on an order does not go through";
 
 /**
  * The first column of the first table under that heading. A row is a code
@@ -67,7 +67,14 @@ describe("the portal's table of codes a closing call fails under", () => {
     // is what a merchant sizes their `switch` from. Enough of it is quoted for
     // the pin to die when it is rewritten, and the numbers are counted from
     // the lists.
-    const words: Record<string, number> = { three: 3, four: 4, five: 5, seven: 7, eight: 8 };
+    const words: Record<string, number> = {
+      three: 3,
+      four: 4,
+      five: 5,
+      seven: 7,
+      eight: 8,
+      ten: 10,
+    };
     const said =
       /(\w+) codes are promised to mean one thing each — (\w+) sent by us, and (\w+) the tools produce/.exec(
         readFileSync(page, "utf8").replace(/\s+/g, " "),

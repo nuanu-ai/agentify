@@ -734,7 +734,7 @@ describe("the whole way through, against a real gateway", () => {
       id,
       sent_at: "2026-09-14T12:00:00.000Z",
       payload: {
-        type: "order.refund_due" as const,
+        type: "order.unfulfilled" as const,
         order_id: "ord_7c1e05",
         at: "2026-09-14T12:00:00.000Z",
         price: { amount: "25.00", currency: "USD" },
@@ -779,7 +779,7 @@ describe("the whole way through, against a real gateway", () => {
               id: "msg_1f77a0",
               sent_at: "2026-09-14T12:00:00.000Z",
               payload: {
-                type: "order.refund_due" as const,
+                type: "order.unfulfilled" as const,
                 order_id: "ord_7c1e05",
                 at: "2026-09-14T12:00:00.000Z",
                 price: { amount: "25.00", currency: "USD" },
@@ -1691,7 +1691,7 @@ describe("following a parcel to the carrier", () => {
 
   it("lets go of an order the shop ended, and does not say it shipped", async () => {
     // A cancelled order never shipped: nothing goes to the gateway, and it
-    // becomes a refund owed when its time to ship runs out.
+    // becomes an unfulfilled order when its time to ship runs out.
     const shops = await withAParcel();
     const gateway = aGateway();
 
@@ -1749,9 +1749,9 @@ describe("following a parcel to the carrier", () => {
     expect(gateway.delivered).toStrictEqual([]);
   });
 
-  it("still reads a parcel past its seven days, whose late shipment closes the refund owed", async () => {
-    // A late shipment still reaches the agent and closes the debt until a
-    // refund is recorded, so the shop is read well past the seven days.
+  it("still reads a parcel past its seven days, whose late shipment closes the unfulfilled order", async () => {
+    // A late shipment still reaches the agent and records shipment until the merchant
+    // closes Agentify fulfillment, so the shop is read well past the seven days.
     const shops = await withAParcel();
     const gateway = aGateway();
 
@@ -1762,7 +1762,7 @@ describe("following a parcel to the carrier", () => {
 
   it("lets go of a parcel not completed within thirty days of being placed", async () => {
     // Thirty days is the longest any card may give to ship; after that the
-    // order is a refund owed and the shop is not read again.
+    // order is an unfulfilled order and the shop is not read again.
     const shops = await withAParcel();
     const gateway = aGateway();
     let read = 0;

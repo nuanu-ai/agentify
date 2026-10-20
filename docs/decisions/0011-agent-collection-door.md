@@ -35,11 +35,13 @@ compared. So a listing may publish it.
 
 The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the
 document the purchase returns, built field by field so that nothing reaches it
-unwritten: the state and price, the goods once delivered, a parcel's shipment
-once shipped, whether the sale was a test, who sold it, the merchant's words
-where it refused, and Agentify's reason where Agentify ended the order or a
-refund is owed. It leaves out the merchant's product key, what the buyer sent
-and every other order. An identifier naming no order gets the same
+unwritten: the state and price, the original payment's status, the goods once
+delivered, a parcel's shipment once shipped, whether the sale was a test, who
+sold it, the merchant's words where it refused, the merchant's closure and its
+message where they closed fulfillment, and Agentify's reason where Agentify
+ended the order, fulfillment is overdue, or a paid order was closed
+(`merchant_closed`, ADR-0028). It leaves out the merchant's product key,
+what the buyer sent and every other order. An identifier naming no order gets the same
 `no_such_order` as any other, every answer tells caches to keep nothing
 (`Cache-Control: no-store`), and the order document's description and
 `llms.txt` tell the agent the identifier is the key to its goods.

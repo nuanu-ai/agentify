@@ -134,6 +134,20 @@
       "when": 1792410283904,
       "tag": "0018_order_payment_ref",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792418702586,
+      "tag": "0019_payment_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792422838483,
+      "tag": "0020_merchant_fulfillment_closure",
+      "breakpoints": true
     }
   ]
 }

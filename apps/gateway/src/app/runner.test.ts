@@ -502,7 +502,7 @@ describe("the address a charge is sent to", () => {
     expect(open.facilitator.settles.at(-1)?.payTo).not.toBe(split?.address);
   });
 
-  it("owes the buyer the whole price when a refund falls due on a payment to a split", async () => {
+  it("names the whole sale price when a payment to a split is left unfulfilled", async () => {
     // The merchant refunds the whole price and the commission stays with
     // Agentify, so the event naming the debt names the whole sum.
     open = await harness();
@@ -518,7 +518,7 @@ describe("the address a charge is sent to", () => {
 
     const told = await drawEverything(open);
     const owed = told.flatMap((envelope) =>
-      envelope.kind === "order_event" && envelope.payload.type === "order.refund_due"
+      envelope.kind === "order_event" && envelope.payload.type === "order.unfulfilled"
         ? [envelope.payload]
         : [],
     );

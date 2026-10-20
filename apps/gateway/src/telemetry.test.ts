@@ -55,7 +55,7 @@ describe("commerce operational observations", () => {
     expect(value(samples, "agentify_commerce_oldest_unknown_settlement_age_seconds")).toBe(60);
   });
 
-  it("uses the order's own deadlines and never calls a debt overdue", () => {
+  it("uses the order's own deadlines and never calls an unfulfilled order overdue", () => {
     const paid = reach("paid");
     const late: Order = {
       ...paid,
@@ -65,7 +65,7 @@ describe("commerce operational observations", () => {
         deadlines: { ...paid.policy.deadlines, syncResponseMs: 10_000, asyncFulfillmentMs: 10_000 },
       },
     };
-    const samples = sample([late, reach("refund_due"), reach("delivered_unpaid")]);
+    const samples = sample([late, reach("unfulfilled"), reach("delivered_unpaid")]);
     expect(value(samples, "agentify_commerce_overdue_orders")).toBe(1);
     expect(value(samples, "agentify_commerce_oldest_overdue_age_seconds")).toBe(10);
   });

@@ -11,13 +11,13 @@ import type {
   Environment,
   MerchantSelling,
   Order,
-  OrderState,
   PaymentVerificationFailure,
   TransitionRejection,
 } from "@agentify/core";
 import {
   createOrder,
   deadlines,
+  endedWithNothingHeld,
   fulfillmentDeadline,
   isOpen,
   onTheMerchantsOpenList,
@@ -44,6 +44,8 @@ import {
   type MerchantKeyList,
   type OrderAcceptResponse,
   type OrderCallResponse,
+  type OrderCloseRequest,
+  type OrderCloseResponse,
   type PayoutWallet,
   type Problem,
   type ProjectedCard,
@@ -105,7 +107,7 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
-import { endingSentenceOf, OrderRunner, SWEEP_EFFECTS } from "./runner.js";
+import { endingSentenceOf, OrderRunner, RECONCILE_PAYMENTS, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -389,6 +391,7 @@ export class Gateway {
     // queue is first created. A lock wedged for good shows only as the sweep's
     // "did nothing" log line, every day.
     await this.runtime.queue.everyDay(SWEEP_EFFECTS, () => this.runner.sweep());
+    await this.runtime.queue.everyMinute(RECONCILE_PAYMENTS, () => this.runner.reconcilePayments());
   }
 
   /** One reminder, turned into one event and nothing more. */
@@ -407,7 +410,7 @@ export class Gateway {
     // conditional write. Split in two, a late answer, a worker's fresh
     // hand-over or a retried delivery of this same reminder lands in between,
     // and a duplicate spends a second delivery: running out closes an order
-    // that has been paid for, and the money is owed back.
+    // that has been paid for before the merchant can finish it.
     await this.runner.apply(
       reminder.orderId,
       { kind: "handler_undelivered", at: this.runtime.clock() },
@@ -635,7 +638,7 @@ export class Gateway {
     const now = await this.runtime.store.selling(merchantId);
     if (now === "departed") {
       // A departure is not a heavier pause and this switch does not undo one:
-      // leaving closed the open orders and left refunds owed, and reopening
+      // leaving changed the open orders and left paid ones unfulfilled; reopening
       // would put the merchant back in the catalog with none of that unwound.
       return { ok: false, why: "this merchant has left, and selling is not resumed by a switch" };
     }
@@ -1310,13 +1313,15 @@ export class Gateway {
       return { step: "no_such_item" };
     }
 
+    if (unresolvedPayment(before.order)) return noPaymentTakenFor(before.order);
+
     // An order that is over with no goods held takes no payment and is not
     // verified for one: a refusal could only tell the agent to pay again for a
     // price that is gone. The answer names no order, because the payment has
     // not been checked and the reference it carries can be published. A buyer
     // who lost its first answer learns from it all the order would tell it:
     // that nothing was charged, or that whether anything was is not known.
-    if (overWithNothingHeld(before.order)) {
+    if (overWithNothingHeld(before)) {
       return noPaymentTakenFor(before.order);
     }
 
@@ -1341,7 +1346,7 @@ export class Gateway {
       if (after === null) {
         return { step: "no_such_item" };
       }
-      if (overWithNothingHeld(after.order)) {
+      if (overWithNothingHeld(after)) {
         return noPaymentTakenFor(after.order);
       }
       // Another payment took the order between the read above and the lapse,
@@ -1374,6 +1379,8 @@ export class Gateway {
     // network round trip. A payment that does not verify closes and claims
     // nothing, so a stranger's junk cannot spend the life of somebody else's
     // order; the order stays open until its own deadline.
+    // Used authorizations and signatures can be read from the chain, so even
+    // the exact saved payment is no private credential for an order or goods.
     //
     // The payee is this order's merchant's recorded split, read once here at
     // the instant of verification, and the same string is kept on the order
@@ -1392,6 +1399,11 @@ export class Gateway {
       payment,
       payTo,
     });
+
+    const current = await this.runtime.store.orderById(orderId);
+    if (current === null) return { step: "no_such_item" };
+    if (unresolvedPayment(current.order)) return noPaymentTakenFor(current.order);
+    before = current;
 
     if (verified.verified !== true) {
       // A refusal says what to do next, since that depends on why the payment
@@ -1524,6 +1536,7 @@ export class Gateway {
       payment,
       payTo,
       this.runtime.clock(),
+      { fingerprint, ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }) },
     );
 
     // These two turned the payment away before it spent anything, so the claim
@@ -1538,7 +1551,12 @@ export class Gateway {
     if (taken.kind === "not_owner") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
-      return { step: "not_this_purchase" };
+      // The merchant may have closed an unpaid order while this payment was
+      // being checked, and nobody owns it: it is over, not somebody else's.
+      const now = await this.runtime.store.orderById(orderId);
+      return now !== null && overWithNothingHeld(now)
+        ? noPaymentTakenFor(now.order)
+        : { step: "not_this_purchase" };
     }
     if (taken.kind === "refused") {
       this.runner.purchases.giveUp(key);
@@ -1818,8 +1836,8 @@ export class Gateway {
         // The machine refused the hand-over, so nobody is given the order:
         // passing it on would ask a merchant to work on a purchase that is
         // over, or hand them a parcel whose buyer's address is already erased.
-        // An ordinary order that owes a refund is not refused, because late
-        // goods still close the debt.
+        // An ordinary unfulfilled order remains deliverable until its
+        // merchant closes fulfillment.
         finished.push(delivery.handle);
         continue;
       }
@@ -2019,6 +2037,22 @@ export class Gateway {
       { merchantId },
     );
     return this.#answerFor(applied, "refused");
+  }
+
+  /** Stops future Agentify fulfillment, preserving the original payment and goods. */
+  async closeOrder(
+    merchantId: string,
+    orderId: string,
+    request: OrderCloseRequest,
+  ): Promise<OrderCloseResponse | null> {
+    const applied = await this.runner.apply(
+      orderId,
+      { kind: "close_called", at: this.runtime.clock(), ...request },
+      { openDeliveryId: null },
+      { merchantId },
+    );
+    const answered = this.#answerFor(applied, "accepted");
+    return answered === null || !answered.ok ? answered : { ok: true };
   }
 
   /**
@@ -2323,21 +2357,16 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   signature: "sign a new payment for this order and present it while its price holds",
 };
 
-/**
- * The endings in which nothing is held for the buyer, so a payment has
- * nothing left to buy. Nothing was taken in them either, except on a
- * `rejected` order whose charge went unanswered, where nobody knows whether
- * it was. `expired` is one only without held goods, and is asked separately.
- */
-const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
+const unresolvedPayment = (order: Order): boolean =>
+  order.payment === "settling" || order.payment === "outcome_unknown";
 
 /**
- * The refusal a payment for an order that is over gets, before anything is
- * verified: what became of the order, in words that name no order, since
- * whoever sent the payment has not been shown to be its buyer.
+ * The refusal before verification for an ended order or an unresolved charge.
+ * It names no private order, since whoever sent the payment has not been shown
+ * to be its buyer.
  */
 function noPaymentTakenFor(order: Order): PurchaseAttempt {
-  if (order.payment === "outcome_unknown") {
+  if (unresolvedPayment(order)) {
     return {
       step: "payment_not_taken",
       why: "this payment was not taken: whether an earlier payment for this order went through is not known yet, and no second one is taken while it is not; asking again later may find out",
@@ -2353,9 +2382,15 @@ function noPaymentTakenFor(order: Order): PurchaseAttempt {
   };
 }
 
-/** Whether an order is over with nothing held for its buyer, so a payment has nothing to buy. */
-const overWithNothingHeld = (order: Order): boolean =>
-  NOTHING_TO_PAY_FOR.includes(order.state) || (order.state === "expired" && !order.heldFulfillment);
+/**
+ * Whether an order is over with nothing held for its buyer, so a payment has
+ * nothing to buy: an ending that holds nothing, or an order its merchant closed
+ * before anyone paid for it. A closed order somebody paid for is that payer's
+ * to read, and a payment from anyone else is turned away as somebody else's.
+ */
+const overWithNothingHeld = (record: StoredOrder): boolean =>
+  endedWithNothingHeld(record.order) ||
+  (record.order.state === "fulfillment_closed" && record.paidBy === null);
 
 /**
  * Why the machine would not take a merchant's call. Only a closed order gets
@@ -2502,8 +2537,7 @@ function canonical(value: unknown): string {
 /**
  * A card in a mode this channel does not sell yet, refused as a finding at
  * publication rather than discovered by the first buyer. A parcel sells only
- * on the test channel: on the live one a lost parcel would take real money
- * with no way yet to record its refund.
+ * on the test channel until its readiness gates have been accepted.
  */
 function notOnThisChannel(card: Card, environment: Environment): Problem[] {
   return card.fulfillment === "ship" && environment === "live"
@@ -2512,7 +2546,7 @@ function notOnThisChannel(card: Card, environment: Environment): Problem[] {
           path: ["fulfillment"],
           code: "not_sold_yet",
           message:
-            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel cannot be recorded anywhere yet, so publish it on the test channel, where the money is not real',
+            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet; publish it on the test channel, where the money is not real',
         },
       ]
     : [];

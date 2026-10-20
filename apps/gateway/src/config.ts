@@ -234,7 +234,7 @@ const environmentSchema = z.object({
    * The same wait on an order paid before its goods (asynchronous, confirmed
    * or a parcel), which no promised ceiling contains. The payment layer
    * answers only once the transfer is in a block, so a wait near the block
-   * time closes orders whose money then arrives, each as a refund owed. The
+   * time closes orders whose later confirmed payment leaves them unfulfilled. The
    * purchase call does not wait on this; it waits on the payment layer itself.
    */
   SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
@@ -283,7 +283,7 @@ const environmentSchema = z.object({
   /**
    * How many times a failed reminder is delivered again. A reminder is the only
    * thing that declares an order overdue, so losing one to a briefly
-   * unreachable store costs a refund nobody marks; retrying forever would turn
+   * unreachable store hides unfulfilled paid orders; retrying forever would turn
    * a defect into a loop.
    */
   REMINDER_ATTEMPTS: countAbove(3),
@@ -296,22 +296,23 @@ const environmentSchema = z.object({
   SETTLE_IN_FLIGHT_RETRY_MS: durationMs(1_000),
   /**
    * How long a claim on a payment is kept. A claim guards the window between
-   * verifying a payment and executing the charge; after that the token itself
-   * refuses a second use. The route that makes claims takes no key, so they
-   * cannot be kept forever.
+   * verifying a payment and accepting it. Unaccepted claims expire because
+   * their public route takes no key. Accepted claims remain retained to prevent
+   * reuse after closure or a delayed payment outcome.
    */
   CLAIM_RETENTION_MS: durationMs(30 * 24 * 60 * 60 * 1_000),
   /**
    * How long an order may sit paid before the sweep decides its envelope
    * reached nobody and sends it out again. Too short and a busy merchant who is
    * merely between polls gets duplicates; too long and a paid order reaches
-   * nobody until its fulfillment deadline turns it into a debt.
+   * nobody until its fulfillment deadline marks it unfulfilled.
    */
   SWEEP_DISPATCH_GRACE_MS: durationMs(5 * 60 * 1_000),
   /**
-   * How many of the payment layer's own words one order keeps; an operator
-   * reconciles a silent charge from them. They arrive on an unauthenticated
-   * route, so the list is bounded and what falls off it is counted.
+   * How many of the payment layer's own words one order keeps, which is what
+   * an operator reads to learn what the facilitator and chain recovery said
+   * about a charge. They arrive on an unauthenticated route, so the list is
+   * bounded and what falls off it is counted.
    */
   PAYMENT_WORDS_KEPT: countAbove(20),
 
@@ -380,6 +381,14 @@ const environmentSchema = z.object({
     .string()
     .regex(/^[^:\s]+:[^:\s]+$/, "must be a CAIP-2 chain such as eip155:84532")
     .default(DEFAULT_PAYMENT_NETWORK),
+  /** An optional read-only chain provider; absent means facilitator-only payments. */
+  PAYMENT_RPC_URL: emptyIsAbsent(
+    z.string().refine((value) => {
+      if (!isHttpUrl(value)) return false;
+      const url = new URL(value);
+      return url.username === "" && url.password === "" && url.hash === "";
+    }, "must be an http(s) RPC address without user information or a fragment"),
+  ),
   /**
    * Where the money goes. Absent until a real payment is to be taken, and held
    * to the shape of its chain when present: it goes straight into the
@@ -433,6 +442,7 @@ interface WorkerConfig {
 export interface PaymentConfig {
   readonly facilitatorUrl: string;
   readonly network: string;
+  readonly rpcUrl?: string;
   readonly payTo: string | null;
   readonly cdpApiKeyId: string | null;
   readonly cdpApiKeySecret: string | null;
@@ -727,6 +737,9 @@ export function loadConfig(
     payment: {
       facilitatorUrl: environmentValues.FACILITATOR_URL,
       network,
+      ...(environmentValues.PAYMENT_RPC_URL === undefined
+        ? {}
+        : { rpcUrl: environmentValues.PAYMENT_RPC_URL }),
       payTo,
       cdpApiKeyId: environmentValues.CDP_API_KEY_ID ?? null,
       cdpApiKeySecret: environmentValues.CDP_API_KEY_SECRET ?? null,

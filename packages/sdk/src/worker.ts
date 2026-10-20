@@ -75,7 +75,8 @@ export interface Delivered {
  * question to Agentify afterwards, since an event is answered against nothing.
  * An event is sent at most once, so the risk to write against is an event that
  * never arrives, not one that arrives twice; reading open orders with
- * `orders.list({ open: true })` finds a refund owed whose event went missing.
+ * `orders.list({ open: true })` finds a paid order whose `order.unfulfilled`
+ * went missing, including one paid after you closed it.
  */
 export type EventHandler = (event: OrderEvent, delivered: Delivered) => void | Promise<void>;
 
@@ -540,7 +541,7 @@ export const startWorker = (
         subject: event.order_id,
         // An event is sent at most once and carries no acknowledgement, so
         // nothing here can ask for it again: what the handler failed on is
-        // lost, and the open-orders list is where a refund owed shows up.
+        // lost, and the open-orders list is where an unfulfilled order shows up.
         message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${String(cause)}`,
       });
     }

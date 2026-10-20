@@ -16,7 +16,6 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "merchant": "tsx src/merchant.ts",
-    "report-payment": "tsx src/payment-report.ts",
     "facilitator-key": "tsx src/facilitator-key.ts",
     "payout": "tsx src/payout.ts",
     "db:generate": "drizzle-kit generate",

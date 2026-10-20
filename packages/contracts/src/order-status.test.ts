@@ -19,8 +19,8 @@ describe("the status an order can be in", () => {
         "declined",
         "expired",
         "cancelled",
-        "refund_due",
-        "refunded",
+        "unfulfilled",
+        "fulfillment_closed",
         "delivered_unpaid",
       ].sort(),
     );
@@ -30,7 +30,7 @@ describe("the status an order can be in", () => {
     for (const status of ORDER_STATUSES) {
       expect(OrderStatusSchema.safeParse(status).success, status).toBe(true);
     }
-    for (const status of ["pending", "open", "paid", "IN_PROGRESS", ""]) {
+    for (const status of ["pending", "open", "paid", "IN_PROGRESS", "refund_due", "refunded", ""]) {
       expect(OrderStatusSchema.safeParse(status).success, JSON.stringify(status)).toBe(false);
     }
   });

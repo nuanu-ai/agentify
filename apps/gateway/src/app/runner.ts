@@ -36,28 +36,41 @@ import {
   holdsShipTo,
   moneyInvariantViolations,
   outcomeFor,
+  paidAfterClosure,
   transition,
 } from "@agentify/core";
 import {
   type Delivery,
   localityOf,
   type Order as OrderDocument,
+  type PaymentStatus,
   type Receipt,
   type ReceiptOutcome,
   type RecordedShipment,
-  type RefundDueReason,
   type SalePrice,
   type Seller,
+  type UnfulfilledReason,
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
+import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
 import { asTimestamp } from "../ports/clock.js";
+import {
+  type Facilitator,
+  type PaymentRecoveryContext,
+  type PaymentRecoveryOutcome,
+  RecoveryFailure,
+  type SettleOutcome,
+} from "../ports/facilitator.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
   Integration,
   MerchantScope,
   OrderChange,
+  PaymentAttempt,
+  PaymentCompletion,
   PaymentWord,
   StoredOrder,
   WithTheOrder,
@@ -69,14 +82,18 @@ import type { WrittenOrderStatus } from "./written.js";
 
 /** The queue's name for the daily sweep of what an order is still owed. */
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
+export const RECONCILE_PAYMENTS = "agentify_reconcile_payments";
+
+function hasObservedPayment(record: StoredOrder): boolean {
+  const completion = record.paymentAttempt?.completion;
+  return completion?.settled === true && completion.executedAt !== null;
+}
 
 /**
- * The mark on a settle word meaning this gateway did not observe the charge:
- * the operator command writes it, and the sweep does not invent a receipt for
- * it. It is a phrase in the word rather than a separate flag, so there is one
- * record and not two that can disagree.
+ * Saved assertion-only settlements carry this marker without payment evidence.
+ * The sweep must not invent an execution time or receipt for those records.
  */
-export const UNOBSERVED_SETTLE = "the facilitator was not asked";
+const UNOBSERVED_SETTLE = "the facilitator was not asked";
 
 /**
  * What is written about the purchase alongside the order. Every fact lands in
@@ -188,7 +205,7 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "dispatch_confirmation_request":
     case "release_goods_to_agent":
     case "hold_fulfillment":
-    case "mark_refund_due":
+    case "mark_unfulfilled":
     case "answer_merchant":
       return true;
     default:
@@ -260,10 +277,18 @@ export class OrderRunner {
     facts: OrderFacts = {},
     scope?: MerchantScope,
     whileWaitingOn?: string,
+    completion?: { readonly attemptId: string; readonly result: PaymentCompletion },
   ): Promise<Applied> {
     const decided = await this.#runtime.store.withOrder(
       orderId,
       async (found): Promise<OrderChange<Decided>> => {
+        if (
+          completion !== undefined &&
+          (found.paymentAttempt?.id !== completion.attemptId ||
+            found.paymentAttempt.completion !== null)
+        ) {
+          return { result: { kind: "moved_on" } };
+        }
         if (whileWaitingOn !== undefined && found.openDeliveryId !== whileWaitingOn) {
           // Somebody else got here first. Nothing is written, not even the
           // cleared hand-over: it would erase the hand-over the order now waits
@@ -271,25 +296,81 @@ export class OrderRunner {
           return { result: { kind: "moved_on" } };
         }
 
+        let before = found.order;
+        const elapsedEffects: Effect[] = [];
+        if (
+          completion !== undefined &&
+          before.state !== "fulfilled" &&
+          before.state !== "delivered_unpaid"
+        ) {
+          const elapsed = deadlines(before).find(
+            (deadline) =>
+              deadline.kind === "settle_response" && deadline.at <= this.#runtime.clock(),
+          );
+          if (elapsed !== undefined) {
+            const expired = transition(before, {
+              kind: "deadline_expired",
+              deadline: elapsed.kind,
+              at: elapsed.at,
+            });
+            if (expired.ok) {
+              before = expired.order;
+              elapsedEffects.push(...expired.effects);
+            }
+          }
+        }
         const known: StoredOrder = {
           ...found,
+          order: before,
+          ...(completion === undefined || found.paymentAttempt === undefined
+            ? {}
+            : { paymentAttempt: { ...found.paymentAttempt, completion: completion.result } }),
           ...(facts.settlement === undefined ? {} : { settlement: facts.settlement }),
           ...(facts.paymentWord === undefined ? {} : this.#alsoSaid(found, facts.paymentWord)),
           ...(facts.priceId === undefined ? {} : { priceId: facts.priceId }),
           ...(facts.openDeliveryId === undefined ? {} : { openDeliveryId: facts.openDeliveryId }),
         };
 
-        const moved = transition(known.order, event);
+        const changed = transition(known.order, event);
+        let moved = changed.ok
+          ? { ...changed, effects: [...elapsedEffects, ...changed.effects] }
+          : changed;
         if (!moved.ok) {
           // Nothing is written for a refused event, not even its facts: an
           // event with no meaning here leaves no trace of having been believed.
           return { result: { kind: "decided", moved, known } };
         }
 
+        let effectsAt = completion?.result.source === "chain" ? this.#runtime.clock() : event.at;
+        const overdueGoods =
+          completion?.result.settled && moved.order.state === "paid"
+            ? fulfillmentDeadline(moved.order).find(
+                (deadline) => deadline.at <= this.#runtime.clock(),
+              )
+            : undefined;
+        if (overdueGoods !== undefined) {
+          const expired = transition(moved.order, {
+            kind: "deadline_expired",
+            deadline: overdueGoods.kind,
+            at: overdueGoods.at,
+          });
+          if (expired.ok) {
+            moved = {
+              ...expired,
+              effects: [
+                ...moved.effects.filter((effect) => effect.kind !== "dispatch_order"),
+                ...expired.effects,
+              ],
+            };
+            effectsAt = overdueGoods.at;
+          }
+        }
+
         refuseToWriteAnImpossibleOrder(moved.order);
         const next: StoredOrder = {
           ...known,
           order: moved.order,
+          ...this.#paymentIntent(known, moved.effects, event.at),
           ...goodsToKeep(found, facts.delivery, moved.effects),
           ...addressToKeep(moved.effects, this.#runtime.clock()),
         };
@@ -304,7 +385,7 @@ export class OrderRunner {
         return {
           save: next,
           // The effects that must not be lost go in with the order.
-          alongside: this.#writesWithTheOrder(next, known.order, moved.effects, event.at),
+          alongside: this.#writesWithTheOrder(next, known.order, moved.effects, effectsAt),
           result: { kind: "decided", moved, known: next },
         };
       },
@@ -353,6 +434,7 @@ export class OrderRunner {
     payment: string,
     payTo: string | null,
     at: number,
+    verified?: { readonly recovery?: PaymentRecoveryContext; readonly fingerprint: string },
   ): Promise<PresentResult> {
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
@@ -366,6 +448,11 @@ export class OrderRunner {
 
         const events = eventsForVerifiedPayment(found.order, at);
         if (events.length === 0) {
+          // A merchant may close an unpaid order while payment verification is
+          // outside this lock. Its public payment reference establishes no owner.
+          if (found.paidBy !== owner) {
+            return { result: { kind: "not_owner", state: found.order.state } };
+          }
           // The owner is asking again about a purchase already under way. The
           // answer is wherever it has got to, and nothing changes.
           return { result: { kind: "already_yours", state: found.order.state } };
@@ -385,8 +472,13 @@ export class OrderRunner {
           effects.push(...moved.effects);
         }
 
-        const next: StoredOrder = {
-          ...found,
+        const {
+          paymentRecovery: _previousRecovery,
+          paymentAttempt: _previousAttempt,
+          ...prior
+        } = found;
+        const accepted: StoredOrder = {
+          ...prior,
           order,
           payment,
           // The address this payment was checked against. The charge runs
@@ -395,8 +487,13 @@ export class OrderRunner {
           // where the payer signed for.
           payTo,
           paidBy: owner,
+          ...(verified?.recovery === undefined
+            ? {}
+            : { paymentRecovery: { ...verified.recovery } }),
+          ...(verified === undefined ? {} : { paymentFingerprint: verified.fingerprint }),
           ...this.#alsoSaid(found, word),
         };
+        const next: StoredOrder = { ...accepted, ...this.#paymentIntent(accepted, effects, at) };
         // A verified payment never ends a parcel's need for its address, so
         // nothing here erases it; should the machine change that, this stops
         // the write rather than keep an address past its time.
@@ -407,7 +504,12 @@ export class OrderRunner {
         await this.#arm(deadlines(found.order), deadlines(order), orderId);
         return {
           save: next,
-          alongside: this.#writesWithTheOrder(next, found.order, effects, at),
+          alongside: [
+            ...this.#writesWithTheOrder(next, found.order, effects, at),
+            ...(verified === undefined
+              ? []
+              : [{ kind: "retain_payment" as const, fingerprint: verified.fingerprint, orderId }]),
+          ],
           result: { kind: "took", known: next, effects },
         };
       },
@@ -455,8 +557,7 @@ export class OrderRunner {
    * An arm may only re-drive an effect whose receiver is promised it can arrive
    * more than once: a hand-over, which the merchant's handler expects to see
    * again, and a receipt, one row keyed by its order. A merchant event is
-   * delivered at most once, so there is no arm for it and must not be: a debt
-   * announced twice is a second refund somebody may act on.
+   * delivered at most once, so the sweep cannot duplicate its original notice.
    */
   async sweep(): Promise<Swept | null> {
     const ran = await this.#runtime.store.runAlone(SWEEP_EFFECTS, () => this.#sweepAlone());
@@ -486,14 +587,12 @@ export class OrderRunner {
     }
 
     for (const record of await this.#runtime.store.deliveredWithoutReceipt()) {
-      // A settlement the operator recorded has no observed execution time, so
-      // it has no receipt, and writing one now would date a proof from
-      // whenever the sweep ran. A late answer from the facilitator carries its
-      // own transaction and is receipted on arrival, without this phrase.
+      // An asserted settlement has no observed execution time. Writing its
+      // receipt here would falsely date payment to the time of this sweep.
       const asserted = record.paymentWords.some(
         (word) => word.about === "settle" && word.said.includes(UNOBSERVED_SETTLE),
       );
-      if (asserted) {
+      if (asserted && !hasObservedPayment(record)) {
         continue;
       }
       try {
@@ -522,7 +621,7 @@ export class OrderRunner {
    * Puts a paid order that has reached nobody on its merchant's stream again.
    *
    * The stream is asked first: every hand-over counts toward the machine's
-   * attempt cap, whose closure is a refund, so an envelope still sitting
+   * attempt cap, whose result is an unfulfilled paid order, so an envelope still sitting
    * unclaimed is left alone rather than spend a delivery the merchant never
    * failed. An envelope already drawn is on no stream and looks the same as one
    * never written, since the order stays `paid` until the hand-over is
@@ -595,7 +694,7 @@ export class OrderRunner {
    * Starts again the clocks an order is waiting on that have already run out.
    * Only a reminder declares an order overdue, so one armed and then lost, as
    * by a handler that threw past the queue's patience, leaves an order nothing
-   * will close and a buyer nothing will refund. Repeating is safe because the
+   * will close. Repeating is safe because the
    * machine refuses an expiry for a deadline not running or not yet reached.
    */
   async #sweepTheClocks(record: StoredOrder, now: number): Promise<number> {
@@ -694,12 +793,13 @@ export class OrderRunner {
           break;
 
         case "issue_receipt":
-          // A receipt's paid_at is when the payment executed. A late answer
-          // from the facilitator carries its transaction and is owed a receipt;
-          // an operator settling an unknown outcome writes no settlement, and a
-          // receipt for it would prove a payment nobody here saw, so neither
-          // this nor the sweep writes one.
-          if (before.payment === "outcome_unknown" && record.settlement === null) {
+          // An unknown payment needs a facilitator answer or observed chain
+          // execution before a receipt can claim that money moved.
+          if (
+            before.payment === "outcome_unknown" &&
+            record.settlement === null &&
+            !hasObservedPayment(record)
+          ) {
             break;
           }
           writes.push({
@@ -774,12 +874,9 @@ export class OrderRunner {
             `${effect.kind} on ${record.order.id} was written down with the order and must not be carried out again`,
           );
 
-        case "mark_refund_due":
-          // The order's state is the record of the debt, and the merchant hears
-          // of it through the event the machine asked for alongside this. No
-          // receipt ever says "refund due", although one could: receipts are
-          // issued when goods are released and this order released none, so a
-          // merchant reconciling the refund has the order and the event only.
+        case "mark_unfulfilled":
+          // The state records incomplete fulfillment; its event carries the
+          // original price. No goods were released, so no receipt is issued.
           break;
 
         case "answer_merchant":
@@ -835,50 +932,271 @@ export class OrderRunner {
       // a wallet moved since would be refused after the goods went out.
       payTo: record.payTo,
     });
-    const at = this.#runtime.clock();
+    if (record.paymentAttempt === undefined)
+      throw new Error("a charge has no durable payment attempt");
+    await this.completePaymentAttempt(
+      record.order.id,
+      record.paymentAttempt.id,
+      outcome,
+      "facilitator",
+    );
+  }
 
-    if (outcome.settled === true) {
-      await this.apply(
-        record.order.id,
-        { kind: "payment_settled", at },
-        {
-          settlement: { transaction: outcome.transaction },
-          paymentWord: { at, about: "settle", said: `went through as ${outcome.transaction}` },
+  #paymentIntent(
+    record: StoredOrder,
+    effects: readonly Effect[],
+    at: number,
+  ): Pick<StoredOrder, "paymentAttempt"> {
+    if (!effects.some((effect) => effect.kind === "execute_payment")) return {};
+    return {
+      paymentAttempt: {
+        id: this.#runtime.ids("pay"),
+        startedAt: at,
+        ...(record.paymentRecovery === undefined
+          ? {}
+          : { recovery: { ...record.paymentRecovery } }),
+        completion: null,
+      },
+    };
+  }
+
+  /** Applies an answer only to the submitted attempt it names. Recovery never submits a charge. */
+  async completePaymentAttempt(
+    orderId: string,
+    attemptId: string,
+    outcome: SettleOutcome | PaymentRecoveryOutcome,
+    source: "facilitator" | "chain",
+    at = this.#runtime.clock(),
+  ): Promise<Applied> {
+    if (outcome.settled === "unknown") {
+      const recorded = await this.#runtime.store.withOrder(
+        orderId,
+        (found): OrderChange<boolean> => {
+          const attempt = found.paymentAttempt;
+          if (attempt?.id !== attemptId || attempt.completion !== null) return { result: false };
+          const progressed = "nextBlock" in outcome ? outcome.nextBlock : undefined;
+          const nextBlock =
+            progressed !== undefined && /^\d+$/.test(progressed)
+              ? attempt.nextBlock === undefined || BigInt(progressed) > BigInt(attempt.nextBlock)
+                ? progressed
+                : attempt.nextBlock
+              : attempt.nextBlock;
+          const transaction = "transaction" in outcome ? outcome.transaction : undefined;
+          // Recovery polls every minute; repeating its words would push out
+          // what the facilitator said, which is said once.
+          const repeated = source === "chain" && found.paymentWords.at(-1)?.said === outcome.reason;
+          return {
+            save: {
+              ...found,
+              paymentAttempt: {
+                ...attempt,
+                ...(nextBlock === undefined ? {} : { nextBlock }),
+                ...(transaction === undefined ? {} : { transaction }),
+              },
+              ...(repeated
+                ? {}
+                : this.#alsoSaid(found, { at, about: "settle", said: outcome.reason })),
+            },
+            result: true,
+          };
         },
       );
-      return;
+      if (recorded.found && recorded.result && source === "facilitator") {
+        console.error(
+          `[gateway] ${orderId}: the payment layer left the settle unanswered; its words are kept on the order`,
+        );
+      }
+      return !recorded.found ? { outcome: "no_such_order" } : { outcome: "moved_on" };
     }
-    if (outcome.settled === false) {
-      await this.apply(
-        record.order.id,
-        { kind: "payment_settle_failed", at },
-        { paymentWord: { at, about: "settle", said: outcome.reason } },
-      );
-      return;
-    }
-
-    // The charge was asked for and nothing came back. No event and above all no
-    // second charge: the machine's settle clock is already running and only it
-    // declares the silence, in words that keep "nobody knows" apart from "it
-    // did not go through". Nothing asks again, because the facilitator offers
-    // no way to ask what became of a sent charge; the words written here are
-    // what the operator who later records the outcome has to go on.
-    await this.#writeDown(record.order.id, { at, about: "settle", said: outcome.reason });
+    const result: PaymentCompletion = outcome.settled
+      ? {
+          settled: true,
+          transaction: outcome.transaction,
+          executedAt: "executedAt" in outcome ? outcome.executedAt : null,
+          source,
+        }
+      : { settled: false, reason: outcome.reason, source };
+    return this.apply(
+      orderId,
+      {
+        kind: outcome.settled ? "payment_settled" : "payment_settle_failed",
+        at: outcome.settled && "executedAt" in outcome ? outcome.executedAt : at,
+      },
+      {
+        ...(outcome.settled && source === "facilitator"
+          ? { settlement: { transaction: outcome.transaction } }
+          : {}),
+        paymentWord: {
+          at,
+          about: "settle",
+          said: outcome.settled ? `${source} confirmed ${outcome.transaction}` : outcome.reason,
+        },
+      },
+      undefined,
+      undefined,
+      { attemptId, result },
+    );
   }
 
   /**
-   * Records something the payment layer said, without telling the machine. The
-   * words go on the order and not in the log, because they can quote the
-   * payment. The line comes first, so a write that then fails still leaves the
-   * unanswered charge in the log.
+   * Revisits persisted unanswered attempts, including purchases already closed
+   * on a timeout. Each run ends with one log line while any payment is
+   * unresolved, saying how many and how long the oldest has waited, and one
+   * more naming the failure when the chain could not be read: a recovery that
+   * cannot finish is visible, not silent.
    */
-  async #writeDown(orderId: string, word: PaymentWord): Promise<void> {
-    console.error(
-      `[gateway] ${orderId}: the payment layer left the ${word.about} unanswered; what it said is written to the order, not to this log`,
-    );
-    await this.#runtime.store.withOrder(orderId, (found): OrderChange<null> => {
-      return { save: { ...found, ...this.#alsoSaid(found, word) }, result: null };
+  async reconcilePayments(): Promise<void> {
+    const reconcile = this.#runtime.facilitator.reconcile;
+    await this.#runtime.store.runAlone(RECONCILE_PAYMENTS, async () => {
+      const now = this.#runtime.clock();
+      let unresolved = 0;
+      let oldest = now;
+      let failed = 0;
+      let failure = "";
+      let afterId = "";
+      for (;;) {
+        const records = await this.#runtime.store.unresolvedPayments(afterId, 100);
+        if (records.length === 0) break;
+        for (const record of records) {
+          afterId = record.order.id;
+          if (
+            record.order.payment === "settling" &&
+            deadlines(record.order).some(
+              (deadline) => deadline.kind === "settle_response" && deadline.at > now,
+            )
+          )
+            continue;
+          try {
+            if (await this.#reconcileOne(record, reconcile)) continue;
+          } catch (thrown) {
+            failed += 1;
+            failure ||= thrown instanceof RecoveryFailure ? thrown.message : failureNamed(thrown);
+          }
+          unresolved += 1;
+          const since =
+            record.paymentAttempt?.startedAt ??
+            record.order.timestamps.settleStartedAt ??
+            record.order.timestamps.createdAt;
+          if (since < oldest) oldest = since;
+        }
+      }
+      if (failed > 0)
+        console.error(
+          `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure.replace(/\.?$/, ".")} It tries again every minute; an endpoint that keeps failing is replaced through PAYMENT_RPC_URL`,
+        );
+      if (unresolved > 0)
+        console.warn(
+          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off because no RPC is configured, and setting PAYMENT_RPC_URL to a Base endpoint turns it on" : ""}`,
+        );
     });
+  }
+
+  /**
+   * Whether the chain settled this record's payment one way or the other. It
+   * throws when the chain could not be read, after keeping any progress.
+   */
+  async #reconcileOne(record: StoredOrder, reconcile: Facilitator["reconcile"]): Promise<boolean> {
+    if (reconcile === undefined) return false;
+    const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
+    if (attempt?.recovery === undefined || attempt.completion !== null) return false;
+    const outcome = await reconcile.call(this.#runtime.facilitator, {
+      context: attempt.recovery,
+      ...(attempt.transaction === undefined ? {} : { transaction: attempt.transaction }),
+      ...(attempt.nextBlock === undefined ? {} : { nextBlock: attempt.nextBlock }),
+    });
+    await this.completePaymentAttempt(record.order.id, attempt.id, outcome, "chain");
+    // The progress is saved; the read that stopped it still counts as a failure.
+    if (outcome.settled === "unknown" && outcome.failure !== undefined)
+      throw new RecoveryFailure(outcome.failure);
+    return outcome.settled !== "unknown";
+  }
+
+  async #recoverAttempt(record: StoredOrder): Promise<PaymentAttempt | undefined> {
+    const recoveryFor = this.#runtime.facilitator.recoveryFor;
+    const price = record.order.price;
+    if (
+      recoveryFor === undefined ||
+      record.payment === null ||
+      record.payTo === null ||
+      price === null
+    )
+      return undefined;
+    // The payment was checked after the order existed, so its transfer is later still.
+    const recovery = await recoveryFor.call(
+      this.#runtime.facilitator,
+      {
+        paymentRef: record.paymentRef,
+        payment: record.payment,
+        payTo: record.payTo,
+        amount: price.amount,
+        currency: price.currency,
+      },
+      record.order.timestamps.createdAt,
+    );
+    if (recovery === null || record.paidBy?.toLowerCase() !== recovery.payer.toLowerCase())
+      return undefined;
+    const fingerprint = authorizationFingerprint(recovery);
+    if (await this.#authorizationIsAmbiguous(record.order.id, recovery, fingerprint))
+      return undefined;
+    const claim = await this.#runtime.store.claimPayment(fingerprint, record.order.id);
+    if (!claim.claimed) return undefined;
+    const recovered = await this.#runtime.store.withOrder(
+      record.order.id,
+      (found): OrderChange<PaymentAttempt | undefined> => {
+        if (found.paymentAttempt !== undefined) return { result: found.paymentAttempt };
+        if (
+          found.payment !== record.payment ||
+          (found.order.payment !== "settling" && found.order.payment !== "outcome_unknown")
+        )
+          return { result: undefined };
+        const attempt: PaymentAttempt = {
+          id: this.#runtime.ids("pay"),
+          startedAt: found.order.timestamps.settleStartedAt ?? found.order.timestamps.createdAt,
+          recovery: { ...recovery },
+          completion: null,
+        };
+        return {
+          save: {
+            ...found,
+            paymentRecovery: recovery,
+            paymentFingerprint: fingerprint,
+            paymentAttempt: attempt,
+          },
+          alongside: [{ kind: "retain_payment", fingerprint, orderId: found.order.id }],
+          result: attempt,
+        };
+      },
+    );
+    return recovered.found ? recovered.result : undefined;
+  }
+
+  async #authorizationIsAmbiguous(
+    orderId: string,
+    recovery: PaymentRecoveryContext,
+    fingerprint: string,
+  ): Promise<boolean> {
+    // Old accepted claims were pruned by age. Check saved authorizations before attributing their money.
+    let afterId = "";
+    for (;;) {
+      const records = await this.#runtime.store.paymentOrders(afterId, 100);
+      if (records.length === 0) return false;
+      for (const record of records) {
+        afterId = record.order.id;
+        if (record.order.id === orderId || record.payment === null) continue;
+        if (record.paymentFingerprint === fingerprint) return true;
+        try {
+          const payload = decodePaymentSignatureHeader(record.payment);
+          if (
+            payload.accepted?.network.toLowerCase() !== recovery.network.toLowerCase() ||
+            payload.accepted?.asset.toLowerCase() !== recovery.asset.toLowerCase()
+          )
+            continue;
+          if (paymentFingerprint(payload, recovery) === fingerprint) return true;
+        } catch {
+          /* An unreadable saved authorization supplies no matching evidence. */
+        }
+      }
+    }
   }
 
   /**
@@ -917,7 +1235,17 @@ export class OrderRunner {
     // instant the order carries. Stamping the moment somebody asked would be a
     // claim about a payment nobody made then.
     const moneyMovedNow = before.payment !== "settled" && record.order.payment === "settled";
-    const paidAt = moneyMovedNow ? at : (record.order.timestamps.paidAt ?? at);
+    const completion = record.paymentAttempt?.completion;
+    const paidAt =
+      completion?.settled && completion.executedAt !== null
+        ? completion.executedAt
+        : moneyMovedNow
+          ? at
+          : (record.order.timestamps.paidAt ?? at);
+    const transaction =
+      completion?.settled && completion.executedAt !== null
+        ? completion.transaction
+        : record.settlement?.transaction;
 
     // The merchant comes from the order, not through the card: a card can be
     // republished or taken off sale, and a receipt names who made the sale
@@ -937,9 +1265,7 @@ export class OrderRunner {
       outcome: receiptOutcomeOf(record.order),
       // An empty transaction is left off: the contract refuses one, and a
       // single refused receipt would break the merchant's whole list.
-      ...(record.settlement === null || record.settlement.transaction.trim() === ""
-        ? {}
-        : { transaction: record.settlement.transaction }),
+      ...(transaction === undefined || transaction.trim() === "" ? {} : { transaction }),
       test: record.order.test,
     };
   }
@@ -957,26 +1283,22 @@ export class OrderRunner {
     const common = { order_id: record.order.id, at: asTimestamp(at) } as const;
 
     switch (event) {
-      case "order.refund_due": {
-        // The sum owed is the sum that was taken, with no fallback to the
-        // card's list price: a debt is money that actually moved, and a guess
-        // would be the wrong number in the one message whose purpose is naming
-        // it.
+      case "order.unfulfilled": {
+        // The event names the original sale price, never a refund amount or
+        // the card's current list price.
         const price = record.order.price;
         if (price === null) {
-          throw new Error(
-            `a refund fell due on ${record.order.id} and the order carries no price, so there is no sum to name`,
-          );
+          throw new Error(`the paid unfulfilled order ${record.order.id} carries no sale price`);
         }
         return {
           kind: "order_event",
           id: this.#runtime.ids("env"),
           sent_at: asTimestamp(at),
           payload: {
-            type: "order.refund_due",
+            type: "order.unfulfilled",
             ...common,
             price: { amount: price.amount, currency: price.currency },
-            reason: refundReasonOf(record.order),
+            reason: unfulfilledReasonOf(record.order),
           },
         };
       }
@@ -1045,6 +1367,8 @@ export function agentOrderStatusOf(
     order_id: record.order.id,
     status_url: statusUrlOf(config, record.order.id),
     status,
+    payment_status: paymentStatusOf(record.order),
+    ...merchantClosureOf(record.order),
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.
     price: salePriceOf(record),
@@ -1075,7 +1399,7 @@ export function agentOrderStatusOf(
     seller,
     // The merchant's own code and sentence for why they would not sell, copied
     // and not rephrased. The condition is the closure, not the status word: one
-    // refusal reaches the agent as `rejected`, `declined` or `refund_due`
+    // refusal reaches the agent as `rejected`, `declined` or `unfulfilled`
     // depending on when it arrived, and the merchant's sentence belongs in all
     // three. Nothing else fills it; an ending this gateway decided is said in
     // its own voice under `reason`.
@@ -1086,20 +1410,39 @@ export function agentOrderStatusOf(
   };
 }
 
+export function paymentStatusOf(order: Order): PaymentStatus {
+  if (order.payment === "settled") return "paid";
+  return order.payment === "settling" || order.payment === "outcome_unknown"
+    ? "unresolved"
+    : "not_paid";
+}
+
+export function merchantClosureOf(order: Order): {
+  readonly merchant_closure?: { readonly closed_at: string; readonly message?: string };
+} {
+  const closed = order.merchantClosure;
+  return closed === undefined
+    ? {}
+    : {
+        merchant_closure: {
+          closed_at: asTimestamp(closed.at),
+          ...(closed.message === undefined ? {} : { message: closed.message }),
+        },
+      };
+}
+
 /**
- * Why an order ended, where this gateway and not the merchant decided it, or
- * why a refund is owed on it: a code to branch on and a sentence saying what to
- * do next. Each sentence about an ending says that nothing was charged where
- * that is so, since that is the first thing an agent holding a closed purchase
- * needs to know; each about a debt says that nothing here will record the
- * refund, since `refund_due` alone reads as one on its way.
+ * Why an order stopped: a code to branch on and a sentence explaining the
+ * observed payment and fulfillment facts. Agreements remain with the parties.
  */
 function reasonOf(order: Order): {
-  reason?: { code: EndingReason | RefundDueReason; message: string };
+  reason?: { code: EndingReason | UnfulfilledReason; message: string };
 } {
-  if (outcomeFor(order) === "refund_due") {
-    const owed = refundReasonOf(order);
-    return { reason: { code: owed, message: REFUND_WORDS[owed](order) } };
+  // A payment after closure is the merchant's news; the agent reads that order
+  // as closed.
+  const unfulfilled = outcomeFor(order) === "unfulfilled" ? unfulfilledReasonOf(order) : null;
+  if (unfulfilled !== null && unfulfilled !== "paid_after_closure") {
+    return { reason: { code: unfulfilled, message: UNFULFILLED_WORDS[unfulfilled](order) } };
   }
   const code = endingReasonFor(order);
   if (code === null) {
@@ -1108,23 +1451,19 @@ function reasonOf(order: Order): {
   return { reason: { code, message: REASON_WORDS[code](order) } };
 }
 
-/** What a buyer owed a refund cannot learn here: when it has been paid back. */
-const UNRECORDED =
-  "Agentify cannot record a refund yet, so this status does not change once you are paid back: your wallet is where a refund shows.";
-
-const REFUND_WORDS: Readonly<Record<RefundDueReason, (order: Order) => string>> = {
+const UNFULFILLED_WORDS: Readonly<
+  Record<Exclude<UnfulfilledReason, "paid_after_closure">, (order: Order) => string>
+> = {
   refused: () =>
-    `The seller refused this order after it was paid, in their own words under refusal, so they owe you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
-  // The event's word folds in a charge reported after we closed the purchase
-  // on its silence; the sentence must not tell that buyer their goods were late.
+    "The seller refused this paid order, in their own words under refusal. Agentify has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   deadline_passed: (order) =>
     order.closure?.cause === "payment_outcome_unknown"
-      ? `This purchase was closed while its payment went unanswered, before the order was sent to the seller, and the payment was later reported to have gone through. The seller owes you the whole price back from their own wallet, unless goods they deliver anyway appear here first. ${UNRECORDED}`
+      ? "The original payment was confirmed after Agentify stopped waiting for its result. Agentify did not dispatch this order and has no delivery recorded. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
       : order.mode.parcel === true
-        ? `This parcel was paid for and not handed to a carrier in time, so the seller owes you the whole price back from their own wallet, unless a shipment they still record appears here first. ${UNRECORDED}`
-        : `This order was paid and its time ran out before the goods came, so the seller owes you the whole price back from their own wallet, unless goods they still deliver appear here first. ${UNRECORDED}`,
+        ? "This paid parcel has no shipment recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
+        : "This paid order has no delivery recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
   merchant_left: () =>
-    `The seller stopped selling through Agentify after this order was paid and before its goods came, so they owe you the whole price back from their own wallet. ${UNRECORDED}`,
+    "The seller stopped selling through Agentify before this paid order was fulfilled. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
 };
 
 /**
@@ -1145,6 +1484,10 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
     "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
     "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
+  merchant_closed: (order) =>
+    paidAfterClosure(order)
+      ? "The payment for this order completed after the seller had closed fulfillment through Agentify, so the seller's words under merchant_closure were written before it arrived. Agentify has no delivery recorded and has not verified any refund or agreement. Contact the seller."
+      : "This order is paid, and the seller closed fulfillment through Agentify with no delivery recorded. The words under merchant_closure are the seller's own; Agentify has not verified any refund or agreement. Contact the seller.",
   merchant_timed_out: (order) =>
     order.heldFulfillment
       ? "The seller's goods arrived after the purchase had closed; nothing was charged. Pay this same order again, from the same wallet, to collect them."
@@ -1215,18 +1558,20 @@ function shipByOf(order: Order): string | null {
 }
 
 /**
- * Why a refund is owed, in the three words the merchant's event carries. Every
- * closure that can reach a debt is named rather than left to a default, because
- * the reason a refund is filed under is what somebody reconciles against. A
+ * Why paid fulfillment stopped, in the words the merchant's event carries. A
  * charge that reported in after we gave up on it is folded into
  * `deadline_passed`, meaning our deadline on the charge and not his on the
  * goods, because the vocabulary has no word for our side losing track of the
- * money.
+ * money. A payment that completed after the merchant closed fulfillment is
+ * `paid_after_closure`, whatever had happened before.
  */
-function refundReasonOf(order: Order): RefundDueReason {
+function unfulfilledReasonOf(order: Order): UnfulfilledReason {
+  if (paidAfterClosure(order)) {
+    return "paid_after_closure";
+  }
   const closure = order.closure;
   if (closure === null) {
-    throw new Error(`a refund fell due on ${order.id} with nothing recording why`);
+    throw new Error(`the paid order ${order.id} is unfulfilled with nothing recording why`);
   }
 
   switch (closure.cause) {
@@ -1242,7 +1587,7 @@ function refundReasonOf(order: Order): RefundDueReason {
     case "payment_not_verified":
     case "payment_not_settled":
       throw new Error(
-        `a refund fell due on ${order.id} closed as ${closure.cause}, which takes no money and so owes none`,
+        `the order ${order.id} is marked paid and unfulfilled after ${closure.cause}, which takes no payment`,
       );
     default:
       return assertNever(closure, "closure cause");
@@ -1255,8 +1600,7 @@ function refundReasonOf(order: Order): RefundDueReason {
  * a successful `already_delivered`, and goods riding on a repeat would otherwise
  * overwrite what the agent was already handed with nothing to show it. Goods on
  * a call the machine answered with a failure for the merchant, such as on a
- * closed order or one whose refund is paid out, are not kept either, or a
- * refunded buyer's order would carry goods nobody gave him.
+ * closed order, are not kept either: they were never released to the buyer.
  */
 function goodsToKeep(
   found: StoredOrder,

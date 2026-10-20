@@ -11,7 +11,7 @@
  * A reminder only says a clock ran out; the order machine decides what it
  * means. A reminder whose handler throws is redelivered by the queue a bounded
  * number of times, because a reminder is the only thing that declares an
- * order overdue, and a dropped one leaves a paid order nobody refunds.
+ * order overdue, and a dropped one conceals unfulfilled paid orders.
  */
 
 import type { DeadlineKind } from "@agentify/core";
@@ -86,7 +86,7 @@ export interface Queue {
    * Whether this merchant's stream still holds an undrawn order envelope for
    * this order, a delayed redelivery included. The sweep asks before sending
    * an order again, because every hand-over counts towards the attempt cap and
-   * reaching it means a refund.
+   * reaching it stops delivery attempts.
    *
    * An envelope already drawn looks the same as one never written; that gap is
    * covered by `sweepDispatchGraceMs`, not by this.
@@ -111,6 +111,9 @@ export interface Queue {
    * here.
    */
   everyDay(name: string, work: () => Promise<unknown>): Promise<void>;
+
+  /** Rechecks persisted payment attempts; duplicate jobs must be harmless. */
+  everyMinute(name: string, work: () => Promise<unknown>): Promise<void>;
 
   start(): Promise<void>;
   stop(): Promise<void>;

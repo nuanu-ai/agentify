@@ -23,8 +23,8 @@ written in; the rest are in English.
 | [0019](0019-non-custodial-payout-wallet.md) | Agentify never holds the money: a payment goes to the split of the merchant's wallet in force, and replacing that wallet on the live channel waits forty-eight hours after every account of the merchant is told. |
 | [0037](0037-every-payment-goes-to-the-merchants-split.md) | Every payment goes to the merchant's own split, a contract nobody owns, which pays 99.9% to the merchant's wallet and 0.1% to Agentify whenever somebody pays it out. |
 | [0038](0038-the-registry-of-payout-splits-is-never-rewritten.md) | Every split ever named as a payment address is recorded with all its parameters, and the record is never rewritten, so the money paid into a split can always be paid out. |
-| [0028](0028-late-goods-settle-a-refund-owed.md) | Goods delivered late settle a refund owed until a refund is recorded; once it is, the order is `refunded` and final. |
-| [0027](0027-recording-a-silent-charge.md) | A charge nobody heard back from reads `payment_unresolved`, and what became of it is recorded by an operator's command, never asked of the facilitator again. |
+| [0028](0028-late-goods-settle-a-refund-owed.md) | The merchant closes Agentify's fulfillment of an order still open, through the SDK or the dashboard; Agentify records the action and the merchant's words as theirs, keeps the original payment facts, tells the merchant of a payment that completes after closure, and confirms no refund or agreement. |
+| [0027](0027-recording-a-silent-charge.md) | A charge nobody heard back from reads `payment_unresolved`; a late facilitator answer, or chain evidence Agentify searches for in the background with no promise of when, resolves it without submitting another charge. |
 | [0020](0020-environment-derived-from-the-chain.md) | Whether money is real follows from the payment network alone: Base Sepolia is a test deployment, Base a live one, and any other chain stops the process. |
 
 ### What the agent sees
@@ -55,7 +55,7 @@ written in; the rest are in English.
 | Decision | What it decides |
 | --- | --- |
 | [0032](0032-a-buyers-address-passes-through.md) | A buyer's address passes through Agentify to the merchant and is erased once the merchant holds it or the order ends without them. |
-| [0033](0033-a-shipped-order-ends-at-the-carrier.md) | A shipped order ends at the carrier: the merchant records the shipment, the agent is told `shipped`, and parcels sell on the test channel only for now. |
+| [0033](0033-a-shipped-order-ends-at-the-carrier.md) | A shipped order ends at the carrier: the merchant records the shipment, the agent is told `shipped`, and parcels sell on the test channel only until the product owner admits them to the live one. |
 
 ### Sign-in and the one origin
 
@@ -110,8 +110,9 @@ it subscribes to the gateway and answers paid orders and price questions. For
 a WooCommerce shop, a connector inside Agentify plays its part.
 
 An *operator* is a person who runs a channel: they approve a merchant for live
-sales, record what became of a charge or a refund, and read `/admin`. On the
-site an operator is an account carrying the operator flag (ADR-0026).
+sales, manage administrative access and read `/admin`; they do not declare
+payment or refund outcomes. On the site an operator is an account carrying
+the operator flag (ADR-0026).
 
 The *pilot* is the controlled launch before the first merchant Agentify does
 not control. Some rules hold only during it, and the decisions that carry them

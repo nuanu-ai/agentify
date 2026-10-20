@@ -84,14 +84,14 @@ const paymentAgainst = (challenge: string, from: string, nonce: string): string 
     accepted,
     ...(offered.extensions === undefined ? {} : { extensions: offered.extensions }),
     payload: {
-      signature: `0xsigned${nonce.slice(2)}`,
+      signature: `0x${"ab".repeat(65)}`,
       authorization: {
         from,
         to: accepted.payTo,
         value: accepted.amount,
         validAfter: "0",
-        validBefore: String(Math.floor(Date.now() / 1_000) + 3_600),
-        nonce,
+        validBefore: String(Math.floor(Date.now() / 1_000) + accepted.maxTimeoutSeconds),
+        nonce: `0x${nonce.slice(2).padStart(64, "0")}`,
       },
     },
   });
@@ -287,6 +287,82 @@ describe("the order's identifier on the payment side", () => {
 });
 
 describe("a payment reference", () => {
+  it.each([false, true])(
+    "answers a payment for an order its merchant closed unpaid as over and uncharged, revealing nothing of the closure (closure races verification=%s)",
+    async (racing) => {
+      const { harnessed, served } = await started();
+      const itemId = await publish(harnessed, asyncCard);
+      const challenge = await challengeFor(served, itemId);
+      const [opened] = await harnessed.store.orders(harnessed.merchant.id);
+      if (opened === undefined) throw new Error("no order was priced");
+      const release = racing ? harnessed.facilitator.holdVerification() : () => undefined;
+      let trying: ReturnType<typeof present> | undefined;
+      try {
+        if (racing) {
+          trying = present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02"));
+          await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
+        }
+        expect(
+          await harnessed.gateway.closeOrder(harnessed.merchant.id, opened.order.id, {
+            message: "Private merchant explanation",
+          }),
+        ).toEqual({ ok: true });
+        release();
+        const answered = await (trying ??
+          present(served, itemId, paymentAgainst(challenge, STRANGER, "0x02")));
+        expect(answered.status).toBe(409);
+        expect(answered.body).toMatchObject({
+          error: { code: "payment_not_taken", retryable: false },
+        });
+        expect(JSON.stringify(answered.body)).toContain("this order is over");
+        expect(JSON.stringify(answered.body)).toContain("Nothing was charged");
+        expectNoOrderIn(answered.body, opened.order.id);
+        for (const privateWord of [
+          "merchant_closure",
+          "Private merchant explanation",
+          "fulfillment_closed",
+        ]) {
+          expect(JSON.stringify(answered.body)).not.toContain(privateWord);
+        }
+        // Answered before the payment is checked, unless it was already
+        // being checked when the merchant closed.
+        expect(harnessed.facilitator.verifies).toHaveLength(racing ? 1 : 0);
+        expect(harnessed.facilitator.settles).toEqual([]);
+        expect((await harnessed.store.orderById(opened.order.id))?.paidBy).toBeNull();
+      } finally {
+        release();
+        await trying;
+      }
+    },
+  );
+
+  it("lets the recorded payer recover a closed paid order with a fresh verified authorization and no new charge", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const bought = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x01"));
+    expect(bought.status).toBe(200);
+    const orderId = (bought.body as { order_id: string }).order_id;
+    expect(
+      await harnessed.gateway.closeOrder(harnessed.merchant.id, orderId, {
+        message: "Our agreement",
+      }),
+    ).toEqual({ ok: true });
+    const recovered = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
+    expect(recovered.status).toBe(409);
+    expect(recovered.body).toMatchObject({
+      order_id: orderId,
+      status: "fulfillment_closed",
+      payment_status: "paid",
+      merchant_closure: { message: "Our agreement" },
+    });
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+    const stranger = await present(served, itemId, paymentAgainst(challenge, STRANGER, "0x03"));
+    expectNoOrderIn(stranger.body, orderId);
+    expect(JSON.stringify(stranger.body)).not.toContain("Our agreement");
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+
   it("binds a payment to the order whose challenge carried it", async () => {
     // Two orders for one card are open at once, and the payment is for the
     // older one: a gateway binding to the newest open order would pay the
@@ -381,7 +457,7 @@ describe("a payment reference", () => {
       "owing a refund",
       asyncCard,
       { refused: { code: "out_of_stock", message: "gone" } },
-      "refund_due",
+      "unfulfilled",
     ],
   ] as const)(
     "of a paid order %s is refused to another payer and to a payment that is not one, in words that name no order",
@@ -422,7 +498,7 @@ describe("a payment reference", () => {
 });
 
 describe("a payer whose answer was lost", () => {
-  it("is not told nothing was charged when it presents a used payment again, and a fresh one returns the order uncharged", async () => {
+  it("cannot collect goods with the public used authorization, and a fresh verified payment returns them uncharged", async () => {
     // Without the identifier in the challenge, paying again is how a payer
     // gets back to an order whose answer it lost.
     const { harnessed, served } = await started();
@@ -441,16 +517,22 @@ describe("a payer whose answer was lost", () => {
     const bought = await present(served, itemId, payment);
     expect(bought.status).toBe(200);
     const orderId = (bought.body as { order_id: string }).order_id;
+    await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+      access_code: "SESAME",
+    });
 
     const again = await present(served, itemId, payment);
 
     expect(again.status).toBe(409);
+    expectNoOrderIn(again.body, orderId);
+    expect(JSON.stringify(again.body)).not.toContain("SESAME");
     expect((again.body as { error: { message: string } }).error.message).not.toMatch(
       /nothing was charged/i,
     );
     const fresh = await present(served, itemId, paymentAgainst(challenge, BUYER, "0x02"));
     expect(fresh.status).toBe(200);
     expect((fresh.body as { order_id: string }).order_id).toBe(orderId);
+    expect(fresh.body).toMatchObject({ delivered: { access_code: "SESAME" } });
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });

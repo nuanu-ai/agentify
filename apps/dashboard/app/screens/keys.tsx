@@ -4,7 +4,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import type { KeysView, NewKeyView } from "../../src/keys.js";
 import { Ident } from "../components/copy.js";
-import { Cell, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import { Cell, Fact, Facts, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
@@ -90,7 +90,11 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
                 </Cell>
               ) : null}
               <RowMore summary="Created" of={row.label}>
-                Created <Moment at={row.created} />
+                <Facts>
+                  <Fact label="Created">
+                    <Moment at={row.created} />
+                  </Fact>
+                </Facts>
               </RowMore>
             </Row>
           ))}

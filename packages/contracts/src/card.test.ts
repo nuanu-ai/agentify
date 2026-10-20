@@ -881,7 +881,16 @@ describe("a card as a discovery channel reads it", () => {
   });
 
   /** The fields every order document carries, whatever became of the order. */
-  const orderFields = ["delivered", "order_id", "price", "seller", "status", "status_url", "test"];
+  const orderFields = [
+    "delivered",
+    "order_id",
+    "payment_status",
+    "price",
+    "seller",
+    "status",
+    "status_url",
+    "test",
+  ];
 
   it("publishes as its output the order a purchase answers, with the goods under delivered", () => {
     // A purchase answers with the order document, not the bare goods; an
@@ -898,6 +907,7 @@ describe("a card as a discovery channel reads it", () => {
     const example = bazaarDeclarationOf(parsed, at).output.example as Record<string, unknown>;
 
     expect(Object.keys(example).sort()).toStrictEqual(orderFields);
+    expect(example.payment_status).toBe("paid");
     expect(example.status).toBe("delivered");
     expect(example.delivered).toStrictEqual({
       access_url: "string",
@@ -925,6 +935,7 @@ describe("a card as a discovery channel reads it", () => {
     const example = bazaarDeclarationOf(later, at).output.example as Record<string, unknown>;
 
     expect(Object.keys(example).sort()).toStrictEqual(orderFields);
+    expect(example.payment_status).toBe("paid");
     expect(example.status).toBe("in_progress");
     expect(example.delivered).toBeNull();
   });
@@ -978,6 +989,7 @@ describe("a parcel's listing in a discovery catalog", () => {
     expect(Object.keys(example).sort()).toStrictEqual([
       "delivered",
       "order_id",
+      "payment_status",
       "price",
       "seller",
       "ship_by",
@@ -986,6 +998,7 @@ describe("a parcel's listing in a discovery catalog", () => {
       "status_url",
       "test",
     ]);
+    expect(example.payment_status).toBe("paid");
     expect(example.status).toBe("in_progress");
     expect(example.delivered).toBeNull();
     expect(example.shipment).toBeNull();

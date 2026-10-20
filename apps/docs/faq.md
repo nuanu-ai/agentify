@@ -68,14 +68,23 @@ connected](/#after-you-are-connected)).
 
 ### Can I leave altogether?
 
-Leaving is designed, and nothing on our surface does it yet; during the pilot it
-is arranged with us. The cards come out of the catalogue, the orders nobody
-paid for close, and for anything paid for and not delivered you owe the buyer
-the whole price ([If the buyer did not get the
-goods](/money#if-the-buyer-did-not-get-the-goods)). What is in your payout
-contract can be paid out at any time, only to your wallet and to us. With a
-WooCommerce shop connected, the shop's keys stay valid until you revoke them in
-WooCommerce → Settings → Advanced → REST API.
+Not yet, and nobody at Agentify arranges it for you. You can pause all selling
+and revoke your API keys in the dashboard, but neither ends an order already
+taken or deletes your account. Before you switch off the integration those
+orders need, deliver them, or close fulfillment of each on Orders with an
+explanation for the buyer. A connected shop's keys stay valid until you revoke
+them in WooCommerce → Settings → Advanced → REST API, and what is in your
+payout contract can be paid out at any time, after a pause too ([If the buyer
+did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
+
+### A buyer paid and did not get the goods — what happens about a refund?
+
+Agentify records the order as unfulfilled, and you decide what to do: deliver
+late, or close fulfillment with an explanation for the buyer. A refund, if you
+make one, is yours to send, in whatever amount and form you agree, and
+Agentify neither sends nor checks it. Nothing Agentify gives you names the
+buyer or their wallet, so a refund is possible only with a buyer who reaches
+you ([If the buyer did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
 
 ### The buyer is unhappy — who settles the dispute?
 
