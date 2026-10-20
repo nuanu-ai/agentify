@@ -18,7 +18,7 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
   forbidden_redirect: {
     headline: "The site redirected the scanner where it does not go",
     words:
-      "The scanner follows a redirect only to a public web address on the usual ports, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect goes outside those limits, for example to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
+      "The scanner follows a redirect only to an address it would accept to scan on its own, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect breaks one of those rules, for example by leading to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
   },
   certificate_invalid: {
     headline: "The scanner did not accept the site's certificate",
