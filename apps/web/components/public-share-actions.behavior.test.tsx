@@ -70,7 +70,9 @@ describe("publishing and revoking a scan's public link", () => {
     expect(screen.getByRole("button", { name: "Revoke" })).toBeTruthy();
   });
 
-  it("passes on the site's own refusal to publish in its own words", async () => {
+  it("passes on the site's own refusal to publish in its own words, and says a reload shows the link", async () => {
+    // A press again after a lost publish meets "a link already exists", which
+    // carries no link; the page cannot show it, so it says where to see it.
     siteWith({
       existing: false,
       pressed: async () =>
@@ -88,7 +90,30 @@ describe("publishing and revoking a scan's public link", () => {
 
     await userEvent.click(copy);
 
-    expect(await screen.findByText("A public link already exists.")).toBeTruthy();
+    const told = await screen.findByText(/A public link already exists\./);
+    expect(told.textContent).toMatch(/reload/i);
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
+  });
+
+  it("says a reload shows the link's state when a revoke is refused as not found", async () => {
+    // A press again after a lost revoke meets "not found" while the page still
+    // shows the link as live.
+    siteWith({
+      existing: true,
+      pressed: async () =>
+        json(404, {
+          error: {
+            code: "share_not_found",
+            message: "The public link was not found.",
+            retryable: false,
+            request_id: "019f5b6a-4b9f-7000-8000-0000000000de",
+          },
+        }),
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+
+    const told = await screen.findByText(/The public link was not found\./);
+    expect(told.textContent).toMatch(/reload/i);
   });
 });
