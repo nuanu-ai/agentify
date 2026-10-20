@@ -3,8 +3,8 @@
 2026-10-19. Product direction and implementation inventory.
 
 Agentify has no staffed service that watches purchases, reconciles payments or
-contacts merchants about overdue delivery. The product owner's explicit human
-approval is admission of a merchant to sales for real money. Administrative
+contacts merchants about overdue delivery. The operator's explicit approval
+is admission of a merchant to sales for real money. Administrative
 access is a permission on an account, not a promise of an employee handling
 orders. Maintenance tools can exist without being a required step in a sale.
 
@@ -12,7 +12,7 @@ orders. Maintenance tools can exist without being a required step in a sale.
 
 | Operation | Who acts | What establishes the result | Current implementation |
 | --- | --- | --- | --- |
-| Admission to real sales | An administrator | Explicit approval of an identified merchant | Admin screen linked from `/admin`; the same idempotent grant is available at the terminal |
+| Admission to real sales | The operator | Explicit approval of an identified merchant | Admin screen linked from `/admin`; the same idempotent grant is available at the terminal |
 | Registration, keys, seller details, pause and resume | The merchant | Their authenticated account and existing selling checks | Dashboard and relevant SDK operations |
 | Payout | The merchant or anyone sending the immutable split's payout | The contract's fixed recipients; wallet confirmation authorizes the transaction | Merchant payout screen; no Agentify signer |
 | Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Quickstart step 6 runs an x402 buyer with the merchant's own test wallet and Base Sepolia faucet funds |
@@ -50,7 +50,8 @@ The SDK's bound `order.close()` method and the Orders page in the Agentify
 dashboard call the same merchant-authenticated action. Its optional `message`
 is preserved as written and shown as the merchant's explanation to the buyer.
 The API accepts no financial evidence or refund amount. Repetition preserves
-the first recorded time and explanation. A lost response can be checked by
+the first recorded time and explanation, unless a payment completed after the
+closure, when the next closure records its own. A lost response can be checked by
 reading the order or retried safely; it does not establish failure.
 
 The action stops future dispatch, redelivery and release of held goods through
@@ -89,6 +90,9 @@ invented. The gateway issues receipts for recorded delivery or shipment, not
 for closure or a claimed refund.
 
 ### Closure acceptance evidence
+
+Recorded on 2026-10-19, before the corrections of 2026-10-20; the counts below
+are of that day.
 
 The focused core, gateway, contracts and SDK checks cover immutable closure,
 concurrent delivery, queued handovers, held goods, pending payments, late
@@ -130,7 +134,7 @@ shop operations were not exercised.
 
 The admin screen finds a merchant through the account's normalized email,
 shows their name and identifier, and asks for explicit confirmation before
-admission to real sales. It requires the account's administrative flag on every
+admission to real sales. It requires the account's operator flag on every
 request. It grants nothing on a test channel, creates no merchant, and changes
 neither orders nor wallet balances. Other publication and purchase guards
 remain in force, including the live restriction on WooCommerce and parcels.
@@ -166,17 +170,21 @@ settlement is submitted, so a restart does not submit again.
 With RPC configured, the existing queue checks overdue unanswered attempts
 every minute, including orders the merchant closed. Pending and unfamiliar
 facilitator failures remain unknown. A settlement can only land while its
-authorization is valid, which is under a minute from the attempt's start to
-its `validBefore`. Recovery therefore finds the first block at or after the
-attempt's start by bisecting block timestamps, reads the receipts of the few
-blocks up to the first one past `validBefore`, and looks there for the exact
+authorization is valid, so the search covers about two minutes of blocks: from
+thirty seconds before the payment was verified, the allowance for clock
+differences, to its `validBefore`. The start is the verification and not the
+settlement attempt, because whoever holds a synchronous authorization can
+submit it between verification and the charge. Recovery finds the first block
+at or after that start by bisecting block timestamps, reads the receipts of
+the blocks up to the first one past `validBefore`, and looks there for the exact
 adjacent USDC `AuthorizationUsed` and `Transfer` events. It does not depend on
 `eth_getLogs`, which the public mainnet endpoint refuses. A transaction hash is
 only a lookup hint. Cancellation or a finalized unused expiry establishes
 nonpayment; unavailable or conflicting evidence does not.
 
 Old unresolved records are reconstructed from their saved payment and order,
-never today's merchant wallet or payment settings. Ambiguous ownership, an
+never today's merchant wallet or payment settings, and searched from the
+order's creation. Ambiguous ownership, an
 unknown payer, unsupported methods or missing terms stay unresolved, and no
 unsupported record is silently reclassified as unpaid.
 
