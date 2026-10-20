@@ -5456,6 +5456,59 @@ describe("what the dashboard writes down about entry", () => {
   });
 });
 
+describe("the orders, when they could not be read", () => {
+  /** The page's own part: the sections beside it are left out. */
+  const mainOf = (html: string): string => /<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? "";
+  const waysOnIn = (html: string): readonly string[] =>
+    [...mainOf(html).matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((link) =>
+      (link[1] ?? "").replaceAll("&amp;", "&"),
+    );
+  const quietly = async <T>(during: () => Promise<T>): Promise<T> => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      return await during();
+    } finally {
+      error.mockRestore();
+    }
+  };
+
+  it("says a failed read changed nothing, beside the dashboard's sections, and offers the same list again", async () => {
+    // A read changes nothing, so the merchant has nothing to check before
+    // going on, and the way on is the list they asked for.
+    const { browser } = await started({
+      client: (real) => ({
+        ...real,
+        orders: async () => {
+          throw new Error("the orders could not be read");
+        },
+      }),
+    });
+    await browser.signIn();
+
+    const failed = await quietly(async () => await browser.get("/orders?show=open"));
+
+    expect(failed.status).toBe(500);
+    expect(failed.html).toContain('aria-label="Dashboard sections"');
+    expect(waysOnIn(failed.html)).toStrictEqual(["/orders?show=open"]);
+    expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+    expect(readable(failed.html)).not.toMatch(/went through/i);
+  });
+
+  it("says the same of a read Agentify did not answer", async () => {
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await quietly(async () => await browser.get("/orders?q=vpn"));
+
+    expect(failed.status).toBe(504);
+    expect(failed.html).toContain('aria-label="Dashboard sections"');
+    expect(waysOnIn(failed.html)).toStrictEqual(["/orders?q=vpn"]);
+    expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+    expect(readable(failed.html)).not.toMatch(/may or may not have been done/i);
+  });
+});
+
 describe("a press that fails in a way nobody planned for", () => {
   const said = async (during: () => Promise<void>): Promise<string> => {
     const lines: string[] = [];
@@ -5561,6 +5614,7 @@ describe("a press that fails in a way nobody planned for", () => {
           { payout_wallet: "0x1111111111111111111111111111111111111111" },
         ],
         ["/sign-out", {}],
+        ["/orders", { order_id: `ord_${"0".repeat(32)}` }],
       ] as const) {
         const pressed = await browser.post(path, form);
 
