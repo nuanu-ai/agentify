@@ -64,6 +64,7 @@ const RULED_OUT: ProductInspection = {
   ok: false,
   why: "This product cannot be imported: it is out of stock.",
   again: false,
+  saidNo: true,
 };
 const MERCHANT_EMAIL = "merchant@example.com";
 
@@ -1187,7 +1188,9 @@ describe("a parcel's price question", () => {
       now: () => new Date(NOW),
       inspectProduct: async () => theTote,
       shippingRates: async (_connection, productId, where) =>
-        productId === "28" ? rates(where) : { ok: false, why: "another product", again: false },
+        productId === "28"
+          ? rates(where)
+          : { ok: false, why: "another product", again: false, saidNo: true },
       ...(quoteWithinMs === undefined ? {} : { quoteWithinMs }),
     });
     return answer;
@@ -1237,7 +1240,7 @@ describe("a parcel's price question", () => {
     // (below).
     for (const read of [
       { ok: true as const, rates: [] },
-      { ok: false as const, why: "The shop refused the place.", again: false },
+      { ok: false as const, why: "The shop refused the place.", again: false, saidNo: true },
     ]) {
       const shops = memoryWooShops();
 

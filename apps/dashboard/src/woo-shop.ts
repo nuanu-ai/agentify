@@ -83,14 +83,20 @@ interface EligibleParcel {
 
 export type EligibleWooProduct = EligibleDownload | EligibleParcel;
 
+/**
+ * Why the shop's product, or its rate to a place, cannot be sold now. `again`
+ * says the shop failed to answer and may answer in a moment. `saidNo` says the
+ * shop's own readable answer rules the sale out here; where it is false the
+ * shop said nothing that could be read or trusted, which is not to be told as
+ * the seller's no.
+ */
+type NotSellable =
+  | { readonly ok: false; readonly why: string; readonly again: true }
+  | { readonly ok: false; readonly why: string; readonly again: false; readonly saidNo: boolean };
+
 export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
-  /**
-   * `again` says the shop failed to answer rather than answered no: it has said
-   * nothing about the product, and what is told about the sale must not give a
-   * reason that is not true.
-   */
-  | { readonly ok: false; readonly why: string; readonly again: boolean };
+  | NotSellable;
 
 export interface WooOrderRead {
   readonly id: string;
@@ -147,7 +153,14 @@ export const inspectProductInTheShop = async (
 ): Promise<ProductInspection> => {
   const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
   if (productId === null) {
-    return { ok: false, why: "This card belongs to a different WooCommerce shop.", again: false };
+    // Settled here, so a card left over from a shop the merchant connected
+    // before is told as not for sale rather than as a price check unanswered.
+    return {
+      ok: false,
+      why: "This card belongs to a different WooCommerce shop.",
+      again: false,
+      saidNo: true,
+    };
   }
   const endpoints = [
     `/wp-json/wc/v3/products/${productId}`,
@@ -213,6 +226,7 @@ export const inspectProductInTheShop = async (
         ok: false,
         why: "The shop refused the protected product or its settings check.",
         again: false,
+        saidNo: false,
       };
     }
     if (indices.some((index) => documentOf(index) === undefined)) {
@@ -220,10 +234,24 @@ export const inspectProductInTheShop = async (
         ok: false,
         why: "The shop's protected product check did not return readable JSON.",
         again: false,
+        saidNo: false,
       };
     }
     return null;
   };
+  // WooCommerce's own word for a product deleted for good; a 404 without it
+  // can be a route or a proxy, which says nothing about the product.
+  if (
+    answers[0]?.response.status === 404 &&
+    codeOf(documentOf(0)) === "woocommerce_rest_product_invalid_id"
+  ) {
+    return {
+      ok: false,
+      why: `The shop has no product ${productId} any more.`,
+      again: false,
+      saidNo: true,
+    };
+  }
   const productUnanswered = unanswered([0]);
   if (productUnanswered !== null) return productUnanswered;
   const parsed = ProductSchema.safeParse(documentOf(0));
@@ -232,6 +260,7 @@ export const inspectProductInTheShop = async (
       ok: false,
       why: "The shop's protected product or settings document is incomplete.",
       again: false,
+      saidNo: false,
     };
   }
   const product = parsed.data;
@@ -245,6 +274,7 @@ export const inspectProductInTheShop = async (
         `The shop answered the check of product ${productId} with product ${product.id}'s` +
         " document, so nothing in it can be taken for this card.",
       again: false,
+      saidNo: false,
     };
   }
   // Neither virtual nor downloadable is a parcel; everything else is judged as
@@ -255,13 +285,19 @@ export const inspectProductInTheShop = async (
   if (settingsUnanswered !== null) return settingsUnanswered;
   const settings = endpoints.map((_, index) => SettingSchema.safeParse(documentOf(index)));
   if (settings[2]?.success !== true) {
-    return { ok: false, why: "The shop's tax calculation setting is unreadable.", again: false };
+    return {
+      ok: false,
+      why: "The shop's tax calculation setting is unreadable.",
+      again: false,
+      saidNo: false,
+    };
   }
   if (BEARING[kind].slice(1).some((index) => settings[index]?.success !== true)) {
     return {
       ok: false,
       why: "The shop's protected product or settings document is incomplete.",
       again: false,
+      saidNo: false,
     };
   }
   // As with the product, a cache that confused two settings' addresses would
@@ -278,6 +314,7 @@ export const inspectProductInTheShop = async (
         `The shop answered the check of its ${settingAsked(misnamed)} setting with another` +
         " setting's document, so nothing in it can be taken for this card.",
       again: false,
+      saidNo: false,
     };
   }
   const [
@@ -346,10 +383,18 @@ export const inspectProductInTheShop = async (
       ok: false,
       why: `This product cannot be imported: ${unsupported.join("; ")}.`,
       again: false,
+      saidNo: true,
     };
   }
   if (!TYPED_PRICE.test(product.price)) {
-    return { ok: false, why: "The protected product price is not a decimal amount.", again: false };
+    // A product with no price is not purchasable in WooCommerce, which is
+    // ruled out above, so this one's document is broken.
+    return {
+      ok: false,
+      why: "The protected product price is not a decimal amount.",
+      again: false,
+      saidNo: false,
+    };
   }
   // From here on the price is the one form the card, the quote, the order and
   // WooCommerce's totals all use; the fingerprint hashes it too, so "25" and
@@ -363,6 +408,7 @@ export const inspectProductInTheShop = async (
         " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
         " set; give the product a price in whole cents in WooCommerce.",
       again: false,
+      saidNo: true,
     };
   }
   if (kind === "parcel") {
@@ -405,11 +451,17 @@ export const inspectProductInTheShop = async (
       ok: false,
       why: "The product's one download does not name a readable address.",
       again: false,
+      saidNo: true,
     };
   }
   const raw = new URL(download.file);
   if (raw.origin !== new URL(keys.shopUrl).origin) {
-    return { ok: false, why: "The downloadable file is outside this shop's origin.", again: false };
+    return {
+      ok: false,
+      why: "The downloadable file is outside this shop's origin.",
+      again: false,
+      saidNo: true,
+    };
   }
   try {
     const exposed = await request(raw, {
@@ -429,15 +481,18 @@ export const inspectProductInTheShop = async (
         ok: false,
         why: "The downloadable file is public without an order permission.",
         again: false,
+        saidNo: true,
       };
     }
   } catch {
-    // Not silence: this also fails on a public file too large to read, which is
-    // an answer, and the shop has answered every other part of the check.
+    // Not asked again: this also fails on a public file too large to read,
+    // which is an answer. Nor is it told as the shop's no, since a connection
+    // that broke looks the same.
     return {
       ok: false,
       why: "The shop's raw download protection could not be verified.",
       again: false,
+      saidNo: false,
     };
   }
   const fingerprint = createHash("sha256")
@@ -638,7 +693,7 @@ export interface ShippingRate {
 
 export type RatesRead =
   | { readonly ok: true; readonly rates: readonly ShippingRate[] }
-  | { readonly ok: false; readonly why: string; readonly again: boolean };
+  | NotSellable;
 
 /** Usually the cheapest on offer, and a parcel nobody collects never leaves. */
 const NOT_SHIPPING = new Set(["local_pickup", "pickup_location"]);
@@ -689,15 +744,19 @@ export const shippingRatesInTheShop = async (
 ): Promise<RatesRead> => {
   const product = Number(productId);
   if (!Number.isSafeInteger(product) || product <= 0) {
-    return { ok: false, why: "The card names no product in a WooCommerce shop.", again: false };
+    return {
+      ok: false,
+      why: "The card names no product in a WooCommerce shop.",
+      again: false,
+      saidNo: true,
+    };
   }
   const cart = `${shopUrl}/wp-json/wc/store/v1/cart`;
   const ask = async (
     url: string,
     init: RequestInit,
   ): Promise<
-    | { readonly ok: true; readonly response: Response; readonly body: string }
-    | { readonly ok: false; readonly why: string; readonly again: boolean }
+    { readonly ok: true; readonly response: Response; readonly body: string } | NotSellable
   > => {
     let response: Response;
     let body: string;
@@ -715,10 +774,20 @@ export const shippingRatesInTheShop = async (
       return { ok: false, why: "The shop's cart was too busy to answer.", again: true };
     }
     if (!response.ok) {
+      // The Store API refuses a product it will not sell or a place it will not
+      // ship to with a 400 naming its error; a login, a firewall or a missing
+      // route in front of the cart said nothing about either.
+      let code: unknown;
+      try {
+        code = codeOf(JSON.parse(body));
+      } catch {
+        code = undefined;
+      }
       return {
         ok: false,
         why: `The shop's cart refused the question (HTTP ${response.status}).`,
         again: false,
+        saidNo: response.status === 400 && typeof code === "string",
       };
     }
     return { ok: true, response, body };
@@ -732,6 +801,7 @@ export const shippingRatesInTheShop = async (
       ok: false,
       why: "The shop's cart gave no cart token, and without one it takes no question from us.",
       again: false,
+      saidNo: false,
     };
   }
   const headers = {
@@ -763,11 +833,21 @@ export const shippingRatesInTheShop = async (
   try {
     document = JSON.parse(placed.body);
   } catch {
-    return { ok: false, why: "The shop's cart did not answer with JSON.", again: false };
+    return {
+      ok: false,
+      why: "The shop's cart did not answer with JSON.",
+      again: false,
+      saidNo: false,
+    };
   }
   const read = CartSchema.safeParse(document);
   if (!read.success) {
-    return { ok: false, why: "The shop's cart answered without its shipping rates.", again: false };
+    return {
+      ok: false,
+      why: "The shop's cart answered without its shipping rates.",
+      again: false,
+      saidNo: false,
+    };
   }
   // The shop's plugins may change a cart while it is asked, raising a minimum
   // quantity, adding a gift or swapping the line, and the rate is then the
@@ -778,10 +858,16 @@ export const shippingRatesInTheShop = async (
       ok: false,
       why: "The shop's cart does not hold this product alone, once, so its rates are not this parcel's.",
       again: false,
+      saidNo: false,
     };
   }
   if (!read.data.needs_shipping) {
-    return { ok: false, why: "The shop's cart says this product needs no shipping.", again: false };
+    return {
+      ok: false,
+      why: "The shop's cart says this product needs no shipping.",
+      again: false,
+      saidNo: true,
+    };
   }
   const [only, ...more] = read.data.shipping_rates;
   const [packed, ...morePacked] = only?.items ?? [];
@@ -799,22 +885,33 @@ export const shippingRatesInTheShop = async (
       ok: false,
       why: "The shop's cart did not price this product as one parcel.",
       again: false,
+      saidNo: false,
     };
   }
   const rates: ShippingRate[] = [];
   for (const rate of only.shipping_rates) {
     if (NOT_SHIPPING.has(rate.method_id)) continue;
-    const cost =
-      rate.currency_code === "USD" && rate.currency_minor_unit === USD_SCALE && rate.taxes === "0"
-        ? decimalOfMinorUnits(rate.price, USD_SCALE)
-        : null;
-    if (cost === null) {
-      // Not dropped: a rate left out in silence could make another look
-      // cheapest, and the shop would charge what we did not say.
+    // Not dropped: a rate left out in silence could make another look
+    // cheapest, and the shop would charge what we did not say.
+    if (
+      rate.currency_code !== "USD" ||
+      rate.currency_minor_unit !== USD_SCALE ||
+      rate.taxes !== "0"
+    ) {
       return {
         ok: false,
         why: "The shop's cart offered a shipping rate that is not an untaxed US dollar amount.",
         again: false,
+        saidNo: true,
+      };
+    }
+    const cost = decimalOfMinorUnits(rate.price, USD_SCALE);
+    if (cost === null) {
+      return {
+        ok: false,
+        why: "The shop's cart offered a shipping rate whose price is not an amount.",
+        again: false,
+        saidNo: false,
       };
     }
     rates.push({
@@ -1269,9 +1366,6 @@ export const shipmentInTheShop = async (
       return null;
     }
   };
-  const codeOf = (body: unknown): unknown =>
-    typeof body === "object" && body !== null && "code" in body ? body.code : undefined;
-
   const order = await read(
     `/wp-json/wc/v3/orders/${wooOrderId}?_fields=id,status,transaction_id,shipping_lines`,
   );
@@ -1442,6 +1536,10 @@ const ExactOrderSchema = z.looseObject({
  */
 const worthAskingAgain = (status: number): boolean =>
   status >= 500 || status === 408 || status === 429;
+
+/** The `code` a WordPress REST error names, where the document is one. */
+const codeOf = (body: unknown): unknown =>
+  typeof body === "object" && body !== null && "code" in body ? body.code : undefined;
 
 const basicFor = (keys: ShopKeys): string =>
   `Basic ${Buffer.from(`${keys.consumerKey}:${keys.consumerSecret}`).toString("base64")}`;
