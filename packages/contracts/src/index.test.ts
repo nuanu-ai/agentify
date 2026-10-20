@@ -327,8 +327,12 @@ describe("the contract as JSON Schema", () => {
     // compares its two ends; the merchant's shipment shares them, except the
     // window, which an agent reads open and which is met again under
     // `shipment`. `order_close_request.message` is the merchant's closing
-    // words, held to plain text on the way in only, as a card's are.
+    // words, held to plain text on the way in only, as a card's are, and
+    // `agent_order_status.merchant_closure.message` is the same words read
+    // back, whose length is counted in characters rather than code units; the
+    // merchant's closure documents share it.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
+      "agent_order_status.merchant_closure.message",
       "agent_order_status.seller.site",
       "agent_order_status.shipment.carrier",
       "agent_order_status.shipment.estimated_delivery",

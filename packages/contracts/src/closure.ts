@@ -4,11 +4,23 @@ import { TimestampSchema } from "./primitives.js";
 
 const MESSAGE_MAX = 2000;
 
-/** The explanation as it is kept and read back: bounded, and never blank. */
+/**
+ * The explanation as it is kept and read back: never blank, and at most
+ * `MESSAGE_MAX` characters counted as a person counts them, so an emoji is one.
+ * That is also how a JSON Schema validator counts `maxLength`, where a
+ * JavaScript string's length would count an emoji as two.
+ */
 const message = z
   .string()
-  .max(MESSAGE_MAX, `a closure message is at most ${MESSAGE_MAX} characters`)
-  .regex(/\S/, "a closure message contains words, or is left out");
+  .regex(/\S/, "a closure message contains words, or is left out")
+  .refine(
+    (text) => [...text].length <= MESSAGE_MAX,
+    `a closure message is at most ${MESSAGE_MAX} characters`,
+  )
+  .meta({
+    maxLength: MESSAGE_MAX,
+    description: `The merchant's statement to the buyer, at most ${MESSAGE_MAX} characters, an emoji counting as one.`,
+  });
 
 /**
  * Characters that reorder how the text around them is displayed (the
@@ -16,7 +28,10 @@ const message = z
  * order they were written in. Left-to-right and right-to-left marks, which
  * only nudge neutral characters, are text.
  */
-const BIDIRECTIONAL_CONTROL = /[‪-‮⁦-⁩]/g;
+const BIDIRECTIONAL_CONTROL = /[\u202A-\u202E\u2066-\u2069]/g;
+
+/** Half of a character written as a surrogate pair, with the other half gone. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
 const codeOf = (character: string): string =>
   `U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
@@ -30,6 +45,12 @@ const codeOf = (character: string): string =>
 const sentMessage = message
   .superRefine((text, ctx) => {
     const findings = [...notPlainTextIn(text, "several lines")];
+    if (!text.isWellFormed()) {
+      const halves = [...text.matchAll(LONE_SURROGATE)];
+      findings.push(
+        `${halves.length === 1 ? "half of a character," : `halves of characters in ${halves.length} places, the first`} ${codeOf(halves[0]?.[0] ?? "")} at character ${(halves[0]?.index ?? 0) + 1}, as when text is cut short in the middle of an emoji`,
+      );
+    }
     const reordering = [...text.matchAll(BIDIRECTIONAL_CONTROL)];
     const first = reordering[0];
     if (first !== undefined) {
@@ -45,7 +66,8 @@ const sentMessage = message
     }
   })
   .meta({
-    description: `The merchant's statement to the buyer, at most ${MESSAGE_MAX} characters of plain text, which the buyer's agent reads exactly as it is written: HTML markup, HTML character references, control characters other than the line feed, and bidirectional control characters are refused.`,
+    maxLength: MESSAGE_MAX,
+    description: `The merchant's statement to the buyer, at most ${MESSAGE_MAX} characters (an emoji counts as one) of plain text, which the buyer's agent reads exactly as it is written: HTML markup, HTML character references, control characters other than the line feed, bidirectional control characters and half of a character cut in two are refused.`,
   });
 
 /** Stops future Agentify fulfillment; the optional words are the merchant's claim. */

@@ -126,21 +126,22 @@ export interface OrderCalls {
 
   /**
    * Stops future fulfillment through Agentify for this order. The message is
-   * your statement to the buyer, which their agent reads as your words;
-   * Agentify confirms no refund or agreement. Repeating the call succeeds and
-   * keeps the first closure's time and message. Closing cannot be undone, and
-   * it causes no new charge.
+   * your statement to the buyer, plain text of at most 2000 characters, which
+   * their agent reads as your words; Agentify confirms no refund or agreement.
+   * Closing cannot be undone, and it causes no new charge.
    *
-   * It does not cancel a payment already accepted for execution, and Agentify
-   * keeps checking that payment for an outcome. If it completes after you
-   * closed, you receive `order.unfulfilled` with reason `paid_after_closure`,
-   * and the order is on `orders.list({ open: true })` until you close it
-   * again, which records that closure's own time and message.
+   * Calling it again succeeds and keeps the first closure's time and message,
+   * with one exception. Closing cancels no payment: a payment Agentify had
+   * already asked the facilitator to execute may still go through after you
+   * close. If it does, you receive `order.unfulfilled` with reason
+   * `paid_after_closure`, the order is on `orders.list({ open: true })`, and
+   * closing it again then records that closure's own time and message and
+   * takes it off the list.
    *
-   * Resolves to `{ ok: true }`, or to `ok: false` with an `error` and leaves the
-   * order unchanged: `fulfillment_complete` where the goods were delivered or
-   * the parcel's shipment is recorded, and `nothing_to_close` where the order
-   * ended without a charge and holds nothing for its buyer.
+   * Resolves to `{ ok: true }`, or to `ok: false` with an `error`, leaving the
+   * order unchanged: `fulfillment_complete` where its goods were delivered or
+   * its parcel's shipment is recorded, and `nothing_to_close` where it ended
+   * without a charge and holds nothing for its buyer. Neither is retryable.
    */
   close(options?: OrderCloseRequest): Promise<OrderCloseResponse>;
 }
