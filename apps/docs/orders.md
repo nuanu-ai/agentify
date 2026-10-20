@@ -418,7 +418,11 @@ with `unavailable` (your price check said there is none),
 `price_check_unanswered` (it did not answer in time, or its answer could not be
 accepted) or `payment_not_settled` (the charge did not go through). `expired`
 comes with `price_expired` (the price ran out before the payment was taken) or
-`merchant_timed_out` (a synchronous answer did not arrive in time).
+`merchant_timed_out` (a synchronous answer did not arrive in time). A
+`delivered_unpaid` order is still open and comes with `payment_not_settled`
+too, so that the agent does not read the word as a delivery: the reason tells
+it that nothing was taken, that Agentify holds the goods you made, and that
+paying for the same purchase again from the wallet that paid releases them.
 
 Where the refusal was yours, your code and your message travel with the status
 instead. An `unfulfilled` order carries a `reason` saying why nothing was
@@ -581,7 +585,7 @@ you closed fulfillment, and its `status` column is the word each one reads.
 | Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order ended on its deadline |
 | You left | `cancelled`, `unfulfilled` | an unpaid order was not charged; a paid one is in your payout contract | an unpaid order ended; a paid one has no delivery recorded |
 | The money was charged and no delivery happened | `unfulfilled` | in your payout contract | no delivery is recorded, and Agentify confirms no refund |
-| You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the purchase did not happen; the same buyer can pay for this order again |
+| You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the reason `payment_not_settled`: nothing was taken, Agentify holds the goods, and paying for this same purchase again from the same wallet releases them |
 | You closed fulfillment | `fulfillment_closed`, or `payment_unresolved` while the payment is unknown | where `payment_status` says: in your payout contract when `paid` | that you closed fulfillment, with your message as your words, and on a paid order Agentify's own sentence that no refund is confirmed |
 | The facilitator did not say whether the money was charged | `payment_unresolved` | unknown until Agentify finds the transfer or proof it cannot happen | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
