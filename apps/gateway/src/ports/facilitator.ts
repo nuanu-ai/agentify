@@ -106,6 +106,12 @@ export type VerifyOutcome =
       readonly verified: false;
       readonly reason: PaymentVerificationFailure;
       readonly message: string;
+      /**
+       * Set where this side refused the payment itself, before the payment
+       * layer was asked: anyone holding a payment request can make up such a
+       * payment, so its refusal is no word of the payment layer's.
+       */
+      readonly beforeAsking?: true;
     }
   /** The facilitator could not be asked, or did not answer. Nothing is claimed. */
   | { readonly verified: "unknown"; readonly message: string };

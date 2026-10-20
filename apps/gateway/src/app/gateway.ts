@@ -1438,12 +1438,17 @@ export class Gateway {
       // failed and nothing else tells the agent, and it says whether anything
       // was charged. On an order already paid for, the payer is most likely
       // presenting a payment it already used, having lost the answer.
+      // A payment refused before the payment layer was asked can be made up by
+      // anyone holding the payment request, so its answer is the same whether
+      // or not the order was paid.
       const why =
         verified.verified === "unknown"
           ? verified.message
-          : before.order.payment === "settled"
-            ? `nothing more was charged: this order is already paid for, and the payment layer refused this payment, saying: ${briefly(verified.message)}; a payment from the wallet that paid it that the payment layer accepts returns the order without charging it again`
-            : `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`;
+          : verified.beforeAsking === true
+            ? `nothing was charged: this payment was refused before the payment layer was asked, because ${briefly(verified.message)}; ${NEXT_STEP_AFTER[verified.reason]}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`
+            : before.order.payment === "settled"
+              ? `nothing more was charged: this order is already paid for, and the payment layer refused this payment, saying: ${briefly(verified.message)}; a payment from the wallet that paid it that the payment layer accepts returns the order without charging it again`
+              : `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`;
       // The layer's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
       // client put in it, newlines included.

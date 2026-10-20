@@ -239,6 +239,7 @@ describe("verifying a payment", () => {
         verified: false,
         reason: "signature",
         message: expect.stringContaining(`${accepted.maxTimeoutSeconds} seconds`),
+        beforeAsking: true,
       });
       expect(client.asked).toHaveLength(0);
     },
@@ -469,6 +470,7 @@ describe("verifying a payment", () => {
 
     expect(answered).toStrictEqual({
       verified: false,
+      beforeAsking: true,
       reason: "price_stale",
       message: "this order is priced at 80000000 and the payment was made for 1",
     });
@@ -486,6 +488,7 @@ describe("verifying a payment", () => {
     // only place that says which offer was wrong, so it is what the test reads.
     expect(answered).toStrictEqual({
       verified: false,
+      beforeAsking: true,
       reason: "price_stale",
       message: "the payment was made out to a different address from the one asked for",
     });
@@ -598,6 +601,7 @@ describe("verifying a payment", () => {
 
       expect(answered).toStrictEqual({
         verified: false,
+        beforeAsking: true,
         reason: "price_stale",
         message: "the payment was made out to a different address from the one asked for",
       });
@@ -647,11 +651,11 @@ describe("verifying a payment", () => {
       await facilitatorFor(wrongAsset, edge).verify(
         charge(honest({ asset: "0x00000000000000000000000000000000000000aa" })),
       ),
-    ).toStrictEqual({ verified: false, reason: "price_stale", message });
+    ).toStrictEqual({ verified: false, reason: "price_stale", message, beforeAsking: true });
 
     expect(
       await facilitatorFor(wrongChain, edge).verify(charge(honest({ network: "eip155:1" }))),
-    ).toStrictEqual({ verified: false, reason: "price_stale", message });
+    ).toStrictEqual({ verified: false, reason: "price_stale", message, beforeAsking: true });
 
     expect(wrongAsset.asked).toStrictEqual([]);
     expect(wrongChain.asked).toStrictEqual([]);
@@ -671,6 +675,7 @@ describe("verifying a payment", () => {
     for (const named of [{ payment_ref: "pay_2" }, { order_id: "ord_1" }, {}]) {
       expect(await facilitator.verify(againstReference("pay_1", paidNaming(named)))).toStrictEqual({
         verified: false,
+        beforeAsking: true,
         reason: "price_stale",
         message: "the payment was made against a different order from the one it was presented for",
       });
@@ -697,6 +702,7 @@ describe("verifying a payment", () => {
 
     expect(answered).toStrictEqual({
       verified: false,
+      beforeAsking: true,
       reason: "price_stale",
       message: "the payment names no offer, so there is nothing to check it against",
     });

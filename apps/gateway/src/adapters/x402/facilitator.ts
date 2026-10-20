@@ -68,6 +68,7 @@ export class X402Facilitator implements Facilitator {
         verified: false,
         reason: "signature",
         message: "the payment presented could not be read as a payment at all",
+        beforeAsking: true,
       };
     }
 
@@ -85,7 +86,7 @@ export class X402Facilitator implements Facilitator {
     if (mismatch !== null) {
       // Paid against something other than what we asked for: not a payment for
       // this order, whatever the facilitator would say.
-      return { verified: false, reason: "price_stale", message: mismatch };
+      return { verified: false, reason: "price_stale", message: mismatch, beforeAsking: true };
     }
 
     let authorization: ReturnType<typeof authorizationOf>;
@@ -100,6 +101,7 @@ export class X402Facilitator implements Facilitator {
         return {
           verified: false,
           reason: "signature",
+          beforeAsking: true,
           message: `the signed authorization has already expired; sign one that stays valid for ${asked} seconds, as the offer asks`,
         };
       }
@@ -107,11 +109,17 @@ export class X402Facilitator implements Facilitator {
         return {
           verified: false,
           reason: "signature",
+          beforeAsking: true,
           message: `the signed authorization stays valid for ${expires - now} seconds, longer than the ${asked} seconds the offer asks for (${CLOCK_SKEW_SECONDS} more are allowed for clock differences); sign one that expires within ${asked} seconds`,
         };
       }
     } catch (thrown) {
-      return { verified: false, reason: "signature", message: describe(thrown) };
+      return {
+        verified: false,
+        reason: "signature",
+        message: describe(thrown),
+        beforeAsking: true,
+      };
     }
     // The facilitator's check refuses a used authorization, so the transfer
     // lands after this moment, give or take the clocks.
