@@ -31,7 +31,9 @@ as a decimal of at most six places, when it was saved and the email of the
 session that saved it, Coinbase's rate shown beside it with the moment Agentify
 read it (or nothing, where none could be read), and whether it was typed a
 second time because it stood more than a tenth from that reference. Its version
-rises with every row; a shop's current rate for a currency is its highest. A
+rises with every row; a shop's current rate for a currency is its highest
+saved since the shop was last connected, so a shop connected again is asked
+for a rate again. A
 rate is written only after a notice of it, with the rate before it, has been
 handed to the mail for the account's address. Coinbase is read on the screen
 and at Connect, never while a buyer waits; it catches a mistyped rate and
