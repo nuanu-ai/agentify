@@ -11,6 +11,7 @@
 
 import type { Order } from "@agentify/core";
 import { describe, expect, it } from "vitest";
+import type { AnalyticsEvent } from "../../analytics/events.js";
 import type { StoredOrder } from "../../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
 import { payoutSplitFor } from "../../split/parameters.js";
@@ -271,5 +272,32 @@ describe("MemoryStore writes that go with an order", () => {
     // The receipt is listed before the envelope, but envelopes are taken
     // first, so the refusal comes before any receipt is written.
     expect(await store.receiptForOrder("ord_1")).toBeNull();
+  });
+});
+
+describe("the analytics a memory store records", () => {
+  it("keeps every event recorded outside a transaction, in recording order, for a test to read", async () => {
+    const store = new MemoryStore("eip155:84532", counted());
+    const refused: AnalyticsEvent = {
+      name: "agc_card_publish_result",
+      actor: "merchant_worker",
+      source: "gateway",
+      refs: { merchant: A },
+      fields: { integration: "api", outcome: "blocked", reason_code: "wallet_missing" },
+    };
+    const viewed: AnalyticsEvent = {
+      name: "agc_dashboard_viewed",
+      actor: "human",
+      source: "dashboard",
+      fields: { screen: "cards" },
+    };
+
+    await store.recordAnalytics(refused, 1_000);
+    await store.recordAnalytics(viewed, new Date(2_000));
+
+    expect(store.recordedAnalytics).toStrictEqual([
+      { event: refused, at: new Date(1_000) },
+      { event: viewed, at: new Date(2_000) },
+    ]);
   });
 });

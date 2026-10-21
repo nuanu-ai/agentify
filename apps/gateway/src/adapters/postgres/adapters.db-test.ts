@@ -78,7 +78,8 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  * later run's purchases. A table added to `schema.ts` belongs in this list.
  */
 const EMPTY_EVERY_TABLE =
-  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants, payout_splits";
+  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants, payout_splits," +
+  " commerce_analytics_events";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
@@ -1960,6 +1961,51 @@ if (databaseUrl === null) {
         };
       },
     );
+
+    describe("analytics recorded outside a transaction", () => {
+      const refused = {
+        name: "agc_card_publish_result",
+        actor: "merchant_worker",
+        source: "gateway",
+        refs: { merchant: A },
+        fields: { integration: "api", outcome: "blocked", reason_code: "wallet_missing" },
+      } as const;
+
+      it("writes the event as one pending row of the outbox, dated when it happened", async () => {
+        await pool.query("delete from commerce_analytics_events");
+
+        await store.recordAnalytics(refused, now);
+
+        const { rows } = await pool.query(
+          "select name, occurred_at, refs, properties, state from commerce_analytics_events",
+        );
+        expect(rows).toStrictEqual([
+          {
+            name: "agc_card_publish_result",
+            occurred_at: new Date(now),
+            refs: { merchant: A },
+            properties: refused.fields,
+            state: "pending",
+          },
+        ]);
+      });
+
+      it("never rejects when the database cannot take the event", async () => {
+        await pool.query(
+          "alter table commerce_analytics_events rename to commerce_analytics_events_away",
+        );
+        try {
+          const said = await loggedWhile(async () => {
+            await expect(store.recordAnalytics(refused, now)).resolves.toBeUndefined();
+          });
+          expect(said).toMatch(/analytics event could not be recorded/);
+        } finally {
+          await pool.query(
+            "alter table commerce_analytics_events_away rename to commerce_analytics_events",
+          );
+        }
+      });
+    });
 
     /**
      * Everything both stores promise, against the one a merchant's money rests
