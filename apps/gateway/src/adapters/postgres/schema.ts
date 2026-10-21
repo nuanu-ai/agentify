@@ -2,9 +2,9 @@
  * The tables. An order is kept as one document so a change to the order
  * machine's shape needs no migration of live orders; only what the gateway
  * queries by is pulled into columns, written from the document on every save so
- * they cannot drift from it. Every table except the payment claims and the
- * payout splits carries its merchant by a foreign key, so a row cannot exist
- * without an owner. Money is never a column: prices stay inside the documents
+ * they cannot drift from it. Every table except the payment claims, the
+ * payout splits and the analytics events carries its merchant by a foreign
+ * key, so a row cannot exist without an owner. Money is never a column: prices stay inside the documents
  * as the contract's decimal strings, so no database driver can turn one into a
  * float.
  */
@@ -12,6 +12,7 @@
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -22,6 +23,7 @@ import {
   timestamp,
   unique,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 import type { StoredOrder } from "../../ports/store.js";
 
@@ -285,5 +287,71 @@ export const payoutSplits = pgTable(
       sql`lower(${table.merchantWallet})`,
     ),
     uniqueIndex("payout_splits_address_unique").on(table.network, sql`lower(${table.address})`),
+  ],
+);
+
+/**
+ * Product analytics events waiting to leave for Nuanu Analytics, and for a
+ * while those that settled. A row is written in the transaction of the fact
+ * it records and leaves later, so Nuanu being away never touches a sale. Its
+ * id and `occurred_at` are fixed when it is written and sent unchanged on
+ * every retry; `sequence` grows with every row and is a payment's or an
+ * order's revision.
+ *
+ * `properties` holds only the contract's fields. `refs` holds the raw
+ * identifiers the event concerns, which leave only as keyed hashes. What an
+ * event holds is checked by the sender, not here: a constraint that refused
+ * it would fail the transaction of the fact it records.
+ */
+export const analyticsEvents = pgTable(
+  "commerce_analytics_events",
+  {
+    id: uuid("id").primaryKey(),
+    sequence: bigint("sequence", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+    name: text("name").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "date" }).notNull(),
+    actorType: text("actor_type").notNull(),
+    source: text("source").notNull(),
+    properties: jsonb("properties").$type<object>().notNull(),
+    refs: jsonb("refs").$type<object>().notNull(),
+    state: text("state").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    /** How the last attempt ended, such as `http_503`, or why the row was never sent. */
+    lastOutcome: text("last_outcome"),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    unique("commerce_analytics_events_sequence_unique").on(table.sequence),
+    check(
+      "commerce_analytics_events_state",
+      sql`${table.state} in ('pending', 'sent', 'dead', 'given_up', 'suppressed')`,
+    ),
+    check("commerce_analytics_events_attempts", sql`${table.attempts} >= 0`),
+    check(
+      "commerce_analytics_events_pending_scheduled",
+      sql`(${table.state} = 'pending') = (${table.nextAttemptAt} is not null)`,
+    ),
+    check(
+      "commerce_analytics_events_settled_dated",
+      sql`(${table.state} = 'pending') = (${table.settledAt} is null)`,
+    ),
+    check(
+      "commerce_analytics_events_sent_dated",
+      sql`(${table.state} = 'sent') = (${table.sentAt} is not null)`,
+    ),
+    // What the sender takes: the pending rows that are due.
+    index("commerce_analytics_events_due_idx")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} = 'pending'`),
+    // What is given up for its age, whether or not anything sends.
+    index("commerce_analytics_events_pending_age_idx")
+      .on(table.occurredAt)
+      .where(sql`${table.state} = 'pending'`),
+    // What is deleted once it settled long enough ago.
+    index("commerce_analytics_events_settled_idx")
+      .on(table.settledAt)
+      .where(sql`${table.state} <> 'pending'`),
   ],
 );

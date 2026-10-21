@@ -156,6 +156,22 @@ const environmentSchema = z.object({
   REGISTRATION_POSTBACK_KEY: emptyIsAbsent(z.string()),
   /** A laptop's own receiver; a deployment posts only to the tracker. */
   REGISTRATION_POSTBACK_URL: emptyIsAbsent(z.string()),
+
+  /**
+   * Whether product analytics leave for Nuanu Analytics. The site, the keys
+   * and the receiver are held to their rules only once this is on, for the
+   * same reason as the ad tracker's key.
+   */
+  NUANU_ANALYTICS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  NUANU_ANALYTICS_SITE_ID: emptyIsAbsent(z.string()),
+  NUANU_ANALYTICS_API_KEY: emptyIsAbsent(z.string()),
+  NUANU_ANALYTICS_INGEST_TOKEN: emptyIsAbsent(z.string()),
+  NUANU_ANALYTICS_REF_KEY: emptyIsAbsent(z.string()),
+  /** A laptop's own receiver; a deployment sends only to Nuanu. */
+  NUANU_ANALYTICS_URL: emptyIsAbsent(z.string()),
 });
 
 /**
@@ -209,6 +225,22 @@ export interface DashboardConfig {
    * reported. The key is never printed.
    */
   readonly registrationPostback: Readonly<{ endpoint: string; key: string }> | null;
+  /**
+   * Where product analytics are sent and how they are labelled, or null where
+   * nothing is sent. `hostname`, `env` and `internal` follow from the channel;
+   * the keys are never printed.
+   */
+  readonly nuanuAnalytics: Readonly<{
+    endpoint: string;
+    siteId: string;
+    apiKey: string;
+    ingestToken: string | null;
+    /** What the identifiers an event concerns are hashed with before they leave. */
+    referenceKey: string;
+    hostname: string;
+    env: "prod" | "test" | "dev";
+    internal: boolean;
+  }> | null;
 }
 
 /** The only address a deployment reports to. */
@@ -220,12 +252,33 @@ const SHORTEST_POSTBACK_KEY = 16;
 /** Letters, digits and punctuation, from `!` to `~`. */
 const VISIBLE_ASCII = /^[\x21-\x7e]+$/;
 
-/** The tracker's host and every name under it, a trailing dot included. */
-function isTheTrackers(address: string): boolean {
+/** The host of `service` and every name under it, a trailing dot included. */
+function isTheHostOf(service: string, address: string): boolean {
   const host = new URL(address).hostname.replace(/\.$/, "");
-  const tracker = new URL(REGISTRATION_POSTBACK_ENDPOINT).hostname;
-  return host === tracker || host.endsWith(`.${tracker}`);
+  const its = new URL(service).hostname;
+  return host === its || host.endsWith(`.${its}`);
 }
+
+/** The only analytics service a deployment sends to; events go to its `/api/track`. */
+const NUANU_ANALYTICS_BASE = "https://analytics.nuanu.ai";
+
+/** A site as Nuanu Analytics numbers it. */
+const A_SITE_ID = /^[A-Za-z0-9]{1,64}$/;
+
+/** Shorter than any key or token Nuanu issues; it catches a placeholder left in a file. */
+const SHORTEST_ANALYTICS_CREDENTIAL = 16;
+
+/** The host each channel's events are counted under, which Nuanu reads as the site's own. */
+const ANALYTICS_LABELS: Readonly<
+  Record<
+    SurfaceMode,
+    Readonly<{ hostname: string; env: "prod" | "test" | "dev"; internal: boolean }>
+  >
+> = {
+  live: { hostname: "agentify.ad", env: "prod", internal: false },
+  test: { hostname: "test.agentify.ad", env: "test", internal: true },
+  sandbox: { hostname: "localhost", env: "dev", internal: false },
+};
 
 /** Used only in the sandbox, where messages go to the log. */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
@@ -344,6 +397,10 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     ? registrationPostbackOf(surfaceMode, values, problems)
     : null;
 
+  const nuanuAnalytics = values.NUANU_ANALYTICS_ENABLED
+    ? nuanuAnalyticsOf(surfaceMode, values, problems)
+    : null;
+
   if (problems.length > 0) {
     throw new Error(
       `The dashboard cannot start, the configuration does not hold together — ${problems.join("; ")}`,
@@ -370,6 +427,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     mailApiKey: values.MAIL_API_KEY ?? null,
     mailFrom: values.MAIL_FROM ?? NOBODY_READS_THIS,
     registrationPostback: postback,
+    nuanuAnalytics,
   };
 }
 
@@ -425,7 +483,7 @@ function registrationPostbackOf(
     );
   } else if (!isHttpUrl(receiver)) {
     problems.push("REGISTRATION_POSTBACK_URL must be an http or https address");
-  } else if (isTheTrackers(receiver)) {
+  } else if (isTheHostOf(REGISTRATION_POSTBACK_ENDPOINT, receiver)) {
     problems.push(
       "REGISTRATION_POSTBACK_URL names the ad tracker's host, and a sandbox reports only to a" +
         " receiver of its own",
@@ -436,4 +494,96 @@ function registrationPostbackOf(
 
   // Null whenever a problem was added, which the caller throws on.
   return endpoint === null || key === undefined ? null : { endpoint, key };
+}
+
+/**
+ * Where analytics are sent once switched on, or null with each problem added
+ * to `problems`. None names a value: the keys are credentials, and a
+ * receiver's address says nothing a reader of the log needs.
+ */
+function nuanuAnalyticsOf(
+  surfaceMode: SurfaceMode,
+  values: z.infer<typeof environmentSchema>,
+  problems: string[],
+): DashboardConfig["nuanuAnalytics"] {
+  const siteId = values.NUANU_ANALYTICS_SITE_ID;
+  const apiKey = values.NUANU_ANALYTICS_API_KEY;
+  const ingestToken = values.NUANU_ANALYTICS_INGEST_TOKEN;
+  const referenceKey = values.NUANU_ANALYTICS_REF_KEY;
+  const receiver = values.NUANU_ANALYTICS_URL;
+  const before = problems.length;
+
+  if (siteId === undefined || !A_SITE_ID.test(siteId)) {
+    problems.push(
+      `NUANU_ANALYTICS_ENABLED is true and NUANU_ANALYTICS_SITE_ID is ${siteId === undefined ? "not set" : "not a site's id, which is letters and digits only"}`,
+    );
+  }
+  // A request strips a header value's ends and throws on a character that is
+  // not a byte, so a credential holding one would never be the one sent.
+  const credential = (variable: string, value: string | undefined, required: boolean): void => {
+    if (value === undefined) {
+      if (required) problems.push(`NUANU_ANALYTICS_ENABLED is true and ${variable} is not set`);
+    } else if (value.length < SHORTEST_ANALYTICS_CREDENTIAL) {
+      problems.push(`${variable} is shorter than ${SHORTEST_ANALYTICS_CREDENTIAL} characters`);
+    } else if (!VISIBLE_ASCII.test(value)) {
+      problems.push(
+        `${variable} holds a character other than visible ASCII, such as a space, a line break` +
+          " or a typographic dash, so no request could carry it",
+      );
+    }
+  };
+  credential("NUANU_ANALYTICS_API_KEY", apiKey, true);
+  credential("NUANU_ANALYTICS_INGEST_TOKEN", ingestToken, false);
+  if (referenceKey === undefined || referenceKey.length < SHORTEST_SECRET) {
+    problems.push(
+      `NUANU_ANALYTICS_ENABLED is true and NUANU_ANALYTICS_REF_KEY is ${referenceKey === undefined ? "not set" : `shorter than ${SHORTEST_SECRET} characters`};` +
+        " make one with: openssl rand -base64 32, and never change it, or every reference changes",
+    );
+  }
+
+  let base: string | null = null;
+  if (surfaceMode !== "sandbox") {
+    if (receiver === undefined) {
+      base = NUANU_ANALYTICS_BASE;
+    } else {
+      problems.push(
+        `NUANU_ANALYTICS_URL is set on the ${surfaceMode} channel, which sends only to Nuanu` +
+          " Analytics itself; the variable is for a laptop's receiver",
+      );
+    }
+  } else if (receiver === undefined) {
+    // A laptop sends only to a receiver of its own, so nothing tried on it is
+    // ever counted as a real visit.
+    problems.push(
+      "NUANU_ANALYTICS_ENABLED is true on a sandbox and NUANU_ANALYTICS_URL is not set, so" +
+        " there is no receiver of its own to send to",
+    );
+  } else if (!isHttpUrl(receiver)) {
+    problems.push("NUANU_ANALYTICS_URL must be an http or https address");
+  } else if (isTheHostOf(NUANU_ANALYTICS_BASE, receiver)) {
+    problems.push(
+      "NUANU_ANALYTICS_URL names Nuanu Analytics' host, and a sandbox sends only to a" +
+        " receiver of its own",
+    );
+  } else {
+    base = receiver.replace(/\/+$/, "");
+  }
+
+  if (
+    problems.length > before ||
+    base === null ||
+    siteId === undefined ||
+    apiKey === undefined ||
+    referenceKey === undefined
+  ) {
+    return null;
+  }
+  return {
+    endpoint: `${base}/api/track`,
+    siteId,
+    apiKey,
+    ingestToken: ingestToken ?? null,
+    referenceKey,
+    ...ANALYTICS_LABELS[surfaceMode],
+  };
 }

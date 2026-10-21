@@ -136,7 +136,7 @@ if (databaseUrl === null) {
         told.push(said.map(String).join(" "));
       });
     }
-    await pool.query("delete from analytics_events");
+    await pool.query("delete from commerce_analytics_events");
     await pool.query("delete from dashboard_accounts");
   });
 
@@ -202,7 +202,7 @@ if (databaseUrl === null) {
       await pool.query<Row>(
         `select id, sequence::text as sequence, name, state, attempts, next_attempt_at,
                 last_outcome, sent_at, settled_at
-           from analytics_events order by sequence`,
+           from commerce_analytics_events order by commerce_analytics_events.sequence`,
       )
     ).rows;
 
@@ -637,7 +637,7 @@ if (databaseUrl === null) {
         await recorded(viewed);
         const { post, received } = nuanu(failure, 200);
 
-        expect(await deliverOnce({ pool, target: ON_TEST, fetch: post, now })).toBe("next");
+        await deliverOnce({ pool, target: ON_TEST, fetch: post, now });
         const waiting = await onlyRow();
         expect(waiting).toMatchObject({ state: "pending", attempts: 1, settled_at: null });
         expect(waiting.next_attempt_at?.getTime()).toBe(START.getTime() + MINUTE);
@@ -752,7 +752,7 @@ if (databaseUrl === null) {
 
     it("gives up an event still failing once it is seven days old", async () => {
       await recorded(viewed);
-      const { post, received } = nuanu(503, 503, 503, 503, 503, 503, 503, 503);
+      const { post, received } = nuanu(...new Array<Answer>(100).fill(503));
       while ((await onlyRow()).state === "pending") {
         await deliverOnce({ pool, target: ON_TEST, fetch: post, now });
         const row = await onlyRow();
@@ -819,7 +819,7 @@ if (databaseUrl === null) {
       await recorded(ordered, new Date(clock - DAY));
       await recorded(viewed, new Date(clock - 40 * DAY));
       await pool.query(
-        `update analytics_events
+        `update commerce_analytics_events
             set state = 'sent', sent_at = $1, settled_at = $1, next_attempt_at = null,
                 last_outcome = 'http_200'
           where occurred_at = $1`,

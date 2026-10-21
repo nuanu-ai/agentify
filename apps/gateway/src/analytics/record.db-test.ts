@@ -55,7 +55,7 @@ if (databaseUrl === null) {
         told.push(said.map(String).join(" "));
       });
     }
-    await pool.query("delete from analytics_events");
+    await pool.query("delete from commerce_analytics_events");
   });
   afterEach(() => {
     for (const line of told) expect(line).not.toMatch(/_raw_/);
@@ -65,7 +65,7 @@ if (databaseUrl === null) {
   const recorded = async () =>
     (
       await pool.query<{ id: string; name: string; occurred_at: Date; state: string }>(
-        "select id, name, occurred_at, state from analytics_events order by sequence",
+        "select id, name, occurred_at, state from commerce_analytics_events order by sequence",
       )
     ).rows;
 
@@ -111,11 +111,15 @@ if (databaseUrl === null) {
     });
 
     it("never fails the caller of an observation the database cannot take, and says so without identifiers", async () => {
-      await pool.query("alter table analytics_events rename to analytics_events_away");
+      await pool.query(
+        "alter table commerce_analytics_events rename to commerce_analytics_events_away",
+      );
       try {
         await expect(recordObserved(db, created, AT)).resolves.toBeUndefined();
       } finally {
-        await pool.query("alter table analytics_events_away rename to analytics_events");
+        await pool.query(
+          "alter table commerce_analytics_events_away rename to commerce_analytics_events",
+        );
       }
       expect(told.join("\n")).toMatch(/analytics event could not be recorded/);
     });

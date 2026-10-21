@@ -5,7 +5,8 @@
  * writing code, and the loop that reports to the ad tracker what a person its
  * ad sent went on to do. The worker does not start on the live channel, where
  * the connector is not offered. The reports' loop starts everywhere: switched
- * on it reports, and switched off it only settles what the time left.
+ * on it reports, and switched off it only settles what the time left. So does
+ * the loop that sends product analytics to Nuanu Analytics.
  *
  * Migrations are not run here: a process that migrates on boot migrates once
  * per replica and races itself.
@@ -22,6 +23,7 @@ import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
+import { startNuanuAnalytics } from "./nuanu-analytics.js";
 import type { Pages } from "./pages.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
@@ -134,13 +136,14 @@ function started(
       });
 
   const reports = startAdReports({ pool, target: config.registrationPostback });
+  const analytics = startNuanuAnalytics({ pool, target: config.nuanuAnalytics });
 
   return {
     async closeListeners() {
       await Promise.all([server, reportIdentityServer].map(closed));
     },
     stopWorker: async () => {
-      await Promise.all([worker.stop(), reports.stop()]);
+      await Promise.all([worker.stop(), reports.stop(), analytics.stop()]);
     },
     close: async () => {
       await Promise.all([identity.close(), pages.close()]);
