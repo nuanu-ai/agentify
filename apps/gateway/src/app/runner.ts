@@ -84,6 +84,9 @@ import type { WrittenOrderStatus } from "./written.js";
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
 export const RECONCILE_PAYMENTS = "agentify_reconcile_payments";
 
+/** Recovery leaves database and RPC capacity for other work while a slow read waits. */
+const PAYMENT_RECOVERY_CONCURRENCY = 4;
+
 function hasObservedPayment(record: StoredOrder): boolean {
   const completion = record.paymentAttempt?.completion;
   return completion?.settled === true && completion.executedAt !== null;
@@ -1070,32 +1073,45 @@ export class OrderRunner {
       let oldest = now;
       let failed = 0;
       let failure = "";
-      let afterId = "";
-      for (;;) {
-        const records = await this.#runtime.store.unresolvedPayments(afterId, 100);
-        if (records.length === 0) break;
-        for (const record of records) {
-          afterId = record.order.id;
-          if (
-            record.order.payment === "settling" &&
-            deadlines(record.order).some(
-              (deadline) => deadline.kind === "settle_response" && deadline.at > now,
-            )
+      const check = async (record: StoredOrder): Promise<void> => {
+        if (
+          record.order.payment === "settling" &&
+          deadlines(record.order).some(
+            (deadline) => deadline.kind === "settle_response" && deadline.at > now,
           )
-            continue;
-          try {
-            if (await this.#reconcileOne(record, reconcile)) continue;
-          } catch (thrown) {
-            failed += 1;
-            failure ||= thrown instanceof RecoveryFailure ? thrown.message : failureNamed(thrown);
-          }
-          unresolved += 1;
-          const since =
-            record.paymentAttempt?.startedAt ??
-            record.order.timestamps.settleStartedAt ??
-            record.order.timestamps.createdAt;
-          if (since < oldest) oldest = since;
+        )
+          return;
+        try {
+          if (await this.#reconcileOne(record, reconcile)) return;
+        } catch (thrown) {
+          failed += 1;
+          failure ||= thrown instanceof RecoveryFailure ? thrown.message : failureNamed(thrown);
         }
+        unresolved += 1;
+        const since =
+          record.paymentAttempt?.startedAt ??
+          record.order.timestamps.settleStartedAt ??
+          record.order.timestamps.createdAt;
+        if (since < oldest) oldest = since;
+      };
+      const pending = new Set<Promise<void>>();
+      let afterId = "";
+      try {
+        for (;;) {
+          const records = await this.#runtime.store.unresolvedPayments(afterId, 100);
+          if (records.length === 0) break;
+          for (const record of records) {
+            afterId = record.order.id;
+            const checking = check(record).finally(() => {
+              pending.delete(checking);
+            });
+            pending.add(checking);
+            if (pending.size >= PAYMENT_RECOVERY_CONCURRENCY) await Promise.race(pending);
+          }
+        }
+      } finally {
+        // A failed page read must not release the sweep lock while earlier checks still run.
+        await Promise.all(pending);
       }
       if (failed > 0)
         console.error(

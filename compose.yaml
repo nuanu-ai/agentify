@@ -241,6 +241,13 @@ services:
       # no deployment is handed.
       REGISTRATION_POSTBACK_ENABLED: "${REGISTRATION_POSTBACK_ENABLED:-false}"
       REGISTRATION_POSTBACK_KEY: "${REGISTRATION_POSTBACK_KEY:-}"
+      # Off unless the host's file turns it on, and on only beside the switch
+      # above. On, the dashboard also tells the tracker once, with the same key,
+      # that a person its ad sent connected a store: the merchant their account
+      # names published its first card within 30 days of that sign-up. The click
+      # is kept with the account for those 30 days at most. It refuses to start
+      # with this on and the registration report off, and on the test channel.
+      STORE_POSTBACK_ENABLED: "${STORE_POSTBACK_ENABLED:-false}"
       # Off because a Secure cookie is never sent back over plain http, so nobody
       # could sign in locally. Wherever the dashboard is reached over https this must
       # be "true", or a merchant's session is exposed to anybody on the path.

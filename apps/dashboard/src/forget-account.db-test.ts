@@ -201,7 +201,7 @@ if (databaseUrl === null) {
       });
       await woo.recordQuote(person.id, "prc_one", "room-101", "fingerprint", now, now);
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
-      expect(await countOf("dashboard_registration_postbacks", "account_id", person.id)).toBe(1);
+      expect(await countOf("dashboard_ad_reports", "account_id", person.id)).toBe(1);
 
       const forgotten = forgetProcess("  Merchant@Example.COM", TEST_NETWORK);
 
@@ -222,7 +222,7 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_woo_shops", "account_id", person.id)).toBe(0);
       expect(await countOf("dashboard_woo_grants", "account_id", person.id)).toBe(0);
       expect(await countOf("dashboard_woo_quotes", "account_id", person.id)).toBe(0);
-      expect(await countOf("dashboard_registration_postbacks", "account_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_ad_reports", "account_id", person.id)).toBe(0);
 
       // The bystander keeps everything, including the wait before their next
       // link.

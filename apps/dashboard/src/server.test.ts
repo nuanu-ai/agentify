@@ -1325,7 +1325,7 @@ const openLatest = async (running: Running, browser: Browser = running.browser):
 };
 
 const registrationsIn = (running: Running): Record<string, unknown>[] =>
-  running.rows.dashboard_registration_postbacks ?? [];
+  running.rows.dashboard_ad_reports ?? [];
 
 /**
  * Whether anything a sign-in keeps on the server until it is finished, a
@@ -1416,6 +1416,8 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
         nextAttemptAt: expect.any(Date),
         lastOutcome: null,
         createdAt: expect.any(Date),
+        event: "reg",
+        eventAt: expect.any(Date),
         settledAt: null,
       },
     ]);

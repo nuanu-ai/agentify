@@ -47,7 +47,8 @@
         "REGISTRATION_POSTBACK_ENABLED": "false",
         "REGISTRATION_POSTBACK_KEY": "",
         "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000",
-        "SANDBOX_MERCHANT_KEY": ""
+        "SANDBOX_MERCHANT_KEY": "",
+        "STORE_POSTBACK_ENABLED": "false"
       },
       "healthcheck": {
         "test": [

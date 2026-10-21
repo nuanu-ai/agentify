@@ -1,5 +1,5 @@
 {
-  "id": "6266ae29-dba7-434f-8aae-6fb3dd9e7e3f",
+  "id": "17d45c0f-e781-40d7-b258-5f65715a1b8d",
   "prevId": "ad085093-cd0f-4dba-9b98-44655e6d6d6f",
   "version": "7",
   "dialect": "postgresql",
@@ -75,6 +75,157 @@
         "dashboard_accounts_merchant_named": {
           "name": "dashboard_accounts_merchant_named",
           "value": "\"dashboard_accounts\".\"merchant_id\" is null or \"dashboard_accounts\".\"merchant_id\" <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.dashboard_ad_reports": {
+      "name": "dashboard_ad_reports",
+      "schema": "",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "click_id": {
+          "name": "click_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_outcome": {
+          "name": "last_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_at": {
+          "name": "event_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "dashboard_ad_reports_due_idx": {
+          "name": "dashboard_ad_reports_due_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"dashboard_ad_reports\".\"state\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "dashboard_ad_reports_waiting_idx": {
+          "name": "dashboard_ad_reports_waiting_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"dashboard_ad_reports\".\"state\" = 'waiting'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "dashboard_ad_reports_account_id_dashboard_accounts_id_fk": {
+          "name": "dashboard_ad_reports_account_id_dashboard_accounts_id_fk",
+          "tableFrom": "dashboard_ad_reports",
+          "tableTo": "dashboard_accounts",
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "dashboard_ad_reports_account_id_event_pk": {
+          "name": "dashboard_ad_reports_account_id_event_pk",
+          "columns": ["account_id", "event"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "dashboard_ad_reports_event": {
+          "name": "dashboard_ad_reports_event",
+          "value": "\"dashboard_ad_reports\".\"event\" in ('reg', 'store_connected')"
+        },
+        "dashboard_ad_reports_state": {
+          "name": "dashboard_ad_reports_state",
+          "value": "\"dashboard_ad_reports\".\"state\" in ('waiting', 'pending', 'delivered', 'refused', 'given_up', 'lapsed')"
+        },
+        "dashboard_ad_reports_only_a_store_report_waits": {
+          "name": "dashboard_ad_reports_only_a_store_report_waits",
+          "value": "\"dashboard_ad_reports\".\"event\" = 'store_connected' or \"dashboard_ad_reports\".\"state\" not in ('waiting', 'lapsed')"
+        },
+        "dashboard_ad_reports_open_holds_click": {
+          "name": "dashboard_ad_reports_open_holds_click",
+          "value": "(\"dashboard_ad_reports\".\"state\" in ('waiting', 'pending')) = (\"dashboard_ad_reports\".\"click_id\" is not null)"
+        },
+        "dashboard_ad_reports_pending_scheduled": {
+          "name": "dashboard_ad_reports_pending_scheduled",
+          "value": "\"dashboard_ad_reports\".\"state\" <> 'pending' or \"dashboard_ad_reports\".\"next_attempt_at\" is not null"
+        },
+        "dashboard_ad_reports_settled_dated": {
+          "name": "dashboard_ad_reports_settled_dated",
+          "value": "(\"dashboard_ad_reports\".\"state\" in ('waiting', 'pending')) = (\"dashboard_ad_reports\".\"settled_at\" is null)"
+        },
+        "dashboard_ad_reports_fact_dated": {
+          "name": "dashboard_ad_reports_fact_dated",
+          "value": "(\"dashboard_ad_reports\".\"state\" in ('waiting', 'lapsed')) = (\"dashboard_ad_reports\".\"event_at\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -218,12 +369,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "client_hash": {
-          "name": "client_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "purpose": {
           "name": "purpose",
           "type": "text",
@@ -271,54 +416,6 @@
           "method": "btree",
           "with": {}
         },
-        "dashboard_link_sends_client_idx": {
-          "name": "dashboard_link_sends_client_idx",
-          "columns": [
-            {
-              "expression": "client_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "dashboard_link_sends_channel_idx": {
-          "name": "dashboard_link_sends_channel_idx",
-          "columns": [
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "dashboard_link_sends_expires_idx": {
           "name": "dashboard_link_sends_expires_idx",
           "columns": [
@@ -343,113 +440,6 @@
         "dashboard_link_sends_purpose": {
           "name": "dashboard_link_sends_purpose",
           "value": "\"dashboard_link_sends\".\"purpose\" in ('dashboard', 'report')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.dashboard_registration_postbacks": {
-      "name": "dashboard_registration_postbacks",
-      "schema": "",
-      "columns": {
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "click_id": {
-          "name": "click_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_outcome": {
-          "name": "last_outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "dashboard_registration_postbacks_due_idx": {
-          "name": "dashboard_registration_postbacks_due_idx",
-          "columns": [
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"dashboard_registration_postbacks\".\"state\" = 'pending'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "dashboard_registration_postbacks_account_id_dashboard_accounts_id_fk": {
-          "name": "dashboard_registration_postbacks_account_id_dashboard_accounts_id_fk",
-          "tableFrom": "dashboard_registration_postbacks",
-          "tableTo": "dashboard_accounts",
-          "columnsFrom": ["account_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "dashboard_registration_postbacks_state": {
-          "name": "dashboard_registration_postbacks_state",
-          "value": "\"dashboard_registration_postbacks\".\"state\" in ('pending', 'delivered', 'refused', 'given_up')"
-        },
-        "dashboard_registration_postbacks_pending_holds_click": {
-          "name": "dashboard_registration_postbacks_pending_holds_click",
-          "value": "(\"dashboard_registration_postbacks\".\"state\" = 'pending') = (\"dashboard_registration_postbacks\".\"click_id\" is not null)"
-        },
-        "dashboard_registration_postbacks_pending_scheduled": {
-          "name": "dashboard_registration_postbacks_pending_scheduled",
-          "value": "\"dashboard_registration_postbacks\".\"state\" <> 'pending' or \"dashboard_registration_postbacks\".\"next_attempt_at\" is not null"
-        },
-        "dashboard_registration_postbacks_settled_dated": {
-          "name": "dashboard_registration_postbacks_settled_dated",
-          "value": "\"dashboard_registration_postbacks\".\"state\" = 'pending' or \"dashboard_registration_postbacks\".\"settled_at\" is not null"
         }
       },
       "isRLSEnabled": false

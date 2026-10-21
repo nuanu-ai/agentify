@@ -55,6 +55,7 @@ if (databaseUrl === null) {
       drop table if exists
         dashboard_report_deletion_tombstones, dashboard_report_identity_secrets,
         dashboard_link_sends, dashboard_woo_quotes, dashboard_registration_postbacks,
+        dashboard_ad_reports,
         dashboard_woo_orders, dashboard_woo_shops, dashboard_woo_grants, dashboard_verifications,
         dashboard_credentials, dashboard_sessions, dashboard_accounts
       cascade

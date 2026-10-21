@@ -1011,8 +1011,13 @@ if (databaseUrl === null) {
   const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 
   async function registrations(): Promise<Record<string, unknown>[]> {
-    return (await pool.query(`select * from dashboard_registration_postbacks order by account_id`))
-      .rows;
+    return (
+      await pool.query(
+        `select account_id, click_id, state, attempts, next_attempt_at, last_outcome, created_at,
+                event_at, settled_at
+           from dashboard_ad_reports where event = 'reg' order by account_id`,
+      )
+    ).rows;
   }
 
   /**
@@ -1064,6 +1069,7 @@ if (databaseUrl === null) {
           next_attempt_at: expect.any(Date),
           last_outcome: null,
           created_at: expect.any(Date),
+          event_at: expect.any(Date),
           settled_at: null,
         },
       ]);
@@ -1134,7 +1140,7 @@ if (databaseUrl === null) {
       });
 
       expect(await registrations()).toMatchObject([{ account_id: made.id, click_id: CLICK }]);
-      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(1);
     });
 
     it("writes nothing for a token that opens nothing or for the landing page's read, and one registration for a link opened twice", async () => {
@@ -1163,7 +1169,7 @@ if (databaseUrl === null) {
       await pool.query("update dashboard_verifications set expires_at = now() + interval '1 hour'");
       await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
-      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(1);
     });
 
     it("writes no registration for a report link opened by a new address", async () => {
@@ -1186,7 +1192,7 @@ if (databaseUrl === null) {
 
     it.each([
       ["its session", "dashboard_sessions"],
-      ["its registration", "dashboard_registration_postbacks"],
+      ["its registration", "dashboard_ad_reports"],
     ])(
       "leaves neither the account, its session nor its registration when %s cannot be written, and the link still opens",
       async (_what, table) => {
@@ -1213,7 +1219,7 @@ if (databaseUrl === null) {
 
         expect(await countIn("dashboard_accounts")).toBe(0);
         expect(await countIn("dashboard_sessions")).toBe(0);
-        expect(await countIn("dashboard_registration_postbacks")).toBe(0);
+        expect(await countIn("dashboard_ad_reports")).toBe(0);
         expect(await countIn("dashboard_verifications")).toBe(1);
         await pool.query(`drop trigger fail_dashboard_insert on ${table}`);
         await pool.query("drop function fail_dashboard_insert()");
@@ -1237,7 +1243,7 @@ if (databaseUrl === null) {
       expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
       expect(await countIn("dashboard_accounts")).toBe(1);
       expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
-      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(1);
     });
 
     it("makes one account and one registration when two links with clicks for one new address are opened at once", async () => {
@@ -1301,7 +1307,7 @@ if (databaseUrl === null) {
       });
       const bystander = await identity.openLink(tokenIn(messages[1] as Message));
       if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
-      expect(await countIn("dashboard_registration_postbacks")).toBe(2);
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
 
       await expect(
         identity.deleteUnattachedPerson({
@@ -1314,7 +1320,7 @@ if (databaseUrl === null) {
       expect(await registrations()).toMatchObject([
         { account_id: bystander.person.id, click_id: ANOTHER_CLICK },
       ]);
-      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(1);
     });
 
     it("still opens a link stored in the shape without a click, and writes no registration", async () => {
@@ -1378,9 +1384,9 @@ if (databaseUrl === null) {
       const made = await identity.make("person@example.com", MERCHANT);
       if (made === null) throw new Error("the account was not made");
       await pool.query(
-        `insert into dashboard_registration_postbacks
-           (account_id, click_id, state, attempts, next_attempt_at, created_at)
-         values ($1, $2, 'pending', 0, now(), now())`,
+        `insert into dashboard_ad_reports
+           (account_id, event, click_id, state, attempts, next_attempt_at, created_at, event_at)
+         values ($1, 'reg', $2, 'pending', 0, now(), now(), now())`,
         [made.id, ANOTHER_CLICK],
       );
       const planted = await registrations();
@@ -1400,49 +1406,325 @@ if (databaseUrl === null) {
     it.each([
       {
         rule: "a pending row holds a click id",
-        constraint: "dashboard_registration_postbacks_pending_holds_click",
-        values: "null, 'pending', now(), null",
+        constraint: "dashboard_ad_reports_open_holds_click",
+        values: "'reg', null, 'pending', now(), now(), null",
+      },
+      {
+        rule: "a waiting row holds a click id",
+        constraint: "dashboard_ad_reports_open_holds_click",
+        values: "'store_connected', null, 'waiting', null, null, null",
       },
       {
         rule: "a settled row no longer holds the click id",
-        constraint: "dashboard_registration_postbacks_pending_holds_click",
-        values: "'qa_click_0123456789abcdef', 'delivered', null, now()",
+        constraint: "dashboard_ad_reports_open_holds_click",
+        values: "'reg', 'qa_click_0123456789abcdef', 'delivered', null, now(), now()",
+      },
+      {
+        rule: "a lapsed row no longer holds the click id",
+        constraint: "dashboard_ad_reports_open_holds_click",
+        values: "'store_connected', 'qa_click_0123456789abcdef', 'lapsed', null, null, now()",
       },
       {
         rule: "a pending row has its next attempt",
-        constraint: "dashboard_registration_postbacks_pending_scheduled",
-        values: "'qa_click_0123456789abcdef', 'pending', null, null",
+        constraint: "dashboard_ad_reports_pending_scheduled",
+        values: "'reg', 'qa_click_0123456789abcdef', 'pending', null, now(), null",
       },
       {
         rule: "a settled row says when it settled",
-        constraint: "dashboard_registration_postbacks_settled_dated",
-        values: "null, 'given_up', null, null",
+        constraint: "dashboard_ad_reports_settled_dated",
+        values: "'reg', null, 'given_up', null, now(), null",
       },
       {
-        rule: "the state is one of the four",
-        constraint: "dashboard_registration_postbacks_state",
-        values: "null, 'sent', null, now()",
+        rule: "a row still open has not settled",
+        constraint: "dashboard_ad_reports_settled_dated",
+        values: "'store_connected', 'qa_click_0123456789abcdef', 'waiting', null, null, now()",
       },
-    ])(
-      "refuses a registration row that breaks the rule that $rule",
-      async ({ constraint, values }) => {
-        await pool.query(
-          `insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)
+      {
+        rule: "a report that went or was due says when its fact happened",
+        constraint: "dashboard_ad_reports_fact_dated",
+        values: "'store_connected', 'qa_click_0123456789abcdef', 'pending', now(), null, null",
+      },
+      {
+        rule: "a store report still waiting has no fact yet",
+        constraint: "dashboard_ad_reports_fact_dated",
+        values: "'store_connected', 'qa_click_0123456789abcdef', 'waiting', null, now(), null",
+      },
+      {
+        rule: "only a store report waits or lapses",
+        constraint: "dashboard_ad_reports_only_a_store_report_waits",
+        values: "'reg', 'qa_click_0123456789abcdef', 'waiting', null, null, null",
+      },
+      {
+        rule: "the event is a registration or a connected store",
+        constraint: "dashboard_ad_reports_event",
+        values: "'payment', null, 'delivered', null, now(), now()",
+      },
+      {
+        rule: "the state is one of the six",
+        constraint: "dashboard_ad_reports_state",
+        values: "'reg', null, 'sent', null, now(), now()",
+      },
+    ])("refuses a report row that breaks the rule that $rule", async ({ constraint, values }) => {
+      await pool.query(
+        `insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)
          values ('acc_checked', 'checked@example.com', true, '', now(), now())`,
-        );
-        const insert = (columns: string) =>
-          pool.query(
-            `insert into dashboard_registration_postbacks
-             (account_id, attempts, created_at, click_id, state, next_attempt_at, settled_at)
+      );
+      const insert = (columns: string) =>
+        pool.query(
+          `insert into dashboard_ad_reports
+             (account_id, attempts, created_at, event, click_id, state, next_attempt_at, event_at,
+              settled_at)
            values ('acc_checked', 0, now(), ${columns})`,
-          );
+        );
 
-        await expect(insert(values)).rejects.toMatchObject({ code: "23514", constraint });
+      await expect(insert(values)).rejects.toMatchObject({ code: "23514", constraint });
 
-        await insert("null, 'delivered', null, now()");
-        expect(await registrations()).toMatchObject([{ click_id: null, state: "delivered" }]);
-      },
-    );
+      await insert("'reg', null, 'delivered', null, now(), now()");
+      await insert("'store_connected', 'qa_click_0123456789abcdef', 'waiting', null, null, null");
+      expect(
+        (await pool.query("select event, state from dashboard_ad_reports order by event")).rows,
+      ).toStrictEqual([
+        { event: "reg", state: "delivered" },
+        { event: "store_connected", state: "waiting" },
+      ]);
+    });
+
+    it("refuses a second report of one event for one account", async () => {
+      await pool.query(
+        `insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)
+         values ('acc_checked', 'checked@example.com', true, '', now(), now())`,
+      );
+      const insert = () =>
+        pool.query(
+          `insert into dashboard_ad_reports
+             (account_id, event, click_id, state, created_at)
+           values ('acc_checked', 'store_connected', 'qa_click_0123456789abcdef', 'waiting', now())`,
+        );
+      await insert();
+
+      await expect(insert()).rejects.toMatchObject({ code: "23505" });
+    });
+  });
+
+  describe("the store report a sign-in from an ad's click leaves waiting, on PostgreSQL", () => {
+    beforeEach(async () => {
+      await emptyEverything();
+      await migrateEverything();
+    });
+
+    const storeReports = async (): Promise<Record<string, unknown>[]> =>
+      (
+        await pool.query(
+          `select account_id, click_id, state, attempts, next_attempt_at, last_outcome, created_at,
+                  event_at, settled_at
+             from dashboard_ad_reports where event = 'store_connected' order by account_id`,
+        )
+      ).rows;
+
+    /** Both reports switched on, posting to a laptop's receiver. */
+    function storeReportingOn(messages: Message[]) {
+      return identityOn(messages, "accepted", {
+        REGISTRATION_POSTBACK_ENABLED: "true",
+        REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+        REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
+        STORE_POSTBACK_ENABLED: "true",
+      });
+    }
+
+    it("leaves the store report waiting with its own copy of the click beside the registration, dated by the same sign-in", async () => {
+      const messages: Message[] = [];
+      const identity = storeReportingOn(messages);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
+
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+
+      if (opened.status !== "opened") throw new Error("the link did not open");
+      const [registration] = await registrations();
+      expect(await storeReports()).toStrictEqual([
+        {
+          account_id: opened.person.id,
+          click_id: CLICK,
+          state: "waiting",
+          attempts: 0,
+          next_attempt_at: null,
+          last_outcome: null,
+          created_at: registration?.created_at,
+          event_at: null,
+          settled_at: null,
+        },
+      ]);
+      expect(registration).toMatchObject({ click_id: CLICK, state: "pending" });
+    });
+
+    it("keeps no click for a store report when that report is switched off, and writes the registration alone", async () => {
+      const messages: Message[] = [];
+      const identity = reportingOn(messages);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
+
+      await identity.openLink(tokenIn(messages[0] as Message));
+
+      expect(await storeReports()).toStrictEqual([]);
+      expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
+    });
+
+    it("leaves a store report waiting for a Google sign-in from an ad that makes a new address's account", async () => {
+      const google = googleExchange();
+      vi.stubGlobal("fetch", google.fetch);
+      try {
+        const identity = identityFor(
+          {
+            ...config({
+              REGISTRATION_POSTBACK_ENABLED: "true",
+              REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+              REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
+              STORE_POSTBACK_ENABLED: "true",
+            }),
+            google: { clientId: "offline-client", clientSecret: "offline-secret" },
+          },
+          { pool, postman: async () => "accepted" },
+        );
+        const began = await identity.startGoogle("settings", CLICK);
+        if (began.status !== "redirect") throw new Error("Google must start");
+
+        const opened = await identity.finishGoogle(
+          google.authorize(began.location, {}),
+          cookieHeader(began.setCookies),
+        );
+
+        if (opened.status !== "opened") throw new Error("the Google sign-in did not open");
+        expect(await storeReports()).toMatchObject([
+          { account_id: opened.person.id, click_id: CLICK, state: "waiting", event_at: null },
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("leaves neither report when the store report cannot be written, and the link still opens", async () => {
+      const messages: Message[] = [];
+      const identity = storeReportingOn(messages);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
+      const token = tokenIn(messages[0] as Message);
+      await pool.query(`
+        create function fail_store_report() returns trigger language plpgsql as $$
+        begin
+          if new.event = 'store_connected' then raise exception 'injected insert failure'; end if;
+          return new;
+        end $$
+      `);
+      await pool.query(`
+        create trigger fail_store_report before insert on dashboard_ad_reports
+        for each row execute function fail_store_report()
+      `);
+
+      await expect(identity.openLink(token)).rejects.toThrow();
+
+      expect(await countIn("dashboard_accounts")).toBe(0);
+      expect(await countIn("dashboard_ad_reports")).toBe(0);
+      await pool.query("drop trigger fail_store_report on dashboard_ad_reports");
+      await pool.query("drop function fail_store_report()");
+      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
+    });
+
+    it("removes both reports with an account deleted for privacy", async () => {
+      const messages: Message[] = [];
+      const identity = storeReportingOn(messages);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
+      await identity.openLink(tokenIn(messages[0] as Message));
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
+
+      await expect(
+        identity.deleteUnattachedPerson({
+          operation: "delete",
+          operation_id: OPERATION,
+          email: "person@example.com",
+        }),
+      ).resolves.toStrictEqual({ status: "deleted" });
+
+      expect(await countIn("dashboard_ad_reports")).toBe(0);
+    });
+  });
+
+  describe("the migration that gives every report to the ad tracker its event", () => {
+    beforeEach(async () => {
+      await emptyEverything();
+    });
+
+    it("moves every registration report across as it stood, dated by its sign-in, and drops the old table", async () => {
+      const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
+      const before = files.filter((file) => file < "0017");
+      const after = files.filter((file) => file >= "0017");
+      for (const file of before) await run(file);
+      const signedIn = new Date("2026-10-15T09:00:00.000Z");
+      const settled = new Date("2026-10-15T09:00:01.000Z");
+      await pool.query(
+        `insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)
+         values ('acc_pending', 'pending@example.com', true, '', $1, $1),
+                ('acc_delivered', 'delivered@example.com', true, '', $1, $1)`,
+        [signedIn],
+      );
+      await pool.query(
+        `insert into dashboard_registration_postbacks
+           (account_id, click_id, state, attempts, next_attempt_at, last_outcome, created_at,
+            settled_at)
+         values ('acc_pending', $1, 'pending', 2, $2, 'http_503', $2, null),
+                ('acc_delivered', null, 'delivered', 1, null, 'http_200', $2, $3)`,
+        [CLICK, signedIn, settled],
+      );
+
+      for (const file of after) await run(file);
+
+      expect(
+        (
+          await pool.query(
+            `select account_id, event, click_id, state, attempts, next_attempt_at, last_outcome,
+                    created_at, event_at, settled_at
+               from dashboard_ad_reports order by account_id`,
+          )
+        ).rows,
+      ).toStrictEqual([
+        {
+          account_id: "acc_delivered",
+          event: "reg",
+          click_id: null,
+          state: "delivered",
+          attempts: 1,
+          next_attempt_at: null,
+          last_outcome: "http_200",
+          created_at: signedIn,
+          event_at: signedIn,
+          settled_at: settled,
+        },
+        {
+          account_id: "acc_pending",
+          event: "reg",
+          click_id: CLICK,
+          state: "pending",
+          attempts: 2,
+          next_attempt_at: signedIn,
+          last_outcome: "http_503",
+          created_at: signedIn,
+          event_at: signedIn,
+          settled_at: null,
+        },
+      ]);
+      expect(
+        (await pool.query("select to_regclass('dashboard_registration_postbacks') as old")).rows,
+      ).toStrictEqual([{ old: null }]);
+    });
   });
 
   describe("the registration a Google sign-in started with an ad's click leaves for the tracker, on PostgreSQL", () => {
@@ -1505,6 +1787,7 @@ if (databaseUrl === null) {
           next_attempt_at: expect.any(Date),
           last_outcome: null,
           created_at: expect.any(Date),
+          event_at: expect.any(Date),
           settled_at: null,
         },
       ]);
@@ -1555,7 +1838,7 @@ if (databaseUrl === null) {
         `create function fail_registration() returns trigger language plpgsql as $$ begin raise exception 'injected registration failure'; end $$`,
       );
       await pool.query(
-        "create trigger fail_registration before insert on dashboard_registration_postbacks for each row execute function fail_registration()",
+        "create trigger fail_registration before insert on dashboard_ad_reports for each row execute function fail_registration()",
       );
 
       expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
@@ -1568,7 +1851,7 @@ if (databaseUrl === null) {
         "dashboard_accounts",
         "dashboard_credentials",
         "dashboard_sessions",
-        "dashboard_registration_postbacks",
+        "dashboard_ad_reports",
       ]) {
         expect(await countIn(table), table).toBe(0);
       }
