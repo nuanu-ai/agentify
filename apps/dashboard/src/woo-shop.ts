@@ -752,9 +752,10 @@ export interface SoldItem {
 }
 
 /**
- * The shop order's metadata: our order identifier, and for a payment into a
- * split two lines the merchant reads beside the order, the commission on what
- * was paid and the split it went to. No key begins with an underscore, which
+ * The shop order's metadata: our order identifier, what the buyer paid, which
+ * the shop's total may differ from by a cent, and for a payment into a split
+ * two lines the merchant reads beside the order, the commission on what was
+ * paid and the split it went to. No key begins with an underscore, which
  * WooCommerce hides. The answer check reads only the identifier, so the lines
  * neither break nor weaken it.
  */
@@ -764,6 +765,7 @@ const metadataOf = (
   into: PaidIntoSplit | null,
 ): readonly { readonly key: string; readonly value: string }[] => [
   { key: "agentify_order_id", value: orderId },
+  { key: "agentify_paid", value: `${paid.amount} ${paid.currency}` },
   ...(into === null
     ? []
     : [
