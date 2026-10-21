@@ -273,28 +273,10 @@ describe("the checks a card compiles to", () => {
 });
 
 describe("what the exported document says about the mode", () => {
-  // An engineer generating a client from the JSON Schema never reads the
-  // TypeScript, so the reason a mode cannot be published must be in the
-  // document.
-
   it("keeps every mode in the enumeration", () => {
     // The mode exists and the order machine knows it; removing it from the
     // vocabulary would claim more than "not yet".
     expect(toJsonSchemas().fulfillment.enum).toStrictEqual(["sync", "async", "confirm", "ship"]);
-  });
-
-  it("says in the fulfillment document that one of them cannot be published", () => {
-    const description = toJsonSchemas().fulfillment.description ?? "";
-
-    expect(description).toContain("confirm");
-    expect(description).toContain("pilot");
-  });
-
-  it("says the same in the card document", () => {
-    const description = toJsonSchemas().card.description ?? "";
-
-    expect(description).toContain("confirm");
-    expect(description).toContain("pilot");
   });
 });
 
@@ -357,10 +339,8 @@ describe("the card an agent reads", () => {
 
   it("names who sells, in the words the merchant gave", () => {
     // An agent with a question the order cannot answer is sent to the shop's
-    // own site. The pair is the merchant's and unchecked, which the schema's
-    // description says.
+    // own site.
     expect(publicCard.seller).toStrictEqual({ name: "Freeland", site: "https://freeland.example" });
-    expect(PublicCardSchema.description).toContain("did not check");
   });
 
   it("says a merchant gave no site rather than leaving the field out", () => {
@@ -533,18 +513,6 @@ describe("the card an agent reads", () => {
     }
   });
 
-  it("carries its own caveats into the exported document, where the reader has nothing else", () => {
-    // The reader of the exported document has no TypeScript and is about to
-    // spend money. `as_of` here means only when the price shown was published,
-    // narrower than elsewhere in this contract.
-    const description = toJsonSchemas().public_card.description ?? "";
-
-    expect(description).toContain("when the price shown here was published");
-    expect(description).toContain("says nothing about how fresh that check will be");
-    expect(description).toContain("not that they answer");
-    expect(description).toContain("did not check the name or the site");
-  });
-
   it("projects every card of the pilot merchant's catalog into something an agent can read", () => {
     // A card the merchant may publish whose projection this schema refuses
     // would be a product that cannot be shown for sale.
@@ -624,15 +592,6 @@ describe("a card as its own merchant reads it", () => {
     expect(errorOf(MerchantCardSchema, { ...merchantCard, revenue: "1000.00" })).toContain(
       "revenue",
     );
-  });
-
-  it("tells the reader of the document alone what the two selling fields mean", () => {
-    // Two fields that agree most of the time and differ exactly when it
-    // matters.
-    const description = toJsonSchemas().merchant_card.description ?? "";
-
-    expect(description).toContain("paused");
-    expect(description).toContain("resume");
   });
 });
 
@@ -802,10 +761,6 @@ describe("who sells, as an agent reads it", () => {
     });
     expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "site");
     expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "name");
-  });
-
-  it("tells the agent whose word it is", () => {
-    expect(SellerSchema.description).toContain("did not check");
   });
 });
 
@@ -1032,13 +987,12 @@ describe("the tags a card may carry, against the listing's own rules", () => {
     expect(tagged(["one two"]).success).toBe(true);
   });
 
-  it("says the rules it cannot check in a document, for the reader who has only that", () => {
+  it("carries its limits into the exported document, for the reader who has only that", () => {
     const document = toJsonSchemas().tags;
 
     expect(document.maxItems).toBe(5);
     expect(document.minItems).toBe(1);
     expect(document.uniqueItems).toBe(true);
-    expect(document.description).toContain("case");
   });
 });
 

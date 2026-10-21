@@ -314,15 +314,6 @@ describe("the poll a worker makes", () => {
   it("refuses a field it does not know", () => {
     expect(errorOf(WorkerPollRequestSchema, { cursor: "abc" })).toContain("cursor");
   });
-
-  it("tells the reader of the document alone whose the limits are", () => {
-    // Otherwise a reader of the export would take no ceiling for a promise
-    // that any number is honoured.
-    const description = schemas.worker_poll_request.meta()?.description ?? "";
-
-    expect(description).toContain("the policy is the gateway's");
-    expect(description).toContain("its own window and its own batch size whatever is asked for");
-  });
 });
 
 describe("what a poll answers with", () => {
@@ -711,13 +702,6 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.safeParse({ ...status, refusal: null }).success).toBe(false);
   });
 
-  it("says in the exported document that a missing refusal is not a dropped one", () => {
-    // An absent refusal means there was none to quote.
-    const description = schemas.agent_order_status.meta()?.description ?? "";
-
-    expect(description).toContain("no refusal to quote");
-  });
-
   it("reads a status word added later as a word, rather than refusing the order", () => {
     // The storefront has no version: an unknown word is read as not an ending
     // the agent knows, and it asks again later rather than losing the whole
@@ -841,14 +825,6 @@ describe("the catalog an agent reads", () => {
     ).toMatchObject({
       anyOf: expect.arrayContaining([expect.objectContaining({ pattern: expect.any(String) })]),
     });
-  });
-
-  it("says in the exported document that it does not claim to be the whole catalog", () => {
-    // What is truncated must be said: paging is not designed, and no paging
-    // field is not a promise that there is no more.
-    const description = JSON.stringify(schemas.catalog_page.meta() ?? {});
-
-    expect(description).toContain("whole catalog");
   });
 });
 

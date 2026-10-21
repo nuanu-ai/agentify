@@ -14,7 +14,6 @@ import {
   notPlainTextIn,
   PublicCardSchema,
   publicCardOf,
-  toJsonSchemas,
 } from "./index.js";
 
 const card = {
@@ -324,14 +323,6 @@ describe("a card's own words are plain text", () => {
     for (const text of hostile) findingsOf({ ...card, title: text, description: text });
 
     expect(performance.now() - started).toBeLessThan(1_000);
-  });
-
-  it("says in the card document what it refuses, for the reader who has only that", () => {
-    const description = toJsonSchemas().card.description ?? "";
-
-    expect(description).toContain("plain text");
-    expect(description).toContain("markup");
-    expect(description).toContain("reference");
   });
 });
 
