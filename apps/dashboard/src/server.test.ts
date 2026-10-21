@@ -7256,6 +7256,30 @@ describe("what the pages record for product analytics", () => {
     expect(recorded(running)).toStrictEqual([viewOf("sign_in")]);
   });
 
+  it("records no sign-in screen shown to a program that says it is one, or says nothing, and every signed-in view", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+
+    const robots = [
+      "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 HeadlessChrome/120.0.0.0",
+      "curl/8.7.1",
+      "python-requests/2.32.3",
+    ];
+    for (const agent of robots) {
+      const robot = (await running.another()).sending({ "user-agent": agent });
+      expect((await robot.get("/sign-in")).status).toBe(200);
+    }
+    const unnamed = await overASocket(running.url, "/sign-in", "");
+    const person = await running.browser.sending({ "user-agent": "curl/8.7.1" }).get("/cards");
+    await settle();
+
+    expect([unnamed.status, person.status]).toStrictEqual([200, 200]);
+    expect(recorded(running)).toStrictEqual([viewOf("cards", owner)]);
+  });
+
   it("records no view for a prefetch, a read the gate sent elsewhere, or a page that is no screen", async () => {
     const running = await started();
     const stranger = await running.another();
