@@ -202,6 +202,22 @@ export interface IssuedMerchantKey {
 /** The queue's name for the daily sweep of claims on payments. */
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
+/** The queue's name for the daily work that forgets attempts that lapsed unpaid. */
+const FORGET_LAPSED = "agentify_forget_lapsed_attempts";
+
+/**
+ * How long an attempt that lapsed unpaid is kept after it ended: long enough
+ * for its buyer or merchant to ask about a failed purchase, after which
+ * nothing it records is anybody's money or goods.
+ */
+const LAPSED_KEPT_MS = 30 * 24 * 60 * 60 * 1_000;
+
+/**
+ * How many lapsed attempts one statement forgets, so a run over a long
+ * backlog is many short statements rather than one that holds the table.
+ */
+const LAPSED_FORGOTTEN_AT_ONCE = 500;
+
 /**
  * The catalog as it stands after the selling switch, or a refusal. A merchant
  * who has left can still press the switch, so that is an ordinary refusal
@@ -455,6 +471,9 @@ export class Gateway {
     // gateways run, and registering the name again replaces the schedule. A
     // job may still be handled more than once, which forgetting claims allows.
     await this.runtime.queue.everyDay(SWEEP_CLAIMS, () => this.forgetOldClaims());
+    // Forgetting is the same whichever run gets there, so a job handled twice
+    // is harmless.
+    await this.runtime.queue.everyDay(FORGET_LAPSED, () => this.forgetLapsedAttempts());
 
     // What the orders are still owed is swept the same way. Two gateways can
     // run it at once, because pg-boss re-offers a job that outlives its
@@ -505,6 +524,24 @@ export class Gateway {
     );
     if (gone > 0) {
       console.log(`[gateway] forgot ${gone} claims on payments older than the retention`);
+    }
+    return gone;
+  }
+
+  /**
+   * Forgets every attempt that lapsed unpaid more than thirty days ago, a batch
+   * at a time, and returns how many went.
+   */
+  async forgetLapsedAttempts(): Promise<number> {
+    const before = this.runtime.clock() - LAPSED_KEPT_MS;
+    let gone = 0;
+    for (;;) {
+      const batch = await this.runtime.store.forgetLapsedBefore(before, LAPSED_FORGOTTEN_AT_ONCE);
+      gone += batch;
+      if (batch < LAPSED_FORGOTTEN_AT_ONCE) break;
+    }
+    if (gone > 0) {
+      console.log(`[gateway] forgot ${gone} purchases that lapsed unpaid over thirty days ago`);
     }
     return gone;
   }

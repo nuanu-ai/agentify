@@ -75,6 +75,24 @@ export const WAITING_FOR_PAYMENT = [
 ] as const satisfies readonly OrderState[];
 
 /**
+ * Whether an order is an attempt that lapsed unpaid: it ended rejected or
+ * expired with no payment ever verified, no goods held for its buyer, nothing
+ * presented to pay with, and its merchant never asked to confirm it, which is
+ * what an event about it would follow. Nothing of anybody's money or goods
+ * rests on such an order. Whether a receipt or a payment claim names it is the
+ * store's to ask besides, at the moment it would forget the order.
+ */
+export const lapsedAttempt = (record: StoredOrder): boolean =>
+  (record.order.state === "rejected" || record.order.state === "expired") &&
+  record.order.payment === "none" &&
+  !record.order.heldFulfillment &&
+  record.order.timestamps.confirmationRequestedAt == null &&
+  record.payment == null &&
+  record.paidBy == null &&
+  record.paymentAttempt == null &&
+  record.delivery == null;
+
+/**
  * What the birth of a purchase is held to: the integration its card was sold
  * through, which its merchant must still sell through, and how many of that
  * merchant's purchases may wait for payment at once, this one included.
@@ -835,6 +853,15 @@ export interface Store {
    * name is free and starts beside it.
    */
   runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>>;
+
+  /**
+   * Deletes at most `limit` attempts that lapsed unpaid (`lapsedAttempt`),
+   * whoever they belong to, that were last written before `instant` and that
+   * no receipt and no payment claim names, and returns how many went. An
+   * order deleted is answered after as one that never existed. Bounded, so
+   * each call is a short statement however many have piled up.
+   */
+  forgetLapsedBefore(instant: number, limit: number): Promise<number>;
 
   /**
    * Every order that ended delivered with no receipt, whoever it belongs to.

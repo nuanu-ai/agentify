@@ -37,6 +37,7 @@ import {
   INTEGRATIONS,
   type Integration,
   type IntegrationSwitch,
+  lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderChange,
@@ -793,14 +794,18 @@ export class PostgresStore implements Store {
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
-    const [row] = await this.#db.select().from(orders).where(eq(orders.id, id)).limit(1);
+    const [row] = await this.#db
+      .select({ record: orders.record })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
     return row?.record ?? null;
   }
 
   async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
     // Spelled as the index is, or the planner reads every order to answer.
     const [row] = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(sql`(${orders.record} ->> 'paymentRef') = ${paymentRef}`)
       .limit(1);
@@ -809,7 +814,7 @@ export class PostgresStore implements Store {
 
   async merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null> {
     const [row] = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(and(eq(orders.id, id), eq(orders.merchantId, merchantId)))
       .limit(1);
@@ -822,7 +827,7 @@ export class PostgresStore implements Store {
   ): Promise<readonly StoredOrder[]> {
     const mine = eq(orders.merchantId, merchantId);
     const rows = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(query?.open === true ? and(mine, eq(orders.open, true)) : mine)
       .orderBy(orders.createdAt);
@@ -831,7 +836,7 @@ export class PostgresStore implements Store {
 
   async openOrders(): Promise<readonly StoredOrder[]> {
     const rows = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(eq(orders.open, true))
       .orderBy(orders.createdAt);
@@ -840,7 +845,7 @@ export class PostgresStore implements Store {
 
   async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
     const rows = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(
         and(
@@ -855,7 +860,7 @@ export class PostgresStore implements Store {
 
   async paymentOrders(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
     const rows = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(and(sql`${orders.id} > ${afterId}`, sql`${orders.record} ->> 'payment' is not null`))
       .orderBy(orders.id)
@@ -916,13 +921,31 @@ export class PostgresStore implements Store {
     }
   }
 
+  async forgetLapsedBefore(instant: number, limit: number): Promise<number> {
+    // Skipping what is locked leaves an order somebody is deciding about to
+    // the next run, and lets two runs share the work without waiting.
+    const gone = await this.#db.execute(sql`
+      delete from ${orders} where ${orders.id} in (
+        select ${orders.id} from ${orders}
+        where ${orders.lapsed} and ${orders.updatedAt} < ${new Date(instant)}
+          and not exists (select 1 from ${receipts} where ${receipts.orderId} = ${orders.id})
+          and not exists (
+            select 1 from ${paymentClaims} where ${paymentClaims.orderId} = ${orders.id}
+          )
+        order by ${orders.updatedAt}
+        limit ${limit}
+        for update skip locked
+      )`);
+    return gone.rowCount ?? 0;
+  }
+
   async deliveredWithoutReceipt(): Promise<readonly StoredOrder[]> {
     // The missing receipt is asked in the predicate, so the answer is the size
     // of what is wrong, normally nothing. The read is not bounded: with no
     // index on `state`, this and `openOrders` scan the orders table. Add an
     // index when the table grows large.
     const rows = await this.#db
-      .select()
+      .select({ record: orders.record })
       .from(orders)
       .where(
         and(
@@ -953,7 +976,7 @@ export class PostgresStore implements Store {
       // Where a merchant is named it is in the same predicate, so a stranger's
       // order is never selected or locked.
       const [row] = await tx
-        .select()
+        .select({ record: orders.record, merchantId: orders.merchantId })
         .from(orders)
         .where(
           scope === undefined
@@ -1018,6 +1041,7 @@ export class PostgresStore implements Store {
           .set({
             state: next.state,
             open: next.open,
+            lapsed: next.lapsed,
             record: next.record,
             updatedAt: next.updatedAt,
           })
@@ -1421,6 +1445,7 @@ function rowFor(record: StoredOrder) {
     id: record.order.id,
     state: record.order.state,
     open: listedAsOpen(record.order),
+    lapsed: lapsedAttempt(record),
     merchantId: record.merchantId,
     itemId: record.itemId,
     merchantItemId: record.merchantItemId,

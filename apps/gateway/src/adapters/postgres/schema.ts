@@ -201,6 +201,11 @@ export const orders = pgTable(
     state: text("state").notNull(),
     /** Whether this order is still owed work or money. */
     open: boolean("open").notNull(),
+    /**
+     * Whether this order is an attempt that lapsed unpaid (`lapsedAttempt`),
+     * which the merchant's screens list apart and the daily work forgets.
+     */
+    lapsed: boolean("lapsed").notNull().default(false),
     /** Written from the document, like `state` and `open`. */
     merchantId: text("merchant_id")
       .notNull()
@@ -222,6 +227,9 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
+    // The attempts that lapsed unpaid, the oldest first, for the daily work
+    // that forgets them.
+    index("orders_lapsed_idx").on(table.updatedAt).where(sql`${table.lapsed}`),
     // A merchant's purchases waiting for payment, counted at the birth of
     // every purchase of theirs.
     index("orders_waiting_idx")

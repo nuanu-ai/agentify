@@ -169,6 +169,13 @@
       "when": 1792580692107,
       "tag": "0023_merchant_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792581099225,
+      "tag": "0024_order_lapsed_attempts",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ import {
   type ClaimHolder,
   type Integration,
   type IntegrationSwitch,
+  lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderChange,
@@ -101,6 +102,8 @@ export class MemoryStore implements Store {
    */
   readonly #cardIdByMerchantKey = new Map<string, string>();
   readonly #orders = new Map<string, StoredOrder>();
+  /** When each order was last written, by this store's clock, as Postgres stamps a row. */
+  readonly #written = new Map<string, number>();
   /** The latest poll recorded for each merchant. */
   readonly #contact = new Map<string, number>();
   readonly #receipts = new Map<string, { merchantId: string; receipt: Receipt }>();
@@ -591,6 +594,7 @@ export class MemoryStore implements Store {
       }
     }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
+    this.#written.set(record.order.id, this.#now());
     return "written";
   }
 
@@ -655,6 +659,7 @@ export class MemoryStore implements Store {
           // as the Postgres adapter takes it from the row: no decision may change
           // whose sale it is.
           this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
+          this.#written.set(id, this.#now());
         }
 
         // None of these can refuse, which is what makes the order safe to have
@@ -712,6 +717,24 @@ export class MemoryStore implements Store {
     } finally {
       this.#running.delete(name);
     }
+  }
+
+  async forgetLapsedBefore(instant: number, limit: number): Promise<number> {
+    const claimed = new Set([...this.#paymentClaims.values()].map((claim) => claim.orderId));
+    const gone = [...this.#orders.values()]
+      .filter(
+        (record) =>
+          lapsedAttempt(record) &&
+          (this.#written.get(record.order.id) ?? instant) < instant &&
+          !this.#receipts.has(record.order.id) &&
+          !claimed.has(record.order.id),
+      )
+      .slice(0, limit);
+    for (const record of gone) {
+      this.#orders.delete(record.order.id);
+      this.#written.delete(record.order.id);
+    }
+    return gone.length;
   }
 
   async deliveredWithoutReceipt(): Promise<readonly StoredOrder[]> {
