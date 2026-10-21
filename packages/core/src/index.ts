@@ -32,7 +32,7 @@ export {
   surfaceModeOf,
   TESTNET_CHAINS,
 } from "./deployment/environment.js";
-export type { MerchantFacts, Readiness, Unknown } from "./merchant/readiness.js";
+export type { Readiness } from "./merchant/readiness.js";
 export { readinessOf, UNKNOWN } from "./merchant/readiness.js";
 /**
  * The order state machine. The gateway builds an order with `createOrder`,
@@ -40,73 +40,32 @@ export { readinessOf, UNKNOWN } from "./merchant/readiness.js";
  * timers off `deadlines`, answers the agent with `outcomeFor`, and may check an
  * order before writing it down with `moneyInvariantViolations`.
  */
-export type {
-  CreateOrderInput,
-  CreateOrderResult,
-  CreateRejection,
-  MerchantSelling,
-  PriceCheck,
-} from "./orders/create.js";
-export { CREATE_REJECTIONS, createOrder, MERCHANT_SELLING, PRICE_CHECKS } from "./orders/create.js";
+export type { MerchantSelling } from "./orders/create.js";
+export { createOrder, MERCHANT_SELLING } from "./orders/create.js";
 export { deadlines, fulfillmentDeadline } from "./orders/deadlines.js";
 export { transition } from "./orders/machine.js";
 export type {
-  Closure,
   Deadline,
   DeadlineKind,
-  DeadlinePolicy,
   Effect,
-  FulfillmentMode,
   MerchantAnswer,
   MerchantAnswerError,
-  MerchantAnswerResult,
-  MerchantEvent,
   Order,
   OrderEvent,
-  OrderEventKind,
   OrderMode,
   OrderPolicy,
   OrderState,
-  OrderTimestamps,
-  PaymentStage,
   PaymentVerificationFailure,
-  Price,
-  QuoteSource,
-  RedeliveryPolicy,
-  SettleTiming,
   StateEvent,
   TransitionRejection,
-  TransitionRejectionCode,
   TransitionResult,
 } from "./orders/model.js";
-export {
-  CLOSED_ORDER_STATES,
-  DEADLINE_KINDS,
-  endedWithNothingHeld,
-  FULFILLMENT_MODES,
-  holdsShipTo,
-  isOpen,
-  MERCHANT_ANSWER_ERRORS,
-  MERCHANT_ANSWER_RESULTS,
-  MERCHANT_EVENTS,
-  modeOf,
-  OPEN_ORDER_STATES,
-  ORDER_EVENT_KINDS,
-  ORDER_STATES,
-  PAYMENT_STAGES,
-  PAYMENT_VERIFICATION_FAILURES,
-  QUOTE_SOURCES,
-  RECOMMENDED_REFUSAL_CODES,
-  SETTLE_TIMINGS,
-  TRANSITION_REJECTION_CODES,
-} from "./orders/model.js";
+export { endedWithNothingHeld, holdsShipTo, isOpen, modeOf, ORDER_STATES } from "./orders/model.js";
 export { moneyInvariantViolations } from "./orders/money.js";
-export type { EndingReason, OrderOutcome } from "./orders/outcome.js";
+export type { EndingReason } from "./orders/outcome.js";
 export {
-  ENDING_REASONS,
   endingReasonFor,
   listedAsOpen,
-  ORDER_OUTCOMES,
   onTheMerchantsOpenList,
   outcomeFor,
   paidAfterClosure,

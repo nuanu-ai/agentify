@@ -138,9 +138,9 @@ export function endedWithNothingHeld(order: Order): boolean {
  * back, and only then does the money move. `on_purchase` moves the money
  * before the merchant is asked anything at all.
  */
-export const SETTLE_TIMINGS = ["on_purchase", "after_fulfillment"] as const;
+const SETTLE_TIMINGS = ["on_purchase", "after_fulfillment"] as const;
 
-export type SettleTiming = (typeof SETTLE_TIMINGS)[number];
+type SettleTiming = (typeof SETTLE_TIMINGS)[number];
 
 /**
  * The two switches of a card. The fourth combination, confirmation with the
@@ -221,7 +221,7 @@ export const PAYMENT_STAGES = [
   "settle_failed",
 ] as const;
 
-export type PaymentStage = (typeof PAYMENT_STAGES)[number];
+type PaymentStage = (typeof PAYMENT_STAGES)[number];
 
 /**
  * A sum of money and the instant the price it came from was true at. The
@@ -239,7 +239,7 @@ export type Price = {
  * number, used when the card has no price check at all and when a price check
  * went silent on a card whose money moves after the merchant's live answer.
  */
-export const QUOTE_SOURCES = ["card_snapshot", "merchant_answer"] as const;
+const QUOTE_SOURCES = ["card_snapshot", "merchant_answer"] as const;
 
 export type QuoteSource = (typeof QUOTE_SOURCES)[number];
 
@@ -288,7 +288,7 @@ export const DEADLINE_KINDS = [
 
 export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 
-export type DeadlinePolicy = {
+type DeadlinePolicy = {
   /**
    * Ours: how long we wait for the merchant to answer what the goods cost and
    * whether they exist. Running out of it is the merchant's silence, answered
@@ -375,7 +375,7 @@ export const MERCHANT_EVENTS = [
   "order.payment_failed_after_delivery",
 ] as const;
 
-export type MerchantEvent = (typeof MERCHANT_EVENTS)[number];
+type MerchantEvent = (typeof MERCHANT_EVENTS)[number];
 
 /**
  * What the merchant's own call gets back. Errors here are returned, never
@@ -396,7 +396,7 @@ export const MERCHANT_ANSWER_RESULTS = [
   "purchase_already_closed",
 ] as const;
 
-export type MerchantAnswerResult = (typeof MERCHANT_ANSWER_RESULTS)[number];
+type MerchantAnswerResult = (typeof MERCHANT_ANSWER_RESULTS)[number];
 
 export const MERCHANT_ANSWER_ERRORS = [
   "fulfillment_closed",
@@ -562,7 +562,7 @@ export type StateEvent = Exclude<OrderEvent, { kind: "deadline_expired" | "close
 
 /** When each step of the order happened. Written from the events, never read
  * from a clock. */
-export type OrderTimestamps = {
+type OrderTimestamps = {
   readonly createdAt: number;
   readonly quotedAt: number | null;
   readonly confirmationRequestedAt: number | null;
@@ -651,7 +651,7 @@ export type Order = {
  *   nothing here converts between units. Sending the same answer again gives
  *   the same refusal, and what clears it is a quote in the card's own currency.
  */
-export const TRANSITION_REJECTION_CODES = [
+const TRANSITION_REJECTION_CODES = [
   "event_not_applicable",
   "deadline_not_armed",
   "deadline_not_yet_due",

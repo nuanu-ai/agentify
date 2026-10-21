@@ -17,13 +17,13 @@ export type MerchantSelling = (typeof MERCHANT_SELLING)[number];
  * Whether the card's price is asked of the merchant at the moment of purchase.
  * A static card lives off its snapshot and is not asked.
  */
-export const PRICE_CHECKS = ["none", "merchant"] as const;
+const PRICE_CHECKS = ["none", "merchant"] as const;
 
 export type PriceCheck = (typeof PRICE_CHECKS)[number];
 
-export const CREATE_REJECTIONS = ["selling_paused", "merchant_departed"] as const;
+const CREATE_REJECTIONS = ["selling_paused", "merchant_departed"] as const;
 
-export type CreateRejection = (typeof CREATE_REJECTIONS)[number];
+type CreateRejection = (typeof CREATE_REJECTIONS)[number];
 
 export type CreateOrderInput = {
   readonly id: string;
