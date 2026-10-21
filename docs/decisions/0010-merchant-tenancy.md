@@ -35,15 +35,12 @@ A key is a row that names its merchant. Its secret is generated, shown once and
 stored as a SHA-256 digest, and a request is resolved by looking the digest up,
 which is constant-time by construction. A key carries a label, what it was made
 for (ADR-0014 §5), when it was created and disabled, and its last use, written
-at most once every few minutes. Disabling a key is instant and touches no other
-key and no session.
+at most once every few minutes. No key issues or disables keys. Disabling one is
+instant and touches no other key and no session.
 
 Every route a merchant's key reaches acts on that key's merchant alone: the card
 list, the orders, the receipts, the pause switches, the worker poll and the
-answer routes. No key reaches the keys themselves. A key is issued, listed and
-disabled only by a person signed in to the merchant's dashboard, or disabled
-from the operator's terminal, so a key that leaks cannot issue itself a
-successor or disable the merchant's own, and disabling it ends what it can do. A worker draws from a queue its merchant has to themselves, since
+answer routes. A worker draws from a queue its merchant has to themselves, since
 the queue hands out work by name and a filter on a shared queue would draw a
 stranger's envelope to read it, after which it is offered to nobody again.
 
@@ -66,14 +63,11 @@ Registration hands nobody a stranger's money. Every query of a merchant's data
 carries the merchant, and one that forgets it is caught only by the store's
 tests, which therefore seed two merchants and assert about both.
 
-Rejected: keys that issue and disable keys over the API, refusing only the
-key a call was made with, where a leaked key issues itself a successor before
-it is disabled and the intrusion outlives the revocation meant to end it; a
-database per merchant, real isolation whose migrations, connection
-pools and provisioning per tenant nothing at this scale earns, against a failure
-the store's tests exist to catch; keys in the environment, one per merchant,
-where every key change is a deployment, nobody can revoke one key of several and
-no merchant can make a key for themselves; scoping in the dashboard alone, which
-leaves the public API, the application's other caller, answering everything to
-anybody with any key, when the gateway's store is what every caller goes
-through.
+Rejected: keys managing keys, letting a leak outlive its revocation; a database
+per merchant, real isolation whose migrations, connection pools and provisioning
+per tenant nothing at this scale earns, against a failure the store's tests
+exist to catch; keys in the environment, one per merchant, where every key
+change is a deployment, nobody can revoke one key of several and no merchant can
+make a key for themselves; scoping in the dashboard alone, which leaves the
+public API, the application's other caller, answering everything to anybody with
+any key, when the gateway's store is what every caller goes through.

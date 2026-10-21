@@ -17,19 +17,18 @@ wait for perfection: the road's order is ADR-0010's.
 
 ## Decision
 
-An account comes into being at a successful sign-in: a person consumes the
-link mailed to their address or uses an eligible Google account (ADR-0026 §1);
-a merchant, when that signed-in person presses the one
-control the dashboard offers (§1). No command at a server's terminal makes an
-account, a merchant or a key, and no deployed channel's gateway seeds a
-merchant at start-up: the release refuses a channel configured to. The
-operator's terminal looks after what exists — lists merchants, keys and
-accounts, disables a key, takes a listing name away, ends a person's sessions,
-moves the operator flag. Live sales approval is an administrative action in
-the web cabinet (ADR-0026 §6) and remains available at the terminal, which
-also withdraws it. None of
-these permissions implies a staffed order-resolution service. Only the laptop's stack seeds its
-sandbox merchant, so that one command brings it up selling (ADR-0010).
+An account comes into being at a successful sign-in: a person consumes the link
+mailed to their address or uses an eligible Google account (ADR-0026 §1); a
+merchant, when that signed-in person presses the one control the dashboard
+offers (§1). No command at a server's terminal makes an account, a merchant or a
+key, and no deployed channel's gateway seeds a merchant at start-up: the release
+refuses a channel configured to. The operator's terminal looks after what exists
+— lists merchants, keys and accounts, disables a key, takes a listing name away,
+ends a person's sessions, moves the operator flag. Live sales approval is an
+administrative action in the web cabinet (ADR-0026 §6) and remains available at
+the terminal, which also withdraws it. None of these permissions implies a
+staffed order-resolution service. Only the laptop's stack seeds its sandbox
+merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant on the dashboard's explicit
 request.** The account appears when a successful sign-in proves an address
