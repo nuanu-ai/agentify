@@ -184,7 +184,8 @@ shipping zone with one flat rate, Rp 24.000 or 1.50 US dollars, which is the
 least a customer's order for a physical product needs; the census did not
 measure shipping. Tax calculation stays off as in the baseline, because the
 census could not see whether the shops calculate tax, and a story that needs
-it on sets it itself.
+it on sets it itself, as the throwaway copies of the lab in the WooCommerce tax
+probe did ([research note 56](../../docs/research/56-woo-tax-probe.md)).
 
 That shape is the census's measure of the 2,292 products the 29 Indonesian
 shops listed through their public catalogue. Their median catalogue held 113
