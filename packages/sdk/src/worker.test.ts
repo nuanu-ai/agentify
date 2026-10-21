@@ -469,23 +469,14 @@ describe("a gateway newer than this package", () => {
     expect(problems).toStrictEqual([]);
   });
 
-  it("hands an order carrying a field this package does not know to the handler, and delivers it", async () => {
-    // A field added on our side must not stop a merchant who has not upgraded.
+  it("hands an order over when only the envelope and the answer around it carry fields this package does not know", async () => {
+    // What travels around an order only informs, so a field added there must
+    // not stop a merchant who has not upgraded.
     const seen: Order[] = [];
 
     await workerOver(
       {
-        poll_worker: polling(
-          newerPoll({
-            ...envelopes.order,
-            attempt: 2,
-            payload: {
-              ...order,
-              gift_note: "Happy birthday",
-              price: { ...order.price, tax: "0.50" },
-            },
-          }),
-        ),
+        poll_worker: polling(newerPoll({ ...envelopes.order, attempt: 2 })),
         answer_order: () => ({ body: { ok: true, result: "delivered" } }),
       },
       {
@@ -500,9 +491,63 @@ describe("a gateway newer than this package", () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject(order);
-    expect(seen[0]).not.toHaveProperty("gift_note");
-    expect(seen[0]?.price).toStrictEqual(order.price);
     expect(gateway?.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: order.id });
+  });
+
+  it("fails the poll loudly rather than hand over an order carrying a field this package does not know", async () => {
+    // A quantity dropped would be delivered once without a word. A failed poll
+    // is a loud stop, and the order comes again within its attempts.
+    const seen: Order[] = [];
+
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(newerPoll({ ...envelopes.order, payload: { ...order, quantity: 3 } })),
+      },
+      {
+        order: (given) => {
+          seen.push(given);
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the failed poll");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(seen).toStrictEqual([]);
+    expect(gateway?.callsTo("answer_order")).toStrictEqual([]);
+  });
+
+  it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
+    // No price is the safe answer: a silent price check ends before any money.
+    const asked: QuoteRequest[] = [];
+
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.quote, payload: { ...question, purpose: "reservation" } }),
+        ),
+      },
+      {
+        order: () => ({ delivered: { access_url: "https://example.com/a" } }),
+        quote: (given) => {
+          asked.push(given);
+          return given.unavailable();
+        },
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the skipped question");
+    await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "the next poll");
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: "quote_skipped",
+      fatal: false,
+      subject: question.price_id,
+    });
+    expect(asked).toStrictEqual([]);
+    expect(gateway?.callsTo("answer_quote")).toStrictEqual([]);
   });
 
   it("handles the rest of a poll that carries an event of a kind it does not know, and says so once without stopping", async () => {
@@ -531,6 +576,7 @@ describe("a gateway newer than this package", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]?.fatal).toBe(false);
     expect(problems[0]?.kind).toBe("event_skipped");
+    expect(problems[0]?.subject).toBe("order-1");
     expect(problems[0]?.message).toContain("order.refunded");
     expect(problems[0]?.message).toMatch(/newer/);
     // And the loop went on to ask for more.
@@ -565,6 +611,54 @@ describe("a gateway speaking another dialect", () => {
     const pollsWhenItStopped = gateway.callsTo("poll_worker").length;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(gateway.callsTo("poll_worker")).toHaveLength(pollsWhenItStopped);
+  });
+
+  it("sends the answer for an order already in the handler before it stops on another version", async () => {
+    // The goods may already be issued; dropping the answer would leave a
+    // delivered order unanswered. Only new work stops at the mismatch.
+    const problems: WorkerProblem[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let inHand = false;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order), {
+          body: { contract_version: "99", envelopes: [] },
+        }),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: async () => {
+          inHand = true;
+          await held;
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+        problem: (problem) => problems.push(problem),
+      },
+    );
+    running = worker;
+
+    await waitUntil(() => inHand, "the order to reach the handler");
+    await waitUntil(
+      () => problems.some((one) => one.kind === WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH),
+      "the mismatch to be reported",
+    );
+    release();
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+    await waitUntil(() => !worker.running(), "the worker to stop");
+
+    expect(problems.map((one) => one.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH,
+    ]);
+    expect(gateway?.callsTo("poll_worker")).toHaveLength(2);
   });
 
   it("passes on the version it saw in an answer it could not read, and keeps going", async () => {

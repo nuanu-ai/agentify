@@ -150,8 +150,22 @@ const addedAt = (document: unknown, path: readonly (string | number)[]): unknown
   return copy;
 };
 
+/**
+ * Whether a path lies in what an order delivers: the order itself and every
+ * part of it, off the stream or read back. The status words and the merchant's
+ * closure beside them only inform.
+ */
+const deliversAt = (name: string, path: readonly (string | number)[]): boolean => {
+  const inOrder = (at: readonly (string | number)[]) =>
+    at.length === 0 || at[0] === "price" || at[0] === "ship_to";
+  if (name === "an order read back") return inOrder(path);
+  if (name === "the order list") return path.length >= 2 && inOrder(path.slice(2));
+  if (name === "a poll answer") return path[1] === 0 && path[2] === "payload";
+  return false;
+};
+
 describe("a reader of the merchant's answers", () => {
-  it("reads an answer with a field added at any depth as the answer without it", () => {
+  it("reads an answer with an informational field added at any depth as the answer without it, and refuses one added to what an order delivers", () => {
     for (const [name, schema, answer] of ANSWERS) {
       // The premise: each answer is one this gateway may send today.
       const today = schema.safeParse(answer);
@@ -169,9 +183,15 @@ describe("a reader of the merchant's answers", () => {
         // The writing contract stays shut: the same field from this gateway
         // is a leak, and its own check refuses it.
         expect(schema.safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(false);
-        expect(readerOf(schema).parse(newer), `${name} at ${path.join(".")}`).toStrictEqual(
-          today.data,
-        );
+        if (deliversAt(name, path)) {
+          expect(readerOf(schema).safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(
+            false,
+          );
+        } else {
+          expect(readerOf(schema).parse(newer), `${name} at ${path.join(".")}`).toStrictEqual(
+            today.data,
+          );
+        }
       }
     }
   });
@@ -209,7 +229,7 @@ describe("a reader of the merchant's answers", () => {
     const parsed = readerOf(WorkerPollResponseSchema).parse(newer);
 
     expect(parsed.envelopes.map((envelope) => envelope.payload)).toStrictEqual([
-      { type: "unknown", named: "order.refunded" },
+      { type: "unknown", named: "order.refunded", order_id: "ord_7c1e05" },
       parcel,
       poll.envelopes[1]?.payload,
       unfulfilled,
@@ -226,6 +246,49 @@ describe("a reader of the merchant's answers", () => {
     for (const [name, route] of Object.entries(API_ROUTES)) {
       expect(readerOf(route.response.document).safeParse(refusal).success, name).toBe(false);
     }
+  });
+
+  it("refuses an order whose address takes a shape it does not know, or that carries a field it does not know, rather than hand it over narrowed", () => {
+    // A pickup point read as a bare locality, or a quantity dropped, would be
+    // delivered wrongly without a word; a refused answer is a loud stop.
+    const pickup = {
+      pickup_point_id: "pp_4411",
+      carrier: "JNE",
+      city: "Tabanan",
+      country: "ID",
+    };
+    const onTheStream = (payload: unknown) => ({
+      ...poll,
+      envelopes: [{ kind: "order", id: "msg_1", sent_at: AT, payload }],
+    });
+
+    expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, ship_to: pickup }).success).toBe(
+      false,
+    );
+    expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, quantity: 3 }).success).toBe(false);
+    expect(
+      readerOf(WorkerPollResponseSchema).safeParse(onTheStream({ ...parcel, ship_to: pickup }))
+        .success,
+    ).toBe(false);
+    expect(
+      readerOf(WorkerPollResponseSchema).safeParse(onTheStream({ ...order, quantity: 3 })).success,
+    ).toBe(false);
+  });
+
+  it("reads a price question for a purpose it does not know as unknown", () => {
+    const asked = {
+      ...poll,
+      envelopes: [
+        {
+          ...poll.envelopes[1],
+          payload: { ...(poll.envelopes[1]?.payload as object), purpose: "reservation" },
+        },
+      ],
+    };
+
+    expect(readerOf(WorkerPollResponseSchema).parse(asked).envelopes[0]?.payload).toMatchObject({
+      purpose: "unknown",
+    });
   });
 
   it("never reads a full address that does not fit as the bare locality, dropping who receives the parcel", () => {

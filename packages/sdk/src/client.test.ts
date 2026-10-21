@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { CardInput, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import { releaseNamedIn } from "./contract.js";
 import {
   type AgentifyClient,
   AgentifyError,
@@ -280,7 +281,6 @@ describe("reading orders back", () => {
       ...order,
       status: "on_hold",
       payment_status: "partly_refunded",
-      held_until: "2026-08-27T10:00:00Z",
     };
     const agentify = await gatewayServing({
       get_order: () => ({ text: JSON.stringify(newer) }),
@@ -296,6 +296,34 @@ describe("reading orders back", () => {
     expect(listed.map((one) => [one.id, one.status, one.payment_status])).toStrictEqual([
       [order.id, "unknown", "unknown"],
     ]);
+  });
+
+  it("refuses an order read carrying a field this package does not know rather than hand it back narrowed", async () => {
+    // The open-orders loop delivers from what it reads, so a quantity dropped
+    // here would be delivered once without a word.
+    const agentify = await gatewayServing({
+      get_order: () => ({
+        text: JSON.stringify({
+          ...order,
+          status: "in_progress",
+          payment_status: "paid",
+          quantity: 3,
+        }),
+      }),
+    });
+
+    await expect(agentify.orders.get("order-1")).rejects.toThrow(AgentifyError);
+  });
+
+  it("names a release only out of this package's own manifest, never a bundle's", () => {
+    // Bundled into one file, the manifest beside the code is the merchant's.
+    expect(releaseNamedIn(JSON.stringify({ name: "@nuanu-ai/agentify", version: "0.8.0" }))).toBe(
+      "0.8.0",
+    );
+    expect(releaseNamedIn(JSON.stringify({ name: "my-shop-worker", version: "4.2.0" }))).toBe(
+      undefined,
+    );
+    expect(releaseNamedIn("not json")).toBe(undefined);
   });
 
   it("names this package and its version on every call it makes", async () => {
