@@ -55,7 +55,6 @@
     "scanner:db:generate": "pnpm --filter @agentify/scanner-database db:generate",
     "scanner:db:check": "pnpm --filter @agentify/scanner-database db:check",
     "scanner:db:test:migrations": "node ops/scripts/with-env.mjs vitest run --project integration packages/scanner-database/src/migrations.integration.test.ts",
-    "scanner:ops:static": "bash ops/scripts/static-release-check.sh",
     "scanner:ops:runtime": "node ops/scripts/with-env.mjs bash ops/scripts/runtime-smoke.sh",
     "scanner:ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
     "scanner:ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
