@@ -990,3 +990,139 @@ States (10% against 15–35%); and the suffix part of P15 (none against 15–50%
    seen ("IVA incluido", "IVA inclusa") come from shops outside the sample.
    Both are handed to the separate probe that is studying whether shops with
    tax calculation on can be supported.
+
+## Second Indonesian sample: pre-registration
+
+Date: 2026-10-21. Rule 1 left the Indonesian group at 22 shops, and the
+product owner accepted the proposal the rule called for. This section fixes,
+before any catalogue of the second sample is read, how the second sample is
+found, the one change to the origin rule, the target, the stop rule, how the
+two samples combine, and the predictions. Nothing above this heading changes:
+the first sample's numbers stay as reported, and the second sample's results
+are appended under a heading of their own after this one.
+
+### What the second sample keeps
+
+Everything about conduct, measures and verdict is as written above: GET only,
+the front page, `robots.txt`, the honest listing request, the connector's own
+request, the same seven-request ceiling and spacing, the same classes,
+inferences and verdict steps, the same scripts beside the note with the
+corrections the first results describe, and requests from the test host only.
+A site screened in the first sample is not screened again.
+
+### Where its candidates come from
+
+The proposal named Indonesian payment gateways' and couriers' public merchant
+lists as the first source. Their public pages were checked on 2026-10-21,
+before this section was written, and none carries a usable list: Duitku's and
+iPaymu's merchant pages show logos without links, Xendit's customer page
+refuses a request from a script with 403, the customer or merchant pages tried
+at Midtrans, DOKU, Tripay, Faspay and Biteship do not exist, and the WordPress
+support forums of the Indonesian payment and shipping plugins hide the address
+of the shop a user asks about from visitors who are not signed in. That source
+is therefore replaced by search queries that name the gateways and couriers
+shops show their buyers, so that a result is more often a shop that takes
+Indonesian payments on its own site.
+
+Candidates come from the same search tool and the same rules for turning a
+result into candidates as the first sample. The queries are, in this order:
+
+63. `toko online batik tulis resmi`
+64. `jual kopi arabika online website resmi`
+65. `toko online perlengkapan bayi lokal`
+66. `jual madu hutan asli online`
+67. `sepatu kulit lokal toko online resmi`
+68. `jual tas anyaman rotan online`
+69. `toko online skincare lokal BPOM resmi`
+70. `jual keramik handmade online`
+71. `toko buku online terbitan lokal`
+72. `jual kain tenun ikat online`
+73. `toko online perhiasan perak Celuk`
+74. `jual teh herbal kemasan online`
+75. `toko online mainan kayu edukasi`
+76. `jual sambal kemasan online resmi`
+77. `toko online tanaman hias`
+78. `jual dupa dan aromaterapi online`
+79. `toko online peralatan selancar Bali`
+80. `jual cokelat artisan Indonesia online`
+81. `toko online furnitur jati Jepara`
+82. `jual pakaian muslim lokal website resmi`
+83. `toko online oleh-oleh Bali kirim seluruh Indonesia`
+84. `jual minyak atsiri online`
+85. `toko online kerajinan tangan Lombok`
+86. `jual kaos desain lokal online`
+87. `toko online produk UMKM Bali`
+88. `toko online pembayaran Xendit virtual account`
+89. `toko online bayar dengan Midtrans`
+90. `toko online cek ongkir JNE otomatis`
+91. `pembayaran Duitku toko online`
+92. `belanja online bayar QRIS website toko resmi`
+
+Reserve queries, used in this order only if the queries above run out before
+the target: `jual produk organik online Indonesia`, `toko online alat musik
+tradisional`, `jual lukisan Bali online`.
+
+For the Bali rule, queries 73, 79, 83 and 87 count as Bali sources, as the
+Bali queries of the first sample did.
+
+### The origin rule's extra read
+
+When a WooCommerce shop's front page does not place it by the origin rules,
+the census reads one more page from it: the first link on the front page to
+the same host whose address or link text contains `contact`, `kontak`,
+`hubungi`, `tentang`, `about` or `alamat`, if `robots.txt` allows it and the
+seven-request ceiling leaves room after the listing's pages. The origin rules
+are then applied, in the same order, to the front page and that page together.
+A shop with no such link, or no room left, stays "origin undetermined". This
+read is made only for the second sample; the first sample's shops are not
+revisited.
+
+### Target, stop rule and how the samples combine
+
+The second sample counts only Indonesian shops, Bali and the rest together. It
+stops when the combined Indonesian group, the first sample's 22 and the
+second's, reaches 40 included shops, or when its queries and then its reserve
+queries run out. A shop the rules place in the United States or Europe is
+recorded and not added, so those groups stay as reported. If the combined
+group ends below 25, rule 1 applies again and nothing more is run without a
+new proposal.
+
+The decision rule is applied to the combined Indonesian group exactly as
+written above, rules 1 to 5, with every share taken over the combined group.
+The second sample's own numbers are reported beside the combined ones, so a
+reader can see how much the change of method moved them.
+
+### Predictions for the second sample
+
+Each is a range for the second sample's own shops, and holds when the observed
+share falls inside it.
+
+**Q1.** The combined Indonesian group reaches between 30 and 40 shops. The
+first sample found about 15 Indonesian WooCommerce shops per hundred merchant
+sites, and Indonesian-language queries should reach more shops directly than
+English guides did.
+
+**Q2.** Rupiah: 85–100% of the shops, and of those 80–100% at no decimals. The
+queries ask in Indonesian for goods sold to Indonesians.
+
+**Q3.** More than 200 products: 20–45%. The first sample's share was 35%.
+
+**Q4.** Simple products, of all listed: 60–85%; managed stock inferred for
+30–55% of simple products in stock.
+
+**Q5.** "Could, conditionally": 0–10%; the currency the sole blocker for
+20–45%.
+
+**Q6.** Listing blocked at step 1: 0–10%; the connector's own request refused
+while the honest one is answered: 0–10%.
+
+**Q7.** Of the merchant sites selling from their own site that the second
+sample's queries find, WooCommerce runs 30–55%.
+
+**Q8.** The extra contact-page read places 30–70% of the WooCommerce shops
+whose front page did not place them.
+
+**Q9.** Visible on the second sample's shops: Elementor on 35–60%, an
+Indonesian payment-gateway plugin (Xendit, Midtrans, Duitku, iPaymu or
+Tripay) on 25–55%, an Indonesian shipping plugin on 10–40%, a WhatsApp plugin
+on 20–50%; LiteSpeed (header or plugin) on 25–55% and Cloudflare on 20–50%.
