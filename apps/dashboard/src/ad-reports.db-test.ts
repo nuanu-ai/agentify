@@ -1204,6 +1204,37 @@ if (databaseUrl === null) {
       expect(await storeRowOf(account)).toMatchObject({ click_id: CLICK, state: "waiting" });
     });
 
+    it("leaves alone, without waiting for it, a waiting store report whose account is being deleted at that moment", async () => {
+      // Waiting would hold the lock every process shares for as long as the
+      // other transaction runs.
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant);
+      await publish(merchant, "room-1");
+      const deleting = await otherPool.connect();
+      const { post, received } = tracker(200);
+      try {
+        await deleting.query("begin");
+        await deleting.query("delete from dashboard_accounts where id = $1", [account]);
+
+        const took = await Promise.race([report(post), sleep(3_000).then(() => "still waiting")]);
+
+        expect(took).toBe(false);
+        expect(received).toStrictEqual([]);
+        await deleting.query("commit");
+      } finally {
+        // A no-op once committed; otherwise the connection goes back clean.
+        await deleting.query("rollback");
+        deleting.release();
+      }
+      expect(
+        (
+          await pool.query("select event from dashboard_ad_reports where account_id = $1", [
+            account,
+          ])
+        ).rows,
+      ).toStrictEqual([]);
+    });
+
     it("tries a store report again after a 429 and delivers it once the tracker takes it", async () => {
       const merchant = await aMerchant();
       const account = await fromAnAd(CLICK, merchant);
