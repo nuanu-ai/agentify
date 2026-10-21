@@ -848,7 +848,8 @@ tracker once per merchant, at the same address and with the same key, that the
 person connected a store: the body is the click, `"event": "store_connected"`
 and `event_time`, the Unix seconds at which the merchant the account names
 published its first product card, through the API or the WooCommerce import,
-within those 30 days. Only the earliest such sign-up of a merchant reports, and
+within those 30 days. A live card needs the operator's approval first, so the
+30 days include that wait. Only the earliest such sign-up of a merchant reports, and
 none reports for a merchant whose first card came before it. The store is
 reported only after the sign-up's registration report was delivered, and never
 for a sign-up whose registration report was refused or given up. The click is
@@ -858,9 +859,11 @@ registration report is refused or given up, or at the end of the 30 days with
 no first card. Each outcome is one log line such as `store report delivered:
 http_200`, and a store report that lapses unposted says why, as in `1 waiting
 store report lapsed: no_first_card_in_30_days`. The switch stays off until the
-tracker confirms that it accepts exactly this body and keeps one
-`store_connected` per click, because a report is posted again when the process
-stops between the tracker's answer and the record of it. The application
+tracker confirms that it accepts exactly this body, keeps one
+`store_connected` per click and answers a repeated `reg` with 200, because a
+report is posted again when the process stops between the tracker's answer and
+the record of it, and a repeated `reg` the tracker turned away would leave the
+store unreported. The application
 refuses to start with this switch on and `REGISTRATION_POSTBACK_ENABLED` off,
 and on TEST, where the same file fixes it off too. Turned off again, it keeps
 no click for new sign-ups, posts no store report, gives up those already due

@@ -25,9 +25,10 @@ A registration is an address's first verification in the identity of ADR-0026,
 by a mailed link's press or a Google sign-in's return; a returning verified
 account or a later merchant is not one. It is reported once per account as
 `{"clickid": "<click>", "event": "reg"}`. A store is connected when the merchant
-the account names publishes its first card ever, through the API or a shop
-import, at or after that registration and less than 30 days after it; a merchant
-whose first card came earlier is never reported. It is reported once per
+the account names publishes its first card ever, at or after that registration
+and less than 30 days after it; a live card needs the operator's approval first,
+so the 30 days include that wait, and a merchant whose first card came earlier
+is never reported. It is reported once per
 merchant as `{"clickid": "<click>", "event": "store_connected", "event_time":
 <that publication in Unix seconds>}`, for its earliest such registration whose
 own report was not refused or given up, and only after that report was
@@ -36,25 +37,20 @@ from. The dashboard alone posts both, to `https://aisamuraihub.com/postback`
 with the tracker's key in `x-postback-key`; nothing else about the person or the
 store leaves, and the scanner keeps no click.
 
-Where reporting is on, a sign-in page opened with one click identifier of the
-tracker's form keeps it with the sign-in that starts, in the claim ADR-0026 §1
-keeps with a link's token or in the server's record of a Google sign-in's
-single-use state, never in a cookie of ours or in what Google is sent. Anybody
-can ask for a link for any address, and its press reports the click of whoever
-clicked the ad, which says nothing about the address's owner. Unused links and
-abandoned Google states are cleared from a week after they expire.
+Where reporting is on, one click identifier of the tracker's form travels with
+the sign-in it starts, in the claim ADR-0026 §1 keeps with a link's token or in
+the server's record of a Google sign-in's single-use state, never in a cookie of
+ours or in what Google is sent. Anybody can ask for a link for any address, and
+its press reports the click of whoever clicked the ad, which says nothing about
+the address's owner.
 
 Each report keeps its own copy of the click from the verifying transaction until
 it is delivered, refused or given up, a day after the reported fact at the
-latest; the store's goes too once its registration's report is refused or given
-up, or when 30 days pass without a first card, so no click outlives 30 days from
-the registration. The outcomes stay until the account's deletion. Delivery is at
-least once. For `reg` that is safe because the tracker keeps one `reg` per
-click; for `store_connected` it relies on the tracker keeping one per click as
-well, which the tracker has not confirmed. Only the live channel reports, each
-report switched on by itself and the store's only beside the registration's; the
-process refuses to start otherwise or on the test channel, and a laptop posts
-only to a fake receiver.
+latest, and no click outlives 30 days from the registration; the outcomes stay
+until the account's deletion. Delivery is at least once: safe for `reg`, of
+which the tracker keeps one per click; for `store_connected` it relies on the
+tracker doing the same, which the tracker has not confirmed. Only the live
+channel reports, each report under its own switch.
 
 ## Alternatives rejected
 
