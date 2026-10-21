@@ -71,3 +71,4 @@ owner's to decide before a WooCommerce shop's parcels sell for real money.
 | When to move backups from dumps to WAL archiving: when a dump takes more than about a minute, or the recovery point must be under ten minutes | operator | `44-production-backups.md` |
 | Why images arrive slowly from the GitHub Container Registry on TEST | operator | `52-release-delivery.md` |
 | When the volumes the move to one database left on both hosts, kept as a way back, are archived and removed | operator | — |
+| How the ad tracker answers a `reg` posted a second time for the same click; an answer other than 200 refuses that registration report and loses the sign-up's `lead` | the tracker's team, asked | ADR-0039 |

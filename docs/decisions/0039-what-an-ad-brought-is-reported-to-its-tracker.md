@@ -23,20 +23,18 @@ the same way: "like the registration, no boxes, only a line in the policy". The
 advice on record concerned the registration. The privacy page states both.
 
 A registration is an address's first verification in the identity of ADR-0026,
-by a mailed link's press or a Google sign-in's return; a returning verified
-account or a later merchant is not one. It is reported once per account as
+by a mailed link's press or a Google sign-in's return, never a returning
+verified account or a later merchant; it is reported once per account as
 `{"clickid": "<click>", "event": "reg"}`. A store is connected when the merchant
-the account names publishes its first card ever, at or after that registration
-and less than 30 days after it; a live card needs the operator's approval first,
-so the 30 days include that wait, and a merchant whose first card came earlier
-is never reported. It is reported once per
-merchant as `{"clickid": "<click>", "event": "store_connected", "event_time":
-<that publication in Unix seconds>}`, for its earliest such registration whose
-own report was not refused or given up, and only after that report was
-delivered, so the tracker never hears of a store before the registration it came
-from. The dashboard alone posts both, to `https://aisamuraihub.com/postback`
-with the tracker's key in `x-postback-key`; nothing else about the person or the
-store leaves, and the scanner keeps no click.
+the account names publishes its first card ever at or after that registration
+and less than 30 days after it, the operator's approval of a live card included;
+it is reported once per merchant as `{"clickid": "<click>", "event": "lead"}`,
+the tracker's word for it, for its earliest such registration whose own report
+was not refused or given up, once that report was delivered, so the tracker
+never hears of a store before its registration. The dashboard alone posts both,
+to `https://aisamuraihub.com/postback` with the tracker's key in
+`x-postback-key`; nothing else about the person or the store leaves, and the
+scanner keeps no click.
 
 Where reporting is on, one click identifier of the tracker's form travels with
 the sign-in it starts, in the claim ADR-0026 §1 keeps with a link's token or in
@@ -48,10 +46,10 @@ the address's owner.
 Each report keeps its own copy of the click from the verifying transaction until
 it is delivered, refused or given up, a day after the reported fact at the
 latest, and no click outlives 30 days from the registration; the outcomes stay
-until the account's deletion. Delivery is at least once: safe for `reg`, of
-which the tracker keeps one per click; for `store_connected` it relies on the
-tracker doing the same, which the tracker has not confirmed. Only the live
-channel reports, each report under its own switch.
+until the account's deletion. Delivery is at least once, which the tracker
+absorbs: it keeps one `reg` per click and, as its team stated on 2026-10-21, one
+`lead`, which it passes to Meta as a Lead dated at its arrival. Only the live
+channel reports, both reports under one switch.
 
 ## Alternatives rejected
 
@@ -62,7 +60,6 @@ another device lacks; the scanner's outbox, across the boundary ADR-0026 §2
 draws; signing the click, public to anybody who clicks the ad; the test channel,
 whose sign-ups are not real. For the store: a merchant's creation or first key,
 which says nothing about a connected store; the first payment, a buyer's act; a
-fact recorded inside the gateway's publish, needless because a card exists only
-after a successful publish and is never deleted on the live channel, the only
-one that reports; a click kept until a first card comes, however long that
-takes.
+fact recorded inside the gateway's publish, needless since a card exists only
+once published and the live channel deletes none; a click kept until a first
+card comes, however long that takes.
