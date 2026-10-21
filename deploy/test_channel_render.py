@@ -157,6 +157,15 @@ class ChannelRender(unittest.TestCase):
                             caddy,
                         )
 
+    def test_the_scanner_names_the_channel_as_the_edge_does(self):
+        # The scanner opens llms.txt with the channel it is served on, and the
+        # preflight checks the edge's value alone.
+        for channel, mode in {"test": "test", "production": "live"}.items():
+            with self.subTest(channel=channel):
+                services = self.render(channel)["services"]
+                self.assertEqual(services["web"]["environment"].get("AGENTIFY_SURFACE_MODE"), mode)
+                self.assertEqual(services["scanner"]["environment"].get("AGENTIFY_SURFACE_MODE"), mode)
+
     def test_the_preflight_run_here_refuses_a_rendered_seed_without_printing_it(self):
         # The control for the two above: the same rendered document, with a key
         # put back where the overlay emptied it, is refused.
