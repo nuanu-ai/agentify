@@ -271,6 +271,21 @@ describe("a purchase that charges before its goods", () => {
     expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
   });
 
+  it("is refused while the seller's own code is silent, however often the connector of a shop they left still polls", async () => {
+    // The connector inside Agentify draws every connected shop's stream, and
+    // draws nothing for a merchant who moved back to their code.
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, prepaidCard);
+
+    harnessed.advance(11 * MINUTE);
+    await workOnce(harnessed, { through: "woocommerce" }, 0);
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect((refused.body as Refused).error.code).toBe("seller_not_taking_orders");
+  });
+
   it("is taken from a seller selling through their WooCommerce shop however long since anything polled", async () => {
     // The connector that fills a shop's orders runs inside Agentify, so the
     // shop is in touch whenever Agentify is.

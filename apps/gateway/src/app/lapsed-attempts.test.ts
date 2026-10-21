@@ -7,6 +7,7 @@
 import { type Card, CardSchema } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import { anOrder } from "../testing/store-contract.js";
 
 const syncCard: Card = CardSchema.parse({
   merchant_item_id: "room-101",
@@ -94,5 +95,21 @@ describe("a purchase that lapsed unpaid", () => {
 
     expect(await harnessed.store.orderById(lapsed)).not.toBeNull();
     expect((await statusOf(served, lapsed)).status).toBe(200);
+  });
+});
+
+describe("many purchases that lapsed unpaid", () => {
+  it("are all gone after one day's work, however many more there are than one statement forgets", async () => {
+    const { harnessed } = await started();
+    for (let one = 0; one < 1_201; one += 1) {
+      await harnessed.store.addOrder(
+        anOrder(`ord_lapsed_${one}`, "expired", { merchantId: harnessed.merchant.id }),
+      );
+    }
+
+    harnessed.advance(30 * DAY + 60_000);
+    await theDailyWork(harnessed);
+
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 });
