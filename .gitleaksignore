@@ -71,3 +71,12 @@ d18fe60b58cf9d74b25e39d30f6a738a951b53c1:apps/dashboard/app/routes/gate.test.ts:
 7c036061b023278fe7978e4abf39f58ccdb04bd6:packages/slice/src/split-smoke-run.test.ts:generic-api-key:282
 83479d3262b965272e6983582c9a3baf434f8a66:packages/slice/src/split-smoke-run.test.ts:generic-api-key:253
 83479d3262b965272e6983582c9a3baf434f8a66:packages/slice/src/split-smoke-run.test.ts:generic-api-key:254
+
+# A made-up WooCommerce order key and the public USDC contract on Base Sepolia,
+# in tests of the WooCommerce worker and of the chain reader.
+3b1747eaf89c13dbd84a166813b62cc3d8558ec4:apps/dashboard/src/woo-worker.test.ts:generic-api-key:2902
+3b1747eaf89c13dbd84a166813b62cc3d8558ec4:apps/gateway/src/adapters/x402/payment-chain.test.ts:generic-api-key:108
+96ad0d118452985c46389e1d029a44e97a3efc02:apps/dashboard/src/woo-worker.test.ts:generic-api-key:2902
+a0691ba507c3f39f353b0bbc0331efdfa09a2f20:apps/gateway/src/adapters/x402/payment-chain.test.ts:generic-api-key:106
+a616bb5d0f5e6a355e21b174688116023bb721fc:apps/gateway/src/adapters/x402/payment-chain.test.ts:generic-api-key:108
+e5c172f5c228bda25e768181da7f2e4a54328a0e:apps/dashboard/src/woo-worker.test.ts:generic-api-key:2902

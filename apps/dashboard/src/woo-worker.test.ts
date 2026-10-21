@@ -2899,7 +2899,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
       ok: true,
       id: "57",
       number: "57",
-      orderKey: "wc_order_Q2xh7RkP0aZ3m",
+      orderKey: "wc_order_fixture",
       downloadId: sold.download.id,
     });
     const paid = { paidInto: async () => ({ ok: true as const, document: NO_SPLIT }) };

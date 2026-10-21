@@ -105,7 +105,7 @@ describe("a contract wallet's signature on the chain", () => {
 });
 
 describe("whether an authorization was used, on the chain", () => {
-  const TOKEN = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  const USDC_ON_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
   const NONCE = `0x${"22".repeat(32)}`;
 
   it.each([
@@ -114,12 +114,12 @@ describe("whether an authorization was used, on the chain", () => {
   ])("is read as the token answers: %s", async (_what, result, used) => {
     const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, { result }));
 
-    expect(await reader?.used(TOKEN, WALLET, NONCE)).toBe(used);
+    expect(await reader?.used(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).toBe(used);
   });
 
   it("is not read from an endpoint that does not answer it", async () => {
     const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
 
-    await expect(reader?.used(TOKEN, WALLET, NONCE)).rejects.toThrow();
+    await expect(reader?.used(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).rejects.toThrow();
   });
 });
