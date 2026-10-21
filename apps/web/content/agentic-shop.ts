@@ -106,7 +106,7 @@ export const AGENTIC_SHOP = {
           text("The "),
           link("test channel", "https://test.agentify.ad/dashboard/sign-in"),
           text(
-            " is an account of its own where buyers pay in test USDC: publish there, then buy your own product to watch the whole path work. Each account publishes once it has a payout wallet, and live sales also need Agentify’s one-time approval.",
+            " is an account of its own where buyers pay in test USDC: publish there, then buy your own product to watch the whole path work. Each account publishes once it has a payout wallet, and live sales also need Agentify’s approval.",
           ),
         ],
       },

@@ -43,16 +43,6 @@ export const NO_SUCH_ITEM: Refused = {
 };
 
 /**
- * Also the answer for another merchant's key, so disabling cannot count
- * somebody else's keys.
- */
-export const NO_SUCH_KEY: Refused = {
-  status: NOT_FOUND,
-  code: "no_such_key",
-  message: "there is no such key",
-};
-
-/**
  * Also the answer for another merchant's order, so a stranger learns nothing
  * by guessing.
  */

@@ -628,6 +628,25 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.merchantById(A))?.liveApprovedAt).toBe(approvedAt);
       });
 
+      it("withdraws an approval once, from that merchant alone, and a later grant starts anew", async () => {
+        const store = await twoMerchants();
+        await store.grantLiveApproval(A, 3_000);
+        await store.grantLiveApproval(B, 3_500);
+
+        const first = await store.withdrawLiveApproval(A);
+        const repeated = await store.withdrawLiveApproval(A);
+
+        expect(first).toMatchObject({ changed: true, merchant: { id: A, liveApprovedAt: null } });
+        expect(repeated).toStrictEqual({ ...first, changed: false });
+        expect((await store.merchantById(A))?.liveApprovedAt).toBeNull();
+        expect((await store.merchantById(B))?.liveApprovedAt).toBe(3_500);
+        expect(await store.withdrawLiveApproval("mch_nobody")).toBeNull();
+        expect(await store.grantLiveApproval(A, 9_000)).toMatchObject({
+          changed: true,
+          merchant: { id: A, liveApprovedAt: 9_000 },
+        });
+      });
+
       it("is listed under a name for a catalog only where somebody set one", async () => {
         const store = await twoMerchants();
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * PRODUCTION live approval for one merchant, granted inside the application's
- * container (`agentify-app-1`), where the dashboard runs, already running on
- * the host.
+ * PRODUCTION live approval for one merchant, granted or withdrawn inside the
+ * application's container (`agentify-app-1`), where the dashboard runs,
+ * already running on the host.
  *
  * Usage: pnpm approve <email>
+ *        pnpm approve --withdraw <email>
  *
  * pnpm resolves the filter inside the container, against the revision deployed
  * there rather than this checkout, so the dashboard is named by its directory:
@@ -13,21 +14,28 @@
  * The container's name has no such protection; it follows the Compose service
  * of the revision deployed there. `--fail-if-no-match` makes a filter that
  * matches nothing a non-zero refusal rather than a silent success, and this
- * wrapper forwards that status.
+ * wrapper forwards that status. A withdrawal is its own script there rather
+ * than a flag on `approve`, so a revision that predates it refuses for want of
+ * the script instead of granting.
  */
 
 import { spawnSync } from "node:child_process";
 
-const [email, ...extra] = process.argv.slice(2);
-if ((email === "--help" || email === "-h") && extra.length === 0) {
-  console.log("Usage: pnpm approve <email>");
-  console.log("Grants one existing merchant PRODUCTION live approval.");
-} else if (email === undefined || extra.length !== 0) {
-  console.error("Usage: pnpm approve <email>");
-  console.error("This grants one existing merchant PRODUCTION live approval.");
+const USAGE = ["Usage: pnpm approve <email>", "       pnpm approve --withdraw <email>"];
+
+const asked = process.argv.slice(2);
+const withdraw = asked[0] === "--withdraw";
+const [email, ...extra] = withdraw ? asked.slice(1) : asked;
+if ((email === "--help" || email === "-h") && extra.length === 0 && !withdraw) {
+  for (const line of USAGE) console.log(line);
+  console.log("Grants one existing merchant PRODUCTION live approval, or withdraws it.");
+} else if (email === undefined || email.startsWith("-") || extra.length !== 0) {
+  for (const line of USAGE) console.error(line);
+  console.error("This grants one existing merchant PRODUCTION live approval, or withdraws it.");
   process.exitCode = 2;
 } else {
-  console.error("Requesting PRODUCTION live approval through agentify.");
+  const what = withdraw ? "withdrawal of PRODUCTION live approval" : "PRODUCTION live approval";
+  console.error(`Requesting ${what} through agentify.`);
   const result = spawnSync(
     "ssh",
     [
@@ -56,7 +64,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "--filter",
       "./apps/dashboard",
       "--fail-if-no-match",
-      "approve",
+      withdraw ? "withdraw-approval" : "approve",
     ],
     {
       input: `${email}\n`,
@@ -73,7 +81,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
     result.status === 255
   ) {
     console.error(
-      "The PRODUCTION approval outcome is unknown because SSH did not complete. Retry the same command to inspect the one-way result.",
+      `The ${what} outcome is unknown because SSH did not complete. Retry the same command to inspect the result.`,
     );
     process.exitCode = 1;
   } else {

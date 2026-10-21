@@ -12,13 +12,21 @@ export { MemoryStore } from "./adapters/memory/store.js";
 export { connect, PostgresStore } from "./adapters/postgres/store.js";
 export { X402Facilitator } from "./adapters/x402/facilitator.js";
 export { recoveryOn } from "./adapters/x402/recovery.js";
-export { type Caller, Gateway, type WalletChangeRefusal } from "./app/gateway.js";
+export {
+  type Caller,
+  Gateway,
+  type IssuedMerchantKey,
+  type MerchantKey,
+  type WalletChangeRefusal,
+} from "./app/gateway.js";
 export {
   grantLiveApproval,
   issueKey,
+  NewKeyLabelSchema,
   SEEDED_MERCHANT,
   seedSandboxKey,
   setPayoutWallet,
+  withdrawLiveApproval,
 } from "./app/merchants.js";
 export type { Runtime } from "./app/runtime.js";
 export { openCommandApplication } from "./command-application.js";
@@ -30,7 +38,6 @@ export {
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
 } from "./http/merchant-answers.js";

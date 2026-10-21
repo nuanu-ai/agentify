@@ -1,5 +1,5 @@
 /**
- * The operator's one-time approval at the live publish door.
+ * The operator's approval at the live publish door, and its withdrawal.
  *
  * A merchant may prove their address, choose a seller name and choose where
  * their money goes without the operator having admitted their products to the
@@ -11,7 +11,7 @@
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { grantLiveApproval } from "../app/merchants.js";
+import { grantLiveApproval, withdrawLiveApproval } from "../app/merchants.js";
 import {
   type Harness,
   harness,
@@ -296,5 +296,130 @@ describe("an order accepted before operator approval existed", () => {
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);
     expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
+  });
+});
+
+describe("a live approval the operator withdraws", () => {
+  // A withdrawal is a pause of the merchant's live sales, not a cancellation:
+  // nothing new is sold or published, and what was already sold plays out.
+
+  /** A merchant who is ready to sell, approved, and has one card on sale. */
+  const approvedSeller = async (harnessed: Harness, served: Served, body: Card) => {
+    const { merchantId, key } = await freshMerchant(harnessed);
+    await name(served, key);
+    await payTo(harnessed, merchantId);
+    await grantLiveApproval(harnessed.store, merchantId, harnessed.now());
+    const published = await publish(served, key, body);
+    expect(published.status, JSON.stringify(published.body)).toBe(200);
+    return { merchantId, key, itemId: (published.body as { id: string }).id };
+  };
+
+  it("refuses a new purchase before payment as for a merchant never approved, and an open order still delivers", async () => {
+    const { served, harnessed } = await started();
+    const seller = await approvedSeller(harnessed, served, asyncCard("an-esim"));
+    const offered = await harnessed.gateway.beginPurchase(seller.itemId, {});
+    if (offered.step !== "pay") throw new Error("the approved seller's card offered no price");
+    const openOrder = offered.order.order.id;
+    await harnessed.gateway.payPurchase(openOrder, "PAYMENT", "PAYMENT");
+    await workOnce(harnessed, { merchantId: seller.merchantId, onOrder: () => ({ accepted: {} }) });
+    const never = await existingCardWithoutApproval(harnessed, served, asyncCard("an-esim"));
+
+    const withdrawn = await withdrawLiveApproval(harnessed.store, seller.merchantId);
+
+    expect(withdrawn).toMatchObject({ changed: true, merchant: { liveApprovedAt: null } });
+    const verified = harnessed.facilitator.verifies.length;
+    const purchase = await served.call("POST", `/x402/${seller.itemId}/purchase`, {
+      body: { params: {} },
+    });
+    const neverApproved = await served.call("POST", `/x402/${never.itemId}/purchase`, {
+      body: { params: {} },
+    });
+    const probe = await served.call("GET", `/x402/${seller.itemId}/purchase`);
+    const catalog = (await served.call("GET", "/x402/catalog")).body as {
+      items: { id: string }[];
+    };
+
+    expect(purchase.status).toBe(409);
+    expect(purchase.body).toStrictEqual(neverApproved.body);
+    expect(probe.status).toBe(409);
+    expect(catalog.items.map((item) => item.id)).not.toContain(seller.itemId);
+    expect(harnessed.facilitator.verifies).toHaveLength(verified);
+    expect(
+      (await harnessed.gateway.orders(seller.merchantId, undefined)).map(
+        (record) => record.order.id,
+      ),
+    ).toStrictEqual([openOrder]);
+
+    const delivered = await served.call("POST", `/v0/orders/${openOrder}/deliver`, {
+      body: { activation_code: "LPA:1$smdp.example$K2-4FA2" },
+      headers: bearer(seller.key),
+    });
+
+    expect(delivered.status, JSON.stringify(delivered.body)).toBe(200);
+    expect((await harnessed.store.orderById(openOrder))?.order.state).toBe("delivered");
+    expect((await harnessed.store.receiptForOrder(openOrder))?.outcome).toBe("delivered");
+  });
+
+  it.each([
+    ["a pause of all selling", "pause" as const],
+    ["a withdrawal", "withdraw" as const],
+  ])(
+    "lets an order priced before %s be paid within its price window and sold",
+    async (_what, how) => {
+      // A withdrawal stops what is new exactly where a pause does; a buyer who
+      // already holds a price is not refused at payment by either.
+      const { served, harnessed } = await started();
+      const seller = await approvedSeller(harnessed, served, card("a-room"));
+      const offered = await harnessed.gateway.beginPurchase(seller.itemId, {});
+      if (offered.step !== "pay") throw new Error("the approved seller's card offered no price");
+
+      if (how === "pause") await harnessed.gateway.setSelling(seller.merchantId, "paused");
+      else await withdrawLiveApproval(harnessed.store, seller.merchantId);
+      const worker = workUntilStopped(harnessed, {
+        merchantId: seller.merchantId,
+        onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+      });
+      const bought = await harnessed.gateway.payPurchase(
+        offered.order.order.id,
+        "PAYMENT",
+        "PAYMENT",
+      );
+      await worker.stop();
+
+      expect(bought.step).toBe("settled");
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+    },
+  );
+
+  it("refuses live publishing as for a merchant never approved", async () => {
+    const { served, harnessed } = await started();
+    const seller = await approvedSeller(harnessed, served, card("a-room"));
+    const never = await freshMerchant(harnessed);
+    await name(served, never.key);
+    await payTo(harnessed, never.merchantId);
+
+    await withdrawLiveApproval(harnessed.store, seller.merchantId);
+    const republished = await publish(served, seller.key, card("a-room"));
+    const another = await publish(served, seller.key, card("another-room"));
+    const neverApproved = await publish(served, never.key, card("another-room"));
+
+    expect(republished.status).toBe(422);
+    expect(another.status).toBe(422);
+    expect(another.body).toStrictEqual(neverApproved.body);
+  });
+
+  it("changes nothing the second time and says so, and a grant afterwards admits the merchant again", async () => {
+    const { served, harnessed } = await started();
+    const seller = await approvedSeller(harnessed, served, card("a-room"));
+
+    const first = await withdrawLiveApproval(harnessed.store, seller.merchantId);
+    const second = await withdrawLiveApproval(harnessed.store, seller.merchantId);
+
+    expect(first?.changed).toBe(true);
+    expect(second).toStrictEqual({ ...first, changed: false });
+    expect(await withdrawLiveApproval(harnessed.store, "mch_nobody")).toBeNull();
+
+    await grantLiveApproval(harnessed.store, seller.merchantId, harnessed.now());
+    expect((await served.call("GET", `/x402/${seller.itemId}/purchase`)).status).toBe(402);
   });
 });

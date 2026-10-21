@@ -34,15 +34,7 @@ import { MerchantClosureSchema, OrderCloseRequestSchema } from "./closure.js";
 import { WorkerEnvelopeSchema } from "./envelope.js";
 import { UnfulfilledReasonSchema } from "./events.js";
 import { AcceptanceSchema, DeliverySchema, HandlerAnswerSchema, RefusalSchema } from "./handler.js";
-import {
-  DisabledKeySchema,
-  IssuedKeySchema,
-  IssueKeyRequestSchema,
-  MerchantKeyListSchema,
-  PayoutWalletSchema,
-  SellerNameRequestSchema,
-  SellerNameSchema,
-} from "./merchant.js";
+import { PayoutWalletSchema, SellerNameRequestSchema, SellerNameSchema } from "./merchant.js";
 import { OrderSchema } from "./order.js";
 import { OrderEndingReasonSchema, OrderStatusSchema, PaymentStatusSchema } from "./order-status.js";
 import { ParamNameSchema } from "./param-spec.js";
@@ -554,12 +546,10 @@ export const ERROR_CODES = Object.freeze([
   "charset_unsupported",
   "encoding_unsupported",
   "gateway_failed",
-  "key_opened_this_call",
   "malformed_body",
   "malformed_query",
   "merchant_departed",
   "no_such_item",
-  "no_such_key",
   "no_such_order",
   "no_such_route",
   "not_authorised",
@@ -628,7 +618,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/catalog/publish",
     auth: "merchant_key",
     description:
-      "Publishes one product, or says what is wrong with the card. Republishing under the same merchant_item_id is how a card is changed rather than how a second one appears. The catalog identifier comes back beside ok, and from then on it is what an agent, a purchase and a receipt all use. A card that is not published comes back as ok:false under the code card_rejected, never retryable, with every finding named in the error's problems. Three findings this can come back with are not about the card at all. A merchant who has not set the name their products are sold under gets no_seller_name, and the way past it is POST /v0/seller-name: a card published without one reaches a buyer's agent inside a payment request that names no seller. On a deployment that settles on a real chain, a merchant who has set no wallet gets no_payout_wallet, and the way past it is the Settings screen of the merchant's dashboard, where a person signed in sets one: buyers pay into a payout contract made for that wallet, which sends the merchant's share there, so without a wallet there is no payout contract and nowhere for the money from that card's sales to go. On the live deployment, a merchant the operator has not admitted once gets no_operator_approval. That decision has no merchant API: test publication remains available, while live publication remains closed until the operator grants it. Every applicable finding comes back in the same problems list as whatever is wrong with the card, so one answer carries everything standing between this card and the catalog.",
+      "Publishes one product, or says what is wrong with the card. Republishing under the same merchant_item_id is how a card is changed rather than how a second one appears. The catalog identifier comes back beside ok, and from then on it is what an agent, a purchase and a receipt all use. A card that is not published comes back as ok:false under the code card_rejected, never retryable, with every finding named in the error's problems. Three findings this can come back with are not about the card at all. A merchant who has not set the name their products are sold under gets no_seller_name, and the way past it is POST /v0/seller-name: a card published without one reaches a buyer's agent inside a payment request that names no seller. On a deployment that settles on a real chain, a merchant who has set no wallet gets no_payout_wallet, and the way past it is the Settings screen of the merchant's dashboard, where a person signed in sets one: buyers pay into a payout contract made for that wallet, which sends the merchant's share there, so without a wallet there is no payout contract and nowhere for the money from that card's sales to go. On the live deployment, a merchant the operator has not admitted, or no longer admits, gets no_operator_approval. That decision has no merchant API: test publication remains available, while live publication remains closed until the operator grants it. Every applicable finding comes back in the same problems list as whatever is wrong with the card, so one answer carries everything standing between this card and the catalog.",
     request: CardSchema,
     response: { document: PublishResultSchema },
   },
@@ -704,34 +694,6 @@ export const API_ROUTES = Object.freeze({
     description:
       "The wallet where the merchant this call's own key belongs to receives their share of sales now, and any change of it that is waiting. A buyer's agent does not pay this wallet. It pays the merchant's payout contract for it, a split contract of the 0xSplits protocol with no owner, which keeps what it is paid until somebody sends a payout, as anybody may at any time, the merchant included, and then sends 99.9% of the accumulated balance to this wallet and 0.1% to Agentify: each share is rounded down to the smallest unit of USDC, and one unit stays behind on the payout contract and on each balance a payout credits, so 1.000000 USDC paid into a new payout contract reaches this wallet as 0.998998 at its first payout, and what the rounding leaves over is divided in a later one. Nobody, Agentify included, can change those recipients or shares, and no balance of the merchant's is ever held on Agentify's side, which is why the wallet has to be theirs and why this call exists. Circle, which issues USDC, can freeze USDC at any address, the payout contract and the shared warehouse it pays through included. The payout contract is not named in this answer, and the payTo of a payment request is never the address here: the wallet receives one transfer per payout from the 0xSplits warehouse, the shared contract a payout contract pays its shares through, covering what was paid in since the payout before as that rounding leaves it, and never a buyer's own transfer. Any key of the merchant's reads it; none sets it. A person signed in to the merchant's dashboard sets it on its Settings screen. On the live deployment a first address applies at once and is announced afterwards, and a replacement is told to every account of the merchant first and waits. Null is the ordinary answer for a merchant who has set none, and it is an answer rather than a refusal — a merchant with no wallet exists and has a settings screen to draw. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent to set it, so a screen showing it shows what the merchant copied out of their wallet character for character. On the live deployment a replacement for an address already set takes effect forty-eight hours after it was announced to the merchant, and until then this answers with the wallet still in force and names the waiting one, with the moment it takes effect, under pending. Null there means nothing is waiting, which is always the answer on the test channel and in a sandbox.",
     response: { document: PayoutWalletSchema },
-  },
-
-  list_keys: {
-    method: "GET",
-    path: "/v0/keys",
-    auth: "merchant_key",
-    description:
-      "The keys the merchant this call's own key belongs to made for their own code, the revoked ones among them, and never the keys themselves. A merchant who has only ever signed into a dashboard has none of these, and an empty list is that answer rather than a fault: the dashboard calls with no key. Whether the list is all of the rest is not something this document claims either: paging is not designed, and the absence of a field about it is not a promise that there is no more. The answer also names the key the call was made with, as this_call, and that field is the reason this is not a bare list: a merchant cannot disable the key their own call was made with, so a screen drawn without knowing which key that is would offer a button the gateway refuses. It is always one of the keys listed, since every key is one the merchant issued. Every row also says when a call was last seen on that key, which is the field a screen offering to revoke one is worth drawing at all — and it is a recorded answer rather than an exact one, lagging by minutes, and blank both for a key nothing has called and for one made before this gateway began recording, which nothing here tells apart. This call is itself one of those calls, so the key it was made with reads as used at about this moment.",
-    response: { document: MerchantKeyListSchema },
-  },
-
-  issue_key: {
-    method: "POST",
-    path: "/v0/keys",
-    auth: "merchant_key",
-    description:
-      "Issues another key for the merchant's own code, to the merchant this call's own key belongs to. The key is generated here and never taken from the caller, and it comes back exactly once — what is kept afterwards is a digest, so nothing can show it again. A merchant with several keys can hand one to each worker and revoke one without touching the others, which is the whole reason a key is a row. The merchant's dashboard issues keys the same way, and every key a merchant has is one they see, name and revoke.",
-    request: IssueKeyRequestSchema,
-    response: { document: IssuedKeySchema },
-  },
-
-  disable_key: {
-    method: "POST",
-    path: "/v0/keys/:key_id/disable",
-    auth: "merchant_key",
-    description:
-      "Stops one of this merchant's keys working, from that instant, and touches no other key. Disabling a key that is already disabled changes nothing and answers the same way, keeping the instant it was first revoked at, so a retry after a dropped connection is safe. Two refusals are worth knowing before a screen is built on this. A key belonging to another merchant is answered exactly as a key that does not exist, so this call is not a way of counting somebody else's keys. And the key this call was made with cannot be disabled by it — that one click and no more: the refusal is about the key in front of it, so a merchant holding two keys of their own can still disable either with the other, and two such calls at one moment can leave them with none of their own. That is not refused here or anywhere, and what it costs is their own code going quiet rather than the way back in, which is signing in to the dashboard with the link mailed to them.",
-    response: { document: DisabledKeySchema },
   },
 
   get_order: {

@@ -11,7 +11,19 @@
 
 import { listedAsOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
-import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  not,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
@@ -202,6 +214,20 @@ export class PostgresStore implements Store {
     // written: the grant has its own instant and changes no merchant setting.
     const existing = await this.merchantById(id);
     return existing === null ? null : { merchant: existing, changed: false };
+  }
+
+  async withdrawLiveApproval(
+    id: string,
+  ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
+    // Conditional on a grant standing, so of two withdrawals at once exactly
+    // one reports the change.
+    const [withdrawn] = await this.#db
+      .update(merchants)
+      .set({ liveApprovedAt: null })
+      .where(and(eq(merchants.id, id), isNotNull(merchants.liveApprovedAt)))
+      .returning({ id: merchants.id });
+    const merchant = await this.merchantById(id);
+    return merchant === null ? null : { merchant, changed: withdrawn !== undefined };
   }
 
   async merchants(): Promise<readonly StoredMerchant[]> {

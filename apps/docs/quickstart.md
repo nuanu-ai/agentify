@@ -103,10 +103,11 @@ characters that tells it from the next one, and copy it: the secret is shown
 once. Keep it with your other secrets and out of source control.
 
 Any key you issue can do everything your code can: publish cards, read orders
-and receipts, take a card or all selling off sale and put it back, set your
-seller name and site, and issue and revoke other keys. None of them can change
-the wallet. So if a key leaks, revoke it on API Keys together with every key
-you did not create yourself, and issue a fresh one for your code.
+and receipts, take a card or all selling off sale and put it back, and set your
+seller name and site. None of them can change the wallet, issue another key or
+revoke one; only the dashboard does those. So if a key leaks, revoke it on API
+Keys and issue a fresh one for your code: once revoked it can do nothing more,
+and it cannot have left another key of its own behind.
 
 This step worked if Settings shows your seller name and your wallet and you
 hold a key that starts with `csk_test_`.
@@ -467,8 +468,10 @@ the same way, with a wallet that receives real USDC on Base and a key that
 starts with `csk_live_`. Nothing is copied from the test channel: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant once; until then publishing lists `no_operator_approval`, and nothing
-of yours sells live. A parcel's card is refused live (`not_sold_yet`). What
+merchant; until then publishing lists `no_operator_approval`, and nothing
+of yours sells live. The operator can withdraw that approval later; publishing
+and new live sales are then refused the same way, while the orders you already
+took are still yours to deliver. A parcel's card is refused live (`not_sold_yet`). What
 changes between the two channels is in one table on [Connecting to
 Agentify](/#how-to-start).
 

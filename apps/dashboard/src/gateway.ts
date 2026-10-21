@@ -4,8 +4,8 @@
  * status the HTTP route gives the same refusal (worded once in the gateway's
  * `merchant-answers.ts`), so a merchant reads on a page what their engineer
  * reads from the API. Two exceptions: a body the request schema refuses gets
- * the schema's own problems as its sentence, and wallet changes, which have no
- * route, are worded here.
+ * the schema's own problems as its sentence, and keys and wallet changes,
+ * which have no route, are worded here.
  *
  * Requests and answers are held to the schemas the contract's route table names
  * for the same call, before anything is drawn, so a document the contract would
@@ -16,6 +16,8 @@ import type {
   Caller,
   Gateway,
   Integration,
+  IssuedMerchantKey,
+  MerchantKey,
   PayoutTransaction,
   RecordedPayoutSplit,
   WalletChangeRefusal,
@@ -28,8 +30,8 @@ import {
   merchantOrderAnswer,
   merchantOrderList,
   merchantPayout,
+  NewKeyLabelSchema,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
   SPLITS_PER_PAYOUT,
@@ -40,11 +42,8 @@ import {
   type Delivery,
   EvmAddressSchema,
   type HandlerAnswer,
-  type IssuedKey,
   type MerchantCard,
   type MerchantCardList,
-  type MerchantKey,
-  MerchantKeySchema,
   type OrderCallResponse,
   type OrderCloseRequest,
   type OrderCloseResponse,
@@ -58,7 +57,6 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { z } from "zod";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
 
@@ -155,12 +153,8 @@ export interface GatewayClient {
    * split recorded for this merchant.
    */
   paidIntoSplits(): Promise<Answer<Readonly<Record<string, RecordedPayoutSplit>>>>;
-  /**
-   * Every one can be disabled from here: a session holds no key, so none is the
-   * key this call was made with.
-   */
   keys(): Promise<Answer<readonly MerchantKey[]>>;
-  issueKey(label: string): Promise<Answer<IssuedKey>>;
+  issueKey(label: string): Promise<Answer<IssuedMerchantKey>>;
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /** Null for none. */
   sellerName(): Promise<Answer<string | null>>;
@@ -409,7 +403,11 @@ const orderCallAnswer = <T extends OrderCallResponse | OrderCloseResponse>(
     : { ok: false, status: CONFLICT, why: held.error.message, code: held.error.code };
 };
 
-const KeysSchema = z.array(MerchantKeySchema);
+/**
+ * Also the answer for another merchant's key, so disabling cannot count
+ * somebody else's keys.
+ */
+const NO_SUCH_KEY: Answer<never> = { ok: false, status: 404, why: "there is no such key" };
 
 /**
  * The split recorded at this address among those that can hold this
@@ -455,8 +453,7 @@ export const gatewayFor = (
   answerWithinMs: number = ANSWER_WITHIN_MS,
 ): GatewayClient => {
   const { merchantId } = acting;
-  const session = { kind: "signed_in", email: acting.email } as const;
-  const caller: Caller = session;
+  const session: Caller = { kind: "signed_in", email: acting.email };
   const call = <T>(name: string, work: () => Promise<Answer<T>>): Promise<Answer<T>> =>
     within(name, answerWithinMs, work);
   // The gateway refuses every recorded split alike, and the registry row says
@@ -547,29 +544,17 @@ export const gatewayFor = (
         return done(into);
       }),
     keys: () =>
-      call("reading the keys", async () =>
-        done(KeysSchema.parse(await application.merchantKeys(merchantId))),
-      ),
+      call("reading the keys", async () => done(await application.merchantKeys(merchantId))),
     issueKey: (label) =>
       call("issuing a key", async () => {
-        const asked = sent(API_ROUTES.issue_key, { label });
-        if (!asked.ok) return asked.refused;
-        return answered(
-          API_ROUTES.issue_key,
-          await application.issueMerchantKey(merchantId, asked.value.label, caller),
-        );
+        const asked = hold(NewKeyLabelSchema, label);
+        if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
+        return done(await application.issueMerchantKey(merchantId, label, session));
       }),
     disableKey: (keyId) =>
       call("disabling a key", async () => {
-        const disabled = await application.disableMerchantKey(merchantId, keyId, caller);
-        if (disabled === "locked_out") {
-          throw new Error("a session holds no key, and disabling was refused as its own");
-        }
-        if (disabled === null) return refusedAs(NO_SUCH_KEY);
-        // Unwrapped here so the contract's wrapper can grow a field without
-        // every screen changing.
-        const held = answered(API_ROUTES.disable_key, disabled);
-        return held.ok ? done(held.document.key) : held;
+        const disabled = await application.disableMerchantKey(merchantId, keyId);
+        return disabled === null ? NO_SUCH_KEY : done(disabled);
       }),
     liveApproval: () =>
       call("reading the live approval", async () =>

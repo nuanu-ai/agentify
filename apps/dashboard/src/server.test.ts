@@ -13,7 +13,13 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import { type Gateway, merchantPayout, payoutSplitFor, setPayoutWallet } from "@agentify/gateway";
+import {
+  type Gateway,
+  type MerchantKey,
+  merchantPayout,
+  payoutSplitFor,
+  setPayoutWallet,
+} from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -27,8 +33,6 @@ import {
   type Card,
   checksummedAddressOf,
   MERCHANT_FINDINGS,
-  type MerchantKey,
-  type MerchantKeyList,
   OrderCloseRequestSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -5684,10 +5688,8 @@ describe("naming a new key", () => {
     const refused = await running.browser.post("/keys", { label: "k".repeat(101) });
 
     expect(refused.status).toBe(400);
-    const listed = await running.gateway.call("GET", "/v0/keys", { headers: asMerchant });
-    expect((listed.body as MerchantKeyList).keys.some((key) => key.label.startsWith("kkk"))).toBe(
-      false,
-    );
+    const listed = await running.harnessed.gateway.merchantKeys(running.harnessed.merchant.id);
+    expect(listed.some((key) => key.label.startsWith("kkk"))).toBe(false);
   });
 });
 

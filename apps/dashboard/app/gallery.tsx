@@ -18,6 +18,7 @@ import {
 } from "@agentify/core";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
+  type MerchantKey,
   merchantPayout,
   PAYOUT_SPLIT_NETWORKS,
   payoutSplitFor,
@@ -26,7 +27,6 @@ import {
 } from "@agentify/gateway";
 import {
   MerchantCardListSchema,
-  type MerchantKey,
   OrderListSchema,
   PayoutWalletSchema,
   ReceiptListSchema,

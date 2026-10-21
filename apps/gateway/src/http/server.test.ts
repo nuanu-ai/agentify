@@ -1487,7 +1487,6 @@ describe("the worker's calls over HTTP", () => {
     const revoked = await harnessed.gateway.disableMerchantKey(
       harnessed.merchant.id,
       harnessed.merchant.keyId,
-      { kind: "signed_in", email: "owner@example.com" },
     );
     expect(revoked).not.toBeNull();
 

@@ -31,17 +31,13 @@ import {
   CardSchema,
   CONTRACT_VERSION,
   type Delivery,
-  type DisabledKey,
   deliveryCheckFor,
   type HandlerAnswer,
-  type IssuedKey,
   localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type MerchantFinding,
-  type MerchantKey,
-  type MerchantKeyList,
   type OrderAcceptResponse,
   type OrderCallResponse,
   type OrderCloseRequest,
@@ -66,12 +62,7 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import {
-  type Announcement,
-  type AskedInTheDashboard,
-  type AskedWith,
-  announcedLabel,
-} from "../announcements.js";
+import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
@@ -95,6 +86,7 @@ import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
   keyDigest,
+  NewKeyLabelSchema,
   payoutWalletFrom,
   registerMerchant,
   setSellerSite,
@@ -173,14 +165,36 @@ export type WalletChangeRefusal =
   | { readonly refused: "not_a_payout_wallet"; readonly is: NotAPayoutWallet };
 
 /**
- * Who a call comes from: a key, as the door resolved it, or a dashboard
- * session, which calls in-process as the merchant on the signed-in account's
- * row and holds no key. A session is known only by its account's email, and
- * that is what a message names.
+ * Who asks for the calls only a dashboard session makes: issuing and disabling
+ * keys and setting the wallet. A session calls in-process as the merchant on
+ * the signed-in account's row and holds no key; it is known only by its
+ * account's email, and that is what a message names.
  */
-export type Caller =
-  | { readonly kind: "key"; readonly keyId: string }
-  | { readonly kind: "signed_in"; readonly email: string };
+export type Caller = { readonly kind: "signed_in"; readonly email: string };
+
+/**
+ * One of a merchant's keys as their dashboard lists it, with no field for the
+ * secret, which is shown once when the key is issued. The instants are ISO 8601.
+ */
+export interface MerchantKey {
+  readonly id: string;
+  readonly label: string;
+  readonly created_at: string;
+  /**
+   * Behind the truth by up to a few minutes, and null where no call is
+   * recorded, which a key made before the gateway recorded this shares with
+   * one nobody has called.
+   */
+  readonly last_used_at: string | null;
+  /** Null while the key still works. */
+  readonly disabled_at: string | null;
+}
+
+/** A key just issued: its row, and its secret, readable this once. */
+export interface IssuedMerchantKey {
+  readonly key: MerchantKey;
+  readonly secret: string;
+}
 
 /** The queue's name for the daily sweep of claims on payments. */
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
@@ -919,7 +933,7 @@ export class Gateway {
   async setPayoutWallet(
     merchantId: string,
     wallet: string,
-    askedBy: Extract<Caller, { readonly kind: "signed_in" }>,
+    askedBy: Caller,
   ): Promise<PayoutWallet | WalletChangeRefusal> {
     const askedWith: AskedInTheDashboard = { kind: "signed_in", email: askedBy.email };
     // The dashboard holds the same rule on the way in, so a throw from here is
@@ -1115,31 +1129,8 @@ export class Gateway {
     });
   }
 
-  /**
-   * Who a call came from, as a message names it: the account a dashboard
-   * session is signed in as, or a key of the merchant's own code, named the way
-   * their list of keys names it.
-   */
-  async #named(merchantId: string, askedBy: Caller): Promise<AskedWith> {
-    if (askedBy.kind === "signed_in") {
-      return { kind: "signed_in", email: askedBy.email };
-    }
-    const key = (await this.runtime.store.keysOf(merchantId)).find(
-      (one) => one.id === askedBy.keyId,
-    );
-    if (key === undefined) {
-      throw new Error(
-        `the call was made with ${askedBy.keyId}, and ${merchantId} has no such key to name`,
-      );
-    }
-    return { kind: "merchant_code", id: key.id, label: announcedLabel(key.label) };
-  }
-
-  /**
-   * This merchant's keys, revoked ones included. Which key opened a call over
-   * the API is the route's to add, since only such a call has one.
-   */
-  async merchantKeys(merchantId: string): Promise<MerchantKeyList["keys"]> {
+  /** This merchant's keys, revoked ones included. */
+  async merchantKeys(merchantId: string): Promise<readonly MerchantKey[]> {
     return (await this.runtime.store.keysOf(merchantId)).map(merchantKeyOf);
   }
 
@@ -1149,12 +1140,18 @@ export class Gateway {
    * never waits on the message: a key cannot move money or set the wallet, and
    * mail being down must not keep a merchant from a key.
    */
-  async issueMerchantKey(merchantId: string, label: string, askedBy: Caller): Promise<IssuedKey> {
+  async issueMerchantKey(
+    merchantId: string,
+    label: string,
+    askedBy: Caller,
+  ): Promise<IssuedMerchantKey> {
     const issued = await issueKey(
       this.runtime.store,
       this.runtime.ids,
       merchantId,
-      label,
+      // Throws with the schema's own words, which the dashboard checks for
+      // first and shows.
+      NewKeyLabelSchema.parse(label),
       this.runtime.clock(),
       this.runtime.config.environment,
     );
@@ -1162,39 +1159,26 @@ export class Gateway {
       this.#announceAfterwards({
         kind: "key_issued",
         merchant_id: merchantId,
-        key: { id: issued.key.id, label: announcedLabel(issued.key.label) },
-        asked_with: await this.#named(merchantId, askedBy),
+        key: { id: issued.key.id, label: issued.key.label },
+        asked_with: { kind: "signed_in", email: askedBy.email },
       });
     }
     return { key: merchantKeyOf(issued.key), secret: issued.secret };
   }
 
   /**
-   * Stops one of this merchant's keys working. `locked_out` is the key this
-   * very call was made with, refused before anything is read; a dashboard
-   * session holds no key and never meets it. `null` is a key that does not
-   * exist or is somebody else's, told apart nowhere, so a refusal cannot count
-   * another merchant's keys.
-   *
-   * Two calls at once, each with a key naming the other, leave the merchant
-   * with no working key. That is not refused: refusing a merchant their own
-   * last key is an open product question, and the dashboard, signed in to by
-   * a mailed link, can always issue another.
+   * Stops one of this merchant's keys working, any of them, the one their own
+   * code calls with included: a session holds no key it could lock itself out
+   * with. `null` is a key that does not exist or is somebody else's, told
+   * apart nowhere, so a refusal cannot count another merchant's keys.
    */
-  async disableMerchantKey(
-    merchantId: string,
-    keyId: string,
-    caller: Caller,
-  ): Promise<DisabledKey | "locked_out" | null> {
-    if (caller.kind === "key" && keyId === caller.keyId) {
-      return "locked_out";
-    }
+  async disableMerchantKey(merchantId: string, keyId: string): Promise<MerchantKey | null> {
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
     if (disabled === null) {
       return null;
     }
     this.#letGo(merchantId, (held) => held.keyId === keyId);
-    return { key: merchantKeyOf(disabled) };
+    return merchantKeyOf(disabled);
   }
 
   // --- buying ---------------------------------------------------------------

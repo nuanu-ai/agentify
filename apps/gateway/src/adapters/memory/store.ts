@@ -169,6 +169,18 @@ export class MemoryStore implements Store {
     return { merchant: this.#storedMerchantOf(row), changed };
   }
 
+  async withdrawLiveApproval(
+    id: string,
+  ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
+    const row = this.#merchants.get(id);
+    if (row === undefined) {
+      return null;
+    }
+    const changed = row.liveApprovedAt !== null;
+    row.liveApprovedAt = null;
+    return { merchant: this.#storedMerchantOf(row), changed };
+  }
+
   async merchants(): Promise<readonly StoredMerchant[]> {
     return [...this.#merchants.values()].map((row) => this.#storedMerchantOf(row));
   }
