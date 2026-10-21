@@ -7297,6 +7297,26 @@ describe("what the pages record for product analytics", () => {
     expect(named(running, "agc_dashboard_viewed")).toStrictEqual([viewOf("orders", owner)]);
   });
 
+  it("records a view of another screen a press leads to, read as data next", async () => {
+    const running = await started({
+      registrar: { register: async () => ({ ok: true, document: "mer_pressed" }) },
+    });
+    await running.browser.signIn(FRESH.email);
+    const person = await running.identity.byEmail(FRESH.email);
+    await running.browser.get("/merchant");
+    await fromNow(running);
+
+    const pressed = await running.browser.post("/merchant.data", {});
+    const led = await running.browser.get("/choose-name.data");
+    await settle();
+
+    expect([pressed.status, led.status]).toStrictEqual([202, 200]);
+    expect(pressed.html).toContain('"redirect","/choose-name"');
+    expect(named(running, "agc_dashboard_viewed")).toStrictEqual([
+      viewOf("choose_name", { person: person?.id ?? "", merchant: "mer_pressed" }),
+    ]);
+  });
+
   it("names the screen by its route, whatever prefix the dashboard is mounted under", async () => {
     const running = await started({ base: "/dashboard" });
     await running.browser.signIn();
