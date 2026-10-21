@@ -40,9 +40,11 @@ that merchant is refused (ADR-0019).
 
 The two processes that hold no chain settings, the edge (Caddy) and the
 scanner, take the channel they name from `AGENTIFY_SURFACE_MODE`, set by hand
-on each host and checked by the release's preflight against the channel before
-anything starts: the edge for the documentation's notice, the scanner for the
-first line of `llms.txt`, which tells an agent whether its money is real.
+on each host: the edge for the documentation's notice, the scanner for the
+first line of `llms.txt`, which tells an agent whether its money is real. On a
+deployed channel it cannot disagree with the chain, because the release's
+preflight pins both the mode and the chain to the channel before anything
+starts.
 
 Credentials go to Coinbase's facilitator or nowhere, decided by the address,
 never by whether they are set. `CDP_API_KEY_ID` or `CDP_API_KEY_SECRET` beside
