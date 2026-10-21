@@ -238,6 +238,12 @@ const OrderDetails = ({
             {said.note}
           </p>
         )}
+        {said === null || said.typed === "" || row.closing !== null ? null : (
+          <>
+            <p className={styles.help}>The explanation you typed:</p>
+            <p className={`${styles.help} ${styles.typed}`}>{said.typed}</p>
+          </>
+        )}
         {row.closing === null ? null : (
           <CloseFulfillment
             id={row.id}
