@@ -6951,6 +6951,9 @@ describe("closing fulfillment from Orders", () => {
       expect(posted.html).toContain('aria-label="Dashboard sections"');
       expect(refusal).not.toBe("");
       expect(mainOf(posted.html)).toContain(refusal.slice(1));
+      // No form is drawn for an order that ended, so what was typed is kept
+      // beside what became of it.
+      expect(mainOf(posted.html)).toContain("Too late.");
     },
   );
 
