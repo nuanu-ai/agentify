@@ -348,7 +348,9 @@ type EligibleParcel = Extract<EligibleWooProduct, { readonly kind: "parcel" }>;
 /**
  * What a parcel from a shop that calculates tax sells at: its cart's whole
  * price for the place, at which the order made for that place charges the
- * same. A shop whose prices hold their tax may keep one gross price for every
+ * same, so long as the cart holds the goods at the product's own price, which
+ * a plugin changing prices in the cart alone would not leave in the order.
+ * A shop whose prices hold their tax may keep one gross price for every
  * buyer, which its cart shows and its order, taxing the place at its own rate,
  * does not; so such a shop's parcel sells only to a place whose cart charges
  * the goods at the entered price under the same taxes as a cart at the shop's
@@ -360,7 +362,15 @@ const taxedParcelPrice = (
   atBase: RatesRead | null,
 ): CartPrice | NotSellable => {
   if (!at.priced.ok) return at.priced;
-  if (product.tax.mode !== "included") return at.priced;
+  const otherGoods: NotSellable = {
+    ok: false,
+    why: "the shop's cart holds the goods at another price than the product's own",
+    again: false,
+    saidNo: true,
+  };
+  if (product.tax.mode !== "included") {
+    return at.priced.goodsBeforeTax === product.price.amount ? at.priced : otherGoods;
+  }
   if (atBase === null) {
     return { ok: false, why: "the shop's own address was not asked", again: false, saidNo: false };
   }
@@ -368,9 +378,8 @@ const taxedParcelPrice = (
   if (!atBase.priced.ok) return atBase.priced;
   const base = atBase.priced;
   const place = at.priced;
+  if (place.goods !== product.price.amount) return otherGoods;
   if (
-    place.goods !== product.price.amount ||
-    base.goods !== product.price.amount ||
     place.taxes.length !== base.taxes.length ||
     place.taxes.some((tax, index) => tax !== base.taxes[index])
   ) {

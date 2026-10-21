@@ -891,6 +891,8 @@ export interface CartPrice {
   readonly ok: true;
   /** Goods, shipping and the tax on both. */
   readonly total: string;
+  /** The goods as the cart holds them, before the tax it charged on them. */
+  readonly goodsBeforeTax: string;
   /** The goods with the tax the cart charged on them for this place. */
   readonly goods: string;
   /** Each tax the cart charged, as its name and rate ("PPN 11%"), sorted. */
@@ -1280,6 +1282,7 @@ export const shippingRatesInTheShop = async (
     return {
       ok: true,
       total: amountOfCents(cheapest.selected ? total : itemsTotal + shipping),
+      goodsBeforeTax: amountOfCents(subtotal),
       goods: amountOfCents(subtotal + goodsTax),
       taxes: totals.tax_lines.map((line) => `${line.name} ${line.rate}`).sort(),
       rate: {
