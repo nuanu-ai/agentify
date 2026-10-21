@@ -195,10 +195,11 @@ handler. It listens on no port — it opens a single outgoing subscription and
 receives paid orders, price questions and order events on that one stream
 (ADR-0004). Everything it is written against is `@nuanu-ai/agentify`. The
 package and the gateway agree on a contract version — `"3"` today. The package
-ignores fields it does not know, reads a status, reason or result word it does
-not know as `unknown` and skips an event of a kind it does not know, so an
-addition leaves the version
-alone, while a rename, a removal or a changed meaning moves it (ADR-0006). For a WooCommerce shop, the connector inside Agentify plays the
+ignores fields it does not know in what only informs, reads a status, reason,
+result or purpose word it does not know as `unknown` and skips an event of a
+kind it does not know, so such an addition leaves the version alone; a rename,
+a removal, a changed meaning or anything added to what an order delivers moves
+it (ADR-0006). For a WooCommerce shop, the connector inside Agentify plays the
 handler's part.
 
 The order is a state machine in `packages/core`, a pure function with no IO.

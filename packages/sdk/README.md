@@ -174,12 +174,15 @@ than the engineer.
 
 This is an early `0.x` pilot surface and the names in it can still change. A
 release keeps working when Agentify adds to what it sends: a field it does not
-know is left out of what your code receives, an event of a kind it does not
-know is skipped with an `event_skipped` problem, and an order's status or
-payment word, an event's reason or a call's result word it does not know reads
-`unknown`
+know beside an order is left out of what your code receives, an event of a kind
+it does not know is skipped with an `event_skipped` problem, and an order's
+status or payment word, an event's reason, a call's result word or a price
+question's purpose it does not know reads `unknown`
 ([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).
-A rename, a removal or a changed meaning moves the contract version, and a
+What an order delivers is read exactly, and an unknown field or address shape
+there fails loudly rather than reaching your handler narrowed. A rename, a
+removal, a changed meaning or anything added to what an order delivers moves
+the contract version, and a
 process whose version Agentify does not share stops before it takes an order.
 Every call names the package's release in its `user-agent`. What changed in each
 release is in the

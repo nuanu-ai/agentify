@@ -23,12 +23,12 @@ The contract is versioned, and the version is how an SDK and a gateway agree
 that they read the same vocabulary; a worker whose version the gateway does not
 share stops at startup rather than half understanding a document. The schemas
 are closed, which is how a gateway writes; `readerOf(schema)` gives the reader
-of the same document, which ignores fields added later, reads an order's
-status or payment word, an event's reason or a call's result word it does not
-know as `unknown`, and marks an event of a kind it does not know so it can be
-skipped. What the
-merchant-facing side of all this looks like in use is at
-<https://agentify.ad/docs/>.
+of the same document, which ignores fields added later to what only informs,
+reads an order's status or payment word, an event's reason, a call's result
+word or a price question's purpose it does not know as `unknown`, and marks an
+event of a kind it does not know so it can be skipped. What an order delivers
+it reads as closed as it is written. What the merchant-facing side of all this
+looks like in use is at <https://agentify.ad/docs/>.
 
 ## License
 

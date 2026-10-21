@@ -31,7 +31,7 @@ written in; the rest are in English.
 
 | Decision | What it decides |
 | --- | --- |
-| [0006](0006-wire-version.md) | What the contract version promises and when it moves: readers ignore fields they do not know, an unknown status reads `unknown` and an unknown event is skipped, so an addition leaves the version alone; a rename, a removal or a changed meaning moves it, and an old worker stops with words. |
+| [0006](0006-wire-version.md) | What the contract version promises and when it moves: readers ignore informational fields they do not know, an unknown status, reason, result or purpose reads `unknown` and an unknown event is skipped, while what an order delivers is read closed; a rename, a removal, a changed meaning or anything added to what an order delivers moves it, and an old worker stops with words. |
 | [0012](0012-discovery-declaration.md) | Every card on sale declares itself in its payment challenge for outside catalogues such as the x402 Bazaar, as a projection of the card. |
 | [0018](0018-one-envelope-one-document.md) | Every call says no in one shape — a `code`, a `message` and `retryable` — and an order is one document. |
 | [0011](0011-agent-collection-door.md) | For now, knowing an order's identifier is the proof that opens that order, which is how an agent collects goods delivered later; a payment names its order by a separate reference that nothing answers with the order, so no listing can carry the identifier. |

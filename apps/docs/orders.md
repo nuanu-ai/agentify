@@ -440,23 +440,19 @@ tables above and one more, `unknown`: a word Agentify added after your release
 of the SDK was built. It is none of the endings, so leave such an order for a
 later pass and upgrade; [When Agentify is newer than your
 package](#when-agentify-is-newer-than-your-package) says what else a newer
-Agentify changes for you.
+Agentify changes for you. A loop that delivers does so only on the words where
+delivering is right, so a word it does not know is left alone, as below.
 
 ```ts
 const order = await agentify.orders.get(orderId)
 const open = await agentify.orders.list({ open: true })
 
 for (const waiting of open) {
-  // Goods already made, waiting on money rather than on you. A silence is
-  // the same shape of skip: delivering answers success and nothing you send
-  // is kept.
-  if (waiting.status === 'delivered_unpaid' || waiting.status === 'payment_unresolved') {
-    continue
-  }
-
-  // Paid after you closed it: it needs your word to the buyer, not goods,
-  // and closing it again with that word takes it off this list.
-  if (waiting.status === 'fulfillment_closed') {
+  // Deliver only where delivering is right: an order still running, or paid
+  // and unfulfilled. Every other word waits for a later pass, `unknown`
+  // included: goods held for a payment wait on the buyer, and an order paid
+  // after you closed it needs your word to the buyer, not goods.
+  if (waiting.status !== 'in_progress' && waiting.status !== 'unfulfilled') {
     continue
   }
 
@@ -729,9 +725,10 @@ receives one transfer per payout instead.
 Agentify adds to what it sends without waiting for you to upgrade, and the
 package you installed reads past what was added:
 
-- A field your package does not know, on an order, an event or any other
-  answer, is left out of what your code receives, and everything else in that
-  answer arrives as before.
+- A field your package does not know, on an event, a card, a receipt, around an
+  order or in any other answer that only informs, is left out of what your code
+  receives, and everything else in that answer arrives as before. What an order
+  delivers is the exception, below.
 - An event of a kind your package does not know is skipped. The rest of the
   poll it came in is handled as usual, and your problem handler receives one
   `event_skipped` problem, not fatal, naming the event's `type` and saying that
@@ -741,28 +738,40 @@ package you installed reads past what was added:
   true })` whether its event arrived, was lost or was skipped.
 - An order whose `status` or `payment_status` holds a word your package does
   not know still comes back from `orders.get` and `orders.list`, with that word
-  as `unknown`. A loop over open orders that acts only on the words it knows
-  leaves such an order alone, which is the right thing to do with it.
+  as `unknown`. A loop over open orders that delivers only on `in_progress` and
+  `unfulfilled` leaves such an order alone, which is the right thing to do.
 - An event of a kind your package knows, with a `reason` it does not know,
   reaches your event handler with the reason as `unknown`; the order behind it
   is on the open list as ever.
 - A delivery, refusal or acceptance answered `ok: true` with a `result` word
   your package does not know succeeded, and the word reads `unknown`.
+- A price question for a `purpose` your package does not know is left
+  unanswered, with one `quote_skipped` problem, not fatal. An unanswered price
+  question ends the sale before any money, as a silent one does.
 
-What your package cannot read past is a change to something it already knows:
-a field or a word renamed or removed, or a field that comes to mean something
-else. Agentify then speaks a new contract version. Your subscription stops at
-the first poll answer it can read, with a `contract_version_mismatch` problem
-naming both versions, and until then reports each answer it cannot read as
-`poll_failed`, naming the version Agentify spoke; no order it cannot read
-reaches your handler, and your process stays up and sells nothing until you
-upgrade. A new card mode, a new selling state or a new kind of message on the
-subscription counts as that kind of change, because each is work or
-configuration an older package cannot do.
+What an order delivers is read exactly: its product, parameters, price,
+address and test flag, off the subscription or read back. A field or an address
+shape there that your package does not know fails the poll or the read loudly,
+as `poll_failed` or a thrown `AgentifyError`, rather than reaching your code
+with part of the order missing; the order comes again within its attempts, and
+it stays on the open list.
+
+Agentify therefore speaks a new contract version for a change your package
+cannot read past: a field or a word renamed or removed, a field that comes to
+mean something else, anything added to what an order delivers, and a new card
+mode, selling state or kind of message on the subscription, each of which is
+work or configuration an older package cannot do. Your subscription then stops
+at the first poll answer it can read, with a `contract_version_mismatch`
+problem naming both versions, after the orders already in your handlers have
+sent their answers; until then it reports each answer it cannot read as
+`poll_failed`, naming the version Agentify spoke. Your process stays up and
+sells nothing until you upgrade.
 
 Every call the package makes names its release to Agentify in its `user-agent`
-header, as `agentify-sdk/` and the version, so that we can see which releases
-are still in use. Nothing is refused because of it.
+header, as `agentify-sdk/` and the version, and Agentify notes it beside the
+key's last use each time it writes that down, which is every few minutes at
+most, so that we can see which releases are still in use. Nothing is refused
+because of it.
 
 ## What is not settled yet
 
