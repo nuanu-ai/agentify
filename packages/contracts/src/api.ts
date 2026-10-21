@@ -561,6 +561,8 @@ export const ERROR_CODES = Object.freeze([
   "payment_already_spent",
   "payment_not_taken",
   "payment_not_verified",
+  "seller_busy",
+  "seller_not_taking_orders",
   "ship_to_changed",
   "ship_to_does_not_fit",
 ] as const);
