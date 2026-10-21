@@ -2848,6 +2848,45 @@ describe("what the worker writes in the merchant's log when something fails", ()
       }
     });
 
+  it("names an order whose answer the gateway did not take by its fingerprint", async () => {
+    const shop = aShopThatAccepts();
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            {
+              id: "env_order",
+              kind: "order" as const,
+              sent_at: new Date().toISOString(),
+              payload: anOrder(),
+            },
+          ],
+        },
+      }),
+      paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
+      answerOrder: async () => ({ ok: false as const, status: 409, why: "the order is over" }),
+    } as never;
+    const parts = {
+      ...filling(memoryWooShops(), shop.place),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+    };
+
+    const written = await loggedWhile(() => turnOnce(connection(), parts));
+
+    expect(written).toContain("was not accepted: the order is over");
+    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).not.toContain(anOrder().id);
+  });
+
   it("names the account whose turn failed", async () => {
     const shops = memoryWooShops();
     await shops.connect(connection());
