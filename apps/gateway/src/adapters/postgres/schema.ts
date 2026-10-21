@@ -143,6 +143,11 @@ export const cards = pgTable(
     /** When this version of the card was published. */
     asOf: timestamp("as_of", { withTimezone: true, mode: "date" }).notNull(),
     /**
+     * When the card was first published; a republish leaves it. The dashboard
+     * reads a merchant's earliest one as the moment their store was connected.
+     */
+    publishedAt: timestamp("published_at", { withTimezone: true, mode: "date" }).notNull(),
+    /**
      * Whether this card alone is off sale. A column rather than a field in the
      * document, because republishing writes the document whole and would erase
      * the pause.

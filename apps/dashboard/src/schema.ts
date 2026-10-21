@@ -1,8 +1,9 @@
 /**
  * The dashboard's identity, registration and WooCommerce tables. They share a
- * database with the gateway's, so the names are prefixed with their owner; no
- * dashboard query reads the gateway's tables. Migration bookkeeping is kept in
- * its own table, for the reason `src/database.ts` gives.
+ * database with the gateway's, so the names are prefixed with their owner. The
+ * ad reports read the gateway's `cards` by name and write nothing there; only
+ * the test channel's forget command writes a gateway table. Migration
+ * bookkeeping is kept in its own table, for the reason `src/database.ts` gives.
  */
 
 import { sql } from "drizzle-orm";
@@ -13,6 +14,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
@@ -216,53 +218,73 @@ export const reportDeletionTombstones = pgTable(
 );
 
 /**
- * The one registration the dashboard reports to the ad tracker whose click
- * brought the person, so there is at most one per account. It is written in
+ * What the dashboard tells the ad tracker whose click brought a person: one
+ * row per account and event. `reg` is the registration, written pending in
  * the transaction that makes the address's first verified account, where a
  * link asked for with the click is pressed or a Google sign-in started with it
- * comes back. What is reported is the click id and the fact that a
- * registration happened, nothing about the person.
+ * comes back. `store_connected` is written beside it, waiting, where that
+ * report is switched on: it becomes pending once the account's merchant
+ * publishes its first card within 30 days of the registration, if no other
+ * account of that merchant took it, and lapses otherwise.
  *
- * The click id is kept only while the report is pending and is erased once the
- * row is final; what stays is the report's state and dates, the row's creation
- * being the moment of the sign-in. The row goes with the account.
+ * Each row keeps its own copy of the click while it waits or is pending and
+ * erases it once final. `created_at` is the registration; `event_at` is when
+ * the reported fact happened, the registration or the first card's
+ * publication, and is null for a store report that never had one. The rows go
+ * with the account.
  */
-export const registrationPostbacks = pgTable(
-  "dashboard_registration_postbacks",
+export const adReports = pgTable(
+  "dashboard_ad_reports",
   {
     accountId: text("account_id")
-      .primaryKey()
+      .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
     clickId: text("click_id"),
-    state: text("state").notNull().default("pending"),
+    state: text("state").notNull(),
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
     /** How the last attempt ended, such as `http_403` or `timeout`; null before any. */
     lastOutcome: text("last_outcome"),
     createdAt: moment("created_at"),
+    eventAt: timestamp("event_at", { withTimezone: true, mode: "date" }),
     settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
+    primaryKey({ columns: [table.accountId, table.event] }),
+    check("dashboard_ad_reports_event", sql`${table.event} in ('reg', 'store_connected')`),
     check(
-      "dashboard_registration_postbacks_state",
-      sql`${table.state} in ('pending', 'delivered', 'refused', 'given_up')`,
+      "dashboard_ad_reports_state",
+      sql`${table.state} in ('waiting', 'pending', 'delivered', 'refused', 'given_up', 'lapsed')`,
     ),
     check(
-      "dashboard_registration_postbacks_pending_holds_click",
-      sql`(${table.state} = 'pending') = (${table.clickId} is not null)`,
+      "dashboard_ad_reports_only_a_store_report_waits",
+      sql`${table.event} = 'store_connected' or ${table.state} not in ('waiting', 'lapsed')`,
     ),
     check(
-      "dashboard_registration_postbacks_pending_scheduled",
+      "dashboard_ad_reports_open_holds_click",
+      sql`(${table.state} in ('waiting', 'pending')) = (${table.clickId} is not null)`,
+    ),
+    check(
+      "dashboard_ad_reports_pending_scheduled",
       sql`${table.state} <> 'pending' or ${table.nextAttemptAt} is not null`,
     ),
     check(
-      "dashboard_registration_postbacks_settled_dated",
-      sql`${table.state} = 'pending' or ${table.settledAt} is not null`,
+      "dashboard_ad_reports_settled_dated",
+      sql`(${table.state} in ('waiting', 'pending')) = (${table.settledAt} is null)`,
+    ),
+    check(
+      "dashboard_ad_reports_fact_dated",
+      sql`(${table.state} in ('waiting', 'lapsed')) = (${table.eventAt} is null)`,
     ),
     // What the delivery reads: the pending rows that are due.
-    index("dashboard_registration_postbacks_due_idx")
+    index("dashboard_ad_reports_due_idx")
       .on(table.nextAttemptAt)
       .where(sql`${table.state} = 'pending'`),
+    // What each turn reads first: the store reports still waiting for a card.
+    index("dashboard_ad_reports_waiting_idx")
+      .on(table.createdAt)
+      .where(sql`${table.state} = 'waiting'`),
   ],
 );
 
