@@ -2935,3 +2935,170 @@ describe("what the worker writes in the merchant's log when something fails", ()
     expect(written).not.toContain("exam\nple");
   });
 });
+
+describe("bounded work within one connected shop", () => {
+  const begin = async (ids: string[], place: (sold: SoldItem) => Promise<OrderMade>) => {
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const stream = ids.map((id, index) =>
+      id === "quote"
+        ? {
+            kind: "quote_request" as const,
+            id: `env-${index}`,
+            sent_at: new Date().toISOString(),
+            payload: {
+              merchant_item_id: anOrder().merchant_item_id,
+              price_id: "live-price",
+              purpose: "purchase" as const,
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+            },
+          }
+        : {
+            kind: "order" as const,
+            id: `env-${index}`,
+            sent_at: new Date().toISOString(),
+            payload: anOrder({ id }),
+          },
+    );
+    const answers: string[] = [];
+    let polls = 0;
+    const gateway = {
+      pollWorker: async () => {
+        polls += 1;
+        const next = stream.shift();
+        return {
+          ok: true as const,
+          document: { contract_version: "1", envelopes: next ? [next] : [] },
+        };
+      },
+      paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
+      answerOrder: async (id: string) => {
+        answers.push(id);
+        return { ok: true as const };
+      },
+      answerQuote: async () => {
+        answers.push("quote");
+        return { ok: true as const };
+      },
+    };
+    const worker = startWooWorker({
+      ...filling(shops, async (_keys, sold) => place(sold)),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway as never,
+      betweenTurnsMs: 5,
+      waitSeconds: 0,
+    });
+    return { worker, shops, answers, polls: () => polls };
+  };
+  const until = async (condition: () => boolean) => {
+    const deadline = Date.now() + 1_000;
+    while (!condition() && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    expect(condition()).toBe(true);
+  };
+  const placed = (id: string): OrderMade => ({
+    ok: true,
+    id,
+    number: id,
+    orderKey: `wc_${id}`,
+    downloadId: "dl_guide",
+  });
+
+  it("answers the next purchase and price while one shop creation is held open", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const started: string[] = [];
+    const run = await begin(["slow", "fast", "quote"], async (sold) => {
+      started.push(sold.orderId);
+      if (sold.orderId === "slow") await promise;
+      return placed(sold.orderId);
+    });
+    try {
+      await until(() => run.answers.includes("fast") && run.answers.includes("quote"));
+      expect(started).toEqual(["slow", "fast"]);
+      expect(run.answers).not.toContain("slow");
+    } finally {
+      resolve();
+      await run.worker.stop();
+    }
+  });
+
+  it("holds the fifth order in the gateway until one of four creations finishes", async () => {
+    const gates = Array.from({ length: 5 }, () => Promise.withResolvers<void>());
+    const started: string[] = [];
+    const run = await begin(["0", "1", "2", "3", "4"], async (sold) => {
+      started.push(sold.orderId);
+      await gates[Number(sold.orderId)]?.promise;
+      return placed(sold.orderId);
+    });
+    try {
+      await until(() => started.length >= 1);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(started).toEqual(["0", "1", "2", "3"]);
+      expect(run.polls()).toBe(4);
+      gates[0]?.resolve();
+      await until(() => started.includes("4"));
+    } finally {
+      gates.forEach((gate) => gate.resolve());
+      await run.worker.stop();
+    }
+  });
+
+  it("does not refuse or create an in-flight redelivery a second time", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const started: string[] = [];
+    const run = await begin(["same", "same", "quote"], async (sold) => {
+      started.push(sold.orderId);
+      await promise;
+      return placed(sold.orderId);
+    });
+    try {
+      await until(() => run.answers.includes("quote"));
+      expect(started).toEqual(["same"]);
+      expect(run.answers).not.toContain("same");
+      resolve();
+      await until(() => run.answers.includes("same"));
+      expect(run.answers.filter((id) => id === "same")).toHaveLength(1);
+    } finally {
+      resolve();
+      await run.worker.stop();
+    }
+  });
+
+  it("retains disconnected work through reconnect and shutdown until it finishes", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const started: string[] = [];
+    const run = await begin(["old"], async (sold) => {
+      started.push(sold.orderId);
+      await promise;
+      return placed(sold.orderId);
+    });
+    try {
+      await until(() => started.length === 1);
+      await run.shops.forget("acc_1");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const before = run.polls();
+      await run.shops.connect({ ...connection(), revision: "grant_2" });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(run.polls()).toBe(before);
+      let stopped = false;
+      const stopping = run.worker.stop().then(() => {
+        stopped = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stopped).toBe(false);
+      resolve();
+      await stopping;
+      expect(run.answers).toEqual(["old"]);
+    } finally {
+      resolve();
+      await run.worker.stop();
+    }
+  });
+});
