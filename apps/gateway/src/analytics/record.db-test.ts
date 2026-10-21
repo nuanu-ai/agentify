@@ -12,7 +12,13 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../testing/database.js";
-import { type AnalyticsEvent, type MerchantCreated, record, recordObserved } from "./index.js";
+import {
+  type AnalyticsEvent,
+  type MerchantCreated,
+  record,
+  recordAlong,
+  recordObserved,
+} from "./index.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
@@ -103,6 +109,39 @@ if (databaseUrl === null) {
         await record(tx, broken, AT);
       });
       expect(await recorded()).toHaveLength(1);
+    });
+
+    it("records an event alongside a business write: with it, gone with its rollback, and never failing it", async () => {
+      await expect(
+        db.transaction(async (tx) => {
+          await recordAlong(tx, created, AT);
+          throw new Error("the business write failed");
+        }),
+      ).rejects.toThrow("the business write failed");
+      expect(await recorded()).toStrictEqual([]);
+
+      await db.transaction(async (tx) => {
+        await recordAlong(tx, created, AT);
+      });
+      expect(await recorded()).toHaveLength(1);
+
+      await pool.query(
+        "alter table commerce_analytics_events rename to commerce_analytics_events_away",
+      );
+      try {
+        await expect(
+          db.transaction(async (tx) => {
+            await recordAlong(tx, created, AT);
+            const { rows } = await tx.execute("select 1 as still_open");
+            return rows;
+          }),
+        ).resolves.toStrictEqual([{ still_open: 1 }]);
+      } finally {
+        await pool.query(
+          "alter table commerce_analytics_events_away rename to commerce_analytics_events",
+        );
+      }
+      expect(told.join("\n")).toMatch(/analytics event could not be recorded/);
     });
 
     it("records an observation outside any transaction", async () => {
