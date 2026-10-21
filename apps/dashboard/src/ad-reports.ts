@@ -8,8 +8,10 @@
  * which spaces posts of both kinds across all of them at least 1.1 seconds
  * apart. Under it, the store reports still waiting are settled first: of a
  * merchant whose first card came at or after a registration and within 30
- * days of it, the earliest such registration's report becomes due, and every
- * waiting report that can no longer become due lapses and loses its click.
+ * days of it, the earliest such registration's report becomes due once that
+ * registration's own report was delivered, and every waiting report that can
+ * no longer become due lapses and loses its click, as does every one whose
+ * registration's report was refused or given up.
  * Then the turn takes one due row, locked so no other turn can take it;
  * posts; and records the outcome before committing. A 200 delivers the report,
  * a 429, a 5xx, a timeout or a network failure tries it again later, and
@@ -148,13 +150,16 @@ type Transaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction
 /**
  * Settles, in one statement, every store report still waiting. Of a merchant
  * whose first card ever was published at or after a waiting registration and
- * before its 30 days ended, the earliest such registration's report becomes
- * due at once, dated by that card, unless an account of the merchant already
- * took the report; switched off, it waits instead, until its 30 days end. Every
- * other waiting report lapses, its click erased, once it can no longer become
- * due: its merchant has a first card that is not its own to report, or its 30
- * days ended. A card row exists only once a publish succeeded, and cards are
- * not deleted, so a merchant's first card never changes.
+ * before its 30 days ended, the earliest such registration whose own report
+ * was not refused or given up holds the store report, unless an account of the
+ * merchant already took it. That report becomes due, dated by the card, once
+ * its registration's report was delivered; until then, or while it is switched
+ * off, it waits, until its 30 days end. Every other waiting report lapses, its
+ * click erased, once it can no longer become due: its registration's report
+ * was refused or given up, its merchant has a first card that is not its own to
+ * report, or its 30 days ended. A card row exists only once a publish
+ * succeeded, and cards are not deleted, so a merchant's first card never
+ * changes.
  *
  * A row whose account is being deleted at that moment is skipped rather than
  * waited for, since the lock every process shares is held.
@@ -167,9 +172,10 @@ async function settleWaiting(
   const keptFor = span(KEPT_FOR_MS);
   const settled = await tx.execute<{ state: string }>(sql`
     with waiting as (
-      select r.account_id, r.created_at, a.merchant_id
+      select r.account_id, r.created_at, a.merchant_id, reg.state as registration
         from dashboard_ad_reports r
         join dashboard_accounts a on a.id = r.account_id
+        join dashboard_ad_reports reg on reg.account_id = r.account_id and reg.event = 'reg'
        where r.event = 'store_connected' and r.state = 'waiting'
          for update of r skip locked
     ),
@@ -185,6 +191,7 @@ async function settleWaiting(
         join first_cards f on f.merchant_id = w.merchant_id
        where f.published_at >= w.created_at
          and f.published_at < w.created_at + ${keptFor}
+         and w.registration not in ('refused', 'given_up')
          and not exists (
            select 1
              from dashboard_ad_reports taken
@@ -198,7 +205,9 @@ async function settleWaiting(
     fates as (
       select w.account_id, c.published_at,
              case
-               when c.account_id is not null and ${promote}::boolean then 'pending'
+               when w.registration in ('refused', 'given_up') then 'lapsed'
+               when c.account_id is not null and w.registration = 'delivered' and ${promote}::boolean
+                 then 'pending'
                when c.account_id is not null and ${at}::timestamptz < w.created_at + ${keptFor}
                  then null
                when f.merchant_id is not null then 'lapsed'
@@ -372,8 +381,10 @@ async function expireOnce(parts: LoopParts): Promise<void> {
   const now = parts.now ?? (() => new Date());
   const tidied = await drizzle(parts.pool).transaction(async (tx) => {
     await tx.execute(lockedForPosting);
-    const waiting = await settleWaiting(tx, now(), false);
-    return { ...waiting, givenUp: await giveUpLate(tx, now(), ["reg", "store_connected"]) };
+    // Registrations first, so a store report whose registration this gives up
+    // lapses in the same turn.
+    const givenUp = await giveUpLate(tx, now(), ["reg", "store_connected"]);
+    return { ...(await settleWaiting(tx, now(), false)), givenUp };
   });
   tell(tidied, "registration");
 }

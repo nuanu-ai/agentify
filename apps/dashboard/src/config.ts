@@ -363,11 +363,12 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
   if (values.STORE_POSTBACK_ENABLED && !values.REGISTRATION_POSTBACK_ENABLED) {
-    // The store report goes only for an account whose registration was
-    // reported, to that report's receiver with its key.
+    // A store report goes only after its registration's report was
+    // delivered, to that report's receiver with its key; with registrations
+    // not reported, none ever would.
     problems.push(
       "STORE_POSTBACK_ENABLED is true and REGISTRATION_POSTBACK_ENABLED is not, and a store is" +
-        " reported only for a registration that was",
+        " reported only after its registration's report was delivered",
     );
   }
 

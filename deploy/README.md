@@ -847,18 +847,21 @@ person connected a store: the body is the click, `"event": "store_connected"`
 and `event_time`, the Unix seconds at which the merchant the account names
 published its first product card, through the API or the WooCommerce import,
 within those 30 days. Only the earliest such sign-up of a merchant reports, and
-none reports for a merchant whose first card came before it. The click is
+none reports for a merchant whose first card came before it. The store is
+reported only after the sign-up's registration report was delivered, and never
+for a sign-up whose registration report was refused or given up. The click is
 erased once that report is delivered, refused or given up, which happens a day
-after the first card at the latest and never past the 30 days, or at the end of
-the 30 days with no first card. Each outcome is one log line such as `store
-report delivered: http_200`. The switch stays off until the tracker confirms
-that it accepts exactly this body and keeps one `store_connected` per click,
-because a report is posted again when the process stops between the tracker's
-answer and the record of it. The application refuses to start with this switch
-on and `REGISTRATION_POSTBACK_ENABLED` off, and on TEST, where the same file
-fixes it off too. Turned off again, it keeps no click for new sign-ups, posts
-no store report, gives up those already due once their day is over and lets the
-waiting ones lapse at their 30 days.
+after the first card at the latest and never past the 30 days, at once when the
+registration report is refused or given up, or at the end of the 30 days with
+no first card. Each outcome is one log line such as `store report delivered:
+http_200`. The switch stays off until the tracker confirms that it accepts
+exactly this body and keeps one `store_connected` per click, because a report
+is posted again when the process stops between the tracker's answer and the
+record of it. The application refuses to start with this switch on and
+`REGISTRATION_POSTBACK_ENABLED` off, and on TEST, where the same file fixes it
+off too. Turned off again, it keeps no click for new sign-ups, posts no store
+report, gives up those already due once their day is over and lets the waiting
+ones lapse at their 30 days.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
