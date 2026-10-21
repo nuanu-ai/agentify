@@ -575,7 +575,27 @@ ssh agentify systemctl list-timers 'agentify-backup*'
 
 A backup waits up to five minutes for a release to let go of the release lock
 and then gives up until the next run, which the journal also records as a
-failure. Everything else below runs in a root shell on the host that has read
+failure.
+
+restic keeps a lock of its own in the repository while it works. A run that
+dies, on an error from the bucket or killed at the unit's thirty-minute
+timeout, can leave that lock behind, and while it stays every later run waits
+five minutes for it and fails with `repository is already locked exclusively by
+PID <pid> … the unlock command can be used to remove stale locks`. So every
+backup and every rehearsal begins with `restic unlock`, which removes a lock
+only when its process no longer runs on this host or nobody has refreshed it
+for thirty minutes, and the journal of the run that removed one says
+`successfully removed 1 locks`. A dead run costs that run alone: the next
+backup, at most ten minutes later, goes through, and a prune that died is done
+again by the next run, since the day's prune was never recorded as done. A lock
+held by a run still going, such as a rehearsal started beside a backup, stays,
+and the backup waits for it. The same lock error repeated run after run means
+the lock belongs to a process that is still alive, or to another host;
+`restic list locks --no-lock` and `restic cat lock <id> --no-lock` in the root
+shell below say whose it is, and `restic unlock --remove-all` is for a person
+who has made sure that no restic runs anywhere against this repository.
+
+Everything else below runs in a root shell on the host that has read
 `backup.env`, which lists the snapshots, newest last:
 
 ```sh

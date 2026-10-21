@@ -69,8 +69,23 @@ RESTIC = r"""#!/usr/bin/env bash
 R=/h/world/repo
 echo "restic $*" >> /h/world/calls
 [[ -n ${RESTIC_PASSWORD:-} && -n ${AWS_SECRET_ACCESS_KEY:-} ]] || { echo "Fatal: no repository password or key" >&2; exit 1; }
-mkdir -p $R; touch $R/order
+mkdir -p $R/locks; touch $R/order
+# A lock names the PID of the run that took it. While one is in the repository,
+# every other run is refused, as an exclusive lock refuses them; unlock removes
+# only the locks whose process is gone.
+if [[ $1 == unlock ]]; then
+  for lock in $R/locks/*; do [[ ! -f $lock ]] || { [[ $2 != --remove-all ]] && kill -0 "$(cat $lock)" 2> /dev/null; } || rm $lock; done
+  exit 0
+fi
+for lock in $R/locks/*; do
+  [[ ! -f $lock ]] || { echo "Fatal: repository is already locked exclusively by PID $(cat $lock); the \`unlock\` command can be used to remove stale locks" >&2; exit 1; }
+done
 case $1 in
+  prune)
+    echo $$ > $R/locks/$$
+    [[ -z ${PRUNE_DIES:-} ]] || { echo "Fatal: Service is unable to handle request" >&2; exit 1; }
+    [[ -z ${PRUNE_HANGS:-} ]] || sleep 30
+    rm $R/locks/$$ ;;
   backup)
     id="$(printf 'snapshot %s' "$(wc -l < $R/order)" | sha256sum | cut -c1-64)" files=() seen=""
     for argument in "$@"; do if [[ -n $seen ]]; then files+=("$argument"); elif [[ $argument == -- ]]; then seen=1; fi; done
@@ -186,6 +201,38 @@ class Backups(unittest.TestCase):
         self.assertGreaterEqual(int(said.split("waited ")[1].split()[0]), 3)
         self.assertFalse([call for call in self.calls() if "pg_dump" in call])
         self.assertEqual(self.snapshots(), [])
+
+    def test_a_prune_that_died_holding_the_repository_lock_does_not_stop_the_next_backup(self):
+        said = self.run_script("PRUNE_DIES=1 backup\nbackup")
+        self.assertRegex(said, r"(?m)^backup exit [1-9]")
+        self.assertIn("backup exit 0", said)
+        _, second = self.snapshots()
+        self.assertIn(second[:8], self.status())
+        self.assertEqual(list((self.world / "repo/locks").iterdir()), [])
+
+    def while_a_prune_runs(self, script):
+        return self.run_script(
+            "(set -a; . /etc/agentify/backup.env; PRUNE_HANGS=1 restic prune) &\n"
+            "until compgen -G '/h/world/repo/locks/*' > /dev/null; do sleep 0.1; done\n" + script)
+
+    def test_a_backup_leaves_the_lock_of_a_run_still_going_and_stores_nothing(self):
+        said = self.while_a_prune_runs("backup")
+        self.assertRegex(said, r"(?m)^backup exit [1-9]")
+        self.assertIn("already locked", said)
+        self.assertEqual(self.snapshots(), [])
+        self.assertEqual(len(list((self.world / "repo/locks").iterdir())), 1)
+
+    def test_a_prune_that_died_holding_the_repository_lock_does_not_stop_a_check(self):
+        said = self.run_script("PRUNE_DIES=1 backup\ncheck")
+        self.assertIn("check exit 0", said)
+        self.assertIn("passed", self.status())
+
+    def test_a_check_leaves_the_lock_of_a_run_still_going(self):
+        self.run_script("backup")
+        said = self.while_a_prune_runs("check")
+        self.assertRegex(said, r"(?m)^check exit [1-9]")
+        self.assertIn("already locked", said)
+        self.assertEqual(len(list((self.world / "repo/locks").iterdir())), 1)
 
     def test_a_check_restores_the_latest_snapshot_whole_and_leaves_only_the_live_databases(self):
         said = self.run_script("backup\ncheck")
