@@ -78,7 +78,10 @@ const workerHolding = async (
   gateway = await startFakeGateway({
     apiKey,
     routes: {
-      poll_worker: polling(batch(arriving), batch(arriving)),
+      poll_worker: polling(
+        batch(arriving),
+        batch({ ...arriving, id: "env-2", payload: { ...order, id: "order-2" } }),
+      ),
       answer_order: () => ({ body: { ok: true, result: "delivered" } }),
     },
   });

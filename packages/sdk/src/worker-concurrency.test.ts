@@ -1,6 +1,6 @@
 import type { Order, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient, type AgentifyClient } from "./client.js";
+import { type AgentifyClient, createClient } from "./client.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import { batch, polling } from "./testing/worker-stream.js";
@@ -48,7 +48,9 @@ let gateway: FakeGateway | undefined;
 const releases: (() => void)[] = [];
 const held = () => new Promise<void>((resolve) => releases.push(resolve));
 afterEach(async () => {
-  releases.splice(0).forEach((release) => release());
+  releases.splice(0).forEach((release) => {
+    release();
+  });
   await client?.stop();
   await gateway?.close();
   client = undefined;
@@ -107,7 +109,7 @@ describe("bounded concurrent merchant work", () => {
       },
     );
     await client?.start();
-    await waitUntil(() => started.length >= 1, "the first handler");
+    await waitUntil(() => started.length >= 4, "four handlers");
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(started).toEqual(["0", "1", "2", "3"]);
     expect(gateway?.callsTo("poll_worker")).toHaveLength(4);
@@ -118,29 +120,50 @@ describe("bounded concurrent merchant work", () => {
 
   it("coalesces an in-flight repeat but allows a retry after that attempt finishes", async () => {
     const gate = held();
+    const retry = Promise.withResolvers<void>();
     const started: string[] = [];
+    let firstFinished = false;
+    let priced = false;
     const original = order("same");
-    const { answers } = await subscribe(
-      [original, { ...original, id: "redelivery" }, quote],
-      async (given) => {
-        started.push(given.id);
-        await gate;
+    gateway = await startFakeGateway({
+      apiKey: "test-key",
+      routes: {
+        poll_worker: async (_call, index) => {
+          if (index === 0) return batch(original);
+          if (index === 1) return batch({ ...original, id: "redelivery" });
+          if (index === 2) return batch(event("same"));
+          if (index === 3) return batch(quote);
+          if (index === 4) {
+            await retry.promise;
+            return batch({ ...original, id: "later-retry" });
+          }
+          return new Promise<never>(() => {});
+        },
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+        answer_quote: () => {
+          priced = true;
+          return { body: { used: true } };
+        },
       },
-    );
-    await client?.start();
-    await waitUntil(() => answers.includes("price"), "the price behind the repeat");
+    });
+    client = createClient({ apiKey: "test-key", baseUrl: gateway.url });
+    client.on("order", async (given) => {
+      started.push(given.id);
+      await gate;
+      return given.delivered({ access_url: "https://service.example/access" });
+    });
+    client.on("quote", (given) => given.unavailable(at));
+    client.on("event", () => {
+      firstFinished = true;
+    });
+    await client.start();
+    await waitUntil(() => priced, "the price behind the in-flight repeat");
     expect(started).toEqual(["same"]);
     releases[0]?.();
-    await waitUntil(() => answers.includes("same"), "the original answer");
-    await client?.stop();
-    // Restart has no process-local claim left; durable idempotency still belongs to the merchant.
-    await gateway?.close();
-    gateway = undefined;
-    const next = await subscribe([order("same")], async (given) => {
-      started.push(given.id);
-    });
-    await client?.start();
-    await waitUntil(() => next.answers.includes("same"), "the retry answer");
+    await waitUntil(() => firstFinished, "the original order's event after its answer");
+    expect(started).toEqual(["same"]);
+    retry.resolve();
+    await waitUntil(() => started.length === 2, "the later retry in the same subscription");
     expect(started).toEqual(["same", "same"]);
   });
 
@@ -178,14 +201,16 @@ describe("bounded concurrent merchant work", () => {
       },
     );
     await client?.start();
-    await waitUntil(() => started.length >= 1, "the handlers");
+    await waitUntil(() => started.length >= 4, "four handlers");
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(started).toHaveLength(4);
     let stopped = false;
     const stopping = client?.stop().then(() => {
       stopped = true;
     });
-    releases.slice(0, 3).forEach((release) => release());
+    releases.slice(0, 3).forEach((release) => {
+      release();
+    });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(stopped).toBe(false);
     releases[3]?.();
@@ -211,4 +236,83 @@ describe("bounded concurrent merchant work", () => {
       problems.some((problem) => problem.kind === "handler_failed" && problem.subject === "broken"),
     ).toBe(true);
   });
+});
+
+it("does not restart after a fatal mismatch until all started handlers finish", async () => {
+  const gate = held();
+  const problems: WorkerProblem[] = [];
+  let started = false;
+  let finished = false;
+  gateway = await startFakeGateway({
+    apiKey: "test-key",
+    routes: {
+      poll_worker: polling(batch(order("slow")), {
+        body: { contract_version: "999", envelopes: [] },
+      }),
+    },
+  });
+  client = createClient({ apiKey: "test-key", baseUrl: gateway.url });
+  client.on("order", async (given) => {
+    started = true;
+    await gate;
+    finished = true;
+    return given.delivered({ access_url: "https://service.example/access" });
+  });
+  client.on("problem", (problem) => problems.push(problem));
+  await client.start();
+  await waitUntil(() => problems.some((problem) => problem.fatal), "the fatal mismatch");
+  expect(started).toBe(true);
+  expect(finished).toBe(false);
+  await expect(client.start()).rejects.toThrow();
+  releases[0]?.();
+  await client.stop();
+  expect(finished).toBe(true);
+  expect(gateway.callsTo("poll_worker")).toHaveLength(2);
+});
+
+it("keeps later events ordered after their order's original handler has finished", async () => {
+  const orderGate = held();
+  const eventGate = held();
+  const later = Promise.withResolvers<void>();
+  const seen: string[] = [];
+  gateway = await startFakeGateway({
+    apiKey: "test-key",
+    routes: {
+      poll_worker: async (_call, index) => {
+        if (index === 0) return batch(order("same"));
+        if (index === 1) return batch(event("same"));
+        if (index === 2) {
+          await later.promise;
+          return batch({ ...event("same"), id: "later-event" });
+        }
+        return new Promise<never>(() => {});
+      },
+      answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+    },
+  });
+  client = createClient({ apiKey: "test-key", baseUrl: gateway.url });
+  client.on("order", async (given) => {
+    await orderGate;
+    return given.delivered({ access_url: "https://service.example/access" });
+  });
+  client.on("event", async (_given, delivery) => {
+    seen.push(delivery.id);
+    if (delivery.id !== "later-event") await eventGate;
+  });
+  await client.start();
+  await waitUntil(
+    () => (gateway?.callsTo("poll_worker").length ?? 0) === 3,
+    "the first event to be queued",
+  );
+  releases[0]?.();
+  await waitUntil(() => seen.length === 1, "the first event to start");
+  later.resolve();
+  await waitUntil(
+    () => (gateway?.callsTo("poll_worker").length ?? 0) === 4,
+    "the later event to be queued",
+  );
+  expect(seen).toEqual(["event-same"]);
+  releases[1]?.();
+  await waitUntil(() => seen.length === 2, "the later event after the first");
+  expect(seen).toEqual(["event-same", "later-event"]);
 });

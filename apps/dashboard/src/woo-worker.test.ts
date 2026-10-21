@@ -3038,14 +3038,16 @@ describe("bounded work within one connected shop", () => {
       return placed(sold.orderId);
     });
     try {
-      await until(() => started.length >= 1);
+      await until(() => started.length >= 4);
       await new Promise((resolve) => setTimeout(resolve, 60));
       expect(started).toEqual(["0", "1", "2", "3"]);
       expect(run.polls()).toBe(4);
       gates[0]?.resolve();
       await until(() => started.includes("4"));
     } finally {
-      gates.forEach((gate) => gate.resolve());
+      gates.forEach((gate) => {
+        gate.resolve();
+      });
       await run.worker.stop();
     }
   });
@@ -3096,6 +3098,28 @@ describe("bounded work within one connected shop", () => {
       resolve();
       await stopping;
       expect(run.answers).toEqual(["old"]);
+    } finally {
+      resolve();
+      await run.worker.stop();
+    }
+  });
+
+  it("resumes polling after a disconnected owner's held work finishes", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let started = false;
+    const run = await begin(["old"], async (sold) => {
+      started = true;
+      await promise;
+      return placed(sold.orderId);
+    });
+    try {
+      await until(() => started);
+      await run.shops.forget("acc_1");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      await run.shops.connect({ ...connection(), revision: "grant_2" });
+      const before = run.polls();
+      resolve();
+      await until(() => run.polls() > before && run.answers.includes("old"));
     } finally {
       resolve();
       await run.worker.stop();

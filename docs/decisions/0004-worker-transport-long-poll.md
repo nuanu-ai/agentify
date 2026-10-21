@@ -16,14 +16,16 @@ carries price questions (ADR-0002 §2) and order events.
    25 seconds; the gateway holds the poll for the smaller of that and its own
    window, until something arrives or the window closes, and answers with one
    envelope or none, whatever number is asked for. The wait for a handler's
-   answer starts at the hand-over and a worker works one envelope at a time, so
-   orders at the back of a batch would be taken for silences and resent, each
-   resend spending a delivery. A poll draws past an envelope it may not hand
-   out, such as an order that closed while queued, instead of answering empty
-   and sending the worker to rest, until its window ends or a fixed number
-   have been passed. The price is a round trip per envelope, with a price
-   question waiting behind whatever is ahead of it; more instances are the
-   remedy.
+   answer starts at the hand-over. One poll producer draws only while fewer
+   than four envelopes are unfinished, in both the SDK process and each
+   connected WooCommerce shop. Handlers for unrelated work may overlap;
+   order events follow earlier handlers for that order. An in-flight order
+   redelivery shares the ongoing attempt rather than calling fulfillment
+   again. After that attempt ends, or across processes, the merchant's
+   idempotency still applies. A full worker stops polling until work finishes;
+   four slow handlers can therefore still delay a price question. A poll draws
+   past an envelope it may not hand out, such as a closed order, until its
+   window or skip limit ends, rather than returning an empty window early.
 2. One envelope stream carries three kinds, each under its kind marker: an
    order, a price question and an order event. A price question is answered on
    its own route against its `price_id`, and an event by nothing. The SDK posts
@@ -45,9 +47,9 @@ carries price questions (ADR-0002 §2) and order events.
    response that never reached its worker is gone, and no event is the only
    record of anything: its order stays in `orders.list({ open: true })` until
    its fulfillment ends (ADR-0028).
-4. A connected, waiting worker receives a message with no polling lag: its poll
-   is parked at the gateway and woken on publish, so an agent waiting on the
-   price question of a synchronous purchase waits on the network alone.
+4. A connected worker with capacity has one poll parked at the gateway and
+   woken on publish. A slow handler does not stop unrelated work until the
+   worker is full; this promises neither a response deadline nor a throughput.
 5. The SDK hides the transport: a merchant registers handlers with
    `on(kind, handler)`, one per kind, and opens the channel with `start()`, the
    loop over the poll call, so changing the transport changes no merchant code.
