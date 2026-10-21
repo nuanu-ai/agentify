@@ -164,12 +164,16 @@ than the engineer.
 
 ## Versions
 
-This is an early `0.x` pilot surface and the names in it can still change. The
-SDK and Agentify agree on a contract version, and a process whose version
-Agentify does not share stops before it takes an order. During the pilot that
-version does not move with every change, so a release older than Agentify can
-read a word it does not know as a failure rather than stop: keep the package
-current. What changed in each release is in the
+This is an early `0.x` pilot surface and the names in it can still change. A
+release keeps working when Agentify adds to what it sends: a field it does not
+know is left out of what your code receives, an event of a kind it does not
+know is skipped with an `event_skipped` problem, and an order status or payment
+word it does not know reads `unknown`
+([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).
+A rename, a removal or a changed meaning moves the contract version, and a
+process whose version Agentify does not share stops before it takes an order.
+Every call names the package's release in its `user-agent`. What changed in each
+release is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md). Register `agentify.on('problem', …)`, which is where you
 hear about that and about everything else that did not get through.
 

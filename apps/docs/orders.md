@@ -435,11 +435,12 @@ became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
-On the orders you read back, `status` and `payment_status` are fixed lists.
-Your release of the SDK knows every word it can receive, a new word arrives
-with a new release whose notes name it, and an answer carrying a word your
-release does not know makes `orders.get` and `orders.list` throw. Only the
-agent's copy of these fields is an open set.
+On the orders you read back, `status` and `payment_status` are the words in the
+tables above and one more, `unknown`: a word Agentify added after your release
+of the SDK was built. It is none of the endings, so leave such an order for a
+later pass and upgrade; [When Agentify is newer than your
+package](#when-agentify-is-newer-than-your-package) says what else a newer
+Agentify changes for you.
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -712,6 +713,39 @@ The three moments can differ: in the synchronous mode the charge follows your
 delivery, and a price check can describe a price from earlier. The transfer a
 receipt names goes into your payout contract and not into your wallet, which
 receives one transfer per payout instead.
+
+## When Agentify is newer than your package
+
+Agentify adds to what it sends without waiting for you to upgrade, and the
+package you installed reads past what was added:
+
+- A field your package does not know, on an order, an event or any other
+  answer, is left out of what your code receives, and everything else in that
+  answer arrives as before.
+- An event of a kind your package does not know is skipped. The rest of the
+  poll it came in is handled as usual, and your problem handler receives one
+  `event_skipped` problem, not fatal, naming the event's `type` and saying that
+  a newer release handles it. An event can be lost in any case, as [Events on
+  the same subscription](#events-on-the-same-subscription) says, so nothing
+  depends on it: a paid order that needs you stays on `orders.list({ open:
+  true })` whether its event arrived, was lost or was skipped.
+- An order whose `status` or `payment_status` holds a word your package does
+  not know still comes back from `orders.get` and `orders.list`, with that word
+  as `unknown`. A loop over open orders that acts only on the words it knows
+  leaves such an order alone, which is the right thing to do with it.
+
+What your package cannot read past is a change to something it already knows:
+a field or a word renamed or removed, or a field that comes to mean something
+else. Agentify then speaks a new contract version, and your subscription stops
+at its next poll with a `contract_version_mismatch` problem naming both
+versions, before any order reaches your handler; your process stays up and
+sells nothing until you upgrade. A new word in a list with no `unknown`, such
+as the `result` a delivery answers with (`delivered`, `already_delivered` and
+the rest), counts as that kind of change.
+
+Every call the package makes names its release to Agentify in its `user-agent`
+header, as `agentify-sdk/` and the version, so that we can see which releases
+are still in use. Nothing is refused because of it.
 
 ## What is not settled yet
 

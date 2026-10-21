@@ -21,7 +21,11 @@ Node.js 24 or newer is required. Zod is the only thing that arrives with it.
 
 The contract is versioned, and the version is how an SDK and a gateway agree
 that they read the same vocabulary; a worker whose version the gateway does not
-share stops at startup rather than half understanding a document. What the
+share stops at startup rather than half understanding a document. The schemas
+are closed, which is how a gateway writes; `readerOf(schema)` gives the reader
+of the same document, which ignores fields added later, reads an order status
+or payment word it does not know as `unknown`, and marks an event it cannot
+read so it can be skipped. What the
 merchant-facing side of all this looks like in use is at
 <https://agentify.ad/docs/>.
 
