@@ -749,19 +749,48 @@ describe("exact Woo order recovery", () => {
     expect(outcome).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
   });
 
-  it("does not bind an inclusive shop's order whose total is not the price paid", async () => {
-    // The German shop's order for a Paris buyer: 1.01 for a price of 1.00.
-    const { outcome, shops } = await recoveringWith(INCLUSIVE, {
+  it("binds an inclusive shop's order totalled within a cent of the price paid", async () => {
+    // The German shop with a 5% compound rate, rounding per line: 1.01 with
+    // 0.14 of tax for a price of 1.00.
+    const { outcome } = await recoveringWith(INCLUSIVE, {
       total: "1.01",
-      totalTax: "0.17",
-      subtotal: "0.84",
-      lineTotal: "0.84",
-      lineTax: "0.17",
+      totalTax: "0.14",
+      subtotal: "0.87",
+      lineTotal: "0.87",
+      lineTax: "0.14",
+    });
+
+    expect(outcome).toMatchObject({ ok: true, state: "delivered" });
+  });
+
+  it("does not bind an inclusive shop's order whose total is more than a cent from the price paid", async () => {
+    // The Bali shop's order with its line totals taxed on top: 1.11 for 1.00.
+    const { outcome, shops } = await recoveringWith(INCLUSIVE, {
+      total: "1.11",
+      totalTax: "0.11",
+      subtotal: "1.00",
+      lineTotal: "1.00",
+      lineTax: "0.11",
     });
 
     expect(outcome).toMatchObject({ ok: false, state: "refused", typed: true });
     expect(outcome.ok ? "" : outcome.why).toContain("total");
     expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("binds an order a cent from the price paid from a shop calculating no tax too, and no more", async () => {
+    const untaxed = { ...INCLUSIVE, tax: { mode: "off" } as const };
+    const order = { totalTax: "0.00", subtotal: "1.00", lineTotal: "1.00", lineTax: "0.00" };
+
+    expect((await recoveringWith(untaxed, { ...order, total: "1.01" })).outcome).toMatchObject({
+      ok: true,
+      state: "delivered",
+    });
+    expect((await recoveringWith(untaxed, { ...order, total: "1.02" })).outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      typed: true,
+    });
   });
 
   it("does not bind an order carrying tax for a sale from a shop that calculated none", async () => {

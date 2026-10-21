@@ -305,6 +305,7 @@ describe("creating the order", () => {
       number: "13",
       orderKey: "wc_order_13",
       downloadId: "dl_guide",
+      total: "25.00",
     });
     const asked = stand.asked[0];
     expect(asked?.method).toBe("POST");
@@ -551,17 +552,41 @@ describe("creating the order", () => {
     }
   });
 
-  it("does not take on an inclusive shop's order whose total is not what was paid", async () => {
-    // The probe's German shop, keeping one gross price for every buyer, still
-    // taxed a Paris order at the French rate: 1.01 for a price of 1.00.
+  it("takes on an inclusive shop's order totalled within a cent of what was paid, and says what the shop recorded", async () => {
+    // The German shop with a 10% rate and a 5% compound one, rounding per
+    // line: paid 1.00, its order totalled 1.01 with 0.14 of tax.
     stand = await shopAnswering(() => ({
       status: 201,
       body: answeredWith(20, {
         total: "1.01",
-        total_tax: "0.17",
-        subtotal: "0.84",
-        line: "0.84",
-        lineTax: "0.17",
+        total_tax: "0.14",
+        subtotal: "0.87",
+        line: "0.87",
+        lineTax: "0.14",
+      }),
+    }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: "20",
+      price: { amount: "1.00", currency: "USD" },
+      tax: { mode: "included" },
+    });
+
+    expect(made).toMatchObject({ ok: true, total: "1.01" });
+  });
+
+  it("does not take on an inclusive shop's order whose total is more than a cent from what was paid", async () => {
+    // The Bali shop's order with the totals sent on its line, taxed on top:
+    // 1.11 for a price of 1.00.
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: answeredWith(20, {
+        total: "1.11",
+        total_tax: "0.11",
+        subtotal: "1.00",
+        line: "1.00",
+        lineTax: "0.11",
       }),
     }));
 
@@ -573,6 +598,20 @@ describe("creating the order", () => {
     });
 
     expect(made).toMatchObject({ ok: false, again: true });
+  });
+
+  it("takes on a download's order a cent from what was paid from a shop calculating no tax too, and no more", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.01" }) }));
+    expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
+      ok: true,
+      total: "25.01",
+    });
+    await stand.close();
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.02" }) }));
+    expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
+      ok: false,
+      again: true,
+    });
   });
 
   it("does not take on the order of a shop sold as calculating no tax when the order carries tax", async () => {
@@ -2561,7 +2600,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), sold);
 
-    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
     const asked = stand.asked[0];
     expect(asked?.method).toBe("POST");
     expect(asked?.authorization).toMatch(/^Basic /);
@@ -2605,7 +2644,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), { ...sold, paidInto: PAID_INTO });
 
-    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
     expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toStrictEqual(lines);
   });
 
@@ -2738,7 +2777,7 @@ describe("creating a parcel's order", () => {
         tax,
       });
 
-      expect(made, tax).toStrictEqual({ ok: true, id: "30", number: "30" });
+      expect(made, tax).toStrictEqual({ ok: true, id: "30", number: "30", total: answer.total });
       const body = JSON.parse(stand.asked[0]?.body ?? "{}");
       // Totals sent on the line would be taxed on top in a shop whose prices
       // hold their tax, and are the shop's own price in the other.
@@ -2779,6 +2818,90 @@ describe("creating a parcel's order", () => {
     });
 
     expect(made).toMatchObject({ ok: false, again: true, id: "30" });
+  });
+
+  it("takes on a taxed parcel's order within a cent of what was paid either way, and says what the shop recorded", async () => {
+    // The review's German shop entering 10.0756 of net shipping: the cart
+    // taxed that cost and quoted 31.99, the order taxed the 10.08 it was sent
+    // and totalled 32.00; and the same a cent the other way.
+    const paket = {
+      methodId: "flat_rate",
+      instanceId: "8",
+      title: "Paket",
+      cost: "10.08",
+      tax: "1.91",
+    } as const;
+    for (const [paid, recorded] of [
+      ["31.99", "32.00"],
+      ["32.00", "31.99"],
+    ] as const) {
+      stand = await shopAnswering(() => ({
+        status: 201,
+        body: taxedParcel(paket, {
+          total: recorded,
+          total_tax: "5.11",
+          line: "16.81",
+          lineTax: "3.19",
+          shippingTax: "1.92",
+        }),
+      }));
+
+      const made = await createParcel(connectionTo(stand.url), {
+        ...sold,
+        paid: { amount: paid, currency: "USD" },
+        rate: paket,
+        tax: "included",
+      });
+
+      expect(made, paid).toStrictEqual({ ok: true, id: "30", number: "30", total: recorded });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not take on a taxed parcel's order that moved the goods to another rate", async () => {
+    // Paris from the German shop keeping one gross price: paid 31.88 at its
+    // cart, the order totalled 32.05.
+    const standard = {
+      methodId: "flat_rate",
+      instanceId: "11",
+      title: "Standard",
+      cost: "9.90",
+      tax: "1.98",
+    } as const;
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: taxedParcel(standard, {
+        total: "32.05",
+        total_tax: "5.34",
+        line: "16.81",
+        lineTax: "3.36",
+        shippingTax: "1.98",
+      }),
+    }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: "31.88", currency: "USD" },
+      rate: standard,
+      tax: "included",
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true, id: "30" });
+  });
+
+  it("takes on a parcel's order a cent from what was paid from a shop calculating no tax too, and no more", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ total: "23.01" }) }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: true,
+      total: "23.01",
+    });
+    await stand.close();
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ total: "23.02" }) }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: false,
+      again: true,
+    });
   });
 
   it("does not take on the order of a parcel sold as untaxed when the order carries tax", async () => {
