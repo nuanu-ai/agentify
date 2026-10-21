@@ -434,8 +434,12 @@ a stubbed exchange is separate engineering evidence.
 
 ## H. A WooCommerce merchant sells and keeps working
 
-Use the actual lab products, a dedicated merchant and the current shop
-configuration. A successful connection badge is a prerequisite, not the result.
+H-01 to H-10 use the actual lab products, a dedicated merchant and the current
+shop configuration. From H-11 on, each row names the shop it needs: an
+isolated copy of the lab shop changed in the settings the row gives, or the
+realistic profile, without which a row marked for it cannot run (see the lab's
+limits under Goods and instruments). A successful connection badge is a
+prerequisite, not the result.
 The owner uses the dashboard and Woo administration; the organiser observes
 remote requests and faults privately.
 
@@ -451,6 +455,25 @@ remote requests and faults privately.
 | H-08 / P0 | Let Woo commit a download order and cut its response. Restart the connector and retry. Test recovery with absent, wrong and exact matching remote order ID. | No second Woo POST/order. Unknown creation is not invented success. Wrong identity cannot release goods; matching recovery retrieves the original permission and delivers once. Repeat recovery and verify the same result. |
 | H-09 / P1 | Import a catalogue just over its 200-product limit using controlled copies. Separately make public product price differ from the authenticated API, and make a product/settings endpoint return a different object's ID. | Oversized import refuses the whole operation rather than silently publishing a prefix. Mismatches name the product/setting and publish no misleading card. The summary distinguishes rejected, unknown and unattempted work; the owner can recover without guessing which products changed. |
 | H-10 / P0 | Disconnect after orders have safely closed; revoke the shop's API key there. Reconnect and buy a supported product again. | Agentify no longer uses removed connection credentials. The owner understands what disconnect does and what must be revoked at the shop. Reconnection does not resurrect paused cards or lose original payment facts, unfulfilled orders, merchant closures or receipts. |
+| H-11 / P0 | Connecting changes nothing for the shop's other customers. Realistic profile, in a shop that prices in US dollars with tax calculation on. Take the shop settings snapshot before the owner does anything. A person then places an ordinary order as a human customer through the human checkout: a product the connector can sell and one it cannot, delivered to a place the shop taxes. The owner connects the shop following only the public guide and the dashboard, performs every instruction the guide gives as a step of its own, imports, and an agent buys the sellable product. The same person then places the same order again and the snapshot is read a second time. | Compare the two human orders line by line: each item's price, each tax line and its rate, shipping and its tax, the total, the emails the customer and the merchant received, and the shop's reports of orders, revenue, taxes and customers; compare the two snapshots. Every difference is one the guide named, with what it does to the shop's other customers, before the owner acted on it, and none changes what an ordinary customer pays, to the cent. The agent's own order differs from a customer's only in the ways the guide states, such as carrying the owner's email as the customer's. A failure is any changed setting, email or report line the guide did not name beforehand; any guide instruction that changes a shop-wide setting without saying what it does to other customers, whether or not it changed this order; and any cent of difference in what the person paid. |
+
+H-11 is run as the owner would run it, with the public guide and the
+dashboard open and nothing else, and the organiser keeps a list beside it. For
+every instruction the guide gives, the list holds the guide's own sentence,
+what that sentence says the instruction does to the shop's other customers,
+and whether the owner read it before acting or only afterwards. A consequence
+the guide explains after the step, or on a page the owner reaches later,
+counts as not named. A refusal from the connector that names a setting becomes
+an instruction when the owner acts on it, and it is listed the same way. The
+two human orders use the same products, quantities, address, shipping method
+and payment method, and the second is placed after the agent's order exists in
+the shop, so that a change caused by the sale, not only by the connection,
+shows up too. What the organiser sets up for the run itself, such as the human
+checkout and its mailboxes, is in place before the first snapshot and stays
+until the second. Order numbers and dates are expected to differ, and the
+agent's sale is expected to appear in the shop's reports; how it appears there
+is what the guide must have said. Any other difference goes into the report
+with the guide's sentence beside it, or as a finding where there is none.
 
 ## F. A parcel is a physical obligation
 
