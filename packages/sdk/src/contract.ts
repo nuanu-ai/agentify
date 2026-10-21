@@ -22,15 +22,20 @@ export function speaksContract(version: string): boolean {
 }
 
 /**
- * What every call says this package is, in its `user-agent` header. The
- * manifest is read rather than the number written here, so a release cannot
- * name the one before it; it sits one level above this file both in the
- * sources and in the published build.
+ * The release this package is, from its manifest, which sits one level above
+ * this file both in the sources and in the published build. A bundle that
+ * leaves the manifest behind loses only the number, never the import.
  */
-export const userAgent = `agentify-sdk/${
-  (
-    JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
-      version: string;
-    }
-  ).version
-}`;
+const release = (): string | undefined => {
+  try {
+    const manifest = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+    return (JSON.parse(manifest) as { version?: string }).version;
+  } catch {
+    return undefined;
+  }
+};
+
+const version = release();
+
+/** What every call says this package is, in its `user-agent` header. */
+export const userAgent = version === undefined ? "agentify-sdk" : `agentify-sdk/${version}`;

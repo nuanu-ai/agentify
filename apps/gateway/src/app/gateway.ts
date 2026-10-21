@@ -1711,7 +1711,12 @@ export class Gateway {
     if (key.lastUsedAt !== null && at - key.lastUsedAt < KEY_USE_WRITTEN_EVERY_MS) {
       return;
     }
-    const said = userAgent?.trim().slice(0, USER_AGENT_KEPT_CHARACTERS) || null;
+    // An operator's terminal prints this later, so only printable text is kept.
+    const said =
+      userAgent
+        ?.replace(/[^\x20-\x7e]/g, "")
+        .trim()
+        .slice(0, USER_AGENT_KEPT_CHARACTERS) || null;
     try {
       await this.runtime.store.noteKeyUse(key.id, at, said);
     } catch (thrown) {

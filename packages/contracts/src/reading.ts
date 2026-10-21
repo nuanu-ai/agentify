@@ -4,14 +4,14 @@
  * a field the gateway was never meant to send is refused on the gateway's side.
  * A reader made here from one of them ignores fields it does not know at any
  * depth, reads an order's status or payment word it does not know as
- * `unknown`, and reads an event of a kind it does not know, or one it cannot
- * read, as `{ type: "unknown", named }`, so a consumer can skip it and keep
- * the rest of the answer. Everything the closed schema requires, it still
- * requires.
+ * `unknown`, and reads an event of a kind it does not know as
+ * `{ type: "unknown", named }`, so a consumer can skip it and keep the rest of
+ * the answer. Everything the closed schema requires, it still requires, and an
+ * event of a known kind that does not fit is refused like any broken answer.
  */
 
 import { z } from "zod";
-import { type OrderEvent, OrderEventSchema } from "./events.js";
+import { ORDER_EVENT_TYPES, type OrderEvent, OrderEventSchema } from "./events.js";
 import {
   type OrderStatus,
   OrderStatusSchema,
@@ -46,8 +46,12 @@ export type Read<T> =
             ? { [Key in keyof T]: Read<T[Key]> }
             : T;
 
+const aWord = () => z.string().regex(/\S/, "a word is not blank");
+
 const wordOrUnknown = (words: z.ZodType<string>) =>
-  z.string().transform((word) => (words.safeParse(word).success ? word : UNKNOWN_WORD));
+  aWord().transform((word) => (words.safeParse(word).success ? word : UNKNOWN_WORD));
+
+const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(Object.values(ORDER_EVENT_TYPES));
 
 const OPENED_ON_READING: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<
   z.ZodType,
@@ -61,7 +65,7 @@ const OPENED_ON_READING: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<
       z.union([
         withoutUnknownFields(OrderEventSchema),
         z
-          .looseObject({ type: z.string() })
+          .looseObject({ type: aWord().refine((type) => !KNOWN_EVENT_TYPES.has(type)) })
           .transform(({ type }): UnreadEvent => ({ type: UNKNOWN_WORD, named: type })),
       ]),
   ],
@@ -120,8 +124,12 @@ const withoutUnknownFields = (schema: z.ZodType): z.ZodType => {
     }
     case "array":
       return clone({ element: reader(def.element as z.ZodType) });
-    case "union":
-      return clone({ options: (def.options as z.ZodType[]).map(reader) });
+    case "union": {
+      const options = (def.options as z.ZodType[]).map(reader);
+      return clone({
+        options: def.discriminator === undefined ? refusingSiblingFields(options) : options,
+      });
+    }
     case "record":
       return clone({ valueType: reader(def.valueType as z.ZodType) });
     case "pipe":
@@ -131,6 +139,35 @@ const withoutUnknownFields = (schema: z.ZodType): z.ZodType => {
       // leave closed, so it is refused where the reader is made, not later.
       throw new TypeError(`a reader cannot be made of a schema of the kind ${def.type}`);
   }
+};
+
+/**
+ * Closed, the objects of a plain union tell apart by their fields; dropping
+ * unknown fields would let a document that fails the wider option pass as a
+ * narrower one, with what only the wider one names thrown away. So each object
+ * option refuses the fields only its siblings name.
+ */
+const refusingSiblingFields = (options: readonly z.ZodType[]): z.ZodType[] => {
+  const fieldsOf = (option: z.ZodType): string[] | null => {
+    const def = option._zod.def as z.core.$ZodTypeDef & { shape?: Record<string, z.ZodType> };
+    return def.type === "object" && def.shape !== undefined ? Object.keys(def.shape) : null;
+  };
+  const named = new Set(options.flatMap((option) => fieldsOf(option) ?? []));
+
+  return options.map((option) => {
+    const own = fieldsOf(option);
+    if (own === null) return option;
+    const theirs = [...named].filter((field) => !own.includes(field));
+    if (theirs.length === 0) return option;
+    const def = option._zod.def as z.core.$ZodTypeDef & { shape: Record<string, z.ZodType> };
+    return option.clone({
+      ...def,
+      shape: {
+        ...def.shape,
+        ...Object.fromEntries(theirs.map((field) => [field, z.never().optional()])),
+      },
+    } as typeof option._zod.def);
+  });
 };
 
 const made = new WeakMap<z.ZodType, z.ZodType>();
@@ -144,11 +181,13 @@ const reader = (schema: z.ZodType): z.ZodType => {
 };
 
 /**
- * The reader of a document this package describes: the closed schema, with
- * every object taking fields added later and dropping them from what it
- * returns, and the words above opened. One schema always gets the same reader,
- * so asking on every call costs nothing after the first. A schema holding a
- * kind of part this function does not know is refused when the reader is made.
+ * The reader of a merchant's answer this package describes: the closed schema,
+ * with every object taking fields added later and dropping them from what it
+ * returns, and the words above opened. The storefront's documents are open in
+ * their own schemas and are read with those. One schema always gets the same
+ * reader, so asking on every call costs nothing after the first. A schema
+ * holding a kind of part this function does not know is refused when the
+ * reader is made.
  */
 export const readerOf = <Schema extends z.ZodType>(
   schema: Schema,
