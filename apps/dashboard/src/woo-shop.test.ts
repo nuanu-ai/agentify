@@ -1235,6 +1235,8 @@ describe("the protected product check", () => {
     woocommerce_store_postcode: "98101",
   } as const;
   type TaxedShop = Readonly<Record<keyof typeof BALI, string>>;
+  /** The Bali shop rounding tax at the subtotal, as an inclusive shop's parcel needs. */
+  const BALI_AT_SUBTOTAL: TaxedShop = { ...BALI, woocommerce_tax_round_at_subtotal: "yes" };
 
   /**
    * A shop that calculates tax, answering its tax and general settings as
@@ -1333,7 +1335,7 @@ describe("the protected product check", () => {
   });
 
   it("sells a parcel from a shop that calculates tax either way, and knows where an inclusive shop is based", async () => {
-    stand = await shopTaxing(BALI);
+    stand = await shopTaxing(BALI_AT_SUBTOTAL);
     const inclusive = await readFrom(stand, "28");
     await stand.close();
     stand = await shopTaxing(SEATTLE);
@@ -1346,7 +1348,6 @@ describe("the protected product check", () => {
         tax: {
           mode: "included",
           base: { country: "ID", state: "BA", city: "Denpasar", postal_code: "80361" },
-          roundsAtSubtotal: false,
         },
       },
     });
@@ -1381,7 +1382,7 @@ describe("the protected product check", () => {
 
   it("refuses a parcel from a shop that calculates tax on an address other than the shipping one", async () => {
     for (const basedOn of ["billing", "base"]) {
-      stand = await shopTaxing({ ...BALI, woocommerce_tax_based_on: basedOn });
+      stand = await shopTaxing({ ...BALI_AT_SUBTOTAL, woocommerce_tax_based_on: basedOn });
 
       expect(await readFrom(stand, "28"), basedOn).toMatchObject({
         ok: false,
@@ -1445,23 +1446,53 @@ describe("the protected product check", () => {
     // A quote accepted before the change is then refused before an order is
     // made, rather than filled under tax it was not priced with.
     for (const product of ["11", "28"] as const) {
-      expect(await fingerprintIn(BALI, product, "yes"), product).not.toBe(
-        await fingerprintIn(BALI, product, "no"),
+      expect(await fingerprintIn(BALI_AT_SUBTOTAL, product, "yes"), product).not.toBe(
+        await fingerprintIn(BALI_AT_SUBTOTAL, product, "no"),
       );
     }
   });
 
   it("gives a parcel a new fingerprint when any tax setting that moves its price changes", async () => {
-    const accepted = await fingerprintIn(BALI, "28");
+    const accepted = await fingerprintIn(BALI_AT_SUBTOTAL, "28");
     for (const changed of [
-      { ...BALI, woocommerce_prices_include_tax: "no", woocommerce_tax_display_shop: "excl" },
-      { ...BALI, woocommerce_tax_round_at_subtotal: "yes" },
-      { ...BALI, woocommerce_default_country: "ID:JK", woocommerce_store_city: "Jakarta" },
-      { ...BALI, woocommerce_store_postcode: "80111" },
+      {
+        ...BALI_AT_SUBTOTAL,
+        woocommerce_prices_include_tax: "no",
+        woocommerce_tax_display_shop: "excl",
+      },
+      {
+        ...BALI_AT_SUBTOTAL,
+        woocommerce_default_country: "ID:JK",
+        woocommerce_store_city: "Jakarta",
+      },
+      { ...BALI_AT_SUBTOTAL, woocommerce_store_postcode: "80111" },
     ]) {
       expect(await fingerprintIn(changed, "28"), JSON.stringify(changed)).not.toBe(accepted);
     }
-    expect(await fingerprintIn({ ...BALI }, "28")).toBe(accepted);
+    expect(await fingerprintIn({ ...BALI_AT_SUBTOTAL }, "28")).toBe(accepted);
+    // Prices entered before tax are sold under either rounding, which moves
+    // the total: the Seattle cart for 0.99 said 7.72 per line and 7.73 at the
+    // subtotal.
+    expect(await fingerprintIn(SEATTLE, "28")).not.toBe(
+      await fingerprintIn({ ...SEATTLE, woocommerce_tax_round_at_subtotal: "yes" }, "28"),
+    );
+  });
+
+  it("refuses a parcel from a shop whose prices hold their tax and that rounds tax per line, naming the setting", async () => {
+    // Such a shop's cart and order round the shipping's tax apart: per line,
+    // a 10% rate and a 5% compound one on 3.00 of shipping made a cart of
+    // 23.47 and an order of 23.46. A download, and a parcel from a shop
+    // entering prices before tax, still sell rounding per line.
+    stand = await shopTaxing(BALI);
+    expect(await readFrom(stand, "28")).toMatchObject({
+      ok: false,
+      saidNo: true,
+      why: expect.stringContaining("Round tax at subtotal level"),
+    });
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: true });
+    await stand.close();
+    stand = await shopTaxing(SEATTLE);
+    expect(await readFrom(stand, "28")).toMatchObject({ ok: true });
   });
 
   it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {

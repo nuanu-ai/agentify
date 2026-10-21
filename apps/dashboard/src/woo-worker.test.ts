@@ -2231,8 +2231,8 @@ describe("a parcel from a shop that calculates tax", () => {
       fingerprint,
     },
   });
-  const IN_BALI = theTote({ mode: "included", base: DENPASAR, roundsAtSubtotal: false });
-  const IN_BERLIN = theTote({ mode: "included", base: BERLIN, roundsAtSubtotal: false });
+  const IN_BALI = theTote({ mode: "included", base: DENPASAR });
+  const IN_BERLIN = theTote({ mode: "included", base: BERLIN });
   const IN_SEATTLE = theTote({ mode: "excluded" });
   const NOW = "2026-09-14T12:00:00.000Z";
   const item = merchantItemIdFor("https://shop.example.com", "28");
@@ -2317,11 +2317,10 @@ describe("a parcel from a shop that calculates tax", () => {
   it("names no price where an inclusive shop's cart taxes the goods otherwise than at its own address, whatever its tax lines say", async () => {
     // The German shop keeping one gross price, with its tax totals shown as a
     // single line, so that its carts carry none: the Paris cart charged 31.88
-    // and the order made for it 32.05. It rounds at the subtotal, where its
-    // own address sells without the tax lines.
+    // and the order made for it 32.05; its own address sells without them.
     const single = (cart: RatesRead): RatesRead =>
       cart.ok && cart.priced.ok ? { ...cart, priced: { ...cart.priced, taxes: [] } } : cart;
-    const shop = parts(theTote({ mode: "included", base: BERLIN, roundsAtSubtotal: true }));
+    const shop = parts(IN_BERLIN);
     const filling: Filling = {
       ...shop.filling,
       shippingRates: async (_connection, _productId, where) =>
@@ -2334,33 +2333,6 @@ describe("a parcel from a shop that calculates tax", () => {
     ).toMatchObject({
       available: true,
     });
-  });
-
-  it("names no price where an inclusive shop rounding per line would tax the shipping half a cent apart from its cart", async () => {
-    // The German shop at its own address with shipping at 1.50: 19% of it is
-    // 0.285, which the cart rounds up to 0.29 and the order down to 0.28, so
-    // the cart said 21.79 and the order made for it 21.78. Rounding at the
-    // subtotal, both said 21.79.
-    const halfCent: RatesRead = cartPricing(
-      "21.79",
-      ["16.81", "20.00"],
-      ["MwSt. 19%"],
-      rate("8", "Paket", "1.50", "0.29"),
-    );
-    for (const [roundsAtSubtotal, available] of [
-      [false, false],
-      [true, true],
-    ] as const) {
-      const shop = parts(theTote({ mode: "included", base: BERLIN, roundsAtSubtotal }));
-      const filling: Filling = { ...shop.filling, shippingRates: async () => halfCent };
-
-      expect(
-        await quoted(filling, { country: "DE", city: "Berlin", postal_code: "10115" }),
-        `${roundsAtSubtotal}`,
-      ).toMatchObject({
-        available,
-      });
-    }
   });
 
   it("names no price where the place's cart holds the goods at another price than the product's", async () => {
@@ -2571,14 +2543,55 @@ describe("a parcel from a shop that calculates tax", () => {
     woocommerce_store_city: "Denpasar",
     woocommerce_store_postcode: "80361",
   } as const;
+  const BALI_AT_SUBTOTAL = { ...BALI_SETTINGS, woocommerce_tax_round_at_subtotal: "yes" };
+
+  it("names no price before payment from an inclusive shop rounding tax per line, and prices it rounding at the subtotal", async () => {
+    // The review's Berlin shop with a 10% rate and a 5% compound one on 3.00
+    // of taxable shipping, sold at its own address. The compound rate's tax
+    // on the shipping is 5% of 3.30, 0.165: the cart rounded it up to a total
+    // of 23.47 and the order, rounding per line, down to 23.46. Rounding at
+    // the subtotal, both said 23.47.
+    const compound = cartPricing(
+      "23.47",
+      ["17.32", "20.00"],
+      ["R1 10%", "R2 5%"],
+      rate("8", "Paket", "3.00", "0.47"),
+    );
+    const inBerlin = {
+      ...BALI_SETTINGS,
+      woocommerce_default_country: "DE:DE-BE",
+      woocommerce_store_city: "Berlin",
+      woocommerce_store_postcode: "10115",
+    };
+    for (const [round, answer] of [
+      ["no", { available: false }],
+      ["yes", { available: true, price: { amount: "23.47", currency: "USD" } }],
+    ] as const) {
+      const filling: Filling = {
+        ...parts(IN_BERLIN).filling,
+        inspectProduct: (keys, itemId) =>
+          inspectProductInTheShop(
+            keys,
+            itemId,
+            aShopSetTo({ ...inBerlin, woocommerce_tax_round_at_subtotal: round }),
+          ),
+        shippingRates: async () => compound,
+      };
+
+      expect(
+        await quoted(filling, { country: "DE", city: "Berlin", postal_code: "10115" }),
+        round,
+      ).toMatchObject(answer);
+    }
+  });
 
   it("refuses before any order is made when a tax setting changed between the quote and the payment", async () => {
     for (const [what, product, before, after, place] of [
       [
-        "a parcel's rounding",
+        "the shop's own address",
         "28",
-        BALI_SETTINGS,
-        { ...BALI_SETTINGS, woocommerce_tax_round_at_subtotal: "yes" },
+        BALI_AT_SUBTOTAL,
+        { ...BALI_AT_SUBTOTAL, woocommerce_store_postcode: "80111" },
         JAKARTA,
       ],
       [
