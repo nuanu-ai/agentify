@@ -144,6 +144,57 @@ describe("the calls a key made for a dashboard was for", () => {
   });
 });
 
+describe("a merchant's key", () => {
+  // Keys are issued and disabled only from a signed-in dashboard session. A
+  // key that could issue keys would outlive its own revocation through the
+  // successors it issued, and one that could disable keys would lock the
+  // merchant's own code out.
+
+  it("cannot issue another key, and nothing is issued", async () => {
+    const { served, harnessed } = await started();
+    const before = await harnessed.store.keysOf(harnessed.merchant.id);
+
+    const asked = await served.call("POST", "/v0/keys", {
+      body: { label: "a key of its own" },
+      headers: bearer(harnessed.merchant.key),
+    });
+
+    expect(asked.status).toBe(404);
+    expect(refusalIn(asked).code).toBe("no_such_route");
+    expect(await harnessed.store.keysOf(harnessed.merchant.id)).toStrictEqual(before);
+  });
+
+  it("cannot disable another of the merchant's keys, which goes on working", async () => {
+    const { served, harnessed } = await started();
+    const theirs = await harnessed.addKey(harnessed.merchant.id, "the merchant's own worker");
+    const theirsId = (await harnessed.store.keysOf(harnessed.merchant.id)).find(
+      (key) => key.id !== harnessed.merchant.keyId,
+    )?.id;
+
+    const asked = await served.call("POST", `/v0/keys/${theirsId}/disable`, {
+      headers: bearer(harnessed.merchant.key),
+    });
+
+    expect(asked.status).toBe(404);
+    expect(refusalIn(asked).code).toBe("no_such_route");
+    expect(await opensTheDoor(served, theirs)).toBe(true);
+  });
+
+  it("cannot read the merchant's list of keys", async () => {
+    // The list existed to tell a caller which key not to disable; nothing a
+    // merchant's code does needs it, and it would show a stolen key every
+    // other key's name and last use.
+    const { served, harnessed } = await started();
+
+    const asked = await served.call("GET", "/v0/keys", {
+      headers: bearer(harnessed.merchant.key),
+    });
+
+    expect(asked.status).toBe(404);
+    expect(refusalIn(asked).code).toBe("no_such_route");
+  });
+});
+
 describe("registering a merchant", () => {
   it("makes a merchant with no key, listed under nothing and paid nowhere", async () => {
     // Registering makes only the merchant; the key, the seller name and the
