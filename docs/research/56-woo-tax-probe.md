@@ -523,3 +523,18 @@ The same review found that a shop showing its tax as a single total gives
 carts with no tax lines, so a comparison of tax lines alone cannot tell a
 place taxed otherwise than the shop's own address; comparing the goods'
 amount and tax in the two carts can.
+
+A second round of the review then found a compound rate past the rule built
+on that sweep, which refused a parcel only where the shipping cost times one
+of the cart's rates fell exactly on half a cent. In the German shop with a
+10% rate and a 5% compound one, rounding per line, the compound rate's tax on
+3.00 of shipping is 5% of 3.30, 0.165: the cart quoted 23.47 at the shop's own
+address and the order came to 23.46, and with 1.00 of shipping 21.16 against
+21.15. The cart's tax lines do not say which rate is compound, so the
+prediction cannot be made from them. Rounding at the subtotal, every case of
+both rounds agreed: the same two compound cases, stacked rates of 10% and 5%,
+a reduced rate on the shipping, shipping costs finer than a cent, and orders
+whose whole tax fell on half a cent. The half-cent rule was therefore replaced:
+a parcel from a shop whose prices hold their tax sells only where tax is
+rounded at the subtotal. Downloads were unaffected throughout, as P4 found,
+and the shop entering prices before tax agreed under both settings.
