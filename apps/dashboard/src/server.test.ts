@@ -7514,11 +7514,18 @@ describe("what the pages record for product analytics", () => {
       analytics: "off",
     });
     const odd = await running.browser.post("/settings/analytics", { analytics: "maybe" });
+    const otherPerson = await running.identity.byEmail(OTHER);
+    // A form of the signed-in account's own that names another account.
+    const naming = await running.browser.post("/settings/analytics", {
+      analytics: "off",
+      person: otherPerson?.id ?? "",
+      account: otherPerson?.id ?? "",
+    });
 
     expect(forged.status).toBe(409);
     expect(odd.status).toBe(400);
-    expect(await running.identity.analyticsOptedOut(owner.person)).toBe(false);
-    const otherPerson = await running.identity.byEmail(OTHER);
+    expect(naming.status).toBe(200);
+    expect(await running.identity.analyticsOptedOut(owner.person)).toBe(true);
     expect(await running.identity.analyticsOptedOut(otherPerson?.id ?? "")).toBe(false);
   });
 
