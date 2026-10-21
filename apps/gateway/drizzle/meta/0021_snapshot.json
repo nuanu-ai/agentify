@@ -42,7 +42,8 @@
           "name": "published_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "now()"
         },
         "paused": {
           "name": "paused",

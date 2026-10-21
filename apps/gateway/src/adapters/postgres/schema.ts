@@ -145,8 +145,12 @@ export const cards = pgTable(
     /**
      * When the card was first published; a republish leaves it. The dashboard
      * reads a merchant's earliest one as the moment their store was connected.
+     * Every publish writes it; the default serves a build without this column
+     * that publishes into the same database, which would otherwise be refused.
      */
-    publishedAt: timestamp("published_at", { withTimezone: true, mode: "date" }).notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
     /**
      * Whether this card alone is off sale. A column rather than a field in the
      * document, because republishing writes the document whole and would erase
