@@ -403,12 +403,15 @@ your process takes the question, and the question shares the stream with
 everything else. The SDK handles up to four unfinished messages at once, so
 one slow order need not delay a price question. When all four places are busy
 with orders, questions or events, the question waits; more instances divide
-that work further. A question that expires in the queue is still unanswered. Nothing on our side holds down how often these questions go out: one
-purchase asks one question and that question is put on your stream once, so the
-rate your price handler meets is the rate agents buy at, and that is the number
-to size it against. The thresholds that would hold the rate down are among what
-is not settled below; until they exist there is nothing between a burst of
-purchases and your handler.
+that work further. A question that expires in the queue is still unanswered. One purchase asks
+one question and that question is put on your stream once. At most twenty of
+your purchases wait for payment at once, and a purchase beyond them is refused
+before its question is asked ([What can go wrong](/failures)), so purchases
+nobody pays reach your handler as twenty questions at a time at most. A
+purchase that is paid frees its place at once, so the rate your price handler
+meets is otherwise the rate agents buy at, and that is the number to size it
+against. The thresholds that would hold that rate down further are among what
+is not settled below.
 
 Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one

@@ -22,6 +22,7 @@
 import { readFileSync } from "node:fs";
 import { API_ROUTES, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
+import { LAPSED_KEPT_MS, SILENT_AFTER_MS, WAITING_FOR_PAYMENT_AT_MOST } from "./app/gateway.js";
 import { loadConfig } from "./config.js";
 import type { PayoutSplitNetwork } from "./split/networks.js";
 
@@ -237,7 +238,116 @@ const purchaseDrawingPins = (page: string): Pin[] => [
   },
 ];
 
+/** The silence the door refuses a prepaid purchase after, in the minutes the pages count it in. */
+const SILENT_MINUTES = SILENT_AFTER_MS / 60_000;
+
+/** How long an attempt that lapsed unpaid is kept, in the days the pages count it in. */
+const LAPSED_DAYS = LAPSED_KEPT_MS / 86_400_000;
+
+/**
+ * The numbers of the purchase door, which are constants in the code rather
+ * than configuration, held to those constants the same way.
+ */
+const DOOR_PINS: readonly Pin[] = [
+  {
+    what: "how many purchases may wait for payment, in the table of failures",
+    page: "apps/docs/failures.md",
+    anchor: /\| (\w+) of your purchases already wait for payment \|/,
+    reads: "count",
+    is: WAITING_FOR_PAYMENT_AT_MOST,
+  },
+  {
+    what: "the same, as what holds a seller's sales up",
+    page: "apps/docs/failures.md",
+    anchor: /keeps (\w+) unpaid purchases open/,
+    reads: "count",
+    is: WAITING_FOR_PAYMENT_AT_MOST,
+  },
+  {
+    what: "the same, where a time limit's table leaves off",
+    page: "apps/docs/orders.md",
+    anchor: /a purchase while (\w+) of yours already wait for payment/,
+    reads: "count",
+    is: WAITING_FOR_PAYMENT_AT_MOST,
+  },
+  {
+    what: "the same, where the rate of price questions is sized",
+    page: "apps/docs/cards.md",
+    anchor: /At most (\w+) of your purchases wait for payment at once/,
+    reads: "count",
+    is: WAITING_FOR_PAYMENT_AT_MOST,
+  },
+  {
+    what: "the same, in the purchase route's description",
+    page: "API_ROUTES.purchase_item.description",
+    text: API_ROUTES.purchase_item.description,
+    anchor: /while (\w+) of the seller's purchases already wait for payment/,
+    reads: "count",
+    is: WAITING_FOR_PAYMENT_AT_MOST,
+  },
+  {
+    what: "how long a seller's process may go without a poll, in the table of failures",
+    page: "apps/docs/failures.md",
+    anchor: /No process of yours has polled for (\w+) minutes/,
+    reads: "count",
+    is: SILENT_MINUTES,
+  },
+  {
+    what: "the same, where the rule is told",
+    page: "apps/docs/failures.md",
+    anchor: /(\w+) minutes without a poll is when it starts refusing/,
+    reads: "count",
+    is: SILENT_MINUTES,
+  },
+  {
+    what: "the same, on the pages that say what stops on its own",
+    page: "apps/docs/orders.md",
+    anchor: /while no process of yours has polled for (\w+) minutes/,
+    reads: "count",
+    is: SILENT_MINUTES,
+  },
+  {
+    what: "the same, in the introduction",
+    page: "apps/docs/index.md",
+    anchor: /while no process of yours has polled for (\w+) minutes/,
+    reads: "count",
+    is: SILENT_MINUTES,
+  },
+  {
+    what: "the same, in the purchase route's description",
+    page: "API_ROUTES.purchase_item.description",
+    text: API_ROUTES.purchase_item.description,
+    anchor: /has not polled for (\w+) minutes/,
+    reads: "count",
+    is: SILENT_MINUTES,
+  },
+  {
+    what: "how long an attempt that lapsed unpaid is kept",
+    page: "apps/docs/orders.md",
+    anchor: /is deleted (\w+) days after it ended/,
+    reads: "count",
+    is: LAPSED_DAYS,
+  },
+  {
+    what: "the same, in the order status route's description",
+    page: "API_ROUTES.get_order_status.description",
+    text: API_ROUTES.get_order_status.description,
+    anchor: /is deleted (\w+) days after it ended/,
+    reads: "count",
+    is: LAPSED_DAYS,
+  },
+  {
+    what: "the same, in the merchant's list of orders",
+    page: "API_ROUTES.list_orders.description",
+    text: API_ROUTES.list_orders.description,
+    anchor: /leaves this list (\w+) days after it ended/,
+    reads: "count",
+    is: LAPSED_DAYS,
+  },
+];
+
 const PINS: readonly Pin[] = [
+  ...DOOR_PINS,
   // --- the commission, where merchant code reads about it -------------------
   ...sharesIn(
     "the shares, where merchant code reads the wallet",
@@ -661,6 +771,18 @@ describe("a number the portal publishes is not also called undecided", () => {
       truth: "there is no such check: the timestamp on a price answer is carried and never weighed",
     },
     {
+      page: "apps/docs/failures.md",
+      claim: /when your side goes quiet/,
+      truth:
+        "ten minutes without a poll refuses a purchase that charges before its goods, named in the table of failures",
+    },
+    {
+      page: "apps/docs/index.md",
+      claim: /when your side stops answering/,
+      truth:
+        "ten minutes without a poll refuses a purchase that charges before its goods, named on What can go wrong",
+    },
+    {
       page: "apps/docs/cards.md",
       claim: /how long we wait for an answer/,
       truth: "five seconds, named under “Asking the price and availability”",
@@ -781,6 +903,9 @@ describe("the pin itself", () => {
       ["how long the facilitator is waited for after the goods", deadlines.settleResponseMs],
       ["how long the facilitator is waited for before the goods", deadlines.settleBeforeGoodsMs],
       ["how many times an order is sent again", redelivery.maxAttempts],
+      ["how many purchases may wait for payment", WAITING_FOR_PAYMENT_AT_MOST],
+      ["how long a seller's process may go without a poll", SILENT_MINUTES],
+      ["how long an attempt that lapsed unpaid is kept", LAPSED_DAYS],
       ["Agentify's share of every payment", commission],
       ["the merchant's share of every payment", merchantShare],
     ] as const) {

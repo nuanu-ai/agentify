@@ -266,8 +266,9 @@ export interface OrdersNamespace {
    * an unfulfilled paid order, one delivered but never paid for, and a closed
    * one whose payment completed after you closed it. An order
    * that was priced and never paid never reached the handler, so it is not on
-   * that list; `get` still reads it. Throws `AgentifyError` when the call
-   * fails.
+   * that list; `get` still reads it until thirty days after it ended, when
+   * an order that ended with nothing charged and nothing held is deleted and
+   * leaves every list. Throws `AgentifyError` when the call fails.
    */
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }

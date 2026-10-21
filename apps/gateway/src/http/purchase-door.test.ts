@@ -8,6 +8,7 @@
  * purchase and not the publishing door.
  */
 
+import { readFileSync } from "node:fs";
 import { type Card, CardSchema, type QuoteResponse } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Integration } from "../ports/store.js";
@@ -308,5 +309,20 @@ describe("a synchronous purchase", () => {
     });
 
     expect(answered.status).toBe(402);
+  });
+});
+
+describe("the one table of failures", () => {
+  // Its two rows about the door are the scenarios above: a purchase refused
+  // before any order exists, which the order machine's own reading of the
+  // table never sees.
+  const page = readFileSync(new URL("../../../docs/failures.md", import.meta.url), "utf8");
+  const rows = [...page.matchAll(/^\| ([^|]+?) \|/gm)].map((row) => row[1]);
+
+  it.each([
+    "Twenty of your purchases already wait for payment",
+    "No process of yours has polled for ten minutes",
+  ])("names the door's refusal “%s” among every failure", (row) => {
+    expect(rows).toContain(row);
   });
 });

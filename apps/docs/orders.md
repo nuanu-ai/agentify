@@ -435,6 +435,14 @@ became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
+An order that ended `rejected` or `expired` with nothing charged, nothing held
+for its buyer and no payment ever presented for it is deleted thirty days after
+it ended. From then on `orders.get` refuses it with `no_such_order`, as an
+order that never existed, it is no longer in `orders.list`, and the agent's
+status address answers it as an unknown order. Your dashboard lists such
+orders apart, under Lapsed. An order with a payment, a claim on a payment, a
+receipt, an event sent to you or goods held is never deleted.
+
 On the orders you read back, `status` and `payment_status` are fixed lists.
 Your release of the SDK knows every word it can receive, a new word arrives
 with a new release whose notes name it, and an answer carrying a word your
@@ -591,7 +599,10 @@ you closed fulfillment, and its `status` column is the word each one reads.
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. A pause ends no orders: cards
+leaving the priced order to lapse as `expired`. Two more refusals come before
+anything is charged, both described on [What can go wrong](/failures): a
+purchase while twenty of yours already wait for payment, and a purchase that
+charges before its goods while no process of yours has polled for ten minutes. A pause ends no orders: cards
 stop selling, and the orders already taken on play out in the ordinary way.
 To stop Agentify accepting deliveries for one order, [close
 fulfillment](#closing-fulfillment).
