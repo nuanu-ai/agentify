@@ -12,9 +12,8 @@ channel for now, where the money is not real.
 The connector imports a product only when it is a published simple product
 that WooCommerce marks purchasable and in stock, priced in US dollars, whose
 stock is not counted and which is not limited to one in an order (Sold
-individually). The shop as a whole needs
-prices written with two decimals (WooCommerce → Settings → General → Number of
-decimals) and permalinks set to anything other than Plain.
+individually). The shop's own settings have to allow it too, as
+[Settings of your whole shop](#settings-of-your-whole-shop) describes.
 
 Such a product becomes one of two kinds of card:
 
@@ -47,6 +46,61 @@ taken on: the order carries what the buyer paid among its Agentify lines
 (`agentify_paid`), and your Orders screen shows the shop's total beside it
 where the two differ, so your shop's books can differ by a cent from the
 USDC you received for that sale. An order further from it is not taken on.
+
+## Settings of your whole shop
+
+A few of the things the connector needs are settings of the whole shop rather
+than of one product, so changing one to sell through Agentify changes it for
+every customer of the shop, not only for Agentify's buyers. Most of them are
+WooCommerce's or WordPress's defaults, and a shop that never changed them has
+nothing to change; the import names any setting that stands in a product's
+way, and where to find it. What a shop that calculates tax needs is in
+[the next section](#shops-that-calculate-tax).
+
+Prices have to be written with two decimals (WooCommerce → Settings → General
+→ Number of decimals), which is WooCommerce's default. That setting is how many
+decimals every price in the shop is shown with, to every customer.
+
+Permalinks have to be anything other than Plain (Settings → Permalinks, in
+WordPress), because a site with Plain permalinks does not serve the addresses
+the connector reaches WooCommerce at, its approval screen among them. Plain is
+WordPress's own default, so a shop may well still use it. Switching to another
+structure changes the address of every page, post and product on the site,
+from the form `?p=123` to the structure you choose. WordPress sends a visitor
+who follows the old address of a page or a post on to its new one, but neither
+WordPress nor WooCommerce does so for a product's old address, written
+`?product=` and the product's name, so check where such a link now leads
+before you count on links already shared, printed or found through a search
+engine.
+
+A download needs four settings under WooCommerce → Settings → Products →
+Downloadable products to stand at WooCommerce's defaults: the file download
+method set to Force downloads, redirect mode not allowed as a last resort,
+Downloads require login off, and access granted to downloadable products after
+payment. Together they keep the file behind its download link and hand it to a
+buyer, who has no account in your shop, as soon as the order is paid. Each of
+them applies to every downloadable product in the shop. Force downloads sends
+every customer's files through your site itself and keeps their address
+hidden, and WooCommerce warns that some servers deliver large files unreliably
+that way. With redirect mode not allowed, a file the chosen method cannot
+deliver is no longer handed to the customer by its open address, so that
+download fails instead. With login not required, a registered customer's
+download link works without signing in, as a guest customer's always does, for
+whoever holds the link. Granting access after payment gives every customer
+their files once an order is paid and Processing, rather than only once you
+mark it Completed.
+
+A parcel needs the shop's shipping switched on (WooCommerce → Settings →
+General → Shipping location(s), anything but disabling shipping) and not forced
+to the billing address (WooCommerce → Settings → Shipping → Shipping
+destination), both WooCommerce's defaults. Switching shipping on brings it into
+every customer's cart and checkout: a physical product then asks where it goes,
+is charged the rates of your shipping zones, and can be ordered only to a place
+one of your zones has a shipping method for. Moving the shipping destination
+off "Force shipping to the customer billing address" lets every customer enter
+a shipping address other than their billing one at checkout; the connector
+needs it because an Agentify order carries the buyer's address as its
+shipping address.
 
 ## Shops that calculate tax
 
@@ -92,14 +146,19 @@ for the parcel still moves it to the buyer's rate. So a parcel from such a
 shop sells only to a place your shop taxes at the same rates as its own
 address, and a buyer elsewhere is told before paying that the parcel is not
 available there. A parcel also needs tax to be calculated on the customer's
-shipping address (Calculate tax based on), which is WooCommerce's default.
+shipping address (Calculate tax based on), which is WooCommerce's default. A
+shop that set it to the billing address or to the shop's own address and sets
+it back taxes every shipped order by the place it goes to, so a customer whose
+order goes somewhere taxed otherwise than that address pays the tax of where
+it goes.
 Its price question also asks your cart about your own address, within the same
 four seconds.
 
 The import also leaves in your shop every product of a shop whose catalogue
 shows prices otherwise than they are entered (Display prices in the shop),
 because the import reads the catalogue's price while a buyer pays the price
-as entered.
+as entered. Changing that setting changes whether every visitor to your
+catalogue sees its prices with tax or without it.
 
 Tax calculated by an outside service, such as WooCommerce Tax, TaxJar or
 Avalara, is not supported. The connector cannot see such a service from
