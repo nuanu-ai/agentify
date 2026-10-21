@@ -265,9 +265,9 @@ jobs:
 
       - run: pnpm gallery:check
 
-  # The decision log needs only bash and files, and the release's own tests
-  # need Docker, which the runner has, and Node for the release's preflight, a
-  # script with no dependencies; nothing is installed.
+  # The decision log and the retired sentences need only bash and files, and
+  # the release's own tests need Docker, which the runner has, and Node for the
+  # release's preflight, a script with no dependencies; nothing is installed.
   decisions:
     name: decisions
     needs: secret_scan
@@ -279,5 +279,6 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: ./scripts/check-decisions.sh
+      - run: ./scripts/check-retired-claims.sh
       - run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'
