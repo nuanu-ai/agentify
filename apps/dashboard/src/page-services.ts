@@ -627,6 +627,48 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   /**
+   * A setup value refused here, before the gateway was asked; what the gateway
+   * answers it records itself. The step is recorded with the integration the
+   * merchant sells through, read without holding the page, and not at all
+   * where that cannot be read, since no integration is a claim of its own.
+   */
+  const setupRefused = (
+    person: Person,
+    step: "seller_name" | "seller_site" | "payout_wallet",
+    reason: UiBlocked["fields"]["reason_code"],
+  ): void => {
+    void (async () => {
+      const read = await gatewayAs(person)
+        .integration()
+        .catch(() => null);
+      if (read?.ok !== true) {
+        console.error(
+          "[dashboard] a refused setup step went unrecorded: its integration was not read",
+        );
+        return;
+      }
+      const blocked = {
+        integration: read.document.through,
+        outcome: "blocked",
+        reason_code: reason,
+      } as const;
+      const envelope = {
+        name: "agc_setup_result",
+        actor: "human",
+        source: "dashboard",
+        refs: whoIn(person),
+      } as const;
+      // Written twice so each branch is held to its own step's shape: a
+      // wallet's step is the one that may also wait.
+      observe(
+        step === "payout_wallet"
+          ? { ...envelope, fields: { step, ...blocked } }
+          : { ...envelope, fields: { step, ...blocked } },
+      );
+    })();
+  };
+
+  /**
    * One read of everything the settings page says, made after a press's work,
    * so the page shows what the press left. Any of the reads failing fails the
    * page: drawn without an answer, it would claim something about a field
@@ -1120,6 +1162,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // catalogue's rule is not what they broke.
         const problem = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
         if (problem !== null) {
+          setupRefused(person, "seller_name", typed === "" ? "profile_missing" : "invalid_input");
           return {
             kind: "view",
             status: 400,
@@ -1364,6 +1407,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // names the control that does that.
         const wrong = typed === "" ? NAME_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheName(typed);
         if (wrong !== null) {
+          setupRefused(person, "seller_name", typed === "" ? "profile_missing" : "invalid_input");
           return await settingsDrawn(person, { kind: "name", problem: wrong, typed }, 400);
         }
         const set = await gatewayAs(person).setSellerName(typed);
@@ -1378,6 +1422,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // refuses; the sentence says what to do instead.
         const wrong = typed === "" ? SITE_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheSite(typed);
         if (wrong !== null) {
+          setupRefused(
+            person,
+            "seller_site",
+            typed === "" ? "seller_site_missing" : "invalid_input",
+          );
           return await settingsDrawn(person, { kind: "site", problem: wrong, typed }, 400);
         }
         const set = await gatewayAs(person).setSellerSite(typed);
@@ -1419,6 +1468,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const typed = typedIn(form, "payout_wallet");
         const wrong = typed === "" ? WALLET_NEEDED : whatIsWrongWithTheWallet(typed);
         if (wrong !== null) {
+          setupRefused(person, "payout_wallet", typed === "" ? "wallet_missing" : "invalid_input");
           return await settingsDrawn(person, { kind: "wallet", problem: wrong, typed }, 400);
         }
         const gateway = gatewayAs(person, WALLET_CHANGE_MS);
