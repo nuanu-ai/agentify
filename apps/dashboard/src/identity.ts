@@ -1429,7 +1429,12 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const choose = async (adapter: Awaited<typeof auth.$context>["adapter"]) =>
         await adapter.update<{ merchantId?: unknown }>({
           model: "user",
-          where: [{ field: "id", value: personId }],
+          where: [
+            { field: "id", value: personId },
+            // Only a choice that changes reaches the account, so pressing the
+            // one already held settles nothing that waits about them.
+            { field: "analyticsOptOut", operator: "ne", value: optedOut },
+          ],
           update: { analyticsOptOut: optedOut },
         });
       if (parts.pool === undefined) {
