@@ -57,7 +57,6 @@ export async function emitStoredBusinessEvent(
       .select({
         categories: consentSnapshots.categories,
         policyVersion: consentSnapshots.policyVersion,
-        country: consentSnapshots.country,
       })
       .from(consentSnapshots)
       .where(eq(consentSnapshots.id, input.consentSnapshotId))
@@ -105,7 +104,6 @@ export async function emitStoredBusinessEvent(
   });
   const effectiveConsent = {
     policyVersion: consentRow.policyVersion,
-    ...(consentRow.country ? { country: consentRow.country } : {}),
     capturedAt: event.occurredAt,
     source: "api" as const,
     categories: {

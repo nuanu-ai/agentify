@@ -363,7 +363,6 @@ async function finishIntentInTransaction(
     id: consentId,
     sessionId: intent.sessionId,
     policyVersion: "phase-a-v2",
-    country: previousConsent?.country,
     categories: {
       ...(typeof previousConsent?.categories === "object" ? previousConsent.categories : {}),
       essential_processing: true,

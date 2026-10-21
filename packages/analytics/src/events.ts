@@ -8,7 +8,7 @@ type AnalyticsScalar = string | number | boolean;
 export type AnalyticsProperties = Record<string, AnalyticsScalar>;
 
 const PROPERTY_ALLOWLIST: Record<AnalyticsEventName, ReadonlySet<string>> = {
-  landing_view: new Set(["day", "device", "country"]),
+  landing_view: new Set(["day", "device"]),
   scan_started: new Set(["challenge_used"]),
   scan_completed: new Set(["coverage", "terminal_status"]),
   results_viewed: new Set(["coverage_band"]),

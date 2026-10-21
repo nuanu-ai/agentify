@@ -7,7 +7,6 @@ export type ConsentEnvironment = "local" | "test" | "preview" | "production";
 
 export type ConsentSnapshot = {
   policyVersion: string;
-  country?: string;
   categories: ConsentCategories;
   capturedAt: string;
   source: "banner" | "registration" | "card" | "api";
@@ -25,7 +24,6 @@ export const DEFAULT_CONSENT: ConsentCategories = {
 export const createConsentSnapshot = (input: {
   policyVersion: string;
   decisions: Partial<ConsentCategories>;
-  country?: string;
   source: ConsentSnapshot["source"];
   capturedAt?: Date;
 }): ConsentSnapshot => {
@@ -39,7 +37,6 @@ export const createConsentSnapshot = (input: {
   };
   return {
     policyVersion: input.policyVersion,
-    ...(input.country ? { country: input.country.toUpperCase().slice(0, 2) } : {}),
     categories,
     capturedAt: (input.capturedAt ?? new Date()).toISOString(),
     source: input.source,
