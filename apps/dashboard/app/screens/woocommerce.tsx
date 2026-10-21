@@ -189,7 +189,8 @@ function WhatCanBeImported() {
           <Tick />
           <span>
             <b>A parcel</b>: a physical product. The agent pays its price plus your cheapest
-            shipping rate to the buyer, and your shop gets a paid order with the buyer's address
+            shipping rate to the buyer and any tax your shop charges there, and your shop gets a
+            paid order with the buyer's address
           </span>
         </li>
         <li>
@@ -198,9 +199,9 @@ function WhatCanBeImported() {
         </li>
       </ul>
       <p className={styles.sub}>
-        A shop that calculates tax cannot sell through the connector yet. Do not turn tax
-        calculation off to get round this: tax would then go uncalculated on every order the shop
-        takes.
+        Where WooCommerce calculates tax, a download sells only if your prices are entered with tax,
+        and a parcel at what your cart charges with tax. Tax from an outside service is not
+        supported.
       </p>
       <a className={styles.more} href={GUIDE}>
         Connector guide

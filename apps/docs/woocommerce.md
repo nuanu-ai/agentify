@@ -19,18 +19,11 @@ Such a product becomes one of two kinds of card:
 | The product in your shop | What the buyer gets | What your shop gets |
 | --- | --- | --- |
 | A virtual download with exactly one protected file, unlimited downloads and no expiry | the download, once it is paid for | a paid order |
-| A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place | a paid order carrying the buyer's shipping address |
+| A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place, and any tax your shop charges there | a paid order carrying the buyer's shipping address |
 
 Every other product stays in your shop untouched, and the import names it with
 the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
-
-The connector cannot yet sell from a shop in which WooCommerce calculates tax,
-and the import leaves every product of such a shop where it is. Do not turn tax
-calculation off to get round this. It is one setting for the whole shop, so
-turning it off stops WooCommerce calculating tax on every order the shop takes,
-not only on the orders that come through Agentify. Whether a sale owes tax is
-yours to settle, and this page does not answer it.
 
 At every purchase the connector asks your shop for the product's price, and
 for a parcel the shipping rate, and your shop has four seconds to answer. A
@@ -46,6 +39,59 @@ Each order is created in your shop with your own dashboard email as the
 customer's, so the shop's customer emails — the confirmation, the download
 link — come to you and never to the buyer, and the shop's reports name you as
 the customer of every sale.
+
+## Shops that calculate tax
+
+Where WooCommerce calculates tax in your shop, what sells depends on how your
+prices are entered (WooCommerce → Settings → Tax → Prices entered with tax):
+
+| Your shop | A download | A parcel |
+| --- | --- | --- |
+| Tax calculation off | sells at its price, and the order carries no tax | sells at its price plus your cheapest shipping rate to the buyer's place |
+| Prices entered with tax inside them | sells at its price, and the order records the tax inside it at the rate of your shop's own address | sells at what your shop's cart charges for the buyer's place, but only to a place your shop taxes at the same rates as its own address |
+| Prices entered before tax | not imported | sells at what your shop's cart charges for the buyer's place: the goods, your cheapest shipping rate and the tax on both there |
+
+A buyer of a download gives no address, so its order is created without one,
+and WooCommerce then taxes it at your shop's own address. Where your prices
+hold their tax, the buyer pays the price on your card wherever they are, and
+the order shows the tax of your own address inside that price. Where your
+prices are entered before tax, the tax would be added for your own city on
+every buyer's price, whoever and wherever the buyer is, so such a download is
+left in your shop.
+
+A parcel's price is asked of your shop's own cart for the buyer's place at
+every purchase, so the buyer pays what your cart charges there at your
+cheapest shipping rate, tax included, and the order your shop then records
+charges the same. Where your
+prices hold their tax, WooCommerce takes the tax of your own address out of
+the price and adds the tax of the buyer's place. Code added to a shop can keep
+one price for every buyer instead, and the connector cannot tell from outside
+whether yours does; the cart then shows that one price while the order created
+for the parcel still moves it to the buyer's rate. So a parcel from such a
+shop sells only to a place your shop taxes at the same rates as its own
+address, and a buyer elsewhere is told before paying that the parcel is not
+available there. A parcel also needs tax to be calculated on the customer's
+shipping address (Calculate tax based on), which is WooCommerce's default.
+Its price question also asks your cart about your own address, within the same
+four seconds.
+
+The import also leaves in your shop every product of a shop whose catalogue
+shows prices otherwise than they are entered (Display prices in the shop),
+because the import reads the catalogue's price while a buyer pays the price
+as entered.
+
+Tax calculated by an outside service, such as WooCommerce Tax, TaxJar or
+Avalara, is not supported. The connector cannot see such a service from
+outside, and nothing has measured what it does to an order made through the
+connector. If the order your shop records then charges something other than
+what the buyer paid, the connector does not take that order on: the sale ends
+unfulfilled on your Orders screen, your shop holds a paid order you should not
+fulfil, and you settle it by your own policy.
+
+Each of these settings applies to your whole shop, so changing one to sell
+through Agentify changes what every customer of the shop is charged. Whether a
+sale owes tax, and whether the treatment above is the right one for your shop,
+are yours to settle; this page does not answer them.
 
 ## Connecting your shop
 
@@ -212,6 +258,8 @@ WooCommerce → Settings → Advanced → REST API.
 - Parcels on the live channel. A parcel sells on the test channel only, and
   how a live parcel's time to ship is set is not decided.
 - How a buyer reaches your support to arrange a remedy outside Agentify.
-- Selling from a shop that calculates tax. Its products are not imported, and
-  turning tax calculation off is not a way round it, for the reason given under
-  [What can be imported](#what-can-be-imported).
+- Downloads from a shop whose prices are entered before tax, which would need
+  the buyer's address at the moment the price is asked; parcels from a shop
+  whose prices hold their tax to a place taxed otherwise than the shop's own
+  address; and tax calculated by an outside service. See
+  [Shops that calculate tax](#shops-that-calculate-tax).
