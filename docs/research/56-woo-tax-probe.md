@@ -352,3 +352,150 @@ tax classes other than the standard one (reduced or zero rates), compound rates,
 coupons, a quantity above one, a customer marked exempt from VAT, more than one
 currency, or a WooCommerce version other than 11.2.1. Whether a given tax
 treatment is lawful for a merchant is not a question this probe can answer.
+
+## Results
+
+The probe ran on 2026-10-21 at 10:06 UTC against the shop described above,
+WooCommerce 11.2.1, and its whole output is `56-woo-tax-probe/results.txt`. It
+made orders 53 to 358, every one of them answered with an order, and no
+request was refused. One follow-up was run by hand afterwards and is reported
+as such below; its output is `56-woo-tax-probe/followup.txt`.
+
+**P0 holds.** With tax off, the connector's body came back at 1.00 with
+`total_tax` 0.00, and the cart quoted 1.00. The read-back of each mode named the
+rates and the shipping tax status described above.
+
+**P1 holds.** The `wc/v3` `price` was the entered price in every mode and every
+read: 1.00 for product 20. The Store API's `prices.price` was 1.00 where the
+display matched the entry, 0.90 in the Indonesian shop set to display without
+tax, and 1.11 in the Seattle shop set to display with tax.
+
+**P2 holds.** A cart token placed elsewhere did not move the Store API's
+product price: 1.00 for the Indonesian shop with a San Francisco token, 1.00 for
+the German shop with a Paris token (with and without the one-price filter), and
+1.11 for the Seattle shop showing tax with a San Francisco token. The carts
+those tokens belonged to did move: the Indonesian download placed in San
+Francisco was quoted 0.90 with no tax, the German one placed in Paris 1.01.
+
+**P3 holds.** Today's body never equalled what was paid wherever a rate
+applied. In the Indonesian shop the ten downloads came to the predicted 1.11,
+2.22, 1.10, 1.14, 1.18, 5.05, 11.09, 22.14, 37.00 and 110.99, in the German shop
+to 1.19, 2.38, 1.18, 1.23, 1.26, 5.41, 11.89, 23.74, 39.66 and 118.99, each line
+coming back with `subtotal` and `total` as sent and the tax added on top, with
+one tax line (PPN or MwSt.). In the Seattle shop the download of 1.00 came to
+1.11 with two tax lines, WA State 0.07 and Seattle 0.04. A parcel added the
+rate and its tax: the tote bag at 20.00 to Denpasar came to 25.20 against the
+23.00 the connector would quote today. Where no rate applied, the Indonesian and
+the Seattle shops' parcels to San Francisco, today's body equalled goods plus
+rate.
+
+**P4 holds.** B1 came back equal to the price for all ten downloads in both
+inclusive shops under both rounding settings, forty orders in all, with the
+tax recorded inside the total and the line's `subtotal` and `total` showing the
+amount before tax (0.90 and a `total_tax` of 0.10 for 1.00 in Indonesia; 0.84
+and 0.16 in Germany). B2b did the same. B2a missed exactly where predicted: 1.05
+for 1.06 in Indonesia, and 1.04 for 1.03, 9.98 for 9.99, 19.94 for 19.95 and
+100.00 for 99.99 in Germany, under both rounding settings.
+
+**P5 holds.** For all forty download carts in the inclusive shops, the cart's
+`total_price` equalled the price and its `total_tax` equalled the B1 order's.
+
+**P6 holds.** An order with no address was taxed at the shop's base under all
+three "based on" settings: 1.00 with 0.10 of tax in Indonesia, 1.00 with 0.16
+in Germany, 1.11 in Seattle. With a billing address, the "shipping" and
+"billing" settings followed it (San Francisco from Indonesia 0.90 with no tax;
+Paris from Germany 1.01 with 0.17; San Francisco from Seattle 1.00 with no tax)
+and "base" did not.
+
+**P7 holds.** In all forty parcel cases of the inclusive shops (Denpasar,
+Jakarta and San Francisco from Indonesia with the shipping untaxed and taxable,
+Berlin and Paris from Germany, four prices each) the B1 order's total equalled
+the cart's `total_price`, at the predicted figures: for 20.00, 23.00 and 25.00
+to Denpasar and Jakarta untaxed, 23.33 and 25.55 taxed, 25.52 to San Francisco
+(the goods without Indonesian tax, 18.02, plus 7.50), 25.83 to Berlin, and 32.05
+to Paris.
+
+**P8 holds.** With the one-price filter installed, the Paris cart kept the gross
+price of the goods (31.88 for 20.00; 12.87, 31.83 and 45.21 for the other three
+prices), while the B1 orders to the same address came to 32.05, 12.88, 31.99 and
+45.49, the figures without the filter. The download to a Paris billing address
+came to 1.01 against the cart's 1.00.
+
+**P9 holds.** For Seattle and San Francisco, every price and both shipping tax
+statuses, the order's total equalled the cart's `total_price`, and today's body
+and B1 came out alike: for 20.00, 28.74 to Seattle with taxable shipping (the
+cart's rate showing `taxes` of 0.63), 28.11 with it untaxed, and 27.50 to San
+Francisco with no tax. The connector's quote today, goods plus rate, would have
+been 26.00 for Seattle.
+
+**P10 fails.** Its order half held: with no address the download orders were
+taxed at Seattle's combined rate, both rates rounded per line by default, at the
+predicted totals (1.11, 2.21, 1.09, 1.14, 1.17, 5.03, 11.04, 22.06, 36.85 and
+110.54), and at the subtotal setting 19.95 came to 22.05 as predicted. Its cart
+half did not: the cart without an address quoted only the state rate, 1.07 for
+1.00 and 21.25 for 19.95, never the order's total. The reason is in
+WooCommerce's source and was missed in the reading before the run: a cart's
+customer with no address starts from the shop's base country and state only
+(`wc_get_customer_default_location`), without its postcode or city, so a rate
+keyed by postcode, as Seattle's is, does not reach the cart, while an order
+with no address falls back to the whole base address, postcode and city
+included. A shop whose "Default customer location" is set to geolocation would
+add a second difference, since the cart would then be located by the address
+of whoever asks.
+
+The follow-up, by hand and deciding nothing: the same cart placed with
+`update-customer` at the shop's own locality (`US`, `WA`, Seattle, 98101)
+quoted 1.11, 22.06 and 110.54 for 1.00, 19.95 and 99.99, the orders' totals.
+
+## Reading against the decision rule
+
+Inclusive-price downloads meet the rule: P4 holds for B1 everywhere, P5 holds
+and P6 shows an order without an address taxed at the base. The proposal is
+therefore the one the rule names. The order's line names the product and the
+quantity and no totals, and WooCommerce computes the amount before tax from
+the product's own price. The connector takes the order on when `total` equals
+what was paid; `total_tax`, the line's `total_tax` and the tax lines are
+recorded rather than required to be zero, and the line's `subtotal` and `total`
+are no longer compared with the paid price, since they now hold the amount
+before tax. A shop with tax on is accepted for this class only with prices
+entered including tax. Because B1 takes the product's current price, a price
+the merchant changed between the quote and the order shows as a total that
+does not match, which the existing match already catches. On the price read,
+P1 shows the Store API equal to the entered price only when the shop displays
+prices with tax, so either the import keeps to `wc/v3`'s `price`, or a shop
+whose catalogue display excludes tax is named at the door.
+
+Inclusive-price parcels meet the rule for the narrowed proposal: P7 holds, so
+the quote becomes the cart's `total_price` for the locality and the order B1
+with the shipping line and the address; but P8 shows the cart and the order
+disagreeing when a merchant keeps one gross price by a filter the connector
+cannot see. Inclusive parcels are therefore proposed only to localities whose
+cart taxes the goods at the same rates as the shop's base, and any other
+locality is answered "not available" with words. In this probe that leaves
+Denpasar and Jakarta for the Indonesian shop and Berlin for the German one, and
+refuses San Francisco and Paris.
+
+Exclusive-price parcels meet the rule: P9 holds at every price, locality and
+shipping tax status. The proposal is to quote the cart's `total_price` for the
+locality, goods, rate and tax together, to create the order with today's body
+or B1 and the shipping line and the address, and to take it on when its total
+equals what was paid. The connector's present refusal of a rate whose `taxes`
+is not zero would go.
+
+Exclusive-price downloads fall under the rule's last branch: the order without
+an address differs from the cart without an address, so they are not
+supportable without the buyer's address, and the connector keeps refusing them
+with words. The follow-up shows that a cart placed at the shop's own locality
+quotes exactly what the order without an address charges. That is a different
+quote from the one the rule was written about, and whether to take it up is the
+product owner's question; it would still charge every buyer the tax of the
+shop's own city, which is the legal question the rule already put to the
+merchant.
+
+Nothing here met the "not supportable at all" branch, and nothing voided the
+results.
+
+## Teardown
+
+The probe's containers and volumes were removed after the run with
+`docker compose -p woo-tax-probe down -v`, and its images were left in place.
