@@ -131,7 +131,9 @@ each product it cannot sell.
 Every request the connector makes to your shop names itself with the User-Agent
 `Agentify/1 (+https://agentify.ad)`, so if a firewall or security plugin in
 front of your shop blocks visitors it does not recognise, let that one through:
-a shop that refuses it cannot be connected, imported or sold from.
+a shop that refuses it cannot be connected, imported or sold from. A paid
+download is fetched from your shop's private download address by the buyer,
+not by Agentify, so that address has to stay open to any visitor.
 
 Your shop sends the keys to Agentify in a request of its own, separate from
 your browser coming back. The dashboard waits fifteen minutes for them. If none
