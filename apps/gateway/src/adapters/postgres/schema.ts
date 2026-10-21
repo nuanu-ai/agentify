@@ -23,7 +23,16 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { StoredOrder } from "../../ports/store.js";
+import { type StoredOrder, WAITING_FOR_PAYMENT } from "../../ports/store.js";
+
+/**
+ * The states a purchase waits for payment in, written into the SQL itself:
+ * the planner uses a partial index only for a predicate it can see is the
+ * index's own.
+ */
+export const WAITING_STATES = sql.raw(
+  `(${WAITING_FOR_PAYMENT.map((state) => `'${state}'`).join(", ")})`,
+);
 
 /**
  * One row per merchant, with whether they are taking new orders: the merchant
@@ -201,6 +210,11 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
+    // A merchant's purchases waiting for payment, counted at the birth of
+    // every purchase of theirs.
+    index("orders_waiting_idx")
+      .on(table.merchantId)
+      .where(sql`${table.state} in ${WAITING_STATES}`),
     // The order a payment is for, found by the reference its challenge
     // carried, and never two orders under one reference.
     uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),

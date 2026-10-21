@@ -262,6 +262,8 @@ export type PurchaseAttempt =
   /** A payment sent at another product's address, or with other parameters, than its order's. */
   | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
+  /** As many of the seller's purchases as the limit allows already wait for payment. */
+  | { readonly step: "seller_busy" }
   /** This payment has already been presented for a different order. */
   | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
@@ -284,6 +286,19 @@ interface HowTheySell {
   readonly sellable: boolean;
   readonly integration: Integration;
 }
+
+/**
+ * How many of one seller's purchases may be priced and waiting for payment at
+ * once, counted at the birth of each. Every unpaid purchase opens an order and
+ * can ask the seller's code or shop its price, and a shop asked a price is
+ * called a dozen times over, so without a limit anyone could load a seller's
+ * shop through Agentify until its firewall turned Agentify away. The cost is
+ * named here: whoever keeps twenty unpaid purchases open stops this seller's
+ * sales through Agentify while they do, though no longer their shop. A
+ * constant rather than a setting, since a knob here either lets that load
+ * back through or stops a seller's every sale.
+ */
+const WAITING_FOR_PAYMENT_AT_MOST = 20;
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
@@ -1283,11 +1298,19 @@ export class Gateway {
       openDeliveryId: null,
     };
     // Written only while the merchant still sells through the card's
-    // integration: a switch landing between the word above and this write
-    // would otherwise leave an order nothing will draw.
-    const written = await this.runner.create(record, created.effects, at, stored.integration);
-    if (written === null) {
+    // integration, since a switch landing between the word above and this
+    // write would leave an order nothing will draw, and only while the
+    // seller's purchases waiting for payment are fewer than the limit. Both
+    // are decided before the price question below is asked.
+    const born = await this.runner.create(record, created.effects, at, {
+      through: stored.integration,
+      waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
+    });
+    if (born === "switched_away") {
       return { step: "not_selling", message: NOT_ON_SALE };
+    }
+    if (born === "too_many_waiting") {
+      return { step: "seller_busy" };
     }
 
     if (priceQuestion !== null) {

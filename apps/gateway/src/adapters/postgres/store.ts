@@ -30,6 +30,8 @@ import type { DrizzleTransactionLike } from "pg-boss";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
+  type Birth,
+  type Born,
   type CatalogEntry,
   type ClaimHolder,
   INTEGRATIONS,
@@ -63,6 +65,7 @@ import {
   paymentClaims,
   payoutSplits,
   receipts,
+  WAITING_STATES,
 } from "./schema.js";
 
 /**
@@ -646,9 +649,8 @@ export class PostgresStore implements Store {
   async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
     return await this.#db.transaction(async (tx): Promise<IntegrationSwitch> => {
       // Held for update, so the birth of an order, which holds the same row
-      // for share while it writes (`addOrder`), waits for this or finishes
-      // first — and then the read of the orders below, a statement of its
-      // own, sees it.
+      // while it writes (`addOrder`), waits for this or finishes first — and
+      // then the read of the orders below, a statement of its own, sees it.
       const [merchant] = await tx
         .select({ integration: merchants.integration, selling: merchants.selling })
         .from(merchants)
@@ -706,26 +708,48 @@ export class PostgresStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
+  async addOrder(record: StoredOrder, birth?: Birth): Promise<Born> {
     try {
-      if (through === undefined) {
+      if (birth === undefined) {
         await this.#db.insert(orders).values(rowFor(record));
-        return true;
+        return "written";
       }
-      return await this.#db.transaction(async (tx) => {
-        // Held for share, which any number of births can hold at once and a
-        // switch cannot (`switchIntegration`).
+      return await this.#db.transaction(async (tx): Promise<Born> => {
+        // Held against every other birth for this merchant, or two of them
+        // would count the same waiting purchases and both be written, and
+        // against a switch (`switchIntegration`). Not `for update`: that would
+        // also hold up the key-share lock every receipt written for this
+        // merchant takes meanwhile.
         const [merchant] = await tx
           .select({ integration: merchants.integration })
           .from(merchants)
           .where(eq(merchants.id, record.merchantId))
           .limit(1)
-          .for("share");
-        if (merchant === undefined || integrationOf(merchant.integration) !== through) {
-          return false;
+          .for("no key update");
+        if (merchant === undefined || integrationOf(merchant.integration) !== birth.through) {
+          return "switched_away";
+        }
+        // Spelled as the partial index is, and stopped at the limit, so the
+        // count reads at most that many rows.
+        const [counted] = await tx.select({ waiting: sql<number>`count(*)::int` }).from(
+          tx
+            .select({ one: sql`1` })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.merchantId, record.merchantId),
+                sql`${orders.state} in ${WAITING_STATES}`,
+                sql`${orders.record} -> 'order' ->> 'payment' = 'none'`,
+              ),
+            )
+            .limit(birth.waitingAtMost)
+            .as("waiting"),
+        );
+        if ((counted?.waiting ?? 0) >= birth.waitingAtMost) {
+          return "too_many_waiting";
         }
         await tx.insert(orders).values(rowFor(record));
-        return true;
+        return "written";
       });
     } catch (thrown) {
       const refused = uniquenessRefused(thrown);

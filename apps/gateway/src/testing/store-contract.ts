@@ -562,13 +562,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
         await store.switchIntegration(A, "woocommerce");
 
-        expect(await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), "api")).toBe(
-          false,
-        );
+        expect(
+          await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), {
+            through: "api",
+            waitingAtMost: 20,
+          }),
+        ).toBe("switched_away");
         expect(await store.orderById("ord_1")).toBeNull();
         expect(
-          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), "woocommerce"),
-        ).toBe(true);
+          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), {
+            through: "woocommerce",
+            waitingAtMost: 20,
+          }),
+        ).toBe("written");
         expect(await store.orderById("ord_2")).not.toBeNull();
       });
 

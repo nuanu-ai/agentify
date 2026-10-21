@@ -301,7 +301,7 @@ if (databaseUrl === null) {
     });
 
     describe("the birth of an order and a switch of integration", () => {
-      // A birth holds its merchant's row for share while it writes, and a
+      // A birth holds its merchant's row while it counts and writes, and a
       // switch holds it for update while it counts the orders that hold it, so
       // neither can land inside the other. The store contract runs them one
       // after the other; only two connections can show they wait.
@@ -332,7 +332,7 @@ if (databaseUrl === null) {
 
           const born = store.addOrder(
             anOrder("ord_born_in_the_switch", "quoted", { merchantId: A }),
-            "api",
+            { through: "api", waitingAtMost: 20 },
           );
           expect(await settledWithin(born, 300)).toBe(false);
 
@@ -341,7 +341,7 @@ if (databaseUrl === null) {
           ]);
           await switching.query("commit");
 
-          expect(await born).toBe(false);
+          expect(await born).toBe("switched_away");
           expect(await store.orderById("ord_born_in_the_switch")).toBeNull();
         } finally {
           switching.release();
@@ -352,7 +352,7 @@ if (databaseUrl === null) {
         const birth = await pool.connect();
         try {
           await birth.query("begin");
-          await birth.query("select id from merchants where id = $1 for share", [A]);
+          await birth.query("select id from merchants where id = $1 for no key update", [A]);
 
           const switched = store.switchIntegration(A, "woocommerce");
           expect(await settledWithin(switched, 300)).toBe(false);

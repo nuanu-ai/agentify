@@ -21,6 +21,7 @@ export const PAYMENT_REQUIRED = 402;
 export const NOT_FOUND = 404;
 export const CONFLICT = 409;
 export const UNPROCESSABLE = 422;
+export const TOO_MANY_REQUESTS = 429;
 /** Something of ours failed, and the call is not known to have done anything. */
 export const FAILED = 500;
 

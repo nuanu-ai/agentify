@@ -11,6 +11,8 @@ import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
+  type Birth,
+  type Born,
   type CatalogEntry,
   type ClaimHolder,
   type Integration,
@@ -30,6 +32,7 @@ import {
   type StoredMerchant,
   type StoredOrder,
   type StoredPayoutWallet,
+  WAITING_FOR_PAYMENT,
   type WalletWritten,
   type WithTheOrder,
 } from "../../ports/store.js";
@@ -549,7 +552,7 @@ export class MemoryStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
+  async addOrder(record: StoredOrder, birth?: Birth): Promise<Born> {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
@@ -563,11 +566,21 @@ export class MemoryStore implements Store {
         `the order ${record.order.id} names a payment reference another order already has`,
       );
     }
-    if (through !== undefined && this.#merchants.get(record.merchantId)?.integration !== through) {
-      return false;
+    // No await from here to the write, so the count and the write are one step
+    // against every other birth in the one process this map lives in.
+    if (birth !== undefined) {
+      if (this.#merchants.get(record.merchantId)?.integration !== birth.through) {
+        return "switched_away";
+      }
+      const waiting = [...this.#orders.values()].filter(
+        (held) => held.merchantId === record.merchantId && waitsForPayment(held),
+      ).length;
+      if (waiting >= birth.waitingAtMost) {
+        return "too_many_waiting";
+      }
     }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
-    return true;
+    return "written";
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
@@ -883,3 +896,8 @@ function sameWallet(one: PayoutWalletRead, other: PayoutWalletRead): boolean {
     one.pending?.takesEffectAt === other.pending?.takesEffectAt
   );
 }
+
+/** Whether a purchase waits on its buyer's payment, as Postgres counts it. */
+const waitsForPayment = (record: StoredOrder): boolean =>
+  (WAITING_FOR_PAYMENT as readonly string[]).includes(record.order.state) &&
+  record.order.payment === "none";

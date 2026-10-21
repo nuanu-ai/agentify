@@ -66,7 +66,8 @@ import {
 } from "../ports/facilitator.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
-  Integration,
+  Birth,
+  Born,
   MerchantScope,
   OrderChange,
   PaymentAttempt,
@@ -229,17 +230,16 @@ export class OrderRunner {
 
   /**
    * Writes down a new order and carries out the effects its creation asked
-   * for; the machine has already decided that the order exists. `through` is
-   * the integration its card was sold through: if the merchant has stopped
-   * selling through it by the time the order would be written, nothing is
-   * written or carried out and null comes back.
+   * for; the machine has already decided that the order exists. `birth` is
+   * what the store holds the write to (`Birth`): where the order is not
+   * written, nothing is carried out either, and the answer says why.
    */
   async create(
     record: StoredOrder,
     effects: readonly Effect[],
     at: number,
-    through: Integration,
-  ): Promise<StoredOrder | null> {
+    birth: Birth,
+  ): Promise<Born> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
     // The clock is started before the order is written: a reminder for an order
@@ -256,11 +256,12 @@ export class OrderRunner {
       );
     }
 
-    if (!(await this.#runtime.store.addOrder(record, through))) {
-      return null;
+    const born = await this.#runtime.store.addOrder(record, birth);
+    if (born !== "written") {
+      return born;
     }
     await this.#run(record, effects);
-    return record;
+    return born;
   }
 
   /**

@@ -63,6 +63,35 @@ export const NO_PENDING_HANDLER = [
 ] as const satisfies readonly OrderState[];
 
 /**
+ * The states of a purchase being priced or priced and not yet paid for. A
+ * purchase in one of them whose payment stage is still `none` waits on its
+ * buyer, and holds one of its seller's places at the door (`Birth`).
+ */
+export const WAITING_FOR_PAYMENT = [
+  "created",
+  "quoted",
+  "awaiting_confirmation",
+  "confirmed",
+] as const satisfies readonly OrderState[];
+
+/**
+ * What the birth of a purchase is held to: the integration its card was sold
+ * through, which its merchant must still sell through, and how many of that
+ * merchant's purchases may wait for payment at once, this one included.
+ */
+export interface Birth {
+  readonly through: Integration;
+  readonly waitingAtMost: number;
+}
+
+/**
+ * What became of the birth of a purchase: written, or not written because its
+ * merchant has switched to the other integration, or because as many of their
+ * purchases as `Birth` allows already wait for payment.
+ */
+export type Born = "written" | "switched_away" | "too_many_waiting";
+
+/**
  * What switching a merchant to the other integration came to.
  *
  * Refused while an order still waits on the integration being left — for its
@@ -721,8 +750,8 @@ export interface Store {
    * sell through changes nothing and is not refused.
    *
    * One transaction, holding the merchant's row against the birth of an
-   * order (`addOrder` with an integration), so no order can be made for a
-   * card in the moment it goes off sale.
+   * order (`addOrder` with a `Birth`), so no order can be made for a card in
+   * the moment it goes off sale.
    */
   switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch>;
 
@@ -732,13 +761,15 @@ export interface Store {
    * Writes an order that is not there yet. The record says whose it is. An
    * identifier or a payment reference another order already has is refused.
    *
-   * Given the integration its card was sold through, the write is made only
-   * while its merchant still sells through that one, and answers false
-   * otherwise; the write and `switchIntegration` wait for each other on the
-   * merchant. A purchase always names one; without one the write is
-   * unconditional, which is how a test sets an order down.
+   * Given a `Birth`, the write is made only while its merchant still sells
+   * through the integration named and fewer than `waitingAtMost` of their
+   * purchases wait for payment (`WAITING_FOR_PAYMENT`); the count and the write
+   * are one step against every other birth for that merchant, and the write and
+   * `switchIntegration` wait for each other on the merchant. A purchase always
+   * names one; without one the write is unconditional, which is how a test sets
+   * an order down.
    */
-  addOrder(record: StoredOrder, through?: Integration): Promise<boolean>;
+  addOrder(record: StoredOrder, birth?: Birth): Promise<Born>;
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its

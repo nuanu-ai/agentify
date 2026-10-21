@@ -155,6 +155,13 @@
       "when": 1792567564323,
       "tag": "0021_card_first_published",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792580218457,
+      "tag": "0022_order_waiting_index",
+      "breakpoints": true
     }
   ]
 }

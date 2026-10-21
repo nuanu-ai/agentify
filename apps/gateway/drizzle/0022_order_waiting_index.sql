@@ -1,0 +1,1 @@
+CREATE INDEX "orders_waiting_idx" ON "orders" USING btree ("merchant_id") WHERE "orders"."state" in ('created', 'quoted', 'awaiting_confirmation', 'confirmed');
