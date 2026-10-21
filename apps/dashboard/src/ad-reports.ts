@@ -171,7 +171,9 @@ type Transaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction
  * its merchant's first card came before the registration or is another
  * account's to report, it was switched off until its 30 days ended, or no first
  * card came within them. A card row exists only once a publish succeeded, and
- * cards are not deleted, so a merchant's first card never changes.
+ * on the live channel cards are not deleted, so a merchant's first card never
+ * changes there; the test channel's forget command deletes a merchant's cards
+ * only together with its one account and that account's reports.
  *
  * A row whose account is being deleted at that moment is skipped rather than
  * waited for, since the lock every process shares is held.

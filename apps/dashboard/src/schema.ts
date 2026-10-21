@@ -231,8 +231,8 @@ export const reportDeletionTombstones = pgTable(
  * Each row keeps its own copy of the click while it waits or is pending and
  * erases it once final. `created_at` is the registration; `event_at` is when
  * the reported fact happened, the registration or the first card's
- * publication, and is null for a store report that never had one. The rows go
- * with the account.
+ * publication, and is null while a store report waits and once it lapsed,
+ * whether or not a first card came. The rows go with the account.
  */
 export const adReports = pgTable(
   "dashboard_ad_reports",

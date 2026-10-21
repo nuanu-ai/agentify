@@ -828,11 +828,13 @@ nothing asked on screen; the tracker's click identifier is all it sends.
 Each outcome is one line in the application's log, such as
 `registration report delivered: http_200`, naming no person and no click. With
 the switch on and no such key the application refuses to start; with it off the
-key is not read, so the key can go into the file first, and the application
-only gives up any report still pending a day after its sign-up, so no
-registration's click outlives its day; a click kept with a link nobody pressed,
-or with a Google sign-in nobody finished, goes when that record is cleared, from
-7 days after it expired.
+key is not read, so the key can go into the file first, and the application only
+gives up any registration report still pending a day after its sign-up, so no
+registration report keeps its click past that day. A store report, below, keeps
+a copy of the click of its own, which can stay up to 30 days after the sign-up
+and goes at once when its registration report is given up; a click kept with a
+link nobody pressed, or with a Google sign-in nobody finished, goes when that
+record is cleared, from 7 days after it expired.
 On TEST a line naming the switch changes nothing:
 `deploy/compose.agentify-test.yaml` fixes it off for the application whatever
 the host's file says, and the application itself refuses to start with the

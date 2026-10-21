@@ -66,5 +66,6 @@ draws; signing the click, public to anybody who clicks the ad; the test channel,
 whose sign-ups are not real. For the store: a merchant's creation or first key,
 which says nothing about a connected store; the first payment, a buyer's act; a
 fact recorded inside the gateway's publish, needless because a card exists only
-after a successful publish and is never deleted; a click kept until a first card
-comes, however long that takes.
+after a successful publish and is never deleted on the live channel, the only
+one that reports; a click kept until a first card comes, however long that
+takes.
