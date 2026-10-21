@@ -5,7 +5,8 @@
  * A turn is one transaction. It first gives up, unsent, every pending event
  * more than seven days old, because Nuanu dates an older one by its arrival,
  * and deletes every event that settled thirty days ago. Then it takes the
- * earliest due event, locked so no other sender takes it, and settles it: an
+ * earliest due event, every other event before a screen viewed or a problem
+ * shown, locked so no other sender takes it, and settles it: an
  * event about a person who opted out, or about the merchant their account
  * names, is suppressed; one that breaks the contract is dead, with the field
  * that broke it; any other is posted. A 200 sends it; a redirect, a 401, a 403
@@ -56,6 +57,12 @@ const REFERENCES = [
   ["attempt", "attempt_ref"],
   ["operation", "operation_ref"],
 ] as const;
+
+/**
+ * What the server saw on a page rather than decided, which waits behind every
+ * other event: a backlog of them never holds up a payment or an order.
+ */
+const OBSERVATIONS = ["agc_dashboard_viewed", "agc_ui_blocked"] as const;
 
 /** Whose order of results a revision counts. */
 const REVISED = new Set(["agc_payment_result", "agc_order_outcome_changed"]);
@@ -228,7 +235,10 @@ export async function deliverOnce(parts: LoopParts & Readonly<{ target: Target }
                ) as opted_out
           from commerce_analytics_events e
          where e.state = 'pending' and e.next_attempt_at <= ${now()}::timestamptz
-         order by e.next_attempt_at, e.sequence
+         order by e.name in (${sql.join(
+           OBSERVATIONS.map((name) => sql`${name}`),
+           sql`, `,
+         )}), e.next_attempt_at, e.sequence
          limit 1
            for update of e skip locked
       `)

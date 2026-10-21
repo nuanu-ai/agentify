@@ -497,8 +497,10 @@ if (databaseUrl === null) {
       expect(received).toHaveLength(expected.length);
       expect(new Set(expected.map(([event]) => event.name)).size).toBe(10);
       for (const [index, [event, properties, top]] of expected.entries()) {
-        const request = received[index];
         const row = stored[index];
+        const request = received.find(
+          (one) => (JSON.parse(one.body) as { event_id?: unknown }).event_id === row?.id,
+        );
         if (request === undefined || row === undefined) throw new Error("a post is missing");
         const revised =
           event.name === "agc_payment_result" || event.name === "agc_order_outcome_changed";
@@ -701,8 +703,8 @@ if (databaseUrl === null) {
     }
 
     it("abandons a request Nuanu does not answer after five seconds, and goes on with the next event", async () => {
-      await recorded(viewed);
       await recorded(ordered);
+      await recorded(viewed);
       const { post, received } = nuanu("silence", 200);
 
       const started = performance.now();
@@ -714,8 +716,8 @@ if (databaseUrl === null) {
       expect(waited).toBeLessThan(8_000);
       expect(received).toHaveLength(2);
       expect((await rows()).map((row) => [row.name, row.state, row.last_outcome])).toStrictEqual([
-        ["agc_dashboard_viewed", "pending", "timeout"],
-        ["agc_order_created", "sent", "http_200"],
+        ["agc_order_created", "pending", "timeout"],
+        ["agc_dashboard_viewed", "sent", "http_200"],
       ]);
     });
 
