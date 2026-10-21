@@ -883,11 +883,13 @@ off none of them is read, so they can go into the file first.
 An event is written in the same transaction as the fact it records, and a
 loop in the application sends one event at a time, each request abandoned
 after five seconds, so Nuanu being slow or away never delays or fails a page
-or a sale; events wait in the database instead. An answer of 401, 403 or 404
-means the site id, the key or the token is wrong: the event stays, sending
-pauses for five minutes, and the log names the three variables. A 429, a 5xx,
-a timeout or a network failure is tried again later with the same event id
-and time; a 400 or a 413 drops that event. An event that does not keep the
+or a sale; events wait in the database instead. A 200 means the event was
+taken. A redirect (any answer from 300 to 399, which is never followed) or an
+answer of 401, 403 or 404 means the endpoint, the site id, the key or the
+token is wrong: the event stays, sending pauses for five minutes, and the log
+names the three variables. A 429, a 5xx, a timeout or a network failure is
+tried again later with the same event id and time. Every other answer, a 400
+and a 413 among them, drops that event for good. An event that does not keep the
 contract is never sent and its row records the field that broke it. An event
 more than 7 days old is given up unsent, because Nuanu dates an older one by
 its arrival, and every event that settled, sent or not, is deleted 30 days

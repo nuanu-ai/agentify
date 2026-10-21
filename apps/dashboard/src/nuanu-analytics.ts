@@ -8,10 +8,10 @@
  * earliest due event, locked so no other sender takes it, and settles it: an
  * event about a person who opted out, or about the merchant their account
  * names, is suppressed; one that breaks the contract is dead, with the field
- * that broke it; any other is posted. A 200 sends it; a 400 or a 413 kills it;
- * a 401, a 403 or a 404 says the configuration is wrong, so the event stays as
- * it is and the sender pauses; a 429, a 5xx, a timeout or a network failure
- * tries it again later. Every answer not named here kills the event too.
+ * that broke it; any other is posted. A 200 sends it; a redirect, a 401, a 403
+ * or a 404 says the configuration is wrong, so the event stays as it is and the
+ * sender pauses; a 429, a 5xx, a timeout or a network failure tries it again
+ * later. Every other answer, a 400 and a 413 among them, kills the event.
  *
  * Delivery is at least once: a process that stops after Nuanu answered and
  * before the commit leaves the event pending, and it is posted again with the
@@ -152,7 +152,11 @@ async function posted(post: typeof fetch, target: Target, body: string): Promise
     const { status } = response;
     const outcome = `http_${status}`;
     if (status === 200) return { outcome, next: "sent" };
-    if (status === 401 || status === 403 || status === 404) return { outcome, next: "pause" };
+    // A redirect is not followed, since it would carry the key to another
+    // address; like a refused key, it means the configuration is wrong.
+    if ((status >= 300 && status < 400) || status === 401 || status === 403 || status === 404) {
+      return { outcome, next: "pause" };
+    }
     if (status === 429 || status >= 500) return { outcome, next: "retry" };
     return { outcome, next: "dead" };
   } catch (thrown) {
