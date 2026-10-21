@@ -9,7 +9,9 @@ payment is never charged, so the wallet need not hold the price again. It has
 to be a fresh signature that is still valid, since the payment that paid the
 order can be read from the chain and is refused, and a fresh signature from
 any other wallet is refused as `not_this_purchase`. A payment that is not
-verified is answered in words that name no order and do not say whether the
-order was paid, with the reason it was refused in the words of whoever refused
-it, the gateway or the payment layer; the description no longer says those
-words are the same either way.
+verified is answered in words that name no order, with the reason it was
+refused in the words of whoever refused it, the gateway or the payment layer;
+the description no longer says those words are the same either way. It says
+plainly that whoever holds an order's payment reference can learn whether the
+order was paid, and cannot learn the order's identifier, its goods or its
+address.
