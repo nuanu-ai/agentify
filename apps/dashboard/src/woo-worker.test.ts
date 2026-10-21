@@ -53,6 +53,14 @@ import {
 
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
 
+/** A cart read for its rates alone, which a shop calculating no tax is sold from. */
+const NOT_PRICED = {
+  ok: false as const,
+  why: "The shop's cart answered without its totals.",
+  again: false as const,
+  saidNo: false,
+};
+
 /**
  * A payment checked against the merchant's wallet itself, before payments
  * went to splits: its shop order carries no commission line, which the cases
@@ -1365,6 +1373,7 @@ describe("a parcel's price question", () => {
     instanceId,
     title,
     cost,
+    tax: "0.00",
   });
 
   const answering = async (
@@ -1427,6 +1436,7 @@ describe("a parcel's price question", () => {
           rate("Standard", "5.00"),
           rate("Courier", "5.00", "9"),
         ],
+        priced: NOT_PRICED,
       };
     });
 
@@ -1447,6 +1457,7 @@ describe("a parcel's price question", () => {
     const answer = await answering(shops, async () => ({
       ok: true,
       rates: [rate("Standard", "0.10")],
+      priced: NOT_PRICED,
     }));
 
     expect(answer).toMatchObject({ available: true, price: { amount: "20.10" } });
@@ -1457,7 +1468,7 @@ describe("a parcel's price question", () => {
     // merchant's log. A shop that could not answer at all is a different case
     // (below).
     for (const read of [
-      { ok: true as const, rates: [] },
+      { ok: true as const, rates: [], priced: NOT_PRICED },
       { ok: false as const, why: "The shop refused the place.", again: false, saidNo: true },
     ]) {
       const shops = memoryWooShops();
@@ -1514,11 +1525,27 @@ describe("a parcel's price question", () => {
           fingerprint: "a-download-now",
           tax: { mode: "off" as const },
         }),
-      shippingRates: async () => ({ ok: true, rates: [rate("Standard", "5.00")] }),
+      shippingRates: async () => ({
+        ok: true,
+        rates: [rate("Standard", "5.00")],
+        priced: NOT_PRICED,
+      }),
     });
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
     expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+  });
+
+  it("names no price where a shop calculating no tax shows a rate carrying tax", async () => {
+    const shops = memoryWooShops();
+
+    const answer = await answering(shops, async () => ({
+      ok: true,
+      rates: [{ ...rate("Standard", "5.00"), tax: "0.55" }],
+      priced: NOT_PRICED,
+    }));
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
   });
 
   it("names no price for a parcel's question that carries no place", async () => {
@@ -1529,7 +1556,7 @@ describe("a parcel's price question", () => {
       memoryWooShops(),
       async () => {
         asked = true;
-        return { ok: true, rates: [rate("Standard", "5.00")] };
+        return { ok: true, rates: [rate("Standard", "5.00")], priced: NOT_PRICED };
       },
       noPlace,
     );
@@ -1647,10 +1674,12 @@ describe("a parcel's paid order", () => {
     instanceId,
     title,
     cost,
+    tax: "0.00",
   });
   const TODAY: RatesRead = {
     ok: true,
     rates: [rate("Express", "12.00", "4"), rate("Standard", "5.00", "3")],
+    priced: NOT_PRICED,
   };
 
   const aParcelShop = () => {
@@ -1750,6 +1779,30 @@ describe("a parcel's paid order", () => {
     expect(shop.placed[0]?.rate).toStrictEqual(rate("Express", "12.00", "4"));
   });
 
+  it("refuses an order from a shop calculating no tax whose cart taxes the rate, and posts nothing", async () => {
+    // The order's tax must be nothing in such a shop, so a rate carrying tax
+    // is no price it can be filled at.
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: async () => ({
+          ok: true,
+          rates: [{ ...rate("Standard", "5.00", "3"), tax: "0.55" }],
+          priced: NOT_PRICED,
+        }),
+      }),
+      NO_SPLIT,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+  });
+
   it("refuses an order whose shipping no longer costs what was paid, and posts nothing", async () => {
     const shops = memoryWooShops();
     const shop = aParcelShop();
@@ -1759,7 +1812,11 @@ describe("a parcel's paid order", () => {
       connection(),
       MERCHANT_EMAIL,
       parcelParts(shops, shop.place, {
-        shippingRates: async () => ({ ok: true, rates: [rate("Standard", "6.00", "3")] }),
+        shippingRates: async () => ({
+          ok: true,
+          rates: [rate("Standard", "6.00", "3")],
+          priced: NOT_PRICED,
+        }),
       }),
       NO_SPLIT,
     );
@@ -1884,6 +1941,7 @@ describe("a parcel's paid order", () => {
         shippingRates: async () => ({
           ok: true as const,
           rates: [rate("Standard", "6.00", "3")],
+          priced: NOT_PRICED,
         }),
       },
     ] satisfies Partial<Filling>[]) {
@@ -2041,7 +2099,7 @@ describe("a parcel's paid order", () => {
     });
     try {
       for (const overrides of [
-        { shippingRates: async () => ({ ok: true as const, rates: [] }) },
+        { shippingRates: async () => ({ ok: true as const, rates: [], priced: NOT_PRICED }) },
         {
           placeParcel: async () => ({
             ok: false as const,
@@ -2387,7 +2445,16 @@ describe("a parcel the whole way through, against a real gateway", () => {
       }),
       shippingRates: async () => ({
         ok: true,
-        rates: [{ methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" }],
+        rates: [
+          {
+            methodId: "flat_rate",
+            instanceId: "1",
+            title: "Bali courier",
+            cost: "3.00",
+            tax: "0.00",
+          },
+        ],
+        priced: NOT_PRICED,
       }),
       placeParcel: async (_keys, sold) => {
         placed.push(sold);
@@ -2530,7 +2597,16 @@ describe("a parcel the whole way through, against a real gateway", () => {
       }),
       shippingRates: async () => ({
         ok: true,
-        rates: [{ methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" }],
+        rates: [
+          {
+            methodId: "flat_rate",
+            instanceId: "1",
+            title: "Bali courier",
+            cost: "3.00",
+            tax: "0.00",
+          },
+        ],
+        priced: NOT_PRICED,
       }),
       placeParcel: (keys, sold) => createTheParcelInTheShop(keys, sold, theShop),
     };

@@ -1844,10 +1844,9 @@ describe("the shop's own shipping rate for a parcel's place", () => {
 
     const read = await ratesFor(stand.url, "28", JAKARTA);
 
-    expect(read).toStrictEqual({
-      ok: true,
-      rates: [{ methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" }],
-    });
+    expect(read.ok && read.rates).toStrictEqual([
+      { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00", tax: "0.00" },
+    ]);
     expect(stand.asked.map((asked) => `${asked.method} ${asked.url}`)).toStrictEqual([
       "GET /wp-json/wc/store/v1/cart",
       "POST /wp-json/wc/store/v1/cart/add-item",
@@ -1883,18 +1882,15 @@ describe("the shop's own shipping rate for a parcel's place", () => {
 
     const read = await ratesFor(stand.url, "28", JAKARTA);
 
-    expect(read).toStrictEqual({
-      ok: true,
-      rates: [
-        { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00" },
-        { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" },
-      ],
-    });
+    expect(read.ok && read.rates).toStrictEqual([
+      { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00", tax: "0.00" },
+      { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00", tax: "0.00" },
+    ]);
   });
 
   it("tells a place the shop does not ship to from a shop that refused or did not answer", async () => {
     stand = await shopWithRates(() => ({ status: 200, body: cart([]) }));
-    expect(await ratesFor(stand.url, "28", JAKARTA)).toStrictEqual({ ok: true, rates: [] });
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: true, rates: [] });
     await stand.close();
 
     // The shop's refusal names the place, so none of it is carried on.
@@ -2134,13 +2130,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   });
 
   it("refuses rates it could not sell at, rather than choosing among them", async () => {
-    // Another currency or scale, an added tax, or two packages: none is the
-    // price of shipping this parcel in dollars, and choosing among them would
-    // be a guess.
+    // Another currency or scale, or two packages: none is the price of
+    // shipping this parcel in dollars, and choosing among them would be a
+    // guess.
     for (const body of [
       cart([rate({ currency_code: "EUR" })]),
       cart([rate({ currency_minor_unit: 0, price: "5" })]),
-      cart([rate({ taxes: "50" })]),
       cart([rate({ price: "five" })]),
       cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
       cart([rate()], { needs_shipping: false }),
@@ -2150,6 +2145,185 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
         ok: false,
         again: false,
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  /**
+   * A Store API cart as the tax probe's shops answered it, in minor units: the
+   * line with the goods' tax, the rates with theirs, and the totals.
+   */
+  const taxedCart = (
+    goods: { subtotal: string; tax: string },
+    rates: unknown[],
+    totals: {
+      items: string;
+      tax: string;
+      price: string;
+      lines: { name: string; rate: string }[];
+      fees?: string;
+      discount?: string;
+    },
+  ) =>
+    cart(rates, {
+      items: [{ ...LINE, totals: { line_subtotal: goods.subtotal, line_subtotal_tax: goods.tax } }],
+      totals: {
+        total_items: totals.items,
+        total_tax: totals.tax,
+        total_fees: totals.fees ?? "0",
+        total_discount: totals.discount ?? "0",
+        total_price: totals.price,
+        currency_code: "USD",
+        currency_minor_unit: 2,
+        tax_lines: totals.lines,
+      },
+    });
+  /** The Seattle shop's cart for the tote bag at 20.00, shipping taxable. */
+  const SEATTLE_CART = taxedCart(
+    { subtotal: "2000", tax: "211" },
+    [rate({ rate_id: "flat_rate:12", instance_id: 12, price: "600", taxes: "63" })],
+    {
+      items: "2000",
+      tax: "274",
+      price: "2874",
+      lines: [
+        { name: "WA State", rate: "6.5%" },
+        { name: "Seattle", rate: "4.05%" },
+      ],
+    },
+  );
+  const SEATTLE: ShipToLocality = {
+    country: "US",
+    state: "WA",
+    city: "Seattle",
+    postal_code: "98101",
+  };
+
+  it("reads a cart that calculates tax at its whole price, with the goods and the taxes inside it", async () => {
+    stand = await shopWithRates(() => ({ status: 200, body: SEATTLE_CART }));
+
+    const read = await ratesFor(stand.url, "28", SEATTLE);
+
+    const standard = {
+      methodId: "flat_rate",
+      instanceId: "12",
+      title: "Standard",
+      cost: "6.00",
+      tax: "0.63",
+    };
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [standard],
+      priced: {
+        ok: true,
+        total: "28.74",
+        goods: "22.11",
+        taxes: ["Seattle 4.05%", "WA State 6.5%"],
+        rate: standard,
+      },
+    });
+  });
+
+  it("chooses the cheapest rate in a taxed cart where the shop chose another, and prices the cart with it", async () => {
+    // The Bali shop's Jakarta cart at 20.00 with shipping taxable, Standard
+    // 5.00 with 0.55 of tax. Express at 12.00 is listed first and chosen,
+    // with its 1.32 of tax and the total that makes.
+    const express = rate({
+      rate_id: "flat_rate:4",
+      name: "Express",
+      instance_id: 4,
+      price: "1200",
+      taxes: "132",
+    });
+    const standard = rate({ price: "500", taxes: "55" });
+    const goods = { subtotal: "1802", tax: "198" };
+    const lines = [{ name: "PPN", rate: "11%" }];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/select-shipping-rate")) {
+        return {
+          status: 200,
+          body: taxedCart(goods, [{ ...express, selected: false }, standard], {
+            items: "1802",
+            tax: "253",
+            price: "2555",
+            lines,
+          }),
+        };
+      }
+      return {
+        status: 200,
+        body: taxedCart(goods, [express, { ...standard, selected: false }], {
+          items: "1802",
+          tax: "330",
+          price: "3332",
+          lines,
+        }),
+      };
+    });
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toMatchObject({
+      ok: true,
+      priced: { ok: true, total: "25.55", goods: "20.00", rate: { instanceId: "3", tax: "0.55" } },
+    });
+    const chose = stand.asked.find((asked) => asked.url.endsWith("/select-shipping-rate"));
+    expect(chose?.cartToken).toBe(TOKEN);
+    expect(JSON.parse(chose?.body ?? "{}")).toStrictEqual({
+      package_id: 0,
+      rate_id: "flat_rate:3",
+    });
+  });
+
+  it("prices a cart that carries no tax at the goods and the cheapest rate, without choosing in it", async () => {
+    // The Seattle shop's San Francisco cart at 20.00 with no tax there, its
+    // order 27.50; a dearer rate listed first is the shop's choice.
+    stand = await shopWithRates(() => ({
+      status: 200,
+      body: taxedCart(
+        { subtotal: "2000", tax: "0" },
+        [
+          rate({ rate_id: "flat_rate:5", name: "Express", instance_id: 5, price: "1500" }),
+          rate({ rate_id: "flat_rate:2", instance_id: 2, price: "750", selected: false }),
+        ],
+        { items: "2000", tax: "0", price: "3500", lines: [] },
+      ),
+    }));
+
+    const read = await ratesFor(stand.url, "28", {
+      country: "US",
+      state: "CA",
+      city: "San Francisco",
+      postal_code: "94105",
+    });
+
+    expect(read).toMatchObject({
+      ok: true,
+      priced: { ok: true, total: "27.50", goods: "20.00", taxes: [], rate: { instanceId: "2" } },
+    });
+    expect(stand.asked.some((asked) => asked.url.endsWith("/select-shipping-rate"))).toBe(false);
+  });
+
+  it("names no price from a cart that adds a fee or takes a discount an order would not carry", async () => {
+    for (const extra of [{ fees: "100" }, { discount: "200" }]) {
+      stand = await shopWithRates(() => ({
+        status: 200,
+        body: taxedCart(
+          { subtotal: "2000", tax: "211" },
+          [rate({ rate_id: "flat_rate:12", instance_id: 12, price: "600", taxes: "63" })],
+          { items: "2000", tax: "274", price: "2874", lines: [], ...extra },
+        ),
+      }));
+
+      expect(await ratesFor(stand.url, "28", SEATTLE), JSON.stringify(extra)).toMatchObject({
+        ok: true,
+        priced: { ok: false, saidNo: true },
       });
       await stand.close();
       stand = null;
@@ -2233,7 +2407,13 @@ describe("creating a parcel's order", () => {
     email: "merchant@example.com",
     paid: { amount: "23.00", currency: "USD" },
     goods: "20.00",
-    rate: { methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" },
+    rate: {
+      methodId: "flat_rate",
+      instanceId: "1",
+      title: "Bali courier",
+      cost: "3.00",
+      tax: "0.00",
+    },
     address: ADDRESS,
     paidInto: null,
   };
