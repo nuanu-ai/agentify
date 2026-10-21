@@ -18,7 +18,9 @@ what it was shown, and only where it runs a script and is allowed to.
 Agentify's server records every product analytics event and is the only thing
 that sends one. The cabinet runs no analytics script, sets no cookie for it and
 loads no third-party counter; a screen shown or a problem shown on it is an
-observation the server makes while answering the request.
+observation the server makes while answering the request, so screen views are
+an undercount wherever the browser prefetched a link on hover and answered the
+click from its cache.
 
 The contract is the analytics team's `commerce-v1`, and nothing leaves outside
 it: the ten events `agc_dashboard_viewed`, `agc_auth_result`,
@@ -41,9 +43,10 @@ records, so a rolled-back fact leaves no event, and checked against the
 contract only when it is sent, so a broken event is refused there rather than
 failing a sale. Its id and time are fixed when it is written and sent
 unchanged on every attempt: delivery is at least once, and a repeat carries
-the id Nuanu already has. Nuanu replaces a time more than seven days old with
-the moment of arrival, so an event that old is given up unsent rather than
-counted on the wrong day.
+the id Nuanu already has. An event more than seven days old is given up
+unsent. What this relies on Nuanu to do with an event's id and time, where
+that comes from and what of it is not yet verified, is in
+[research note 84](../research/84-nuanu-analytics-ingest.md).
 
 The live channel and the test channel send to separate Nuanu sites with their
 own credentials and reference keys, the test channel's events tagged internal;
