@@ -111,7 +111,7 @@ describe("canonical contracts", () => {
         target_host: "example.com",
       }).success,
     ).toBe(true);
-    expect(scanStatusResponseSchema.safeParse(base).success).toBe(true);
+    expect(scanStatusResponseSchema.safeParse(base).success).toBe(false);
     expect(scanStatusResponseSchema.safeParse({ ...base, target_host: "" }).success).toBe(false);
   });
 
