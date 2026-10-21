@@ -438,6 +438,12 @@ export interface ClosureUnlisted {
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
+  /**
+   * Said beside a search where purchases that lapsed unpaid exist: they are
+   * not searched, so no match among the others is not none at all. The words
+   * lead into the way to their segment.
+   */
+  readonly lapsedApart: Readonly<{ says: string; to: string }> | null;
   /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
   readonly pressed: ClosurePressed | null;
   /**
@@ -478,8 +484,22 @@ export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
  * asks for their segment and null elsewhere, and how many there are.
  */
 export interface LapsedAttempts {
-  readonly page: OrderList | null;
+  readonly page: readonly LapsedAttempt[] | null;
   readonly of: number;
+}
+
+/**
+ * One purchase that lapsed unpaid: its price where one was named, and the
+ * moment it was named, or the moment the purchase was asked for where none
+ * was.
+ */
+export interface LapsedAttempt {
+  readonly id: string;
+  readonly merchant_item_id: string;
+  readonly status: OrderStatus;
+  readonly price: { readonly amount: string; readonly currency: string } | null;
+  readonly at: string;
+  readonly test: boolean;
 }
 
 const NO_LAPSED: LapsedAttempts = { page: null, of: 0 };
@@ -682,7 +702,26 @@ export const ordersView = (
           : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
     showAll: "Show all orders",
   });
-  const lapsedRows = onLapsed ? (lapsed.page?.orders ?? []).map(rowOf) : [];
+  const lapsedRows = onLapsed
+    ? (lapsed.page ?? []).map(
+        (attempt): OrderRow => ({
+          id: attempt.id,
+          product: titles.get(attempt.merchant_item_id) ?? attempt.merchant_item_id,
+          itemId: attempt.merchant_item_id,
+          amount: attempt.price === null ? "No price" : money(attempt.price),
+          test: attempt.test,
+          shares: null,
+          state: ORDER_WORDS[attempt.status],
+          priceSet: momentView(attempt.at),
+          day: dayOf(attempt.at),
+          payment: "Not paid",
+          paymentUnresolved: false,
+          opened: query.get("details") === attempt.id,
+          closure: null,
+          closing: null,
+        }),
+      )
+    : [];
   const listing = onLapsed
     ? pagedListingOf({
         listing: theirs,
@@ -724,7 +763,14 @@ export const ordersView = (
   return {
     none: orders.orders.length === 0 && lapsed.of === 0,
     pressed: null,
-    testNote: testOrders(onLapsed ? (lapsed.page ?? { orders: [] }) : orders, mode),
+    testNote: testOrders(onLapsed ? { orders: lapsed.page ?? [] } : orders, mode),
+    lapsedApart:
+      !onLapsed && asked.q !== "" && lapsed.of > 0
+        ? {
+            says: `Purchases that lapsed unpaid are not searched: ${lapsed.of} ${lapsed.of === 1 ? "is" : "are"} under`,
+            to: "/orders?show=lapsed",
+          }
+        : null,
     listing,
     needsYou: needsHere
       ? {
@@ -836,7 +882,10 @@ const PAID_AFTER_CLOSURE =
  * Where the band over every page of the channel already says its payments are
  * tests, the page does not say it a second time.
  */
-const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
+const testOrders = (
+  orders: Readonly<{ orders: readonly Readonly<{ test: boolean }>[] }>,
+  mode: SurfaceMode,
+): string | null => {
   const tests = orders.orders.filter((order) => order.test).length;
   if (tests === 0 || SURFACE_WORDS[mode] !== null) {
     return null;

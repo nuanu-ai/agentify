@@ -881,11 +881,7 @@ export class PostgresStore implements Store {
     merchantId: string,
     page: { readonly offset: number; readonly limit: number },
   ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
-    const theirs = and(
-      eq(orders.merchantId, merchantId),
-      eq(orders.lapsed, true),
-      sql`${orders.record} -> 'order' ->> 'price' is not null`,
-    );
+    const theirs = and(eq(orders.merchantId, merchantId), eq(orders.lapsed, true));
     const [counted] = await this.#db
       .select({ of: sql<number>`count(*)::int` })
       .from(orders)

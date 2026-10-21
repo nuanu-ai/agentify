@@ -382,7 +382,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   );
   const note = (
     <p className="note">
-      Purchases that closed before they had a price are not listed; nothing was charged for them.
+      Purchases that closed before they had a price are not listed with the others; nothing was
+      charged for them, and those refused or run out are under Lapsed.
     </p>
   );
   if (view.none) {
@@ -409,6 +410,15 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                 `Only orders whose ID or product matches “${q}” are counted and shown.`,
             })}
       />
+      {view.lapsedApart === null ? null : (
+        <p className="search-cut">
+          {view.lapsedApart.says}{" "}
+          <Link to={view.lapsedApart.to} prefetch="intent">
+            Lapsed
+          </Link>
+          .
+        </p>
+      )}
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.closedElsewhere === null ? null : (
         <p className="quiet">

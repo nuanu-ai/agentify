@@ -752,7 +752,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       paidInto.document,
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
-        : { page: lapsed.document.orders, of: lapsed.document.of },
+        : { page: lapsed.document.attempts, of: lapsed.document.of },
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
       const links = await parts.woo.recoveryLinks(

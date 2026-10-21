@@ -892,7 +892,7 @@ describe("the purchases that lapsed unpaid", () => {
 
     const text = readable(served(() => <OrdersScreen view={view} />));
     expect(text).toContain("No order matches");
-    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed.");
+    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed");
   });
 
   it("are not offered beside a search, which reads only the other orders", () => {

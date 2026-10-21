@@ -659,10 +659,7 @@ export class MemoryStore implements Store {
     page: { readonly offset: number; readonly limit: number },
   ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
     const lapsed = [...this.#orders.values()]
-      .filter(
-        (record) =>
-          record.merchantId === merchantId && lapsedAttempt(record) && record.order.price !== null,
-      )
+      .filter((record) => record.merchantId === merchantId && lapsedAttempt(record))
       .sort(
         (one, other) =>
           other.order.timestamps.createdAt - one.order.timestamps.createdAt ||

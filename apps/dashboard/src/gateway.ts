@@ -12,6 +12,7 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
+import { outcomeFor } from "@agentify/core";
 import type {
   Caller,
   Gateway,
@@ -20,6 +21,7 @@ import type {
   MerchantKey,
   PayoutTransaction,
   RecordedPayoutSplit,
+  StoredOrder,
   WalletChangeRefusal,
 } from "@agentify/gateway";
 import {
@@ -60,6 +62,7 @@ import {
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
+import type { LapsedAttempt } from "./views.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -143,7 +146,7 @@ export interface GatewayClient {
    */
   lapsedAttempts(
     page: number,
-  ): Promise<Answer<{ readonly orders: OrderList; readonly of: number }>>;
+  ): Promise<Answer<{ readonly attempts: readonly LapsedAttempt[]; readonly of: number }>>;
   /** How many purchases lapsed unpaid, with none of them read. */
   lapsedCount(): Promise<Answer<number>>;
   /**
@@ -463,6 +466,25 @@ export const switchRefused = (to: Integration, waiting: readonly string[]): Answ
 };
 
 /**
+ * One purchase that lapsed unpaid as the dashboard lists it. It is not the
+ * API's order document, which carries a sale price and so cannot describe an
+ * attempt that ended before anybody named one: such an attempt has no price,
+ * and its moment is when it was asked for.
+ */
+const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
+  const { order } = record;
+  return {
+    id: order.id,
+    merchant_item_id: record.merchantItemId,
+    status: outcomeFor(order),
+    price:
+      order.price === null ? null : { amount: order.price.amount, currency: order.price.currency },
+    at: new Date(order.timestamps.quotedAt ?? order.timestamps.createdAt).toISOString(),
+    test: order.test,
+  };
+};
+
+/**
  * Built per request from the signed-in person, so two people signed into one
  * dashboard are two merchants.
  */
@@ -525,8 +547,7 @@ export const gatewayFor = (
           offset: (at - 1) * PAGE_ROWS,
           limit: PAGE_ROWS,
         });
-        const listed = answered(API_ROUTES.list_orders, merchantOrderList(read.orders));
-        return listed.ok ? done({ orders: listed.document, of: read.of }) : listed;
+        return done({ attempts: read.orders.map(lapsedAttemptOf), of: read.of });
       }),
     lapsedCount: () =>
       call("counting the purchases that lapsed unpaid", async () =>

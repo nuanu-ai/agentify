@@ -2413,9 +2413,9 @@ export class Gateway {
   }
 
   /**
-   * One page of this merchant's purchases that lapsed unpaid and carry a
-   * price, newest first, and how many there are, for the screen that lists
-   * them apart from the rest.
+   * One page of this merchant's purchases that lapsed unpaid, priced or not,
+   * newest first, and how many there are, for the screen that lists them
+   * apart from the rest.
    */
   async lapsedAttempts(
     merchantId: string,

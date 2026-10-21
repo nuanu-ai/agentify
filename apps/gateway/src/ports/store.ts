@@ -887,7 +887,7 @@ export interface Store {
   ): Promise<readonly StoredOrder[]>;
 
   /**
-   * One page of this merchant's attempts that lapsed unpaid and carry a price,
+   * One page of this merchant's attempts that lapsed unpaid, priced or not,
    * the newest first, and how many such attempts they have in all. A `limit`
    * of nothing reads only the count.
    */

@@ -488,7 +488,9 @@ describe("the orders a page reads", () => {
     });
     if (!priced.ok) throw new Error("the priced room was refused");
     harnessed.advance(1_000);
-    const worker = workUntilStopped(harnessed, { onQuote: () => ({ available: false }) });
+    const worker = workUntilStopped(harnessed, {
+      onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
+    });
     const unpriced = await harnessed.gateway.beginPurchase(priced.id, {});
     await worker.stop();
     if (unpriced.step !== "settled")

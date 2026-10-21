@@ -1945,7 +1945,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant opens Lapsed beside their orders to find a purchase a buyer says failed.",
       cause:
-        "Purchases priced and never paid, or refused before payment, are read apart from the other orders, a page at a time, and kept for thirty days.",
+        "Purchases priced and never paid, or refused before payment, priced or not, are read apart from the other orders, a page at a time, and kept for thirty days.",
     },
     ordersOf([
       ["vpn", "delivered"],
@@ -1958,7 +1958,15 @@ const ORDERS: GalleryState[] = [
           ["number", "expired"],
           ["vpn", "expired"],
           ["esimEurope", "rejected"],
-        ]),
+        ]).orders.map((order, at) => ({
+          id: order.id,
+          merchant_item_id: order.merchant_item_id,
+          status: order.status,
+          // The last was refused by the merchant's price check before any price.
+          price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
+          at: order.price.at,
+          test: order.test,
+        })),
         of: 3,
       },
     },
