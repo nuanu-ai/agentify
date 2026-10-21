@@ -43,11 +43,11 @@ afterEach(async () => {
  * is up to the test. The buyer's wallet has nothing left in it from then on,
  * as the payment layer would say of any payment it is asked about.
  */
-async function aPaidSale() {
+async function aPaidSale(sold: Card = card, { delivers = true } = {}) {
   const harnessed = await harness();
   const served = await serve(harnessed);
   const worker = workUntilStopped(harnessed, {
-    onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    ...(delivers ? { onOrder: () => ({ delivered: { access_code: "SESAME" } }) } : {}),
   });
   open = {
     harnessed,
@@ -58,7 +58,7 @@ async function aPaidSale() {
       await harnessed.stop();
     },
   };
-  const published = await harnessed.gateway.publishCard(harnessed.merchant.id, card);
+  const published = await harnessed.gateway.publishCard(harnessed.merchant.id, sold);
   if (!published.ok) throw new Error("the card would not publish");
   const purchase = `/x402/${published.id}/purchase`;
 
@@ -251,19 +251,25 @@ describe("a payment that paid one order, presented for another", () => {
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 2, charged: 2 });
   });
 
-  it("is refused for an order not paid yet without naming the order it paid", async () => {
-    // Before its charge the payment layer still passes the first order's
-    // authorization, and only its claim on the first order turns it away.
-    const sale = await aPaidSale();
-    const unpaid = await sale.anotherOrder();
-    sale.harnessed.facilitator.willVerify();
+  it.each([
+    ["is over", card],
+    ["is still open", { ...card, merchant_item_id: "esim-7-days", fulfillment: "async" } as Card],
+  ])(
+    "is refused for an order not paid yet without naming the order it paid, which %s",
+    async (_state, sold) => {
+      // The payment layer stands in here for one that has not seen the first
+      // charge yet, so only the claim on the first order turns the payment away.
+      const sale = await aPaidSale(sold, { delivers: sold.fulfillment === "sync" });
+      const unpaid = await sale.anotherOrder();
+      sale.harnessed.facilitator.willVerify();
 
-    const answered = await sale.present(relabelled(sale.paying, unpaid));
+      const answered = await sale.present(relabelled(sale.paying, unpaid));
 
-    expect(answered.status).toBe(409);
-    expect(codeOf(answered.body)).toBe("payment_already_spent");
-    expect(JSON.stringify(answered.body)).not.toContain(sale.orderId);
-  });
+      expect(answered.status).toBe(409);
+      expect(codeOf(answered.body)).toBe("payment_already_spent");
+      expect(JSON.stringify(answered.body)).not.toContain(sale.orderId);
+    },
+  );
 });
 
 describe("a purchase not paid for yet", () => {
