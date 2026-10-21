@@ -8,31 +8,6 @@
  */
 
 /**
- * The hundred characters a key's label is held to when it is issued, plus one
- * for the ellipsis that says a longer label was cut.
- */
-const LONGEST_ANNOUNCED_LABEL = 101;
-
-/**
- * A key's label as an announcement carries it: one line, cut to a hundred
- * characters with an ellipsis saying so. Stored labels are not all held to the
- * issuing limit, so every announced label goes through this.
- */
-export function announcedLabel(label: string): string {
-  const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
-  if (oneLine === "") {
-    return "a key whose name has no printable characters";
-  }
-  const characters = [...oneLine];
-  return characters.length <= LONGEST_ANNOUNCED_LABEL - 1
-    ? oneLine
-    : `${characters
-        .slice(0, LONGEST_ANNOUNCED_LABEL - 1)
-        .join("")
-        .trimEnd()}…`;
-}
-
-/**
  * Who asked for a wallet change or a new key: the account a dashboard session
  * is signed in as. It names the account, not a person, because a stolen
  * session is signed in as the owner all the same.

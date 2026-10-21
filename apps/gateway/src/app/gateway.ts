@@ -62,7 +62,7 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { type Announcement, type AskedInTheDashboard, announcedLabel } from "../announcements.js";
+import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
@@ -1159,7 +1159,7 @@ export class Gateway {
       this.#announceAfterwards({
         kind: "key_issued",
         merchant_id: merchantId,
-        key: { id: issued.key.id, label: announcedLabel(issued.key.label) },
+        key: { id: issued.key.id, label: issued.key.label },
         asked_with: { kind: "signed_in", email: askedBy.email },
       });
     }

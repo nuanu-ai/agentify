@@ -187,6 +187,24 @@ describe("the first address a merchant sets", () => {
     });
   });
 
+  it("is refused with a label of more than one line, and nothing is issued or announced", async () => {
+    // The message about a new key names it by its label, so a label it could
+    // not carry as one line is refused before anything is written.
+    const { harnessed } = await started();
+    const before = await harnessed.store.keysOf(harnessed.merchant.id);
+
+    await expect(
+      harnessed.gateway.issueMerchantKey(
+        harnessed.merchant.id,
+        "the stock worker\nhttps://example.com/login",
+        SIGNED_IN,
+      ),
+    ).rejects.toThrow(/one line/);
+
+    expect(await harnessed.store.keysOf(harnessed.merchant.id)).toStrictEqual(before);
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+  });
+
   it("never waits on its message", async () => {
     const { harnessed } = await started();
     const merchantId = await aNewMerchant(harnessed);
