@@ -243,8 +243,72 @@ describe("one paid order, in the merchant's own shop", () => {
         price: { amount: "25.00", currency: "USD" },
         download: { id: "dl_guide", name: "Guide" },
         paidInto: NO_SPLIT,
+        tax: { mode: "off" },
       },
     ]);
+  });
+
+  it("places a download from a shop whose prices hold their tax as the shop prices it, and delivers it", async () => {
+    // The tax probe's Bali shop answering for its download at 1.00: a line
+    // carrying totals is taxed on top (order 54), a line naming only the
+    // product is priced from it with the tax inside (order 55).
+    const inBali: WooRequest = async (_url, init) => {
+      const sent = JSON.parse(String(init?.body)) as {
+        transaction_id: string;
+        billing: unknown;
+        meta_data: unknown;
+        line_items: { total?: string }[];
+      };
+      const shopPriced = sent.line_items[0]?.total === undefined;
+      return Response.json(
+        {
+          id: shopPriced ? 55 : 54,
+          number: shopPriced ? "55" : "54",
+          order_key: "wc_order_55",
+          status: "completed",
+          currency: "USD",
+          total: shopPriced ? "1.00" : "1.11",
+          total_tax: shopPriced ? "0.10" : "0.11",
+          payment_method: "agentify",
+          transaction_id: sent.transaction_id,
+          billing: sent.billing,
+          meta_data: sent.meta_data,
+          line_items: [
+            {
+              product_id: 20,
+              quantity: 1,
+              subtotal: shopPriced ? "0.90" : "1.00",
+              total: shopPriced ? "0.90" : "1.00",
+              total_tax: shopPriced ? "0.10" : "0.11",
+            },
+          ],
+        },
+        { status: 201 },
+      );
+    };
+    const item = merchantItemIdFor("https://shop.example.com", "20");
+
+    const answer = await fillFromTheShop(
+      anOrder({ merchant_item_id: item, price: { ...anOrder().price, amount: "1.00" } }),
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(memoryWooShops(), (keys, sold) => createTheOrderInTheShop(keys, sold, inBali)),
+        inspectProduct: async () =>
+          showing({
+            kind: "download",
+            productId: "20",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "1.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "included" },
+          }),
+      },
+      NO_SPLIT,
+    );
+
+    expect(answer).toMatchObject({ delivered: { order_number: "55" } });
   });
 
   it("refuses an order whose price is not the shop's price, and places nothing", async () => {
@@ -1128,6 +1192,20 @@ describe("a price question off the merchant's stream", () => {
     expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
       "accepted-download-fingerprint",
     );
+  });
+
+  it("answers a download from a shop whose prices hold their tax at the price as entered", async () => {
+    const shops = memoryWooShops();
+
+    expect(
+      await answering(shops, inTheShop, async () =>
+        showing({ ...inTheShop, tax: { mode: "included" } }),
+      ),
+    ).toStrictEqual({
+      available: true,
+      price: { amount: "25.00", currency: "USD" },
+      as_of: NOW,
+    });
   });
 
   it("names no price when the shop does not show the product as one download", async () => {

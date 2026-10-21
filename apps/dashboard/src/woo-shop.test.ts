@@ -271,6 +271,7 @@ describe("creating the order", () => {
     download: { id: "dl_guide", name: "Guide" },
     // Checked against the wallet itself, before payments went to splits.
     paidInto: null,
+    tax: { mode: "off" as const },
   };
   const madeOrder = (overrides: Record<string, unknown> = {}) => ({
     id: 13,
@@ -480,6 +481,111 @@ describe("creating the order", () => {
       await stand.close();
       stand = null;
     }
+  });
+
+  /**
+   * The tax probe's answers for a download left to WooCommerce to price, as
+   * the shop in Bali gave them: the gross price paid, the tax inside it.
+   */
+  const ANSWERED_IN_BALI = [
+    {
+      productId: 20,
+      paid: "1.00",
+      answer: { total: "1.00", total_tax: "0.10", subtotal: "0.90", line: "0.90", lineTax: "0.10" },
+    },
+    {
+      productId: 28,
+      paid: "99.99",
+      answer: {
+        total: "99.99",
+        total_tax: "9.91",
+        subtotal: "90.08",
+        line: "90.08",
+        lineTax: "9.91",
+      },
+    },
+  ] as const;
+  const answeredWith = (
+    productId: number,
+    answer: {
+      total: string;
+      total_tax: string;
+      subtotal: string;
+      line: string;
+      lineTax: string;
+    },
+  ) =>
+    madeOrder({
+      total: answer.total,
+      total_tax: answer.total_tax,
+      line_items: [
+        {
+          product_id: productId,
+          quantity: 1,
+          subtotal: answer.subtotal,
+          total: answer.line,
+          total_tax: answer.lineTax,
+        },
+      ],
+    });
+
+  it("leaves an inclusive shop to price its download, and takes the order on at the price paid with the tax inside", async () => {
+    for (const { productId, paid, answer } of ANSWERED_IN_BALI) {
+      stand = await shopAnswering(() => ({ status: 201, body: answeredWith(productId, answer) }));
+
+      const made = await createOrder(connectionTo(stand.url), {
+        ...order,
+        productId: String(productId),
+        price: { amount: paid, currency: "USD" },
+        tax: { mode: "included" },
+      });
+
+      expect(made, paid).toMatchObject({ ok: true, id: "13" });
+      // Totals sent on the line are read as amounts before tax and taxed on
+      // top, so the line names the product and lets the shop price it.
+      expect(JSON.parse(stand.asked[0]?.body ?? "{}").line_items, paid).toEqual([
+        { product_id: productId, quantity: 1 },
+      ]);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not take on an inclusive shop's order whose total is not what was paid", async () => {
+    // The probe's German shop, keeping one gross price for every buyer, still
+    // taxed a Paris order at the French rate: 1.01 for a price of 1.00.
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: answeredWith(20, {
+        total: "1.01",
+        total_tax: "0.17",
+        subtotal: "0.84",
+        line: "0.84",
+        lineTax: "0.17",
+      }),
+    }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: "20",
+      price: { amount: "1.00", currency: "USD" },
+      tax: { mode: "included" },
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
+  });
+
+  it("does not take on the order of a shop sold as calculating no tax when the order carries tax", async () => {
+    const [{ productId, paid, answer }] = ANSWERED_IN_BALI;
+    stand = await shopAnswering(() => ({ status: 201, body: answeredWith(productId, answer) }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: String(productId),
+      price: { amount: paid, currency: "USD" },
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
   });
 
   it("says a shop that would not answer is worth asking again", async () => {
@@ -1678,6 +1784,7 @@ describe("the protected product check", () => {
       price: read.product.price,
       download: { id: read.product.downloadId, name: read.product.fileName },
       paidInto: null,
+      tax: read.product.tax,
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
