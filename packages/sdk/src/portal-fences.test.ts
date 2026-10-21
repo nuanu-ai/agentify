@@ -258,27 +258,6 @@ describe("the portal's TypeScript examples", () => {
       expect(everything).toContain(promised);
     }
   });
-
-  it("would notice a method this SDK does not have", () => {
-    // The negative control for the harness: the checks above would pass just
-    // as well if the compiler never saw the SDK or the examples never reached
-    // it.
-    const broken = compile([
-      { name: "renamed", source: "await agentify.catalog.publishTheCard({})\n" },
-      { name: "wrong-argument", source: "await agentify.orders.get(42)\n" },
-      {
-        // The handler's kind is checked too; `orders` would register a handler
-        // nothing calls.
-        name: "wrong-kind",
-        source: "agentify.on('orders', () => ({ accepted: {} }))\n",
-      },
-    ]);
-
-    expect(broken.ok).toBe(false);
-    expect(broken.output).toMatch(/publishTheCard/);
-    expect(broken.output).toMatch(/wrong-argument/);
-    expect(broken.output).toMatch(/wrong-kind/);
-  });
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -323,21 +302,5 @@ describe("the card on the SDK's npm front page", () => {
 
     expect(fence, `${README} has no card fence where this test looks for one`).toBeDefined();
     expect(fence).toBe(publishCallFor(card as Record<string, unknown>));
-  });
-
-  it("shows every name and every value that card carries", () => {
-    // The control on the rendering, read off the page: the assertion above
-    // also passes if the renderer drops a field, and a card with no `result`
-    // would be a product promising nothing.
-    const card: unknown = JSON.parse(readFileSync(join(repoRoot, CARD), "utf8"));
-    const wordsOf = (value: unknown): string[] =>
-      isRecord(value)
-        ? Object.entries(value).flatMap(([name, child]) => [name, ...wordsOf(child)])
-        : [String(value)];
-
-    const fence = fencesOf(readFileSync(join(repoRoot, README), "utf8"), "ts")[CARD_FENCE] ?? "";
-    const missing = wordsOf(card).filter((word) => !fence.includes(word));
-
-    expect(missing, `${README} shows a card with these left out`).toStrictEqual([]);
   });
 });

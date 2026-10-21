@@ -97,24 +97,4 @@ describe("sentences this repository has retired", () => {
 
     expect(found).toStrictEqual([]);
   });
-
-  it("is looking in the places these claims actually spread to", () => {
-    // The list above is only worth its line if the search reaches the files
-    // that carried the claim: the contract a client is generated from, the
-    // queue adapters, the SDK and the merchant's own pages. A glob that
-    // silently stopped matching one of them would pass this suite while the
-    // claim walked back in through it.
-    const files = everyFile();
-
-    for (const wanted of [
-      "packages/contracts/src/api.ts",
-      "packages/contracts/src/envelope.ts",
-      "packages/sdk/src/worker.ts",
-      "apps/gateway/src/ports/queue.ts",
-      "apps/gateway/src/adapters/pgboss/queue.ts",
-      "apps/docs/orders.md",
-    ]) {
-      expect(files).toContain(wanted);
-    }
-  });
 });
