@@ -51,7 +51,7 @@ const scannerSources = [
 const shared: TestOptions = {
   environment: "node",
   execArgv: ["--no-experimental-webstorage"],
-  setupFiles: [source("./vitest.setup.ts")],
+  setupFiles: [source("./vitest.setup.ts"), source("./vitest.logs.setup.ts")],
   passWithNoTests: false,
   testTimeout: 30_000,
   hookTimeout: 60_000,

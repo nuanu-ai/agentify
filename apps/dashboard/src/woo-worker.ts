@@ -17,6 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { failureNamed } from "@agentify/gateway/failure-named";
+import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   type HandlerAnswer,
   localityOf,
@@ -105,7 +106,7 @@ export const filledAsPaid = async (
   const paid = await gateway.paidInto(order.id);
   if (!paid.ok) {
     console.error(
-      `[dashboard] where the payment for ${order.id} went could not be read, so the shop is not asked yet: ${paid.why}`,
+      `[dashboard] where the payment for ${orderFingerprint(order.id)} went could not be read, so the shop is not asked yet: ${paid.why}`,
     );
     return null;
   }
@@ -319,7 +320,7 @@ export const fillFromTheShop = async (
       return { delivered: deliveryFromWooPermission(durable.permission) };
     }
     console.error(
-      `[dashboard] ${order.id} was created in WooCommerce but its delivery was not durably bound`,
+      `[dashboard] ${orderFingerprint(order.id)} was created in WooCommerce but its delivery was not durably bound`,
     );
     return null;
   }
@@ -328,14 +329,18 @@ export const fillFromTheShop = async (
     // Nothing is answered and the claim stays: the request may have reached the
     // shop, so the next attempt must meet "we do not know" rather than a clean
     // slate.
-    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result`);
+    console.error(
+      `[dashboard] ${orderFingerprint(order.id)} has no usable WooCommerce creation result`,
+    );
     return null;
   }
 
   // A response after POST is not proof the shop did not commit, so the
   // obligation stays `create_unknown` and needs exact-id recovery, rather than
   // turning a rewritten 4xx into a second POST.
-  console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
+  console.error(
+    `[dashboard] ${orderFingerprint(order.id)} has no verifiable WooCommerce creation result`,
+  );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
@@ -417,7 +422,7 @@ const fillParcelFromTheShop = async (
     )(connection, productId, localityOf(address.data)),
   ]);
   if (!inspected.ok && inspected.again) {
-    console.error(`[dashboard] ${order.id} waits: ${inspected.why}`);
+    console.error(`[dashboard] ${orderFingerprint(order.id)} waits: ${inspected.why}`);
     return null;
   }
   if (!inspected.ok && !inspected.saidNo) {
@@ -436,7 +441,7 @@ const fillParcelFromTheShop = async (
     );
   }
   if (!rates.ok && rates.again) {
-    console.error(`[dashboard] ${order.id} waits: ${rates.why}`);
+    console.error(`[dashboard] ${orderFingerprint(order.id)} waits: ${rates.why}`);
     return null;
   }
   if (!rates.ok) {
@@ -518,7 +523,7 @@ const fillParcelFromTheShop = async (
       return { accepted: {} };
     }
     console.error(
-      `[dashboard] ${order.id} was created in WooCommerce as order ${made.id} but was not durably bound`,
+      `[dashboard] ${orderFingerprint(order.id)} was created in WooCommerce as order ${made.id} but was not durably bound`,
     );
     return null;
   }
@@ -531,11 +536,13 @@ const fillParcelFromTheShop = async (
       : `; the shop's order ${made.id} does not match it and is not to be shipped`;
   if (made.again) {
     // Not answered, and the claim stays: the order may be in the shop.
-    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result${inTheShop}`);
+    console.error(
+      `[dashboard] ${orderFingerprint(order.id)} has no usable WooCommerce creation result${inTheShop}`,
+    );
     return null;
   }
   console.error(
-    `[dashboard] ${order.id} has no verifiable WooCommerce creation result${inTheShop}`,
+    `[dashboard] ${orderFingerprint(order.id)} has no verifiable WooCommerce creation result${inTheShop}`,
   );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
@@ -550,7 +557,9 @@ const UNREADABLE_PRODUCT =
  * reason carries no address.
  */
 const unreadable = (orderId: string, why: string): void => {
-  console.error(`[dashboard] ${orderId} is refused, the shop's answer unread: ${why}`);
+  console.error(
+    `[dashboard] ${orderFingerprint(orderId)} is refused, the shop's answer unread: ${why}`,
+  );
 };
 
 const samePermission = (left: WooPermission, right: WooPermission): boolean =>
@@ -564,10 +573,10 @@ const samePermission = (left: WooPermission, right: WooPermission): boolean =>
 
 const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): HandlerAnswer => {
   console.error(
-    `[dashboard] ${orderId} was already being placed in the shop at ${shopNamed(shopUrl)} at` +
+    `[dashboard] ${orderFingerprint(orderId)} was already being placed in the shop at ${shopNamed(shopUrl)} at` +
       ` ${attemptedAt.toISOString()} and that attempt never reported back. It is refused` +
-      " rather than placed again; look for an order carrying this identifier as its" +
-      " transaction id before deciding nothing happened.",
+      " rather than placed again; find the identifier this fingerprint stands for and look" +
+      " for a shop order carrying it as its transaction id before deciding nothing happened.",
   );
   return {
     refused: {
@@ -675,7 +684,7 @@ export const turnOnce = async (
       const said = await gateway.answerOrder(envelope.payload.id, answer);
       if (!said.ok) {
         console.error(
-          `[dashboard] the answer for ${envelope.payload.id} was not accepted: ${said.why}`,
+          `[dashboard] the answer for ${orderFingerprint(envelope.payload.id)} was not accepted: ${said.why}`,
         );
       }
     });
@@ -836,14 +845,14 @@ export const followShipments = async (
         if (parts.now().getTime() - parcel.placedAt.getTime() > FOLLOWED_FOR_MS) {
           await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
           console.error(
-            `[dashboard] ${parcel.orderId} was not completed in the shop within thirty days of` +
+            `[dashboard] ${orderFingerprint(parcel.orderId)} was not completed in the shop within thirty days of` +
               " being placed, and is followed no further",
           );
           continue;
         }
         if (parcel.shopOrigin !== origin) {
           console.error(
-            `[dashboard] ${parcel.orderId} was sold from ${parcel.shopOrigin}, and its order is not` +
+            `[dashboard] ${orderFingerprint(parcel.orderId)} was sold from ${parcel.shopOrigin}, and its order is not` +
               ` read in ${origin}, the shop this account connects now`,
           );
           continue;
@@ -851,13 +860,15 @@ export const followShipments = async (
         const said = await read(connection, parcel.wooOrderId, parcel.orderId);
         if (said.kind === "waiting") continue;
         if (said.kind === "unknown") {
-          console.error(`[dashboard] whether ${parcel.orderId} shipped is not known: ${said.why}`);
+          console.error(
+            `[dashboard] whether ${orderFingerprint(parcel.orderId)} shipped is not known: ${said.why}`,
+          );
           continue;
         }
         if (said.kind === "ended") {
           await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
           console.error(
-            `[dashboard] the shop ended ${parcel.orderId} as ${said.status} without completing it;` +
+            `[dashboard] the shop ended ${orderFingerprint(parcel.orderId)} as ${said.status} without completing it;` +
               " it is followed no further and becomes an unfulfilled order when its time to ship runs out",
           );
           continue;
@@ -870,12 +881,14 @@ export const followShipments = async (
         // Nothing answered, or the payment is still settling, which the gateway
         // asks to be called again after.
         if (recorded.status === 0 || recorded.code === "settle_in_flight") {
-          console.error(`[dashboard] the shipment of ${parcel.orderId} waits: ${recorded.why}`);
+          console.error(
+            `[dashboard] the shipment of ${orderFingerprint(parcel.orderId)} waits: ${recorded.why}`,
+          );
           continue;
         }
         await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
         console.error(
-          `[dashboard] the gateway refused the shipment of ${parcel.orderId}` +
+          `[dashboard] the gateway refused the shipment of ${orderFingerprint(parcel.orderId)}` +
             ` (${recorded.code ?? recorded.status}): ${recorded.why}`,
         );
       }

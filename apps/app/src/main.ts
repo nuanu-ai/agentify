@@ -21,6 +21,7 @@
 import { loadConfig as dashboardConfigOf } from "@agentify/dashboard/config";
 import { builtPages, dashboardFor, pagesFromSource } from "@agentify/dashboard/start";
 import { loadConfig as gatewayConfigOf } from "@agentify/gateway/config";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import { startGateway } from "@agentify/gateway/start";
 import { listenForMetrics } from "@agentify/observability/source";
 
@@ -78,7 +79,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     shutDown(signal).then(
       () => process.exit(0),
       (thrown: unknown) => {
-        console.error("[app] the shutdown did not finish cleanly", thrown);
+        console.error(`[app] the shutdown did not finish cleanly: ${failureNamed(thrown)}`);
         process.exit(1);
       },
     );

@@ -8,6 +8,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   buyOverHttp,
   type Harness,
@@ -856,8 +857,10 @@ describe("the whole way through, against a real gateway", () => {
 
     expect(answer).toBeNull();
     expect(shop.placed).toStrictEqual([]);
-    // The merchant's log says which order waits, and why.
-    expect(written).toMatch(/ord_1.*could not be read.*nothing answered/);
+    // The log says which order waits, by the order's fingerprint, and why.
+    expect(written).toMatch(/could not be read.*nothing answered/);
+    expect(written).toContain(orderFingerprint("ord_1"));
+    expect(written).not.toContain("ord_1");
   });
 
   it("keeps a committed order unknown when its successful response body is lost", async () => {
@@ -2844,6 +2847,80 @@ describe("what the worker writes in the merchant's log when something fails", ()
         await worker.stop();
       }
     });
+
+  it("names an order whose answer the gateway did not take by its fingerprint", async () => {
+    const shop = aShopThatAccepts();
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            {
+              id: "env_order",
+              kind: "order" as const,
+              sent_at: new Date().toISOString(),
+              payload: anOrder(),
+            },
+          ],
+        },
+      }),
+      paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
+      answerOrder: async () => ({ ok: false as const, status: 409, why: "the order is over" }),
+    } as never;
+    const parts = {
+      ...filling(memoryWooShops(), shop.place),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+    };
+
+    const written = await loggedWhile(() => turnOnce(connection(), parts));
+
+    expect(written).toContain("was not accepted: the order is over");
+    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).not.toContain(anOrder().id);
+  });
+
+  it("names an order whose delivery could not be bound without the buyer's download secrets", async () => {
+    // The shop's order key and the buyer's uid open that buyer's download.
+    const shops = memoryWooShops();
+    const unbound: WooShops = {
+      ...shops,
+      recordOrder: async () => false,
+      knownOrder: async () => null,
+    };
+    const place = async (_keys: ShopKeys, sold: SoldItem): Promise<OrderMade> => ({
+      ok: true,
+      id: "57",
+      number: "57",
+      orderKey: "wc_order_Q2xh7RkP0aZ3m",
+      downloadId: sold.download.id,
+    });
+    const paid = { paidInto: async () => ({ ok: true as const, document: NO_SPLIT }) };
+
+    let answer: unknown;
+    const written = await loggedWhile(async () => {
+      answer = await filledAsPaid(
+        paid as never,
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        filling(unbound, place),
+      );
+    });
+
+    expect(answer).toBeNull();
+    expect(written).toContain("not durably bound");
+    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).not.toContain("wc_order_");
+    expect(written).not.toContain("download_file");
+  });
 
   it("names the account whose turn failed", async () => {
     const shops = memoryWooShops();
