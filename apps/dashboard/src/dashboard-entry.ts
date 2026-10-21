@@ -42,8 +42,13 @@ export type LinkDestination = DashboardDestination | Readonly<{ report: string }
 /**
  * The waits differ by an order of magnitude (under a minute against most of an
  * hour), so a page that says how long to wait has to know which one it hit.
+ * `interval` and `hourly` are the address's own limits; `client` is the hour's
+ * allowance of the visitor the request came from, `shared` the one allowance
+ * of every request whose address names no visitor, and `ceiling` the channel's
+ * for everybody. None of the last three depends on the address typed, so none
+ * says anything about it.
  */
-export type LinkWall = "interval" | "hourly";
+export type LinkWall = "interval" | "hourly" | "client" | "shared" | "ceiling";
 
 /**
  * Both answers carry the moment the address may ask again: a refusal's is the
@@ -55,6 +60,15 @@ export type LinkRequestResult =
   | Readonly<{ status: "accepted"; retryAt: Date }>
   | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
+
+/**
+ * Who asked for a link. `client` is the address the request came from, as the
+ * edge in front of the dashboard wrote it. `clickId` is kept with the link, as
+ * for `startGoogle`, and reported only if the link's press makes the address's
+ * first verified account; a click id not of the tracker's form throws, and
+ * nothing is sent or counted.
+ */
+type LinkAsker = Readonly<{ client: string; clickId?: string }>;
 
 /** What the page a link lands on draws: the address the link signs in. */
 type LinkLanding = Readonly<{ email: string }>;
@@ -138,15 +152,10 @@ export interface DashboardIdentity {
   startGoogle(destination: DashboardDestination, clickId?: string): Promise<GoogleStartResult>;
   finishGoogle(query: URLSearchParams, cookie: string | undefined): Promise<GoogleFinishResult>;
 
-  /**
-   * `clickId` is kept with the link, as for `startGoogle`, and reported only if
-   * the link's press makes the address's first verified account. A click id not
-   * of the tracker's form throws, and nothing is sent or counted.
-   */
   requestLink(
     email: string,
     destination: DashboardDestination,
-    clickId?: string,
+    asker: LinkAsker,
   ): Promise<LinkRequestResult>;
   /**
    * Read without spending the link; null for a link that no longer opens

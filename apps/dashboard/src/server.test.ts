@@ -51,8 +51,11 @@ import {
 import {
   type Identity,
   identityFor,
+  LINK_CHANNEL_LIMIT,
+  LINK_CLIENT_LIMIT,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
+  LINK_UNKNOWN_CLIENT_LIMIT,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
@@ -859,6 +862,139 @@ describe("the passwordless dashboard door", () => {
     expect(formTo(again.html, "post", "/sign-in")).toBeDefined();
     expect(formTo(again.html, "get", "/sign-in")).toBeDefined();
     expect(mails).toHaveLength(1);
+  });
+
+  /** Documentation addresses, as the edge would write them: none of them is anybody's. */
+  const CROWDED = { "x-forwarded-for": "198.51.100.7" };
+  const ELSEWHERE = { "x-forwarded-for": "198.51.100.8" };
+  const GOOGLE_ON = { GOOGLE_CLIENT_ID: "offline-client", GOOGLE_CLIENT_SECRET: "offline-secret" };
+
+  /** Each refusal page with its address taken out, which is all two of them may differ by. */
+  const withoutAddress = (page: Visit, email: string): string =>
+    readable(page.html).replaceAll(email, "the address");
+
+  const spendTheClientsHour = async (browser: Browser): Promise<void> => {
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      const page = await browser
+        .sending(CROWDED)
+        .post("/sign-in", { email: `person-${sent}@example.com` });
+      expect(readable(page.html)).toContain("is on its way");
+    }
+  };
+
+  it("sends no link past one client's hourly allowance, says so the same way for an address with an account and one without, and offers Google", async () => {
+    const { browser, mails } = await started({ dashboard: GOOGLE_ON });
+    await spendTheClientsHour(browser);
+
+    const known = await browser.sending(CROWDED).post("/sign-in", { email: PERSON });
+    const unknown = await browser
+      .sending(CROWDED)
+      .post("/sign-in", { email: "nobody@example.com" });
+
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT);
+    for (const page of [known, unknown]) {
+      expect(page.status).toBe(202);
+      expect(Number(page.headers.get("retry-after"))).toBeGreaterThan(LINK_MIN_INTERVAL_MS / 1_000);
+      expect(readable(page.html)).not.toContain("is on its way");
+      expect(formTo(page.html, "post", "/sign-in/google")).toBeDefined();
+      const resend = waitingButton(page.html);
+      expect(resend.attributes.get("data-link-wait")).toBe(page.headers.get("retry-after"));
+      expect(resend.attributes.has("disabled")).toBe(false);
+    }
+    expect(withoutAddress(known, PERSON)).toBe(withoutAddress(unknown, "nobody@example.com"));
+    // Not the page an address that spent its own hour gets: that one would
+    // send the person to another address, which does not help here.
+    expect(readable(known.html)).not.toContain("three links an hour");
+
+    const elsewhere = await browser
+      .sending(ELSEWHERE)
+      .post("/sign-in", { email: "nobody@example.com" });
+    expect(readable(elsewhere.html)).toContain("is on its way");
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT + 1);
+  });
+
+  it("offers no Google sign-in on a client's refusal where Google is not configured", async () => {
+    const { browser, mails } = await started();
+    await spendTheClientsHour(browser);
+
+    const refused = await browser.sending(CROWDED).post("/sign-in", { email: PERSON });
+
+    expect(readable(refused.html)).not.toContain("is on its way");
+    expect(formTo(refused.html, "post", "/sign-in/google")).toBeUndefined();
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT);
+  });
+
+  it("does not count two visitors arriving through one private ingress address as one client", async () => {
+    const { browser, mails } = await started();
+    const throughTheIngress = browser.sending({ "x-forwarded-for": "::ffff:10.20.10.11" });
+
+    for (let sent = 0; sent <= LINK_CLIENT_LIMIT; sent += 1) {
+      const page = await throughTheIngress.post("/sign-in", {
+        email: `visitor-${sent}@example.com`,
+      });
+      expect(readable(page.html)).toContain("is on its way");
+    }
+
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT + 1);
+  });
+
+  it("refuses links through a shared ingress address past their shared hour, the same way for every address, and offers Google", async () => {
+    const { browser, mails } = await started({ dashboard: GOOGLE_ON });
+    const throughTheIngress = browser.sending({ "x-forwarded-for": "::ffff:10.20.10.11" });
+    for (let sent = 0; sent < LINK_UNKNOWN_CLIENT_LIMIT; sent += 1) {
+      await throughTheIngress.post("/sign-in", { email: `visitor-${sent}@example.com` });
+    }
+
+    const known = await throughTheIngress.post("/sign-in", { email: PERSON });
+    const unknown = await throughTheIngress.post("/sign-in", { email: "nobody@example.com" });
+
+    expect(mails).toHaveLength(LINK_UNKNOWN_CLIENT_LIMIT);
+    for (const page of [known, unknown]) {
+      expect(readable(page.html)).not.toContain("is on its way");
+      expect(formTo(page.html, "post", "/sign-in/google")).toBeDefined();
+    }
+    expect(withoutAddress(known, PERSON)).toBe(withoutAddress(unknown, "nobody@example.com"));
+  });
+
+  it("counts a client by the address the edge added, not by one a browser put in front of it", async () => {
+    const { browser, mails } = await started();
+    await spendTheClientsHour(browser);
+
+    const forged = await browser
+      .sending({ "x-forwarded-for": `203.0.113.99, ${CROWDED["x-forwarded-for"]}` })
+      .post("/sign-in", { email: PERSON });
+
+    expect(readable(forged.html)).not.toContain("is on its way");
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT);
+  });
+
+  it("sends nobody a link once the channel has sent its hour's links, says so the same way for every address, and offers Google", async () => {
+    const { browser, mails, rows } = await started({ dashboard: GOOGLE_ON });
+    const now = Date.now();
+    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+      rows.dashboard_link_sends?.push({
+        id: `arranged-${sent}`,
+        emailHash: `arranged-${sent}`,
+        clientHash: `arranged-${sent}`,
+        purpose: "dashboard",
+        sentAt: new Date(now),
+        expiresAt: new Date(now + 7 * 24 * 60 * 60 * 1000),
+      });
+    }
+
+    const known = await browser.sending(CROWDED).post("/sign-in", { email: PERSON });
+    const unknown = await browser
+      .sending(ELSEWHERE)
+      .post("/sign-in", { email: "nobody@example.com" });
+
+    expect(mails).toHaveLength(0);
+    for (const page of [known, unknown]) {
+      expect(page.status).toBe(202);
+      expect(Number(page.headers.get("retry-after"))).toBeGreaterThan(LINK_MIN_INTERVAL_MS / 1_000);
+      expect(readable(page.html)).not.toContain("is on its way");
+      expect(formTo(page.html, "post", "/sign-in/google")).toBeDefined();
+    }
+    expect(withoutAddress(known, PERSON)).toBe(withoutAddress(unknown, "nobody@example.com"));
   });
 
   it("does not spend a query token on GET and opens it once on an explicit same-origin POST", async () => {

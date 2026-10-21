@@ -9,6 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
+import { clientAddressOf } from "../../src/client-address.js";
 import { acted, answer, carried, formOf, useChrome } from "../answer.js";
 import { AskScreen, LinkRequestedScreen, MailUnavailableScreen } from "../screens/sign-in.js";
 import { services } from "../services.js";
@@ -28,7 +29,11 @@ export async function loader(asked: LoaderFunctionArgs) {
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
-  return acted(async () => await context.get(services).signIn.ask(await formOf(request)), asked);
+  const client = clientAddressOf(request.headers.get("x-forwarded-for"));
+  return acted(
+    async () => await context.get(services).signIn.ask(await formOf(request), client),
+    asked,
+  );
 }
 
 export default function SignIn() {
@@ -43,6 +48,7 @@ export default function SignIn() {
         email={view.email}
         destination={view.destination}
         answer={view.answer}
+        googleEnabled={view.googleEnabled}
         {...(view.clickId === undefined ? {} : { clickId: view.clickId })}
       />
     );

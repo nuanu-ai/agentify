@@ -42,6 +42,7 @@ const requested = (answer: LinkAnswer) =>
       email={PERSON}
       destination="default"
       answer={answer}
+      googleEnabled={false}
     />
   ));
 

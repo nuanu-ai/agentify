@@ -1350,6 +1350,104 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
+  it("sends no report link past one client's hour, whatever scans and addresses it uses, and still sends another client's", async () => {
+    // Documentation addresses, as the edge writes them.
+    const crowded = { "x-forwarded-for": "198.51.100.7" };
+    const elsewhere = { "x-forwarded-for": "198.51.100.8" };
+    const sentBefore = sentLinks.length;
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      // Two scans, so neither scan's own hour is what refuses.
+      for (const label of ["client-hour-a", "client-hour-b"]) {
+        const { scan, accessToken } = await createFreshCompletedScan(label);
+        for (let asked = 0; asked < 5; asked += 1) {
+          const answer = await registrationRequest(
+            scan.id,
+            accessToken,
+            registrationBody(`${label}-${asked}@example.com`),
+            crowded,
+          );
+          expect(answer.status).toBe(202);
+        }
+      }
+      const { scan, accessToken } = await createFreshCompletedScan("client-hour-c");
+
+      const refused = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("client-hour-c@example.com"),
+        crowded,
+      );
+      expect(refused.status).toBe(429);
+      const refusal = (await refused.json()) as {
+        error: { code: string; retry_after_seconds?: number };
+      };
+      expect(refusal.error.code).toBe("verification_link_cooldown");
+      expect(refusal.error.retry_after_seconds).toBeGreaterThan(60);
+      expect(sentLinks).toHaveLength(sentBefore + 10);
+
+      const another = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("client-hour-c@example.com"),
+        elsewhere,
+      );
+      expect(another.status).toBe(202);
+      expect(sentLinks).toHaveLength(sentBefore + 11);
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
+  it("counts strangers' report link asks through addresses that name no visitor in one shared hour, larger than one visitor's", async () => {
+    const sentBefore = sentLinks.length;
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      // Three scans, so no scan's own hour is what refuses; the ingress, a
+      // port-less private address and an unreadable value share one hour.
+      for (const [label, forwarded] of [
+        ["shared-a", "::ffff:10.20.10.11"],
+        ["shared-b", "10.0.0.1"],
+        ["shared-c", "not an address"],
+      ] as const) {
+        const { scan, accessToken } = await createFreshCompletedScan(label);
+        for (let asked = 0; asked < 10; asked += 1) {
+          const answer = await registrationRequest(
+            scan.id,
+            accessToken,
+            registrationBody(`${label}-${asked}@example.com`),
+            { "x-forwarded-for": forwarded },
+          );
+          expect(answer.status).toBe(202);
+        }
+      }
+      const { scan, accessToken } = await createFreshCompletedScan("shared-d");
+
+      const refused = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("shared-d@example.com"),
+        { "x-forwarded-for": "[::ffff:10.20.10.11]:443" },
+      );
+      expect(refused.status).toBe(429);
+      expect(sentLinks).toHaveLength(sentBefore + 30);
+      const visitor = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("shared-d@example.com"),
+        { "x-forwarded-for": "198.51.100.9" },
+      );
+      expect(visitor.status).toBe(202);
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+      // The other tests here ask without a forwarded address, into this same
+      // shared hour.
+      await getDatabase().pool.query(
+        "delete from rate_limit_events where kind = 'registration_ip_hour'",
+      );
+    }
+  });
+
   it("refuses a signed-in ask past the scan's hour as asks, not as links", async () => {
     const { scan, accessToken } = await createFreshCompletedScan("signed-in-cooldown");
     const cookie = signedInAs("signed-in-cooldown@example.com");

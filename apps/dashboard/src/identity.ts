@@ -9,6 +9,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { countedClient } from "@agentify/scanner/ip";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
@@ -23,7 +24,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { isAPIError } from "better-auth/api";
 import { getCookies } from "better-auth/cookies";
 import { magicLink } from "better-auth/plugins/magic-link";
-import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
@@ -109,6 +110,25 @@ const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 const LINK_RATE_LIMIT = 3;
 export const LINK_MIN_INTERVAL_MS = 60 * 1000;
+/** Sign-in links in the rolling hour from one visitor, whatever addresses it types. */
+export const LINK_CLIENT_LIMIT = 10;
+/**
+ * Sign-in links in the rolling hour from every request whose address names no
+ * visitor, together: on a channel whose ingress hides visitors' addresses, all
+ * of its visitors.
+ */
+export const LINK_UNKNOWN_CLIENT_LIMIT = 30;
+/**
+ * Links of one purpose the channel sends in the rolling hour, whoever asks. A
+ * mail provider pauses a sender whose bounces and complaints climb, and both
+ * channels send from one domain: a pause would stop email sign-in everywhere
+ * and every live payout-wallet change, which waits on its announcement mail.
+ * The ceiling turns that into a wall that clears within the hour. It is a lever
+ * as well as a guard: twenty addresses asking ten links each spend it, and then
+ * nobody on the channel gets an emailed link until the hour clears. Google
+ * sign-in does not pass through it. Its first refusal in a window is logged.
+ */
+export const LINK_CHANNEL_LIMIT = 200;
 const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CLEANUP_BATCH = 100;
@@ -207,6 +227,7 @@ const googleControlsEmail = (email: string, profile: Record<string, unknown>): b
 const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
 
 export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
+  const watchCeiling = ceilingWatch();
   const postman = parts.postman ?? postmanFor(config);
   const reporting = config.registrationPostback !== null;
   const reportsOf = (accountId: string, clickId: string): AdReport[] =>
@@ -875,15 +896,30 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // The sweep of old links runs in a transaction of its own, first: inside
     // the one that waits on the mail provider it would hold other requests up
     // behind a send, and a refused send would undo it.
-    async requestLink(rawEmail, destination, clickId) {
+    async requestLink(rawEmail, destination, { client, clickId }) {
       const email = emailAs(rawEmail);
+      const counted = countedClient(client);
+      const asking: ClientCount = counted.visitor
+        ? {
+            hash: clientKey(config.authSecret, counted.key),
+            limit: LINK_CLIENT_LIMIT,
+            wall: "client",
+          }
+        : {
+            hash: clientKey(config.authSecret, UNKNOWN_CLIENT),
+            limit: LINK_UNKNOWN_CLIENT_LIMIT,
+            wall: "shared",
+          };
       try {
         if (parts.pool === undefined) {
           await inMemoryTransaction(async (_bound, rows) => {
             cleanupOldLinksInMemory(rows, new Date());
           });
           return await inMemoryTransaction(async (bound, rows) => {
-            const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
+            const rated = watchCeiling(
+              "dashboard",
+              memoryRate(rows, rateKey(config.authSecret, email), "dashboard", asking),
+            );
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
             return await requestWith(bound, email, destination, clickId, rated.retryAt);
@@ -897,7 +933,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
         return await db.transaction(async (tx) => {
           await lockEmail(tx, email);
-          const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
+          const rated = watchCeiling(
+            "dashboard",
+            await postgresRate(tx, rateKey(config.authSecret, email), "dashboard", asking),
+          );
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
           return await requestWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
@@ -920,7 +959,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const now = new Date();
             cleanupOldLinksInMemory(rows, now);
             const digestKey = reportDigestKeyInMemory(rows, now);
-            const rated = memoryRate(rows, rateKey(digestKey, request.email), "report");
+            const rated = watchCeiling(
+              "report",
+              memoryRate(rows, rateKey(digestKey, request.email), "report", null),
+            );
             if (!rated.sent) {
               return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
             }
@@ -942,7 +984,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           const digestKey = await reportDigestKeyInPostgres(tx, now);
           await cleanupOldLinksInPostgres(tx, now);
           await lockEmail(tx, request.email);
-          const rated = await postgresRate(tx, rateKey(digestKey, request.email), "report");
+          const rated = watchCeiling(
+            "report",
+            await postgresRate(tx, rateKey(digestKey, request.email), "report", null),
+          );
           if (!rated.sent) {
             return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
           }
@@ -1443,29 +1488,59 @@ function goesWithTheDeletion(
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
+const clientKey = (secret: string, client: string): string =>
+  createHmac("sha256", secret).update(`dashboard-link-client:${client}`).digest("hex");
+
+/** Never a visitor's key, which is an address or a /64. */
+const UNKNOWN_CLIENT = "unknown";
+
+/** Whom a sign-in link is counted against besides its address, and how many it gets. */
+type ClientCount = Readonly<{ hash: string; limit: number; wall: "client" | "shared" }>;
+
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
 
 /**
  * Both arms carry the moment the address may ask again: for a refusal, the
- * limit that refused; for a send, the limit in front of the next link, read
- * from the rows the send just joined.
+ * limit that refused; for a send, the address's limit in front of the next
+ * link, read from the rows the send just joined.
  */
 type LinkRate =
   | Readonly<{ sent: true; retryAt: Date }>
   | Readonly<{ sent: false; wall: LinkWall; retryAt: Date }>;
 
 /**
+ * The sends of one purpose inside the rolling hour, oldest first: of this
+ * address, of the client it is counted against (null for a report link, which
+ * has none here), and of the whole channel. A list may stop at its limit's
+ * length, which is all a limit reads.
+ */
+type CountedSends = Readonly<{
+  address: readonly Date[];
+  client: Readonly<{ sentAt: readonly Date[]; count: ClientCount }> | null;
+  channel: readonly Date[];
+}>;
+
+/** When a full rolling hour lets one more link through; null while it has room. */
+function hourFreesAt(sentAt: readonly Date[], limit: number): Date | null {
+  if (sentAt.length < limit) return null;
+  const firstCounted = sentAt[sentAt.length - limit];
+  // Rows this cannot explain are refused loudly: standing aside quietly is how
+  // a rate limit becomes no rate limit for one caller.
+  if (firstCounted === undefined) throw new Error("dashboard_link_rate_count_inconsistent");
+  return new Date(firstCounted.getTime() + LINK_RATE_WINDOW_MS);
+}
+
+/**
  * Three links an hour per address, and at least a minute between two. A request
  * the minute refuses writes no row, so the three are messages that actually
- * went out. When both limits stand, the answer names the later one: naming the
- * nearer would send somebody back to a button that is still refused.
+ * went out.
  *
  * The dashboard's answer names which limit, and its pages have a sentence for
  * each. The report answer crosses the scanner's contract, which carries only
- * the moment, so the scanner must say one sentence true of both and must not
- * guess the limit from how far away the moment is.
+ * the moment, so the scanner must say one sentence true of all of them and
+ * must not guess the limit from how far away the moment is.
  */
-function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
+function addressRefusal(sentAt: readonly Date[], now: Date): LinkRefusal | null {
   const newest = sentAt.at(-1);
   const interval =
     newest !== undefined && newest.getTime() > now.getTime() - LINK_MIN_INTERVAL_MS
@@ -1474,26 +1549,46 @@ function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
           retryAt: new Date(newest.getTime() + LINK_MIN_INTERVAL_MS),
         } as const)
       : null;
-  let hourly: LinkRefusal | null = null;
-  if (sentAt.length >= LINK_RATE_LIMIT) {
-    const firstCounted = sentAt[sentAt.length - LINK_RATE_LIMIT];
-    // Rows this cannot explain are refused loudly: standing aside quietly is how
-    // a rate limit becomes no rate limit for one caller.
-    if (firstCounted === undefined) throw new Error("dashboard_link_rate_count_inconsistent");
-    hourly = { wall: "hourly", retryAt: new Date(firstCounted.getTime() + LINK_RATE_WINDOW_MS) };
-  }
-  if (interval === null) return hourly;
-  if (hourly === null) return interval;
-  return hourly.retryAt.getTime() >= interval.retryAt.getTime() ? hourly : interval;
+  const hourly = hourFreesAt(sentAt, LINK_RATE_LIMIT);
+  return latestOf([interval, hourly === null ? null : { wall: "hourly", retryAt: hourly }]);
 }
 
 /**
- * There is always a limit in front of the next link, since a send a moment old
- * raises the minute by itself; answering "no wait" would mean the rows disagree
- * with the send just written.
+ * When several limits stand, the answer names the latest: naming a nearer one
+ * would send somebody back to a button that is still refused.
+ */
+function latestOf(refusals: readonly (LinkRefusal | null)[]): LinkRefusal | null {
+  let latest: LinkRefusal | null = null;
+  for (const refusal of refusals) {
+    if (
+      refusal !== null &&
+      (latest === null || refusal.retryAt.getTime() >= latest.retryAt.getTime())
+    )
+      latest = refusal;
+  }
+  return latest;
+}
+
+function refusalIn(counted: CountedSends, now: Date): LinkRefusal | null {
+  const client =
+    counted.client === null ? null : hourFreesAt(counted.client.sentAt, counted.client.count.limit);
+  const channel = hourFreesAt(counted.channel, LINK_CHANNEL_LIMIT);
+  return latestOf([
+    addressRefusal(counted.address, now),
+    client === null || counted.client === null
+      ? null
+      : { wall: counted.client.count.wall, retryAt: client },
+    channel === null ? null : { wall: "ceiling", retryAt: channel },
+  ]);
+}
+
+/**
+ * There is always a limit in front of the address's next link, since a send a
+ * moment old raises the minute by itself; answering "no wait" would mean the
+ * rows disagree with the send just written.
  */
 function waitAfter(sentAt: readonly Date[], now: Date): Date {
-  const next = refusalIn(sentAt, now);
+  const next = addressRefusal(sentAt, now);
   if (next === null) throw new Error("dashboard_link_rate_interval_missing");
   return next.retryAt;
 }
@@ -1502,65 +1597,139 @@ function memoryRate(
   rows: MemoryRows,
   emailHash: string,
   purpose: "dashboard" | "report",
+  asking: ClientCount | null,
 ): LinkRate {
   const now = new Date();
   const all = (rows.dashboard_link_sends ?? []).filter(
     (row) => new Date(row.expiresAt as Date).getTime() > now.getTime(),
   );
   rows.dashboard_link_sends = all;
-  const recent = all
+  const inTheHour = all
     .filter(
       (row) =>
-        row.emailHash === emailHash &&
         row.purpose === purpose &&
         new Date(row.sentAt as Date).getTime() > now.getTime() - LINK_RATE_WINDOW_MS,
     )
-    .map((row) => new Date(row.sentAt as Date))
-    .sort((one, other) => one.getTime() - other.getTime());
-  const refused = refusalIn(recent, now);
+    .sort(
+      (one, other) =>
+        new Date(one.sentAt as Date).getTime() - new Date(other.sentAt as Date).getTime(),
+    );
+  const sentAt = (kept: readonly Record<string, unknown>[]) =>
+    kept.map((row) => new Date(row.sentAt as Date));
+  const address = sentAt(inTheHour.filter((row) => row.emailHash === emailHash));
+  const refused = refusalIn(
+    {
+      address,
+      client:
+        asking === null
+          ? null
+          : {
+              sentAt: sentAt(inTheHour.filter((row) => row.clientHash === asking.hash)),
+              count: asking,
+            },
+      channel: sentAt(inTheHour),
+    },
+    now,
+  );
   if (refused !== null) return { sent: false, ...refused };
   rows.dashboard_link_sends.push({
     id: randomUUID(),
     emailHash,
+    clientHash: asking?.hash ?? null,
     purpose,
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
-  return { sent: true, retryAt: waitAfter([...recent, now], now) };
+  return { sent: true, retryAt: waitAfter([...address, now], now) };
 }
 
+const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
+
+/**
+ * Writes one warning line when the channel's ceiling of a purpose first
+ * refuses, and again only once a send of that purpose has gone through since,
+ * so an alert can hang on it without counting refusals. Each process keeps its
+ * own note, so every process writes its own line. The line names no address.
+ */
+function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => LinkRate {
+  const full = new Set<"dashboard" | "report">();
+  return (purpose, rated) => {
+    if (rated.sent) {
+      full.delete(purpose);
+    } else if (rated.wall === "ceiling" && !full.has(purpose)) {
+      full.add(purpose);
+      const now = new Date();
+      const from = new Date(now.getTime() - LINK_RATE_WINDOW_MS);
+      console.warn(
+        `[dashboard] link ceiling reached: purpose=${CEILING_WORDS[purpose]}` +
+          ` limit=${LINK_CHANNEL_LIMIT} window=${from.toISOString()}/${now.toISOString()}` +
+          ` refused_until=${rated.retryAt.toISOString()}`,
+      );
+    }
+    return rated;
+  };
+}
+
+/**
+ * The address and the client are each counted under a lock of their own, so
+ * two processes cannot both take the last link. The channel is counted without
+ * one: a channel-wide lock would hold every sign-in behind whichever one is
+ * waiting on the mail provider, so sends in flight at the same moment can pass
+ * the ceiling by as many as there are of them.
+ */
 async function postgresRate(
-  tx: Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0],
+  tx: DashboardTransaction,
   emailHash: string,
   purpose: "dashboard" | "report",
+  asking: ClientCount | null,
 ): Promise<LinkRate> {
   const now = new Date();
+  const cutoff = new Date(now.getTime() - LINK_RATE_WINDOW_MS);
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-rate:${purpose}:${emailHash}`}, 0))`,
   );
+  if (asking !== null) {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-client:${purpose}:${asking.hash}`}, 0))`,
+    );
+  }
   await tx.delete(linkSends).where(lte(linkSends.expiresAt, now));
-  const recent = await tx
-    .select({ sentAt: linkSends.sentAt })
-    .from(linkSends)
-    .where(
-      and(
-        eq(linkSends.emailHash, emailHash),
-        eq(linkSends.purpose, purpose),
-        gt(linkSends.sentAt, new Date(now.getTime() - LINK_RATE_WINDOW_MS)),
-      ),
+  const newest = async (limit: number, ...where: SQL[]): Promise<Date[]> =>
+    (
+      await tx
+        .select({ sentAt: linkSends.sentAt })
+        .from(linkSends)
+        .where(and(eq(linkSends.purpose, purpose), gt(linkSends.sentAt, cutoff), ...where))
+        .orderBy(desc(linkSends.sentAt))
+        .limit(limit)
     )
-    .orderBy(asc(linkSends.sentAt));
-  const sentAt = recent.map((row) => row.sentAt);
-  const refused = refusalIn(sentAt, now);
+      .map((row) => row.sentAt)
+      .reverse();
+  const address = await newest(LINK_RATE_LIMIT, eq(linkSends.emailHash, emailHash));
+  const refused = refusalIn(
+    {
+      address,
+      client:
+        asking === null
+          ? null
+          : {
+              sentAt: await newest(asking.limit, eq(linkSends.clientHash, asking.hash)),
+              count: asking,
+            },
+      channel: await newest(LINK_CHANNEL_LIMIT),
+    },
+    now,
+  );
   if (refused !== null) return { sent: false, ...refused };
   await tx.insert(linkSends).values({
     id: randomUUID(),
     emailHash,
+    clientHash: asking?.hash ?? null,
     purpose,
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
-  return { sent: true, retryAt: waitAfter([...sentAt, now], now) };
+  return { sent: true, retryAt: waitAfter([...address, now], now) };
 }
 
 type DashboardTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];

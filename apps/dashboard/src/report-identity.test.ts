@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS } from "./identity.js";
 import type { Message } from "./mail.js";
-import { rewindLinkSends } from "./testing/link-sends.js";
+import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 
 const EMAIL = "owner@example.com";
 const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
@@ -112,7 +112,7 @@ describe("a report link asked for by the scanner", () => {
     const one = fixture();
     await sendReport(one);
     rewindLinkSends(one.rows);
-    await one.identity.requestLink(EMAIL, "default");
+    await one.identity.requestLink(EMAIL, "default", ONE_CLIENT);
     const signIn = actionIn(one.messages.at(-1) as Message).searchParams.get("token") ?? "";
 
     const opened = await one.identity.openLink(signIn);
@@ -181,7 +181,7 @@ describe("a report link asked for by the scanner", () => {
         request: REQUEST,
       }),
     ).resolves.toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
-    await expect(one.identity.requestLink(EMAIL, "default")).resolves.toStrictEqual({
+    await expect(one.identity.requestLink(EMAIL, "default", ONE_CLIENT)).resolves.toStrictEqual({
       status: "accepted",
       retryAt: expect.any(Date),
     });
@@ -229,7 +229,7 @@ describe("a privacy deletion asked for by the scanner", () => {
       status: "already_absent",
     });
     await one.identity.make(EMAIL, MERCHANT);
-    await one.identity.requestLink(EMAIL, "default");
+    await one.identity.requestLink(EMAIL, "default", ONE_CLIENT);
 
     await expect(one.identity.deleteUnattachedPerson(request)).resolves.toStrictEqual({
       status: "already_absent",

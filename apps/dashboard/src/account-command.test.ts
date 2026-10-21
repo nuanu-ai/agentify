@@ -3,7 +3,7 @@ import { runAccount } from "./account-command.js";
 import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
-import { rewindLinkSends } from "./testing/link-sends.js";
+import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const MERCHANT = "mer_the_merchant";
@@ -60,7 +60,7 @@ async function signedIn(
   email: string,
 ): Promise<string> {
   rewindLinkSends(rows);
-  await identity.requestLink(email, "default");
+  await identity.requestLink(email, "default", ONE_CLIENT);
   const token = new URL(
     messages.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
   ).searchParams.get("token");
@@ -80,7 +80,7 @@ describe("the passwordless account command", () => {
   it("lists confirmation, merchant and live session count", async () => {
     const { identity, messages } = store();
     await identity.make("person@example.com", MERCHANT);
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
     const token = new URL(
       messages[0]?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
     ).searchParams.get("token");
@@ -102,7 +102,7 @@ describe("the passwordless account command", () => {
     for (let index = 0; index < 2; index += 1) {
       // Two sessions need two links, and sign-in keeps a minute between sends.
       rewindLinkSends(rows);
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       const token = new URL(
         messages[index]?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
       ).searchParams.get("token");

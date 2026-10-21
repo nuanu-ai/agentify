@@ -162,7 +162,11 @@
 	@dashboard path /dashboard /dashboard/*
 	handle @dashboard {
 		header @dashboard_link Referrer-Policy strict-origin
-		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:app:3001}
+		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:app:3001} {
+			# The dashboard counts sign-in links per client by this one address,
+			# decided by the trusted-proxy boundary above as for the scanner.
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	# Old links to /cabinet still arrive. 307 keeps a posted form's method and

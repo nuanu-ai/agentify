@@ -647,6 +647,7 @@ const asked = (answer: LinkAnswer): SignInView => ({
   email: WHO,
   destination: "default",
   answer,
+  googleEnabled: GOOGLE_ON,
 });
 
 const SIGNING_IN: GalleryState[] = [
@@ -792,6 +793,39 @@ const SIGNING_IN: GalleryState[] = [
     },
     "/sign-in",
     asked({ wall: "hourly", seconds: 2_820 }),
+  ),
+  signIn(
+    {
+      id: "dashboard-sign-in-client-spent",
+      screen: "Sign in",
+      when: "Somebody asks for a link from a connection that has asked for many in the last hour.",
+      cause:
+        "One connection gets a set number of links an hour whatever addresses it types, so no link was sent; Google sign-in still works.",
+    },
+    "/sign-in",
+    asked({ wall: "client", seconds: 2_820 }),
+  ),
+  signIn(
+    {
+      id: "dashboard-sign-in-shared-spent",
+      screen: "Sign in",
+      when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
+      cause:
+        "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
+    },
+    "/sign-in",
+    asked({ wall: "shared", seconds: 1_980 }),
+  ),
+  signIn(
+    {
+      id: "dashboard-sign-in-ceiling",
+      screen: "Sign in",
+      when: "Somebody asks for a link in an hour the site has already sent its share of links in.",
+      cause:
+        "The site sends a set number of sign-in links an hour to everybody together, so no link was sent; Google sign-in still works.",
+    },
+    "/sign-in",
+    asked({ wall: "ceiling", seconds: 1_260 }),
   ),
   signIn(
     {

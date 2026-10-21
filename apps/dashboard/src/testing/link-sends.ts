@@ -16,3 +16,6 @@ export const rewindLinkSends = (
     row.sentAt = new Date(new Date(row.sentAt as Date).getTime() - by);
   }
 };
+
+/** The one client asking, for a test that is not about which client asked. */
+export const ONE_CLIENT = { client: "192.0.2.10" } as const;
