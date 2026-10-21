@@ -12,7 +12,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnalyticsEvent, OrderCreated } from "../../analytics/index.js";
-import type { StoredOrder } from "../../ports/store.js";
+import type { Birth, StoredOrder } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import { countedIds, loggedWhile } from "../../testing/harness.js";
 import { anOrder } from "../../testing/store-contract.js";
@@ -69,7 +69,7 @@ if (databaseUrl === null) {
   let store: PostgresStore;
   beforeEach(async () => {
     await pool.query(
-      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants, payout_splits, commerce_analytics_events",
+      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants, payout_splits, commerce_analytics_events",
     );
     store = PostgresStore.over(db, "eip155:84532", countedIds());
     await store.addMerchant({ id: MERCHANT, name: "The merchant" }, 1_000);
@@ -88,6 +88,8 @@ if (databaseUrl === null) {
       )
     ).rows;
 
+  const BIRTH: Birth = { through: "api", waitingAtMost: 20 };
+
   const anOrderOf = (id: string): StoredOrder => ({
     ...anOrder(id, "quoted", { merchantId: MERCHANT, createdAt: 5_000 }),
     itemId: "item_1",
@@ -97,7 +99,7 @@ if (databaseUrl === null) {
     it("records its event in the insert's transaction, dated when the order was made", async () => {
       const order = anOrderOf("ord_1");
 
-      expect(await store.addOrder(order, "api", created(order))).toBe(true);
+      expect(await store.addOrder(order, BIRTH, created(order))).toBe("written");
 
       expect(await outbox()).toStrictEqual([
         {
@@ -113,16 +115,18 @@ if (databaseUrl === null) {
     it("records nothing when the merchant no longer sells through the order's integration", async () => {
       const order = anOrderOf("ord_1");
 
-      expect(await store.addOrder(order, "woocommerce", created(order))).toBe(false);
+      expect(
+        await store.addOrder(order, { ...BIRTH, through: "woocommerce" }, created(order)),
+      ).toBe("switched_away");
 
       expect(await outbox()).toStrictEqual([]);
     });
 
     it("records nothing for an order that is already written down", async () => {
       const order = anOrderOf("ord_1");
-      await store.addOrder(order, "api", created(order));
+      await store.addOrder(order, BIRTH, created(order));
 
-      await expect(store.addOrder(order, "api", created(order))).rejects.toThrow(
+      await expect(store.addOrder(order, BIRTH, created(order))).rejects.toThrow(
         "already written down",
       );
 
@@ -209,7 +213,7 @@ if (databaseUrl === null) {
       const order = anOrderOf("ord_1");
 
       const said = await awayWhile(async () => {
-        expect(await store.addOrder(order, "api", created(order))).toBe(true);
+        expect(await store.addOrder(order, BIRTH, created(order))).toBe("written");
       });
 
       expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");

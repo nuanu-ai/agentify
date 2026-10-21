@@ -337,11 +337,11 @@ if (databaseUrl === null) {
 
       await sleep(1_500);
       // pg-boss runs supervision itself about once a minute; calling it by
-      // hand only compresses that wait.
-      await boss.supervise();
-
+      // hand only compresses that wait. It is called on every try, because on
+      // a loaded machine one pass can run before the job has expired.
       const again = await vi.waitFor(
         async () => {
+          await boss.supervise();
           const jobs = await boss.fetch<Reminder>(REMINDERS, { batchSize: 1 });
           expect(jobs).toHaveLength(1);
           return jobs;

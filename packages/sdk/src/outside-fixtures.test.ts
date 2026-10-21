@@ -32,6 +32,7 @@ import { checkCard } from "./check-card.js";
 import type { OrderHandle } from "./client.js";
 import { createClient } from "./client.js";
 import { contractVersion } from "./contract.js";
+import type { OrderEvent as ReadEvent } from "./reading.js";
 import { type FakeGateway, type GatewayAnswer, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import type { WorkerProblem } from "./worker.js";
@@ -180,7 +181,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
   expect(forEsim).toStrictEqual({ ok: true, id: "cat-2" });
 
   const problems: WorkerProblem[] = [];
-  const events: OrderEvent[] = [];
+  const events: ReadEvent[] = [];
   const accepted: string[] = [];
 
   const takenOn = new Map<string, OrderHandle>();

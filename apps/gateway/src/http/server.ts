@@ -421,7 +421,7 @@ async function callerBehind(
         return OTHER_ENVIRONMENT_PREFIX;
       }
 
-      const key = await gateway.keyBehind(presented);
+      const key = await gateway.keyBehind(presented, request.header("user-agent"));
       return key === null ? REFUSED : { merchantId: key.merchantId, keyId: key.id };
     }
 
@@ -526,8 +526,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   call_refused: false,
 
   not_authorised: false,
-  no_such_key: false,
-  key_opened_this_call: false,
 
   no_such_route: false,
   no_such_item: false,
@@ -535,6 +533,14 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
 
   // The merchant may put it back, but that is not the retry working.
   not_selling: false,
+
+  // The seller's purchases waiting for payment lapse within a minute, and the
+  // same call goes through once one has.
+  seller_busy: true,
+  // The seller's own process comes back by itself, after a restart or a lost
+  // connection, and the same call goes through at its first poll; nobody has
+  // to switch anything back on.
+  seller_not_taking_orders: true,
 
   order_closed_before_it_was_priced: false,
   payment_already_spent: false,

@@ -162,20 +162,25 @@ export const verifications = pgTable(
 );
 
 /**
- * An HMAC counts one normalised address without storing the address again. Rows
- * expire after seven days; the rolling hour reads by the compound index below.
+ * An HMAC counts one normalised address without storing the address again, and
+ * another counts the client address a sign-in link was asked from; a report
+ * link, asked for by the scanner, has no client here. Rows expire after seven
+ * days; each rolling hour reads by one of the compound indexes below.
  */
 export const linkSends = pgTable(
   "dashboard_link_sends",
   {
     id: text("id").primaryKey(),
     emailHash: text("email_hash").notNull(),
+    clientHash: text("client_hash"),
     purpose: text("purpose").notNull(),
     sentAt: moment("sent_at"),
     expiresAt: moment("expires_at"),
   },
   (table) => [
     index("dashboard_link_sends_address_idx").on(table.emailHash, table.purpose, table.sentAt),
+    index("dashboard_link_sends_client_idx").on(table.clientHash, table.purpose, table.sentAt),
+    index("dashboard_link_sends_channel_idx").on(table.purpose, table.sentAt),
     index("dashboard_link_sends_expires_idx").on(table.expiresAt),
     check("dashboard_link_sends_purpose", sql`${table.purpose} in ('dashboard', 'report')`),
   ],

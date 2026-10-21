@@ -7,12 +7,11 @@ Status: accepted; merges what was ADR-0022
 
 A stranger's engineer integrates against the merchant's routes and the agent's.
 Each difference in how two routes say "no" or describe one order is a lesson
-with no meaning, and each shape is a wire contract that changes, once a
-consumer we do not control reads it, only by moving the contract version
-(ADR-0006). Two traps shape the details: an object under a key is falsy in
-Python and in PHP, so success marked by a key's presence reads as yes for one
-answer and no for another; and a key that may be absent exports nothing for a
-generated client to switch on.
+with no meaning, and each shape is a wire contract in which a renamed or
+removed part moves the contract version (ADR-0006). Two traps shape the
+details: an object under a key is falsy in Python and in PHP, so success marked
+by a key's presence reads as yes for one answer and no for another; and a key
+that may be absent exports nothing for a generated client to switch on.
 
 ## Decision
 

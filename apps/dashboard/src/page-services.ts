@@ -9,6 +9,7 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { NewKeyLabelSchema } from "@agentify/gateway";
 import type {
   AnalyticsEvent,
   AuthResult,
@@ -20,7 +21,6 @@ import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
   IdentifierSchema,
-  IssueKeyRequestSchema,
   OrderCloseRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
@@ -70,6 +70,7 @@ import {
   closedForGood,
   drawnClosedForGood,
   type FrameView,
+  lapsedPageIn,
   type OrdersView,
   ordersPlace,
   ordersView,
@@ -201,6 +202,8 @@ export type SignInView =
       email: string;
       destination: DashboardDestination;
       answer: LinkAnswer;
+      /** Offered where a limit that no other address escapes refused the link. */
+      googleEnabled: boolean;
       clickId?: string;
     }>
   | Readonly<{ screen: "unavailable"; clickId?: string }>;
@@ -256,7 +259,8 @@ export interface PageServices {
   readonly gate: Gate;
   readonly signIn: {
     page(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<SignInView>>;
-    ask(form: FormData): Promise<Outcome<SignInView>>;
+    /** `client` is the address the press came from, as `clientAddressOf` reads it. */
+    ask(form: FormData, client: string): Promise<Outcome<SignInView>>;
     landing(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<OpenLinkView>>;
     open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
     googleStart(form: FormData): Promise<Outcome<Extract<SignInView, { screen: "ask" }>>>;
@@ -559,14 +563,14 @@ const shownIn = (form: FormData): Shown | null => {
 /**
  * A key with no name cannot be told apart from another on the screen meant for
  * telling them apart before revoking one. The rest of the rule is the
- * contract's: one line, at most the length the gateway takes, which also keeps
- * the live announcement naming it to one line.
+ * gateway's: one line, at most the length it takes, which also keeps the live
+ * announcement naming it to one line.
  */
 export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
     return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
   }
-  const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
+  const unfit = NewKeyLabelSchema.safeParse(label);
   if (unfit.success) return null;
   const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
   return `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`;
@@ -873,20 +877,25 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     query: URLSearchParams,
   ): Promise<Outcome<OrdersView>> => {
     const gateway = gatewayAs(person);
+    // The purchases that lapsed unpaid are read only where their segment is
+    // asked for, a page of them; everywhere else they are only counted.
+    const lapsedPage = lapsedPageIn(query);
     // The open list is read beside the whole one, never after it, since
     // which orders are open is the gateway's to say.
-    const [cards, orders, open, owed, paidInto] = await Promise.all([
+    const [cards, orders, open, owed, paidInto, lapsed] = await Promise.all([
       gateway.cards(),
       gateway.orders(false),
       gateway.orders(true),
       gateway.unfulfilledOrders(),
       gateway.paidIntoSplits(),
+      lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage),
     ]);
     if (!cards.ok) return problemOf(cards);
     if (!orders.ok) return problemOf(orders);
     if (!open.ok) return problemOf(open);
     if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
+    if (!lapsed.ok) return problemOf(lapsed);
     const shopTotals =
       parts.woo === null
         ? {}
@@ -902,6 +911,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       query,
       owed.document,
       paidInto.document,
+      typeof lapsed.document === "number"
+        ? { page: null, of: lapsed.document }
+        : { page: lapsed.document.attempts, of: lapsed.document.of },
       shopTotals,
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
@@ -980,7 +992,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      async ask(form) {
+      async ask(form, client) {
         const typed = once(form.getAll("email"));
         const email = typeof typed === "string" ? typed.trim() : "";
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
@@ -1006,7 +1018,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             },
           };
         }
-        const requested = await identity.requestLink(email, destination, carried.clickId);
+        const requested = await identity.requestLink(email, destination, { client, ...carried });
         if (requested.status === "unavailable") {
           return { kind: "view", status: 503, view: { screen: "unavailable", ...carried } };
         }
@@ -1022,7 +1034,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 202,
           ...("wall" in answer ? { headers: { "retry-after": String(answer.seconds) } } : {}),
-          view: { screen: "requested", email, destination, answer, ...carried },
+          view: {
+            screen: "requested",
+            email,
+            destination,
+            answer,
+            googleEnabled: identity.googleEnabled,
+            ...carried,
+          },
         };
       },
 
@@ -1425,7 +1444,21 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   payout: { wallet: standing.value.payoutWallet },
                   liveApproval: standing.value.liveApproved,
                 },
-                { selling: standing.value.selling, through: standing.value.through },
+                {
+                  selling: standing.value.selling,
+                  through: standing.value.through,
+                  busy: standing.value.busy,
+                  ...(standing.value.outOfTouch === null
+                    ? {}
+                    : {
+                        outOfTouch: {
+                          since:
+                            standing.value.outOfTouch.since === null
+                              ? null
+                              : new Date(standing.value.outOfTouch.since).toISOString(),
+                        },
+                      }),
+                },
               )
             : accountOf(viewing(person), { unread: true }),
         };
@@ -1618,9 +1651,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async disable(person, keyId) {
         const stopped = await gatewayAs(person).disableKey(keyId);
-        // Including the refusal the screen never offers a control for: the
-        // gateway will not disable the key its caller holds. Whoever reaches
-        // this anyway is told what the gateway said.
         if (!stopped.ok) return problemOf(stopped);
         noted(person, `revoked the key ${keyId}`);
         // A redirect, so a reload does not press it again.

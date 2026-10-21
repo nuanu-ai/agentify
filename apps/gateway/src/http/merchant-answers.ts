@@ -21,6 +21,7 @@ export const PAYMENT_REQUIRED = 402;
 export const NOT_FOUND = 404;
 export const CONFLICT = 409;
 export const UNPROCESSABLE = 422;
+export const TOO_MANY_REQUESTS = 429;
 /** Something of ours failed, and the call is not known to have done anything. */
 export const FAILED = 500;
 
@@ -40,16 +41,6 @@ export const NO_SUCH_ITEM: Refused = {
   status: NOT_FOUND,
   code: "no_such_item",
   message: "there is no such product",
-};
-
-/**
- * Also the answer for another merchant's key, so disabling cannot count
- * somebody else's keys.
- */
-export const NO_SUCH_KEY: Refused = {
-  status: NOT_FOUND,
-  code: "no_such_key",
-  message: "there is no such key",
 };
 
 /**

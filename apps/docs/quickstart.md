@@ -103,10 +103,11 @@ characters that tells it from the next one, and copy it: the secret is shown
 once. Keep it with your other secrets and out of source control.
 
 Any key you issue can do everything your code can: publish cards, read orders
-and receipts, take a card or all selling off sale and put it back, set your
-seller name and site, and issue and revoke other keys. None of them can change
-the wallet. So if a key leaks, revoke it on API Keys together with every key
-you did not create yourself, and issue a fresh one for your code.
+and receipts, take a card or all selling off sale and put it back, and set your
+seller name and site. None of them can change the wallet, issue another key or
+revoke one; only the dashboard does those. So if a key leaks, revoke it on API
+Keys and issue a fresh one for your code: once revoked it can do nothing more,
+and it cannot have left another key of its own behind.
 
 This step worked if Settings shows your seller name and your wallet and you
 hold a key that starts with `csk_test_`.
@@ -120,10 +121,11 @@ npm install @nuanu-ai/agentify
 It runs on Node.js 24 or later. The release this page describes is named at
 its top, and what changed between releases is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md).
-Keep the package current: the test channel can speak a change before it is
-released, and during the pilot the contract's version does not move with each
-change, so a release older than Agentify can read a word it does not know as a
-failure.
+A release keeps working when Agentify adds to what it sends: a field it does
+not know beside an order is left out, an event it does not know is skipped with
+a warning, and a status it does not know reads `unknown`. What an order
+delivers is read exactly, so a change there stops your process loudly instead
+([When Agentify is newer than your package](/orders#when-agentify-is-newer-than-your-package)).
 
 The client needs a key and the address of the channel, and nothing after the
 address: it adds the rest of the path itself. The test channel is
@@ -467,8 +469,10 @@ the same way, with a wallet that receives real USDC on Base and a key that
 starts with `csk_live_`. Nothing is copied from the test channel: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant once; until then publishing lists `no_operator_approval`, and nothing
-of yours sells live. A parcel's card is refused live (`not_sold_yet`). What
+merchant; until then publishing lists `no_operator_approval`, and nothing
+of yours sells live. The operator can withdraw that approval later; publishing
+and new live sales are then refused the same way, while the orders you already
+took are still yours to deliver. A parcel's card is refused live (`not_sold_yet`). What
 changes between the two channels is in one table on [Connecting to
 Agentify](/#how-to-start).
 

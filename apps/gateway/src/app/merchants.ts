@@ -16,6 +16,7 @@ import {
   SellerSiteSchema,
   ServiceNameSchema,
 } from "@nuanu-ai/agentify-contracts";
+import { z } from "zod";
 import type { Ids } from "../ports/clock.js";
 import type { AnalyticsOf, Store, StoredKey, StoredMerchant } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
@@ -45,6 +46,23 @@ export interface IssuedKey {
   /** The only time this is ever readable. Nothing keeps it. */
   readonly secret: string;
 }
+
+/**
+ * The label a merchant issues a key under: not empty and not padded with
+ * spaces, so that two labels that look the same are the same, and one line of
+ * at most a hundred characters, because the message that tells a merchant of a
+ * new key names it by its label. Any alphabet is allowed. Keys already held
+ * are listed under whatever they were named.
+ */
+export const NewKeyLabelSchema = z
+  .string()
+  .regex(/^\S(?:[\s\S]*\S)?$/u, "a label must not be empty or padded with spaces")
+  .max(100, "a label is at most 100 characters, the one line a key is known by")
+  .regex(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+    /^[^\u0000-\u001F\u007F-\u009F\u2028\u2029]*$/u,
+    "a label is one line: it cannot carry a line break, a tab or another control character",
+  );
 
 /**
  * Sets or clears the name a merchant is listed under in a discovery catalog.
@@ -132,23 +150,24 @@ export async function setPayoutWallet(
   }
 }
 
-export interface LiveApprovalGrant {
+export interface LiveApprovalChange {
   readonly merchant: StoredMerchant;
   readonly changed: boolean;
 }
 
 /**
  * Admits one merchant to live publication. The protected administrative screen
- * and terminal command call this; no merchant-key route can make this decision. Null means no such
- * merchant; `changed: false` means already admitted. The grant that admits the
- * merchant is recorded for product analytics as the operator's, through the
- * dashboard, where both of those callers live; a repeat records nothing.
+ * and terminal command call this; no merchant-key route can make this
+ * decision. Null means no such merchant; `changed: false` means already
+ * admitted. The grant that admits the merchant is recorded for product
+ * analytics as the operator's, through the dashboard, where both of those
+ * callers live; a repeat records nothing.
  */
 export async function grantLiveApproval(
   store: Store,
   merchantId: string,
   at: number,
-): Promise<LiveApprovalGrant | null> {
+): Promise<LiveApprovalChange | null> {
   return store.grantLiveApproval(merchantId, at, {
     name: "agc_setup_result",
     actor: "operator",
@@ -156,6 +175,20 @@ export async function grantLiveApproval(
     refs: { merchant: merchantId },
     fields: { step: "live_approval", integration: "none", outcome: "completed" },
   });
+}
+
+/**
+ * Withdraws one merchant's admission to live sales: from then on they stand as
+ * a merchant never approved, so nothing new of theirs is published or sold
+ * live, while orders already opened play out as under a pause. Only the
+ * operator's terminal command calls this. Null means no such merchant;
+ * `changed: false` means there was no approval to withdraw.
+ */
+export async function withdrawLiveApproval(
+  store: Store,
+  merchantId: string,
+): Promise<LiveApprovalChange | null> {
+  return store.withdrawLiveApproval(merchantId);
 }
 
 /**

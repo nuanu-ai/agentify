@@ -19,6 +19,7 @@ import {
   PgBoss,
 } from "pg-boss";
 import { failureNamed } from "../../failure-named.js";
+import { orderFingerprint } from "../../order-fingerprint.js";
 import {
   type DrawnEnvelope,
   type Queue,
@@ -212,6 +213,7 @@ export class PgBossQueue implements Queue {
         this.publishWithin(tx, merchantId, envelope, afterMs),
       forgetWithin: (tx, merchantId, orderId, priceQuestion) =>
         this.forgetWithin(tx, merchantId, orderId, priceQuestion),
+      remindWithin: (tx, reminder, afterMs) => this.remindWithin(tx, reminder, afterMs),
       committed: (merchantIds) => {
         this.envelopesCommitted(merchantIds);
       },
@@ -273,6 +275,26 @@ export class PgBossQueue implements Queue {
   }
 
   async remind(reminder: Reminder, afterMs: number): Promise<void> {
+    await this.#remindOn(reminder, afterMs);
+  }
+
+  /**
+   * The same reminder, inside the caller's transaction, so it is set exactly
+   * when the order it closes is written.
+   */
+  async remindWithin(
+    tx: DrizzleTransactionLike,
+    reminder: Reminder,
+    afterMs: number,
+  ): Promise<void> {
+    await this.#remindOn(reminder, afterMs, fromDrizzle(tx, sql));
+  }
+
+  async #remindOn(
+    reminder: Reminder,
+    afterMs: number,
+    db?: ReturnType<typeof fromDrizzle>,
+  ): Promise<void> {
     const { attempts, retryDelayMs } = this.#options.reminders;
     const sent = await this.#boss.send(REMINDERS, reminder as unknown as object, {
       // The library's durable retries, not a handler re-arming itself against
@@ -280,6 +302,7 @@ export class PgBossQueue implements Queue {
       retryLimit: Math.max(attempts - 1, 0),
       retryDelay: Math.max(Math.round(retryDelayMs / 1_000), 1),
       startAfter: new Date(Date.now() + Math.max(afterMs, 0)),
+      ...(db === undefined ? {} : { db }),
     });
 
     // An unwritten reminder is a deadline that never fires, and only a deadline
@@ -365,7 +388,7 @@ export class PgBossQueue implements Queue {
             // its table and so in every dump of the database.
             const named = failureNamed(error);
             console.error(
-              `[gateway] a ${job.data.kind} reminder for ${job.data.orderId} failed; it is tried again on its own while it has attempts left: ${named}`,
+              `[gateway] a ${job.data.kind} reminder for ${orderFingerprint(job.data.orderId)} failed; it is tried again on its own while it has attempts left: ${named}`,
             );
             results.push({ id: job.id, status: "failed", output: { message: named } });
           }

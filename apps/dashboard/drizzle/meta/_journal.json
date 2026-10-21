@@ -148,6 +148,13 @@
       "when": 1792594727580,
       "tag": "0020_analytics_opt_out",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792597109725,
+      "tag": "0021_link_sends_count_clients",
+      "breakpoints": true
     }
   ]
 }

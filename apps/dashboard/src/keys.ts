@@ -9,7 +9,7 @@
  * ordinary state of a merchant who has just registered.
  */
 
-import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
+import type { MerchantKey } from "@agentify/gateway";
 import { type MomentView, momentView } from "./views.js";
 import { KEY_WORDS, type Word } from "./words.js";
 

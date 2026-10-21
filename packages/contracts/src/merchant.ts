@@ -1,154 +1,13 @@
 /**
  * What a merchant says about themselves: the name their products are sold
- * under, the wallet their share of each sale arrives at, and their keys.
- *
- * A key's secret appears in one document only, the answer to the call that
- * made the key; every other shape here refuses it, and Agentify keeps only a
- * digest. A revoked key stays in the list with the moment it was revoked.
+ * under and the wallet their share of each sale arrives at.
  */
 
 import { z } from "zod";
 import { SellerSchema, ServiceNameSchema } from "./card.js";
 import { EvmAddressSchema } from "./evm-address.js";
-import { IdentifierSchema, TimestampSchema } from "./primitives.js";
+import { TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
-
-/**
- * What a merchant calls one of their keys: not empty and not padded with
- * spaces, so that two labels that look the same are the same. Any alphabet is
- * allowed, since a label never leaves the merchant's own screens, and so is a
- * character that shows nothing: a label is only read, never matched on.
- */
-const KeyLabelSchema = z
-  .string()
-  .regex(/^\S(?:[\s\S]*\S)?$/u, "a label must not be empty or padded with spaces");
-
-/**
- * The longest label a key is issued with. On the live deployment the message
- * that tells a merchant of a new key, or of a wallet change made with one,
- * names the key by its label.
- */
-const LONGEST_KEY_LABEL = 100;
-
-/**
- * A label as a new key is issued with it: one line, at most
- * {@link LONGEST_KEY_LABEL} characters. Only the request carries the bound;
- * keys already held are read back under whatever they were named, so one old
- * row cannot hide the whole list.
- */
-const IssuedKeyLabelSchema = KeyLabelSchema.max(
-  LONGEST_KEY_LABEL,
-  `a label is at most ${LONGEST_KEY_LABEL} characters, the one line a key is known by`,
-).regex(
-  // Code-point ranges rather than a Unicode property escape, because the
-  // pattern is published in the JSON Schema and not every validator in another
-  // language knows property escapes.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
-  /^[^\u0000-\u001F\u007F-\u009F\u2028\u2029]*$/u,
-  "a label is one line: it cannot carry a line break, a tab or another control character",
-);
-
-/**
- * The key itself. It travels as a bearer token, and the reader on the other
- * side takes everything up to the first space, so a secret with whitespace in
- * it would arrive as a prefix of itself. Its length and prefix are left to the
- * gateway that generates it.
- */
-const KeySecretSchema = z
-  .string()
-  .regex(/^\S+$/, "a key travels as a bearer token, so it carries no whitespace and is not empty");
-
-/**
- * One key a merchant holds, as they read it. It has no field for the secret,
- * which is shown once by the call that made the key and never again.
- */
-export const MerchantKeySchema = z
-  .strictObject({
-    id: IdentifierSchema,
-
-    label: KeyLabelSchema,
-
-    created_at: TimestampSchema,
-
-    /**
-     * The last call this key was seen on, behind the truth by up to a few
-     * minutes, or null where none is recorded. Null is the absence of a record,
-     * not of calls: a key made before the gateway recorded this field carries
-     * the same null as a key nobody ever used.
-     */
-    last_used_at: TimestampSchema.nullable(),
-
-    /**
-     * When this key was revoked, and null while it still works. Required and
-     * nullable rather than optional, so that a screen never has to guess
-     * whether an absent field means "works" or "nobody wrote it down".
-     */
-    disabled_at: TimestampSchema.nullable(),
-  })
-  .meta({
-    description:
-      "One key a merchant opens the door with, as they read it: what they called it, when it was made, when a call was last seen on it, and when it was revoked. A null disabled_at means the key still works; the field is always present, because an absent one is a silence a reader cannot tell from an oversight. The key itself is not in this document and never will be — what is kept is a digest of it, so nothing here or anywhere else can show a merchant their key a second time. last_used_at is not the instant of the last call and is not offered as one: it is refreshed at most once every few minutes per key, so a key under constant use carries a time that far behind, which is the price of not writing to the database on every call made with it. Null there means no call has been recorded against this key, which is not the same as no call having been made: a key made before this gateway began recording carries that same null, and nothing in this document tells such a key from one nobody has ever used. Nor is it a ledger of calls or an exact one: a mark that could not be written is swallowed rather than refusing the call it belonged to, so this is what was recorded and not everything that happened.",
-  });
-
-/**
- * The keys one merchant made for their own code, and the one this call was
- * made with.
- *
- * `this_call` is always one of the keys listed. A merchant cannot disable the
- * key their own call was made with, and without this field a screen would
- * offer a button the gateway refuses.
- */
-export const MerchantKeyListSchema = z
-  .strictObject({
-    /** The keys this merchant made for their own code, revoked ones included. */
-    keys: z.array(MerchantKeySchema),
-
-    /** The key the request carrying this answer was made with. */
-    this_call: IdentifierSchema,
-  })
-  .meta({
-    description:
-      "The keys one merchant made for their own code, working and revoked together, and the identifier of the key this very call was made with. That last field is here because a merchant cannot disable the key they are holding: without it a screen would offer a button the gateway refuses. It is always one of the keys listed, since every key is one the merchant issued. This document does not say whether it is the whole list either — paging is not designed, and the absence of a field about it is not a promise that there is no more.",
-  });
-
-/** What a merchant sends to have a key made. */
-export const IssueKeyRequestSchema = z
-  .strictObject({
-    label: IssuedKeyLabelSchema,
-  })
-  .meta({
-    description:
-      "What a merchant asks for when they want another key: the name they will know it by, and nothing else. The name is one line of at most 100 characters, not empty and not padded with spaces; on the live deployment it is also how the message telling the merchant of the new key names it. There is nowhere here to put a secret, because a key is generated rather than chosen — one somebody picks is one somebody reuses somewhere else.",
-  });
-
-/**
- * A key that has just been made: the row, and the secret, once. The secret is
- * what a worker needs; the row is what tells the merchant later which key to
- * disable.
- */
-export const IssuedKeySchema = z
-  .strictObject({
-    key: MerchantKeySchema,
-    /** Readable only now. Agentify keeps a digest, never the secret. */
-    secret: KeySecretSchema,
-  })
-  .meta({
-    description:
-      "A key as it comes back from being issued: the row a merchant will see in their list from now on, and the key itself. It carries the key once, and it is the one answer in this contract that carries one, because what is written down on our side is a digest. A key that is lost is replaced by a new one rather than read back.",
-  });
-
-/**
- * A key that has been revoked, as it now stands. Revoking an already revoked
- * key answers the same way and keeps the first moment.
- */
-export const DisabledKeySchema = z
-  .strictObject({
-    key: MerchantKeySchema,
-  })
-  .meta({
-    description:
-      "The key that was just revoked, with the instant it stopped working on it, so a merchant reads back what happened rather than taking the call's word for it. Revoking a key that was already revoked answers this same way and keeps the first instant, because that is the true one and a retry after a dropped connection must not rewrite it.",
-  });
 
 /**
  * What a merchant's products are sold under, as the merchant reads it back.
@@ -287,8 +146,3 @@ export type SellerName = z.infer<typeof SellerNameSchema>;
 export type SellerNameRequest = z.infer<typeof SellerNameRequestSchema>;
 export type PayoutWallet = z.infer<typeof PayoutWalletSchema>;
 export type PendingPayoutWallet = z.infer<typeof PendingPayoutWalletSchema>;
-export type MerchantKey = z.infer<typeof MerchantKeySchema>;
-export type MerchantKeyList = z.infer<typeof MerchantKeyListSchema>;
-export type IssueKeyRequest = z.infer<typeof IssueKeyRequestSchema>;
-export type IssuedKey = z.infer<typeof IssuedKeySchema>;
-export type DisabledKey = z.infer<typeof DisabledKeySchema>;

@@ -7,7 +7,7 @@
  * a document here.
  */
 
-import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
+import type { MerchantKey } from "@agentify/gateway";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";

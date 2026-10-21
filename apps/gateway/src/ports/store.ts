@@ -22,6 +22,7 @@ import type {
 import type { AnalyticsEvent } from "../analytics/events.js";
 import type { PayoutSplit } from "../split/parameters.js";
 import type { PaymentRecoveryContext } from "./facilitator.js";
+import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
   | {
@@ -62,6 +63,76 @@ export const NO_PENDING_HANDLER = [
   "delivered_unpaid",
   "fulfillment_closed",
 ] as const satisfies readonly OrderState[];
+
+/**
+ * The states of a purchase being priced or priced and not yet paid for. A
+ * purchase in one of them whose payment stage is still `none` waits on its
+ * buyer, and holds one of its seller's places at the door (`Birth`).
+ */
+export const WAITING_FOR_PAYMENT = ["created", "quoted"] as const satisfies readonly OrderState[];
+
+/**
+ * Whether a purchase waits on its buyer's payment at `at`, and so holds one of
+ * its seller's places at the door: being priced or priced, with no payment,
+ * and with its price still able to stand. A price holds for the quote's time
+ * to live from when it was named, and a question still unanswered may name
+ * one until its own window ends; past that the order is over in all but the
+ * reminder that closes it, which may fire late or not at all.
+ */
+export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
+  const { order } = record;
+  if (!(WAITING_FOR_PAYMENT as readonly string[]).includes(order.state)) return false;
+  if (order.payment !== "none") return false;
+  const { quoteResponseMs, quoteTtlMs } = order.policy.deadlines;
+  return order.state === "quoted"
+    ? order.timestamps.quotedAt === null || order.timestamps.quotedAt + quoteTtlMs > at
+    : order.timestamps.createdAt + quoteResponseMs + quoteTtlMs > at;
+};
+
+/**
+ * Whether an order is an attempt that lapsed unpaid: it ended rejected or
+ * expired with no payment ever verified, no goods held for its buyer and
+ * nothing presented to pay with. Nothing of anybody's money or goods rests on
+ * such an order. Whether a receipt or a payment claim names it is the
+ * store's to ask besides, at the moment it would forget the order.
+ */
+export const lapsedAttempt = (record: StoredOrder): boolean =>
+  (record.order.state === "rejected" || record.order.state === "expired") &&
+  record.order.payment === "none" &&
+  !record.order.heldFulfillment &&
+  record.payment == null &&
+  record.paidBy == null &&
+  record.paymentAttempt == null &&
+  record.delivery == null;
+
+/**
+ * What the birth of a purchase is held to: the integration its card was sold
+ * through, which its merchant must still sell through, and how many of that
+ * merchant's purchases may wait for payment at once, this one included.
+ */
+export interface Birth {
+  readonly through: Integration;
+  readonly waitingAtMost: number;
+  /**
+   * The reminders that close the order on time, written with it or not at
+   * all: a refused birth leaves none behind, and an order written with no
+   * clock on it is one nothing would close.
+   */
+  readonly clocks?: readonly ClockAtBirth[];
+}
+
+/** A reminder set at the birth of an order, and how long from now it waits. */
+export interface ClockAtBirth {
+  readonly reminder: Reminder;
+  readonly afterMs: number;
+}
+
+/**
+ * What became of the birth of a purchase: written, or not written because its
+ * merchant has switched to the other integration, or because as many of their
+ * purchases as `Birth` allows already wait for payment.
+ */
+export type Born = "written" | "switched_away" | "too_many_waiting";
 
 /**
  * What switching a merchant to the other integration came to.
@@ -280,6 +351,15 @@ export type OrderLookup<T> =
   | { readonly found: true; readonly result: T }
   | { readonly found: false };
 
+/**
+ * The order holding a payment's claim, and whether it kept the claim because
+ * the payment was taken for it.
+ */
+export interface ClaimHolder {
+  readonly orderId: string;
+  readonly retained: boolean;
+}
+
 /** Whether a payment is this order's to spend. */
 export type PaymentClaim =
   | { readonly claimed: true }
@@ -429,6 +509,13 @@ export interface StoredKey {
    * called, and nothing on the row tells the two apart.
    */
   readonly lastUsedAt: number | null;
+  /**
+   * What the call behind `lastUsedAt` said it runs, from its `user-agent`
+   * header, or null where it said nothing or nothing was recorded. It is the
+   * caller's own claim, so it tells the team which release a merchant runs and
+   * proves nothing.
+   */
+  readonly lastUserAgent: string | null;
 }
 
 /** One card in the public catalog, with the word its own merchant sells under. */
@@ -520,15 +607,25 @@ export interface Store {
   merchantById(id: string): Promise<StoredMerchant | null>;
 
   /**
-   * Records the one operator grant that admits a merchant to live sales. The
-   * first call writes `at`; every later call returns the original instant with
-   * `changed:false`. Null means the merchant is absent. It does not move the
-   * merchant's `updated_at`. `analytics` is recorded with the first grant only.
+   * Records the operator grant that admits a merchant to live sales. The first
+   * call writes `at`; every later call while the grant stands returns the
+   * original instant with `changed:false`. Null means the merchant is absent.
+   * It does not move the merchant's `updated_at`. `analytics` is recorded only
+   * with a call that writes the grant.
    */
   grantLiveApproval(
     id: string,
     at: number,
     analytics?: AnalyticsOf<{ readonly merchant: StoredMerchant; readonly changed: boolean }>,
+  ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
+
+  /**
+   * Clears the operator's grant, so the merchant stands as one never approved.
+   * A call that finds no grant changes nothing and says `changed:false`. Null
+   * means the merchant is absent. It does not move the merchant's `updated_at`.
+   */
+  withdrawLiveApproval(
+    id: string,
   ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /** Every merchant, for the command that lists them. */
@@ -649,13 +746,27 @@ export interface Store {
   ): Promise<StoredKey>;
 
   /**
-   * Records that a call came in on this key at this instant. The caller writes
-   * only once the stored instant has gone stale and swallows a failure here,
-   * since no purchase depends on it. The mark never goes backwards: two gateway
-   * processes write it from two clocks without serialising. A key that is not
-   * there is not an error, and nothing is written.
+   * Records that a call came in on this key at this instant, and what it said
+   * it runs. The caller writes only once the stored instant has gone stale and
+   * swallows a failure here, since no purchase depends on it. The mark never
+   * goes backwards, and the user agent moves with it: two gateway processes
+   * write it from two clocks without serialising. A key that is not there is
+   * not an error, and nothing is written.
    */
-  noteKeyUse(id: string, at: number): Promise<void>;
+  noteKeyUse(id: string, at: number, userAgent: string | null): Promise<void>;
+
+  /**
+   * Records that one of this merchant's processes polled their stream at this
+   * instant. The mark never goes backwards, since two gateway processes write
+   * it from two clocks without serialising, and it outlives a restart: a
+   * restarted gateway that knew of no poll would refuse every prepaid sale
+   * until each merchant's process polled again. A merchant that is not there
+   * is not an error, and nothing is written.
+   */
+  noteContact(merchantId: string, at: number): Promise<void>;
+
+  /** The latest poll recorded for this merchant, or null where none ever was. */
+  lastContact(merchantId: string): Promise<number | null>;
 
   /**
    * The key a request presented, found by its digest, or null where there is no
@@ -779,8 +890,8 @@ export interface Store {
    * sell through changes nothing and is not refused.
    *
    * One transaction, holding the merchant's row against the birth of an
-   * order (`addOrder` with an integration), so no order can be made for a
-   * card in the moment it goes off sale.
+   * order (`addOrder` with a `Birth`), so no order can be made for a card in
+   * the moment it goes off sale.
    *
    * `analytics` is recorded in that transaction only when the switch stopped
    * the merchant's selling.
@@ -794,23 +905,29 @@ export interface Store {
   // --- orders ---------------------------------------------------------------
 
   /**
+   * How many of this merchant's purchases wait for payment at `at`
+   * (`waitsForPayment`), counted up to `atMost` and no further.
+   */
+  waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
+
+  /**
    * Writes an order that is not there yet. The record says whose it is. An
    * identifier or a payment reference another order already has is refused.
    *
-   * Given the integration its card was sold through, the write is made only
-   * while its merchant still sells through that one, and answers false
-   * otherwise; the write and `switchIntegration` wait for each other on the
-   * merchant. A purchase always names one; without one the write is
+   * Given a `Birth`, the write is made only while its merchant still sells
+   * through the integration named and fewer than `waitingAtMost` of their
+   * purchases wait for payment at the order's own birth (`waitsForPayment`);
+   * the count and the write
+   * are one step against every other birth for that merchant, and the write and
+   * `switchIntegration` wait for each other on the merchant. Its clocks are
+   * written in the same step, so a birth refused for either reason writes
+   * nothing. A purchase always names one; without one the write is
    * unconditional, which is how a test sets an order down.
    *
    * `analytics` is recorded in the same write, dated when the order was made,
    * and only when the order was written.
    */
-  addOrder(
-    record: StoredOrder,
-    through?: Integration,
-    analytics?: AnalyticsEvent,
-  ): Promise<boolean>;
+  addOrder(record: StoredOrder, birth?: Birth, analytics?: AnalyticsEvent): Promise<Born>;
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its
@@ -834,9 +951,24 @@ export interface Store {
 
   /**
    * This merchant's orders, or with `open` only the ones still owed work or
-   * money and the closed ones whose payment completed after the closure.
+   * money and the closed ones whose payment completed after the closure. With
+   * `leaveOutLapsed`, the attempts that lapsed unpaid (`lapsedAttempt`) are
+   * not read at all.
    */
-  orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
+  orders(
+    merchantId: string,
+    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
+  ): Promise<readonly StoredOrder[]>;
+
+  /**
+   * One page of this merchant's attempts that lapsed unpaid, priced or not,
+   * the newest first, and how many such attempts they have in all. A `limit`
+   * of nothing reads only the count.
+   */
+  lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }>;
 
   /**
    * Every order still owed work or money, whoever it belongs to, for the
@@ -863,6 +995,15 @@ export interface Store {
    * name is free and starts beside it.
    */
   runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>>;
+
+  /**
+   * Deletes at most `limit` attempts that lapsed unpaid (`lapsedAttempt`),
+   * whoever they belong to, that were last written before `instant` and that
+   * no receipt and no payment claim names, and returns how many went. An
+   * order deleted is answered after as one that never existed. Bounded, so
+   * each call is a short statement however many have piled up.
+   */
+  forgetLapsedBefore(instant: number, limit: number): Promise<number>;
 
   /**
    * Every order that ended delivered with no receipt, whoever it belongs to.
@@ -905,6 +1046,14 @@ export interface Store {
    * authorisation be spent once at each merchant.
    */
   claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim>;
+
+  /**
+   * Who holds the claim on a payment, or null where nobody does; it claims
+   * nothing. A payment checked without the payment layer is refused when
+   * another order holds it, or this order kept it, before anything about the
+   * order is compared with it.
+   */
+  paymentClaimHolder(fingerprint: string): Promise<ClaimHolder | null>;
 
   /**
    * Lets go of a claim this order took and then could not use because the

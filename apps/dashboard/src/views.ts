@@ -26,6 +26,7 @@ import {
   type Listing,
   listingOf,
   PAGE_ROWS,
+  pagedListingOf,
   placeOf,
   type SegmentRule,
 } from "./listing.js";
@@ -413,6 +414,12 @@ export interface ClosureUnlisted {
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
+  /**
+   * Said beside a search where purchases that lapsed unpaid exist: they are
+   * not searched, so no match among the others is not none at all. The words
+   * lead into the way to their segment.
+   */
+  readonly lapsedApart: Readonly<{ says: string; to: string }> | null;
   /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
   readonly pressed: ClosurePressed | null;
   /**
@@ -448,6 +455,35 @@ export interface OrdersView {
 export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
 
 /**
+ * The purchases that lapsed unpaid, which the gateway reads apart from the
+ * other orders: the page the address asks for, read only where the address
+ * asks for their segment and null elsewhere, and how many there are.
+ */
+export interface LapsedAttempts {
+  readonly page: readonly LapsedAttempt[] | null;
+  readonly of: number;
+}
+
+/**
+ * One purchase that lapsed unpaid: its price where one was named, and the
+ * moment it was named, or the moment the purchase was asked for where none
+ * was.
+ */
+export interface LapsedAttempt {
+  readonly id: string;
+  readonly merchant_item_id: string;
+  readonly status: OrderStatus;
+  readonly price: { readonly amount: string; readonly currency: string } | null;
+  readonly at: string;
+  readonly test: boolean;
+}
+
+const NO_LAPSED: LapsedAttempts = { page: null, of: 0 };
+
+/** The segment of the purchases that lapsed unpaid, which no address names by default. */
+const LAPSED = "lapsed";
+
+/**
  * Open is the gateway's own narrowing, read beside the whole list rather than
  * worked out from it: a status does not say whether an order is open, since
  * "In progress" reads the same for an order the merchant was handed and for a
@@ -456,6 +492,7 @@ export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
 const orderSegments = (
   open: OrderList,
   needing: ReadonlySet<string>,
+  lapsed: number | null = null,
 ): readonly SegmentRule<OrderRow>[] => {
   const ids = new Set(open.orders.map((order) => order.id));
   return [
@@ -472,7 +509,30 @@ const orderSegments = (
       holds: (row) => needing.has(row.id),
       none: "Nothing needs you.",
     },
+    ...(lapsed === null
+      ? []
+      : [
+          {
+            key: LAPSED,
+            label: "Lapsed",
+            holds: () => false,
+            none: "No purchase has lapsed unpaid.",
+            counted: lapsed,
+          },
+        ]),
   ];
+};
+
+/**
+ * The page of the purchases that lapsed unpaid the address asks for, or null
+ * where it asks for another segment, beside which they are only counted.
+ */
+export const lapsedPageIn = (query: URLSearchParams): number | null => {
+  const asked = askedIn(
+    query,
+    orderSegments({ orders: [] }, new Set(), 0).map((one) => one.key),
+  );
+  return asked.show === LAPSED ? asked.page : null;
 };
 
 /** What stands between the two halves of an identifier shown short: its ellipsis, or dots typed for it. */
@@ -543,68 +603,73 @@ export const ordersView = (
   query: URLSearchParams = new URLSearchParams(),
   owed: Readonly<Record<string, UnfulfilledCause>> = {},
   paidInto: PaidIntoSplits = {},
+  lapsed: LapsedAttempts = NO_LAPSED,
   shopTotals: Readonly<Record<string, string>> = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
   const reopened = paidAfterClosureIn(open);
+  const rowOf = (order: OrderList["orders"][number]): OrderRow => ({
+    id: order.id,
+    product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
+    itemId: order.merchant_item_id,
+    amount: money(order.price),
+    test: order.test,
+    shares: sharesIn(order.price, paidInto[order.id]),
+    state: reopened(order)
+      ? { text: "Paid after closure", tone: "warn" as const }
+      : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
+        ? { text: "Closed by you", tone: "quiet" as const }
+        : ORDER_WORDS[order.status],
+    paymentUnresolved: order.payment_status === "unresolved",
+    opened: query.get("details") === order.id,
+    payment:
+      order.payment_status === "paid"
+        ? "Paid"
+        : order.payment_status === "unresolved"
+          ? "Outcome unknown"
+          : "Not paid",
+    closure:
+      order.merchant_closure === undefined
+        ? null
+        : {
+            at: momentView(order.merchant_closure.closed_at),
+            ...(order.merchant_closure.message === undefined
+              ? {}
+              : { message: order.merchant_closure.message }),
+          },
+    closing: reopened(order) ? "again" : closable(order) ? "first" : null,
+    shopTotal:
+      shopTotals[order.id] === undefined || shopTotals[order.id] === order.price.amount
+        ? null
+        : money({ amount: shopTotals[order.id] as string, currency: order.price.currency }),
+    priceSet: momentView(order.price.at),
+    day: dayOf(order.price.at),
+  });
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
   const listed = [...orders.orders]
     .sort((one, other) => setAt(other) - setAt(one) || 0)
-    .map((order) => ({
-      order,
-      row: {
-        id: order.id,
-        product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
-        itemId: order.merchant_item_id,
-        amount: money(order.price),
-        test: order.test,
-        shares: sharesIn(order.price, paidInto[order.id]),
-        state: reopened(order)
-          ? { text: "Paid after closure", tone: "warn" as const }
-          : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
-            ? { text: "Closed by you", tone: "quiet" as const }
-            : ORDER_WORDS[order.status],
-        paymentUnresolved: order.payment_status === "unresolved",
-        opened: query.get("details") === order.id,
-        payment:
-          order.payment_status === "paid"
-            ? "Paid"
-            : order.payment_status === "unresolved"
-              ? "Outcome unknown"
-              : "Not paid",
-        closure:
-          order.merchant_closure === undefined
-            ? null
-            : {
-                at: momentView(order.merchant_closure.closed_at),
-                ...(order.merchant_closure.message === undefined
-                  ? {}
-                  : { message: order.merchant_closure.message }),
-              },
-        closing: reopened(order) ? "again" : closable(order) ? "first" : null,
-        shopTotal:
-          shopTotals[order.id] === undefined || shopTotals[order.id] === order.price.amount
-            ? null
-            : money({ amount: shopTotals[order.id] as string, currency: order.price.currency }),
-        priceSet: momentView(order.price.at),
-        day: dayOf(order.price.at),
-      } satisfies OrderRow,
-    }));
+    .map((order) => ({ order, row: rowOf(order) }));
   const needing = (order: OrderList["orders"][number]) => needsYou(order.status) || reopened(order);
+  const needed = new Set(orders.orders.filter(needing).map((order) => order.id));
+  const typed = askedIn(
+    query,
+    orderSegments(open, needed, 0).map((one) => one.key),
+  );
+  // Their segment is not searched, so a search does not offer it, and on it
+  // the search is set aside.
+  const onLapsed = typed.show === LAPSED;
+  const asked = onLapsed ? { ...typed, q: "", cut: false } : typed;
   const segments = orderSegments(
     open,
-    new Set(orders.orders.filter(needing).map((order) => order.id)),
-  );
-  const asked = askedIn(
-    query,
-    segments.map((one) => one.key),
+    needed,
+    onLapsed || (lapsed.of > 0 && asked.q === "") ? lapsed.of : null,
   );
   const finds = orderSearch(asked.q.toLocaleLowerCase());
   const found = asked.q === "" ? listed : listed.filter(({ row }) => finds(row));
-  const listing = listingOf({
+  const theirs = listingOf({
     rows: listed.map(({ row }) => row),
     asked,
     path: "/orders",
@@ -618,6 +683,39 @@ export const ordersView = (
           : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
     showAll: "Show all orders",
   });
+  const lapsedRows = onLapsed
+    ? (lapsed.page ?? []).map(
+        (attempt): OrderRow => ({
+          id: attempt.id,
+          product: titles.get(attempt.merchant_item_id) ?? attempt.merchant_item_id,
+          itemId: attempt.merchant_item_id,
+          amount: attempt.price === null ? "No price" : money(attempt.price),
+          test: attempt.test,
+          shares: null,
+          state: ORDER_WORDS[attempt.status],
+          shopTotal: null,
+          priceSet: momentView(attempt.at),
+          day: dayOf(attempt.at),
+          payment: "Not paid",
+          paymentUnresolved: false,
+          opened: query.get("details") === attempt.id,
+          closure: null,
+          closing: null,
+        }),
+      )
+    : [];
+  const listing = onLapsed
+    ? pagedListingOf({
+        listing: theirs,
+        rows: lapsedRows,
+        of: lapsed.of,
+        asked,
+        path: "/orders",
+        first: segments[0]?.key ?? "",
+        none: segments.find((one) => one.key === LAPSED)?.none ?? "",
+        showAll: "Show all orders",
+      })
+    : theirs;
   const needsHere = asked.show === "needs";
   const onPage = new Set(listing.rows.map((row) => row.id));
   const opens = (row: OrderRow) => {
@@ -645,9 +743,16 @@ export const ordersView = (
   };
   const byId = new Map(listed.map((one) => [one.row.id, one]));
   return {
-    none: orders.orders.length === 0,
+    none: orders.orders.length === 0 && lapsed.of === 0,
     pressed: null,
-    testNote: testOrders(orders, mode),
+    testNote: testOrders(onLapsed ? { orders: lapsed.page ?? [] } : orders, mode),
+    lapsedApart:
+      !onLapsed && asked.q !== "" && lapsed.of > 0
+        ? {
+            says: `Purchases that lapsed unpaid are not searched: ${lapsed.of} ${lapsed.of === 1 ? "is" : "are"} under`,
+            to: "/orders?show=lapsed",
+          }
+        : null,
     listing,
     needsYou: needsHere
       ? {
@@ -759,7 +864,10 @@ const PAID_AFTER_CLOSURE =
  * Where the band over every page of the channel already says its payments are
  * tests, the page does not say it a second time.
  */
-const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
+const testOrders = (
+  orders: Readonly<{ orders: readonly Readonly<{ test: boolean }>[] }>,
+  mode: SurfaceMode,
+): string | null => {
   const tests = orders.orders.filter((order) => order.test).length;
   if (tests === 0 || SURFACE_WORDS[mode] !== null) {
     return null;

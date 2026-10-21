@@ -10,9 +10,16 @@ import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gatewa
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
+import {
+  identityFor,
+  LINK_CHANNEL_LIMIT,
+  LINK_CLIENT_LIMIT,
+  LINK_MIN_INTERVAL_MS,
+  LINK_RATE_WINDOW_MS,
+} from "./identity.js";
 import type { Message } from "./mail.js";
 import { type GoogleProfile, googleExchange } from "./testing/google.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
@@ -447,12 +454,12 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = identityOn(messages);
 
-      await expect(identity.requestLink(" Person@Example.com ", "settings")).resolves.toStrictEqual(
-        {
-          status: "accepted",
-          retryAt: expect.any(Date),
-        },
-      );
+      await expect(
+        identity.requestLink(" Person@Example.com ", "settings", ONE_CLIENT),
+      ).resolves.toStrictEqual({
+        status: "accepted",
+        retryAt: expect.any(Date),
+      });
       expect(
         (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 0 });
@@ -474,9 +481,9 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const one = identityOn(messages);
       const two = identityOn(messages);
-      await one.requestLink("person@example.com", "default");
+      await one.requestLink("person@example.com", "default", ONE_CLIENT);
       await rewindLinkSends();
-      await two.requestLink("person@example.com", "settings");
+      await two.requestLink("person@example.com", "settings", ONE_CLIENT);
       await pool.query(`
         create function slow_dashboard_person() returns trigger language plpgsql as $$
         begin perform pg_sleep(0.05); return new; end $$
@@ -512,7 +519,7 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const one = identityOn(messages);
       const two = identityOn(messages);
-      await one.requestLink("person@example.com", "default");
+      await one.requestLink("person@example.com", "default", ONE_CLIENT);
       const token = tokenIn(messages[0] as Message);
       await pool.query(`
         create function slow_dashboard_person() returns trigger language plpgsql as $$
@@ -537,7 +544,7 @@ if (databaseUrl === null) {
     it("rolls token consumption and person creation back when session creation fails", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       const token = tokenIn(messages[0] as Message);
       await pool.query(`
         create function fail_dashboard_session() returns trigger language plpgsql as $$
@@ -568,7 +575,9 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = identityOn(messages, "refused");
 
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toStrictEqual({
         status: "unavailable",
       });
 
@@ -602,7 +611,7 @@ if (databaseUrl === null) {
         ],
       );
 
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
       const kept = (
         await pool.query<{ id: string }>("select id from dashboard_verifications")
@@ -630,7 +639,9 @@ if (databaseUrl === null) {
         ],
       );
 
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toStrictEqual({
         status: "unavailable",
       });
 
@@ -652,7 +663,7 @@ if (databaseUrl === null) {
         (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 0 });
 
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       expect(opened).toMatchObject({
         status: "opened",
@@ -664,7 +675,7 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const one = identityOn(messages);
       const two = identityOn(messages);
-      await one.requestLink("person@example.com", "default");
+      await one.requestLink("person@example.com", "default", ONE_CLIENT);
       const opened = await one.openLink(tokenIn(messages[0] as Message));
       if (opened.status !== "opened") throw new Error("the P1 link did not open");
       let registrations = 0;
@@ -701,7 +712,7 @@ if (databaseUrl === null) {
     it("keeps P1 and its session when gateway registration is unavailable", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       if (opened.status !== "opened") throw new Error("the P1 link did not open");
 
@@ -723,7 +734,7 @@ if (databaseUrl === null) {
       const identity = identityOn(messages);
       const signedIn = async (email: string, merchant: string): Promise<string> => {
         await identity.make(email, merchant);
-        await identity.requestLink(email, "default");
+        await identity.requestLink(email, "default", ONE_CLIENT);
         const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
         if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
         return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
@@ -755,7 +766,7 @@ if (databaseUrl === null) {
         const identity = identityOn(messages);
         const signedIn = async (email: string): Promise<string> => {
           await rewindLinkSends();
-          await identity.requestLink(email, "default");
+          await identity.requestLink(email, "default", ONE_CLIENT);
           const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
           if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
           return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
@@ -794,7 +805,7 @@ if (databaseUrl === null) {
       const identity = identityOn(messages);
       const owner = await identity.make("owner@example.com", MERCHANT);
       if (owner === null) throw new Error("the owner's account was not made");
-      await identity.requestLink("owner@example.com", "default");
+      await identity.requestLink("owner@example.com", "default", ONE_CLIENT);
       const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
       if (opened.status !== "opened") throw new Error("the owner could not sign in");
       const pressed = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
@@ -823,7 +834,7 @@ if (databaseUrl === null) {
       const identity = identityOn(messages);
       const signedIn = async (email: string): Promise<string> => {
         await rewindLinkSends();
-        await identity.requestLink(email, "default");
+        await identity.requestLink(email, "default", ONE_CLIENT);
         const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
         if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
         return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
@@ -846,7 +857,7 @@ if (databaseUrl === null) {
       // sets it, and an open session sees the change on its next read.
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      await identity.requestLink("operator@example.com", "default");
+      await identity.requestLink("operator@example.com", "default", ONE_CLIENT);
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       if (opened.status !== "opened") throw new Error("the link should have opened");
       const cookie = cookieHeader(opened.setCookies);
@@ -877,11 +888,15 @@ if (databaseUrl === null) {
     it("enforces a minute between links and three sends per rolling hour without storing the raw address", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toStrictEqual({
         status: "accepted",
         retryAt: expect.any(Date),
       });
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toMatchObject({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toMatchObject({
         status: "cooldown",
         wall: "interval",
         retryAt: expect.any(Date),
@@ -896,7 +911,7 @@ if (databaseUrl === null) {
       let latest: Awaited<ReturnType<typeof identity.requestLink>> | undefined;
       for (let count = 0; count < 2; count += 1) {
         await rewindLinkSends();
-        latest = await identity.requestLink("person@example.com", "default");
+        latest = await identity.requestLink("person@example.com", "default", ONE_CLIENT);
         expect(latest).toStrictEqual({ status: "accepted", retryAt: expect.any(Date) });
       }
       // The third link of the hour spent the allowance, so the wait is the rest
@@ -907,7 +922,9 @@ if (databaseUrl === null) {
       expect(latest.retryAt).toStrictEqual(new Date(oldest.at.getTime() + LINK_RATE_WINDOW_MS));
       expect(latest.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
       await rewindLinkSends();
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toMatchObject({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toMatchObject({
         status: "cooldown",
         wall: "hourly",
         retryAt: expect.any(Date),
@@ -915,6 +932,72 @@ if (databaseUrl === null) {
       const evidence = await pool.query("select email_hash from dashboard_link_sends");
       expect(evidence.rows).toHaveLength(3);
       expect(JSON.stringify(evidence.rows)).not.toContain("person@example.com");
+    });
+
+    it("counts one client's links across two processes, at once as well as one after another, and still lets another client's out", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      const crowded = { client: "198.51.100.7" };
+
+      const answers = await Promise.all(
+        Array.from({ length: LINK_CLIENT_LIMIT + 4 }, (_, sent) =>
+          (sent % 2 === 0 ? one : two).requestLink(
+            `person-${sent}@example.com`,
+            "default",
+            crowded,
+          ),
+        ),
+      );
+
+      expect(answers.filter((answer) => answer.status === "accepted")).toHaveLength(
+        LINK_CLIENT_LIMIT,
+      );
+      expect(answers.filter((answer) => answer.status === "cooldown")).toStrictEqual(
+        Array.from({ length: 4 }, () => ({
+          status: "cooldown",
+          wall: "client",
+          retryAt: expect.any(Date),
+        })),
+      );
+      expect(messages).toHaveLength(LINK_CLIENT_LIMIT);
+      await expect(
+        two.requestLink("one-more@example.com", "default", crowded),
+      ).resolves.toMatchObject({ status: "cooldown", wall: "client" });
+      await expect(
+        one.requestLink("one-more@example.com", "default", { client: "198.51.100.8" }),
+      ).resolves.toMatchObject({ status: "accepted" });
+      const evidence = await pool.query("select * from dashboard_link_sends");
+      expect(JSON.stringify(evidence.rows)).not.toContain("198.51.100");
+    });
+
+    it("refuses every client once the channel has sent its hour's links, and lets them out once the hour has passed", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await pool.query(
+        `insert into dashboard_link_sends (id, email_hash, purpose, sent_at, expires_at)
+         select 'arranged-' || n, md5('arranged-' || n), 'dashboard', now(), now() + interval '7 days'
+         from generate_series(1, $1::int) as n`,
+        [LINK_CHANNEL_LIMIT],
+      );
+
+      for (const client of ["198.51.100.7", "198.51.100.8"]) {
+        await expect(
+          identity.requestLink(`${client}@example.com`, "default", { client }),
+        ).resolves.toMatchObject({
+          status: "cooldown",
+          wall: "ceiling",
+          retryAt: expect.any(Date),
+        });
+      }
+      expect(messages).toHaveLength(0);
+
+      await pool.query("update dashboard_link_sends set sent_at = sent_at - interval '1 hour'");
+
+      await expect(
+        identity.requestLink("person@example.com", "default", { client: "198.51.100.7" }),
+      ).resolves.toMatchObject({ status: "accepted" });
+      expect(messages).toHaveLength(1);
     });
   });
   /**
@@ -966,7 +1049,10 @@ if (databaseUrl === null) {
     it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const pressedAt = Date.now();
 
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
@@ -995,7 +1081,10 @@ if (databaseUrl === null) {
 
     it("writes no registration when the link asked for while reporting was on is opened after it went off", async () => {
       const messages: Message[] = [];
-      await reportingOn(messages).requestLink("person@example.com", "default", CLICK);
+      await reportingOn(messages).requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
 
       const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message));
 
@@ -1006,7 +1095,7 @@ if (databaseUrl === null) {
     it("leaves no registration when the link was asked for without a click", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
       await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
@@ -1019,10 +1108,13 @@ if (databaseUrl === null) {
     it("writes no registration for an address that already has a verified account, even with a fresh click", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       await identity.openLink(tokenIn(messages[0] as Message));
       await rewindLinkSends();
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
 
       await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
         status: "opened",
@@ -1037,7 +1129,10 @@ if (databaseUrl === null) {
       const identity = reportingOn(messages);
       const made = await identity.make("person@example.com", MERCHANT);
       if (made === null) throw new Error("the account was not made");
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
 
       await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
@@ -1051,7 +1146,10 @@ if (databaseUrl === null) {
     it("writes nothing for a token that opens nothing or for the landing page's read, and one registration for a link opened twice", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const token = tokenIn(messages[0] as Message);
 
       expect(await identity.landingOf(token)).toStrictEqual({ email: "person@example.com" });
@@ -1104,7 +1202,10 @@ if (databaseUrl === null) {
         // report somebody who never signed in.
         const messages: Message[] = [];
         const identity = reportingOn(messages);
-        await identity.requestLink("person@example.com", "default", CLICK);
+        await identity.requestLink("person@example.com", "default", {
+          ...ONE_CLIENT,
+          clickId: CLICK,
+        });
         const token = tokenIn(messages[0] as Message);
         await pool.query(`
           create function fail_dashboard_insert() returns trigger language plpgsql as $$
@@ -1134,7 +1235,7 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const one = reportingOn(messages);
       const two = reportingOn(messages);
-      await one.requestLink("person@example.com", "default", CLICK);
+      await one.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
       const token = tokenIn(messages[0] as Message);
       await slowAccountInserts();
 
@@ -1150,9 +1251,12 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const one = reportingOn(messages);
       const two = reportingOn(messages);
-      await one.requestLink("person@example.com", "default", CLICK);
+      await one.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
       await rewindLinkSends();
-      await two.requestLink("person@example.com", "settings", ANOTHER_CLICK);
+      await two.requestLink("person@example.com", "settings", {
+        ...ONE_CLIENT,
+        clickId: ANOTHER_CLICK,
+      });
       await slowAccountInserts();
 
       const [first, second] = await Promise.all([
@@ -1174,7 +1278,10 @@ if (databaseUrl === null) {
     it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       if (opened.status !== "opened") throw new Error("the link did not open");
       const before = await registrations();
@@ -1190,9 +1297,15 @@ if (databaseUrl === null) {
     it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       await identity.openLink(tokenIn(messages[0] as Message));
-      await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
+      await identity.requestLink("bystander@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: ANOTHER_CLICK,
+      });
       const bystander = await identity.openLink(tokenIn(messages[1] as Message));
       if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
       expect(await countIn("dashboard_ad_reports")).toBe(4);
@@ -1214,7 +1327,10 @@ if (databaseUrl === null) {
     it("still opens a link stored in the shape without a click, and writes no registration", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "settings", CLICK);
+      await identity.requestLink("person@example.com", "settings", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       await pool.query("update dashboard_verifications set value = $1", [
         JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
       ]);
@@ -1231,7 +1347,10 @@ if (databaseUrl === null) {
     it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const token = tokenIn(messages[0] as Message);
       const dashboard = { email: "person@example.com", destination: "default", request: null };
 
@@ -1272,7 +1391,10 @@ if (databaseUrl === null) {
         [made.id, ANOTHER_CLICK],
       );
       const planted = await registrations();
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
 
       await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
 
@@ -1403,7 +1525,10 @@ if (databaseUrl === null) {
     it("leaves the store report waiting with its own copy of the click beside the registration, dated by the same sign-in, with only the registration report switched on", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
 
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
 
@@ -1460,7 +1585,10 @@ if (databaseUrl === null) {
     it("leaves neither report when the store report cannot be written, and the link still opens", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const token = tokenIn(messages[0] as Message);
       await pool.query(`
         create function fail_store_report() returns trigger language plpgsql as $$
@@ -1487,7 +1615,10 @@ if (databaseUrl === null) {
     it("removes both reports with an account deleted for privacy", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       await identity.openLink(tokenIn(messages[0] as Message));
       expect(await countIn("dashboard_ad_reports")).toBe(2);
 
@@ -1644,7 +1775,7 @@ if (databaseUrl === null) {
     it("writes no registration when Google links an address a mailed link already verified", async () => {
       const messages: Message[] = [];
       const { identity, start } = reportingGoogle(messages);
-      await identity.requestLink("person@gmail.com", "default");
+      await identity.requestLink("person@gmail.com", "default", ONE_CLIENT);
       expect(await identity.openLink(tokenIn(messages[0] as Message))).toMatchObject({
         status: "opened",
       });

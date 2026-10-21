@@ -1,7 +1,7 @@
 /**
  * Uses a database no other suite uses. The dashboard lookup and the gateway's
- * atomic one-way grant run through one pool, and a repeated command keeps the
- * first timestamp.
+ * atomic grant and withdrawal run through one pool, and a repeated command
+ * keeps the first timestamp or changes nothing.
  */
 
 import { spawnSync } from "node:child_process";
@@ -73,8 +73,12 @@ if (databaseUrl === null) {
       directory,
       {
         grant: async (merchantId) => await grantLiveApproval(store, merchantId, at),
+        withdraw: async () => {
+          throw new Error("only the grant is asked for here");
+        },
       },
       { say: (line) => lines.push(line) },
+      "grant",
     );
     return { code, output: lines.join("\n") };
   };
@@ -111,6 +115,40 @@ if (databaseUrl === null) {
       expect(output).toContain(MERCHANT);
       expect(output).not.toContain(databaseUrl);
       expect((await store.merchantById(MERCHANT))?.liveApprovedAt).not.toBeNull();
+    });
+
+    it("withdraws through the private entry point, and says the same each time after", async () => {
+      await store.addMerchant(
+        { id: MERCHANT, name: "The account holder's merchant" },
+        FIRST_GRANT - 2_000,
+      );
+      await store.setServiceName(MERCHANT, "The public seller", FIRST_GRANT - 1_000);
+      await account("acc_merchant", EMAIL, MERCHANT);
+      await grantLiveApproval(store, MERCHANT, FIRST_GRANT);
+
+      const withdrawing = () =>
+        spawnSync(
+          process.execPath,
+          ["--import", tsx, join(root, "apps", "dashboard", "src", "approve.ts"), "--withdraw"],
+          {
+            cwd: root,
+            encoding: "utf8",
+            env: { ...process.env, DATABASE_URL: databaseUrl, PAYMENT_NETWORK: "eip155:8453" },
+            input: "  Merchant@Example.COM\n",
+          },
+        );
+      const first = withdrawing();
+      const second = withdrawing();
+      const third = withdrawing();
+
+      expect(first.status, first.stderr).toBe(0);
+      expect(first.stdout).toMatch(/withdrawn now/i);
+      expect(first.stdout).toContain(EMAIL);
+      expect(first.stdout).toContain(MERCHANT);
+      expect(second.status, second.stderr).toBe(0);
+      expect(second.stdout).toMatch(/not approved/i);
+      expect(third.stdout).toBe(second.stdout);
+      expect((await store.merchantById(MERCHANT))?.liveApprovedAt).toBeNull();
     });
 
     it("resolves one normalized dashboard binding and preserves the first gateway timestamp", async () => {
@@ -152,8 +190,13 @@ if (databaseUrl === null) {
             grants += 1;
             return null;
           },
+          withdraw: async () => {
+            grants += 1;
+            return null;
+          },
         },
         { say: (line) => lines.push(line) },
+        "grant",
       );
 
       expect(matches).toHaveLength(2);

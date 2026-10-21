@@ -31,7 +31,7 @@ written in; the rest are in English.
 
 | Decision | What it decides |
 | --- | --- |
-| [0006](0006-wire-version.md) | What the contract version promises and when it moves: from the first merchant Agentify does not control, every change a strict reader cannot read moves it, so an old worker stops with words instead of misreading an order. |
+| [0006](0006-wire-version.md) | What the contract version promises and when it moves: readers ignore informational fields they do not know, an unknown status, reason, result or purpose reads `unknown` and an unknown event is skipped, while what an order delivers is read closed; a rename, a removal, a changed meaning or anything added to what an order delivers moves it, and an old worker stops with words. |
 | [0012](0012-discovery-declaration.md) | Every card on sale declares itself in its payment challenge for outside catalogues such as the x402 Bazaar, as a projection of the card. |
 | [0018](0018-one-envelope-one-document.md) | Every call says no in one shape — a `code`, a `message` and `retryable` — and an order is one document. |
 | [0011](0011-agent-collection-door.md) | For now, knowing an order's identifier is the proof that opens that order, which is how an agent collects goods delivered later; a payment names its order by a separate reference that nothing answers with the order, so no listing can carry the identifier. |
@@ -48,6 +48,7 @@ written in; the rest are in English.
 | [0014](0014-registration.md) | An account comes into being only at a sign-in, and a merchant only when that person presses the dashboard's one control for it; no terminal command makes either. |
 | [0035](0035-agentify-is-not-the-store.md) | Agentify is not the store: a product comes from the merchant's own system, and Agentify holds no goods. |
 | [0036](0036-a-merchant-sells-through-one-integration-at-a-time.md) | A merchant sells through one integration at a time, the SDK or one WooCommerce shop, and the other's cards are off sale. |
+| [0043](0043-the-purchase-door-refuses-before-any-charge.md) | At most twenty of a merchant's purchases wait for payment at once; a purchase charged before its goods is refused while the merchant's own code has not polled for ten minutes; an attempt that ended with nothing charged or held is deleted thirty days on. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
 | [0041](0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md) | A WooCommerce shop that calculates tax is sold from where its cart and its order agree: downloads only with prices entered including tax, parcels at the cart's total, tax rounded at the subtotal, and every shop's order taken on within one cent of the payment, the difference recorded. |
 

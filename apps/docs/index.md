@@ -124,7 +124,10 @@ Leaving altogether is not available yet: pausing and revoking keys end no
 order already taken and delete no account, and the
 [FAQ](/faq#can-i-leave-altogether) says what you can do instead. Nobody at
 Agentify watches your orders for you, so keep an eye on them and pause selling
-when your integration cannot deliver.
+when your integration cannot deliver. The one thing that stops on its own is a
+purchase that charges before its goods: it is refused while no process of
+yours has polled for ten minutes, and taken again at the next poll ([What can
+go wrong](/failures)).
 
 Short answers — what this costs, what happens about refunds, who settles a
 dispute — are in the [common questions](/faq).
@@ -149,7 +152,7 @@ dispute — are in the [common questions](/faq).
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
    as a separate account, save a wallet for real money there, and have your
    cards published again with a live key. An Agentify operator approves your
-   merchant once before anything sells live.
+   merchant before anything sells live.
 
 What changes between the two channels:
 
@@ -161,7 +164,7 @@ What changes between the two channels:
 | Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
 | API key | starts with `csk_test_` | starts with `csk_live_` |
 | Your first purchase | you make it yourself, with test USDC | — |
-| Agentify's operator | not involved | approves your merchant once before anything sells |
+| Agentify's operator | not involved | approves your merchant before anything sells |
 | Cards | published with a test key | published again with a live key; nothing is copied |
 | WooCommerce | available | not yet |
 | Parcels | sold | not sold yet |
@@ -178,8 +181,7 @@ What changes between the two channels:
 - What happens when a purchased period runs out: renewing a subscription and
   buying the same access again are not designed yet.
 - What we promise you when it is our side that goes quiet.
-- Stopping your selling without being asked, when your side stops answering or
-  answers too often that the goods are gone. Nothing does it today, so the
-  switch is the one in your hands, and what will count as your side having
-  gone quiet and how selling comes back are open.
+- Stopping your selling without being asked when your side answers too often
+  that the goods are gone. Nothing does it today, so the switch is the one in
+  your hands.
 - When the pilot ends.

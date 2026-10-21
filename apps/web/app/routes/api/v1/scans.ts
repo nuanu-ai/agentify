@@ -7,6 +7,7 @@ import { getServerConfig } from "../../../../lib/server/config";
 import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
 import { hmacHex } from "../../../../lib/server/crypto";
 import {
+  clientAddress,
   errorResponse,
   hasSameOrigin,
   waitResponse,
@@ -135,7 +136,7 @@ async function acceptScan(request: Request): Promise<Response> {
     );
   }
 
-  const remoteIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const remoteIp = clientAddress(request);
   const ipKey = hmacHex(config.hmacSecret, "rate-ip", remoteIp);
   const targetKey = hmacHex(config.hmacSecret, "rate-target", targetHost);
   const challengePassed = await verifyTurnstile(parsed.data.turnstile_token, remoteIp);

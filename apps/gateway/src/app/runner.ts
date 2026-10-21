@@ -56,6 +56,7 @@ import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
 import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
+import { orderFingerprint } from "../order-fingerprint.js";
 import { asTimestamp } from "../ports/clock.js";
 import {
   type Facilitator,
@@ -64,9 +65,10 @@ import {
   RecoveryFailure,
   type SettleOutcome,
 } from "../ports/facilitator.js";
-import type { Reminder } from "../ports/queue.js";
 import type {
-  Integration,
+  Birth,
+  Born,
+  ClockAtBirth,
   MerchantScope,
   OrderChange,
   OrderLookup,
@@ -135,7 +137,7 @@ export type PresentResult =
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
   /** A payment fit only to return a paid purchase, for an order that would now charge it. */
-  | { readonly kind: "payee_left" }
+  | { readonly kind: "only_returns" }
   | { readonly kind: "no_such_order" };
 
 /** What one hold on an order came to, before its effects are carried out. */
@@ -158,7 +160,7 @@ type PresentDecided =
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
-  | { readonly kind: "payee_left" };
+  | { readonly kind: "only_returns" };
 
 export type Applied =
   | {
@@ -197,6 +199,23 @@ export interface Swept {
   rearmed: number;
   /** Orders the sweep could not repair, each one logged. */
   refused: number;
+}
+
+/** A reminder for each deadline in `after` that was not already running in `before`. */
+function clocksFor(
+  before: readonly Deadline[],
+  after: readonly Deadline[],
+  orderId: string,
+  now: number,
+): ClockAtBirth[] {
+  return after
+    .filter(
+      (deadline) => !before.some((was) => was.kind === deadline.kind && was.at === deadline.at),
+    )
+    .map((deadline) => ({
+      reminder: { kind: "deadline", orderId, deadline: deadline.kind, at: deadline.at },
+      afterMs: Math.max(deadline.at - now, 0),
+    }));
 }
 
 /**
@@ -245,23 +264,18 @@ export class OrderRunner {
 
   /**
    * Writes down a new order and carries out the effects its creation asked
-   * for; the machine has already decided that the order exists. `through` is
-   * the integration its card was sold through: if the merchant has stopped
-   * selling through it by the time the order would be written, nothing is
-   * written or carried out and null comes back.
+   * for; the machine has already decided that the order exists. `birth` is
+   * what the store holds the write to (`Birth`): where the order is not
+   * written, nothing is carried out either, and the answer says why.
    */
   async create(
     record: StoredOrder,
     effects: readonly Effect[],
     at: number,
-    through: Integration,
-  ): Promise<StoredOrder | null> {
+    birth: Birth,
+  ): Promise<Born> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
-    // The clock is started before the order is written: a reminder for an order
-    // never written finds nothing, while an order written with no clock on it is
-    // one nothing will ever close.
-    await this.#arm([], deadlines(record.order), record.order.id);
 
     // `addOrder` takes nothing to write alongside the order, so an effect that
     // must be written with it is refused here, before the order exists.
@@ -272,12 +286,19 @@ export class OrderRunner {
       );
     }
 
-    const created = orderCreated(record, through, this.#channel);
-    if (!(await this.#runtime.store.addOrder(record, through, created))) {
-      return null;
+    const born = await this.#runtime.store.addOrder(
+      record,
+      {
+        ...birth,
+        clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
+      },
+      orderCreated(record, birth.through, this.#channel),
+    );
+    if (born !== "written") {
+      return born;
     }
     await this.#run(record, effects);
-    return record;
+    return born;
   }
 
   /**
@@ -461,9 +482,9 @@ export class OrderRunner {
       readonly recovery?: PaymentRecoveryContext;
       readonly fingerprint: string;
       /**
-       * Checked against the split a paid order's money went to, which is no
-       * longer where its merchant is paid, so the payment may return the
-       * purchase and must not be charged.
+       * Checked only to give back a paid purchase, so it must not be charged:
+       * by this gateway alone, or against the split a paid order's money went
+       * to, which is no longer where its merchant is paid.
        */
       readonly onlyReturns?: boolean;
     },
@@ -490,9 +511,9 @@ export class OrderRunner {
           return { result: { kind: "already_yours", state: found.order.state } };
         }
         // The order came to take a new charge while the payment was checked,
-        // and charged now its money would go to a wallet the merchant left.
+        // and the payment was checked only to give a paid purchase back.
         if (verified?.onlyReturns === true) {
-          return { result: { kind: "payee_left" } };
+          return { result: { kind: "only_returns" } };
         }
 
         let order = found.order;
@@ -618,7 +639,7 @@ export class OrderRunner {
         // logged so that nobody is left unaware of it.
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not repair ${record.order.id}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not repair ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -641,7 +662,7 @@ export class OrderRunner {
       } catch (thrown) {
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not receipt ${record.order.id}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not receipt ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -795,21 +816,8 @@ export class OrderRunner {
     after: readonly Deadline[],
     orderId: string,
   ): Promise<void> {
-    const now = this.#runtime.clock();
-    for (const deadline of after) {
-      const alreadyRunning = before.some(
-        (was) => was.kind === deadline.kind && was.at === deadline.at,
-      );
-      if (alreadyRunning) {
-        continue;
-      }
-      const reminder: Reminder = {
-        kind: "deadline",
-        orderId,
-        deadline: deadline.kind,
-        at: deadline.at,
-      };
-      await this.#runtime.queue.remind(reminder, Math.max(deadline.at - now, 0));
+    for (const clock of clocksFor(before, after, orderId, this.#runtime.clock())) {
+      await this.#runtime.queue.remind(clock.reminder, clock.afterMs);
     }
   }
 
@@ -1056,7 +1064,7 @@ export class OrderRunner {
       });
       if (recorded.found && recorded.result && source === "facilitator") {
         console.error(
-          `[gateway] ${orderId}: the payment layer left the settle unanswered; its words are kept on the order`,
+          `[gateway] ${orderFingerprint(orderId)}: the payment layer left the settle unanswered; its words are kept on the order`,
         );
       }
       return !recorded.found ? { outcome: "no_such_order" } : { outcome: "moved_on" };

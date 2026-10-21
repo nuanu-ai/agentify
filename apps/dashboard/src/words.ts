@@ -112,15 +112,19 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
 
 /**
  * Why the account as a whole is not selling as usual: all sales are paused,
- * something publishing needs is missing, or the cards their
- * own code published are off sale while a WooCommerce shop sells; or that what
- * would say so could not be read.
+ * something publishing needs is missing, purchases charged before delivery are
+ * refused while their integration is not connected, new purchases are refused
+ * while twenty wait for payment, or the cards their own code published are off
+ * sale while a WooCommerce shop sells; or that what would say so could not be
+ * read.
  */
 export type AccountReason =
   | "paused"
   | "not_approved"
   | "no_seller_name"
   | "no_payout_wallet"
+  | "out_of_touch"
+  | "busy"
   | "through_shop"
   | "unread";
 
@@ -163,6 +167,16 @@ export const ACCOUNT_WORDS: Readonly<
     says: "Your cards are off sale, and every card you publish is refused, until you set the wallet your share of every sale is paid out to.",
     fix: { to: "/settings", words: "Set it in Settings" },
   },
+  out_of_touch: {
+    title: "Prepaid purchases are refused",
+    says: "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
+    fix: null,
+  },
+  busy: {
+    title: "New purchases are refused",
+    says: "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
+    fix: null,
+  },
   through_shop: {
     title: "Selling through your WooCommerce shop",
     says: "The cards your own code published are off sale until you switch back to it on the WooCommerce page.",
@@ -174,6 +188,10 @@ export const ACCOUNT_WORDS: Readonly<
     fix: null,
   },
 });
+
+/** The out-of-touch reason's sentence where the integration did connect once, at `when`. */
+export const notConnectedSince = (when: string): string =>
+  `Your integration has not connected since ${when}, so new purchases that charge before delivery are refused until it connects again.`;
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on

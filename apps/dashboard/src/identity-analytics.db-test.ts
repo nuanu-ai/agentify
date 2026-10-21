@@ -18,6 +18,7 @@ import { migrateAccounts } from "./database.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { deliverOnce } from "./nuanu-analytics.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
@@ -110,7 +111,10 @@ if (databaseUrl === null) {
 
   const linkFor = async (email = EMAIL, click?: string): Promise<string> => {
     await rewind();
-    const asked = await identity.requestLink(email, "default", click);
+    const asked = await identity.requestLink(email, "default", {
+      ...ONE_CLIENT,
+      ...(click === undefined ? {} : { clickId: click }),
+    });
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
     return tokenOf(messages.at(-1));
   };
@@ -232,9 +236,9 @@ if (databaseUrl === null) {
         confirmed: true,
         merchant: { id: "mer_new" },
       });
-      expect((await identity.requestLink("someone@example.com", "default")).status).toBe(
-        "accepted",
-      );
+      expect(
+        (await identity.requestLink("someone@example.com", "default", ONE_CLIENT)).status,
+      ).toBe("accepted");
     });
 
     it("sets the choice about product analytics on the one account it is asked for", async () => {

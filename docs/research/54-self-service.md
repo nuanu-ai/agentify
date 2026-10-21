@@ -12,8 +12,8 @@ orders. Maintenance tools can exist without being a required step in a sale.
 
 | Operation | Who acts | What establishes the result | Current implementation |
 | --- | --- | --- | --- |
-| Admission to real sales | The operator | Explicit approval of an identified merchant | Admin screen linked from `/admin`; the same idempotent grant is available at the terminal |
-| Registration, keys, seller details, pause and resume | The merchant | Their authenticated account and existing selling checks | Dashboard and relevant SDK operations |
+| Admission to real sales | The operator | Explicit approval of an identified merchant | Admin screen linked from `/admin`; the same idempotent grant is available at the terminal, which also withdraws it |
+| Registration, keys, seller details, pause and resume | The merchant | Their authenticated account and existing selling checks | Dashboard and relevant SDK operations; keys are issued and revoked in the dashboard only |
 | Payout | The merchant or anyone sending the immutable split's payout | The contract's fixed recipients; wallet confirmation authorizes the transaction | Merchant payout screen; no Agentify signer |
 | Test purchase | The merchant's buyer or agent | An actual test-channel purchase and delivery | Quickstart step 6 runs an x402 buyer with the merchant's own test wallet and Base Sepolia faucet funds |
 | Full offboarding | The merchant | Accepted orders and payment history remain accounted for; deletion is explicit | Pause and key revocation exist; complete offboarding is missing |

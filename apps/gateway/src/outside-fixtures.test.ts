@@ -302,6 +302,12 @@ describe("a purchase from the outside", () => {
           .items[0],
       ).toMatchObject({ fulfillment: "async", fulfill_deadline_seconds: 86_400 });
 
+      // The merchant's worker is running before the sale, as a seller paid
+      // before the goods are made needs it to be.
+      await gateway.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0 },
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
       const challenged = await gateway.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
       });
@@ -525,44 +531,23 @@ describe("a purchase from the outside", () => {
         door_code: "8812",
       });
 
-      // Their keys, as their own code reads them: the one they were issued,
-      // and it is the key this call was made with.
-      const listed = await gateway.call("GET", "/v0/keys", {
-        headers: { authorization: `Bearer ${theirKey}` },
-      });
-      const theKeys = listed.body as { keys: { id: string }[]; this_call: string };
-      expect(theKeys.keys.map((key) => key.id)).toStrictEqual([theKeys.this_call]);
-
-      // Two keys for two workers, and the second retires the first, as when a
-      // box is decommissioned.
-      const first = await gateway.call("POST", "/v0/keys", {
-        body: { label: "the first worker" },
-        headers: { authorization: `Bearer ${theirKey}` },
-      });
-      const second = await gateway.call("POST", "/v0/keys", {
-        body: { label: "the second worker" },
-        headers: { authorization: `Bearer ${theirKey}` },
-      });
-      expect(first.status).toBe(200);
-      expect(second.status).toBe(200);
-      const retiring = first.body as { key: { id: string }; secret: string };
-      const other = second.body as { key: { id: string }; secret: string };
-
-      // A key cannot retire itself, and the refusal writes nothing: the same key
-      // retires the first one next.
-      const itself = await gateway.call(
-        "POST",
-        `/v0/keys/${encodeURIComponent(other.key.id)}/disable`,
-        { headers: { authorization: `Bearer ${other.secret}` } },
+      // Two keys for two workers, issued and one of them retired from the
+      // dashboard, as when a box is decommissioned; their own code holds no
+      // call that could do either.
+      const retiring = await gateway.application.issueMerchantKey(
+        merchantId,
+        "the first worker",
+        SIGNED_IN,
       );
-      expect(itself.status).toBe(409);
-
-      const revoked = await gateway.call(
-        "POST",
-        `/v0/keys/${encodeURIComponent(retiring.key.id)}/disable`,
-        { headers: { authorization: `Bearer ${other.secret}` } },
-      );
-      expect(revoked.status).toBe(200);
+      await gateway.application.issueMerchantKey(merchantId, "the second worker", SIGNED_IN);
+      const tried = await gateway.call("POST", "/v0/keys", {
+        body: { label: "one more" },
+        headers: { authorization: `Bearer ${theirKey}` },
+      });
+      expect(tried.status).toBe(404);
+      expect(
+        await gateway.application.disableMerchantKey(merchantId, retiring.key.id),
+      ).not.toBeNull();
 
       const withTheRetired = await gateway.call("GET", "/v0/cards", {
         headers: { authorization: `Bearer ${retiring.secret}` },

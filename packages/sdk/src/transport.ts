@@ -7,6 +7,9 @@
  * The answer is read the same way whatever its HTTP status: the route's
  * document if it is one, otherwise the gateway's error envelope if it is one,
  * and only otherwise a failure this package describes itself, with the status.
+ * A document is read with the contracts' reader rather than the closed schema
+ * the gateway writes to, so a field added on a newer gateway is dropped and a
+ * status word this package does not know reads `unknown`.
  *
  * Nothing here throws. A call comes back as the document or as a failure;
  * `client.ts` decides which failures a merchant sees returned and which
@@ -20,8 +23,11 @@ import {
   expandPath,
   MERCHANT_KEY_HEADER,
   merchantKeyHeaderValue,
+  type Read,
   type RouteName,
+  readerOf,
 } from "@nuanu-ai/agentify-contracts";
+import { userAgent } from "./contract.js";
 
 /** Where the gateway is and which key opens its doors. */
 export interface Gateway {
@@ -30,15 +36,16 @@ export interface Gateway {
 }
 
 /**
- * The document a route answers with, taken from the schema the table names.
- * It reads the shape of a parse result rather than using zod's `infer`,
- * because zod is not this package's to import (see `schema.ts`).
+ * The document a route answers with, as this package reads it, taken from the
+ * schema the table names. It reads the shape of a parse result rather than
+ * using zod's `infer`, because zod is not this package's to import (see
+ * `schema.ts`).
  */
 type DocumentOf<N extends RouteName> = (typeof API_ROUTES)[N]["response"] extends {
   document: { safeParse(value: unknown): infer Result };
 }
   ? Result extends { success: true; data: infer Document }
-    ? Document
+    ? Read<Document>
     : never
   : never;
 
@@ -232,6 +239,7 @@ export const callRoute = async <N extends RouteName>(
       method: route.method,
       headers: {
         accept: "application/json",
+        "user-agent": userAgent,
         [MERCHANT_KEY_HEADER]: merchantKeyHeaderValue(gateway.apiKey),
         ...(hasBody ? { "content-type": "application/json" } : {}),
       },
@@ -272,7 +280,7 @@ export const callRoute = async <N extends RouteName>(
     );
   }
 
-  const parsed = route.response.document.safeParse(body);
+  const parsed = readerOf(route.response.document).safeParse(body);
 
   if (parsed.success) {
     return { ok: true, document: parsed.data as DocumentOf<N> };

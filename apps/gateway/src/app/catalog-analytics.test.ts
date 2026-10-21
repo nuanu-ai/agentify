@@ -442,17 +442,12 @@ describe("the merchant's setup", () => {
     ]);
   });
 
-  it("records a key issued as the API's setup step, and a key refused at the API as blocked", async () => {
-    const { harnessed, served } = await started();
+  it("records a key issued from the dashboard as the API's setup step", async () => {
+    const { harnessed } = await started();
     const merchant = harnessed.merchant.id;
 
     await harnessed.gateway.issueMerchantKey(merchant, "the warehouse worker", SIGNED_IN);
-    const refused = await served.call("POST", "/v0/keys", {
-      body: { label: "" },
-      headers: bearer(harnessed.merchant.key),
-    });
 
-    expect(refused.status).toBe(400);
     expect(setupOf(harnessed, "api_key")).toStrictEqual([
       {
         name: "agc_setup_result",
@@ -460,18 +455,6 @@ describe("the merchant's setup", () => {
         source: "dashboard",
         refs: { merchant },
         fields: { step: "api_key", integration: "api", outcome: "completed" },
-      },
-      {
-        name: "agc_setup_result",
-        actor: "merchant_worker",
-        source: "gateway",
-        refs: { merchant },
-        fields: {
-          step: "api_key",
-          integration: "api",
-          outcome: "blocked",
-          reason_code: "invalid_input",
-        },
       },
     ]);
   });

@@ -53,7 +53,7 @@ import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { MemoryQueue } from "../memory/queue.js";
-import { PgBossQueue, streamOf } from "../pgboss/queue.js";
+import { PgBossQueue, REMINDERS, streamOf } from "../pgboss/queue.js";
 import { connect, type Database, PostgresStore } from "./store.js";
 
 /** The merchant everything in this suite belongs to. */
@@ -78,8 +78,8 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  * later run's purchases. A table added to `schema.ts` belongs in this list.
  */
 const EMPTY_EVERY_TABLE =
-  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants, payout_splits," +
-  " commerce_analytics_events";
+  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
+  " payout_splits, commerce_analytics_events";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
@@ -303,8 +303,86 @@ if (databaseUrl === null) {
       await store.setSelling(A, "open");
     });
 
+    describe("a purchase refused at the door", () => {
+      afterEach(async () => {
+        await pool.query("delete from orders where merchant_id = $1", [A]);
+        await pool.query("delete from cards where merchant_id = $1", [A]);
+      });
+
+      const clocksSet = async (): Promise<number> =>
+        (
+          await pool.query<{ set: number }>(
+            `select count(*)::int as set from ${QUEUE_SCHEMA}.job where name = $1`,
+            [REMINDERS],
+          )
+        ).rows[0]?.set ?? 0;
+
+      it("sets no clock, so a seller's twenty-first purchase waiting for payment writes nothing", async () => {
+        const card = await store.publishCard(A, syncCard, now);
+        for (let one = 0; one < 20; one += 1) {
+          expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
+        }
+        const before = await clocksSet();
+        expect(before).toBeGreaterThan(0);
+
+        const refused = await gateway.beginPurchase(card.id, {});
+
+        expect(refused.step).toBe("seller_busy");
+        expect(await clocksSet()).toBe(before);
+      });
+    });
+
+    describe("a seller's last poll", () => {
+      const prepaid: Card = {
+        merchant_item_id: "esim-30d",
+        title: "A thirty day eSIM",
+        description: "Thirty days of data in Indonesia",
+        price: { amount: "25.00", currency: "USD" },
+        result: { activation_code: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 3_600,
+      };
+
+      /** A gateway started afresh over this database, as after a restart, with none of the last one's memory. */
+      const restarted = () => {
+        const config = testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" });
+        return new Gateway({
+          config,
+          // Its clocks go on the suite's queue, as a restarted process's would
+          // on the one queue the database holds.
+          store: PostgresStore.over(contract.db, "eip155:84532", countedIds(), queue.envelopes()),
+          queue: new MemoryQueue(),
+          facilitator: new ScriptedFacilitator(),
+          clock: () => now,
+          ids: countedIds(),
+          announcer: nobodyAnnounces,
+          widestChallenge: widestChallengeOn(config),
+        });
+      };
+
+      afterEach(async () => {
+        await pool.query("delete from orders where merchant_id = $1", [A]);
+        await pool.query("delete from cards where merchant_id = $1", [A]);
+      });
+
+      it("outlives a restart: a gateway started afresh sells a prepaid card of a seller who polled before it, and refuses it once they have been silent ten minutes", async () => {
+        const card = await store.publishCard(A, prepaid, now);
+        await gateway.poll(A, 0);
+        const afresh = restarted();
+        await afresh.start();
+        try {
+          expect((await afresh.beginPurchase(card.id, {})).step).toBe("pay");
+
+          now += 11 * 60_000;
+          expect((await afresh.beginPurchase(card.id, {})).step).toBe("seller_not_taking_orders");
+        } finally {
+          await afresh.stop();
+        }
+      });
+    });
+
     describe("the birth of an order and a switch of integration", () => {
-      // A birth holds its merchant's row for share while it writes, and a
+      // A birth holds its merchant's row while it counts and writes, and a
       // switch holds it for update while it counts the orders that hold it, so
       // neither can land inside the other. The store contract runs them one
       // after the other; only two connections can show they wait.
@@ -335,7 +413,7 @@ if (databaseUrl === null) {
 
           const born = store.addOrder(
             anOrder("ord_born_in_the_switch", "quoted", { merchantId: A }),
-            "api",
+            { through: "api", waitingAtMost: 20 },
           );
           expect(await settledWithin(born, 300)).toBe(false);
 
@@ -344,7 +422,7 @@ if (databaseUrl === null) {
           ]);
           await switching.query("commit");
 
-          expect(await born).toBe(false);
+          expect(await born).toBe("switched_away");
           expect(await store.orderById("ord_born_in_the_switch")).toBeNull();
         } finally {
           switching.release();
@@ -355,7 +433,7 @@ if (databaseUrl === null) {
         const birth = await pool.connect();
         try {
           await birth.query("begin");
-          await birth.query("select id from merchants where id = $1 for share", [A]);
+          await birth.query("select id from merchants where id = $1 for no key update", [A]);
 
           const switched = store.switchIntegration(A, "woocommerce");
           expect(await settledWithin(switched, 300)).toBe(false);

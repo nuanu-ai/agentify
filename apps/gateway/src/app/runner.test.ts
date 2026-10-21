@@ -1,6 +1,6 @@
 import type { Order } from "@agentify/core";
 import { afterEach, describe, expect, it } from "vitest";
-import type { StoredOrder } from "../ports/store.js";
+import type { Birth, StoredOrder } from "../ports/store.js";
 import { drawEverything, type Harness, harness } from "../testing/harness.js";
 
 /**
@@ -9,6 +9,9 @@ import { drawEverything, type Harness, harness } from "../testing/harness.js";
  * an order, so the tests build one by hand, the way a row from an older version
  * or an undiscovered defect would arrive.
  */
+
+/** What a purchase's birth is held to, where the case is about something else. */
+const ANY_BIRTH: Birth = { through: "api", waitingAtMost: 20 };
 
 /** The address the payments below were checked against; its value does not matter here. */
 const PAID_AT = "0x0000000000000000000000000000000000000009";
@@ -94,7 +97,7 @@ describe("an order that cannot be true", () => {
     open = await harness();
     const record = impossible();
 
-    await expect(open.gateway.runner.create(record, [], open.now(), "api")).rejects.toThrow(
+    await expect(open.gateway.runner.create(record, [], open.now(), ANY_BIRTH)).rejects.toThrow(
       /breaks what must be true about money/,
     );
 
@@ -208,11 +211,16 @@ describe("an order that holds an address it should not", () => {
       },
     };
 
-    await expect(open.gateway.runner.create(waiting, [], open.now(), "api")).rejects.toThrow(
+    await expect(open.gateway.runner.create(waiting, [], open.now(), ANY_BIRTH)).rejects.toThrow(
       /is a parcel with no address/,
     );
     await expect(
-      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], open.now(), "api"),
+      open.gateway.runner.create(
+        { ...waiting, shipTo: { erasedAt: 0 } },
+        [],
+        open.now(),
+        ANY_BIRTH,
+      ),
     ).rejects.toThrow(/has erased the address its merchant still needs/);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
   });
@@ -231,7 +239,7 @@ describe("an order that holds an address it should not", () => {
       shipTo: address,
     };
 
-    await expect(open.gateway.runner.create(paid, [], open.now(), "api")).rejects.toThrow(
+    await expect(open.gateway.runner.create(paid, [], open.now(), ANY_BIRTH)).rejects.toThrow(
       /holds an address and is not a parcel/,
     );
   });
@@ -265,7 +273,7 @@ describe("an effect that must be written down, asked for at the birth of an orde
     };
 
     await expect(
-      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now(), "api"),
+      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now(), ANY_BIRTH),
     ).rejects.toThrow(/nowhere to write them/);
 
     expect(await open.store.orderById("ord_born")).toBeNull();

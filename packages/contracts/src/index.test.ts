@@ -109,7 +109,7 @@ describe("@nuanu-ai/agentify-contracts", () => {
   it("declares the contract version and keeps zod its only runtime dependency", () => {
     // The version is how the SDK and the gateway tell that they speak the same
     // contract.
-    expect(CONTRACT_VERSION).toBe("2");
+    expect(CONTRACT_VERSION).toBe("3");
 
     // This package is the whole of what the SDK brings into a merchant's
     // install besides zod, so anything more here is something extra for them.

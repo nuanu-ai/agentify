@@ -14,7 +14,7 @@
  * other device, then set an address of one's own.
  */
 
-import type { Announcement, AskedInTheDashboard, AskedWith } from "@agentify/gateway/announcements";
+import type { Announcement, AskedInTheDashboard } from "@agentify/gateway/announcements";
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
@@ -27,20 +27,16 @@ export interface Screens {
 }
 
 /**
- * A key's label was chosen by whoever holds the key, who may be the person the
- * message warns about. A zero-width space after every character a mail client
- * builds a link or an address from keeps it from becoming somewhere to click;
- * it is always quoted, beside the key's identifier.
+ * A key's label was chosen by whoever was signed in when it was issued, who
+ * may be the person the message warns about. A zero-width space after every
+ * character a mail client builds a link or an address from keeps it from
+ * becoming somewhere to click; it is always quoted, beside the key's
+ * identifier.
  */
 const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
 
 const askedIn = (asked: AskedInTheDashboard): string =>
   `in the dashboard, from a session signed in as ${asked.email}`;
-
-const askedBy = (asked: AskedWith): string =>
-  asked.kind === "merchant_code"
-    ? `with the key ${asked.id}, named "${inert(asked.label)}", one of the keys issued for your own code`
-    : askedIn(asked);
 
 const IF_NOT_YOU =
   "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs every other session out.";
@@ -128,8 +124,8 @@ export function announcementMessage(
     }
     case "key_issued": {
       const lead =
-        `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code ${askedBy(announcement.asked_with)}.` +
-        " A key can call everything your code can, except changing where your money goes, which only the dashboard does.";
+        `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code ${askedIn(announcement.asked_with)}.` +
+        " A key can call everything your code can. It cannot change where your money goes, issue another key or revoke one: only the dashboard does that.";
       return written(to, {
         subject: "A new key was issued for your merchant",
         eyebrow: "Keys",

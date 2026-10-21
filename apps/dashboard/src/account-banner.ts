@@ -8,7 +8,7 @@
 import type { Integration } from "@agentify/gateway";
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
-import { ACCOUNT_WORDS, type AccountReason, type Way } from "./words.js";
+import { ACCOUNT_WORDS, type AccountReason, moment, notConnectedSince, type Way } from "./words.js";
 
 /** One reason as the banner says it. */
 export interface AccountNote {
@@ -24,6 +24,14 @@ export interface AccountRead {
   readonly through?: Integration;
   /** True where a read was asked for and failed. */
   readonly unread?: boolean;
+  /**
+   * Present while purchases that charge before delivery are refused because
+   * the merchant's integration has not connected: when it last did, as an ISO
+   * instant, or null where it never has.
+   */
+  readonly outOfTouch?: { readonly since: string | null };
+  /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
+  readonly busy?: boolean;
 }
 
 /**
@@ -47,11 +55,18 @@ const ORDER: readonly AccountReason[] = [
   "not_approved",
   "no_seller_name",
   "no_payout_wallet",
+  "out_of_touch",
+  "busy",
   "through_shop",
   "unread",
 ];
 
-const noteOf = (reason: AccountReason): AccountNote => ({ reason, ...ACCOUNT_WORDS[reason] });
+const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
+  const since = read.outOfTouch?.since;
+  return reason === "out_of_touch" && typeof since === "string"
+    ? { reason, ...ACCOUNT_WORDS[reason], says: notConnectedSince(moment(since)) }
+    : { reason, ...ACCOUNT_WORDS[reason] };
+};
 
 /** Empty where the account is selling as usual and every fact was read. */
 export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly AccountNote[] => {
@@ -63,6 +78,8 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   const selling = read.selling === undefined ? null : FROM_SELLING[read.selling];
   if (selling !== null) found.add(selling);
   if (read.through === "woocommerce") found.add("through_shop");
+  if (read.outOfTouch !== undefined) found.add("out_of_touch");
+  if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");
-  return ORDER.filter((reason) => found.has(reason)).map(noteOf);
+  return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
 };

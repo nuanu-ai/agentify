@@ -10,9 +10,17 @@
  */
 
 import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gateway";
-import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
+import {
+  type Harness,
+  harness,
+  loggedWhile,
+  type Served,
+  serve,
+  workOnce,
+  workUntilStopped,
+} from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
 /** Base mainnet and its one facilitator. */
@@ -122,14 +130,14 @@ describe("what goes in", () => {
 
 describe("a refusal", () => {
   it("reaches the page in the words and under the status the route at the door gives it", async () => {
-    // A merchant on the keys screen and their engineer reading the API are told
-    // the same thing about a missing key.
+    // A merchant on the cards screen and their engineer reading the API are
+    // told the same thing about a missing product.
     const harnessed = await started();
     const served = await serve(harnessed);
     if (open !== null) open.served = served;
 
-    const onThePage = await asTheOwner(harnessed).disableKey("mk_nobody_was_issued");
-    const atTheDoor = await served.call("POST", "/v0/keys/mk_nobody_was_issued/disable", {
+    const onThePage = await asTheOwner(harnessed).pauseCard("item_nobody_published", true);
+    const atTheDoor = await served.call("POST", "/v0/cards/item_nobody_published/pause", {
       headers: { authorization: `Bearer ${harnessed.merchant.key}` },
     });
 
@@ -140,7 +148,7 @@ describe("a refusal", () => {
       code: refused.code,
       why: refused.message,
     });
-    expect(refused.code).toBe("no_such_key");
+    expect(refused.code).toBe("no_such_item");
   });
 
   it("answers an order of another merchant's as one that is not there", async () => {
@@ -296,6 +304,32 @@ describe("a call that does not finish", () => {
     await expect(client.setSelling(false)).rejects.toThrow(/database went away/);
   });
 
+  it("is logged, when it fails after the page stopped waiting, by what failed and nothing the failure carried", async () => {
+    // A failure's words can quote an order's identifier, which opens the order
+    // to whoever reads the log.
+    const orderId = "ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47";
+    const harnessed = await started();
+    const client = gatewayFor(
+      answering(harnessed.gateway, "setSelling", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        throw new Error(`the order ${orderId} will not be written down`);
+      }),
+      { merchantId: harnessed.merchant.id, email: OWNER },
+      20,
+    );
+
+    const written = await loggedWhile(async () => {
+      await client.setSelling(false);
+      await vi.waitFor(() => {
+        expect(vi.mocked(console.error).mock.calls.flat().join(" ")).toContain("after the page");
+      });
+    });
+
+    expect(written).toContain("stopping the selling failed after the page stopped waiting");
+    expect(written).toContain("Error");
+    expect(written).not.toContain(orderId);
+  });
+
   it("does not hand a page a document the contract would not recognise", async () => {
     const harnessed = await started();
     const client = gatewayFor(
@@ -438,6 +472,70 @@ describe("where an order's payment went", () => {
       why: "there is no such order",
     });
     expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+});
+
+describe("the orders a page reads", () => {
+  /** A room bought in the answer, priced for a purchase nobody paid for. */
+  const A_ROOM: Card = {
+    merchant_item_id: "room-101",
+    title: "A room for the night",
+    description: "One night in room 101",
+    price: { amount: "80.00", currency: "USD" },
+    result: { access_code: { type: "string" } },
+    fulfillment: "sync",
+  };
+
+  /** A purchase priced and never paid, ended when its price ran out. */
+  const lapsedUnpaid = async (harnessed: Harness, itemId: string): Promise<string> => {
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(offered.order.order.id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    return offered.order.order.id;
+  };
+
+  it("leave out the purchases that lapsed unpaid, which are read apart a page at a time, newest first", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const paid = await aPaidOrder(harnessed, harnessed.merchant.id);
+    const room = await harnessed.gateway.publishCard(harnessed.merchant.id, A_ROOM);
+    if (!room.ok) throw new Error("the room was refused");
+    const older = await lapsedUnpaid(harnessed, room.id);
+    const newer = await lapsedUnpaid(harnessed, room.id);
+    // A purchase the merchant's price check refused, which never had a price.
+    const priced = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      ...A_ROOM,
+      merchant_item_id: "room-102",
+      price_check: "handler",
+    });
+    if (!priced.ok) throw new Error("the priced room was refused");
+    harnessed.advance(1_000);
+    const worker = workUntilStopped(harnessed, {
+      onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
+    });
+    const unpriced = await harnessed.gateway.beginPurchase(priced.id, {});
+    await worker.stop();
+    if (unpriced.step !== "settled")
+      throw new Error(`the refusal did not end it: ${unpriced.step}`);
+
+    const idsIn = (answer: Awaited<ReturnType<typeof client.orders>>) =>
+      answer.ok ? answer.document.orders.map((order) => order.id) : answer.why;
+    expect(idsIn(await client.orders(false))).toStrictEqual([paid]);
+    expect(idsIn(await client.orders(true))).toStrictEqual([paid]);
+    const page = await client.lapsedAttempts(1);
+    expect(page.ok ? page.document.of : page.why).toBe(3);
+    expect(page.ok ? page.document.attempts.map((attempt) => attempt.id) : []).toStrictEqual([
+      unpriced.order.order.id,
+      newer,
+      older,
+    ]);
+    expect(page.ok ? page.document.attempts[0]?.price : undefined).toBeNull();
+    expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 3 });
   });
 });
 

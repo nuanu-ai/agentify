@@ -2,9 +2,9 @@
  * Things that happen to an order without the merchant doing anything. They
  * arrive on the same subscription as the orders and want no answer.
  *
- * The list of event types grows only by a shape being added here, so that a
- * consumer switching on the type can read an unknown one as a version mismatch
- * rather than a typo.
+ * The list of event types grows only by a shape being added here. A reader
+ * made with `readerOf` before a type was added marks an event of it as
+ * unknown, and the SDK skips it.
  */
 
 import { z } from "zod";

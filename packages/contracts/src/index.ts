@@ -50,11 +50,6 @@ import {
   RefusalSchema,
 } from "./handler.js";
 import {
-  DisabledKeySchema,
-  IssuedKeySchema,
-  IssueKeyRequestSchema,
-  MerchantKeyListSchema,
-  MerchantKeySchema,
   PayoutWalletSchema,
   PendingPayoutWalletSchema,
   SellerNameRequestSchema,
@@ -188,22 +183,12 @@ export {
   RefusalSchema,
 } from "./handler.js";
 export type {
-  DisabledKey,
-  IssuedKey,
-  IssueKeyRequest,
-  MerchantKey,
-  MerchantKeyList,
   PayoutWallet,
   PendingPayoutWallet,
   SellerName,
   SellerNameRequest,
 } from "./merchant.js";
 export {
-  DisabledKeySchema,
-  IssuedKeySchema,
-  IssueKeyRequestSchema,
-  MerchantKeyListSchema,
-  MerchantKeySchema,
   PayoutWalletSchema,
   PendingPayoutWalletSchema,
   SellerNameRequestSchema,
@@ -258,6 +243,8 @@ export {
 } from "./primitives.js";
 export type { QuotePurpose, QuoteRequest, QuoteResponse } from "./quote.js";
 export { QuotePurposeSchema, QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
+export type { Read, UnknownWord, UnreadEvent } from "./reading.js";
+export { readerOf, UNKNOWN_WORD } from "./reading.js";
 export type { Receipt, ReceiptOutcome } from "./receipt.js";
 export { ReceiptOutcomeSchema, ReceiptSchema } from "./receipt.js";
 export type {
@@ -295,7 +282,7 @@ export { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
  * changes, not when a schema is added: a consumer uses it to decide whether it
  * understands the other side.
  */
-export const CONTRACT_VERSION = "2";
+export const CONTRACT_VERSION = "3";
 
 /**
  * Every schema of the public contract, under the name it is known by outside
@@ -312,7 +299,6 @@ export const schemas = Object.freeze({
   catalog_page: CatalogPageSchema,
   currency_code: CurrencyCodeSchema,
   delivery: DeliverySchema,
-  disabled_key: DisabledKeySchema,
   erased_ship_to: ErasedShipToSchema,
   error_envelope: ErrorEnvelopeSchema,
   evm_address: EvmAddressSchema,
@@ -320,12 +306,8 @@ export const schemas = Object.freeze({
   fulfillment: FulfillmentSchema,
   handler_answer: HandlerAnswerSchema,
   identifier: IdentifierSchema,
-  issue_key_request: IssueKeyRequestSchema,
-  issued_key: IssuedKeySchema,
   merchant_card: MerchantCardSchema,
   merchant_card_list: MerchantCardListSchema,
-  merchant_key: MerchantKeySchema,
-  merchant_key_list: MerchantKeyListSchema,
   money: MoneySchema,
   open_word: OpenWordSchema,
   order: OrderSchema,

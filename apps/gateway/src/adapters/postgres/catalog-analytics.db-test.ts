@@ -104,8 +104,8 @@ if (databaseUrl === null) {
   beforeEach(async () => {
     await pool.query("drop trigger if exists refuse_at_commit on cards");
     await pool.query(
-      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants," +
-        " payout_splits, commerce_analytics_events",
+      "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact," +
+        " merchants, payout_splits, commerce_analytics_events",
     );
     now += 60_000;
     await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);

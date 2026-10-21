@@ -20,6 +20,7 @@ import {
   grantLiveApproval,
   issueKey,
   keyDigest,
+  NewKeyLabelSchema,
   newKeySecret,
   REGISTERED_MERCHANT_NAME,
   registerMerchant,
@@ -122,6 +123,38 @@ describe("a key", () => {
     expect((await store.workingKey(keyDigest(issued.secret)))?.merchantId).toBe("mch_1");
     // And the key itself is not what anything is looked up by.
     expect(await store.workingKey(issued.secret)).toBeNull();
+  });
+});
+
+describe("the label a key is issued under", () => {
+  // A merchant tells keys apart by their labels when they come to revoke one,
+  // and on the live deployment the message about a new key names it by its
+  // label, so the label has to be one readable line.
+  const refusal = (label: string): string =>
+    NewKeyLabelSchema.safeParse(label).error?.issues[0]?.message ?? "taken";
+
+  it("takes a label of up to a hundred characters, in any alphabet", () => {
+    expect(NewKeyLabelSchema.safeParse("the shop's own worker").success).toBe(true);
+    expect(NewKeyLabelSchema.safeParse("рабочий магазина").success).toBe(true);
+    expect(NewKeyLabelSchema.safeParse("k".repeat(100)).success).toBe(true);
+  });
+
+  it("refuses a label nobody could tell from another, in words", () => {
+    for (const label of ["", " ", "the worker "]) {
+      expect(refusal(label), JSON.stringify(label)).toMatch(/empty or padded/);
+    }
+  });
+
+  it("refuses a label longer than a hundred characters, in words", () => {
+    expect(refusal("k".repeat(101))).toContain("100");
+  });
+
+  it("refuses a label that is more than one line, in words", () => {
+    // A line break in a label would put a paragraph of somebody else's words
+    // inside a message Agentify sends.
+    for (const label of ["the stock\nworker", "the stock\r\nworker", "the stock\tworker"]) {
+      expect(refusal(label), JSON.stringify(label)).toMatch(/one line/);
+    }
   });
 });
 

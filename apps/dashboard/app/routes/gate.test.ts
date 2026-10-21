@@ -11,6 +11,7 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
 import { identityFor } from "../../src/identity.js";
 import type { Message } from "../../src/mail.js";
 import { pageServicesFor } from "../../src/page-services.js";
+import { ONE_CLIENT } from "../../src/testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { services, signedIn } from "../services.js";
 import { middleware } from "./gate.js";
@@ -36,7 +37,7 @@ const signedInBrowser = async () => {
     },
   });
   await identity.make(PERSON, "mer_gate");
-  await identity.requestLink(PERSON, "default");
+  await identity.requestLink(PERSON, "default", ONE_CLIENT);
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
   const opened = await identity.openLink(link.searchParams.get("token") ?? "");
   if (opened.status !== "opened") throw new Error("the test's link did not open");

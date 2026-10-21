@@ -169,6 +169,7 @@ describe("MemoryStore writes that go with an order", () => {
       async forget() {
         return () => {};
       },
+      async remind() {},
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "paid"));
@@ -211,6 +212,7 @@ describe("MemoryStore writes that go with an order", () => {
       async forget() {
         return () => {};
       },
+      async remind() {},
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "paid"));

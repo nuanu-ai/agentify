@@ -431,27 +431,33 @@ became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
-On the orders you read back, `status` and `payment_status` are fixed lists.
-Your release of the SDK knows every word it can receive, a new word arrives
-with a new release whose notes name it, and an answer carrying a word your
-release does not know makes `orders.get` and `orders.list` throw. Only the
-agent's copy of these fields is an open set.
+An order that ended `rejected` or `expired` with nothing charged or held is
+deleted thirty days after it was last written, at the first daily clean-up
+after that. From then on `orders.get`
+refuses it with `no_such_order`, as an order that never existed, it is no
+longer in `orders.list`, and the agent's status address answers it as an
+unknown order. Your dashboard lists such
+orders apart, under Lapsed. An order with a payment, a claim on a payment, a
+receipt or goods held is never deleted.
+
+On the orders you read back, `status` and `payment_status` are the words in the
+tables above and one more, `unknown`: a word Agentify added after your release
+of the SDK was built. It is none of the endings, so leave such an order for a
+later pass and upgrade; [When Agentify is newer than your
+package](#when-agentify-is-newer-than-your-package) says what else a newer
+Agentify changes for you. A loop that delivers does so only on the words where
+delivering is right, so a word it does not know is left alone, as below.
 
 ```ts
 const order = await agentify.orders.get(orderId)
 const open = await agentify.orders.list({ open: true })
 
 for (const waiting of open) {
-  // Goods already made, waiting on money rather than on you. A silence is
-  // the same shape of skip: delivering answers success and nothing you send
-  // is kept.
-  if (waiting.status === 'delivered_unpaid' || waiting.status === 'payment_unresolved') {
-    continue
-  }
-
-  // Paid after you closed it: it needs your word to the buyer, not goods,
-  // and closing it again with that word takes it off this list.
-  if (waiting.status === 'fulfillment_closed') {
+  // Deliver only where delivering is right: an order still running, or paid
+  // and unfulfilled. Every other word waits for a later pass, `unknown`
+  // included: goods held for a payment wait on the buyer, and an order paid
+  // after you closed it needs your word to the buyer, not goods.
+  if (waiting.status !== 'in_progress' && waiting.status !== 'unfulfilled') {
     continue
   }
 
@@ -586,7 +592,10 @@ you closed fulfillment, and its `status` column is the word each one reads.
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. A pause ends no orders: cards
+leaving the priced order to lapse as `expired`. Two more refusals come before
+anything is charged, both described on [What can go wrong](/failures): a
+purchase while twenty of yours already wait for payment, and a purchase that
+charges before its goods while no process of yours has polled for ten minutes. A pause ends no orders: cards
 stop selling, and the orders already taken on play out in the ordinary way.
 To stop Agentify accepting deliveries for one order, [close
 fulfillment](#closing-fulfillment).
@@ -626,7 +635,8 @@ agent signs, so a repeat names the order it repeats and we carry that order on
 from where it stopped.
 
 To recover a lost answer, the agent signs a new payment for that same payment
-request from the same wallet, and once the facilitator verifies it, the agent
+request from the same wallet, and once Agentify has checked that signature,
+without asking the facilitator and whatever the wallet holds now, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
 is charged again once paid, so recovery always signs the kept request again. The payment
@@ -717,6 +727,61 @@ The three moments can differ: in the synchronous mode the charge follows your
 delivery, and a price check can describe a price from earlier. The transfer a
 receipt names goes into your payout contract and not into your wallet, which
 receives one transfer per payout instead.
+
+## When Agentify is newer than your package
+
+Agentify adds to what it sends without waiting for you to upgrade, and the
+package you installed reads past what was added:
+
+- A field your package does not know, on an event, a card, a receipt, around an
+  order or in any other answer that only informs, is left out of what your code
+  receives, and everything else in that answer arrives as before. What an order
+  delivers is the exception, below.
+- An event of a kind your package does not know is skipped. The rest of the
+  poll it came in is handled as usual, and your problem handler receives one
+  `event_skipped` problem, not fatal, naming the event's `type` and saying that
+  a newer release handles it. An event can be lost in any case, as [Events on
+  the same subscription](#events-on-the-same-subscription) says, so nothing
+  depends on it: a paid order that needs you stays on `orders.list({ open:
+  true })` whether its event arrived, was lost or was skipped.
+- An order whose `status` or `payment_status` holds a word your package does
+  not know still comes back from `orders.get` and `orders.list`, with that word
+  as `unknown`. A loop over open orders that delivers only on `in_progress` and
+  `unfulfilled` leaves such an order alone, which is the right thing to do.
+- An event of a kind your package knows, with a `reason` it does not know,
+  reaches your event handler with the reason as `unknown`; the order behind it
+  is on the open list as ever.
+- A delivery, refusal or acceptance answered `ok: true` with a `result` word
+  your package does not know succeeded, and the word reads `unknown`.
+- A price question for a `purpose` your package does not know is left
+  unanswered, with one `quote_skipped` problem, not fatal. It counts as a
+  silent price check: a synchronous card sells at its own card price, and in
+  the other modes the sale is refused ([What can go wrong](/failures)).
+
+What an order delivers is read exactly: its product, parameters, price,
+address and test flag, off the subscription or read back. A field or an address
+shape there that your package does not know fails the poll or the read loudly,
+as `poll_failed` or a thrown `AgentifyError`, rather than reaching your code
+with part of the order missing; the order comes again within its attempts, and
+it stays on the open list.
+
+Agentify therefore speaks a new contract version for a change your package
+cannot read past: a field or a word renamed or removed, a field that comes to
+mean something else, anything added to an order or to a price question, and a
+new card mode, selling state or kind of message on the subscription, each of
+which is work or configuration an older package cannot do. Your subscription then stops
+at the first poll answer it can read, with a `contract_version_mismatch`
+problem naming both versions, once the orders already in your handlers have
+sent their answers, or after fifty seconds with a `batch_abandoned` problem
+naming those that did not; until then it reports each answer it cannot read as
+`poll_failed`, naming the version Agentify spoke. Your process stays up and
+sells nothing until you upgrade.
+
+Every call the package makes names its release to Agentify in its `user-agent`
+header, as `agentify-sdk/` and the version, and Agentify notes it beside the
+key's last use each time it writes that down, which is every few minutes at
+most, so that we can see which releases are still in use. Nothing is refused
+because of it.
 
 ## What is not settled yet
 

@@ -80,6 +80,10 @@ const walletOf = async (served: Served, key: string): Promise<WalletAnswer> => {
 const asking = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
   harnessed.gateway.setPayoutWallet(merchantId, wallet, SIGNED_IN);
 
+/** A key issued the way the dashboard's API keys screen issues one. */
+const aNewKey = (harnessed: Harness) =>
+  harnessed.gateway.issueMerchantKey(harnessed.merchant.id, "the stock worker", SIGNED_IN);
+
 /** A change that is expected to be taken, and the wallet as it then stands. */
 const ask = async (
   harnessed: Harness,
@@ -137,15 +141,6 @@ const published = async (served: Served, key: string): Promise<string> => {
   return (answered.body as { id: string }).id;
 };
 
-/** The label and identifier the harness's merchant's own key is listed under. */
-const theMerchantsKey = async (harnessed: Harness) => {
-  const key = await harnessed.gateway.keyBehind(harnessed.merchant.key);
-  if (key === null) {
-    throw new Error("the harness's merchant has no key the door opens");
-  }
-  return { kind: "merchant_code" as const, id: key.id, label: key.label };
-};
-
 describe("the first address a merchant sets", () => {
   /** A merchant with no address yet, made the way the dashboard makes one. */
   const aNewMerchant = (harnessed: Harness): Promise<string> =>
@@ -190,6 +185,24 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
+  });
+
+  it("is refused with a label of more than one line, and nothing is issued or announced", async () => {
+    // The message about a new key names it by its label, so a label it could
+    // not carry as one line is refused before anything is written.
+    const { harnessed } = await started();
+    const before = await harnessed.store.keysOf(harnessed.merchant.id);
+
+    await expect(
+      harnessed.gateway.issueMerchantKey(
+        harnessed.merchant.id,
+        "the stock worker\nhttps://example.com/login",
+        SIGNED_IN,
+      ),
+    ).rejects.toThrow(/one line/);
+
+    expect(await harnessed.store.keysOf(harnessed.merchant.id)).toStrictEqual(before);
+    expect(harnessed.announcer.announced).toStrictEqual([]);
   });
 
   it("never waits on its message", async () => {
@@ -771,106 +784,36 @@ describe("a deployment where no money is real", () => {
   });
 
   it("announces no new key either", async () => {
-    const { served, harnessed } = await started({ PAYMENT_NETWORK: "eip155:84532" });
+    const { harnessed } = await started({ PAYMENT_NETWORK: "eip155:84532" });
 
-    const issued = await served.call("POST", "/v0/keys", {
-      body: { label: "the stock worker" },
-      headers: bearer(harnessed.merchant.key),
-    });
+    await aNewKey(harnessed);
 
-    expect(issued.status).toBe(200);
     expect(harnessed.announcer.announced).toStrictEqual([]);
   });
 });
 
 describe("a new key on the live deployment", () => {
-  it("is announced, naming the key issued and the key that asked", async () => {
-    const { served, harnessed } = await started();
-
-    const issued = await served.call("POST", "/v0/keys", {
-      body: { label: "the stock worker" },
-      headers: bearer(harnessed.merchant.key),
-    });
-
-    expect(issued.status).toBe(200);
-    const { key } = issued.body as { key: { id: string; label: string } };
-    expect(harnessed.announcer.announced).toStrictEqual([
-      {
-        kind: "key_issued",
-        merchant_id: harnessed.merchant.id,
-        key: { id: key.id, label: "the stock worker" },
-        asked_with: await theMerchantsKey(harnessed),
-      },
-    ]);
-  });
-
   it.each([
     ["nobody to tell", "nobody_to_tell" as const],
     ["mail down", "not_handed_over" as const],
   ])("is issued all the same with %s", async (_why, outcome) => {
     // A key moves no money, and a merchant must not be kept from one — their
     // first above all — because mail is down.
-    const { served, harnessed } = await started();
+    const { harnessed } = await started();
     harnessed.announcer.answer = outcome;
 
-    const issued = await served.call("POST", "/v0/keys", {
-      body: { label: "the stock worker" },
-      headers: bearer(harnessed.merchant.key),
-    });
+    const issued = await aNewKey(harnessed);
 
-    expect(issued.status).toBe(200);
-    expect((issued.body as { secret: string }).secret).toMatch(/^csk_live_/);
+    expect(issued.secret).toMatch(/^csk_live_/);
   });
 
   it("never waits on its message", async () => {
-    const { served, harnessed } = await started();
+    const { harnessed } = await started();
     harnessed.announcer.answer = () => new Promise(() => undefined);
 
-    const issued = await served.call("POST", "/v0/keys", {
-      body: { label: "the stock worker" },
-      headers: bearer(harnessed.merchant.key),
-    });
+    const issued = await aNewKey(harnessed);
 
-    expect(issued.status).toBe(200);
-  });
-
-  it("is refused at the door with a label longer than one line of a hundred characters", async () => {
-    // Nothing is issued and nothing is announced, so a key cannot be named in
-    // a way that makes the message about it impossible to send.
-    const { served, harnessed } = await started();
-
-    for (const label of ["k".repeat(8 * 1024), "the stock worker\nhttps://example.com/login"]) {
-      const refused = await served.call("POST", "/v0/keys", {
-        body: { label },
-        headers: bearer(harnessed.merchant.key),
-      });
-      expect(refused.status).toBe(400);
-    }
-    expect(harnessed.announcer.announced).toStrictEqual([]);
-  });
-
-  it("names a key made elsewhere by one line of at most a hundred characters", async () => {
-    // A key made elsewhere can carry any label. When it issues another key, the
-    // announcement names it all the same, as one line a message can carry,
-    // rather than failing to announce because of how a key was named.
-    const { served, harnessed } = await started();
-    const long = `the stock\nworker ${"k".repeat(200)}`;
-    const key = await harnessed.addKey(harnessed.merchant.id, long);
-
-    const issued = await served.call("POST", "/v0/keys", {
-      body: { label: "the price desk" },
-      headers: bearer(key),
-    });
-
-    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
-    const [announced] = harnessed.announcer.announced;
-    expect(announced?.kind).toBe("key_issued");
-    const named = announced?.kind === "key_issued" ? announced.asked_with : null;
-    expect(named?.kind).toBe("merchant_code");
-    const label = named?.kind === "merchant_code" ? named.label : "";
-    expect(label).not.toMatch(/[\r\n\t]/);
-    expect(label.length).toBeLessThanOrEqual(101);
-    expect(label.startsWith("the stock worker kkk")).toBe(true);
+    expect(issued.secret).toMatch(/^csk_live_/);
   });
 });
 

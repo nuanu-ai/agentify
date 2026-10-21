@@ -34,6 +34,7 @@ import { loadConfig } from "./config.js";
 import { migrateAccounts } from "./database.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
@@ -1405,7 +1406,10 @@ if (databaseUrl === null) {
           },
         },
       );
-      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: CLICK,
+      });
       const link = messages[0]?.body.match(/https?:\/\/\S+/)?.[0];
       const token = link === undefined ? null : new URL(link).searchParams.get("token");
       if (token === null) throw new Error("the message has no link");

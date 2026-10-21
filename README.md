@@ -47,9 +47,10 @@ connector is offered on the test channel only, until its orders pass end to
 end there. Either way the first sale happens on the test channel, where
 payments settle on Base Sepolia with test funds. Publishing there needs a
 seller name and a payout wallet, and live publication also needs the
-operator's one-time approval of that merchant, given from `/admin` or with
-`pnpm approve <email>`; publication lists whatever is still missing. The
-approval publishes nothing and bypasses no seller or payout check.
+operator's approval of that merchant, given from `/admin` or with
+`pnpm approve <email>` and withdrawn with `pnpm approve --withdraw <email>`;
+publication lists whatever is still missing. The approval publishes nothing and
+bypasses no seller or payout check.
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
 `/`, the merchant documentation at `/docs`, the dashboard at `/dashboard`, the
@@ -194,8 +195,11 @@ The merchant's side is one process standing beside their existing API: a
 handler. It listens on no port — it opens a single outgoing subscription and
 receives paid orders, price questions and order events on that one stream
 (ADR-0004). Everything it is written against is `@nuanu-ai/agentify`. The
-package and the gateway agree on a contract version — `"2"` today — and a
-change the package could not read moves that version before the gateway sends
+package and the gateway agree on a contract version — `"3"` today. The package
+ignores fields it does not know in what only informs, reads a status, reason,
+result or purpose word it does not know as `unknown` and skips an event of a
+kind it does not know, so such an addition leaves the version alone; a rename,
+a removal, a changed meaning or anything added to what an order delivers moves
 it (ADR-0006). For a WooCommerce shop, the connector inside Agentify plays the
 handler's part.
 

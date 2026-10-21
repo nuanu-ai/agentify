@@ -11,7 +11,7 @@ import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { cookieHeader, type GoogleProfile, googleExchange } from "./testing/google.js";
-import { rewindLinkSends } from "./testing/link-sends.js";
+import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const SETTINGS = {
@@ -58,7 +58,10 @@ function setup(
   };
   const linkFor = async (email = EMAIL, click?: string): Promise<string> => {
     rewindLinkSends(rows);
-    const asked = await identity.requestLink(email, "default", click);
+    const asked = await identity.requestLink(email, "default", {
+      ...ONE_CLIENT,
+      ...(click === undefined ? {} : { clickId: click }),
+    });
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
     return tokenOf(messages.at(-1));
   };
@@ -232,12 +235,12 @@ describe("what the identity records for product analytics", () => {
 
   it("records a link asked for again too soon as one refusal at its start, and a link the mail would not take as another", async () => {
     const limited = setup();
-    await limited.identity.requestLink(EMAIL, "default");
-    const again = await limited.identity.requestLink(EMAIL, "default");
+    await limited.identity.requestLink(EMAIL, "default", ONE_CLIENT);
+    const again = await limited.identity.requestLink(EMAIL, "default", ONE_CLIENT);
     await limited.settled(1);
 
     const unsent = setup({}, "refused");
-    const refused = await unsent.identity.requestLink(EMAIL, "default");
+    const refused = await unsent.identity.requestLink(EMAIL, "default", ONE_CLIENT);
     await unsent.settled(1);
 
     expect(again.status).toBe("cooldown");

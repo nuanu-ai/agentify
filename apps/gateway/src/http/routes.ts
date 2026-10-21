@@ -10,7 +10,6 @@
 
 import { outcomeFor } from "@agentify/core";
 import type {
-  IssueKeyRequest,
   OrderListQuery,
   PurchaseRequest,
   RouteName,
@@ -29,11 +28,11 @@ import {
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   OK,
   PAYMENT_REQUIRED,
   type Refused,
+  TOO_MANY_REQUESTS,
   UNPROCESSABLE,
 } from "./merchant-answers.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
@@ -47,6 +46,13 @@ import {
   paymentFingerprint,
   presentedPayment,
 } from "./x402.js";
+
+/**
+ * How long an agent refused for a seller's purchases waiting for payment is
+ * told to wait before trying again: long enough not to knock at once, short
+ * against the half minute a price holds.
+ */
+const SELLER_BUSY_RETRY_AFTER_SECONDS = 5;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -149,55 +155,6 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         status: OK,
         document: await gateway.payoutWallet(merchantOf(call)),
       }),
-    },
-
-    list_keys: {
-      serve: async (call) => ({
-        status: OK,
-        document: {
-          keys: await gateway.merchantKeys(merchantOf(call)),
-          this_call: callersKey(call),
-        },
-      }),
-    },
-
-    issue_key: {
-      refusedBody: (call) => gateway.setupRefused(merchantOf(call), ["api_key"], keyCaller(call)),
-      serve: async (call) => ({
-        status: OK,
-        document: await gateway.issueMerchantKey(
-          merchantOf(call),
-          (call.body as IssueKeyRequest).label,
-          keyCaller(call),
-        ),
-      }),
-    },
-
-    disable_key: {
-      serve: async (call) => {
-        const disabled = await gateway.disableMerchantKey(
-          merchantOf(call),
-          call.params.key_id ?? "",
-          keyCaller(call),
-        );
-
-        if (disabled === "locked_out") {
-          // A call may not disable the key it was made with, or the caller
-          // would be left with nothing to reach the gateway.
-          return written(
-            call.response,
-            CONFLICT,
-            refusal(
-              "key_opened_this_call",
-              "this is the key this call was made with, and disabling it would leave the caller with nothing to reach the gateway",
-            ),
-          );
-        }
-        if (disabled === null) {
-          return refusedWith(call.response, NO_SUCH_KEY);
-        }
-        return { status: OK, document: disabled };
-      },
     },
 
     get_order: {
@@ -681,17 +638,40 @@ async function answerPurchase(
     case "not_selling":
       return written(response, CONFLICT, refusal("not_selling", attempt.message));
 
+    case "seller_not_taking_orders":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "seller_not_taking_orders",
+          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+        ),
+      );
+
+    case "seller_busy":
+      // A purchase waiting for payment lapses with its price, so a place comes
+      // free within a minute and usually much sooner.
+      response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
+      return written(
+        response,
+        TOO_MANY_REQUESTS,
+        refusal(
+          "seller_busy",
+          "this seller has too many purchases waiting for payment right now, so this one was not started and nothing was charged; try again in a few seconds",
+        ),
+      );
+
     case "payment_already_spent":
-      // One authorisation may not buy two orders. The agent is pointed at the
-      // other order only if it is still open; one that is over is a dead end.
+      // One authorisation may not buy two orders. Nothing is said of the other
+      // order, not even whether it is over: anyone can read a used
+      // authorization off the chain and point it at any reference. Its buyer
+      // already holds that order's own answer, which says where it stands.
       return written(
         response,
         CONFLICT,
         refusal(
           "payment_already_spent",
-          attempt.collectable
-            ? `this payment was already presented for order ${attempt.heldBy}, which is still open; one payment buys one order`
-            : `this payment was already presented for order ${attempt.heldBy}, which is over; one payment buys one order, so this one needs a fresh payment`,
+          "this payment was already presented for another purchase, and one payment buys one order: if that purchase is yours, its own answer says where it stands, and this one needs a fresh payment",
         ),
       );
 

@@ -29,6 +29,7 @@ import { migrateAccounts } from "./database.js";
 import { runForget } from "./forget-account.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { postgresWooShops } from "./woo-shops.js";
 
 const WANTED = (() => {
@@ -112,7 +113,7 @@ if (databaseUrl === null) {
   };
 
   const signIn = async (email: string, click?: string): Promise<Person> => {
-    const asked = await identity.requestLink(email, "default", click);
+    const asked = await identity.requestLink(email, "default", { ...ONE_CLIENT, clickId: click });
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
     const opened = await identity.openLink(tokenIn(messages.at(-1)));
     if (opened.status !== "opened") throw new Error("the link did not open");
@@ -230,7 +231,9 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_accounts", "email", BYSTANDER)).toBe(1);
       expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", bystander.merchantId)).toBe(1);
-      expect((await identity.requestLink(BYSTANDER, "default")).status).toBe("cooldown");
+      expect((await identity.requestLink(BYSTANDER, "default", ONE_CLIENT)).status).toBe(
+        "cooldown",
+      );
 
       // Both senders let the address ask at once, and the link makes a
       // newcomer.
@@ -278,7 +281,7 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("merchants", "id", merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
-      expect((await identity.requestLink(EMAIL, "default")).status).toBe("cooldown");
+      expect((await identity.requestLink(EMAIL, "default", ONE_CLIENT)).status).toBe("cooldown");
     });
 
     it("refuses a merchant another account also names and removes nothing", async () => {
@@ -363,7 +366,7 @@ if (databaseUrl === null) {
       expect(forgotten.output).toMatch(/merchant[^\n]*none/i);
       expect(forgotten.output).not.toMatch(/operator/i);
       expect(await countOf("dashboard_accounts", "id", person.id)).toBe(0);
-      expect((await identity.requestLink(EMAIL, "default")).status).toBe("accepted");
+      expect((await identity.requestLink(EMAIL, "default", ONE_CLIENT)).status).toBe("accepted");
     });
 
     it("says a merchant the gateway no longer holds was already absent, not removed", async () => {

@@ -70,14 +70,15 @@ Publishing tells an integrator what is missing.
 
 **6. Operators use the same sign-in.** `/admin` needs the account flag set only
 by `pnpm account operator`, read on every session request. The header shows its
-link to operators. Everybody else, including while identity is unavailable,
-gets the site's 404; the edge neither marks nor guards this read-only path.
-The page links to `/dashboard/admin/live-sales`, which checks the same flag
-on each request and admits one existing merchant after explicit confirmation.
-Its forms also pass the dashboard's origin and account checks; the operator
-needs no merchant of their own. Approval is live-only and idempotent, and does
-not bypass another selling guard or assert a payment outcome. No staff queue
-is promised by this permission.
+link to operators. Everybody else, including while identity is unavailable, gets
+the site's 404; the edge neither marks nor guards this read-only path. The page
+links to `/dashboard/admin/live-sales`, which checks the same flag on each
+request and admits one existing merchant after explicit confirmation. Its forms
+also pass the dashboard's origin and account checks; the operator needs no
+merchant of their own. Approval is live-only, granting and withdrawing it are
+both idempotent, and a merchant withdrawn at the terminal stands as one never
+approved, a pause rather than a cancellation. Neither bypasses another selling
+guard or asserts a payment outcome; no staff queue is promised by this permission.
 
 **7. One gate protects dashboard pages.** Its exceptions are sign-in, sign-out,
 the link landing page, Google start and callback, styles and built scripts,

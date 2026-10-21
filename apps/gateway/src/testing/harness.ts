@@ -12,12 +12,18 @@ import type {
   QuoteResponse,
   WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentSignatureHeader,
+  encodePaymentSignatureHeader,
+} from "@x402/core/http";
 import type { PaymentPayload } from "@x402/core/types";
+import type { LocalAccount } from "viem";
 import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
+import { paymentChainOn } from "../adapters/x402/payment-chain.js";
 import { Gateway } from "../app/gateway.js";
 import {
   grantLiveApproval,
@@ -38,7 +44,8 @@ import {
   X402_VERSION,
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
-import type { Integration } from "../ports/store.js";
+import type { Integration, StoredOrder } from "../ports/store.js";
+import { type SignedTerms, signedPayment } from "./signed-payment.js";
 
 export { loggedWhile } from "./logged.js";
 
@@ -130,6 +137,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   // the order, and a test that replaces `queue.stage` replaces the store's too.
   const store = new MemoryStore(config.payment.network, countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
+  const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
   const announcer = new RecordingAnnouncer();
   const ids = countedIds();
 
@@ -142,6 +150,9 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     ids,
     announcer,
     widestChallenge: widestChallengeOn(config),
+    // Read from the configuration as the process reads it, so a test names a
+    // chain endpoint by PAYMENT_RPC_URL; none is configured by default.
+    ...(chain === undefined ? {} : { chain }),
   };
 
   const gateway = new Gateway(runtime);
@@ -157,6 +168,10 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     if (made === null) {
       throw new Error(`the harness could not make the merchant ${name}`);
     }
+    // As though their process had just polled: a seller whose process never
+    // has is refused every purchase that charges before its goods, and a test
+    // about that moves the clock past the guard.
+    await store.noteContact(made.id, now);
     await setServiceName(store, made.id, name, now);
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
@@ -455,6 +470,39 @@ function encoded(
   return {
     payment: encodePaymentSignatureHeader(signed),
     fingerprint: paymentFingerprint(signed, edge.token()),
+  };
+}
+
+/**
+ * A payment `wallet` signs against the payment request `order`'s challenge
+ * carried, made out to where the order is paid or, for an order not paid yet,
+ * to `terms.payTo`, with the fingerprint the
+ * purchase route takes of it. Unlike {@link authorisation} it is a real
+ * signature, which is what getting back a paid purchase is checked by.
+ */
+export async function signedFor(
+  worked: { readonly runtime: Runtime },
+  order: StoredOrder,
+  wallet: LocalAccount,
+  terms: Omit<SignedTerms, "validBefore"> & { readonly validBefore?: number },
+): Promise<{ readonly payment: string; readonly fingerprint: string }> {
+  const { config, clock } = worked.runtime;
+  const edge = new PaymentEdge(config);
+  const price = order.order.price;
+  if (price === null) throw new Error(`${order.order.id} has no price to sign for`);
+  // An order not paid yet has no address of its own, so the test names one.
+  const requirements = edge.requirementsFor(
+    price,
+    order.paymentRef,
+    order.payTo ?? terms.payTo ?? null,
+  );
+  const payment = await signedPayment(wallet, requirements, {
+    validBefore: clock() + requirements.maxTimeoutSeconds * 1_000,
+    ...terms,
+  });
+  return {
+    payment,
+    fingerprint: paymentFingerprint(decodePaymentSignatureHeader(payment), edge.token()),
   };
 }
 

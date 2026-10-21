@@ -4,20 +4,24 @@
  * status the HTTP route gives the same refusal (worded once in the gateway's
  * `merchant-answers.ts`), so a merchant reads on a page what their engineer
  * reads from the API. Two exceptions: a body the request schema refuses gets
- * the schema's own problems as its sentence, and wallet changes, which have no
- * route, are worded here.
+ * the schema's own problems as its sentence, and keys and wallet changes,
+ * which have no route, are worded here.
  *
  * Requests and answers are held to the schemas the contract's route table names
  * for the same call, before anything is drawn, so a document the contract would
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
+import { outcomeFor } from "@agentify/core";
 import type {
   Caller,
   Gateway,
   Integration,
+  IssuedMerchantKey,
+  MerchantKey,
   PayoutTransaction,
   RecordedPayoutSplit,
+  StoredOrder,
   WalletChangeRefusal,
 } from "@agentify/gateway";
 import {
@@ -27,23 +31,21 @@ import {
   merchantOrderAnswer,
   merchantOrderList,
   merchantPayout,
+  NewKeyLabelSchema,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
   SPLITS_PER_PAYOUT,
 } from "@agentify/gateway";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   API_ROUTES,
   type CardInput,
   type Delivery,
   EvmAddressSchema,
   type HandlerAnswer,
-  type IssuedKey,
   type MerchantCard,
   type MerchantCardList,
-  type MerchantKey,
-  MerchantKeySchema,
   type OrderCallResponse,
   type OrderCloseRequest,
   type OrderCloseResponse,
@@ -57,9 +59,10 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { z } from "zod";
+import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
+import type { LapsedAttempt } from "./views.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -130,7 +133,17 @@ export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
+  /** Every order but the purchases that lapsed unpaid, which are not read here. */
   orders(open: boolean): Promise<Answer<OrderList>>;
+  /**
+   * One page of the purchases that lapsed unpaid, newest first, counted from
+   * one, and how many there are; a page past the last is the last.
+   */
+  lapsedAttempts(
+    page: number,
+  ): Promise<Answer<{ readonly attempts: readonly LapsedAttempt[]; readonly of: number }>>;
+  /** How many purchases lapsed unpaid, with none of them read. */
+  lapsedCount(): Promise<Answer<number>>;
   /**
    * Why each paid order was left unfulfilled, by order, for Needs you.
    */
@@ -149,12 +162,8 @@ export interface GatewayClient {
    * split recorded for this merchant.
    */
   paidIntoSplits(): Promise<Answer<Readonly<Record<string, RecordedPayoutSplit>>>>;
-  /**
-   * Every one can be disabled from here: a session holds no key, so none is the
-   * key this call was made with.
-   */
   keys(): Promise<Answer<readonly MerchantKey[]>>;
-  issueKey(label: string): Promise<Answer<IssuedKey>>;
+  issueKey(label: string): Promise<Answer<IssuedMerchantKey>>;
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /** Null for none. */
   sellerName(): Promise<Answer<string | null>>;
@@ -200,6 +209,14 @@ export interface GatewayClient {
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
       readonly liveApproved: boolean;
+      /**
+       * Present while the merchant's purchases that charge before their goods
+       * are refused because their process has not polled: when it last did,
+       * or null where it never has.
+       */
+      readonly outOfTouch: { readonly since: number | null } | null;
+      /** Whether as many purchases wait for payment as the door allows, so the next is refused. */
+      readonly busy: boolean;
     }>
   >;
   /**
@@ -358,7 +375,9 @@ const within = async <T>(
   const worked = work();
   worked.catch((thrown: unknown) => {
     if (gaveUp) {
-      console.error(`[dashboard] ${name} failed after the page stopped waiting`, thrown);
+      console.error(
+        `[dashboard] ${name} failed after the page stopped waiting: ${failureNamed(thrown)}`,
+      );
     }
   });
   try {
@@ -403,7 +422,11 @@ const orderCallAnswer = <T extends OrderCallResponse | OrderCloseResponse>(
     : { ok: false, status: CONFLICT, why: held.error.message, code: held.error.code };
 };
 
-const KeysSchema = z.array(MerchantKeySchema);
+/**
+ * Also the answer for another merchant's key, so disabling cannot count
+ * somebody else's keys.
+ */
+const NO_SUCH_KEY: Answer<never> = { ok: false, status: 404, why: "there is no such key" };
 
 /**
  * The split recorded at this address among those that can hold this
@@ -436,6 +459,25 @@ export const switchRefused = (to: Integration, waiting: readonly string[]): Answ
       to === "woocommerce"
         ? `${counted} on your own code, and ${each} to end before your shop takes over: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, pause all sales on Cards.`
         : `${counted} on your shop, and ${each} to end before the shop is disconnected, because nothing reads the shop after that: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
+  };
+};
+
+/**
+ * One purchase that lapsed unpaid as the dashboard lists it. It is not the
+ * API's order document, which carries a sale price and so cannot describe an
+ * attempt that ended before anybody named one: such an attempt has no price,
+ * and its moment is when it was asked for.
+ */
+const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
+  const { order } = record;
+  return {
+    id: order.id,
+    merchant_item_id: record.merchantItemId,
+    status: outcomeFor(order),
+    price:
+      order.price === null ? null : { amount: order.price.amount, currency: order.price.currency },
+    at: new Date(order.timestamps.quotedAt ?? order.timestamps.createdAt).toISOString(),
+    test: order.test,
   };
 };
 
@@ -484,8 +526,28 @@ export const gatewayFor = (
       call("reading the orders", async () =>
         answered(
           API_ROUTES.list_orders,
-          merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
+          merchantOrderList(
+            await application.orders(merchantId, open ? true : undefined, {
+              leaveOutLapsed: true,
+            }),
+          ),
         ),
+      ),
+    lapsedAttempts: (page) =>
+      call("reading the purchases that lapsed unpaid", async () => {
+        // Counted first, so an address naming any page reads at most the last
+        // one: an offset past every row of the table is one the database refuses.
+        const { of } = await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 });
+        const at = Math.min(page, Math.max(1, Math.ceil(of / PAGE_ROWS)));
+        const read = await application.lapsedAttempts(merchantId, {
+          offset: (at - 1) * PAGE_ROWS,
+          limit: PAGE_ROWS,
+        });
+        return done({ attempts: read.orders.map(lapsedAttemptOf), of: read.of });
+      }),
+    lapsedCount: () =>
+      call("counting the purchases that lapsed unpaid", async () =>
+        done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
       ),
     unfulfilledOrders: () =>
       call("reading why orders are unfulfilled", async () => {
@@ -524,7 +586,8 @@ export const gatewayFor = (
     // split the second read could miss.
     paidIntoSplits: () =>
       call("reading where the orders were paid", async () => {
-        const records = await application.orders(merchantId, undefined);
+        // A purchase that lapsed unpaid was paid into nothing, so it is not read.
+        const records = await application.orders(merchantId, undefined, { leaveOutLapsed: true });
         const splits = await application.payoutSplitsOf(merchantId);
         const into: Record<string, RecordedPayoutSplit> = {};
         for (const record of records) {
@@ -537,29 +600,17 @@ export const gatewayFor = (
         return done(into);
       }),
     keys: () =>
-      call("reading the keys", async () =>
-        done(KeysSchema.parse(await application.merchantKeys(merchantId))),
-      ),
+      call("reading the keys", async () => done(await application.merchantKeys(merchantId))),
     issueKey: (label) =>
       call("issuing a key", async () => {
-        const asked = sent(API_ROUTES.issue_key, { label });
-        if (!asked.ok) return asked.refused;
-        return answered(
-          API_ROUTES.issue_key,
-          await application.issueMerchantKey(merchantId, asked.value.label, caller),
-        );
+        const asked = hold(NewKeyLabelSchema, label);
+        if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
+        return done(await application.issueMerchantKey(merchantId, label, session));
       }),
     disableKey: (keyId) =>
       call("disabling a key", async () => {
-        const disabled = await application.disableMerchantKey(merchantId, keyId, caller);
-        if (disabled === "locked_out") {
-          throw new Error("a session holds no key, and disabling was refused as its own");
-        }
-        if (disabled === null) return refusedAs(NO_SUCH_KEY);
-        // Unwrapped here so the contract's wrapper can grow a field without
-        // every screen changing.
-        const held = answered(API_ROUTES.disable_key, disabled);
-        return held.ok ? done(held.document.key) : held;
+        const disabled = await application.disableMerchantKey(merchantId, keyId);
+        return disabled === null ? NO_SUCH_KEY : done(disabled);
       }),
     liveApproval: () =>
       call("reading the live approval", async () =>

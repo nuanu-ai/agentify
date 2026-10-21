@@ -14,6 +14,7 @@ import type { GoogleFinishResult } from "./dashboard-entry.js";
 import { connect } from "./database.js";
 import { identityFor } from "./identity.js";
 import { cookieHeader, googleExchange } from "./testing/google.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = new URL(testDatabaseUrl());
@@ -170,7 +171,7 @@ if (databaseUrl === null) {
         }),
       );
       void track(
-        identity.requestLink("alternative@example.com", "default").then((result) => {
+        identity.requestLink("alternative@example.com", "default", ONE_CLIENT).then((result) => {
           emailStatus = result.status;
         }),
       );

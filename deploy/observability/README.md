@@ -27,7 +27,14 @@ contain SQL values, and the scanner's structured diagnostics already describe
 database connectivity without those values.
 
 Loki labels are `app`, `environment`, `job`, `service`, and JSON severity when
-present. Request, scan and order identifiers stay in the log body. TEST's
+present. Request and scan identifiers stay in the log body. An order's
+identifier does not, nor its status address, because whoever holds either can
+read the order and its goods, and these logs are read by more people than the
+database; how a line names an order instead is under
+[Finding an order a log line names](#finding-an-order-a-log-line-names).
+Neither does a WooCommerce order key (`wc_order_…`) or a download link: in a
+link, `order` and `uid` are that one buyer's secrets, while its `key` is the
+file's download identifier, which every buyer of the product shares. TEST's
 sandbox email is excluded: its first line is dropped explicitly, and commerce
 lines without the application's diagnostic prefix are dropped as well. This
 also excludes unprefixed commerce stack continuations; the source Docker logs
@@ -203,6 +210,38 @@ Rollback stops this separate project with `docker compose --env-file
 application containers; do not run `down -v`. Local application logs continue.
 Do not change `deploy-test` or release an application merely to change this
 collector.
+
+## Finding an order a log line names
+
+A line about one order names it by a fingerprint: the word `order` and the
+first twelve hex characters of the SHA-256 of the order's identifier, as in
+`order a61ee826a3a0`. Every line about that order, from the gateway and from
+the WooCommerce worker alike, carries the same fingerprint, so searching the
+logs for it follows the order. Its identifier comes from the database, on the
+host of the channel the line came from, with the fingerprint in place of the
+example:
+
+```sh
+sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T postgres \
+  psql -U agentify -d agentify -c "select id, state, merchant_id from orders where left(encode(sha256(convert_to(id, 'UTF8')), 'hex'), 12) = 'a61ee826a3a0'"
+```
+
+On TEST the path and the channel are `test`. The query computes the fingerprint
+of every order in the table, a full read that grows with it. Two rows mean two
+orders share a fingerprint, and the line's time and what else it says tell
+them apart. No row means no order in the database has it now: an attempt that
+lapsed unpaid is deleted thirty days after it ended. The identifier the query
+prints opens the order, so it stays out of anything shared, this log stack
+included.
+
+The other way round, from an order's identifier to its lines, the
+fingerprint is computed on the operator's own machine, so the identifier goes
+to no service, and the logs are searched for `order` followed by what this
+prints, `order a61ee826a3a0` for the example:
+
+```sh
+printf %s 'ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47' | shasum -a 256 | cut -c1-12
+```
 
 ## Local checks
 
