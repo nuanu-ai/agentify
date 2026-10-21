@@ -1,5 +1,52 @@
 # Contracts release history
 
+## 0.13.0
+
+### Minor Changes
+
+- 62c747f: The agent's order status (`AgentOrderStatusSchema`) gains an optional
+  `transaction`: the buyer's payment as reported by the facilitator or verified
+  from chain evidence, as the receipt's `transaction` names it, on the chain of
+  the deployment. It is present once `payment_status` is `paid` and a transaction
+  was recorded, whether or not the goods have been delivered, and absent before
+  that and on a payment that is `not_paid` or `unresolved`. The purchase route's
+  description says that every answer about an order whose charge has gone
+  through carries the standard x402 payment response header, whatever the card's
+  mode, and the example answer a card's discovery declaration carries names
+  `transaction` beside `payment_status`. The agent's status document takes fields
+  added later, so `CONTRACT_VERSION` does not move.
+
+### Patch Changes
+
+- 86b7a11: The agent's order status describes a `reason` on every `delivered_unpaid`
+  order. It is `payment_not_settled`, already one of the order ending reasons,
+  and its sentence says that the merchant made the goods, that the charge did not
+  go through so nothing was taken, that Agentify holds the goods, and that a
+  payment for this same purchase from the wallet that signed it releases them. The
+  descriptions of the status document, of its `reason` field, of the
+  `delivered_unpaid` status and of the `payment_not_settled` reason say so. No
+  schema, type or list of words changes, and `CONTRACT_VERSION` does not move.
+- 17bea5f: The description of the purchase request says that a payment is answered only
+  at the purchase it was made for. Sent with the payment, the product's address
+  and the params must be the ones that were priced, and `ship_to` the same
+  address or left out. A payment the payment layer accepts that comes with
+  another address is refused as `ship_to_changed`, and one that comes at another
+  product's address or with other params as `payment_not_taken`; neither refusal
+  claims or charges anything for the request it answers, and its words name no
+  order. A payment that is not verified is refused before either comparison, in
+  words that are the same whether or not its order was paid and whoever refused it:
+  that this payment charged nothing, what to do next, the reason it was refused,
+  and that a fresh payment for the same payment request from the wallet that
+  signed it returns a purchase already paid for without a second charge. The
+  description no longer says that a different address is refused before the
+  payment is checked: it is compared once the payment has verified. No schema,
+  type or code list of the package changes, and `CONTRACT_VERSION` does not move.
+- 68d2f89: The purchase route's description says that asking the purchase address again
+  without the kept challenge starts a new purchase with a new payment reference,
+  which is charged again once paid, so a lost answer is recovered only by
+  signing the kept challenge again. No schema, type or behaviour of the package changes, and
+  `CONTRACT_VERSION` does not move.
+
 ## 0.12.0
 
 ### Minor Changes
