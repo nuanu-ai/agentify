@@ -17,7 +17,7 @@ import {
   ServiceNameSchema,
 } from "@nuanu-ai/agentify-contracts";
 import type { Ids } from "../ports/clock.js";
-import type { Store, StoredKey, StoredMerchant } from "../ports/store.js";
+import type { AnalyticsOf, Store, StoredKey, StoredMerchant } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
 
@@ -57,12 +57,13 @@ export async function setServiceName(
   merchantId: string,
   serviceName: string | null,
   at: number,
+  analytics?: AnalyticsOf<StoredMerchant>,
 ): Promise<StoredMerchant | null> {
   if (serviceName !== null) {
     // Throws with the schema's own words, which name the rule and the number.
     ServiceNameSchema.parse(serviceName);
   }
-  return store.setServiceName(merchantId, serviceName, at);
+  return store.setServiceName(merchantId, serviceName, at, analytics);
 }
 
 /**
@@ -75,10 +76,11 @@ export async function setSellerSite(
   merchantId: string,
   sellerSite: string,
   at: number,
+  analytics?: AnalyticsOf<StoredMerchant>,
 ): Promise<StoredMerchant | null> {
   // Throws with the schema's own words, which say the form the site takes.
   SellerSiteSchema.parse(sellerSite);
-  return store.setSellerSite(merchantId, sellerSite, at);
+  return store.setSellerSite(merchantId, sellerSite, at, analytics);
 }
 
 /**
@@ -138,14 +140,22 @@ export interface LiveApprovalGrant {
 /**
  * Admits one merchant to live publication. The protected administrative screen
  * and terminal command call this; no merchant-key route can make this decision. Null means no such
- * merchant; `changed: false` means already admitted.
+ * merchant; `changed: false` means already admitted. The grant that admits the
+ * merchant is recorded for product analytics as the operator's, through the
+ * dashboard, where both of those callers live; a repeat records nothing.
  */
 export async function grantLiveApproval(
   store: Store,
   merchantId: string,
   at: number,
 ): Promise<LiveApprovalGrant | null> {
-  return store.grantLiveApproval(merchantId, at);
+  return store.grantLiveApproval(merchantId, at, {
+    name: "agc_setup_result",
+    actor: "operator",
+    source: "dashboard",
+    refs: { merchant: merchantId },
+    fields: { step: "live_approval", integration: "none", outcome: "completed" },
+  });
 }
 
 /**
@@ -159,11 +169,13 @@ export async function issueKey(
   label: string,
   at: number,
   environment: Environment,
+  analytics?: AnalyticsOf<StoredKey>,
 ): Promise<IssuedKey> {
   const secret = newKeySecret(environment);
   const key = await store.addKey(
     { id: ids("mk"), merchantId, label, digest: keyDigest(secret) },
     at,
+    analytics,
   );
   return { key, secret };
 }

@@ -14,7 +14,10 @@ services:
   # The test channel never reports a registration or a store to the ad tracker,
   # because nothing signed up here is a real person from a real ad. The switch
   # is fixed here so no line in the host's environment file can turn it on;
-  # turned on, the application refuses to start on this channel.
+  # turned on, the application refuses to start on this channel. Product
+  # analytics are the host's file's to switch on, unlike the tracker: this
+  # channel has a site of its own at Nuanu Analytics, and its events are
+  # marked internal there.
   app:
     environment:
       REGISTRATION_POSTBACK_ENABLED: "false"

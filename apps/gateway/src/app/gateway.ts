@@ -66,6 +66,12 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import type {
+  AnalyticsEvent,
+  CardPublishResult,
+  SellingChanged,
+  SetupResult,
+} from "../analytics/events.js";
 import {
   type Announcement,
   type AskedInTheDashboard,
@@ -77,6 +83,7 @@ import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
+  AnalyticsOf,
   Integration,
   IntegrationSwitch,
   PayoutWalletRead,
@@ -86,6 +93,7 @@ import type {
   StoredKey,
   StoredOrder,
   StoredPayoutWallet,
+  WalletWritten,
 } from "../ports/store.js";
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
@@ -108,6 +116,7 @@ import {
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
 import {
+  type ActingMerchant,
   endingSentenceOf,
   OrderRunner,
   RECONCILE_PAYMENTS,
@@ -299,6 +308,105 @@ function heldByTheOther(integration: Integration, merchantItemId: string): Probl
   };
 }
 
+/** A reason from the analytics contract's one list. */
+type ReasonCode = NonNullable<CardPublishResult["fields"]["reason_code"]>;
+
+/** Who did what an analytics event records, and through which surface. */
+interface ActedBy {
+  readonly actor: "human" | "merchant_worker" | "unknown";
+  readonly source: "dashboard" | "gateway";
+}
+
+/**
+ * A dashboard session is a person, a key is the merchant's code. A call that
+ * names neither, such as a command's or a test's, is claimed for nobody.
+ */
+function actedBy(askedBy: Caller | undefined): ActedBy {
+  if (askedBy === undefined) return { actor: "unknown", source: "gateway" };
+  return askedBy.kind === "signed_in"
+    ? { actor: "human", source: "dashboard" }
+    : { actor: "merchant_worker", source: "gateway" };
+}
+
+/** The reason a refused publish is counted under, by the code of the finding named first. */
+const REASON_OF_FINDING: Readonly<Record<string, ReasonCode>> = {
+  [MERCHANT_FINDINGS.NO_SELLER_NAME]: "profile_missing",
+  [MERCHANT_FINDINGS.NO_PAYOUT_WALLET]: "wallet_missing",
+  [MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL]: "approval_required",
+  [MERCHANT_FINDINGS.NO_SELLER_SITE]: "seller_site_missing",
+  [NOT_THE_INTEGRATION_IN_USE.api.code]: "integration_mismatch",
+  [NOT_THE_INTEGRATION_IN_USE.woocommerce.code]: "integration_mismatch",
+  published_by_the_other_integration: "integration_mismatch",
+  not_sold_yet: "unsupported_channel",
+};
+
+/**
+ * Why a refused publish was refused, as product analytics counts it, from the
+ * codes of its findings in order: by the first, which is the merchant's own
+ * where they lack something. A finding about the card itself is
+ * `invalid_input`.
+ */
+export function publishRefusalReason(codes: readonly string[]): ReasonCode {
+  const [first] = codes;
+  return (first === undefined ? undefined : REASON_OF_FINDING[first]) ?? "invalid_input";
+}
+
+/**
+ * A setup step's result, as it is recorded for product analytics. Only a
+ * payout wallet's change is ever left waiting; the contract refuses any other
+ * step's `pending` when the event is sent.
+ */
+function setupResult(
+  merchantId: string,
+  acted: ActedBy,
+  step: "seller_name" | "seller_site" | "api_key" | "payout_wallet",
+  settled:
+    | { readonly outcome: "completed" | "pending" }
+    | { readonly outcome: "blocked" | "failed"; readonly reason_code: ReasonCode },
+): SetupResult {
+  return {
+    name: "agc_setup_result",
+    ...acted,
+    refs: { merchant: merchantId },
+    fields: { step, integration: step === "api_key" ? "api" : "none", ...settled },
+  } as SetupResult;
+}
+
+/**
+ * Whether a wallet write changed what the row held: an address in either
+ * spelling is the same address, and a waiting change is the same only with
+ * the same moment.
+ */
+function walletMoved(read: PayoutWalletRead, written: StoredPayoutWallet): boolean {
+  const same = (one: string | null, other: string | null): boolean =>
+    one === null || other === null ? one === other : isSameAddress(one, other);
+  return !(
+    same(read.address, written.address) &&
+    same(read.pending?.address ?? null, written.pending?.address ?? null) &&
+    (read.pending?.takesEffectAt ?? null) === (written.pending?.takesEffectAt ?? null)
+  );
+}
+
+/** How a refused wallet change is counted; a wallet answered is none. */
+function walletRefusalOf(
+  answer: PayoutWallet | WalletChangeRefusal,
+): { readonly outcome: "blocked" | "failed"; readonly reason_code: ReasonCode } | null {
+  if (typeof answer !== "string") {
+    return "refused" in answer ? { outcome: "blocked", reason_code: "invalid_input" } : null;
+  }
+  switch (answer) {
+    case "not_announced":
+      return { outcome: "failed", reason_code: "dependency_unavailable" };
+    case "nobody_to_tell":
+      return { outcome: "failed", reason_code: "internal_error" };
+    // Another write landed in between: nothing was saved, for a reason the
+    // contract's list has no word for.
+    case "raced":
+    case "raced_after_announcing":
+      return { outcome: "failed", reason_code: "unknown" };
+  }
+}
+
 /** Waits out a poll's window with nothing to draw, or less where the poll is ended. */
 function quietFor(ms: number, ended: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -459,11 +567,70 @@ export class Gateway {
    * for the live catalog — is reported beside the card's own problems and
    * first, so a screen that shows one finding shows the one the card cannot
    * explain.
+   *
+   * Each attempt is one result for product analytics: a new card's first
+   * publication, a refusal under its first finding's reason, or a failure,
+   * which is thrown on as it was. A card published again records nothing.
    */
   async publishCard(
     merchantId: string,
     body: unknown,
     integration: Integration = "api",
+    askedBy?: Caller,
+  ): Promise<PublishResult> {
+    const acted = actedBy(askedBy);
+    const at = this.runtime.clock();
+    const result = (fields: CardPublishResult["fields"], item?: string): CardPublishResult =>
+      ({
+        name: "agc_card_publish_result",
+        ...acted,
+        refs: item === undefined ? { merchant: merchantId } : { merchant: merchantId, item },
+        fields,
+      }) as CardPublishResult;
+    let published: PublishResult;
+    try {
+      published = await this.#publish(merchantId, body, integration, (made) =>
+        result({ integration, outcome: "completed" }, made.id),
+      );
+    } catch (thrown) {
+      this.#observe(result({ integration, outcome: "failed", reason_code: "internal_error" }), at);
+      throw thrown;
+    }
+    if (!published.ok) {
+      this.#observe(
+        result({
+          integration,
+          outcome: "blocked",
+          reason_code: publishRefusalReason(
+            published.error.problems.map((problem) => problem.code),
+          ),
+        }),
+        at,
+      );
+    }
+    return published;
+  }
+
+  /**
+   * Records an observation without waiting for it, so the answer it is about
+   * goes out first; a failure to record it is only logged.
+   */
+  #observe(event: AnalyticsEvent, at: number): void {
+    const logged = (thrown: unknown): void => {
+      console.error(`[gateway] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+    };
+    try {
+      this.runtime.store.recordAnalytics(event, at).catch(logged);
+    } catch (thrown) {
+      logged(thrown);
+    }
+  }
+
+  async #publish(
+    merchantId: string,
+    body: unknown,
+    integration: Integration,
+    made: AnalyticsOf<StoredCard>,
   ): Promise<PublishResult> {
     const parsed = CardSchema.safeParse(body);
 
@@ -513,6 +680,7 @@ export class Gateway {
       parsed.data,
       this.runtime.clock(),
       integration,
+      made,
     );
     if (stored.integration !== integration) {
       return cardRejected([], [heldByTheOther(integration, parsed.data.merchant_item_id)]);
@@ -627,8 +795,19 @@ export class Gateway {
     merchantId: string,
     itemId: string,
     paused: boolean,
+    askedBy?: Caller,
   ): Promise<MerchantCard | null> {
-    const stored = await this.runtime.store.setCardPaused(merchantId, itemId, paused);
+    const stored = await this.runtime.store.setCardPaused(
+      merchantId,
+      itemId,
+      paused,
+      (card): SellingChanged => ({
+        name: "agc_selling_changed",
+        ...actedBy(askedBy),
+        refs: { merchant: merchantId, item: card.id },
+        fields: { entity: "card", change: paused ? "paused" : "resumed" },
+      }),
+    );
     if (stored === null) {
       // No such card, or not this merchant's: the same answer on purpose, so a
       // pause call cannot probe what somebody else sells.
@@ -642,8 +821,17 @@ export class Gateway {
    * the cards paused in their own right paused, and the answer carries the
    * whole catalog so which cards came back is stated rather than inferred.
    */
-  async setSelling(merchantId: string, selling: MerchantSelling): Promise<MerchantCardList> {
-    await this.runtime.store.setSelling(merchantId, selling);
+  async setSelling(
+    merchantId: string,
+    selling: MerchantSelling,
+    askedBy?: Caller,
+  ): Promise<MerchantCardList> {
+    await this.runtime.store.setSelling(merchantId, selling, {
+      name: "agc_selling_changed",
+      ...actedBy(askedBy),
+      refs: { merchant: merchantId },
+      fields: { entity: "merchant", change: selling === "paused" ? "paused" : "resumed" },
+    });
     return this.merchantCards(merchantId);
   }
 
@@ -711,10 +899,20 @@ export class Gateway {
    * them where they are (`IntegrationSwitch`). A poll held open across the
    * switch ends with nothing, whichever integration's it was: the one being
    * left has nothing more coming to it, and the one taking over has just been
-   * told what it is.
+   * told what it is. A switch that stops the merchant's selling records that
+   * pause for product analytics, as the caller's.
    */
-  async sellThrough(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
-    const switched = await this.runtime.store.switchIntegration(merchantId, to);
+  async sellThrough(
+    merchantId: string,
+    to: Integration,
+    askedBy?: Caller,
+  ): Promise<IntegrationSwitch> {
+    const switched = await this.runtime.store.switchIntegration(merchantId, to, {
+      name: "agc_selling_changed",
+      ...actedBy(askedBy),
+      refs: { merchant: merchantId },
+      fields: { entity: "merchant", change: "paused" },
+    });
     if (switched.switched) {
       this.#letGo(merchantId, () => true);
     }
@@ -796,22 +994,60 @@ export class Gateway {
    * arrive as an edit to a setting. The answer is read off the written row
    * rather than echoed, so it shows whether the write landed.
    */
-  async setSellerName(merchantId: string, asked: SellerNameRequest): Promise<SellerName> {
+  async setSellerName(
+    merchantId: string,
+    asked: SellerNameRequest,
+    askedBy?: Caller,
+  ): Promise<SellerName> {
     // Only the fields the request names are written; one left out stays as it
     // was. The route already checked both, so a throw from either is a caller
     // that skipped it.
     const at = this.runtime.clock();
+    const acted = actedBy(askedBy);
     let merchant = await this.runtime.store.merchantById(merchantId);
     if (asked.seller_name !== undefined) {
-      merchant = await setServiceName(this.runtime.store, merchantId, asked.seller_name, at);
+      merchant = await setServiceName(
+        this.runtime.store,
+        merchantId,
+        asked.seller_name,
+        at,
+        setupResult(merchantId, acted, "seller_name", { outcome: "completed" }),
+      );
     }
     if (asked.seller_site !== undefined) {
-      merchant = await setSellerSite(this.runtime.store, merchantId, asked.seller_site, at);
+      merchant = await setSellerSite(
+        this.runtime.store,
+        merchantId,
+        asked.seller_site,
+        at,
+        setupResult(merchantId, acted, "seller_site", { outcome: "completed" }),
+      );
     }
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
+  }
+
+  /**
+   * Records setup steps the API refused before anything was written, such as
+   * a seller name the contract does not carry, one result for each step the
+   * refused call asked for. The refusal's answer is the route's own.
+   */
+  async setupRefused(
+    merchantId: string,
+    steps: readonly ("seller_name" | "seller_site" | "api_key")[],
+    askedBy: Caller,
+  ): Promise<void> {
+    for (const step of steps) {
+      await this.runtime.store.recordAnalytics(
+        setupResult(merchantId, actedBy(askedBy), step, {
+          outcome: "blocked",
+          reason_code: "invalid_input",
+        }),
+        this.runtime.clock(),
+      );
+    }
   }
 
   /**
@@ -899,11 +1135,33 @@ export class Gateway {
    * merchant's split, a commission wallet, a contract a payout calls, a
    * network's token, or the zero address. Every address written is recorded
    * with its split in the same write.
+   *
+   * Each change asked for is one result for product analytics: a wallet
+   * applied, a change left waiting, or a refusal. Asking again for what
+   * already stands records nothing.
    */
   async setPayoutWallet(
     merchantId: string,
     wallet: string,
     askedBy: Extract<Caller, { readonly kind: "signed_in" }>,
+  ): Promise<PayoutWallet | WalletChangeRefusal> {
+    const acted = actedBy(askedBy);
+    const answer = await this.#changePayoutWallet(merchantId, wallet, askedBy, acted);
+    const refused = walletRefusalOf(answer);
+    if (refused !== null) {
+      await this.runtime.store.recordAnalytics(
+        setupResult(merchantId, acted, "payout_wallet", refused),
+        this.runtime.clock(),
+      );
+    }
+    return answer;
+  }
+
+  async #changePayoutWallet(
+    merchantId: string,
+    wallet: string,
+    askedBy: Extract<Caller, { readonly kind: "signed_in" }>,
+    acted: ActedBy,
   ): Promise<PayoutWallet | WalletChangeRefusal> {
     const askedWith: AskedInTheDashboard = { kind: "signed_in", email: askedBy.email };
     // The dashboard holds the same rule on the way in, so a throw from here is
@@ -919,6 +1177,14 @@ export class Gateway {
     }
     const read = merchant.payoutWallet;
     const now = payoutWalletAt(read, this.runtime.clock());
+    // The row held `read` when any write below lands, so comparing the two
+    // says whether the wallet changed or the same one was saved again.
+    const saved: AnalyticsOf<WalletWritten> = (written) =>
+      walletMoved(read, written.merchant.payoutWallet)
+        ? setupResult(merchantId, acted, "payout_wallet", {
+            outcome: written.merchant.payoutWallet.pending === null ? "completed" : "pending",
+          })
+        : null;
     // Every address written goes with its split, computed by this network's
     // payout split and recorded in the same write as the wallet.
     const splitOf = (wallet: string): PayoutSplit =>
@@ -926,7 +1192,7 @@ export class Gateway {
     const alone = { address, split: splitOf(address), pending: null };
 
     if (!this.#announces()) {
-      return await this.#recordWallet(merchantId, read, alone);
+      return await this.#recordWallet(merchantId, read, alone, saved);
     }
 
     const paidNow = now.split;
@@ -934,7 +1200,7 @@ export class Gateway {
       // The first address replaces nothing, so it waits on nothing and a
       // message that cannot be sent refuses nothing; the message is how the
       // owner hears of a session that is not theirs setting it.
-      const set = await this.#recordWallet(merchantId, read, alone);
+      const set = await this.#recordWallet(merchantId, read, alone, saved);
       if (typeof set !== "string") {
         this.#announceAfterwards({
           kind: "wallet_set",
@@ -952,7 +1218,7 @@ export class Gateway {
         return payoutWalletAnswer(now);
       }
       const cancelled = now.pending.address;
-      const written = await this.#recordWallet(merchantId, read, alone);
+      const written = await this.#recordWallet(merchantId, read, alone, saved);
       if (typeof written !== "string") {
         this.#announceAfterwards({
           kind: "wallet_change_cancelled",
@@ -989,15 +1255,20 @@ export class Gateway {
     }
     // Counted from now, after every message was handed over, so the change
     // takes effect no earlier than the moment any message named.
-    const recorded = await this.#recordWallet(merchantId, read, {
-      address: paidNow.merchantWallet,
-      split: paidNow,
-      pending: {
-        address,
-        takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS,
-        split: alone.split,
+    const recorded = await this.#recordWallet(
+      merchantId,
+      read,
+      {
+        address: paidNow.merchantWallet,
+        split: paidNow,
+        pending: {
+          address,
+          takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS,
+          split: alone.split,
+        },
       },
-    });
+      saved,
+    );
     return recorded === "raced" ? "raced_after_announcing" : recorded;
   }
 
@@ -1024,12 +1295,14 @@ export class Gateway {
     merchantId: string,
     read: PayoutWalletRead,
     next: PayoutWalletWrite,
+    saved: AnalyticsOf<WalletWritten>,
   ): Promise<PayoutWallet | "raced"> {
     const written = await this.runtime.store.setPayoutWallet(
       merchantId,
       read,
       next,
       this.runtime.clock(),
+      saved,
     );
     if (written === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
@@ -1141,6 +1414,7 @@ export class Gateway {
       label,
       this.runtime.clock(),
       this.runtime.config.environment,
+      setupResult(merchantId, actedBy(askedBy), "api_key", { outcome: "completed" }),
     );
     if (this.#announces()) {
       this.#announceAfterwards({
@@ -1927,6 +2201,7 @@ export class Gateway {
     merchantId: string,
     priceId: string,
     response: QuoteResponse,
+    by?: Caller,
   ): Promise<QuoteAnswerAck | QuoteAnswerRefused> {
     const unsellable = response.available ? priceProblemsOf(response.price) : [];
     if (unsellable.length > 0) {
@@ -1956,7 +2231,7 @@ export class Gateway {
           }
         : { kind: "quote_answered", at, available: false },
       { priceId },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     // Finished either way: a second answer could only be told the same, and
@@ -1978,15 +2253,16 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     answer: HandlerAnswer,
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     if ("delivered" in answer) {
-      return this.deliverOrder(merchantId, orderId, answer.delivered, "handler");
+      return this.deliverOrder(merchantId, orderId, answer.delivered, "handler", by);
     }
     if ("refused" in answer) {
-      return this.refuseOrder(merchantId, orderId, answer.refused, "handler");
+      return this.refuseOrder(merchantId, orderId, answer.refused, "handler", by);
     }
 
-    return this.#takeOrderOn(merchantId, orderId, answer.accepted);
+    return this.#takeOrderOn(merchantId, orderId, answer.accepted, by);
   }
 
   /**
@@ -2001,6 +2277,7 @@ export class Gateway {
     orderId: string,
     delivery: Delivery,
     from: "handler" | "call" = "call",
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     // Read before the check, so an order that is not this merchant's is
     // answered exactly as one that never existed.
@@ -2030,7 +2307,7 @@ export class Gateway {
         delivery: parcel ? { ...delivery, shipped_at: asTimestamp(at) } : delivery,
         openDeliveryId: null,
       },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     // A parcel's shipment is the exception to repeats: a different shipment is
@@ -2062,6 +2339,7 @@ export class Gateway {
     orderId: string,
     refusal: Refusal,
     from: "handler" | "call" = "call",
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     const at = this.runtime.clock();
     const applied = await this.runner.apply(
@@ -2070,7 +2348,7 @@ export class Gateway {
         ? { kind: "handler_refused", at, code: refusal.code, message: refusal.message }
         : { kind: "refuse_called", at, code: refusal.code, message: refusal.message },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
     return this.#answerFor(applied, "refused");
   }
@@ -2080,12 +2358,13 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     request: OrderCloseRequest,
+    by?: Caller,
   ): Promise<OrderCloseResponse | null> {
     const applied = await this.runner.apply(
       orderId,
       { kind: "close_called", at: this.runtime.clock(), ...request },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
     const answered = this.#answerFor(applied, "accepted");
     return answered === null || !answered.ok ? answered : { ok: true };
@@ -2101,8 +2380,9 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     acceptance: Acceptance,
+    by?: Caller,
   ): Promise<OrderAcceptResponse | null> {
-    const taken = await this.#takeOrderOn(merchantId, orderId, acceptance);
+    const taken = await this.#takeOrderOn(merchantId, orderId, acceptance, by);
     return taken === null || !taken.ok ? taken : { ok: true };
   }
 
@@ -2116,6 +2396,7 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     _acceptance: Acceptance,
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     // The acceptance carries no field, since `AcceptanceSchema` is empty: the
     // merchant is held to the card's delivery deadline and to nothing they say
@@ -2125,7 +2406,7 @@ export class Gateway {
       orderId,
       { kind: "handler_accepted", at },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     return this.#answerFor(applied, "accepted");
@@ -2434,6 +2715,16 @@ const overWithNothingHeld = (record: StoredOrder): boolean =>
  * refusal carries the machine's own code, which the contract's open set of
  * codes allows, together with the state the order was in.
  */
+/**
+ * The merchant an order call is held to, and how they made it: a key is their
+ * worker, a session is a person in the dashboard. A caller who says neither
+ * is left unnamed rather than guessed.
+ */
+function actingAs(merchantId: string, by: Caller | undefined): ActingMerchant {
+  if (by === undefined) return { merchantId };
+  return { merchantId, actor: by.kind === "key" ? "merchant_worker" : "human" };
+}
+
 function refusedCall(rejection: TransitionRejection): CallError {
   const closed = !isOpen(rejection.state);
   return {

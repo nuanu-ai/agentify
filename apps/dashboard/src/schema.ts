@@ -51,6 +51,12 @@ export const accounts = pgTable(
      * component is told the field is closed to input, and no page writes it.
      */
     operator: boolean("operator").notNull().default(false),
+    /**
+     * Whether this person opted out of product analytics. While it is true no
+     * event leaves for Nuanu Analytics about them or about the merchant they
+     * name, whoever acted.
+     */
+    analyticsOptOut: boolean("analytics_opt_out").notNull().default(false),
   },
   // An empty identifier is neither a merchant nor none, and the code reading a
   // row refuses it rather than guessing.

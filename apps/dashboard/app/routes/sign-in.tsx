@@ -6,6 +6,7 @@
 import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
+  type ShouldRevalidateFunction,
   useActionData,
   useLoaderData,
 } from "react-router";
@@ -25,6 +26,15 @@ export async function loader(asked: LoaderFunctionArgs) {
     asked,
   );
 }
+
+/**
+ * Not read again after its own press, whose answer is the page drawn; a read
+ * after it would be a second visit to the page that nobody made.
+ */
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  formMethod,
+  defaultShouldRevalidate,
+}) => formMethod?.toUpperCase() !== "POST" && defaultShouldRevalidate;
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;

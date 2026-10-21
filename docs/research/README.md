@@ -67,6 +67,7 @@ name. Notes written in Russian stay in Russian.
 | [54-self-service](54-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
 | [55-woo-shop-census](55-woo-shop-census.md) | a pre-registered census of how many real WooCommerce shops in Indonesia, the United States and Europe could connect, what stops the rest, and its results | ADR-0023 | English | current |
 | [56-woo-tax-probe](56-woo-tax-probe.md) | a pre-registered probe of WooCommerce shops with tax calculation on, with its shop, script and data | ADR-0023 | English | current |
+| [84-nuanu-analytics-ingest](84-nuanu-analytics-ingest.md) | what Nuanu Analytics is relied on to do with a server-sent event, where that comes from, and the check still owed | ADR-0042 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

@@ -472,12 +472,12 @@ export const gatewayFor = (
       ),
     pauseCard: (itemId, paused) =>
       call(paused ? "pausing a card" : "resuming a card", async () => {
-        const card = await application.setCardPaused(merchantId, itemId, paused);
+        const card = await application.setCardPaused(merchantId, itemId, paused, caller);
         return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {
-        const cards = await application.setSelling(merchantId, selling ? "open" : "paused");
+        const cards = await application.setSelling(merchantId, selling ? "open" : "paused", caller);
         return answered(API_ROUTES.pause_selling, cards);
       }),
     orders: (open) =>
@@ -577,7 +577,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         const held = answered(
           API_ROUTES.set_seller_name,
-          await application.setSellerName(merchantId, asked.value),
+          await application.setSellerName(merchantId, asked.value, caller),
         );
         return held.ok ? done(held.document.seller_name) : held;
       }),
@@ -594,7 +594,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         const held = answered(
           API_ROUTES.set_seller_name,
-          await application.setSellerName(merchantId, asked.value),
+          await application.setSellerName(merchantId, asked.value, caller),
         );
         return held.ok ? done(held.document.seller_site) : held;
       }),
@@ -647,7 +647,7 @@ export const gatewayFor = (
       call("publishing a card", async () =>
         answered(
           API_ROUTES.publish_card,
-          await application.publishCard(merchantId, card, "woocommerce"),
+          await application.publishCard(merchantId, card, "woocommerce", caller),
         ),
       ),
     integration: () =>
@@ -660,7 +660,7 @@ export const gatewayFor = (
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {
-        const switched = await application.sellThrough(merchantId, to);
+        const switched = await application.sellThrough(merchantId, to, caller);
         return switched.switched
           ? done({ sellingPaused: switched.sellingPaused })
           : switchRefused(to, switched.waiting);
@@ -696,7 +696,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         return orderCallAnswer(
           API_ROUTES.close_order,
-          await application.closeOrder(merchantId, orderId, asked.value),
+          await application.closeOrder(merchantId, orderId, asked.value, caller),
         );
       }),
     deliverOrder: (orderId, delivery) =>

@@ -9,6 +9,13 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type {
+  AnalyticsEvent,
+  AuthResult,
+  DashboardViewed,
+  UiBlocked,
+} from "@agentify/gateway/analytics";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
@@ -104,6 +111,67 @@ interface Problem {
   readonly said: string;
 }
 
+/** A screen of the cabinet, as product analytics names it. */
+export type Screen = DashboardViewed["fields"]["screen"];
+
+/** What a problem shown on a screen came to, as product analytics counts it. */
+type Blocked = Pick<UiBlocked["fields"], "outcome" | "reason_code">;
+
+/**
+ * A screen's read that failed, by the status its problem page was sent with:
+ * nothing answered in time is a 504, a service the read needs that is away a
+ * 503. A refusal of a read says nothing about which rule refused it.
+ */
+const loadFailedAs = (status: number): Blocked =>
+  status === 504
+    ? { outcome: "failed", reason_code: "timeout" }
+    : status === 503
+      ? { outcome: "failed", reason_code: "dependency_unavailable" }
+      : status >= 500
+        ? { outcome: "failed", reason_code: "internal_error" }
+        : { outcome: "blocked", reason_code: "unknown" };
+
+/**
+ * A press the gateway did not do, by its answer. Nothing answered in time may
+ * still have been done, so its outcome is unknown; a refusal is named by its
+ * status.
+ */
+const refusedAs = (answer: Answer<unknown> & { ok: false }): Blocked =>
+  answer.status === 0
+    ? { outcome: "unknown", reason_code: "timeout" }
+    : answer.status === 400 || answer.status === 404
+      ? { outcome: "blocked", reason_code: "invalid_input" }
+      : answer.status === 409
+        ? { outcome: "blocked", reason_code: "operation_closed" }
+        : answer.status === 503
+          ? { outcome: "failed", reason_code: "dependency_unavailable" }
+          : answer.status >= 500
+            ? { outcome: "failed", reason_code: "internal_error" }
+            : { outcome: "blocked", reason_code: "unknown" };
+
+const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input" };
+
+/**
+ * What a crawler, a link preview, an uptime monitor or a script calls itself
+ * by. A browser always names itself, so saying nothing is a program too.
+ */
+const PROGRAM_NAMES = /bot|crawl|spider|preview|monitor|curl|wget|python-requests|headless/i;
+const fetchedByAProgram = (userAgent: string | null): boolean =>
+  userAgent === null || userAgent.trim() === "" || PROGRAM_NAMES.test(userAgent);
+
+/** A sign-in link that is unknown, expired, spent or missing. */
+const LINK_REFUSED: AuthResult = {
+  name: "agc_auth_result",
+  actor: "human",
+  source: "dashboard",
+  fields: {
+    method: "email_link",
+    stage: "verify",
+    outcome: "blocked",
+    reason_code: "invalid_link",
+  },
+};
+
 /** Which stack this is, said on every page; nothing is said on the live one. */
 export interface Surface {
   readonly attribute: string;
@@ -169,6 +237,18 @@ export interface ChooseNameView {
 }
 
 export interface PageServices {
+  /**
+   * Records for product analytics that a visit was answered with this screen,
+   * at this status, and a failed load where the status is a problem's; a
+   * visit by nobody signed in from a program fetching pages is not recorded.
+   * It neither waits for the database nor fails with it.
+   */
+  readonly shown: (
+    screen: Screen,
+    person: Person | null,
+    status: number,
+    userAgent: string | null,
+  ) => void;
   readonly liveSales: LiveSalesPages | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
@@ -233,6 +313,8 @@ export interface PageServices {
     name(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     site(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     signOutOthers(person: Person, cookie: string | undefined): Promise<Outcome<SettingsView>>;
+    /** The account's own choice about product analytics, never another account's. */
+    analytics(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     wallet(
       person: Person,
       form: FormData,
@@ -513,6 +595,31 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   const base = config.basePath;
   const { identity } = parts;
 
+  // The identity's observe never rejects; caught anyway, because a rejection
+  // nobody waits for would end the process.
+  const observe = (event: AnalyticsEvent): void => {
+    identity.observe(event).catch(() => undefined);
+  };
+  const whoIn = (person: Person): Readonly<{ person: string; merchant?: string }> => ({
+    person: person.id,
+    ...(person.merchant === null ? {} : { merchant: person.merchant.id }),
+  });
+  /** A problem a press of one of these operations was answered with, shown on its screen. */
+  const blocked = (
+    person: Person,
+    screen: Screen,
+    operation: "create_merchant" | "change_selling" | "close_order",
+    came: Blocked,
+  ): void => {
+    observe({
+      name: "agc_ui_blocked",
+      actor: "human",
+      source: "dashboard",
+      refs: whoIn(person),
+      fields: { screen, operation, ...came },
+    });
+  };
+
   /**
    * Read only where the report is switched on, so a dashboard that reports
    * nothing draws every sign-in page exactly as it would with no click, and
@@ -551,6 +658,51 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   /**
+   * A setup value refused here, before the gateway was asked; what the gateway
+   * answers it records itself. The step is recorded with the integration the
+   * merchant sells through, read without holding the page, and not at all
+   * where that cannot be read, since no integration is a claim of its own.
+   */
+  const setupRefused = (
+    person: Person,
+    step: "seller_name" | "seller_site" | "payout_wallet",
+    reason: UiBlocked["fields"]["reason_code"],
+  ): void => {
+    void (async () => {
+      const read = await gatewayAs(person)
+        .integration()
+        .catch(() => null);
+      if (read?.ok !== true) {
+        console.error(
+          "[dashboard] a refused setup step went unrecorded: its integration was not read",
+        );
+        return;
+      }
+      const blocked = {
+        integration: read.document.through,
+        outcome: "blocked",
+        reason_code: reason,
+      } as const;
+      const envelope = {
+        name: "agc_setup_result",
+        actor: "human",
+        source: "dashboard",
+        refs: whoIn(person),
+      } as const;
+      // Written twice so each branch is held to its own step's shape: a
+      // wallet's step is the one that may also wait.
+      observe(
+        step === "payout_wallet"
+          ? { ...envelope, fields: { step, ...blocked } }
+          : { ...envelope, fields: { step, ...blocked } },
+      );
+    })().catch((thrown: unknown) => {
+      // Nobody waits for this, so a throw left uncaught would end the process.
+      console.error(`[dashboard] a refused setup step went unrecorded: ${failureNamed(thrown)}`);
+    });
+  };
+
+  /**
    * One read of everything the settings page says, made after a press's work,
    * so the page shows what the press left. Any of the reads failing fails the
    * page: drawn without an answer, it would claim something about a field
@@ -563,13 +715,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     status?: number,
   ): Promise<Outcome<SettingsView>> => {
     const gateway = gatewayAs(person);
-    const [seller, wallet, splits, approval] = await Promise.all([
+    const [seller, wallet, splits, approval, analyticsOptedOut] = await Promise.all([
       gateway.seller(),
       gateway.payoutWallet(),
       gateway.payoutSplits(),
       config.surfaceMode === "live"
         ? gateway.liveApproval()
         : Promise.resolve({ ok: true as const, document: undefined }),
+      identity.analyticsOptedOut(person.id),
     ]);
     if (!seller.ok) return problemOf(seller);
     if (!wallet.ok) return problemOf(wallet);
@@ -588,6 +741,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           payoutSplits: splits.document,
           addressPage: config.addressPage,
           walletChain: config.walletChain,
+          analyticsOptedOut,
           ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         press,
@@ -776,6 +930,26 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   return {
+    shown(screen, person, status, userAgent) {
+      if (person === null && fetchedByAProgram(userAgent)) return;
+      const who = person === null ? {} : { refs: whoIn(person) };
+      observe({
+        name: "agc_dashboard_viewed",
+        actor: "human",
+        source: "dashboard",
+        ...who,
+        fields: { screen },
+      });
+      if (status >= 400) {
+        observe({
+          name: "agc_ui_blocked",
+          actor: "human",
+          source: "dashboard",
+          ...who,
+          fields: { screen, operation: "load_screen", ...loadFailedAs(status) },
+        });
+      }
+    },
     liveSales: parts.liveSales ?? null,
     base,
     surface: {
@@ -812,6 +986,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
         const carried = carriedIn(form);
         if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
+          // Decided here, before the identity is asked; every later refusal
+          // of the request is the identity's to record.
+          observe({
+            name: "agc_auth_result",
+            actor: "human",
+            source: "dashboard",
+            fields: { method: "email_link", stage: "start", ...INVALID_INPUT },
+          });
           return {
             kind: "view",
             status: 400,
@@ -855,6 +1037,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const token = typeof named === "string" ? named : "";
         const link = token === "" ? null : await identity.landingOf(token);
         if (link === null) {
+          // Decided here: the page drawn has no press, so nothing after it
+          // records this refusal again.
+          observe(LINK_REFUSED);
           return await refuseLink(cookie);
         }
         return {
@@ -867,6 +1052,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async open(cookie, form) {
         const named = once(form.getAll("token"));
         const token = typeof named === "string" ? named : "";
+        // Decided here; a token the identity is asked about is its own to record.
+        if (token === "") observe(LINK_REFUSED);
         const opened =
           token === "" ? { status: "refused" as const } : await identity.openLink(token);
         if (opened.status === "refused") {
@@ -985,6 +1172,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         }
         // A press that did not make a merchant leaves the person signed in to
         // press again rather than spending another link.
+        blocked(person, "merchant", "create_merchant", {
+          outcome: "failed",
+          reason_code: "dependency_unavailable",
+        });
         return { kind: "view", status: 503, view: { unavailable: true } };
       },
     },
@@ -1005,6 +1196,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // catalogue's rule is not what they broke.
         const problem = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
         if (problem !== null) {
+          setupRefused(person, "seller_name", typed === "" ? "profile_missing" : "invalid_input");
           return {
             kind: "view",
             status: 400,
@@ -1035,6 +1227,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
               : {},
         );
         if (!id.success || form.getAll("message").length > 1) {
+          blocked(person, "orders", "close_order", INVALID_INPUT);
           return {
             kind: "problem",
             problem: {
@@ -1050,7 +1243,18 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // Drawn here rather than redirected to, so what was typed stays in
         // the box and a reload does not repeat the note. Lists that cannot be
         // read beside it do not take the press's answer away.
+        // Recorded only where the page drawn says the closure did not happen
+        // or is not known to have happened.
         const answered = async (
+          pressed: ClosurePressed,
+          status: number,
+          came: Blocked,
+        ): Promise<Outcome<OrdersView | ClosureUnlisted>> => {
+          const drawnWith = await answeredWith(pressed, status);
+          if (drawnWith.kind === "view") blocked(person, "orders", "close_order", came);
+          return drawnWith;
+        };
+        const answeredWith = async (
           pressed: ClosurePressed,
           status: number,
         ): Promise<Outcome<OrdersView | ClosureUnlisted>> => {
@@ -1084,13 +1288,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
               typed: said,
             },
             400,
+            INVALID_INPUT,
           );
         }
         const gateway = gatewayAs(person);
         const closed = await gateway.closeOrder(id.data, request.data);
         if (closed.ok) return { kind: "redirect", location: drawn };
         const refused = closed.status !== 0 && closed.status < 500;
-        if (refused && closed.status !== 409) return problemOf(closed);
+        if (refused && closed.status !== 409) {
+          blocked(person, "orders", "close_order", refusedAs(closed));
+          return problemOf(closed);
+        }
         // A timed-out write may have committed, and a refused one may have
         // lost to a delivery or an ending: only a fresh read says which. A read
         // that throws knows no more than one that was not answered.
@@ -1118,6 +1326,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             typed: said,
           },
           refused ? 409 : 503,
+          refused
+            ? refusedAs(closed)
+            : {
+                outcome: "unknown",
+                reason_code:
+                  closed.status === 0
+                    ? "timeout"
+                    : closed.status === 503
+                      ? "dependency_unavailable"
+                      : "internal_error",
+              },
         );
       },
     },
@@ -1126,6 +1345,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async press(person, query, form) {
         const pressed = switchIn(query);
         if (pressed === null) {
+          blocked(person, "cards", "change_selling", INVALID_INPUT);
           return { kind: "problem", problem: { status: 404, said: NO_SUCH_SWITCH } };
         }
         const gateway = gatewayAs(person);
@@ -1133,7 +1353,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           pressed.card === undefined
             ? await gateway.setSelling(!pressed.paused)
             : await gateway.pauseCard(pressed.card, pressed.paused);
-        if (!switched.ok) return problemOf(switched);
+        if (!switched.ok) {
+          blocked(person, "cards", "change_selling", refusedAs(switched));
+          return problemOf(switched);
+        }
         noted(
           person,
           pressed.card === undefined
@@ -1218,6 +1441,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // names the control that does that.
         const wrong = typed === "" ? NAME_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheName(typed);
         if (wrong !== null) {
+          setupRefused(person, "seller_name", typed === "" ? "profile_missing" : "invalid_input");
           return await settingsDrawn(person, { kind: "name", problem: wrong, typed }, 400);
         }
         const set = await gatewayAs(person).setSellerName(typed);
@@ -1232,6 +1456,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // refuses; the sentence says what to do instead.
         const wrong = typed === "" ? SITE_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheSite(typed);
         if (wrong !== null) {
+          setupRefused(
+            person,
+            "seller_site",
+            typed === "" ? "seller_site_missing" : "invalid_input",
+          );
           return await settingsDrawn(person, { kind: "site", problem: wrong, typed }, 400);
         }
         const set = await gatewayAs(person).setSellerSite(typed);
@@ -1249,6 +1478,21 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         return await settingsDrawn(person, { kind: "account", notice: signedOutOthers(ended) });
       },
 
+      // Bound to the account signed in, never to one a form names: the gate
+      // refused the press unless its page was drawn for this account.
+      async analytics(person, form) {
+        const chosen = once(form.getAll("analytics"));
+        if (chosen !== "on" && chosen !== "off") {
+          return {
+            kind: "problem",
+            problem: { status: 400, said: "Choose whether product analytics are on or off." },
+          };
+        }
+        await identity.setAnalyticsOptOut(person.id, chosen === "off");
+        noted(person, `turned product analytics ${chosen}`);
+        return await settingsDrawn(person);
+      },
+
       // A press of its own rather than a second field on the name's: sharing
       // one would make every name save also rewrite the address, which turns a
       // typo in one box into a payment sent elsewhere. Checked here as well as
@@ -1258,6 +1502,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const typed = typedIn(form, "payout_wallet");
         const wrong = typed === "" ? WALLET_NEEDED : whatIsWrongWithTheWallet(typed);
         if (wrong !== null) {
+          setupRefused(person, "payout_wallet", typed === "" ? "wallet_missing" : "invalid_input");
           return await settingsDrawn(person, { kind: "wallet", problem: wrong, typed }, 400);
         }
         const gateway = gatewayAs(person, WALLET_CHANGE_MS);

@@ -373,6 +373,27 @@ function Account({ view }: Readonly<{ view: SettingsView }>) {
           </>
         )}
       </PostForm>
+      <PostForm document action="/settings/analytics" className="issue">
+        {(pending) => (
+          <>
+            <input
+              type="hidden"
+              name="analytics"
+              value={account.analyticsOptedOut ? "on" : "off"}
+            />
+            <p className="quiet">
+              {account.analyticsOptedOut
+                ? "Product analytics are off for this account."
+                : "Product analytics are on for this account."}
+            </p>
+            <Button variant="secondary" pending={pending}>
+              {account.analyticsOptedOut
+                ? "Turn product analytics on"
+                : "Turn product analytics off"}
+            </Button>
+          </>
+        )}
+      </PostForm>
     </>
   );
 }

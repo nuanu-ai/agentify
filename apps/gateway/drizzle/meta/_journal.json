@@ -169,6 +169,13 @@
       "when": 1792579658120,
       "tag": "0023_order_drops_confirmation",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792592660762,
+      "tag": "0024_commerce_analytics_events",
+      "breakpoints": true
     }
   ]
 }

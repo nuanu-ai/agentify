@@ -8,6 +8,8 @@
  */
 
 import { readinessOf, UNKNOWN } from "@agentify/core";
+import { publishRefusalReason } from "@agentify/gateway";
+import type { SetupResult } from "@agentify/gateway/analytics";
 import {
   type CardInput,
   MERCHANT_FINDINGS,
@@ -194,6 +196,40 @@ async function publishedOrNot(
     };
   }
 }
+
+/** How many products one import run published, was refused or failed, and passed over. */
+interface ImportCounts {
+  readonly imported_count: number;
+  readonly failed_count: number;
+  readonly skipped_count: number;
+}
+
+const NOTHING_COUNTED: ImportCounts = { imported_count: 0, failed_count: 0, skipped_count: 0 };
+
+type ReasonCode = ReturnType<typeof publishRefusalReason>;
+
+/**
+ * One import run's result as product analytics counts it: one event per press
+ * of Import, whatever it came to, the products it published counted as
+ * imported whether or not their cards were new.
+ */
+const importResult = (
+  person: Person,
+  settled:
+    | { readonly outcome: "completed" | "partial" }
+    | { readonly outcome: "blocked" | "failed" | "unknown"; readonly reason_code: ReasonCode },
+  counts: ImportCounts = NOTHING_COUNTED,
+): SetupResult =>
+  ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "dashboard",
+    refs:
+      person.merchant === null
+        ? { person: person.id }
+        : { merchant: person.merchant.id, person: person.id },
+    fields: { step: "woo_import", integration: "woocommerce", ...settled, ...counts },
+  }) as SetupResult;
 
 export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages {
   const base = config.basePath;
@@ -395,8 +431,11 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     },
 
     async importCatalogue(person) {
+      const resulted = (settled: Parameters<typeof importResult>[1], counts?: ImportCounts) =>
+        shops.recordAnalytics(importResult(person, settled, counts), new Date());
       const connection = await shops.connectionOf(person.id);
       if (connection === null) {
+        await resulted({ outcome: "blocked", reason_code: "no_connection" });
         return { kind: "redirect", location: `${base}/woocommerce` };
       }
 
@@ -404,8 +443,12 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // selling through their code would have every imported card refused, so
       // the shop screen offers them the switch instead.
       const integration = await gatewayAs(person).integration();
-      if (!integration.ok) return problemOf(integration);
+      if (!integration.ok) {
+        await resulted({ outcome: "failed", reason_code: "internal_error" });
+        return problemOf(integration);
+      }
       if (integration.document.through !== "woocommerce") {
+        await resulted({ outcome: "blocked", reason_code: "integration_mismatch" });
         return await drawTheShop(
           person,
           {
@@ -421,8 +464,13 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // nothing and repeat the refusal per product in words naming an API
       // route. A gateway that cannot answer this would not take a card either.
       const unset = await unsetOf(gatewayAs(person));
-      if (!unset.ok) return problemOf(unset);
+      if (!unset.ok) {
+        await resulted({ outcome: "failed", reason_code: "internal_error" });
+        return problemOf(unset);
+      }
       if (unset.document.length > 0) {
+        // Counted as the gateway counts a card refused for the same lack.
+        await resulted({ outcome: "blocked", reason_code: publishRefusalReason(unset.document) });
         noted(
           person,
           `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
@@ -435,6 +483,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // round trips to somebody else's shop rather than fifty.
       const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
       if (!read.ok) {
+        await resulted({ outcome: "blocked", reason_code: "catalogue_unavailable" });
         return await drawTheShop(person, { problem: read.why }, 502);
       }
 
@@ -486,6 +535,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       const { cards, skipped } = cardsFromTheShop(qualified, connection.shopUrl);
       const gateway = gatewayAs(person);
       const outcomes: ImportOutcome[] = [];
+      let firstRefusal: ReasonCode | null = null;
       for (const [index, one] of cards.entries()) {
         const published = await publishedOrNot(gateway, one.card);
         if (!published.ok) {
@@ -503,6 +553,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           outcomes.push({ id: one.id, title: one.title, published: published.document.id });
           continue;
         }
+        firstRefusal ??= publishRefusalReason(
+          published.document.error.problems.map((problem) => problem.code),
+        );
         // The gateway's findings word for word, telling the merchant which
         // field to change in their shop; the shop's site is the exception, set
         // in Settings by the person here rather than through the API.
@@ -519,9 +572,29 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         });
       }
 
+      const counted = (kind: "published" | "problems" | "failed" | "notAttempted") =>
+        outcomes.filter((one) => kind in one).length;
+      // A product left unattempted after a failure is passed over like one the
+      // shop's catalogue could not make a card of.
+      const counts: ImportCounts = {
+        imported_count: counted("published"),
+        failed_count: counted("problems") + counted("failed"),
+        skipped_count: skipped.length + counted("notAttempted"),
+      };
+      await resulted(
+        // The card whose publication failed may have been published.
+        counted("failed") > 0
+          ? { outcome: "unknown", reason_code: "internal_error" }
+          : counts.failed_count === 0
+            ? { outcome: "completed" }
+            : counts.imported_count > 0
+              ? { outcome: "partial" }
+              : { outcome: "blocked", reason_code: firstRefusal ?? "invalid_input" },
+        counts,
+      );
       noted(
         person,
-        `imported ${outcomes.filter((one) => "published" in one).length} of` +
+        `imported ${counts.imported_count} of` +
           ` ${read.products.length} products from ${connection.shopUrl}`,
       );
       return { kind: "view", view: wooImportView(connection.shopUrl, outcomes, skipped) };

@@ -5,7 +5,7 @@
  * so the server entry exports `services` for the process to set.
  */
 
-import { createContext } from "react-router";
+import { createContext, type RouterContextProvider } from "react-router";
 import type { Person } from "../src/dashboard-entry.js";
 import type { Refusal } from "../src/form-post.js";
 import type { PageServices } from "../src/page-services.js";
@@ -19,5 +19,25 @@ export const services = createContext<PageServices>();
  */
 export const refused = createContext<Refusal | null>(null);
 
+/**
+ * Set by the process for a read a person's browser made to see a page: a GET
+ * that is neither a prefetch nor the read of the page a press was just
+ * answered on, which the press's script asks for at once.
+ */
+export const visit = createContext(false);
+
 /** Set by the gate; read only by the pages nested under it in `routes.ts`. */
 export const signedIn = createContext<Person>();
+
+/**
+ * Who the gate let through, or null for a page outside it or one the gate did
+ * not let through: the gate's context has no default, so that a page under it
+ * cannot read nobody.
+ */
+export const signedInOrNobody = (context: Readonly<RouterContextProvider>): Person | null => {
+  try {
+    return context.get(signedIn);
+  } catch {
+    return null;
+  }
+};
