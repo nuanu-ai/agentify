@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
 import {
@@ -8,6 +8,7 @@ import {
   LINK_CLIENT_LIMIT,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
+  LINK_UNKNOWN_CLIENT_LIMIT,
 } from "./identity.js";
 import type { Message } from "./mail.js";
 import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
@@ -431,8 +432,9 @@ describe("sign-in links counted per client and across the channel", () => {
   const NOT_A_VISITOR = [
     "10.20.10.11",
     "::ffff:10.20.10.11",
+    "[::ffff:10.20.10.11]:443",
     "172.16.4.2",
-    "192.168.1.20",
+    "192.168.1.20:8080",
     "100.64.0.9",
     "127.0.0.1",
     "::1",
@@ -440,35 +442,106 @@ describe("sign-in links counted per client and across the channel", () => {
     "fe80::1",
     "fd00::5",
     "unknown",
+    "not an address",
+    "",
   ];
 
   it.each(NOT_A_VISITOR)(
-    "does not limit visitors arriving through %s together as one client",
+    "counts links asked through %j in one shared hour with every address that names no visitor, larger than one visitor's",
     async (client) => {
       const { identity, messages } = memoryIdentity();
-
-      for (let sent = 0; sent <= LINK_CLIENT_LIMIT; sent += 1) {
+      for (let sent = 0; sent < LINK_UNKNOWN_CLIENT_LIMIT; sent += 1) {
+        const asker = { client: sent % 2 === 0 ? client : "10.0.0.1" };
         await expect(
-          identity.requestLink(`visitor-${sent}@example.com`, "default", { client }),
+          identity.requestLink(`visitor-${sent}@example.com`, "default", asker),
         ).resolves.toMatchObject({ status: "accepted" });
       }
 
-      expect(messages).toHaveLength(LINK_CLIENT_LIMIT + 1);
+      await expect(
+        identity.requestLink("one-more@example.com", "default", { client }),
+      ).resolves.toMatchObject({ status: "cooldown", wall: "shared" });
+      expect(messages).toHaveLength(LINK_UNKNOWN_CLIENT_LIMIT);
+      await expect(
+        identity.requestLink("one-more@example.com", "default", CROWDED),
+      ).resolves.toMatchObject({ status: "accepted" });
     },
   );
 
-  it("still stops visitors arriving through one private proxy address at the channel's ceiling", async () => {
-    const { identity, messages } = memoryIdentity();
-    const proxy = { client: "::ffff:10.20.10.11" };
-    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
-      await identity.requestLink(`visitor-${sent}@example.com`, "default", proxy);
+  it.each([
+    ["198.51.100.7:443", "198.51.100.7"],
+    ["::ffff:198.51.100.7", "198.51.100.7"],
+    ["[2001:db8:1:2::1]:443", "2001:db8:1:2::1"],
+    ["[2001:db8:1:2::1]", "2001:db8:1:2::1"],
+  ])("counts %s as the visitor %s, not as an unknown client", async (written, visitor) => {
+    const { identity } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      await identity.requestLink(`person-${sent}@example.com`, "default", { client: visitor });
     }
-    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
 
     await expect(
-      identity.requestLink("one-more@example.com", "default", proxy),
+      identity.requestLink("one-more@example.com", "default", { client: written }),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "client" });
+  });
+
+  it("counts every address of one IPv6 /64 as one client, and another /64 as another", async () => {
+    const { identity } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      await expect(
+        identity.requestLink(`person-${sent}@example.com`, "default", {
+          client: `2001:db8:1:2:${(sent + 1).toString(16)}::${sent + 7}`,
+        }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    }
+
+    await expect(
+      identity.requestLink("one-more@example.com", "default", { client: "2001:db8:1:2:ffff::1" }),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "client" });
+    await expect(
+      identity.requestLink("one-more@example.com", "default", { client: "2001:db8:1:3::1" }),
+    ).resolves.toMatchObject({ status: "accepted" });
+  });
+
+  it("still stops visitors arriving through one private proxy address at the channel's ceiling", async () => {
+    const { identity, messages } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+      await identity.requestLink(`person-${sent}@example.com`, "default", clientOf(sent));
+    }
+
+    await expect(
+      identity.requestLink("one-more@example.com", "default", { client: "::ffff:10.20.10.11" }),
     ).resolves.toMatchObject({ status: "cooldown", wall: "ceiling" });
     expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
+  });
+
+  it("writes one warning naming the purpose and the window, and no address, when the ceiling first refuses in a window", async () => {
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const { identity, rows } = memoryIdentity();
+      const fill = async (round: string) => {
+        for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+          await identity.requestLink(`${round}-${sent}@example.com`, "default", clientOf(sent));
+        }
+      };
+      await fill("first");
+      await identity.requestLink("refused-a@example.com", "default", CROWDED);
+      await identity.requestLink("refused-b@example.com", "default", ELSEWHERE);
+
+      expect(warned).toHaveBeenCalledTimes(1);
+      const line = String(warned.mock.calls[0]?.[0]);
+      expect(line).toContain("dashboard");
+      expect(line).toMatch(/\d{4}-\d{2}-\d{2}T/);
+      for (const named of ["refused-a@example.com", "198.51.100.7", "203.0.113."]) {
+        expect(line).not.toContain(named);
+      }
+
+      // A window the ceiling had room in again is a new one.
+      rewindLinkSends(rows, LINK_RATE_WINDOW_MS);
+      await fill("second");
+      await identity.requestLink("refused-c@example.com", "default", CROWDED);
+      expect(warned).toHaveBeenCalledTimes(2);
+    } finally {
+      warned.mockRestore();
+    }
   });
 
   it("keeps an address to one link a minute and three an hour behind a private proxy address too", async () => {

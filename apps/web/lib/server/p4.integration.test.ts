@@ -1399,24 +1399,45 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
-  it("does not limit strangers' report link asks arriving through one private ingress address together", async () => {
-    const throughTheIngress = { "x-forwarded-for": "::ffff:10.20.10.11" };
+  it("counts strangers' report link asks through addresses that name no visitor in one shared hour, larger than one visitor's", async () => {
     const sentBefore = sentLinks.length;
     process.env.REGISTRATION_ENABLED = "true";
     try {
-      for (const label of ["ingress-a", "ingress-b"]) {
+      // Three scans, so no scan's own hour is what refuses; the ingress, a
+      // port-less private address and an unreadable value share one hour.
+      for (const [label, forwarded] of [
+        ["shared-a", "::ffff:10.20.10.11"],
+        ["shared-b", "10.0.0.1"],
+        ["shared-c", "not an address"],
+      ] as const) {
         const { scan, accessToken } = await createFreshCompletedScan(label);
-        for (let asked = 0; asked < 6; asked += 1) {
+        for (let asked = 0; asked < 10; asked += 1) {
           const answer = await registrationRequest(
             scan.id,
             accessToken,
             registrationBody(`${label}-${asked}@example.com`),
-            throughTheIngress,
+            { "x-forwarded-for": forwarded },
           );
           expect(answer.status).toBe(202);
         }
       }
-      expect(sentLinks).toHaveLength(sentBefore + 12);
+      const { scan, accessToken } = await createFreshCompletedScan("shared-d");
+
+      const refused = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("shared-d@example.com"),
+        { "x-forwarded-for": "[::ffff:10.20.10.11]:443" },
+      );
+      expect(refused.status).toBe(429);
+      expect(sentLinks).toHaveLength(sentBefore + 30);
+      const visitor = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("shared-d@example.com"),
+        { "x-forwarded-for": "198.51.100.9" },
+      );
+      expect(visitor.status).toBe(202);
     } finally {
       process.env.REGISTRATION_ENABLED = "false";
     }

@@ -51,6 +51,7 @@ import {
   LINK_CLIENT_LIMIT,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
+  LINK_UNKNOWN_CLIENT_LIMIT,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
@@ -931,6 +932,24 @@ describe("the passwordless dashboard door", () => {
     }
 
     expect(mails).toHaveLength(LINK_CLIENT_LIMIT + 1);
+  });
+
+  it("refuses links through a shared ingress address past their shared hour, the same way for every address, and offers Google", async () => {
+    const { browser, mails } = await started({ dashboard: GOOGLE_ON });
+    const throughTheIngress = browser.sending({ "x-forwarded-for": "::ffff:10.20.10.11" });
+    for (let sent = 0; sent < LINK_UNKNOWN_CLIENT_LIMIT; sent += 1) {
+      await throughTheIngress.post("/sign-in", { email: `visitor-${sent}@example.com` });
+    }
+
+    const known = await throughTheIngress.post("/sign-in", { email: PERSON });
+    const unknown = await throughTheIngress.post("/sign-in", { email: "nobody@example.com" });
+
+    expect(mails).toHaveLength(LINK_UNKNOWN_CLIENT_LIMIT);
+    for (const page of [known, unknown]) {
+      expect(readable(page.html)).not.toContain("is on its way");
+      expect(formTo(page.html, "post", "/sign-in/google")).toBeDefined();
+    }
+    expect(withoutAddress(known, PERSON)).toBe(withoutAddress(unknown, "nobody@example.com"));
   });
 
   it("counts a client by the address the edge added, not by one a browser put in front of it", async () => {
