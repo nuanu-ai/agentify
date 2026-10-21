@@ -29,7 +29,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
-import { amountOfCents, centsOf, productIdFromMerchantItem } from "./woo-catalog.js";
+import { amountOfCents, centsOf, productIdFromMerchantItem, withinACent } from "./woo-catalog.js";
 import {
   type CartPrice,
   createTheOrderInTheShop,
@@ -380,7 +380,9 @@ const taxedParcelPrice = (
   }
   const base = baseRead;
   const place = at.priced;
-  if (place.goods !== product.price.amount) return otherGoods;
+  // The cart rounds the goods' amount before tax and their tax each on its
+  // own, so between them they can come to a cent over the price.
+  if (!withinACent(place.goods, product.price.amount)) return otherGoods;
   // The goods' own tax is compared as well as the tax lines, which a shop
   // showing its tax as one total leaves empty.
   if (
