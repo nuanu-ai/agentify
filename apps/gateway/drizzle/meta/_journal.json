@@ -148,6 +148,13 @@
       "when": 1792422838483,
       "tag": "0020_merchant_fulfillment_closure",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792567564323,
+      "tag": "0021_card_first_published",
+      "breakpoints": true
     }
   ]
 }

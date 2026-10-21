@@ -1394,4 +1394,62 @@ if (databaseUrl === null) {
       ]);
     });
   });
+
+  describe("the migration that dates each card's first publication", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 21)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_dated','Dated','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("dates every card already published by the moment it holds, a card written afterwards without that date by the moment it is written, and refuses one whose date is null", async () => {
+      const first = new Date("2026-10-01T08:00:00.000Z");
+      const second = new Date("2026-10-02T08:00:00.000Z");
+      await pool.query(
+        `insert into cards (id, merchant_id, merchant_item_id, card, as_of, integration)
+         values ('item_first', 'mch_dated', 'sku-1', '{}', $1, 'api'),
+                ('item_second', 'mch_dated', 'sku-2', '{}', $2, 'woocommerce')`,
+        [first, second],
+      );
+
+      for (const statement of await statementsOf("0021_card_first_published.sql")) {
+        await pool.query(statement);
+      }
+
+      expect(
+        (await pool.query("select id, as_of, published_at from cards order by id")).rows,
+      ).toStrictEqual([
+        { id: "item_first", as_of: first, published_at: first },
+        { id: "item_second", as_of: second, published_at: second },
+      ]);
+      const [undated] = (
+        await pool.query<{ published_at: Date; written_at: Date }>(
+          `insert into cards (id, merchant_id, merchant_item_id, card, as_of, integration)
+           values ('item_undated', 'mch_dated', 'sku-3', '{}', now(), 'api')
+           returning published_at, now() as written_at`,
+        )
+      ).rows;
+      expect(undated?.published_at).toStrictEqual(undated?.written_at);
+      await expect(
+        pool.query(
+          `insert into cards
+             (id, merchant_id, merchant_item_id, card, as_of, published_at, integration)
+           values ('item_null', 'mch_dated', 'sku-4', '{}', now(), null, 'api')`,
+        ),
+      ).rejects.toMatchObject({ code: "23502" });
+    });
+  });
 }

@@ -120,6 +120,13 @@
       "when": 1792392246608,
       "tag": "0016_registration_report_keeps_no_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792567609537,
+      "tag": "0017_ad_reports",
+      "breakpoints": true
     }
   ]
 }
