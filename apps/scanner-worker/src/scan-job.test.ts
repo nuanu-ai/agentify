@@ -37,12 +37,6 @@ const evaluation: ScanEvaluation = {
     assessedWeight: 5,
     earnedWeight: 5,
   },
-  fingerprint: {
-    detectorVersion: "fingerprint-v1.0.0",
-    platform: { value: "custom/unknown", confidence: "low", signals: [] },
-    wafCdn: [],
-    pspMarkers: [],
-  },
   findings: { negativeCheckIds: [], positiveCheckId: 1 },
 };
 

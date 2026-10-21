@@ -181,6 +181,7 @@ const contracts = [
       progress: { completed: 1, total: 18 },
       checks: [{ id: 1, label_code: "robots", status: "pass", robots: null }],
       updated_at: timestamp,
+      target_host: "example.com",
       teaser: {
         score: 72,
         coverage: 1,
@@ -201,6 +202,7 @@ const contracts = [
       ["checks", 0, "status"],
       ["checks", 0, "robots"],
       "updated_at",
+      "target_host",
       ["teaser", "score"],
       ["teaser", "coverage"],
       ["teaser", "level"],

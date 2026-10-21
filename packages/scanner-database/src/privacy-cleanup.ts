@@ -9,8 +9,6 @@ import {
   deliveryOutbox,
   leadScans,
   leads,
-  merchantApplications,
-  paymentSignals,
   rateLimitEvents,
   rateWindows,
   registrationIntents,
@@ -23,14 +21,6 @@ import {
 
 const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
-
-async function deleteExpiredMerchantApplications(db: Database, now = new Date()) {
-  const deleted = await db
-    .delete(merchantApplications)
-    .where(lt(merchantApplications.expiresAt, now))
-    .returning({ id: merchantApplications.id });
-  return deleted.length;
-}
 
 export async function listUnverifiedLeadRetentionCandidates(
   db: Database,
@@ -143,8 +133,6 @@ export async function anonymizeLeadData(
           : eq(analyticsEvents.leadId, leadId),
       );
 
-    await tx.delete(paymentSignals).where(eq(paymentSignals.leadId, leadId));
-
     if (scanIds.length) {
       const observationIds = tx
         .select({ id: browserObservations.id })
@@ -194,14 +182,11 @@ export async function anonymizeLeadData(
     await tx
       .update(leads)
       .set({
-        supabaseUserId: null,
         emailNormalizedCiphertext: "deleted",
         emailLookupHash: `deleted:${leadId}`,
         phoneE164Ciphertext: null,
         phoneLookupHash: null,
         role: "deleted",
-        name: null,
-        volumeBucket: null,
         verifiedAt: null,
         unsubscribedAt: now,
         deletionRequestedAt: now,
@@ -217,13 +202,11 @@ export async function anonymizeLeadData(
 export async function runRetentionCleanup(
   db: Database,
   input: {
-    beforeLeadAnonymize: (leadId: string) => Promise<void>;
     now?: Date;
     batchSize?: number;
   },
 ) {
   const now = input.now ?? new Date();
-  const merchantApplicationsDeleted = await deleteExpiredMerchantApplications(db, now);
   const registrationIntentsDeleted = await deleteRetainedRegistrationIntents(db, now);
   const rateLimitRowsDeleted = await deleteExpiredRateLimitState(db, now);
   const candidates = await listUnverifiedLeadRetentionCandidates(db, {
@@ -232,7 +215,6 @@ export async function runRetentionCleanup(
   });
   let leadsAnonymized = 0;
   for (const candidate of candidates) {
-    await input.beforeLeadAnonymize(candidate.id);
     const result = await anonymizeLeadData(
       db,
       candidate.id,
@@ -243,7 +225,6 @@ export async function runRetentionCleanup(
     if (result.status === "anonymized") leadsAnonymized += 1;
   }
   return {
-    merchantApplicationsDeleted,
     registrationIntentsDeleted,
     rateLimitRowsDeleted,
     leadsAnonymized,

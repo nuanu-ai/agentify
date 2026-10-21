@@ -21,7 +21,6 @@ import type {
 } from "@agentify/scanner-contracts";
 
 import { isActionableBrowserFinding } from "./browser-observation-ui";
-import type { CardSignalState } from "./card-signal-ui";
 import { buildBrowserFixPrompt, buildCanonicalFixPrompt, buildFixPrompts } from "./fix-prompts";
 import { scanDay } from "./levels";
 
@@ -39,18 +38,6 @@ type ReportCheckView = Readonly<{
   prompt: string | null;
   /** The first failing check is shown open. */
   open: boolean;
-}>;
-
-export type ReportCardSignal = Readonly<{
-  adapter: "local" | "stripe";
-  publishableKey: string | null;
-  /** The address the page was loaded for, which a setup names. */
-  signedInAs: string;
-  initialSignal?: Readonly<{
-    signalId: string;
-    status: CardSignalState;
-    clientSecret: string | null;
-  }>;
 }>;
 
 export type ReportView = Readonly<{
@@ -76,8 +63,6 @@ export type ReportView = Readonly<{
   browserObservation: BrowserObservationStatusResponse | null;
   /** The prompt that fixes each actionable browser finding, by its id, where prompts are on. */
   browserFixPrompts: Readonly<Record<string, string>>;
-  /** The optional card signal, where it is on or this report's owner already gave one. */
-  cardSignal: ReportCardSignal | null;
 }>;
 
 const REPORT_GROUPS: readonly Readonly<{ title: string; ids: readonly number[] }>[] = [
@@ -126,7 +111,6 @@ export function reportView(
     brand: string;
     promptEnabled: boolean;
     shareEnabled: boolean;
-    cardSignal: ReportCardSignal | null;
   }>,
 ): ReportView {
   const { aiPrompt, devBrief } = buildFixPrompts(report, site.brand, browserObservation);
@@ -184,6 +168,5 @@ export function reportView(
             ]),
         )
       : {},
-    cardSignal: site.cardSignal,
   };
 }

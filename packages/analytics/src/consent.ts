@@ -7,16 +7,9 @@ export type ConsentEnvironment = "local" | "test" | "preview" | "production";
 
 export type ConsentSnapshot = {
   policyVersion: string;
-  country?: string;
   categories: ConsentCategories;
   capturedAt: string;
-  source: "banner" | "registration" | "card" | "api";
-};
-
-export type ConsentPolicy = {
-  policyVersion: string;
-  requireOptInForProductAnalytics: boolean;
-  requireOptInForAdsMeasurement: boolean;
+  source: "banner" | "registration" | "api";
 };
 
 export const DEFAULT_CONSENT: ConsentCategories = {
@@ -25,13 +18,26 @@ export const DEFAULT_CONSENT: ConsentCategories = {
   ads_measurement: false,
   marketing_email: false,
   dataset_reuse: false,
-  card_signal: false,
+};
+
+/**
+ * What a stored snapshot records, by the categories the policy names. A stored
+ * key the policy does not name, or a value that is not a yes or a no, is passed
+ * over, so a snapshot copied forward carries no category the policy lacks.
+ */
+export const storedConsentCategories = (stored: unknown): Partial<ConsentCategories> => {
+  if (!stored || typeof stored !== "object") return {};
+  const recorded = stored as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(DEFAULT_CONSENT).flatMap((category) =>
+      typeof recorded[category] === "boolean" ? [[category, recorded[category]]] : [],
+    ),
+  );
 };
 
 export const createConsentSnapshot = (input: {
-  policy: ConsentPolicy;
+  policyVersion: string;
   decisions: Partial<ConsentCategories>;
-  country?: string;
   source: ConsentSnapshot["source"];
   capturedAt?: Date;
 }): ConsentSnapshot => {
@@ -44,8 +50,7 @@ export const createConsentSnapshot = (input: {
     essential_processing: true,
   };
   return {
-    policyVersion: input.policy.policyVersion,
-    ...(input.country ? { country: input.country.toUpperCase().slice(0, 2) } : {}),
+    policyVersion: input.policyVersion,
     categories,
     capturedAt: (input.capturedAt ?? new Date()).toISOString(),
     source: input.source,

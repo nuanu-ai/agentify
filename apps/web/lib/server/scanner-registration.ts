@@ -8,6 +8,7 @@
  * the scan, and it is the only way a report comes to belong to an address.
  */
 
+import { storedConsentCategories } from "@agentify/analytics";
 import type { RegistrationRequest } from "@agentify/scanner-contracts";
 import type { SendReportLinkResponse } from "@agentify/scanner-contracts/report-identity";
 import {
@@ -363,9 +364,8 @@ async function finishIntentInTransaction(
     id: consentId,
     sessionId: intent.sessionId,
     policyVersion: "phase-a-v2",
-    country: previousConsent?.country,
     categories: {
-      ...(typeof previousConsent?.categories === "object" ? previousConsent.categories : {}),
+      ...storedConsentCategories(previousConsent?.categories),
       essential_processing: true,
       dataset_reuse: true,
       marketing_email: intent.marketingEmailOptIn,

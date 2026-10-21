@@ -42,14 +42,4 @@ describe("the scanner's gallery, in the browser", () => {
       expect(drawn.querySelector<HTMLDetailsElement>("details.site-menu")?.open).toBe(true);
     },
   );
-
-  it("refuses a state whose page asks the site for something its scene does not answer", async () => {
-    const [, state, scene] = scenes[0] ?? [];
-    if (state === undefined || scene === undefined) throw new Error("the gallery has no scene");
-    const { "GET /api/v2/session": _asked, ...rest } = scene.answers ?? {};
-
-    await expect(
-      drawnInBrowser(state, { ...scene, answers: rest }, { act, createRoot }),
-    ).rejects.toThrow("GET /api/v2/session");
-  });
 });

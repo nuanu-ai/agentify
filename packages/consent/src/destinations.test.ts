@@ -24,11 +24,7 @@ const config: BrowserAnalyticsConfig = {
 
 const choice = (ads: boolean) =>
   createConsentSnapshot({
-    policy: {
-      policyVersion: CONSENT_POLICY_VERSION,
-      requireOptInForAdsMeasurement: true,
-      requireOptInForProductAnalytics: true,
-    },
+    policyVersion: CONSENT_POLICY_VERSION,
     decisions: { product_analytics: true, ads_measurement: ads },
     source: "banner",
   });

@@ -57,11 +57,7 @@ describe("a visit before and after the visitor's choice", () => {
     expect(asked).toEqual([]);
 
     const allowed = createConsentSnapshot({
-      policy: {
-        policyVersion: CONSENT_POLICY_VERSION,
-        requireOptInForProductAnalytics: true,
-        requireOptInForAdsMeasurement: true,
-      },
+      policyVersion: CONSENT_POLICY_VERSION,
       decisions: { product_analytics: true },
       source: "banner",
     });

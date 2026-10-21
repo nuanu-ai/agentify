@@ -144,7 +144,6 @@ describe("a page in Chromium", () => {
     "/privacy",
     "/terms",
     "/agentic-shop",
-    "/agentic-shop/privacy",
     "/data-request",
     "/email/unsubscribe",
   ])("comes alive without a complaint: %s", async (path) => {
@@ -700,11 +699,7 @@ const VISITORS = [
 
 /** The choice of a visitor who answered the consent banner on an earlier visit. */
 const SAVED_CONSENT = createConsentSnapshot({
-  policy: {
-    policyVersion: CONSENT_POLICY_VERSION,
-    requireOptInForAdsMeasurement: true,
-    requireOptInForProductAnalytics: true,
-  },
+  policyVersion: CONSENT_POLICY_VERSION,
   decisions: {},
   source: "banner",
 });

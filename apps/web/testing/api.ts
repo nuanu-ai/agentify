@@ -24,7 +24,6 @@ export function stubOfflineScanner(): void {
   vi.stubEnv("DASHBOARD_IDENTITY_URL", "");
   vi.stubEnv("REPORT_IDENTITY_SECRET", "");
   vi.stubEnv("REGISTRATION_ENABLED", "false");
-  vi.stubEnv("CARD_SIGNAL_ENABLED", "false");
   vi.stubEnv("POSTHOG_BROWSER_KEY", "");
   vi.stubEnv("POSTHOG_BROWSER_HOST", "");
   // A refusal is logged as a warning, and a failure to reach the database as

@@ -22,7 +22,6 @@ const sameCategories = (left: unknown, right: ConsentCategories): boolean => {
 export const persistConsentSnapshot = async (input: {
   anonymousToken?: string;
   decisions: Partial<ConsentCategories>;
-  country?: string;
 }): Promise<{ anonymousToken?: string; snapshotId: string }> => {
   const config = getServerConfig();
   const { db } = getDatabase();
@@ -30,13 +29,8 @@ export const persistConsentSnapshot = async (input: {
     ? hmacHex(config.hmacSecret, "anonymous", input.anonymousToken)
     : undefined;
   const snapshot = createConsentSnapshot({
-    policy: {
-      policyVersion: CONSENT_POLICY_VERSION,
-      requireOptInForAdsMeasurement: true,
-      requireOptInForProductAnalytics: true,
-    },
+    policyVersion: CONSENT_POLICY_VERSION,
     decisions: input.decisions,
-    ...(input.country ? { country: input.country } : {}),
     source: "banner",
   });
 
@@ -86,7 +80,6 @@ export const persistConsentSnapshot = async (input: {
       id: snapshotId,
       sessionId: session.id,
       policyVersion: snapshot.policyVersion,
-      country: snapshot.country,
       categories: snapshot.categories,
       capturedAt: new Date(snapshot.capturedAt),
       source: snapshot.source,

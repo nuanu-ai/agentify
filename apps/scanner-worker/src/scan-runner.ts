@@ -20,18 +20,10 @@ import {
   SafeFetcher,
 } from "./safe-fetch.js";
 
-type ScanMetric =
-  | { name: "scan_duration_ms"; value: number }
-  | { name: "scan_requests"; value: number }
-  | { name: "scan_coverage"; value: number }
-  | { name: "fetch_error"; value: 1; code: string };
-
 export type ScanRunnerDependencies = {
   resolver: DnsResolver;
   transport: PinnedTransport;
   appBaseUrl: string;
-  emitMetric?: (metric: ScanMetric) => void;
-  now?: () => number;
 };
 
 export type ScanRunOptions = {
@@ -122,7 +114,7 @@ export class ScanRunner {
     job: ScanJobV1,
     options: ScanRunOptions = {},
   ): Promise<ScanEvaluation & { requestCount: number }> {
-    const startedAt = (this.dependencies.now ?? Date.now)();
+    const startedAt = Date.now();
     const rawTarget = job.canonical_target_url;
     const schemeWasMissing = job.submitted_without_scheme === true;
     const target = canonicalizeTarget(rawTarget);
@@ -152,7 +144,7 @@ export class ScanRunner {
     ) => {
       const canonical = canonicalizeTarget(input.toString());
       if (controller.signal.aborted) return unavailableArtifact(canonical, "global_deadline");
-      const artifact = await fetcher
+      return await fetcher
         .fetch(input, { ...fetchOptions, signal: controller.signal })
         .catch((error: unknown) => {
           if (
@@ -165,13 +157,6 @@ export class ScanRunner {
             );
           throw error;
         });
-      if (artifact.errorCode)
-        this.dependencies.emitMetric?.({
-          name: "fetch_error",
-          value: 1,
-          code: artifact.errorCode,
-        });
-      return artifact;
     };
     const emitted = new Set<number>();
     const emitChecks = async (artifacts: ScanArtifacts, checkIds: readonly number[]) => {
@@ -445,18 +430,6 @@ export class ScanRunner {
         artifacts,
         evaluation.checks.map(({ id }) => id),
       );
-      this.dependencies.emitMetric?.({
-        name: "scan_requests",
-        value: budget.used,
-      });
-      this.dependencies.emitMetric?.({
-        name: "scan_coverage",
-        value: evaluation.score.coverage,
-      });
-      this.dependencies.emitMetric?.({
-        name: "scan_duration_ms",
-        value: (this.dependencies.now ?? Date.now)() - startedAt,
-      });
       return { ...evaluation, requestCount: budget.used };
     } finally {
       clearTimeout(deadlineTimer);

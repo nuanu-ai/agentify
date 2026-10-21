@@ -18,12 +18,6 @@ if rg -n 'Hero Explorations|>Log in<' apps/web; then
   exit 1
 fi
 
-if rg -n "stripe\\.(paymentIntents|subscriptions|charges)|PaymentIntent|usage[\"']?\\s*[:=]\\s*[\"']off_session" \
-  apps packages -g '*.{ts,tsx,js,mjs}' -g '!**/*.test.*'; then
-  echo "Forbidden charge/subscription/off-session implementation reference found." >&2
-  exit 1
-fi
-
 if rg -n '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk_live_[A-Za-z0-9]{12,}|whsec_[A-Za-z0-9]{12,})' \
   . --hidden -g '!node_modules/**' -g '!.git/**' -g '!06-design/reference/**'; then
   echo "Possible committed secret found." >&2

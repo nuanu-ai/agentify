@@ -864,8 +864,8 @@ switch on that channel, because the tracker would count a test registration as
 a real one.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
-`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
-`STRIPE_*` and `APIFY_*` settings, `REGISTRATION_ENABLED`,
+`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`
+and `APIFY_*` settings, `REGISTRATION_ENABLED`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`

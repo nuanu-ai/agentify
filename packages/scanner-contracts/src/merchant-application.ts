@@ -1,2 +1,0 @@
-export const MERCHANT_APPLICATION_POLICY = "merchant-application-2026-09-09";
-export const MERCHANT_APPLICATION_RETENTION_DAYS = 30;
