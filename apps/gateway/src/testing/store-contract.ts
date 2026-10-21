@@ -1600,6 +1600,94 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
+    describe("an attempt that lapsed unpaid", () => {
+      const DAY = 86_400_000;
+
+      /** An order as it ended, with some of its facts changed. */
+      const ended = (
+        id: string,
+        state: Order["state"],
+        changed: { readonly order?: Partial<Order>; readonly merchantId?: string } = {},
+        more: Partial<StoredOrder> = {},
+      ): StoredOrder => {
+        const base = anOrder(id, state, { merchantId: changed.merchantId ?? A });
+        return { ...base, ...more, order: { ...base.order, ...changed.order } };
+      };
+
+      it("is forgotten a batch at a time once last written before the instant, and nothing with money, a claim, a receipt, an event or goods goes with it", async () => {
+        const store = await twoMerchants();
+        const forgotten = ["ord_refused", "ord_lapsed", "ord_lapsed_too", "ord_theirs"];
+        await store.addOrder(
+          ended("ord_refused", "rejected", { order: { closure: { cause: "unavailable" } } }),
+        );
+        await store.addOrder(ended("ord_lapsed", "expired"));
+        await store.addOrder(ended("ord_lapsed_too", "expired"));
+        await store.addOrder(ended("ord_theirs", "expired", { merchantId: B }));
+        // Goods made after the deadline, held for a repeat purchase.
+        await store.addOrder(
+          ended("ord_goods_held", "expired", { order: { heldFulfillment: true } }),
+        );
+        // A charge that was sent and failed, and one nobody answered.
+        await store.addOrder(
+          ended(
+            "ord_charge_failed",
+            "rejected",
+            { order: { payment: "settle_failed" } },
+            {
+              payment: "PAYMENT",
+              paidBy: "0x00000000000000000000000000000000000000aa",
+            },
+          ),
+        );
+        await store.addOrder(
+          ended("ord_charge_unknown", "rejected", { order: { payment: "outcome_unknown" } }),
+        );
+        // A merchant asked to confirm is told when the buyer never pays.
+        await store.addOrder(
+          ended("ord_confirmation_asked", "expired", {
+            order: {
+              timestamps: {
+                ...anOrder("x", "expired").order.timestamps,
+                confirmationRequestedAt: 500,
+              },
+            },
+          }),
+        );
+        await store.addOrder(ended("ord_claimed", "expired"));
+        await store.claimPayment("fp_claimed", "ord_claimed");
+        await store.addOrder(ended("ord_receipted", "expired"));
+        await store.putReceipt(A, aReceipt("rcp_1", "ord_receipted", "delivered"));
+        await store.addOrder(
+          ended("ord_delivered", "delivered", { order: { payment: "settled" } }),
+        );
+        await store.addOrder(ended("ord_cancelled", "cancelled"));
+        await store.addOrder(ended("ord_waiting", "quoted"));
+        const everyOrder = async () => [
+          ...(await idsOf(store.orders(A))),
+          ...(await idsOf(store.orders(B))),
+        ];
+        const before = await everyOrder();
+
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(3);
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(1);
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(0);
+
+        expect(await everyOrder()).toStrictEqual(before.filter((id) => !forgotten.includes(id)));
+        for (const id of forgotten) {
+          expect(await store.orderById(id)).toBeNull();
+        }
+        expect(await store.receiptForOrder("ord_receipted")).not.toBeNull();
+      });
+
+      it("is kept while it was last written after the instant", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(ended("ord_lapsed", "expired"));
+
+        expect(await store.forgetLapsedBefore(Date.now() - DAY, 10)).toBe(0);
+        expect(await store.orderById("ord_lapsed")).not.toBeNull();
+      });
+    });
+
     describe("an order", () => {
       it("is written once under one identifier, and a second attempt is refused", async () => {
         // A second write would replace the order an agent holds an identifier

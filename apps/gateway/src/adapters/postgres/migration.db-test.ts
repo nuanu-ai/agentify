@@ -1452,4 +1452,75 @@ if (databaseUrl === null) {
       ).rejects.toMatchObject({ code: "23502" });
     });
   });
+
+  describe("the migration that marks the attempts that lapsed unpaid", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 24)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_lapsed','Lapsed','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("marks an order that ended rejected or expired with nothing charged, held or asked of its merchant, and no other", async () => {
+      const ended = (id: string, state: string, order: object = {}, record: object = {}) => ({
+        order: {
+          id,
+          state,
+          payment: "none",
+          heldFulfillment: false,
+          timestamps: { confirmationRequestedAt: null },
+          ...order,
+        },
+        merchantId: "mch_lapsed",
+        paymentRef: `pay_${id}`,
+        payment: null,
+        paidBy: null,
+        delivery: null,
+        ...record,
+      });
+      const rows = [
+        ended("ord_refused", "rejected"),
+        ended("ord_lapsed", "expired"),
+        ended("ord_goods_held", "expired", { heldFulfillment: true }),
+        ended("ord_charge_failed", "rejected", { payment: "settle_failed" }),
+        ended("ord_confirmation_asked", "expired", {
+          timestamps: { confirmationRequestedAt: 500 },
+        }),
+        ended("ord_presented", "expired", {}, { payment: "PAYMENT" }),
+        ended("ord_attempted", "expired", {}, { paymentAttempt: { id: "att_1" } }),
+        ended("ord_delivered", "delivered", { payment: "settled" }),
+        ended("ord_cancelled", "cancelled"),
+        ended("ord_waiting", "quoted"),
+      ];
+      for (const row of rows) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,false,'mch_lapsed','itm_old','sku',$3,now(),now())",
+          [row.order.id, row.order.state, JSON.stringify(row)],
+        );
+      }
+
+      for (const statement of await statementsOf("0024_order_lapsed_attempts.sql")) {
+        await pool.query(statement);
+      }
+
+      expect(
+        (await pool.query("select id from orders where lapsed order by id")).rows,
+      ).toStrictEqual([{ id: "ord_lapsed" }, { id: "ord_refused" }]);
+      expect((await pool.query("select count(*)::int as count from orders")).rows).toStrictEqual([
+        { count: rows.length },
+      ]);
+    });
+  });
 }
