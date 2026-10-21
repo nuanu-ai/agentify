@@ -164,3 +164,20 @@ if (databaseUrl === null) {
     });
   });
 }
+
+/**
+ * What the compiler refuses, written as code because the compiler is the only
+ * thing that can assert it. None of this runs: `tsc` fails the build the day a
+ * line under a `@ts-expect-error` starts compiling.
+ *
+ * The database handle itself opens transactions too, and an event recorded
+ * through it would commit on its own, outside the business write it records.
+ */
+const compilerHoldsTheseTrue = (pool: Pool): void => {
+  const database = drizzle(pool);
+  // @ts-expect-error an event recorded alongside a write needs the write's transaction
+  void recordAlong(database, created, AT);
+  void database.transaction(async (tx) => await recordAlong(tx, created, AT));
+};
+
+void compilerHoldsTheseTrue;
