@@ -222,7 +222,6 @@ describe("analytics privacy and dedup contracts", () => {
       day: "2026-07-12",
       scan_id: "scan",
       lead_id: "lead",
-      setup_intent_id: "seti",
       share_id: "share",
     };
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));
