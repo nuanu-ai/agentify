@@ -259,13 +259,6 @@ describe("what the checks read from the markup real sites write", () => {
     const untitled = "# Example\n\n- [](https://example.com/catalog.md)\n";
     expect(check(withLlms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
   });
-
-  it("recognizes Adyen by the checkout script a page loads", () => {
-    const page = `<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
-    expect(evaluateScan(withBase(page)).fingerprint.pspMarkers).toMatchObject([
-      { value: "Adyen", confidence: "high" },
-    ]);
-  });
 });
 
 describe("OAuth discovery evidence", () => {
@@ -547,10 +540,9 @@ describe("a scan of a truncated HTML response", () => {
 });
 
 describe("a scan of pages as large as the fetch admits", () => {
-  // What the checks and the fingerprint read themselves, at the sizes the
-  // fetch admits: a feed link and an Open Graph type in a page of up to 2 MiB,
-  // a link in an llms.txt of up to 512 KiB, and the Adyen script in the first
-  // 512 KiB of a page, which is as far as the fingerprint reads.
+  // What the checks read themselves, at the sizes the fetch admits: a feed
+  // link and an Open Graph type in a page of up to 2 MiB, and a link in an
+  // llms.txt of up to 512 KiB.
   const pageCap = 2 * 1024 * 1024;
   const textCap = 512 * 1024;
   const budgetMs = 500;
@@ -599,15 +591,6 @@ describe("a scan of pages as large as the fetch admits", () => {
     expect(checkIn(unclosed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: false });
     expect(unclosed.ms).toBeLessThan(budgetMs);
   });
-
-  it("recognizes Adyen after a line of checkout names that never reaches its address", () => {
-    const page = `${fill("checkoutshopper-", textCap)}\n<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
-    const { evaluation, ms } = scan(withBase(page));
-    expect(evaluation.fingerprint.pspMarkers).toMatchObject([
-      { value: "Adyen", confidence: "high" },
-    ]);
-    expect(ms).toBeLessThan(budgetMs);
-  });
 });
 
 describe("a scan evaluated again", () => {
@@ -634,7 +617,6 @@ describe("18-check engine", () => {
     );
     expect(evaluation.checks.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
     expect(evaluation.score.nominalWeight).toBe(100);
-    expect(evaluation.fingerprint.platform).toMatchObject({ value: "Shopify" });
   });
 
   it("does not penalize non-store, no-auth, missing optional files or single locale", () => {

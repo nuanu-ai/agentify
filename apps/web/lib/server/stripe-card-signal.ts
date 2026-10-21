@@ -124,7 +124,6 @@ export async function setupCardSignal(input: {
       id: consentSnapshotId,
       sessionId: session.id,
       policyVersion: currentConsent?.policyVersion ?? CONSENT_POLICY_VERSION,
-      country: currentConsent?.country,
       categories,
       source: "card",
     });

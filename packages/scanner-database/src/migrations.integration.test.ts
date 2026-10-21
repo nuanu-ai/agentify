@@ -38,7 +38,6 @@ const TABLES = [
   "registration_intents",
   "scanner_identity_deletion_operations",
   "scan_checks",
-  "scan_fingerprints",
   "scan_shares",
   "scans",
   "sessions",
@@ -106,7 +105,11 @@ describe("initial database migration", () => {
              or (table_name = 'browser_observations'
                  and column_name in ('signals', 'request_count', 'transferred_bytes'))
              or (table_name = 'registration_intents'
-                 and column_name = 'partner_click_id_ciphertext'))`,
+                 and column_name = 'partner_click_id_ciphertext')
+             or (table_name = 'leads'
+                 and column_name in ('supabase_user_id', 'name', 'volume_bucket'))
+             or (table_name = 'sessions' and column_name = 'geo_country')
+             or (table_name = 'consent_snapshots' and column_name = 'country'))`,
       );
       expect(deletedColumns.rows).toEqual([]);
       // A delivery goes to PostHog or to Meta; the scanner has no other destination.
@@ -518,12 +521,6 @@ describe("initial database migration", () => {
             assessedWeight: 5,
             earnedWeight: 5,
           },
-          fingerprint: {
-            detectorVersion: "scanner-fingerprint-v1",
-            platform: { value: "unknown", confidence: "low", signals: [] },
-            wafCdn: [],
-            pspMarkers: [],
-          },
           findings: { negativeCheckIds: [] },
         },
         finishedAt: new Date(),
@@ -533,11 +530,9 @@ describe("initial database migration", () => {
         status: string;
         attempt_no: number;
         summary_code: string;
-        fingerprints: string;
         completed_events: string;
       }>(
         `select s.status, s.attempt_no, c.summary_code,
-           (select count(*) from scan_fingerprints where scan_id = s.id)::text as fingerprints,
            (select count(*) from analytics_events where name = 'scan_completed' and scan_id = s.id)::text as completed_events
          from scans s
          join scan_checks c on c.scan_id = s.id and c.check_id = 1
@@ -548,7 +543,6 @@ describe("initial database migration", () => {
         status: "running",
         attempt_no: 2,
         summary_code: "fresh_attempt_check",
-        fingerprints: "0",
         completed_events: "0",
       });
 

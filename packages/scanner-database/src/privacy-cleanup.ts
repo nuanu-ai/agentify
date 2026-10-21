@@ -194,14 +194,11 @@ export async function anonymizeLeadData(
     await tx
       .update(leads)
       .set({
-        supabaseUserId: null,
         emailNormalizedCiphertext: "deleted",
         emailLookupHash: `deleted:${leadId}`,
         phoneE164Ciphertext: null,
         phoneLookupHash: null,
         role: "deleted",
-        name: null,
-        volumeBucket: null,
         verifiedAt: null,
         unsubscribedAt: now,
         deletionRequestedAt: now,

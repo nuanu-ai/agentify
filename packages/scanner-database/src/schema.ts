@@ -116,7 +116,6 @@ export const sessions = pgTable(
     lastUtmContent: text("last_utm_content"),
     lastUtmTerm: text("last_utm_term"),
     lastFbclidHash: text("last_fbclid_hash"),
-    geoCountry: text("geo_country"),
     consentSnapshotId: uuid("consent_snapshot_id"),
   },
   (table) => [
@@ -133,7 +132,6 @@ export const consentSnapshots = pgTable(
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
     policyVersion: text("policy_version").notNull(),
-    country: text("country"),
     categories: jsonb("categories").notNull(),
     capturedAt: utcTimestamp("captured_at").notNull().defaultNow(),
     source: text("source").notNull(),
@@ -148,14 +146,11 @@ export const leads = pgTable(
   "leads",
   {
     id: uuid("id").primaryKey(),
-    supabaseUserId: uuid("supabase_user_id"),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
     phoneLookupHash: text("phone_lookup_hash"),
     role: text("role").notNull(),
-    name: text("name"),
-    volumeBucket: text("volume_bucket"),
     verifiedAt: utcTimestamp("verified_at"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
     unsubscribedAt: utcTimestamp("unsubscribed_at"),
@@ -170,9 +165,6 @@ export const leads = pgTable(
   (table) => [
     check("leads_id_uuidv7", uuidV7Check(table.id)),
     uniqueIndex("leads_email_lookup_hash_uidx").on(table.emailLookupHash),
-    uniqueIndex("leads_supabase_user_id_uidx")
-      .on(table.supabaseUserId)
-      .where(sql`${table.supabaseUserId} is not null`),
     index("leads_verified_at_idx").on(table.verifiedAt),
     index("leads_retention_idx").on(table.verifiedAt, table.anonymizedAt, table.createdAt),
   ],
@@ -316,22 +308,6 @@ export const scanChecks = pgTable(
     index("scan_checks_scan_status_idx").on(table.scanId, table.status),
   ],
 );
-
-export const scanFingerprints = pgTable("scan_fingerprints", {
-  scanId: uuid("scan_id")
-    .primaryKey()
-    .references(() => scans.id, { onDelete: "cascade" }),
-  platform: text("platform").notNull(),
-  platformConfidence: text("platform_confidence").notNull(),
-  cmsVersion: text("cms_version"),
-  versionConfidence: text("version_confidence"),
-  wafCdn: text("waf_cdn").array().notNull().default(sql`'{}'::text[]`),
-  pspMarkers: text("psp_markers").array().notNull().default(sql`'{}'::text[]`),
-  feedSignals: text("feed_signals").array().notNull().default(sql`'{}'::text[]`),
-  headerSignals: jsonb("header_signals").notNull().default({}),
-  htmlSignals: jsonb("html_signals").notNull().default({}),
-  detectorVersion: text("detector_version").notNull(),
-});
 
 export const browserObservations = pgTable(
   "browser_observations",

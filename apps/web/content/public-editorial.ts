@@ -71,7 +71,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
           kind: "list",
           items: [
             "Submitted and canonical target URL, target host/hash, segment, and scan status.",
-            "Structured check outcomes, score, coverage, rubric version, and coarse fingerprint signals.",
+            "Structured check outcomes, score, coverage, and rubric version.",
             "When passive browser observation is enabled: sanitized finding codes and aggregate counts/timings. Raw page content, screenshots, cookies, console messages, accessibility trees, and provider run IDs are not retained in reports.",
             "Hashed network rate keys; raw IP addresses are not stored.",
             "Email, international phone, role, and registration choices only when the contact form is submitted. Email and phone are encrypted with separate lookup HMAC domains; phone is contact data and is not treated as verified.",
@@ -127,7 +127,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
             "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, cleared from 7 days after the link expired; kept with a Google sign-in, which may take ten minutes, until your return from Google uses it up, or, if that never happens, cleared from 7 days after those ten minutes. If that is the first time you sign in with your address, it is kept with your account until the tracker accepts or refuses the report of the registration or a day of attempts has passed, and is then erased. A second copy, for the report of your store's first product, is kept with your account for at most 30 days from that sign-in: it is erased once that report is accepted or refused or a day of attempts has passed, or once the report can no longer be made, and when the 30 days end at the latest. What stays with your account, until the account is deleted, is a record of whether each report went through and when. Otherwise nothing about the click is kept once you sign in.",
             "Raw analytics events: 13 months.",
-            "Structured scan/check/fingerprint dataset: 24 months, then review or anonymization.",
+            "Structured scan and check dataset: 24 months, then review or anonymization.",
           ],
         },
       ],
