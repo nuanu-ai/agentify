@@ -559,7 +559,11 @@ export class MemoryStore implements Store {
     if (changed) await this.#recordWith(analytics, undefined, this.#now());
   }
 
-  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+  async switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch> {
     // No await between the reads and the write, so nothing interleaves with
     // it in the one process this map lives in, the birth of an order included.
     const row = this.#merchants.get(merchantId);
@@ -590,6 +594,7 @@ export class MemoryStore implements Store {
     row.integration = to;
     if (sellingPaused) {
       row.selling = "paused";
+      await this.#recordWith(analytics, undefined, this.#now());
     }
     return { switched: true, sellingPaused };
   }

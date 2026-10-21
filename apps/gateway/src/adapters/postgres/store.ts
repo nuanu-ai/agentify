@@ -740,7 +740,11 @@ export class PostgresStore implements Store {
     });
   }
 
-  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+  async switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch> {
     return await this.#db.transaction(async (tx): Promise<IntegrationSwitch> => {
       // Held for update, so the birth of an order, which holds the same row
       // for share while it writes (`addOrder`), waits for this or finishes
@@ -797,6 +801,7 @@ export class PostgresStore implements Store {
           updatedAt: sql`now()`,
         })
         .where(eq(merchants.id, merchantId));
+      if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });
   }

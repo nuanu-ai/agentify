@@ -674,7 +674,7 @@ export const gatewayFor = (
       ),
     sellThrough: (to) =>
       call("switching the integration", async () => {
-        const switched = await application.sellThrough(merchantId, to);
+        const switched = await application.sellThrough(merchantId, to, caller);
         return switched.switched
           ? done({ sellingPaused: switched.sellingPaused })
           : switchRefused(to, switched.waiting);

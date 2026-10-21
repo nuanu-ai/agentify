@@ -901,10 +901,20 @@ export class Gateway {
    * them where they are (`IntegrationSwitch`). A poll held open across the
    * switch ends with nothing, whichever integration's it was: the one being
    * left has nothing more coming to it, and the one taking over has just been
-   * told what it is.
+   * told what it is. A switch that stops the merchant's selling records that
+   * pause for product analytics, as the caller's.
    */
-  async sellThrough(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
-    const switched = await this.runtime.store.switchIntegration(merchantId, to);
+  async sellThrough(
+    merchantId: string,
+    to: Integration,
+    askedBy?: Caller,
+  ): Promise<IntegrationSwitch> {
+    const switched = await this.runtime.store.switchIntegration(merchantId, to, {
+      name: "agc_selling_changed",
+      ...actedBy(askedBy),
+      refs: { merchant: merchantId },
+      fields: { entity: "merchant", change: "paused" },
+    });
     if (switched.switched) {
       this.#letGo(merchantId, () => true);
     }

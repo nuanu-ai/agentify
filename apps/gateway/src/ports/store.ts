@@ -771,8 +771,15 @@ export interface Store {
    * One transaction, holding the merchant's row against the birth of an
    * order (`addOrder` with an integration), so no order can be made for a
    * card in the moment it goes off sale.
+   *
+   * `analytics` is recorded in that transaction only when the switch stopped
+   * the merchant's selling.
    */
-  switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch>;
+  switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch>;
 
   // --- orders ---------------------------------------------------------------
 
