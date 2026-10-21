@@ -253,10 +253,6 @@ describe("a reader of the merchant's answers", () => {
     });
 
     expect(
-      readerOf(WorkerPollResponseSchema).safeParse(newer({ ...unfulfilled, reason: "lost" }))
-        .success,
-    ).toBe(false);
-    expect(
       readerOf(WorkerPollResponseSchema).safeParse(newer({ ...unfulfilled, at: "yesterday" }))
         .success,
     ).toBe(false);

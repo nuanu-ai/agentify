@@ -450,6 +450,24 @@ describe("a gateway newer than this package", () => {
     }),
   });
 
+  it("hands an event of a kind it knows with a reason it does not know to the handler, the reason read as unknown", async () => {
+    // A new reason on a known notice is still the notice; only the word is
+    // news, so the merchant gets the event and no problem.
+    const { problems, events } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.event, payload: { ...event, reason: "carrier_lost" } }),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => events.length === 1, "the event");
+
+    expect(events).toStrictEqual([{ ...event, reason: "unknown" }]);
+    expect(problems).toStrictEqual([]);
+  });
+
   it("hands an order carrying a field this package does not know to the handler, and delivers it", async () => {
     // A field added on our side must not stop a merchant who has not upgraded.
     const seen: Order[] = [];

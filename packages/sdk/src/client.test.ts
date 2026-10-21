@@ -475,6 +475,20 @@ describe("closing an order the merchant took on", () => {
     expect(result.ok === false && result.error.message).toMatch(/refuse_order/);
   });
 
+  it("counts a delivery answered with a result word this package does not know as done, the word read as unknown", async () => {
+    // Beside ok: true the word only informs; a newer word must not turn a
+    // delivery the gateway took into a failure the merchant retries.
+    const agentify = await gatewayServing({
+      deliver_order: () => ({ text: JSON.stringify({ ok: true, result: "delivered_in_part" }) }),
+    });
+
+    const result = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+
+    expect(result).toStrictEqual({ ok: true, result: "unknown" });
+  });
+
   it("does not read an order call's answer out of a document that is not one", async () => {
     // A body that parses and is not the answer must not become a delivery the
     // merchant believes went through.
