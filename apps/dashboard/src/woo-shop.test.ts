@@ -322,7 +322,10 @@ describe("creating the order", () => {
     expect(sent.payment_method_title).toBe("Agentify");
     // Paid to the wallet itself, before payments went to splits: no commission
     // was taken, so the order says none.
-    expect(sent.meta_data).toEqual([{ key: "agentify_order_id", value: "ord_7" }]);
+    expect(sent.meta_data).toEqual([
+      { key: "agentify_order_id", value: "ord_7" },
+      { key: "agentify_paid", value: "25.00 USD" },
+    ]);
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
     ]);
@@ -337,6 +340,7 @@ describe("creating the order", () => {
     // so there is no new way to fail between creating the order and noting it.
     const lines = [
       { key: "agentify_order_id", value: "ord_7" },
+      { key: "agentify_paid", value: "25.00 USD" },
       { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
       { key: "agentify_payout_contract", value: PAID_INTO.address },
     ];
@@ -357,6 +361,20 @@ describe("creating the order", () => {
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
     ]);
+  });
+
+  it("writes what the buyer paid on the shop's order, beside the total the shop makes of it", async () => {
+    // A shop's total may be a cent from the payment, so the order says what
+    // was paid in the request that makes it, with no second call to note it.
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.01" }) }));
+
+    await createOrder(connectionTo(stand.url), order);
+
+    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toContainEqual({
+      key: "agentify_paid",
+      value: "25.00 USD",
+    });
+    expect(stand.asked).toHaveLength(1);
   });
 
   it("writes the commission at the rate of the split the payment went to", async () => {
@@ -2637,6 +2655,7 @@ describe("creating a parcel's order", () => {
     // is 0.023, where the goods alone would make it 0.02.
     const lines = [
       { key: "agentify_order_id", value: "ord_9" },
+      { key: "agentify_paid", value: "23.00 USD" },
       { key: "agentify_commission", value: "≈ 0.023 USD (0.1%)" },
       { key: "agentify_payout_contract", value: PAID_INTO.address },
     ];
