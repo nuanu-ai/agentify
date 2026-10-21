@@ -170,7 +170,7 @@ const environmentSchema = z.object({
   NUANU_ANALYTICS_API_KEY: emptyIsAbsent(z.string()),
   NUANU_ANALYTICS_INGEST_TOKEN: emptyIsAbsent(z.string()),
   NUANU_ANALYTICS_REF_KEY: emptyIsAbsent(z.string()),
-  /** A laptop's own receiver; a deployment sends only to Nuanu. */
+  /** A sandbox's own receiver; the test and live channels send only to Nuanu. */
   NUANU_ANALYTICS_URL: emptyIsAbsent(z.string()),
 });
 
@@ -548,11 +548,11 @@ function nuanuAnalyticsOf(
     } else {
       problems.push(
         `NUANU_ANALYTICS_URL is set on the ${surfaceMode} channel, which sends only to Nuanu` +
-          " Analytics itself; the variable is for a laptop's receiver",
+          " Analytics itself; the variable is for a sandbox's receiver",
       );
     }
   } else if (receiver === undefined) {
-    // A laptop sends only to a receiver of its own, so nothing tried on it is
+    // A sandbox sends only to a receiver of its own, so nothing tried on it is
     // ever counted as a real visit.
     problems.push(
       "NUANU_ANALYTICS_ENABLED is true on a sandbox and NUANU_ANALYTICS_URL is not set, so" +

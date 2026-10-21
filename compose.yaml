@@ -251,9 +251,10 @@ services:
       # refuses to start with the switch on and no site id, no API key of at
       # least sixteen visible ASCII characters or no reference key of at least
       # thirty-two; the ingest token is sent only where it is set. Off, none of
-      # them is read. A laptop that tries it runs the application outside this
+      # them is read. A sandbox that tries it runs the application outside this
       # file and names its own receiver in NUANU_ANALYTICS_URL, which no
-      # deployment is handed.
+      # deployment is handed; a laptop set up as the test channel sends to the
+      # TEST site, as TEST does.
       NUANU_ANALYTICS_ENABLED: "${NUANU_ANALYTICS_ENABLED:-false}"
       NUANU_ANALYTICS_SITE_ID: "${NUANU_ANALYTICS_SITE_ID:-}"
       NUANU_ANALYTICS_API_KEY: "${NUANU_ANALYTICS_API_KEY:-}"

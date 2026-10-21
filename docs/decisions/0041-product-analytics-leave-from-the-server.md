@@ -49,8 +49,9 @@ that comes from and what of it is not yet verified, is in
 [research note 84](../research/84-nuanu-analytics-ingest.md).
 
 The live channel and the test channel send to separate Nuanu sites with their
-own credentials and reference keys, the test channel's events tagged internal;
-a laptop sends only to a receiver of its own. A person can opt out in the
+own credentials and reference keys, the test channel's events tagged internal.
+A sandbox sends only to a receiver of its own; a laptop configured as the test
+channel sends to the TEST site, as TEST does. A person can opt out in the
 cabinet's settings, and from then on no event about them, or about the
 merchant their account names, leaves, whoever acted.
 

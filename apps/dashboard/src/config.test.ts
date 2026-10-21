@@ -574,7 +574,7 @@ describe("sending product analytics to Nuanu Analytics", () => {
     });
   });
 
-  it("sends from a laptop only to a receiver of its own, never to Nuanu", () => {
+  it("sends from a sandbox only to a receiver of its own, never to Nuanu", () => {
     expect(
       loadConfig(given({ ...SWITCHED_ON, NUANU_ANALYTICS_URL: `${RECEIVER}/` })).nuanuAnalytics
         ?.endpoint,
@@ -597,7 +597,7 @@ describe("sending product analytics to Nuanu Analytics", () => {
     }
   });
 
-  it("refuses a receiver of a laptop's on a deployed channel, which sends only to Nuanu", () => {
+  it("refuses a sandbox's receiver on the test and the live channel, which send only to Nuanu", () => {
     for (const surface of [ON_TEST, ON_LIVE]) {
       expect(() =>
         loadConfig(given({ ...surface, ...SWITCHED_ON, NUANU_ANALYTICS_URL: RECEIVER })),
