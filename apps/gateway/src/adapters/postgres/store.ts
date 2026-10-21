@@ -27,7 +27,7 @@ import {
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
-import { type AnalyticsEvent, record, recordObserved } from "../../analytics/index.js";
+import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -117,24 +117,15 @@ type Transaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
 /** Somewhere a statement can be run: the pool, or a transaction on it. */
 type Queries = NodePgDatabase | Transaction;
 
-/**
- * Records what `analytics` makes of a committed write in the write's own
- * transaction, under a savepoint: the event commits and rolls back with the
- * write, and an outbox that cannot take it costs the write nothing.
- */
-async function recordAlong<R>(
+/** Records what `analytics` makes of a committed write in the write's own transaction. */
+async function recordWith<R>(
   tx: Transaction,
   analytics: AnalyticsOf<R> | undefined,
   committed: R,
   at: Date,
 ): Promise<void> {
   const event = analyticsEventOf(analytics, committed);
-  if (event === null) return;
-  try {
-    await tx.transaction((savepoint) => record(savepoint, event, at));
-  } catch (thrown) {
-    console.error(`[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`);
-  }
+  if (event !== null) await recordAlong(tx, event, at);
 }
 
 /**
@@ -247,7 +238,7 @@ export class PostgresStore implements Store {
         return null;
       }
       const answer = { merchant, changed: granted !== undefined };
-      if (answer.changed) await recordAlong(tx, analytics, answer, new Date(at));
+      if (answer.changed) await recordWith(tx, analytics, answer, new Date(at));
       return answer;
     });
   }
@@ -306,7 +297,7 @@ export class PostgresStore implements Store {
         "serviceName" in listing
           ? before.serviceName !== listing.serviceName
           : before.sellerSite !== listing.sellerSite;
-      if (changed) await recordAlong(tx, analytics, merchant, new Date(at));
+      if (changed) await recordWith(tx, analytics, merchant, new Date(at));
       return merchant;
     });
   }
@@ -361,7 +352,7 @@ export class PostgresStore implements Store {
         throw new Error(`the wallet of ${id} was written and the merchant could not be read back`);
       }
       const written = { merchant, recorded };
-      await recordAlong(tx, analytics, written, new Date(at));
+      await recordWith(tx, analytics, written, new Date(at));
       return written;
     });
   }
@@ -485,7 +476,7 @@ export class PostgresStore implements Store {
           .returning();
         const [issued] = written;
         if (issued !== undefined) {
-          await recordAlong(tx, analytics, storedKeyOf(issued), new Date(at));
+          await recordWith(tx, analytics, storedKeyOf(issued), new Date(at));
         }
         return written;
       });
@@ -617,7 +608,7 @@ export class PostgresStore implements Store {
         .returning({ ...getTableColumns(cards), made: sql<boolean>`(xmax = 0)` });
       if (row !== undefined) {
         const stored = storedCardOf(row);
-        if (row.made) await recordAlong(tx, analytics, stored, new Date(at));
+        if (row.made) await recordWith(tx, analytics, stored, new Date(at));
         return stored;
       }
 
@@ -704,7 +695,7 @@ export class PostgresStore implements Store {
         return null;
       }
       const stored = storedCardOf(row);
-      if (before.paused !== paused) await recordAlong(tx, analytics, stored, new Date());
+      if (before.paused !== paused) await recordWith(tx, analytics, stored, new Date());
       return stored;
     });
   }
@@ -745,7 +736,7 @@ export class PostgresStore implements Store {
         .update(merchants)
         .set({ selling, updatedAt: sql`now()` })
         .where(eq(merchants.id, merchantId));
-      if (before.selling !== selling) await recordAlong(tx, analytics, undefined, new Date());
+      if (before.selling !== selling) await recordWith(tx, analytics, undefined, new Date());
     });
   }
 

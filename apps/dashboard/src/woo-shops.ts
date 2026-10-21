@@ -8,8 +8,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { type AnalyticsEvent, record, recordObserved } from "@agentify/gateway/analytics";
-import { failureNamed } from "@agentify/gateway/failure-named";
+import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
@@ -284,26 +283,6 @@ const claimOf = (row: {
 export const postgresWooShops = (pool: Pool): WooShops => {
   const db = drizzle(pool);
 
-  /**
-   * Records an event in the caller's transaction under a savepoint: it commits
-   * and rolls back with the write, and an outbox that cannot take it costs the
-   * write nothing. A callback that failed would have the shop take its key
-   * back.
-   */
-  const recordAlong = async (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-    event: AnalyticsEvent,
-    at: Date,
-  ): Promise<void> => {
-    try {
-      await tx.transaction((savepoint) => record(savepoint, event, at));
-    } catch (thrown) {
-      console.error(
-        `[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`,
-      );
-    }
-  };
-
   return {
     recordAnalytics: (event, at) => recordObserved(db, event, at),
 
@@ -344,6 +323,8 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           .select({ merchantId: accounts.merchantId })
           .from(accounts)
           .where(eq(accounts.id, seen.accountId));
+        // Never failing the connection: a callback that failed would have the
+        // shop take its key back.
         const resulted = (settled: Parameters<typeof connectionResult>[2]) =>
           recordAlong(
             tx,

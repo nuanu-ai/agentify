@@ -57,6 +57,28 @@ export async function record(tx: Recorder, event: AnalyticsEvent, at: Date): Pro
   });
 }
 
+/** A drizzle node-postgres transaction, which can open a savepoint inside itself. */
+export type BusinessTransaction = Pick<NodePgDatabase, "transaction">;
+
+/**
+ * The way to record an event inside a business transaction: in `tx`, under a
+ * savepoint. The event commits with the business write and is gone if it rolls
+ * back, and an outbox that cannot take the event costs the write nothing: the
+ * savepoint is rolled back, the transaction stays usable, and the failure is
+ * one line in the log, naming no identifier.
+ */
+export async function recordAlong(
+  tx: BusinessTransaction,
+  event: AnalyticsEvent,
+  at: Date,
+): Promise<void> {
+  try {
+    await tx.transaction((savepoint) => record(savepoint, event, at));
+  } catch (thrown) {
+    console.error(`[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+  }
+}
+
 /**
  * Records an observation that has no transaction of its own, such as a screen
  * shown or a problem on it, straight on `db`. It never rejects: a failure is
