@@ -33,7 +33,7 @@ for command in docker flock curl git python3; do
 done
 aging="$(chage -l root)" || refuse "chage -l root did not say whether root's password must be changed."
 [[ ${aging,,} != *"password must be changed"* ]] \
-  || refuse "root has to change its password first: sudo refuses to switch accounts until it does, which stopped every production release on 2026-09-22."
+  || refuse "root has to change its password first: sudo refuses to switch accounts until it does."
 if [[ $channel == production ]]; then
   secrets=/etc/agentify/backup.env
   [[ -f $secrets ]] || refuse "$secrets does not exist; deploy/README.md, \"Backups\", says how deploy/backup-credentials.sh writes it."
