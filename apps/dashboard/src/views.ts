@@ -429,7 +429,7 @@ export interface ClosurePressed {
  * read: the press's own answer stands, and the lists are offered again.
  */
 export interface ClosureUnlisted {
-  readonly pressed: ClosurePressed & { readonly note: string };
+  readonly pressed: ClosurePressed;
   /** The list the closure was pressed on, the order opened there. */
   readonly again: string;
 }

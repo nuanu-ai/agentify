@@ -448,17 +448,24 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
 
 /**
  * A closure's answer where the orders could not be read after it: what was
- * typed is kept on the page, since no form is drawn to keep it in.
+ * typed is kept on the page, since no form is drawn to keep it in. Only an
+ * explanation refused before it was sent can be said to have changed nothing.
  */
-export const ClosureUnlistedScreen = ({ view }: Readonly<{ view: ClosureUnlisted }>) => (
-  <NotLoaded again={view.again}>
-    <div className="what">{view.pressed.note}</div>
-    {view.pressed.typed === "" ? null : (
-      <>
-        <p className="why">The explanation you typed:</p>
-        <p className="why words">{view.pressed.typed}</p>
-      </>
-    )}
-    <p className="why">Your orders could not be loaded.</p>
-  </NotLoaded>
-);
+export function ClosureUnlistedScreen({ view }: Readonly<{ view: ClosureUnlisted }>) {
+  const { note, refusal, typed } = view.pressed;
+  return (
+    <NotLoaded again={view.again}>
+      <div className="what">{note ?? refusal}</div>
+      {typed === "" ? null : (
+        <>
+          <p className="why">The explanation you typed:</p>
+          <p className="why words">{typed}</p>
+        </>
+      )}
+      <p className="why">Your orders could not be loaded.</p>
+      {note === null ? (
+        <p className="why">Nothing was closed, and loading them changed nothing.</p>
+      ) : null}
+    </NotLoaded>
+  );
+}

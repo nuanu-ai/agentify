@@ -55,6 +55,7 @@ import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
   CLOSURE_NOTES,
+  type ClosurePressed,
   type ClosureUnlisted,
   cardsPlace,
   cardsView,
@@ -1033,34 +1034,43 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           };
         }
         const said = typeof typed === "string" ? typed : "";
-        if (!request.success) {
-          // The contract's own reason, said of the box it is about.
-          const reason = request.error.issues[0]?.message ?? "";
-          const page = await ordersScreen(
-            person,
-            new URLSearchParams({ q: id.data, details: id.data }),
-          );
-          if (page.kind !== "view") return page;
-          return {
-            kind: "view",
-            status: 400,
-            view: {
-              ...page.view,
-              pressed: {
-                id: id.data,
-                note: null,
-                refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
-                typed: said,
-              },
-            },
-          };
-        }
-        const gateway = gatewayAs(person);
-        const closed = await gateway.closeOrder(id.data, request.data);
-        const order = new URLSearchParams({ q: id.data, details: id.data });
         // Back to the list the closure was pressed on, the order opened there.
         const place = ordersPlace(fieldsIn(form));
         const drawn = `${base}${place}${place.includes("?") ? "&" : "?"}${new URLSearchParams({ details: id.data })}#details-${encodeURIComponent(id.data)}`;
+        // Drawn here rather than redirected to, so what was typed stays in
+        // the box and a reload does not repeat the note. Lists that cannot be
+        // read beside it do not take the press's answer away.
+        const answered = async (
+          pressed: ClosurePressed,
+          status: number,
+        ): Promise<Outcome<OrdersView | ClosureUnlisted>> => {
+          const page = await ordersScreen(
+            person,
+            new URLSearchParams({ q: id.data, details: id.data }),
+          ).catch(() => {
+            console.error("[dashboard] the orders beside a closure could not be read");
+            return null;
+          });
+          if (page?.kind !== "view") {
+            return { kind: "view", status, view: { pressed, again: drawn } };
+          }
+          return { kind: "view", status, view: { ...page.view, pressed } };
+        };
+        if (!request.success) {
+          // The contract's own reason, said of the box it is about.
+          const reason = request.error.issues[0]?.message ?? "";
+          return await answered(
+            {
+              id: id.data,
+              note: null,
+              refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+              typed: said,
+            },
+            400,
+          );
+        }
+        const gateway = gatewayAs(person);
+        const closed = await gateway.closeOrder(id.data, request.data);
         if (closed.ok) return { kind: "redirect", location: drawn };
         const refused = closed.status !== 0 && closed.status < 500;
         if (refused && closed.status !== 409) return problemOf(closed);
@@ -1071,24 +1081,15 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           return { kind: "redirect", location: drawn };
         }
         if (refused && (!read.ok || closable(read.document))) return problemOf(closed);
-        const pressed = {
-          id: id.data,
-          note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
-          refusal: null,
-          typed: said,
-        };
-        const status = refused ? 409 : 503;
-        // Drawn here rather than redirected to, so what was typed stays in
-        // the box and a reload does not repeat the note. Lists that cannot be
-        // read beside it do not take the press's answer away.
-        const page = await ordersScreen(person, order).catch(() => {
-          console.error("[dashboard] the orders beside a closure could not be read");
-          return null;
-        });
-        if (page?.kind !== "view") {
-          return { kind: "view", status, view: { pressed, again: drawn } };
-        }
-        return { kind: "view", status, view: { ...page.view, pressed } };
+        return await answered(
+          {
+            id: id.data,
+            note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
+            refusal: null,
+            typed: said,
+          },
+          refused ? 409 : 503,
+        );
       },
     },
 
