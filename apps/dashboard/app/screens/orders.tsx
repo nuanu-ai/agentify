@@ -192,7 +192,7 @@ const OrderDetails = ({
   return (
     <RowMore
       summary="Order details"
-      wide={row.closing !== null || row.closure !== null || row.paymentUnresolved}
+      wide={row.closing !== null || row.closure !== null || row.paymentUnresolved || said !== null}
       id={`details-${row.id}`}
       open={row.opened || said !== null || undefined}
       of={row.product}
