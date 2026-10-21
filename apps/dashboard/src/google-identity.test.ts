@@ -338,7 +338,9 @@ describe("Google dashboard identity", () => {
  */
 const CLICK = "qa_click_0123456789abcdef";
 
-const registrationsIn = (rows: MemoryRows) => rows.dashboard_ad_reports ?? [];
+const adReportsIn = (rows: MemoryRows) => rows.dashboard_ad_reports ?? [];
+const registrationsIn = (rows: MemoryRows) =>
+  adReportsIn(rows).filter((row) => row.event === "reg");
 
 describe("the registration a Google sign-in started with an ad's click leaves for the tracker", () => {
   it("leaves one pending registration holding the click, and nothing else of the sign-in, when the Google sign-in makes a new address's account", async () => {
@@ -376,7 +378,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
     expect(await login()).toMatchObject({ status: "opened", person: { confirmed: true } });
 
     expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("writes no registration while reporting is switched off, even for a sign-in started with a click while it was on", async () => {
@@ -395,7 +397,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
     });
 
     expect(on.rows.dashboard_accounts).toHaveLength(2);
-    expect(registrationsIn(on.rows)).toStrictEqual([]);
+    expect(adReportsIn(on.rows)).toStrictEqual([]);
   });
 
   it("writes no registration when Google signs in an address that already has a verified account", async () => {
@@ -417,7 +419,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
 
     expect(rows.dashboard_accounts).toHaveLength(2);
     expect(rows.dashboard_credentials).toHaveLength(2);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("writes no registration where Google refuses an address whose only account is unverified", async () => {
@@ -432,7 +434,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
 
     expect(rows.dashboard_accounts).toMatchObject([{ emailVerified: false }]);
     expect(rows.dashboard_sessions).toStrictEqual([]);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it.each(["cancelled", "unverified-email", "foreign-state", "outage"])(
@@ -455,7 +457,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
 
       expect(rows.dashboard_accounts).toStrictEqual([]);
       expect(rows.dashboard_sessions).toStrictEqual([]);
-      expect(registrationsIn(rows)).toStrictEqual([]);
+      expect(adReportsIn(rows)).toStrictEqual([]);
     },
   );
 
@@ -500,7 +502,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
       expect(answer.setCookies.map(decodeURIComponent).join("\n")).not.toContain(CLICK);
     }
     expect(rows.dashboard_accounts).toStrictEqual([]);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("brings no click back with a refused Google return while reporting is switched off", async () => {
@@ -551,7 +553,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
       status: "opened",
     });
 
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("refuses to start a Google sign-in with a click it could not read back, and keeps no state", async () => {

@@ -934,8 +934,8 @@ if (databaseUrl === null) {
     return row;
   };
 
-  const storeReport = (click: string, firstCardAt: number): string =>
-    `{"clickid":"${click}","event":"store_connected","event_time":${Math.floor(firstCardAt / 1_000)}}`;
+  /** The whole body of a store report, as the tracker asked for it. */
+  const storeReport = (click: string): string => `{"clickid":"${click}","event":"lead"}`;
 
   const report = async (post: typeof fetch, storeConnected = true): Promise<boolean> =>
     await reportOnce({ pool, target: TARGET, storeConnected, fetch: post, now, wait });
@@ -945,7 +945,7 @@ if (databaseUrl === null) {
       ["api", "the API"],
       ["woocommerce", "the WooCommerce import"],
     ] as const) {
-      it(`posts store_connected once, with the click and the first card's publication in Unix seconds, for a first card published through ${through}`, async () => {
+      it(`posts the store report once, as the click and the tracker's word lead and nothing else, for a first card published through ${through}`, async () => {
         const merchant = await aMerchant(integration);
         const account = await fromAnAd(CLICK, merchant);
         clock += 2 * HOUR + 1_234;
@@ -966,7 +966,7 @@ if (databaseUrl === null) {
           ["x-postback-key", KEY],
         ]);
         expect(request?.redirect).toBe("manual");
-        expect(request?.body).toBe(storeReport(CLICK, firstCardAt));
+        expect(JSON.parse(String(request?.body))).toStrictEqual({ clickid: CLICK, event: "lead" });
         expect(await storeRowOf(account)).toMatchObject({
           click_id: null,
           state: "delivered",
@@ -1014,16 +1014,13 @@ if (databaseUrl === null) {
       // first row.
       const later = await fromAnAd(CLICKS[1], merchant, HOUR);
       const earliest = await fromAnAd(CLICKS[0], merchant, 2 * HOUR);
-      const firstCardAt = clock;
       await publish(merchant, "room-1");
       const { post, received } = tracker(200, 200);
 
       await report(post);
       expect(await report(post)).toBe(false);
 
-      expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICKS[0], firstCardAt),
-      ]);
+      expect(received.map((request) => request.body)).toStrictEqual([storeReport(CLICKS[0])]);
       expect(await storeRowOf(earliest)).toMatchObject({ state: "delivered", click_id: null });
       expect(await storeRowOf(later)).toMatchObject({
         state: "lapsed",
@@ -1038,7 +1035,6 @@ if (databaseUrl === null) {
       const joinsLater = await fromAnAd(CLICKS[1], null, HOUR);
       await fromAnAd(CLICKS[0], merchant);
       clock += MINUTE;
-      const firstCardAt = clock;
       await publish(merchant, "room-1");
       const { post, received } = tracker(200, 200);
       await report(post);
@@ -1050,9 +1046,7 @@ if (databaseUrl === null) {
 
       expect(await report(post)).toBe(false);
 
-      expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICKS[0], firstCardAt),
-      ]);
+      expect(received.map((request) => request.body)).toStrictEqual([storeReport(CLICKS[0])]);
       expect(await storeRowOf(joinsLater)).toMatchObject({
         state: "lapsed",
         click_id: null,
@@ -1134,9 +1128,7 @@ if (databaseUrl === null) {
       clock = registeredAt + 30 * DAY + MINUTE;
       expect(await report(post)).toBe(false);
 
-      expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICKS[0], registeredAt + 30 * DAY - 2_000),
-      ]);
+      expect(received.map((request) => request.body)).toStrictEqual([storeReport(CLICKS[0])]);
       expect(await storeRowOf(counted)).toMatchObject({ state: "delivered", click_id: null });
       expect(await storeRowOf(uncounted)).toMatchObject({
         state: "lapsed",
@@ -1169,9 +1161,9 @@ if (databaseUrl === null) {
       expect(told[0]).toMatch(/given up/);
     });
 
-    it("carries the first publication's time, not a republish's, and the card keeps that time", async () => {
+    it("dates the store report, and so its day of tries, by the first publication, not a republish's, and the card keeps that time", async () => {
       const merchant = await aMerchant();
-      await fromAnAd(CLICK, merchant);
+      const account = await fromAnAd(CLICK, merchant);
       clock += HOUR;
       const firstCardAt = clock;
       await publish(merchant, "room-1");
@@ -1181,9 +1173,11 @@ if (databaseUrl === null) {
 
       await report(post);
 
-      expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICK, firstCardAt),
-      ]);
+      expect(received.map((request) => request.body)).toStrictEqual([storeReport(CLICK)]);
+      expect(await storeRowOf(account)).toMatchObject({
+        state: "delivered",
+        event_at: new Date(firstCardAt),
+      });
       expect((await pool.query("select published_at, as_of from cards")).rows).toStrictEqual([
         { published_at: new Date(firstCardAt), as_of: new Date(firstCardAt + HOUR) },
       ]);
@@ -1254,8 +1248,8 @@ if (databaseUrl === null) {
       await report(post);
 
       expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICK, firstCardAt),
-        storeReport(CLICK, firstCardAt),
+        storeReport(CLICK),
+        storeReport(CLICK),
       ]);
       expect(await storeRowOf(account)).toMatchObject({
         click_id: null,
@@ -1350,7 +1344,7 @@ if (databaseUrl === null) {
 
       expect(received.map((request) => JSON.parse(String(request.body)).event)).toStrictEqual([
         "reg",
-        "store_connected",
+        "lead",
       ]);
       expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
     });
@@ -1381,7 +1375,7 @@ if (databaseUrl === null) {
             .filter((body) => body.clickid === click)
             .map((body) => body.event)
             .sort(),
-        ).toStrictEqual(["reg", "store_connected"]);
+        ).toStrictEqual(["lead", "reg"]);
       }
       const times = received.map((request) => request.at);
       for (let at = 1; at < times.length; at += 1) {
@@ -1389,7 +1383,7 @@ if (databaseUrl === null) {
       }
     });
 
-    it("tells the tracker once of the registration and once of the store, with one click, for a person who signs in from an ad, makes a merchant and publishes", async () => {
+    it("tells the tracker once of the registration and once of the store, with one click and the one switch, for a person who signs in from an ad, makes a merchant and publishes", async () => {
       const messages: Message[] = [];
       const identity = identityFor(
         loadConfig({
@@ -1400,7 +1394,6 @@ if (databaseUrl === null) {
           REGISTRATION_POSTBACK_ENABLED: "true",
           REGISTRATION_POSTBACK_KEY: KEY,
           REGISTRATION_POSTBACK_URL: ENDPOINT,
-          STORE_POSTBACK_ENABLED: "true",
         }),
         {
           pool,
@@ -1423,7 +1416,6 @@ if (databaseUrl === null) {
         status: "attached",
       });
       clock += HOUR;
-      const firstCardAt = clock;
       await publish(merchant, "room-1");
       await publish(merchant, "room-2");
       const { post, received } = tracker(200, 200);
@@ -1434,7 +1426,7 @@ if (databaseUrl === null) {
 
       expect(received.map((request) => request.body)).toStrictEqual([
         `{"clickid":"${CLICK}","event":"reg"}`,
-        storeReport(CLICK, firstCardAt),
+        storeReport(CLICK),
       ]);
       expect(
         (await pool.query("select click_id from dashboard_ad_reports where click_id is not null"))
@@ -1467,8 +1459,8 @@ if (databaseUrl === null) {
       expect(eventsOf(received)).toStrictEqual(["reg", "reg"]);
       await report(post);
 
-      expect(eventsOf(received)).toStrictEqual(["reg", "reg", "store_connected"]);
-      expect(received[2]?.body).toBe(storeReport(CLICK, firstCardAt));
+      expect(eventsOf(received)).toStrictEqual(["reg", "reg", "lead"]);
+      expect(received[2]?.body).toBe(storeReport(CLICK));
       expect(await storeRowOf(account)).toMatchObject({
         click_id: null,
         state: "delivered",
@@ -1524,14 +1516,13 @@ if (databaseUrl === null) {
       const next = await fromAnAd(CLICKS[1], merchant, HOUR);
       const { post, received } = tracker(400, 200);
       await report(post);
-      const firstCardAt = clock;
       await publish(merchant, "room-1");
 
       await report(post);
 
       expect(received.map((request) => request.body)).toStrictEqual([
         `{"clickid":"${CLICKS[0]}","event":"reg"}`,
-        storeReport(CLICKS[1], firstCardAt),
+        storeReport(CLICKS[1]),
       ]);
       expect(await storeRowOf(refused)).toMatchObject({
         click_id: null,

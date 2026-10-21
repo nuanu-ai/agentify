@@ -453,6 +453,24 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
     );
   });
 
+  it("starts, and reports exactly as without it, with a store switch named in a host's file, whatever its value", () => {
+    // The store goes with the registration under this one switch, so a line
+    // naming another in a host's file must neither stop the process nor
+    // change what it reports.
+    for (const environment of [
+      {},
+      ON_TEST,
+      { ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER },
+    ]) {
+      for (const named of ["true", "false", "yes"]) {
+        expect(
+          loadConfig(given({ ...environment, STORE_POSTBACK_ENABLED: named })),
+          `${JSON.stringify(environment)} ${named}`,
+        ).toStrictEqual(loadConfig(given(environment)));
+      }
+    }
+  });
+
   it("names every problem with the report at once, beside the mail's", () => {
     const said = thrownBy({
       REGISTRATION_POSTBACK_ENABLED: "true",
