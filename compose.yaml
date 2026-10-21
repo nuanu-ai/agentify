@@ -244,6 +244,21 @@ services:
       # no deployment is handed.
       REGISTRATION_POSTBACK_ENABLED: "${REGISTRATION_POSTBACK_ENABLED:-false}"
       REGISTRATION_POSTBACK_KEY: "${REGISTRATION_POSTBACK_KEY:-}"
+      # Off unless the host's file turns it on. On, the dashboard sends the
+      # product analytics events the server recorded to the channel's own site
+      # at Nuanu Analytics, one at a time, with every identifier hashed under
+      # NUANU_ANALYTICS_REF_KEY, which never changes once events have left. It
+      # refuses to start with the switch on and no site id, no API key of at
+      # least sixteen visible ASCII characters or no reference key of at least
+      # thirty-two; the ingest token is sent only where it is set. Off, none of
+      # them is read. A laptop that tries it runs the application outside this
+      # file and names its own receiver in NUANU_ANALYTICS_URL, which no
+      # deployment is handed.
+      NUANU_ANALYTICS_ENABLED: "${NUANU_ANALYTICS_ENABLED:-false}"
+      NUANU_ANALYTICS_SITE_ID: "${NUANU_ANALYTICS_SITE_ID:-}"
+      NUANU_ANALYTICS_API_KEY: "${NUANU_ANALYTICS_API_KEY:-}"
+      NUANU_ANALYTICS_INGEST_TOKEN: "${NUANU_ANALYTICS_INGEST_TOKEN:-}"
+      NUANU_ANALYTICS_REF_KEY: "${NUANU_ANALYTICS_REF_KEY:-}"
       # Off because a Secure cookie is never sent back over plain http, so nobody
       # could sign in locally. Wherever the dashboard is reached over https this must
       # be "true", or a merchant's session is exposed to anybody on the path.
