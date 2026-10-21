@@ -34,9 +34,9 @@ import {
   type StoredMerchant,
   type StoredOrder,
   type StoredPayoutWallet,
-  WAITING_FOR_PAYMENT,
   type WalletWritten,
   type WithTheOrder,
+  waitsForPayment,
 } from "../../ports/store.js";
 import { isSameAddress } from "../../split/address.js";
 import type { PayoutSplit } from "../../split/parameters.js";
@@ -595,10 +595,10 @@ export class MemoryStore implements Store {
       if (this.#merchants.get(record.merchantId)?.integration !== birth.through) {
         return "switched_away";
       }
-      const waiting = [...this.#orders.values()].filter(
-        (held) => held.merchantId === record.merchantId && waitsForPayment(held),
-      ).length;
-      if (waiting >= birth.waitingAtMost) {
+      if (
+        this.#waiting(record.merchantId, record.order.timestamps.createdAt, birth.waitingAtMost) >=
+        birth.waitingAtMost
+      ) {
         return "too_many_waiting";
       }
     }
@@ -616,6 +616,17 @@ export class MemoryStore implements Store {
       throw thrown;
     }
     return "written";
+  }
+
+  async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
+    return this.#waiting(merchantId, at, atMost);
+  }
+
+  #waiting(merchantId: string, at: number, atMost: number): number {
+    const waiting = [...this.#orders.values()].filter(
+      (held) => held.merchantId === merchantId && waitsForPayment(held, at),
+    ).length;
+    return Math.min(waiting, atMost);
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
@@ -971,8 +982,3 @@ function sameWallet(one: PayoutWalletRead, other: PayoutWalletRead): boolean {
     one.pending?.takesEffectAt === other.pending?.takesEffectAt
   );
 }
-
-/** Whether a purchase waits on its buyer's payment, as Postgres counts it. */
-const waitsForPayment = (record: StoredOrder): boolean =>
-  (WAITING_FOR_PAYMENT as readonly string[]).includes(record.order.state) &&
-  record.order.payment === "none";

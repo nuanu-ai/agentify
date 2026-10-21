@@ -76,6 +76,30 @@ export const WAITING_FOR_PAYMENT = [
 ] as const satisfies readonly OrderState[];
 
 /**
+ * Whether a purchase waits on its buyer's payment at `at`, and so holds one of
+ * its seller's places at the door: being priced or priced, with no payment,
+ * and with its price still able to stand. A price holds for the quote's time
+ * to live from when it was named, and a question still unanswered may name
+ * one until its own window ends; past that the order is over in all but the
+ * reminder that closes it, which may fire late or not at all. A purchase that
+ * waits on a confirmation counts until it is closed.
+ */
+export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
+  const { order } = record;
+  if (!(WAITING_FOR_PAYMENT as readonly string[]).includes(order.state)) return false;
+  if (order.payment !== "none") return false;
+  const { quoteResponseMs, quoteTtlMs } = order.policy.deadlines;
+  switch (order.state) {
+    case "quoted":
+      return order.timestamps.quotedAt === null || order.timestamps.quotedAt + quoteTtlMs > at;
+    case "created":
+      return order.timestamps.createdAt + quoteResponseMs + quoteTtlMs > at;
+    default:
+      return true;
+  }
+};
+
+/**
  * Whether an order is an attempt that lapsed unpaid: it ended rejected or
  * expired with no payment ever verified, no goods held for its buyer, nothing
  * presented to pay with, and its merchant never asked to confirm it, which is
@@ -810,12 +834,19 @@ export interface Store {
   // --- orders ---------------------------------------------------------------
 
   /**
+   * How many of this merchant's purchases wait for payment at `at`
+   * (`waitsForPayment`), counted up to `atMost` and no further.
+   */
+  waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
+
+  /**
    * Writes an order that is not there yet. The record says whose it is. An
    * identifier or a payment reference another order already has is refused.
    *
    * Given a `Birth`, the write is made only while its merchant still sells
    * through the integration named and fewer than `waitingAtMost` of their
-   * purchases wait for payment (`WAITING_FOR_PAYMENT`); the count and the write
+   * purchases wait for payment at the order's own birth (`waitsForPayment`);
+   * the count and the write
    * are one step against every other birth for that merchant, and the write and
    * `switchIntegration` wait for each other on the merchant. Its clocks are
    * written in the same step, so a birth refused for either reason writes

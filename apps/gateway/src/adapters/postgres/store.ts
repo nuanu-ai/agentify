@@ -759,23 +759,13 @@ export class PostgresStore implements Store {
         if (merchant === undefined || integrationOf(merchant.integration) !== birth.through) {
           return "switched_away";
         }
-        // Spelled as the partial index is, and stopped at the limit, so the
-        // count reads at most that many rows.
-        const [counted] = await tx.select({ waiting: sql<number>`count(*)::int` }).from(
-          tx
-            .select({ one: sql`1` })
-            .from(orders)
-            .where(
-              and(
-                eq(orders.merchantId, record.merchantId),
-                sql`${orders.state} in ${WAITING_STATES}`,
-                sql`${orders.record} -> 'order' ->> 'payment' = 'none'`,
-              ),
-            )
-            .limit(birth.waitingAtMost)
-            .as("waiting"),
+        const waiting = await this.#waiting(
+          tx,
+          record.merchantId,
+          record.order.timestamps.createdAt,
+          birth.waitingAtMost,
         );
-        if ((counted?.waiting ?? 0) >= birth.waitingAtMost) {
+        if (waiting >= birth.waitingAtMost) {
           return "too_many_waiting";
         }
         await tx.insert(orders).values(rowFor(record));
@@ -803,6 +793,42 @@ export class PostgresStore implements Store {
       }
       throw new Error(unknownRuleRefused(`writing the order ${record.order.id}`, refused));
     }
+  }
+
+  async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
+    return this.#waiting(this.#db, merchantId, at, atMost);
+  }
+
+  /**
+   * `waitsForPayment`, spelled in SQL: the states as the partial index has
+   * them, and the count stopped at `atMost`, so it reads at most that many
+   * rows.
+   */
+  async #waiting(on: Queries, merchantId: string, at: number, atMost: number): Promise<number> {
+    const times = sql`${orders.record} -> 'order' -> 'timestamps'`;
+    const windows = sql`${orders.record} -> 'order' -> 'policy' -> 'deadlines'`;
+    const [counted] = await on.select({ waiting: sql<number>`count(*)::int` }).from(
+      on
+        .select({ one: sql`1` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.merchantId, merchantId),
+            sql`${orders.state} in ${WAITING_STATES}`,
+            sql`${orders.record} -> 'order' ->> 'payment' = 'none'`,
+            sql`case ${orders.state}
+              when 'quoted' then (${times} ->> 'quotedAt') is null
+                or (${times} ->> 'quotedAt')::numeric + (${windows} ->> 'quoteTtlMs')::numeric > ${at}
+              when 'created' then (${times} ->> 'createdAt')::numeric
+                + (${windows} ->> 'quoteResponseMs')::numeric
+                + (${windows} ->> 'quoteTtlMs')::numeric > ${at}
+              else true end`,
+          ),
+        )
+        .limit(atMost)
+        .as("waiting"),
+    );
+    return counted?.waiting ?? 0;
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
