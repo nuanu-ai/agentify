@@ -2169,26 +2169,51 @@ describe("a parcel from a shop that calculates tax", () => {
   });
   const cartPricing = (
     total: string,
-    goods: string,
+    [goodsBeforeTax, goods]: readonly [string, string],
     taxes: string[],
     cheapest: ReturnType<typeof rate>,
   ): RatesRead => ({
     ok: true,
     rates: [cheapest],
-    priced: { ok: true, total, goods, taxes, rate: cheapest },
+    priced: { ok: true, total, goodsBeforeTax, goods, taxes, rate: cheapest },
   });
   const CARTS: Readonly<Record<string, RatesRead>> = {
-    Denpasar: cartPricing("23.33", "20.00", ["PPN 11%"], rate("1", "Bali courier", "3.00", "0.33")),
-    Jakarta: cartPricing("25.55", "20.00", ["PPN 11%"], rate("3", "Standard", "5.00", "0.55")),
-    "San Francisco": cartPricing("25.52", "18.02", [], rate("2", "Standard", "7.50", "0.00")),
-    Berlin: cartPricing("25.83", "20.00", ["MwSt. 19%"], rate("8", "Paket", "4.90", "0.93")),
+    Denpasar: cartPricing(
+      "23.33",
+      ["18.02", "20.00"],
+      ["PPN 11%"],
+      rate("1", "Bali courier", "3.00", "0.33"),
+    ),
+    Jakarta: cartPricing(
+      "25.55",
+      ["18.02", "20.00"],
+      ["PPN 11%"],
+      rate("3", "Standard", "5.00", "0.55"),
+    ),
+    "San Francisco": cartPricing(
+      "25.52",
+      ["18.02", "18.02"],
+      [],
+      rate("2", "Standard", "7.50", "0.00"),
+    ),
+    Berlin: cartPricing(
+      "25.83",
+      ["16.81", "20.00"],
+      ["MwSt. 19%"],
+      rate("8", "Paket", "4.90", "0.93"),
+    ),
     // The German shop keeping one gross price for every buyer: its Paris cart
     // keeps the goods at 20.00 under the French rate, and its order to the
     // same address came to 32.05.
-    Paris: cartPricing("31.88", "20.00", ["TVA 20%"], rate("11", "Standard", "9.90", "1.98")),
+    Paris: cartPricing(
+      "31.88",
+      ["16.67", "20.00"],
+      ["TVA 20%"],
+      rate("11", "Standard", "9.90", "1.98"),
+    ),
     Seattle: cartPricing(
       "28.74",
-      "22.11",
+      ["20.00", "22.11"],
       ["Seattle 4.05%", "WA State 6.5%"],
       rate("12", "Standard", "6.00", "0.63"),
     ),
@@ -2289,6 +2314,46 @@ describe("a parcel from a shop that calculates tax", () => {
     }
   });
 
+  it("names no price where the place's cart holds the goods at another price than the product's", async () => {
+    // As a shop's plugin that changes prices in the cart alone makes it: the
+    // order made through the admin interface would charge the product's own
+    // price. The carts are the probe's with the goods at 18.00 before tax.
+    for (const [inspected, place, cart] of [
+      [
+        IN_SEATTLE,
+        SEATTLE,
+        cartPricing(
+          "26.52",
+          ["18.00", "19.89"],
+          ["Seattle 4.05%", "WA State 6.5%"],
+          rate("12", "Standard", "6.00", "0.63"),
+        ),
+      ],
+      [
+        IN_BALI,
+        JAKARTA,
+        cartPricing(
+          "23.53",
+          ["16.20", "17.98"],
+          ["PPN 11%"],
+          rate("3", "Standard", "5.00", "0.55"),
+        ),
+      ],
+    ] as const) {
+      const shop = parts(inspected);
+      const filling: Filling = {
+        ...shop.filling,
+        shippingRates: async (_connection, _productId, where) =>
+          where.city === place.city ? cart : (CARTS[where.city] ?? cart),
+      };
+
+      expect(await quoted(filling, place), place.city).toStrictEqual({
+        available: false,
+        as_of: NOW,
+      });
+    }
+  });
+
   it("gives no price where the inclusive shop's cart for its own address cannot be read", async () => {
     // An answer that could not be read said nothing, and the silence refuses
     // the sale on a WooCommerce card.
@@ -2375,7 +2440,7 @@ describe("a parcel from a shop that calculates tax", () => {
       shippingRates: async () =>
         cartPricing(
           "28.11",
-          "22.11",
+          ["20.00", "22.11"],
           ["Seattle 4.05%", "WA State 6.5%"],
           rate("13", "Standard", "6.00", "0.00"),
         ),

@@ -2220,6 +2220,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       priced: {
         ok: true,
         total: "28.74",
+        goodsBeforeTax: "20.00",
         goods: "22.11",
         taxes: ["Seattle 4.05%", "WA State 6.5%"],
         rate: standard,
@@ -2279,6 +2280,54 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     expect(JSON.parse(chose?.body ?? "{}")).toStrictEqual({
       package_id: 0,
       rate_id: "flat_rate:3",
+    });
+  });
+
+  it("names no price from a cart that raises an error of its own once the cheapest rate is chosen", async () => {
+    // As a shop's plugin does that will not send this parcel by that method.
+    const express = rate({
+      rate_id: "flat_rate:4",
+      name: "Express",
+      instance_id: 4,
+      price: "1200",
+      taxes: "132",
+    });
+    const standard = rate({ price: "500", taxes: "55" });
+    const goods = { subtotal: "1802", tax: "198" };
+    const lines = [{ name: "PPN", rate: "11%" }];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/select-shipping-rate")) {
+        return {
+          status: 200,
+          body: {
+            ...taxedCart(goods, [{ ...express, selected: false }, standard], {
+              items: "1802",
+              tax: "253",
+              price: "2555",
+              lines,
+            }),
+            errors: [{ code: "woocommerce_rest_cart_item_error", message: "Not by this method." }],
+          },
+        };
+      }
+      return {
+        status: 200,
+        body: taxedCart(goods, [express, { ...standard, selected: false }], {
+          items: "1802",
+          tax: "330",
+          price: "3332",
+          lines,
+        }),
+      };
+    });
+
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({
+      ok: true,
+      priced: { ok: false, saidNo: true },
     });
   });
 
