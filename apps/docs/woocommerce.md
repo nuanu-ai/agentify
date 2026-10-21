@@ -56,9 +56,9 @@ Agentify cannot create the order in your shop. Agentify never asks for your
 shop password.
 
 Before your browser leaves for the shop, Agentify reads one product from your
-shop's public catalogue to learn the currency it is priced in. A shop that
-prices its catalogue in a currency other than US dollars is refused there,
-before you approve anything, and nothing changes for your code's cards. When
+shop's public catalogue to learn the currency it is priced in. A shop whose
+catalogue answers in a currency other than US dollars is refused there, before
+you approve anything, and nothing changes for your code's cards. When
 the catalogue gives no clear answer, because the shop has no products yet or
 does not serve its public catalogue, Connect goes ahead and the import names
 each product it cannot sell.

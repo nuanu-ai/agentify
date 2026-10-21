@@ -262,11 +262,13 @@ export const currencyOfTheShop = async (
 };
 
 /**
- * Said beside the Connect button. Nothing was switched, so the code's cards are
- * named as they were rather than as on sale: a merchant may have paused them,
- * or already sell through this shop.
+ * Said beside the Connect button, as what was seen: one product, asked
+ * anonymously from our server, which a currency switcher answering by visitor
+ * would also have shown. Nothing was switched, so the sentence promises only
+ * that, true whether the merchant sold through their code or the shop.
  */
 export const notPricedInDollars = (currency: string): string =>
-  `Your shop's catalogue prices its products in ${currency}, and Agentify sells in US dollars` +
-  " only, so none of them could be imported. Nothing was changed: the cards your own code" +
-  " published stay as they were, and your shop was not asked for keys.";
+  `When we asked your shop's public catalogue just now, it priced its products in ${currency}.` +
+  " Agentify sells in US dollars only, so none of them could be imported and Connect stopped" +
+  " here. Nothing was changed: you sell as you did before pressing Connect, and your shop was" +
+  " not asked for keys.";
