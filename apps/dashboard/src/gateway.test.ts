@@ -13,13 +13,14 @@ import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gatew
 import {
   type Harness,
   harness,
+  loggedWhile,
   type Served,
   serve,
   workOnce,
   workUntilStopped,
 } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
 /** Base mainnet and its one facilitator. */
@@ -301,6 +302,32 @@ describe("a call that does not finish", () => {
     );
 
     await expect(client.setSelling(false)).rejects.toThrow(/database went away/);
+  });
+
+  it("is logged, when it fails after the page stopped waiting, by what failed and nothing the failure carried", async () => {
+    // A failure's words can quote an order's identifier, which opens the order
+    // to whoever reads the log.
+    const orderId = "ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47";
+    const harnessed = await started();
+    const client = gatewayFor(
+      answering(harnessed.gateway, "setSelling", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        throw new Error(`the order ${orderId} will not be written down`);
+      }),
+      { merchantId: harnessed.merchant.id, email: OWNER },
+      20,
+    );
+
+    const written = await loggedWhile(async () => {
+      await client.setSelling(false);
+      await vi.waitFor(() => {
+        expect(vi.mocked(console.error).mock.calls.flat().join(" ")).toContain("after the page");
+      });
+    });
+
+    expect(written).toContain("stopping the selling failed after the page stopped waiting");
+    expect(written).toContain("Error");
+    expect(written).not.toContain(orderId);
   });
 
   it("does not hand a page a document the contract would not recognise", async () => {
