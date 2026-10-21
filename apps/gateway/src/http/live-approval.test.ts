@@ -360,6 +360,37 @@ describe("a live approval the operator withdraws", () => {
     expect((await harnessed.store.receiptForOrder(openOrder))?.outcome).toBe("delivered");
   });
 
+  it.each([
+    ["a pause of all selling", "pause" as const],
+    ["a withdrawal", "withdraw" as const],
+  ])(
+    "lets an order priced before %s be paid within its price window and sold",
+    async (_what, how) => {
+      // A withdrawal stops what is new exactly where a pause does; a buyer who
+      // already holds a price is not refused at payment by either.
+      const { served, harnessed } = await started();
+      const seller = await approvedSeller(harnessed, served, card("a-room"));
+      const offered = await harnessed.gateway.beginPurchase(seller.itemId, {});
+      if (offered.step !== "pay") throw new Error("the approved seller's card offered no price");
+
+      if (how === "pause") await harnessed.gateway.setSelling(seller.merchantId, "paused");
+      else await withdrawLiveApproval(harnessed.store, seller.merchantId);
+      const worker = workUntilStopped(harnessed, {
+        merchantId: seller.merchantId,
+        onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+      });
+      const bought = await harnessed.gateway.payPurchase(
+        offered.order.order.id,
+        "PAYMENT",
+        "PAYMENT",
+      );
+      await worker.stop();
+
+      expect(bought.step).toBe("settled");
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+    },
+  );
+
   it("refuses live publishing as for a merchant never approved", async () => {
     const { served, harnessed } = await started();
     const seller = await approvedSeller(harnessed, served, card("a-room"));

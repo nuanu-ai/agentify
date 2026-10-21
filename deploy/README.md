@@ -976,9 +976,11 @@ whether there was one to clear; running it again changes nothing and says so in
 the same words each time. From then on the merchant stands as one the operator
 never approved: a new live purchase from them is refused before any payment is
 asked for, their cards leave the live catalogue, and publishing lists
-`no_operator_approval`. It is a pause rather than a cancellation: orders already
-opened keep their fulfilment, the merchant still delivers them, and nothing is
-refunded or closed. `pnpm approve <email>` admits the merchant again, with a new
+`no_operator_approval`. It is a pause rather than a cancellation, and stops
+what is new exactly where pausing all selling does: orders already opened keep
+their fulfilment, the merchant still delivers them, and nothing is refunded or
+closed. An order already priced can still be paid within what remains of its
+price window, at most thirty seconds. `pnpm approve <email>` admits the merchant again, with a new
 approval time, and their cards sell again without being republished. An
 unknown address is refused with words and nothing is written. The command
 reaches only a revision deployed with it; an older one refuses it for want of
