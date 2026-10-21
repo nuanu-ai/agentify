@@ -249,6 +249,7 @@ const recover = async (
   const differences = differencesOf(
     looked.order,
     record.facts,
+    inspected.product.tax,
     person.email,
     request.orderId,
     request.wooOrderId,
@@ -345,15 +346,26 @@ const sameProduct = (
   product.price.amount === facts.amount &&
   product.price.currency === facts.currency;
 
-/** What the merchant can check in their shop, one clause for each fact that differs. */
+/**
+ * What the merchant can check in their shop, one clause for each fact that
+ * differs. The tax is the one the sale was quoted under, which the accepted
+ * fingerprint holds: where prices hold their tax, the line holds the amount
+ * before it and the tax is the shop's record, so only the total is the price.
+ */
 const differencesOf = (
   order: WooOrderRead,
   facts: WooOrderFacts,
+  tax: SoldItem["tax"],
   email: string,
   orderId: string,
   wooOrderId: string,
 ): string[] => {
   const price = `${facts.amount} ${facts.currency}`;
+  const untaxed =
+    order.subtotal === facts.amount &&
+    order.lineTotal === facts.amount &&
+    order.totalTax === "0.00" &&
+    order.lineTax === "0.00";
   return [
     order.id !== wooOrderId || order.orderKey === ""
       ? "the shop answered with a different order"
@@ -361,14 +373,13 @@ const differencesOf = (
     ["processing", "completed"].includes(order.status)
       ? null
       : `its status is ${order.status}, not Processing or Completed`,
-    order.currency === facts.currency &&
-    order.total === facts.amount &&
-    order.subtotal === facts.amount &&
-    order.lineTotal === facts.amount &&
-    order.totalTax === "0.00" &&
-    order.lineTax === "0.00"
-      ? null
-      : `its total is not ${price} with no tax`,
+    tax.mode === "off"
+      ? order.currency === facts.currency && order.total === facts.amount && untaxed
+        ? null
+        : `its total is not ${price} with no tax`
+      : order.currency === facts.currency && order.total === facts.amount
+        ? null
+        : `its total is not ${price}`,
     order.paymentMethod === "agentify" ? null : "it was not paid with Agentify",
     order.transactionId === orderId ? null : "its Transaction ID is not this Agentify order ID",
     order.billingEmail === email ? null : `its billing email is not ${email}`,
