@@ -498,6 +498,40 @@ describe("the outcome the buyer reads", () => {
     ]);
   });
 
+  it("is recorded fulfillment_closed by the merchant at a closure while the payment is unknown, and not again when recovery finds it paid", async () => {
+    const { h, orderId } = await recoverable("async");
+    served = await serve(h);
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    h.advance(20_000);
+    await runOut(h, orderId);
+
+    const closed = await served.call("POST", `/v0/orders/${orderId}/close`, {
+      headers: { authorization: `Bearer ${theMerchantKey("test")}` },
+      body: {},
+    });
+    const atClosure = recorded(h, "agc_order_outcome_changed");
+    h.runtime.facilitator.reconcile = async () => ({
+      settled: true,
+      transaction: TRANSACTION,
+      executedAt: h.now() - 1_000,
+    });
+    await h.gateway.runner.reconcilePayments();
+
+    expect(closed.status).toBe(200);
+    expect((await stored(h, orderId)).order.state).toBe("fulfillment_closed");
+    expect(atClosure.map(({ actor, fields }) => ({ actor, fields }))).toStrictEqual([
+      {
+        actor: "merchant_worker",
+        fields: { outcome: "fulfillment_closed", payment_state: "unresolved", money_mode: "test" },
+      },
+    ]);
+    expect(recorded(h, "agc_order_outcome_changed")).toStrictEqual(atClosure);
+    expect(
+      payments(h).map((fields) => (fields as { payment_state: string }).payment_state),
+    ).toEqual(["unresolved", "paid"]);
+  });
+
   it("goes expired, back to in progress, then delivered when a late charge is found, with one payment", async () => {
     const { h, orderId, recovery, payTo } = await recoverable("sync");
     await h.store.claimPayment("fp-original", orderId);
