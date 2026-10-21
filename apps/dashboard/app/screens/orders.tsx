@@ -189,6 +189,8 @@ const OrderDetails = ({
   place: OrdersView["listing"]["place"];
 }>) => {
   const said = pressed?.id === row.id ? pressed : null;
+  // A refusal is said under the box it is about; with no form left, here.
+  const told = said === null ? null : (said.note ?? (row.closing === null ? said.refusal : null));
   return (
     <RowMore
       summary="Order details"
@@ -233,9 +235,9 @@ const OrderDetails = ({
             keeps checking it.
           </p>
         ) : null}
-        {said?.note == null ? null : (
+        {told === null ? null : (
           <p className="problem" role="alert">
-            {said.note}
+            {told}
           </p>
         )}
         {said === null || said.typed === "" || row.closing !== null ? null : (
