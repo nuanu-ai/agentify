@@ -7,17 +7,16 @@
  * A turn is one transaction. It takes a lock every process and replica shares,
  * which spaces posts of both kinds across all of them at least 1.1 seconds
  * apart. Under it, the store reports still waiting are settled first: of a
- * merchant whose first card came at or after a registration and within 30
- * days of it, the earliest such registration's report becomes due once that
- * registration's own report was delivered, and every waiting report that can
- * no longer become due lapses and loses its click, as does every one whose
- * registration's report was refused or given up.
- * Then the turn takes one due row, locked so no other turn can take it;
- * posts; and records the outcome before committing. A 200 delivers the report,
- * a 429, a 5xx, a timeout or a network failure tries it again later, and
- * anything else, a redirect included, refuses it for good; the click is erased
- * from every row that is final. Nothing more is tried a day after the reported
- * fact, nor 30 days after the registration.
+ * merchant whose first card came at or after a registration and within 30 days
+ * of it, the earliest such registration's report becomes due once that
+ * registration's own report was delivered, and every waiting report that can no
+ * longer become due lapses, loses its click and records why. Then the turn
+ * takes one due row, locked so no other turn can take it; posts; and records
+ * the outcome before committing. A 200 delivers the report, a 429, a 5xx, a
+ * timeout or a network failure tries it again later, and anything else, a
+ * redirect included, refuses it for good; the click is erased from every row
+ * that is final. Nothing more is tried a day after the reported fact, nor 30
+ * days after the registration.
  *
  * A process that stops after the tracker accepted a post and before the
  * commit leaves the row pending, and it is posted again. For `reg` that cannot
@@ -26,13 +25,13 @@
  * the tracker has not confirmed.
  *
  * Switched off, the loop still runs and posts nothing: it gives up every
- * report still pending once its day is over and lapses every store report
- * whose 30 days ran out, so no click outlives them because the switch went
- * off. With only the store report off, registrations are still posted.
+ * report still pending once its time is over and lapses every store report
+ * that can no longer become due, so no click outlives them because the switch
+ * went off. With only the store report off, registrations are still posted.
  */
 
 import { failureNamed } from "@agentify/gateway/failure-named";
-import { and, asc, eq, inArray, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
@@ -76,8 +75,18 @@ type Final = "delivered" | "refused" | "given_up";
 /** How a turn ended, which is all a log line says about it. */
 type Said = Readonly<{ event: Event; state: Final | "pending"; outcome: string }>;
 
-/** What a turn did before it posted, counted for the log. */
-type Tidied = Readonly<{ due: number; lapsed: number; givenUp: number }>;
+/**
+ * What a turn did before it posted, counted for the log: the store reports that
+ * became due, those given up because they would have become due only after
+ * their time, those lapsed by the reason each recorded, and the pending
+ * reports given up while switched off.
+ */
+type Tidied = Readonly<{
+  due: number;
+  late: number;
+  lapsed: Readonly<Record<string, number>>;
+  givenUp: number;
+}>;
 
 const pause = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -88,8 +97,9 @@ const lockedForPosting = sql`select pg_advisory_xact_lock(${SPACING_LOCK[0]}::in
 
 const span = (ms: number): SQL => sql`(${ms}::double precision * interval '1 millisecond')`;
 
-/** The moment after which a pending row is no longer tried. */
-const lastTry = sql`least(${adReports.eventAt} + ${span(RETRIED_FOR_MS)}, ${adReports.createdAt} + ${span(KEPT_FOR_MS)})`;
+/** The moment after which a report of this fact and registration is no longer tried. */
+const lastTry = (eventAt: SQLWrapper, createdAt: SQLWrapper): SQL =>
+  sql`least(${eventAt} + ${span(RETRIED_FOR_MS)}, ${createdAt} + ${span(KEPT_FOR_MS)})`;
 
 const lastTryOf = (row: Readonly<{ eventAt: Date; createdAt: Date }>): number =>
   Math.min(row.eventAt.getTime() + RETRIED_FOR_MS, row.createdAt.getTime() + KEPT_FOR_MS);
@@ -150,16 +160,18 @@ type Transaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction
 /**
  * Settles, in one statement, every store report still waiting. Of a merchant
  * whose first card ever was published at or after a waiting registration and
- * before its 30 days ended, the earliest such registration whose own report
- * was not refused or given up holds the store report, unless an account of the
+ * before its 30 days ended, the earliest such registration whose own report was
+ * not refused or given up holds the store report, unless an account of the
  * merchant already took it. That report becomes due, dated by the card, once
- * its registration's report was delivered; until then, or while it is switched
- * off, it waits, until its 30 days end. Every other waiting report lapses, its
- * click erased, once it can no longer become due: its registration's report
- * was refused or given up, its merchant has a first card that is not its own to
- * report, or its 30 days ended. A card row exists only once a publish
- * succeeded, and cards are not deleted, so a merchant's first card never
- * changes.
+ * its registration's report was delivered, or is given up at once, never
+ * posted, if the time to post it has already passed; until then, or while it is
+ * switched off, it waits, until its 30 days end. Every other waiting report
+ * lapses once it can no longer become due, its click erased and the reason
+ * recorded as its last outcome: its registration's report was not delivered,
+ * its merchant's first card came before the registration or is another
+ * account's to report, it was switched off until its 30 days ended, or no first
+ * card came within them. A card row exists only once a publish succeeded, and
+ * cards are not deleted, so a merchant's first card never changes.
  *
  * A row whose account is being deleted at that moment is skipped rather than
  * waited for, since the lock every process shares is held.
@@ -168,9 +180,9 @@ async function settleWaiting(
   tx: Transaction,
   at: Date,
   promote: boolean,
-): Promise<Pick<Tidied, "due" | "lapsed">> {
+): Promise<Pick<Tidied, "due" | "late" | "lapsed">> {
   const keptFor = span(KEPT_FOR_MS);
-  const settled = await tx.execute<{ state: string }>(sql`
+  const settled = await tx.execute<{ fate: string }>(sql`
     with waiting as (
       select r.account_id, r.created_at, a.merchant_id, reg.state as registration
         from dashboard_ad_reports r
@@ -205,35 +217,46 @@ async function settleWaiting(
     fates as (
       select w.account_id, c.published_at,
              case
-               when w.registration in ('refused', 'given_up') then 'lapsed'
-               when c.account_id is not null and w.registration = 'delivered' and ${promote}::boolean
-                 then 'pending'
-               when c.account_id is not null and ${at}::timestamptz < w.created_at + ${keptFor}
-                 then null
-               when f.merchant_id is not null then 'lapsed'
-               when ${at}::timestamptz >= w.created_at + ${keptFor} then 'lapsed'
-             end as state
+               when w.registration in ('refused', 'given_up') then 'registration_not_delivered'
+               when c.account_id is not null then
+                 case
+                   when w.registration = 'delivered' and ${promote}::boolean then
+                     case
+                       when ${at}::timestamptz < ${lastTry(sql`c.published_at`, sql`w.created_at`)}
+                         then 'due'
+                       else 'late'
+                     end
+                   when ${at}::timestamptz < w.created_at + ${keptFor} then null
+                   when w.registration = 'delivered' then 'switched_off_past_30_days'
+                   else 'registration_not_delivered'
+                 end
+               when f.published_at < w.created_at then 'first_card_before_registration'
+               when f.published_at < w.created_at + ${keptFor} then 'belongs_to_another_account'
+               when ${at}::timestamptz >= w.created_at + ${keptFor} then 'no_first_card_in_30_days'
+             end as fate
         from waiting w
         left join first_cards f on f.merchant_id = w.merchant_id
         left join chosen c on c.account_id = w.account_id
     )
     update dashboard_ad_reports r
-       set state = fates.state,
-           click_id = case when fates.state = 'pending' then r.click_id end,
-           event_at = case when fates.state = 'pending' then fates.published_at end,
-           next_attempt_at = case when fates.state = 'pending' then ${at}::timestamptz end,
-           settled_at = case when fates.state = 'lapsed' then ${at}::timestamptz end
+       set state = case fates.fate when 'due' then 'pending' when 'late' then 'given_up' else 'lapsed' end,
+           click_id = case when fates.fate = 'due' then r.click_id end,
+           event_at = case when fates.fate in ('due', 'late') then fates.published_at end,
+           next_attempt_at = case when fates.fate = 'due' then ${at}::timestamptz end,
+           last_outcome = case when fates.fate not in ('due', 'late') then fates.fate end,
+           settled_at = case when fates.fate <> 'due' then ${at}::timestamptz end
       from fates
      where r.account_id = fates.account_id
        and r.event = 'store_connected'
-       and fates.state is not null
-    returning r.state
+       and fates.fate is not null
+    returning fates.fate
   `);
-  const states = settled.rows.map((row) => row.state);
-  return {
-    due: states.filter((state) => state === "pending").length,
-    lapsed: states.filter((state) => state === "lapsed").length,
-  };
+  const tidied = { due: 0, late: 0, lapsed: {} as Record<string, number> };
+  for (const { fate } of settled.rows) {
+    if (fate === "due" || fate === "late") tidied[fate] += 1;
+    else tidied.lapsed[fate] = (tidied.lapsed[fate] ?? 0) + 1;
+  }
+  return tidied;
 }
 
 /** Gives up, without posting, every pending report of these events whose time ran out. */
@@ -245,7 +268,7 @@ async function giveUpLate(tx: Transaction, at: Date, events: readonly Event[]): 
       and(
         eq(adReports.state, "pending"),
         inArray(adReports.event, [...events]),
-        sql`${lastTry} <= ${at}::timestamptz`,
+        sql`${lastTry(adReports.eventAt, adReports.createdAt)} <= ${at}::timestamptz`,
       ),
     )
     .returning({ event: adReports.event });
@@ -258,10 +281,14 @@ const tell = (tidied: Tidied, off: string): void => {
       `[dashboard] ${counted(tidied.due, "store report", "store reports")} became due with a first card`,
     );
   }
-  if (tidied.lapsed > 0) {
+  if (tidied.late > 0) {
     console.log(
-      `[dashboard] ${counted(tidied.lapsed, "waiting store report", "waiting store reports")}` +
-        " lapsed with no first card left to count",
+      `[dashboard] ${counted(tidied.late, "store report found only after its time was", "store reports found only after their time were")} given up`,
+    );
+  }
+  for (const [reason, count] of Object.entries(tidied.lapsed)) {
+    console.log(
+      `[dashboard] ${counted(count, "waiting store report", "waiting store reports")} lapsed: ${reason}`,
     );
   }
   if (tidied.givenUp > 0) {

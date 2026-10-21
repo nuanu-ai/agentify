@@ -854,14 +854,15 @@ erased once that report is delivered, refused or given up, which happens a day
 after the first card at the latest and never past the 30 days, at once when the
 registration report is refused or given up, or at the end of the 30 days with
 no first card. Each outcome is one log line such as `store report delivered:
-http_200`. The switch stays off until the tracker confirms that it accepts
-exactly this body and keeps one `store_connected` per click, because a report
-is posted again when the process stops between the tracker's answer and the
-record of it. The application refuses to start with this switch on and
-`REGISTRATION_POSTBACK_ENABLED` off, and on TEST, where the same file fixes it
-off too. Turned off again, it keeps no click for new sign-ups, posts no store
-report, gives up those already due once their day is over and lets the waiting
-ones lapse at their 30 days.
+http_200`, and a store report that lapses unposted says why, as in `1 waiting
+store report lapsed: no_first_card_in_30_days`. The switch stays off until the
+tracker confirms that it accepts exactly this body and keeps one
+`store_connected` per click, because a report is posted again when the process
+stops between the tracker's answer and the record of it. The application
+refuses to start with this switch on and `REGISTRATION_POSTBACK_ENABLED` off,
+and on TEST, where the same file fixes it off too. Turned off again, it keeps
+no click for new sign-ups, posts no store report, gives up those already due
+once their day is over and lets the waiting ones lapse at their 30 days.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,

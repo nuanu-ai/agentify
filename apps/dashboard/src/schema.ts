@@ -224,8 +224,9 @@ export const reportDeletionTombstones = pgTable(
  * link asked for with the click is pressed or a Google sign-in started with it
  * comes back. `store_connected` is written beside it, waiting, where that
  * report is switched on: it becomes pending once the account's merchant
- * publishes its first card within 30 days of the registration, if no other
- * account of that merchant took it, and lapses otherwise.
+ * publishes its first card within 30 days of the registration and the
+ * registration's report was delivered, if no other account of that merchant
+ * took it, and lapses otherwise.
  *
  * Each row keeps its own copy of the click while it waits or is pending and
  * erases it once final. `created_at` is the registration; `event_at` is when
@@ -244,7 +245,11 @@ export const adReports = pgTable(
     state: text("state").notNull(),
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
-    /** How the last attempt ended, such as `http_403` or `timeout`; null before any. */
+    /**
+     * How the last attempt ended, such as `http_403` or `timeout`, null before
+     * any; on a lapsed store report, which was never attempted, why it lapsed,
+     * such as `no_first_card_in_30_days`.
+     */
     lastOutcome: text("last_outcome"),
     createdAt: moment("created_at"),
     eventAt: timestamp("event_at", { withTimezone: true, mode: "date" }),
