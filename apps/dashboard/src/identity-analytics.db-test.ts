@@ -300,6 +300,11 @@ if (databaseUrl === null) {
 
       await viewed(owner);
       await identity.setAnalyticsOptOut(person.id, true);
+      // Settled by the choice itself, before any sender reads it.
+      expect(
+        (await pool.query("select state from commerce_analytics_events where state = 'pending'"))
+          .rows,
+      ).toStrictEqual([]);
       await viewed(owner);
       await ordered("mer_opted");
       await viewed({ id: stranger.id, merchant: { id: "mer_stranger" } });
