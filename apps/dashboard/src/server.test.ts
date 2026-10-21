@@ -7271,7 +7271,37 @@ describe("what the pages record for product analytics", () => {
     await running.browser.get(`/sign-in/open?token=${"D".repeat(32)}`);
     await settle();
 
-    expect(recorded(running)).toStrictEqual([]);
+    expect(named(running, "agc_dashboard_viewed")).toStrictEqual([]);
+  });
+
+  it("records a sign-in link refused where it lands, unknown, missing or spent, as one blocked verification each", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const spent = /token=([A-Za-z0-9]+)/.exec(running.mails.at(-1)?.body ?? "")?.[1] ?? "";
+    const stranger = await running.another();
+    await fromNow(running);
+
+    const landed = [
+      await stranger.get(`/sign-in/open?token=${"D".repeat(32)}`),
+      await stranger.get("/sign-in/open"),
+      await stranger.get(`/sign-in/open?token=${spent}`),
+    ];
+    await settle();
+
+    expect(spent).toMatch(/^[A-Za-z0-9]{32}$/);
+    expect(landed.map((visit) => visit.status)).toStrictEqual([401, 401, 401]);
+    const refused = {
+      name: "agc_auth_result",
+      actor: "human",
+      source: "dashboard",
+      fields: {
+        method: "email_link",
+        stage: "verify",
+        outcome: "blocked",
+        reason_code: "invalid_link",
+      },
+    };
+    expect(recorded(running)).toStrictEqual([refused, refused, refused]);
   });
 
   it("records no view for the read of the page a press was just answered on, and counts the next move", async () => {
