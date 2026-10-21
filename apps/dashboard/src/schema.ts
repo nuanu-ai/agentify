@@ -392,7 +392,7 @@ export const wooRates = pgTable(
     setAt: moment("set_at"),
     /** The email of the session that saved it. */
     setBy: text("set_by").notNull(),
-    /** What the merchant was shown beside it; null where none could be read. */
+    /** Coinbase's rate as read while it was saved; null where none could be read. */
     referenceRate: text("reference_rate"),
     referenceSource: text("reference_source"),
     referenceReadAt: timestamp("reference_read_at", { withTimezone: true, mode: "date" }),

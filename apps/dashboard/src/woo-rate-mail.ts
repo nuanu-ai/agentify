@@ -28,24 +28,24 @@ export interface RateNotice {
 
 export function rateNoticeMessage(notice: RateNotice): Message {
   const lead =
-    `A new exchange rate for your WooCommerce shop ${notice.shopOrigin} was saved in the` +
+    `A new exchange rate for your WooCommerce shop ${notice.shopOrigin} was entered in the` +
     ` dashboard at ${moment(notice.setAt.toISOString())}, from a session signed in as` +
     ` ${notice.setBy}: ${notice.rate} ${notice.currency} per US dollar.`;
   const paragraphs = [
     notice.previous === null
       ? "No rate was set before."
       : `The previous rate was ${notice.previous} ${notice.currency} per US dollar.`,
-    `From now on buyers pay in US dollars at this rate, if the WooCommerce screen of your dashboard shows it: ${notice.screen}.`,
+    `Buyers pay in US dollars at this rate once it is saved, which the WooCommerce screen of your dashboard shows: ${notice.screen}.`,
     `If nobody at your business did this, somebody else may be signed in to your dashboard. Press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once, then ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, then set your own rate again.`,
   ];
   return {
     to: notice.to,
-    subject: `The exchange rate of your WooCommerce shop is now ${notice.rate} ${notice.currency} per US dollar`,
+    subject: `A new exchange rate for your WooCommerce shop: ${notice.rate} ${notice.currency} per US dollar`,
     body: [lead, ...paragraphs].join("\n\n"),
     html: transactionalEmailHtml({
       preview: lead,
       eyebrow: "WooCommerce",
-      title: "A new exchange rate was saved",
+      title: "A new exchange rate was entered",
       lead,
       action: "Open the WooCommerce screen",
       link: notice.screen,

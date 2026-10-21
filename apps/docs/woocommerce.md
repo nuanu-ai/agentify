@@ -265,7 +265,8 @@ current is yours. A price a buyer was given holds at the rate it was given at,
 even if you change the rate before the order reaches your shop, because the
 buyer has paid by then. If your shop's currency changes, every purchase is
 refused before payment until you set a rate for the new one; a rate set for
-the old currency is never applied to it.
+the old currency is never applied to it. Should the shop change back to a
+currency you set a rate for before, the last rate you set for it applies again.
 
 Your shop's order is made in your currency at your own price, and its Agentify
 lines carry what the buyer paid in USDC (`agentify_paid`), the amount it was
