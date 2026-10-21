@@ -53,7 +53,7 @@ import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { MemoryQueue } from "../memory/queue.js";
-import { PgBossQueue, streamOf } from "../pgboss/queue.js";
+import { PgBossQueue, REMINDERS, streamOf } from "../pgboss/queue.js";
 import { connect, type Database, PostgresStore } from "./store.js";
 
 /** The merchant everything in this suite belongs to. */
@@ -298,6 +298,34 @@ if (databaseUrl === null) {
       await expect(store.selling(A)).rejects.toThrow(/sort-of/);
 
       await store.setSelling(A, "open");
+    });
+
+    describe("a purchase refused at the door", () => {
+      afterEach(async () => {
+        await pool.query("delete from orders where merchant_id = $1", [A]);
+        await pool.query("delete from cards where merchant_id = $1", [A]);
+      });
+
+      const clocksSet = async (): Promise<number> =>
+        (
+          await pool.query<{ set: number }>(
+            `select count(*)::int as set from ${QUEUE_SCHEMA}.job where name = $1`,
+            [REMINDERS],
+          )
+        ).rows[0]?.set ?? 0;
+
+      it("sets no clock, so a seller's twenty-first purchase waiting for payment writes nothing", async () => {
+        const card = await store.publishCard(A, syncCard, now);
+        for (let one = 0; one < 20; one += 1) {
+          expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
+        }
+        const before = await clocksSet();
+
+        const refused = await gateway.beginPurchase(card.id, {});
+
+        expect(refused.step).toBe("seller_busy");
+        expect(await clocksSet()).toBe(before);
+      });
     });
 
     describe("a seller's last poll", () => {
