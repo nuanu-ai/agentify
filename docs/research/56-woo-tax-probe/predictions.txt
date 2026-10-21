@@ -1,0 +1,112 @@
+Downloads, inclusive shops, at the shop's base location.
+B0 = the connector's body today, B1 = no line totals, B2a/B2b = ex-tax totals at 2/6 decimals.
+id round_at_subtotal=no
+  1.00   B0 1.11    B1 1.00    (tax 0.10) B2a 1.00    B2b 1.00
+  2      B0 2.22    B1 2.00    (tax 0.20) B2a 2.00    B2b 2.00
+  0.99   B0 1.10    B1 0.99    (tax 0.10) B2a 0.99    B2b 0.99
+  1.03   B0 1.14    B1 1.03    (tax 0.10) B2a 1.03    B2b 1.03
+  1.06   B0 1.18    B1 1.06    (tax 0.11) B2a 1.05    B2b 1.06
+  4.55   B0 5.05    B1 4.55    (tax 0.45) B2a 4.55    B2b 4.55
+  9.99   B0 11.09   B1 9.99    (tax 0.99) B2a 9.99    B2b 9.99
+  19.95  B0 22.14   B1 19.95   (tax 1.98) B2a 19.95   B2b 19.95
+  33.33  B0 37.00   B1 33.33   (tax 3.30) B2a 33.33   B2b 33.33
+  99.99  B0 110.99  B1 99.99   (tax 9.91) B2a 99.99   B2b 99.99
+id round_at_subtotal=yes
+  1.00   B0 1.11    B1 1.00    (tax 0.10) B2a 1.00    B2b 1.00
+  2      B0 2.22    B1 2.00    (tax 0.20) B2a 2.00    B2b 2.00
+  0.99   B0 1.10    B1 0.99    (tax 0.10) B2a 0.99    B2b 0.99
+  1.03   B0 1.14    B1 1.03    (tax 0.10) B2a 1.03    B2b 1.03
+  1.06   B0 1.18    B1 1.06    (tax 0.11) B2a 1.05    B2b 1.06
+  4.55   B0 5.05    B1 4.55    (tax 0.45) B2a 4.55    B2b 4.55
+  9.99   B0 11.09   B1 9.99    (tax 0.99) B2a 9.99    B2b 9.99
+  19.95  B0 22.14   B1 19.95   (tax 1.98) B2a 19.95   B2b 19.95
+  33.33  B0 37.00   B1 33.33   (tax 3.30) B2a 33.33   B2b 33.33
+  99.99  B0 110.99  B1 99.99   (tax 9.91) B2a 99.99   B2b 99.99
+de round_at_subtotal=no
+  1.00   B0 1.19    B1 1.00    (tax 0.16) B2a 1.00    B2b 1.00
+  2      B0 2.38    B1 2.00    (tax 0.32) B2a 2.00    B2b 2.00
+  0.99   B0 1.18    B1 0.99    (tax 0.16) B2a 0.99    B2b 0.99
+  1.03   B0 1.23    B1 1.03    (tax 0.16) B2a 1.04    B2b 1.03
+  1.06   B0 1.26    B1 1.06    (tax 0.17) B2a 1.06    B2b 1.06
+  4.55   B0 5.41    B1 4.55    (tax 0.73) B2a 4.55    B2b 4.55
+  9.99   B0 11.89   B1 9.99    (tax 1.60) B2a 9.98    B2b 9.99
+  19.95  B0 23.74   B1 19.95   (tax 3.19) B2a 19.94   B2b 19.95
+  33.33  B0 39.66   B1 33.33   (tax 5.32) B2a 33.33   B2b 33.33
+  99.99  B0 118.99  B1 99.99   (tax 15.96) B2a 100.00  B2b 99.99
+de round_at_subtotal=yes
+  1.00   B0 1.19    B1 1.00    (tax 0.16) B2a 1.00    B2b 1.00
+  2      B0 2.38    B1 2.00    (tax 0.32) B2a 2.00    B2b 2.00
+  0.99   B0 1.18    B1 0.99    (tax 0.16) B2a 0.99    B2b 0.99
+  1.03   B0 1.23    B1 1.03    (tax 0.16) B2a 1.04    B2b 1.03
+  1.06   B0 1.26    B1 1.06    (tax 0.17) B2a 1.06    B2b 1.06
+  4.55   B0 5.41    B1 4.55    (tax 0.73) B2a 4.55    B2b 4.55
+  9.99   B0 11.89   B1 9.99    (tax 1.60) B2a 9.98    B2b 9.99
+  19.95  B0 23.74   B1 19.95   (tax 3.19) B2a 19.94   B2b 19.95
+  33.33  B0 39.66   B1 33.33   (tax 5.32) B2a 33.33   B2b 33.33
+  99.99  B0 118.99  B1 99.99   (tax 15.96) B2a 100.00  B2b 99.99
+
+Downloads, the Seattle shop (exclusive), taxed at its base: B0 and B1 alike.
+us round_at_subtotal=no
+  1.00   total 1.11    tax 0.11
+  2      total 2.21    tax 0.21
+  0.99   total 1.09    tax 0.10
+  1.03   total 1.14    tax 0.11
+  1.06   total 1.17    tax 0.11
+  4.55   total 5.03    tax 0.48
+  9.99   total 11.04   tax 1.05
+  19.95  total 22.06   tax 2.11
+  33.33  total 36.85   tax 3.52
+  99.99  total 110.54  tax 10.55
+us round_at_subtotal=yes
+  1.00   total 1.11    tax 0.11
+  2      total 2.21    tax 0.21
+  0.99   total 1.09    tax 0.10
+  1.03   total 1.14    tax 0.11
+  1.06   total 1.17    tax 0.11
+  4.55   total 5.03    tax 0.48
+  9.99   total 11.04   tax 1.05
+  19.95  total 22.05   tax 2.10
+  33.33  total 36.85   tax 3.52
+  99.99  total 110.54  tax 10.55
+
+Downloads away from base, B1 (DE shop, buyer's rate 20%; ID shop, no rate).
+  1.00   de->FR 1.01    id->abroad 0.90
+  2      de->FR 2.02    id->abroad 1.80
+  0.99   de->FR 1.00    id->abroad 0.89
+  1.03   de->FR 1.04    id->abroad 0.93
+  1.06   de->FR 1.07    id->abroad 0.95
+  4.55   de->FR 4.58    id->abroad 4.10
+  9.99   de->FR 10.07   id->abroad 9.00
+  19.95  de->FR 20.11   id->abroad 17.97
+  33.33  de->FR 33.61   id->abroad 30.03
+  99.99  de->FR 100.84  id->abroad 90.08
+
+Parcels, B1 plus the cheapest rate, per locality (round_at_subtotal=no).
+  id Bali, shipping untaxed            20.00 -> 23.00, 0.99 -> 3.99, 19.95 -> 22.95, 33.33 -> 36.33
+  id Jakarta, shipping untaxed         20.00 -> 25.00, 0.99 -> 5.99, 19.95 -> 24.95, 33.33 -> 38.33
+  id San Francisco, shipping untaxed   20.00 -> 25.52, 0.99 -> 8.39, 19.95 -> 25.47, 33.33 -> 37.53
+  id Bali, shipping taxable            20.00 -> 23.33, 0.99 -> 4.32, 19.95 -> 23.28, 33.33 -> 36.66
+  id Jakarta, shipping taxable         20.00 -> 25.55, 0.99 -> 6.54, 19.95 -> 25.50, 33.33 -> 38.88
+  id San Francisco, shipping taxable   20.00 -> 25.52, 0.99 -> 8.39, 19.95 -> 25.47, 33.33 -> 37.53
+  de Berlin, shipping taxable          20.00 -> 25.83, 0.99 -> 6.82, 19.95 -> 25.78, 33.33 -> 39.16
+  de Paris, shipping taxable           20.00 -> 32.05, 0.99 -> 12.88, 19.95 -> 31.99, 33.33 -> 45.49
+  us Seattle, shipping taxable         20.00 -> 28.74, 0.99 -> 7.72, 19.95 -> 28.69, 33.33 -> 43.48
+  us Seattle, shipping untaxed         20.00 -> 28.11, 0.99 -> 7.09, 19.95 -> 28.06, 33.33 -> 42.85
+  us San Francisco, shipping taxable   20.00 -> 27.50, 0.99 -> 8.49, 19.95 -> 27.45, 33.33 -> 40.83
+
+Every price from 0.01 to 1000.00 at the base location of an inclusive shop: how many miss the price.
+  rate    5%: B1 per line 0, B1 at subtotal 0, B2a 4762, B2b 0
+  rate    7%: B1 per line 0, B1 at subtotal 0, B2a 6542, B2b 0
+  rate  8.1%: B1 per line 0, B1 at subtotal 0, B2a 7493, B2b 0
+  rate   10%: B1 per line 0, B1 at subtotal 0, B2a 9091, B2b 0
+  rate   11%: B1 per line 0, B1 at subtotal 0, B2a 9910, B2b 0
+  rate   12%: B1 per line 0, B1 at subtotal 0, B2a 10714, B2b 0
+  rate   16%: B1 per line 0, B1 at subtotal 0, B2a 13793, B2b 0
+  rate   19%: B1 per line 0, B1 at subtotal 0, B2a 15966, B2b 0
+  rate   20%: B1 per line 0, B1 at subtotal 0, B2a 16667, B2b 0
+  rate   21%: B1 per line 0, B1 at subtotal 0, B2a 17355, B2b 0
+  rate   22%: B1 per line 0, B1 at subtotal 0, B2a 18033, B2b 0
+  rate   23%: B1 per line 0, B1 at subtotal 0, B2a 18699, B2b 0
+  rate   24%: B1 per line 0, B1 at subtotal 0, B2a 19355, B2b 0
+  rate   25%: B1 per line 0, B1 at subtotal 0, B2a 20000, B2b 0
+  rate   27%: B1 per line 0, B1 at subtotal 0, B2a 21260, B2b 0
