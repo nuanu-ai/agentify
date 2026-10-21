@@ -781,3 +781,116 @@ describe("a closure recorded", () => {
     expect(said.every(([read, drawn]) => read === drawn)).toBe(true);
   });
 });
+
+describe("the purchases that lapsed unpaid", () => {
+  // As the gateway reads them apart: a page of them, newest first, and how
+  // many there are in all.
+  const page = (from: number) =>
+    ordersOf(
+      Array.from({ length: 50 }, (_, at) => ({
+        id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
+        status: at % 2 === 0 ? "expired" : "rejected",
+        at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
+      })),
+    );
+
+  it("are listed under their own segment a page at a time, and in no other", () => {
+    const second = page(50);
+
+    const there = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams("show=lapsed&page=2"),
+      {},
+      {},
+      { page: second, of: 120 },
+    );
+    const elsewhere = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams(),
+      {},
+      {},
+      {
+        page: null,
+        of: 120,
+      },
+    );
+
+    expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
+      second.orders.map((order) => order.id),
+    );
+    expect(there.listing.cut).toStrictEqual({
+      from: 51,
+      to: 100,
+      of: 120,
+      previous: "/orders?show=lapsed",
+      next: "/orders?show=lapsed&page=3",
+    });
+    expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
+      ["All", 3, false],
+      ["Open", 3, false],
+      ["Needs you", 0, false],
+      ["Lapsed", 120, true],
+    ]);
+    expect(elsewhere.listing.rows.map((row) => row.id).sort()).toStrictEqual(
+      THREE.orders.map((order) => order.id).sort(),
+    );
+    const text = readable(served(() => <OrdersScreen view={there} />));
+    expect(text).toContain("Showing 51–100 of 120");
+    expect(text).toContain("Closed on time limit");
+  });
+
+  it("are not offered beside a search, which reads only the other orders", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ q: FIRST }),
+      {},
+      {},
+      { page: null, of: 120 },
+    );
+
+    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
+  });
+
+  it("are a segment only where there is one, so a list without them reads as before", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams(),
+      {},
+      {},
+      {
+        page: null,
+        of: 0,
+      },
+    );
+
+    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
+  });
+
+  it("are orders, so a merchant with no other is not told there are none", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      ordersOf([]),
+      ordersOf([]),
+      new URLSearchParams(),
+      {},
+      {},
+      { page: null, of: 3 },
+    );
+
+    expect(view.none).toBe(false);
+    expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
+  });
+});

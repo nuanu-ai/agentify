@@ -441,6 +441,53 @@ describe("where an order's payment went", () => {
   });
 });
 
+describe("the orders a page reads", () => {
+  /** A room bought in the answer, priced for a purchase nobody paid for. */
+  const A_ROOM: Card = {
+    merchant_item_id: "room-101",
+    title: "A room for the night",
+    description: "One night in room 101",
+    price: { amount: "80.00", currency: "USD" },
+    result: { access_code: { type: "string" } },
+    fulfillment: "sync",
+  };
+
+  /** A purchase priced and never paid, ended when its price ran out. */
+  const lapsedUnpaid = async (harnessed: Harness, itemId: string): Promise<string> => {
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(offered.order.order.id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    return offered.order.order.id;
+  };
+
+  it("leave out the purchases that lapsed unpaid, which are read apart a page at a time, newest first", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const paid = await aPaidOrder(harnessed, harnessed.merchant.id);
+    const room = await harnessed.gateway.publishCard(harnessed.merchant.id, A_ROOM);
+    if (!room.ok) throw new Error("the room was refused");
+    const older = await lapsedUnpaid(harnessed, room.id);
+    const newer = await lapsedUnpaid(harnessed, room.id);
+
+    const idsIn = (answer: Awaited<ReturnType<typeof client.orders>>) =>
+      answer.ok ? answer.document.orders.map((order) => order.id) : answer.why;
+    expect(idsIn(await client.orders(false))).toStrictEqual([paid]);
+    expect(idsIn(await client.orders(true))).toStrictEqual([paid]);
+    const page = await client.lapsedAttempts(1);
+    expect(page.ok ? page.document.of : page.why).toBe(2);
+    expect(page.ok ? page.document.orders.orders.map((order) => order.id) : []).toStrictEqual([
+      newer,
+      older,
+    ]);
+    expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 2 });
+  });
+});
+
 describe("the payout a merchant is shown", () => {
   /** Saves a new wallet, as the test channel applies it at once, and sells once into its split. */
   const paidInto = async (harnessed: Harness, wallet: string): Promise<void> => {

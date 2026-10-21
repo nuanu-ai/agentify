@@ -3874,6 +3874,32 @@ describe("the orders screen", () => {
     expect(openOnly).not.toMatch(/finished/i);
   });
 
+  it("lists a purchase that lapsed unpaid under Lapsed alone, and the other orders as before", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(offered.order.order.id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    await browser.signIn();
+
+    const all = readable((await browser.get("/orders")).html);
+    const lapsed = readable((await browser.get("/orders?show=lapsed")).html);
+
+    expect(all).toContain("Delivered");
+    expect(all).toContain("Lapsed 1");
+    expect(all).not.toContain("Closed on time limit");
+    expect(lapsed).toContain("Closed on time limit");
+    expect(lapsed).not.toContain("Delivered");
+  });
+
   it("does not tell a merchant nothing is owed while an order is still running", async () => {
     // An order under way may already have taken the buyer's money against goods
     // not yet sent, so nothing on the page says nothing is owed.
