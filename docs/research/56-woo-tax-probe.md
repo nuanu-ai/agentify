@@ -499,3 +499,27 @@ results.
 
 The probe's containers and volumes were removed after the run with
 `docker compose -p woo-tax-probe down -v`, and its images were left in place.
+
+## After the implementation: half a cent on taxed shipping
+
+This section is not part of the pre-registered probe. An adversarial review of
+the connector built on the reading above found, on a rebuilt copy of the same
+shop, a cart and an order that disagree at the shop's own address, which the
+probe's shipping costs (4.90 and 9.90 at 19% and 20%; 3.00, 5.00 and 12.00 at
+11%) never reached. In the German shop, prices including tax, the tote bag to
+Berlin with the shipping cost set in turn to 0.50, 1.25, 1.50, 2.50, 3.33,
+4.90, 7.50, 10.50 and 12.50, at the prices 20.00, 19.95 and 0.99, was priced
+by the cart and then ordered with the line left to the shop and the cheapest
+rate. With tax rounded per line, every cost whose 19% falls exactly on half a
+cent (0.50, 1.50, 2.50, 7.50, 10.50, 12.50: 0.095, 0.285, 0.475, 1.425,
+1.995, 2.375) gave an order one cent below the cart, at all three prices, and
+every other cost gave the cart's total: the cart rounds that half cent up and
+the order down. With tax rounded at the subtotal, all twenty-seven agreed.
+The review also found the same at a single 5% rate on 4.90 and with two rates
+of 10% and 5%, and found that the prices-before-tax shop agreed at every such
+cost under both settings.
+
+The same review found that a shop showing its tax as a single total gives
+carts with no tax lines, so a comparison of tax lines alone cannot tell a
+place taxed otherwise than the shop's own address; comparing the goods'
+amount and tax in the two carts can.
