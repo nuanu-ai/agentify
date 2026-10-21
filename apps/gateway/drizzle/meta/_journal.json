@@ -148,6 +148,13 @@
       "when": 1792422838483,
       "tag": "0020_merchant_fulfillment_closure",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792574893354,
+      "tag": "0021_key_last_user_agent",
+      "breakpoints": true
     }
   ]
 }

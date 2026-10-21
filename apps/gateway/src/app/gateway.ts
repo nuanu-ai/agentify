@@ -136,6 +136,9 @@ import { purchaseOf, Waiting } from "./waiting.js";
  */
 const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
 
+/** How much of a caller's user agent is kept: enough for a name and a release. */
+const USER_AGENT_KEPT_CHARACTERS = 200;
+
 /**
  * How long a replacement payout wallet waits on the live deployment, counted
  * from the moment every message about it was handed over. A constant rather
@@ -1686,12 +1689,13 @@ export class Gateway {
    * secret is compared and the timing says nothing about how much of a key was
    * right; a key never issued and a disabled one look the same. The whole row
    * comes back because a merchant may not disable the key they are calling
-   * with, and this is the one place a key's last use is marked.
+   * with, and this is the one place a key's last use is marked, with what the
+   * caller said it runs.
    */
-  async keyBehind(presented: string): Promise<StoredKey | null> {
+  async keyBehind(presented: string, userAgent?: string): Promise<StoredKey | null> {
     const key = await this.runtime.store.workingKey(keyDigest(presented));
     if (key !== null) {
-      await this.#noteKeyUse(key);
+      await this.#noteKeyUse(key, userAgent);
     }
     return key;
   }
@@ -1702,13 +1706,14 @@ export class Gateway {
    * down and a late write can land on a pool being closed. A failure is only
    * logged: no sale may be refused because this column could not be updated.
    */
-  async #noteKeyUse(key: StoredKey): Promise<void> {
+  async #noteKeyUse(key: StoredKey, userAgent: string | undefined): Promise<void> {
     const at = this.runtime.clock();
     if (key.lastUsedAt !== null && at - key.lastUsedAt < KEY_USE_WRITTEN_EVERY_MS) {
       return;
     }
+    const said = userAgent?.trim().slice(0, USER_AGENT_KEPT_CHARACTERS) || null;
     try {
-      await this.runtime.store.noteKeyUse(key.id, at);
+      await this.runtime.store.noteKeyUse(key.id, at, said);
     } catch (thrown) {
       console.error(
         `[gateway] the last use of the key ${key.id} was not written down: ${failureNamed(thrown)}`,

@@ -27,6 +27,7 @@ import {
   type RouteName,
   readerOf,
 } from "@nuanu-ai/agentify-contracts";
+import { userAgent } from "./contract.js";
 
 /** Where the gateway is and which key opens its doors. */
 export interface Gateway {
@@ -238,6 +239,7 @@ export const callRoute = async <N extends RouteName>(
       method: route.method,
       headers: {
         accept: "application/json",
+        "user-agent": userAgent,
         [MERCHANT_KEY_HEADER]: merchantKeyHeaderValue(gateway.apiKey),
         ...(hasBody ? { "content-type": "application/json" } : {}),
       },
