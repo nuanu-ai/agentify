@@ -2,13 +2,11 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
 import {
-  anonymizeLeadData,
   consentSnapshots,
   createDatabase,
   createUuidV7,
   leadScans,
   leads,
-  listUnverifiedLeadRetentionCandidates,
   migrateDatabase,
   rateLimitEvents,
   rateWindows,
@@ -372,36 +370,50 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(lead.anonymizedAt).toBeNull();
   });
 
-  it("rechecks unverified retention eligibility after a concurrent verification", async () => {
+  it("leaves a person who confirms their address while the retention cleanup runs as they are", async () => {
     const fixture = await createLeadFixture("retention-race", {
       verified: false,
     });
-    const now = new Date();
+    // The oldest unverified lead, so a cleanup of one reaches it first.
     await getDatabase()
       .db.update(leads)
-      .set({ createdAt: new Date(now.getTime() - 31 * 86_400_000) })
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
       .where(eq(leads.id, fixture.leadId));
-    const listed = await listUnverifiedLeadRetentionCandidates(getDatabase().db, { now });
-    expect(listed.map(({ id }) => id)).toContain(fixture.leadId);
-    // The person confirms their address after the cleanup listed them and
-    // before it reaches them.
-    await getDatabase()
-      .db.update(leads)
-      .set({ verifiedAt: new Date() })
-      .where(eq(leads.id, fixture.leadId));
-    await expect(
-      anonymizeLeadData(
-        getDatabase().db,
+    const confirming = await admin.pool.connect();
+    try {
+      await confirming.query("begin");
+      await confirming.query("select id from leads where id = $1 for update", [fixture.leadId]);
+      const confirmingPid = (
+        await confirming.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      const cleanup = executeRetentionCleanup({ batchSize: 1 });
+      // The cleanup has listed the lead and now waits for the confirmation.
+      await expect
+        .poll(
+          async () =>
+            (
+              await getDatabase().pool.query<{ waiting: number }>(
+                "select count(*)::int as waiting from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+                [confirmingPid],
+              )
+            ).rows[0]?.waiting,
+          { timeout: 5_000, interval: 20 },
+        )
+        .toBe(1);
+      await confirming.query("update leads set verified_at = now() where id = $1", [
         fixture.leadId,
-        now,
-        undefined,
-        new Date(now.getTime() - 30 * 86_400_000),
-      ),
-    ).resolves.toMatchObject({ status: "no_longer_eligible" });
-    expect(
-      (await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)))[0]
-        ?.anonymizedAt,
-    ).toBeNull();
+      ]);
+      await confirming.query("commit");
+
+      await expect(cleanup).resolves.toMatchObject({ candidatesProcessed: 1, leadsAnonymized: 0 });
+    } finally {
+      confirming.release();
+    }
+    const lead = onlyRow(
+      await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
+    );
+    expect(lead.anonymizedAt).toBeNull();
+    expect(lead.verifiedAt).toBeInstanceOf(Date);
   });
 
   it("expires registration and rate evidence at its retention idempotently", async () => {
