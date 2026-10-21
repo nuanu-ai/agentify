@@ -2,8 +2,8 @@
  * The documentation's Markdown turned into HTML at build time by markdown-it,
  * the parser VitePress is built on, with the few rules the pages rely on
  * written to mean what VitePress made them mean: a heading's anchor from
- * VitePress's slug function, or from an explicit `{#id}`; the `::: warning`
- * and `::: note` containers; the `<<< @/examples/…` include, which reads the
+ * VitePress's slug function, or from an explicit `{#id}`; the `::: note`
+ * container; the `<<< @/examples/…` include, which reads the
  * file a test validates; a root-relative link mounted under `/docs` and an
  * outside link opened apart; code highlighted by Shiki; and a `mermaid` fence
  * drawn into an inline SVG from its kept drawing. Two rules are the
@@ -126,27 +126,20 @@ function includes(md: MarkdownIt): void {
   );
 }
 
-/** The kinds of box a page may draw, each printing its kind where it is given no title. */
-const CONTAINERS = ["tip", "info", "warning", "danger", "note"] as const;
-
 /**
- * VitePress's containers, drawn as the editorial notice, and the part kept
- * off a channel. `::: note` is the scanner's notice and has no title unless
- * one is given.
+ * A page's box, `::: note` with an optional title, drawn as the editorial
+ * notice, and the part kept off a channel.
  */
 function containers(md: MarkdownIt): void {
-  for (const kind of CONTAINERS) {
-    md.use(container, kind, {
-      render(tokens: Token[], index: number) {
-        const token = tokens[index];
-        if (token?.nesting !== 1) return "</div>\n";
-        const given = token.info.trim().slice(kind.length).trim();
-        const title = given || (kind === "note" ? "" : kind.toUpperCase());
-        const heading = title ? `<p class="custom-block-title">${md.renderInline(title)}</p>` : "";
-        return `<div class="editorial-notice custom-block ${kind}">${heading}\n`;
-      },
-    });
-  }
+  md.use(container, "note", {
+    render(tokens: Token[], index: number) {
+      const token = tokens[index];
+      if (token?.nesting !== 1) return "</div>\n";
+      const title = token.info.trim().slice("note".length).trim();
+      const heading = title ? `<p class="custom-block-title">${md.renderInline(title)}</p>` : "";
+      return `<div class="editorial-notice custom-block note">${heading}\n`;
+    },
+  });
   md.use(container, "unless", {
     validate: (params: string) => /^unless\s+\S+$/.test(params.trim()),
     render(tokens: Token[], index: number) {

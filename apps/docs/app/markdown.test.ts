@@ -141,7 +141,7 @@ describe("the release of the SDK the documentation describes", () => {
 
 describe("a writer's box", () => {
   it("reaches the reader with its title", () => {
-    const html = parser().render("::: warning The public surface is versioned\nText.\n:::\n");
+    const html = parser().render("::: note The public surface is versioned\nText.\n:::\n");
 
     expect(html).toMatch(/class="[^"]*custom-block-title[^"]*">The public surface is versioned</);
     expect(html).toContain("<p>Text.</p>");
