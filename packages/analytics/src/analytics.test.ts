@@ -19,6 +19,7 @@ import {
   sanitizeEventProperties,
   saveConsentDecision,
   shouldDeadLetter,
+  storedConsentCategories,
 } from "./index.js";
 
 const baseEvent = (name: AnalyticsEventName) =>
@@ -37,7 +38,6 @@ describe("analytics privacy and dedup contracts", () => {
     expect(Object.keys(META_EVENT_MAPPING)).toEqual([...ANALYTICS_EVENT_NAMES]);
     expect(META_EVENT_MAPPING.scan_started).toBe("ScanStart");
     expect(META_EVENT_MAPPING.scan_started).not.toBe("InitiateCheckout");
-    expect(META_EVENT_MAPPING.card_attached).toBe("CardAttached");
   });
 
   it("uses one event ID for PostHog and the Conversions API", () => {
@@ -100,11 +100,7 @@ describe("analytics privacy and dedup contracts", () => {
 
   it("creates no outbox rows when analytics consent is denied", () => {
     const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: {},
       source: "banner",
     });
@@ -121,11 +117,7 @@ describe("analytics privacy and dedup contracts", () => {
   it("gates PostHog and Meta independently", () => {
     const event = baseEvent("landing_view");
     const productOnly = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true },
       source: "banner",
     });
@@ -151,11 +143,7 @@ describe("analytics privacy and dedup contracts", () => {
       },
     };
     const snapshot = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true, ads_measurement: false },
       source: "banner",
     });
@@ -187,11 +175,7 @@ describe("analytics privacy and dedup contracts", () => {
   it("reads a kept choice as no choice once the policy it was made under is not the current one", () => {
     const kept = (policyVersion: string) => {
       const snapshot = createConsentSnapshot({
-        policy: {
-          policyVersion,
-          requireOptInForAdsMeasurement: true,
-          requireOptInForProductAnalytics: true,
-        },
+        policyVersion,
         decisions: { product_analytics: true, ads_measurement: true },
         source: "banner",
       });
@@ -205,6 +189,20 @@ describe("analytics privacy and dedup contracts", () => {
       true,
     );
     expect(readCurrentConsent(kept("consent-v0.9.0"))).toBeUndefined();
+  });
+
+  it("reads a stored choice by the categories the policy names, passing over any other", () => {
+    expect(
+      storedConsentCategories({
+        essential_processing: true,
+        product_analytics: true,
+        ads_measurement: false,
+        card_signal: false,
+        marketing_email: "yes",
+      }),
+    ).toEqual({ essential_processing: true, product_analytics: true, ads_measurement: false });
+    expect(storedConsentCategories(null)).toEqual({});
+    expect(storedConsentCategories("product_analytics")).toEqual({});
   });
 
   it("prevents preview/test from using production destinations", () => {
@@ -224,7 +222,6 @@ describe("analytics privacy and dedup contracts", () => {
       day: "2026-07-12",
       scan_id: "scan",
       lead_id: "lead",
-      setup_intent_id: "seti",
       share_id: "share",
     };
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));

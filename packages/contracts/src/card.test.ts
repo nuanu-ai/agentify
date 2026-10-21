@@ -30,8 +30,8 @@ const syncCard = {
 };
 
 describe("fulfillment mode", () => {
-  it("is one of the four modes the agent is told about before paying", () => {
-    for (const mode of ["sync", "async", "confirm", "ship"]) {
+  it("is one of the three modes the agent is told about before paying", () => {
+    for (const mode of ["sync", "async", "ship"]) {
       expect(FulfillmentSchema.safeParse(mode).success, mode).toBe(true);
     }
     for (const mode of ["synchronous", "SYNC", "manual", ""]) {
@@ -111,34 +111,6 @@ describe("card", () => {
     expect(CardSchema.parse(card)).toStrictEqual(card);
   });
 
-  it("refuses to publish in the mode whose request the wire cannot carry", () => {
-    // The promise: a merchant never publishes a card that cannot be sold. A
-    // confirmation request arrives before any money moves, but nothing on the
-    // wire marks it, so a handler could not tell it from a paid order.
-    const message = errorOf(CardSchema, { ...syncCard, fulfillment: "confirm" });
-
-    expect(message).toContain("confirm");
-    expect(message).toContain("pilot");
-    // Filed against the field: the word "fulfillment" is not in the sentence,
-    // so it can only come from the finding's path, which is what puts the
-    // finding beside the right line in a merchant's editor.
-    expect(message).toContain("fulfillment");
-  });
-
-  it("complains about the mode and not about the deadlines that go with it", () => {
-    // The deadline rules still hold for this mode; drawing their complaint too
-    // would stack a second problem behind the first.
-    const message = errorOf(CardSchema, {
-      ...syncCard,
-      fulfillment: "confirm",
-      confirm_deadline_seconds: 3_600,
-      fulfill_deadline_seconds: 86_400,
-    });
-
-    expect(message).not.toContain("confirm_deadline_seconds");
-    expect(message).not.toContain("fulfill_deadline_seconds");
-  });
-
   it("accepts a card that takes no purchase parameters", () => {
     const { params, ...withoutParams } = syncCard;
     expect(params).toBeDefined();
@@ -192,21 +164,10 @@ describe("card", () => {
   });
 });
 
-describe("the merchant's two deadlines", () => {
+describe("the merchant's delivery deadline", () => {
   // The promise: deadlines are shown to the agent before it pays, so a card
   // carries only those its mode uses. A synchronous card's wait is a budget
   // the same for every product, not a card field.
-
-  it("refuses a confirmation deadline on a card that has no confirmation step", () => {
-    for (const fulfillment of ["sync", "async"]) {
-      const message = errorOf(CardSchema, {
-        ...syncCard,
-        fulfillment,
-        confirm_deadline_seconds: 3_600,
-      });
-      expect(message, fulfillment).toContain("confirm_deadline_seconds");
-    }
-  });
 
   it("refuses a delivery deadline on a synchronous card", () => {
     const message = errorOf(CardSchema, { ...syncCard, fulfill_deadline_seconds: 86_400 });
@@ -226,8 +187,8 @@ describe("the merchant's two deadlines", () => {
     }
   });
 
-  it("accepts a card that names neither deadline", () => {
-    // The defaults are the gateway's settings, so a card may leave both out.
+  it("accepts a card that names no deadline", () => {
+    // The default is the gateway's setting, so a card may leave it out.
     expect(CardSchema.safeParse({ ...syncCard, fulfillment: "async" }).success).toBe(true);
   });
 });
@@ -273,28 +234,8 @@ describe("the checks a card compiles to", () => {
 });
 
 describe("what the exported document says about the mode", () => {
-  // An engineer generating a client from the JSON Schema never reads the
-  // TypeScript, so the reason a mode cannot be published must be in the
-  // document.
-
-  it("keeps every mode in the enumeration", () => {
-    // The mode exists and the order machine knows it; removing it from the
-    // vocabulary would claim more than "not yet".
-    expect(toJsonSchemas().fulfillment.enum).toStrictEqual(["sync", "async", "confirm", "ship"]);
-  });
-
-  it("says in the fulfillment document that one of them cannot be published", () => {
-    const description = toJsonSchemas().fulfillment.description ?? "";
-
-    expect(description).toContain("confirm");
-    expect(description).toContain("pilot");
-  });
-
-  it("says the same in the card document", () => {
-    const description = toJsonSchemas().card.description ?? "";
-
-    expect(description).toContain("confirm");
-    expect(description).toContain("pilot");
+  it("lists every mode a card can be published in", () => {
+    expect(toJsonSchemas().fulfillment.enum).toStrictEqual([...FulfillmentSchema.options]);
   });
 });
 
@@ -357,10 +298,8 @@ describe("the card an agent reads", () => {
 
   it("names who sells, in the words the merchant gave", () => {
     // An agent with a question the order cannot answer is sent to the shop's
-    // own site. The pair is the merchant's and unchecked, which the schema's
-    // description says.
+    // own site.
     expect(publicCard.seller).toStrictEqual({ name: "Freeland", site: "https://freeland.example" });
-    expect(PublicCardSchema.description).toContain("did not check");
   });
 
   it("says a merchant gave no site rather than leaving the field out", () => {
@@ -462,16 +401,6 @@ describe("the card an agent reads", () => {
       CardSchema.parse({ ...syncCard, fulfillment: "async", fulfill_deadline_seconds: 900 }),
       issued,
     );
-
-    const confirm = publicCardOf(
-      {
-        ...CardSchema.parse({ ...syncCard, fulfillment: "async" }),
-        fulfillment: "confirm",
-        confirm_deadline_seconds: 60,
-        fulfill_deadline_seconds: 900,
-      },
-      issued,
-    );
     const common = [
       "as_of",
       "description",
@@ -488,9 +417,6 @@ describe("the card an agent reads", () => {
 
     expect(Object.keys(sync).sort()).toStrictEqual(common);
     expect(Object.keys(async).sort()).toStrictEqual([...common, "fulfill_deadline_seconds"].sort());
-    expect(Object.keys(confirm).sort()).toStrictEqual(
-      [...common, "confirm_deadline_seconds", "fulfill_deadline_seconds"].sort(),
-    );
   });
 
   it("reads a card of a mode this contract does not name yet, so an agent can pass it over", () => {
@@ -531,18 +457,6 @@ describe("the card an agent reads", () => {
     ] as const) {
       expect(PublicCardSchema.safeParse({ ...publicCard, ...grown }).success, part).toBe(true);
     }
-  });
-
-  it("carries its own caveats into the exported document, where the reader has nothing else", () => {
-    // The reader of the exported document has no TypeScript and is about to
-    // spend money. `as_of` here means only when the price shown was published,
-    // narrower than elsewhere in this contract.
-    const description = toJsonSchemas().public_card.description ?? "";
-
-    expect(description).toContain("when the price shown here was published");
-    expect(description).toContain("says nothing about how fresh that check will be");
-    expect(description).toContain("not that they answer");
-    expect(description).toContain("did not check the name or the site");
   });
 
   it("projects every card of the pilot merchant's catalog into something an agent can read", () => {
@@ -592,9 +506,9 @@ describe("a card as its own merchant reads it", () => {
     // The card inside is held to the publication rules but one: plain text is
     // checked on the way in, and `plain-text.test.ts` holds that an older
     // stored card reads back.
-    const impossible = { ...merchantCard, card: { ...syncCard, fulfillment: "confirm" } };
+    const impossible = { ...merchantCard, card: { ...syncCard, fulfill_deadline_seconds: 900 } };
 
-    expect(errorOf(MerchantCardSchema, impossible)).toContain("confirm");
+    expect(errorOf(MerchantCardSchema, impossible)).toContain("fulfill_deadline_seconds");
   });
 
   for (const field of ["id", "as_of", "card", "selling", "paused"]) {
@@ -624,15 +538,6 @@ describe("a card as its own merchant reads it", () => {
     expect(errorOf(MerchantCardSchema, { ...merchantCard, revenue: "1000.00" })).toContain(
       "revenue",
     );
-  });
-
-  it("tells the reader of the document alone what the two selling fields mean", () => {
-    // Two fields that agree most of the time and differ exactly when it
-    // matters.
-    const description = toJsonSchemas().merchant_card.description ?? "";
-
-    expect(description).toContain("paused");
-    expect(description).toContain("resume");
   });
 });
 
@@ -802,10 +707,6 @@ describe("who sells, as an agent reads it", () => {
     });
     expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "site");
     expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "name");
-  });
-
-  it("tells the agent whose word it is", () => {
-    expect(SellerSchema.description).toContain("did not check");
   });
 });
 
@@ -1032,13 +933,12 @@ describe("the tags a card may carry, against the listing's own rules", () => {
     expect(tagged(["one two"]).success).toBe(true);
   });
 
-  it("says the rules it cannot check in a document, for the reader who has only that", () => {
+  it("carries its limits into the exported document, for the reader who has only that", () => {
     const document = toJsonSchemas().tags;
 
     expect(document.maxItems).toBe(5);
     expect(document.minItems).toBe(1);
     expect(document.uniqueItems).toBe(true);
-    expect(document.description).toContain("case");
   });
 });
 

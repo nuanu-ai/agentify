@@ -97,11 +97,7 @@ const PERSON =
 const choiceOf = (allowed: boolean): string =>
   JSON.stringify(
     createConsentSnapshot({
-      policy: {
-        policyVersion: CONSENT_POLICY_VERSION,
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: CONSENT_POLICY_VERSION,
       decisions: { product_analytics: allowed, ads_measurement: allowed },
       source: "banner",
     }),

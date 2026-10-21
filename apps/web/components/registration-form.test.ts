@@ -16,12 +16,8 @@ describe("registration resend state", () => {
     expect(registrationSubmitLabel("error", 0)).toBe("Email me a secure link");
   });
 
-  it("names the submitted address in the sent confirmation", () => {
-    expect(sentConfirmationCopy("owner@example.com")).toBe(
-      "We sent a secure link to owner@example.com (if the address can receive mail). Open it in this browser to unlock the prompt and report.",
-    );
-    expect(sentConfirmationCopy("")).toBe(
-      "If the address can receive mail, a secure confirmation link has been sent. Open it in this browser to unlock the prompt and report.",
-    );
+  it("names the submitted address in the sent confirmation, and claims none without one", () => {
+    expect(sentConfirmationCopy("owner@example.com")).toContain("owner@example.com");
+    expect(sentConfirmationCopy("")).not.toContain("sent a secure link to");
   });
 });

@@ -155,10 +155,10 @@ export function createLogger(input: {
 }
 
 const routePatterns: readonly [RegExp, string][] = [
-  [/^\/(?:dashboard|cabinet)\/(?:assets|styles)\//, "asset"],
-  [/^\/(?:dashboard|cabinet)\/auth(?:\/.*)?$/, "dashboard_auth"],
-  [/^\/(?:dashboard|cabinet)\/healthz$/, "dashboard_health"],
-  [/^\/(?:dashboard|cabinet)(?:\/.*)?$/, "dashboard_page"],
+  [/^\/dashboard\/(?:assets|styles)\//, "asset"],
+  [/^\/dashboard\/auth(?:\/.*)?$/, "dashboard_auth"],
+  [/^\/dashboard\/healthz$/, "dashboard_health"],
+  [/^\/dashboard(?:\/.*)?$/, "dashboard_page"],
   [/^\/(store|local)?$/, "page_landing"],
   [/^\/(methodology|privacy|scanner|terms|data-request)$/, "page_trust"],
   [/^\/admin(?:\/.*)?$/, "page_admin"],
@@ -178,12 +178,9 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/reports\/[^/]+$/, "api_v1_report"],
   [/^\/api\/v1\/reports\/[^/]+\/remediation-prompt(?:\/download)?$/, "api_v1_report_remediation"],
   [/^\/api\/v1\/shares\/[^/]+$/, "api_v1_share"],
-  [/^\/api\/v1\/card-signals\/setup-intents$/, "api_v1_card_setup"],
-  [/^\/api\/v1\/card-signals\/[^/]+(?:\/payment-method|\/local-confirm)?$/, "api_v1_card_signal"],
   [/^\/api\/v1\/(attribution|consent|events)$/, "api_v1_analytics"],
   [/^\/api\/v1\/account\/(data-request|unsubscribe)$/, "api_v1_account"],
   [/^\/api\/v1\/auth\/verify$/, "api_v1_auth_verify"],
-  [/^\/api\/v1\/webhooks\/stripe$/, "api_v1_stripe_webhook"],
   [/^\/api\/v2\/session$/, "api_v2_session"],
   [/^\/api\/v2\/scans\/[^/]+\/(registrations|contact-access)$/, "api_v2_scan_contact"],
   [/^\/assets\//, "asset"],

@@ -441,21 +441,6 @@ describe("a paid order left unfulfilled", () => {
     });
   });
 
-  it("says the merchant left after the money moved", async () => {
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, laterCard);
-    const orderId = await orderTakenOn(harnessed, served, itemId);
-    await harnessed.gateway.runner.apply(orderId, {
-      kind: "merchant_departed",
-      at: harnessed.now(),
-    });
-
-    const owing = await owingOf(served, orderId);
-
-    expect(owing.reason?.code).toBe("merchant_left");
-    expect(owing.reason?.message).toMatch(/\S/);
-  });
-
   it("says the charge was reported after the purchase was closed, not that goods came late", async () => {
     // A charge that went silent closes the purchase before the order is sent
     // to the merchant. If it later turns out to have gone through, the buyer is
@@ -499,8 +484,8 @@ describe("a paid order left unfulfilled", () => {
   });
 
   it("gives each way of being left unfulfilled a sentence of its own", async () => {
-    // One sentence for all three would tell an agent waiting on a late
-    // delivery the same thing as one whose seller has gone.
+    // One sentence for both would tell an agent waiting on a late delivery the
+    // same thing as one whose seller refused.
     const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });
     const lateItem = await publish(served, {
       ...laterCard,
@@ -514,16 +499,12 @@ describe("a paid order left unfulfilled", () => {
       body: { code: "out_of_stock", message: "none left" },
       headers: keyOf(harnessed.merchant),
     });
-    const left = await orderTakenOn(harnessed, served, keptItem);
-    await harnessed.gateway.runner.apply(left, { kind: "merchant_departed", at: harnessed.now() });
 
     const sentences = await Promise.all(
-      [late, refused, left].map(
-        async (orderId) => (await owingOf(served, orderId)).reason?.message,
-      ),
+      [late, refused].map(async (orderId) => (await owingOf(served, orderId)).reason?.message),
     );
 
-    expect(new Set(sentences).size).toBe(3);
+    expect(new Set(sentences).size).toBe(2);
   });
 });
 

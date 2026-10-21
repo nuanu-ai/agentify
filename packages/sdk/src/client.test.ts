@@ -223,12 +223,6 @@ const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void =>
   // @ts-expect-error only a parcel names a time to ship
   void catalog.publish({ ...named, result, fulfillment: "async", ship_within_seconds: 60 });
 
-  // @ts-expect-error no card that can be published is asked to confirm, so none names a time for it
-  void catalog.publish({ ...named, result, fulfillment: "async", confirm_deadline_seconds: 60 });
-
-  // @ts-expect-error a card cannot be published as "confirm" yet
-  void catalog.publish({ ...named, result, fulfillment: "confirm" });
-
   // @ts-expect-error and a mode decided at run time is held to every mode it may take
   void catalog.publish({ ...named, result, fulfillment: either("sync", "ship") });
 
@@ -236,7 +230,6 @@ const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void =>
   // mode refuses is no longer caught as a stray property of the literal.
   const builtLater = { ...named, result, fulfillment: "async" } as const;
   const builtToShip = { ...builtLater, ship_within_seconds: 60 };
-  const builtToConfirm = { ...builtLater, confirm_deadline_seconds: 60 };
   const builtParcel = { ...parcel, fulfillment: "ship" } as const;
   const builtParcelWithResult = { ...builtParcel, result };
   const builtParcelWithDeadline = { ...builtParcel, fulfill_deadline_seconds: 60 };
@@ -246,9 +239,6 @@ const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void =>
 
   // @ts-expect-error only a parcel names a time to ship, however the card was built
   void catalog.publish(builtToShip);
-
-  // @ts-expect-error no card that can be published names a time to confirm, however it was built
-  void catalog.publish(builtToConfirm);
 
   // @ts-expect-error a parcel declares no result, however it was built
   void catalog.publish(builtParcelWithResult);

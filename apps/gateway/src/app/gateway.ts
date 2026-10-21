@@ -186,15 +186,6 @@ export type Caller =
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
 /**
- * The catalog as it stands after the selling switch, or a refusal. A merchant
- * who has left can still press the switch, so that is an ordinary refusal
- * rather than a thrown error.
- */
-export type SellingChange =
-  | { readonly ok: true; readonly cards: MerchantCardList }
-  | { readonly ok: false; readonly why: string };
-
-/**
  * A price answer the door turned away, and what stands between its price and a
  * sale. Nothing moved: a question it named that is still held stays open, and
  * one that is not held was never looked up.
@@ -651,16 +642,9 @@ export class Gateway {
    * the cards paused in their own right paused, and the answer carries the
    * whole catalog so which cards came back is stated rather than inferred.
    */
-  async setSelling(merchantId: string, selling: MerchantSelling): Promise<SellingChange> {
-    const now = await this.runtime.store.selling(merchantId);
-    if (now === "departed") {
-      // A departure is not a heavier pause and this switch does not undo one:
-      // leaving changed the open orders and left paid ones unfulfilled; reopening
-      // would put the merchant back in the catalog with none of that unwound.
-      return { ok: false, why: "this merchant has left, and selling is not resumed by a switch" };
-    }
+  async setSelling(merchantId: string, selling: MerchantSelling): Promise<MerchantCardList> {
     await this.runtime.store.setSelling(merchantId, selling);
-    return { ok: true, cards: await this.merchantCards(merchantId) };
+    return this.merchantCards(merchantId);
   }
 
   /**
@@ -1350,9 +1334,7 @@ export class Gateway {
     // the timer can close that order first.
     const arrivedAt = this.runtime.clock();
     const lapsed = deadlines(before.order).find(
-      (deadline) =>
-        (deadline.kind === "quote_expiry" || deadline.kind === "payment_after_confirmation") &&
-        deadline.at <= arrivedAt,
+      (deadline) => deadline.kind === "quote_expiry" && deadline.at <= arrivedAt,
     );
     if (lapsed !== undefined) {
       await this.runner.apply(orderId, {

@@ -127,6 +127,13 @@
       "when": 1792567609537,
       "tag": "0017_ad_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792579989814,
+      "tag": "0018_woo_shop_revision_has_no_default",
+      "breakpoints": true
     }
   ]
 }

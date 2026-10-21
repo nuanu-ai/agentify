@@ -1,15 +1,14 @@
 /**
- * Pausing is not leaving: a paused merchant takes no new order, and his open
- * orders play out as usual. That is why the selling guard lives here at
- * creation and the transition function never asks about it.
+ * A paused merchant takes no new order, and his open orders play out as usual.
+ * That is why the selling guard lives here at creation and the transition
+ * function never asks about it.
  */
 
 import { assertNever } from "../index.js";
 import type { Effect, Order, OrderMode, OrderPolicy, Price } from "./model.js";
-import { effectsOnQuoted } from "./model.js";
 
 /** Whether the merchant is taking new orders. */
-export const MERCHANT_SELLING = ["open", "paused", "departed"] as const;
+export const MERCHANT_SELLING = ["open", "paused"] as const;
 
 export type MerchantSelling = (typeof MERCHANT_SELLING)[number];
 
@@ -17,13 +16,13 @@ export type MerchantSelling = (typeof MERCHANT_SELLING)[number];
  * Whether the card's price is asked of the merchant at the moment of purchase.
  * A static card lives off its snapshot and is not asked.
  */
-export const PRICE_CHECKS = ["none", "merchant"] as const;
+const PRICE_CHECKS = ["none", "merchant"] as const;
 
 export type PriceCheck = (typeof PRICE_CHECKS)[number];
 
-export const CREATE_REJECTIONS = ["selling_paused", "merchant_departed"] as const;
+const CREATE_REJECTIONS = ["selling_paused"] as const;
 
-export type CreateRejection = (typeof CREATE_REJECTIONS)[number];
+type CreateRejection = (typeof CREATE_REJECTIONS)[number];
 
 export type CreateOrderInput = {
   readonly id: string;
@@ -58,14 +57,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
           message: "this product is not on sale at the moment, so no new order is taken",
         },
       };
-    case "departed":
-      return {
-        ok: false,
-        rejection: {
-          code: "merchant_departed",
-          message: "the merchant has left, so no new order is taken",
-        },
-      };
     case "open":
       break;
     default:
@@ -88,8 +79,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
     timestamps: {
       createdAt: input.at,
       quotedAt: null,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -101,7 +90,8 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
   }
 
   // A card without a price check is sold off its own snapshot, so the order is
-  // born already quoted and the price carries the card's own `as_of`.
+  // born already quoted and the price carries the card's own `as_of`. The
+  // agent's payment is already in hand, so all that is left is to verify it.
   return {
     ok: true,
     order: {
@@ -111,6 +101,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
       quoteSource: "card_snapshot",
       timestamps: { ...base.timestamps, quotedAt: input.at },
     },
-    effects: effectsOnQuoted(input.mode),
+    effects: [{ kind: "verify_payment" }],
   };
 }

@@ -77,30 +77,6 @@ describe("the deadlines of an order", () => {
     ]);
   });
 
-  it("holds the merchant to his own confirmation deadline", () => {
-    const order: Order = {
-      ...newOrder("confirm"),
-      state: "awaiting_confirmation",
-      timestamps: { ...newOrder("confirm").timestamps, confirmationRequestedAt: T0 + 5 },
-    };
-
-    expect(at(order, "confirmation_response")).toBe(
-      T0 + 5 + TEST_POLICY.deadlines.confirmationResponseMs,
-    );
-  });
-
-  it("holds the agent to his deadline to pay a confirmed order", () => {
-    const order: Order = {
-      ...newOrder("confirm"),
-      state: "confirmed",
-      timestamps: { ...newOrder("confirm").timestamps, confirmedAt: T0 + 7 },
-    };
-
-    expect(at(order, "payment_after_confirmation")).toBe(
-      T0 + 7 + TEST_POLICY.deadlines.paymentAfterConfirmationMs,
-    );
-  });
-
   it("starts the synchronous answer from the payment, not from the opening of the order", () => {
     // An agent that reads the requirements, decides and pays twenty seconds
     // later is inside the life of its price and buys legitimately. A clock

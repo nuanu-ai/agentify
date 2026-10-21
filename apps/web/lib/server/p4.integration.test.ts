@@ -627,7 +627,6 @@ describe("P4 dashboard-owned scanner identity", () => {
               ads_measurement: false,
               marketing_email: false,
               dataset_reuse: false,
-              card_signal: false,
             },
           },
           { cookie },
@@ -765,7 +764,6 @@ describe("P4 dashboard-owned scanner identity", () => {
               ads_measurement: adsMeasurement,
               marketing_email: false,
               dataset_reuse: false,
-              card_signal: false,
             },
           }),
         }),
@@ -961,6 +959,47 @@ describe("P4 dashboard-owned scanner identity", () => {
     await visitorOf(cookie);
     expect(await registrationsFor(scan.id)).toBe("1");
     expect(await formConsents()).toBe(1);
+  });
+
+  it("carries the session's stored choice into the registration's own by the categories the policy names", async () => {
+    // Snapshots on the deployed channels still name card_signal, which the
+    // policy does not; a registration copies its session's choice forward
+    // and must not write that category again.
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("stored-category");
+    const storedId = createUuidV7();
+    await db.insert(consentSnapshots).values({
+      id: storedId,
+      sessionId: scan.sessionId,
+      policyVersion: CONSENT_POLICY_VERSION,
+      categories: {
+        essential_processing: true,
+        product_analytics: true,
+        ads_measurement: false,
+        marketing_email: false,
+        dataset_reuse: false,
+        card_signal: false,
+      },
+      source: "banner",
+    });
+    await db
+      .update(sessions)
+      .set({ consentSnapshotId: storedId })
+      .where(eq(sessions.id, scan.sessionId));
+    const email = "stored-category@example.com";
+    await createScannerRegistrationIntent(scan, registrationBody(email));
+
+    await visitorOf(pressLink(latestLink(email)));
+
+    const written = onlyRow(
+      await db
+        .select({ categories: consentSnapshots.categories })
+        .from(consentSnapshots)
+        .innerJoin(sessions, eq(sessions.consentSnapshotId, consentSnapshots.id))
+        .where(eq(sessions.id, scan.sessionId)),
+    ).categories as Record<string, unknown>;
+    expect(written).toMatchObject({ product_analytics: true, dataset_reuse: true });
+    expect(Object.keys(written)).not.toContain("card_signal");
   });
 
   it("never finishes a request for a session of another address", async () => {

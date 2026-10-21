@@ -1,8 +1,8 @@
 /**
  * One page of the documentation, drawn from the Markdown its address names in
  * `pages.ts`: the page's group over its heading, the pages before and after it
- * at its foot, and for a page that was the scanner's, the site's description
- * for a crawler. Its loader runs only while the build prerenders the pages.
+ * at its foot, and for a scanner page, the site's description for a crawler.
+ * Its loader runs only while the build prerenders the pages.
  */
 
 import { DOCS_GROUPS } from "@agentify/ui/docs";

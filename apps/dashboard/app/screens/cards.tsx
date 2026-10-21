@@ -55,13 +55,9 @@ const Control = ({
   );
 };
 
-/**
- * The control that stops or restarts all selling, where the merchant has one,
- * for the end of the page's title bar.
- */
+/** The control that stops or restarts all selling, for the end of the page's title bar. */
 export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
   const { allSelling, listing } = view;
-  if (allSelling === null) return null;
   return (
     <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
       {(pending) => (
@@ -86,18 +82,16 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
     return (
       <ListEmpty>
         <p>{empty.says}</p>
-        {empty.ways === null ? null : (
-          <div className={styles.ways}>
-            <a className="button button-primary" href="/docs/quickstart">
-              Publish a card through the SDK
+        <div className={styles.ways}>
+          <a className="button button-primary" href="/docs/quickstart">
+            Publish a card through the SDK
+          </a>
+          {empty.ways.woo ? (
+            <a className="button button-secondary" href={`${base}/woocommerce`}>
+              Connect a WooCommerce shop
             </a>
-            {empty.ways.woo ? (
-              <a className="button button-secondary" href={`${base}/woocommerce`}>
-                Connect a WooCommerce shop
-              </a>
-            ) : null}
-          </div>
-        )}
+          ) : null}
+        </div>
       </ListEmpty>
     );
   }

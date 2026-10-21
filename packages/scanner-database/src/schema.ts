@@ -21,24 +21,6 @@ import {
 const utcTimestamp = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const uuidV7Check = (column: AnyPgColumn) => sql`substring(${column}::text, 15, 1) = '7'`;
 
-export const merchantApplications = pgTable(
-  "merchant_applications",
-  {
-    id: uuid("id").primaryKey(),
-    idempotencyKeyHash: text("idempotency_key_hash").notNull(),
-    requestHash: text("request_hash").notNull(),
-    payloadCiphertext: text("payload_ciphertext").notNull(),
-    policyVersion: text("policy_version").notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-  },
-  (table) => [
-    check("merchant_applications_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("merchant_applications_idempotency_uidx").on(table.idempotencyKeyHash),
-    index("merchant_applications_expiry_idx").on(table.expiresAt),
-  ],
-);
-
 export const segmentEnum = pgEnum("segment", ["store", "owner", "local"]);
 export const scanStatusEnum = pgEnum("scan_status", [
   "accepted",
@@ -65,13 +47,6 @@ export const diagnosticLevelEnum = pgEnum("diagnostic_level", [
   "incomplete",
 ]);
 export const shareStatusEnum = pgEnum("share_status", ["published", "revoked"]);
-export const paymentSignalStatusEnum = pgEnum("payment_signal_status", [
-  "not_started",
-  "setup_pending",
-  "attached",
-  "detached",
-  "failed",
-]);
 export const outboxStatusEnum = pgEnum("outbox_status", [
   "pending",
   "processing",
@@ -79,11 +54,6 @@ export const outboxStatusEnum = pgEnum("outbox_status", [
   "dead_letter",
 ]);
 export const deliveryDestinationEnum = pgEnum("delivery_destination", ["posthog", "meta"]);
-export const webhookReceiptStatusEnum = pgEnum("webhook_receipt_status", [
-  "received",
-  "processed",
-  "failed",
-]);
 export const browserObservationStatusEnum = pgEnum("browser_observation_status", [
   "queued",
   "starting",
@@ -116,7 +86,6 @@ export const sessions = pgTable(
     lastUtmContent: text("last_utm_content"),
     lastUtmTerm: text("last_utm_term"),
     lastFbclidHash: text("last_fbclid_hash"),
-    geoCountry: text("geo_country"),
     consentSnapshotId: uuid("consent_snapshot_id"),
   },
   (table) => [
@@ -133,7 +102,6 @@ export const consentSnapshots = pgTable(
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
     policyVersion: text("policy_version").notNull(),
-    country: text("country"),
     categories: jsonb("categories").notNull(),
     capturedAt: utcTimestamp("captured_at").notNull().defaultNow(),
     source: text("source").notNull(),
@@ -148,14 +116,11 @@ export const leads = pgTable(
   "leads",
   {
     id: uuid("id").primaryKey(),
-    supabaseUserId: uuid("supabase_user_id"),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
     phoneLookupHash: text("phone_lookup_hash"),
     role: text("role").notNull(),
-    name: text("name"),
-    volumeBucket: text("volume_bucket"),
     verifiedAt: utcTimestamp("verified_at"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
     unsubscribedAt: utcTimestamp("unsubscribed_at"),
@@ -170,9 +135,6 @@ export const leads = pgTable(
   (table) => [
     check("leads_id_uuidv7", uuidV7Check(table.id)),
     uniqueIndex("leads_email_lookup_hash_uidx").on(table.emailLookupHash),
-    uniqueIndex("leads_supabase_user_id_uidx")
-      .on(table.supabaseUserId)
-      .where(sql`${table.supabaseUserId} is not null`),
     index("leads_verified_at_idx").on(table.verifiedAt),
     index("leads_retention_idx").on(table.verifiedAt, table.anonymizedAt, table.createdAt),
   ],
@@ -316,22 +278,6 @@ export const scanChecks = pgTable(
     index("scan_checks_scan_status_idx").on(table.scanId, table.status),
   ],
 );
-
-export const scanFingerprints = pgTable("scan_fingerprints", {
-  scanId: uuid("scan_id")
-    .primaryKey()
-    .references(() => scans.id, { onDelete: "cascade" }),
-  platform: text("platform").notNull(),
-  platformConfidence: text("platform_confidence").notNull(),
-  cmsVersion: text("cms_version"),
-  versionConfidence: text("version_confidence"),
-  wafCdn: text("waf_cdn").array().notNull().default(sql`'{}'::text[]`),
-  pspMarkers: text("psp_markers").array().notNull().default(sql`'{}'::text[]`),
-  feedSignals: text("feed_signals").array().notNull().default(sql`'{}'::text[]`),
-  headerSignals: jsonb("header_signals").notNull().default({}),
-  htmlSignals: jsonb("html_signals").notNull().default({}),
-  detectorVersion: text("detector_version").notNull(),
-});
 
 export const browserObservations = pgTable(
   "browser_observations",
@@ -523,30 +469,6 @@ export const scanShares = pgTable(
   ],
 );
 
-export const paymentSignals = pgTable(
-  "payment_signals",
-  {
-    id: uuid("id").primaryKey(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    stripeCustomerId: text("stripe_customer_id").notNull(),
-    setupIntentId: text("setup_intent_id").notNull(),
-    paymentMethodIdCiphertext: text("payment_method_id_ciphertext"),
-    status: paymentSignalStatusEnum("status").notNull().default("not_started"),
-    attachedAt: utcTimestamp("attached_at"),
-    detachedAt: utcTimestamp("detached_at"),
-    consentSnapshotId: uuid("consent_snapshot_id")
-      .notNull()
-      .references(() => consentSnapshots.id, { onDelete: "restrict" }),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    check("payment_signals_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("payment_signals_setup_intent_uidx").on(table.setupIntentId),
-  ],
-);
-
 export const analyticsEvents = pgTable(
   "analytics_events",
   {
@@ -609,19 +531,6 @@ export const deliveryOutbox = pgTable(
     uniqueIndex("delivery_outbox_event_destination_uidx").on(table.eventId, table.destination),
     index("delivery_outbox_status_next_attempt_idx").on(table.status, table.nextAttemptAt),
   ],
-);
-
-export const webhookReceipts = pgTable(
-  "webhook_receipts",
-  {
-    provider: text("provider").notNull(),
-    providerEventId: text("provider_event_id").notNull(),
-    payloadHash: text("payload_hash").notNull(),
-    receivedAt: utcTimestamp("received_at").notNull().defaultNow(),
-    processedAt: utcTimestamp("processed_at"),
-    status: webhookReceiptStatusEnum("status").notNull().default("received"),
-  },
-  (table) => [primaryKey({ columns: [table.provider, table.providerEventId] })],
 );
 
 export const rateWindows = pgTable(

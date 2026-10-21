@@ -41,14 +41,7 @@ describe("what a receipt says became of the purchase", () => {
   it("accounts for every order status, on one side of the line or the other", () => {
     // The excluded statuses are named, so a status added to the order makes
     // this fail until someone decides which side of the receipt line it is on.
-    const withoutAReceipt = [
-      "rejected",
-      "payment_unresolved",
-      "declined",
-      "expired",
-      "cancelled",
-      "delivered_unpaid",
-    ];
+    const withoutAReceipt = ["rejected", "payment_unresolved", "expired", "delivered_unpaid"];
 
     expect([...ReceiptOutcomeSchema.options, ...withoutAReceipt].sort()).toStrictEqual(
       [...ORDER_STATUSES].sort(),
@@ -56,18 +49,10 @@ describe("what a receipt says became of the purchase", () => {
   });
 
   it("has no value for an unpaid purchase or an unknown payment", () => {
-    // A refused, declined, expired or cancelled purchase leaves no receipt,
+    // A refused or expired purchase leaves no receipt,
     // and neither does a synchronous delivery whose payment failed. An unknown
     // outcome cannot establish that a payment executed.
-    for (const outcome of [
-      "rejected",
-      "payment_unresolved",
-      "declined",
-      "expired",
-      "cancelled",
-      "delivered_unpaid",
-      "",
-    ]) {
+    for (const outcome of ["rejected", "payment_unresolved", "expired", "delivered_unpaid", ""]) {
       expect(ReceiptOutcomeSchema.safeParse(outcome).success, JSON.stringify(outcome)).toBe(false);
     }
   });

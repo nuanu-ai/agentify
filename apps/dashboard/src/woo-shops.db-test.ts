@@ -3,14 +3,15 @@
  * a memory store can have by accident and a database has to be written for: a
  * token spent by one caller only (a delete that returns a row) and a sale
  * claimed once however many attempts arrive together (an insert that does
- * nothing on conflict).
+ * nothing on conflict). Beside it, the one rule only the schema keeps: a
+ * connection written without its revision is refused rather than given one.
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { migrateAccounts } from "./database.js";
 import { wooShopsContract } from "./testing/woo-shops-contract.js";
 import { postgresWooShops } from "./woo-shops.js";
@@ -83,6 +84,21 @@ if (databaseUrl === null) {
     );
     return id;
   };
+
+  describe("a shop connection on postgres", () => {
+    it("is refused when it is written without its revision", async () => {
+      await pool.query("delete from dashboard_woo_shops");
+      const account = await anAccount();
+      await expect(
+        pool.query(
+          `insert into dashboard_woo_shops
+             (account_id, shop_url, consumer_key, consumer_secret, permissions, connected_at)
+           values ($1, 'https://shop.example', 'ck_test', 'cs_test', 'read_write', now())`,
+          [account],
+        ),
+      ).rejects.toMatchObject({ code: "23502", column: "revision" });
+    });
+  });
 
   wooShopsContract("on postgres", async () => {
     // Every row gone, so one case cannot read another's; the accounts too,

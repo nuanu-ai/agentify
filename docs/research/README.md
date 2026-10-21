@@ -49,7 +49,7 @@ name. Notes written in Russian stay in Russian.
 | [37-physical-goods](37-physical-goods.md) | selling physical goods: the address, the shipment, the seller's site | ADR-0032 | English | current |
 | [38-service-commission](38-service-commission.md) | ready contracts for taking a commission on each payment | ADR-0037 | Russian | historical |
 | [39-commission-split-experiment](39-commission-split-experiment.md) | a payment into a PullSplit on Base Sepolia, pre-registered, with its data | ADR-0037 | Russian | historical |
-| [40-confirmation-mode-seam](40-confirmation-mode-seam.md) | the seam left for fulfillment against the merchant's confirmation | — | English | current |
+| [40-confirmation-mode-seam](40-confirmation-mode-seam.md) | the seam left for fulfillment against the merchant's confirmation, before the mode was deleted | — | English | historical |
 | [41-woo-parcel-probe](41-woo-parcel-probe.md) | a probe of parcels through a WooCommerce shop, with its script | ADR-0023 | English | current |
 | [42-manual-test-plan](42-manual-test-plan.md) | the manual test plan for the whole product | — | English | current |
 | [43-one-frontend-stack](43-one-frontend-stack.md) | the pre-registered spike that put every surface on React Router | — | English | historical |

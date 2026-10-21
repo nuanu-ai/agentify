@@ -126,6 +126,7 @@ describe("the browser's reading of an API answer", () => {
         progress: { completed: 0, total: 18 },
         checks: [],
         updated_at: "2026-10-13T09:00:00.000Z",
+        target_host: "shop.example",
       },
       {
         status: "running",
@@ -170,6 +171,7 @@ describe("the browser's reading of an API answer", () => {
         progress: { completed: 18, total: 18 },
         checks: checks("partial"),
         updated_at: "2026-10-13T09:00:40.000Z",
+        target_host: "shop.example",
         teaser: {
           score: null,
           coverage: 0.5,

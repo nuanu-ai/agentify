@@ -2,7 +2,7 @@ import type { CheckResult, DiagnosticLevel, ScanJobV1 } from "@agentify/scanner-
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import type { Database } from "./client.js";
-import { browserObservations, scanChecks, scanFingerprints, scans, sessions } from "./schema.js";
+import { browserObservations, scanChecks, scans, sessions } from "./schema.js";
 
 type ScanEvaluationData = {
   checks: CheckResult[];
@@ -16,24 +16,6 @@ type ScanEvaluationData = {
     applicableWeight: number;
     assessedWeight: number;
     earnedWeight: number;
-  };
-  fingerprint: {
-    detectorVersion: string;
-    platform: {
-      value: string;
-      confidence: "high" | "medium" | "low";
-      signals: string[];
-    };
-    wafCdn: Array<{
-      value: string;
-      confidence: "high" | "medium" | "low";
-      signals: string[];
-    }>;
-    pspMarkers: Array<{
-      value: string;
-      confidence: "high" | "medium" | "low";
-      signals: string[];
-    }>;
   };
   findings: { negativeCheckIds: number[]; positiveCheckId?: number };
 };
@@ -168,31 +150,6 @@ export function createScanJobRepository(db: Database) {
           )
           .returning({ id: scans.id });
         if (!updated[0]) return "already_terminal";
-
-        const fingerprint = input.evaluation.fingerprint;
-        await tx
-          .insert(scanFingerprints)
-          .values({
-            scanId: input.scanId,
-            platform: fingerprint.platform.value,
-            platformConfidence: fingerprint.platform.confidence,
-            wafCdn: fingerprint.wafCdn.map(({ value }) => value),
-            pspMarkers: fingerprint.pspMarkers.map(({ value }) => value),
-            feedSignals: [],
-            headerSignals: {},
-            htmlSignals: {},
-            detectorVersion: fingerprint.detectorVersion,
-          })
-          .onConflictDoUpdate({
-            target: scanFingerprints.scanId,
-            set: {
-              platform: fingerprint.platform.value,
-              platformConfidence: fingerprint.platform.confidence,
-              wafCdn: fingerprint.wafCdn.map(({ value }) => value),
-              pspMarkers: fingerprint.pspMarkers.map(({ value }) => value),
-              detectorVersion: fingerprint.detectorVersion,
-            },
-          });
 
         if (input.browserObservation && ["completed", "partial"].includes(score.terminalStatus)) {
           await tx

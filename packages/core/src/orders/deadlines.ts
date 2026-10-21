@@ -68,28 +68,6 @@ export function deadlines(order: Order): readonly Deadline[] {
           ]
         : [];
 
-    case "awaiting_confirmation":
-      return order.timestamps.confirmationRequestedAt === null
-        ? []
-        : [
-            {
-              kind: "confirmation_response",
-              at:
-                order.timestamps.confirmationRequestedAt +
-                order.policy.deadlines.confirmationResponseMs,
-            },
-          ];
-
-    case "confirmed":
-      return order.payment === "none" && order.timestamps.confirmedAt !== null
-        ? [
-            {
-              kind: "payment_after_confirmation",
-              at: order.timestamps.confirmedAt + order.policy.deadlines.paymentAfterConfirmationMs,
-            },
-          ]
-        : [];
-
     case "paid":
     case "dispatched":
       return fulfillmentDeadline(order);
@@ -106,9 +84,7 @@ export function deadlines(order: Order): readonly Deadline[] {
     case "fulfillment_closed":
     case "failed":
     case "rejected":
-    case "declined":
     case "expired":
-    case "cancelled":
       return [];
 
     default:

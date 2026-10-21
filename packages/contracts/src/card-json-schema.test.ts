@@ -60,22 +60,6 @@ describe.each(exports)("$name JSON Schema card modes", ({ validate, wrap }) => {
   it.each([
     ["sync without result", withoutResult, "result"],
     ["async without result", { ...withoutResult, fulfillment: "async" }, "result"],
-    ["confirm", { ...sync, fulfillment: "confirm" }, "fulfillment"],
-    [
-      "sync confirmation deadline",
-      { ...sync, confirm_deadline_seconds: 30 },
-      "confirm_deadline_seconds",
-    ],
-    [
-      "async confirmation deadline",
-      { ...sync, fulfillment: "async", confirm_deadline_seconds: 30 },
-      "confirm_deadline_seconds",
-    ],
-    [
-      "ship confirmation deadline",
-      { ...parcel, confirm_deadline_seconds: 30 },
-      "confirm_deadline_seconds",
-    ],
     [
       "sync delivery deadline",
       { ...sync, fulfill_deadline_seconds: 900 },

@@ -48,18 +48,14 @@ export const ORDER_STATUSES = Object.freeze([
    * looking at its wallet.
    */
   "payment_unresolved",
-  /** The merchant answered a confirmation request with "I will not deliver". */
-  "declined",
   /**
-   * A deadline passed with nobody at fault: the confirmation, the payment that
-   * was to follow it, or the synchronous delivery.
+   * A deadline passed with nothing charged: the price lapsed before the
+   * payment, or the synchronous delivery did not arrive in time.
    */
   "expired",
-  /** The merchant left, and orders still open closed with them. */
-  "cancelled",
   /**
    * The original payment completed and fulfillment did not. The reason says
-   * whether the merchant refused, left or missed the deadline. Later delivery
+   * whether the merchant refused or missed the deadline. Later delivery
    * remains possible until the merchant explicitly closes Agentify fulfillment.
    * This says nothing about a refund or the parties' agreement.
    */

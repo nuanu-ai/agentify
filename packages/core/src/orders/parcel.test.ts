@@ -17,7 +17,7 @@ import type { Effect, Order, OrderEvent, OrderMode, TransitionResult } from "./m
 import { DEADLINE_KINDS, holdsShipTo, modeOf, ORDER_EVENT_KINDS } from "./model.js";
 import { outcomeFor } from "./outcome.js";
 
-const PARCEL: OrderMode = { needsConfirmation: false, settle: "on_purchase", parcel: true };
+const PARCEL: OrderMode = { settle: "on_purchase", parcel: true };
 
 /**
  * A parcel's price, shipping included, is the merchant's own handler's answer,
@@ -124,14 +124,13 @@ describe("a parcel's address", () => {
       code: "cannot_fulfill",
       message: "we do not send parcels there",
     });
-    const departed = must(paid(parcel()), { kind: "merchant_departed", at: T0 + 5 });
     const ranOut = must(handedOver(parcel()), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    for (const { order, effects } of [refused, departed, ranOut]) {
+    for (const { order, effects } of [refused, ranOut]) {
       expect(order.state).toBe("unfulfilled");
       expect(erasures(effects)).toBe(1);
     }
@@ -389,18 +388,11 @@ describe("every parcel the machine can reach", () => {
  * had let it go. Each of the two switches is held on its own.
  */
 const compilerHoldsTheseTrue = (): void => {
-  const settledAfterTheGoods = {
-    needsConfirmation: false,
-    settle: "after_fulfillment",
-    parcel: true,
-  } as const;
-  const confirmedFirst = { needsConfirmation: true, settle: "on_purchase", parcel: true } as const;
+  const settledAfterTheGoods = { settle: "after_fulfillment", parcel: true } as const;
 
   // @ts-expect-error a parcel's money moves before the goods
   const late: OrderMode = settledAfterTheGoods;
-  // @ts-expect-error and nobody is asked before it moves
-  const asked: OrderMode = confirmedFirst;
-  void [late, asked];
+  void late;
 };
 
 void compilerHoldsTheseTrue;

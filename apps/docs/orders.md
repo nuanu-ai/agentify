@@ -18,9 +18,8 @@ in one table on [What can go wrong](/failures).
 | A parcel, `'ship'` | at the moment of purchase, before your shipment | with a carrier, once you record the shipment | as in the asynchronous mode |
 
 The mode is declared in the card under `fulfillment`, and the agent knows it
-before it pays. Three modes can be published today: synchronous,
-asynchronous, and a parcel on the test channel only. A fourth, confirmation,
-is designed and cannot be published. The product decides the mode; which one
+before it pays. There are three: synchronous, asynchronous, and a parcel, which
+is published on the test channel only. The product decides the mode; which one
 yours takes is worked out on [The product card](/cards#goods-that-leave-later-than-the-answer),
 and what the moment of charging means for the owner of the business is on
 [Money](/money).
@@ -284,7 +283,7 @@ What `close` does depends on where the order stands:
 | `payment_unresolved` | `{ ok: true }` | it reads `payment_unresolved` until the payment is known, then `fulfillment_closed`; if the payment went through, you are sent `order.unfulfilled` and the order is on the open list again |
 | already closed by you | `{ ok: true }` | nothing changes: the first time and message stay, except after a payment that went through once you closed (below) |
 | delivered or shipped | `fulfillment_complete`, not retryable | nothing changes, and the receipt stands |
-| ended with nothing charged and nothing held: `rejected`, `expired`, `cancelled` | `nothing_to_close`, not retryable | nothing changes, and the agent keeps the reason it was given |
+| ended with nothing charged and nothing held: `rejected`, `expired` | `nothing_to_close`, not retryable | nothing changes, and the agent keeps the reason it was given |
 
 Closing cannot be undone, and it cannot recall work your handler or your shop
 has already started, so stop that work in your own system. Like `deliver`,
@@ -354,16 +353,15 @@ the list.
 
 Every order carries a `status`, which `orders.get` and `orders.list` return
 and which the agent reads too. The drawings show how the words follow one
-another, and the table after them is the one to write a `switch` from. The
-drawings leave out `declined`, which no order reaches today.
+another, and the table after them is the one to write a `switch` from.
 
 ```mermaid
 flowchart TB
     accTitle: How an order's status changes
-    accDescr: An order starts in_progress. From there it is delivered or shipped; it ends rejected, expired or cancelled with nothing charged; it ends expired with goods held when a synchronous delivery arrives after its deadline; it becomes unfulfilled when it was paid and not delivered in time, refused after the charge, or you left; it becomes delivered_unpaid when a synchronous charge failed after your delivery; and it becomes payment_unresolved when nobody heard whether the charge went through. A late delivery takes an unfulfilled order to delivered or shipped, and the buyer paying again takes a delivered_unpaid order, or an expired order with goods held, to delivered. A payment_unresolved order moves once the payment is known: paid takes a synchronous order to delivered and an order paid at purchase to unfulfilled, and not paid takes a synchronous order to delivered_unpaid and an order paid at purchase to rejected. A delivered_unpaid order whose new charge goes unanswered becomes payment_unresolved.
+    accDescr: An order starts in_progress. From there it is delivered or shipped; it ends rejected or expired with nothing charged; it ends expired with goods held when a synchronous delivery arrives after its deadline; it becomes unfulfilled when it was paid and not delivered in time, or refused after the charge; it becomes delivered_unpaid when a synchronous charge failed after your delivery; and it becomes payment_unresolved when nobody heard whether the charge went through. A late delivery takes an unfulfilled order to delivered or shipped, and the buyer paying again takes a delivered_unpaid order, or an expired order with goods held, to delivered. A payment_unresolved order moves once the payment is known: paid takes a synchronous order to delivered and an order paid at purchase to unfulfilled, and not paid takes a synchronous order to delivered_unpaid and an order paid at purchase to rejected. A delivered_unpaid order whose new charge goes unanswered becomes payment_unresolved.
     IP["in_progress"]
     DS["delivered<br/>or shipped"]
-    NC["rejected, expired<br/>or cancelled"]
+    NC["rejected<br/>or expired"]
     EX["expired,<br/>late goods held"]
     U["unfulfilled"]
     DU["delivered_unpaid"]
@@ -405,12 +403,10 @@ flowchart LR
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
 | `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
-| `cancelled` | you left, and the order ended with nothing charged | no | — |
 | `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to; otherwise leave it, or close fulfillment |
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
 | `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
 | `fulfillment_closed` | you closed fulfillment; `payment_status` says what became of the payment | only when a payment went through after you closed, until you close it again | skips delivering, which is refused; closes it again once you have settled with the buyer |
-| `declined` | the confirmation mode's "I will not deliver", which no order reaches while that mode cannot be published | no | — |
 
 Where we rather than you ended an order and the word alone would leave the
 agent guessing its next step, the status carries a `reason`. `rejected` comes
@@ -426,7 +422,7 @@ paying for the same purchase again from the wallet that signed it releases them.
 
 Where the refusal was yours, your code and your message travel with the status
 instead. An `unfulfilled` order carries a `reason` saying why nothing was
-delivered: `refused`, `deadline_passed` or `merchant_left`. A payment confirmed
+delivered: `refused` or `deadline_passed`. A payment confirmed
 only after its own response deadline also reads `deadline_passed`, although no
 deadline of yours passed. None of these words obliges you to refund.
 
@@ -502,7 +498,7 @@ that happened to an order without you. A handler for them is declared with
 
 | Event | `type` | What it carries |
 | --- | --- | --- |
-| A paid order was left unfulfilled | `order.unfulfilled` | `order_id`, `at`, the original sale `price`, and a `reason`: `refused` after the charge, `deadline_passed`, `merchant_left`, or `paid_after_closure` for a payment that went through after you closed fulfillment |
+| A paid order was left unfulfilled | `order.unfulfilled` | `order_id`, `at`, the original sale `price`, and a `reason`: `refused` after the charge, `deadline_passed`, or `paid_after_closure` for a payment that went through after you closed fulfillment |
 | A payment did not execute after a synchronous delivery | `order.payment_failed_after_delivery` | `order_id` and `at`; the order's own status says whether the charge failed or went unanswered |
 
 An event is sent once and never again, which is the opposite of the rule for
@@ -583,7 +579,6 @@ you closed fulfillment, and its `status` column is the word each one reads.
 | You recorded a parcel's shipment | `shipped` | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after |
 | There is none, or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
 | Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order ended on its deadline |
-| You left | `cancelled`, `unfulfilled` | an unpaid order was not charged; a paid one is in your payout contract | an unpaid order ended; a paid one has no delivery recorded |
 | The money was charged and no delivery happened | `unfulfilled` | in your payout contract | no delivery is recorded, and Agentify confirms no refund |
 | You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the reason `payment_not_settled`: nothing was taken, Agentify holds the goods, and paying for this same purchase again from the same wallet releases them |
 | You closed fulfillment | `fulfillment_closed`, or `payment_unresolved` while the payment is unknown | where `payment_status` says: in your payout contract when `paid` | that you closed fulfillment, with your message as your words, and on a paid order Agentify's own sentence that no refund is confirmed |
@@ -732,10 +727,6 @@ receives one transfer per payout instead.
 - What other events we send. The two named here are a minimum, and we add to
   the catalogue as cases turn up where your side would otherwise learn of
   something only by reconciling by hand.
-- The confirmation mode, in which you are asked whether you will deliver and
-  the buyer is charged after your yes. Its request has no shape on the wire
-  yet and the agent's side of it is not designed, so a card in that mode is
-  refused at publication.
 - Telling your code that a synchronous answer arrived after its deadline. The
   answer carries the word; the tools drop it, because they report only the
   answers we refuse.
