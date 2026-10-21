@@ -133,6 +133,8 @@ export type SignInView =
       email: string;
       destination: DashboardDestination;
       answer: LinkAnswer;
+      /** Offered where a limit that no other address escapes refused the link. */
+      googleEnabled: boolean;
       clickId?: string;
     }>
   | Readonly<{ screen: "unavailable"; clickId?: string }>;
@@ -833,7 +835,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 202,
           ...("wall" in answer ? { headers: { "retry-after": String(answer.seconds) } } : {}),
-          view: { screen: "requested", email, destination, answer, ...carried },
+          view: {
+            screen: "requested",
+            email,
+            destination,
+            answer,
+            googleEnabled: identity.googleEnabled,
+            ...carried,
+          },
         };
       },
 

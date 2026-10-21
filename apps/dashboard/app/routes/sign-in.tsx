@@ -48,6 +48,7 @@ export default function SignIn() {
         email={view.email}
         destination={view.destination}
         answer={view.answer}
+        googleEnabled={view.googleEnabled}
         {...(view.clickId === undefined ? {} : { clickId: view.clickId })}
       />
     );

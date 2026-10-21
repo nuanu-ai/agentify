@@ -42,8 +42,12 @@ export type LinkDestination = DashboardDestination | Readonly<{ report: string }
 /**
  * The waits differ by an order of magnitude (under a minute against most of an
  * hour), so a page that says how long to wait has to know which one it hit.
+ * `interval` and `hourly` are the address's own limits; `client` is the hour's
+ * allowance of the client address the request came from, and `ceiling` the
+ * channel's for everybody. Neither of the last two depends on the address
+ * typed, so neither says anything about it.
  */
-export type LinkWall = "interval" | "hourly";
+export type LinkWall = "interval" | "hourly" | "client" | "ceiling";
 
 /**
  * Both answers carry the moment the address may ask again: a refusal's is the

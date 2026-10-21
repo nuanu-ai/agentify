@@ -159,23 +159,31 @@ function WaitingButton({
  * earlier link leads, since it may have been asked for elsewhere, and not
  * delivery, since the provider's side is unknown here. It says a link went to
  * this address.
+ *
+ * A refusal by the client's or the channel's hour reads the same for every
+ * address, so it cannot tell anybody which of them has an account. Another
+ * address would be refused as well, so these two offer Google instead of a
+ * different address.
  */
 export function LinkRequestedScreen({
   chrome,
   email,
   destination,
   answer,
+  googleEnabled,
   clickId,
 }: Readonly<{
   chrome: Chrome;
   email: string;
   destination: DashboardDestination;
   answer: LinkAnswer;
+  googleEnabled: boolean;
   clickId?: string;
 }>) {
   const pressed = usePressed();
   const wall = "wall" in answer ? answer.wall : null;
-  const heading = wall === "hourly" ? "Try again later" : "Check your mail";
+  const anyAddressRefused = wall === "client" || wall === "ceiling";
+  const heading = wall === null || wall === "interval" ? "Check your mail" : "Try again later";
   return (
     <GatePage chrome={chrome} title={heading}>
       <div className="gate-card">
@@ -209,11 +217,21 @@ export function LinkRequestedScreen({
               ask for another as soon as the minute is up.
             </p>
           </>
-        ) : (
+        ) : wall === "hourly" ? (
           <>
             <p>
               No new link was sent to <strong>{email}</strong>. One email address gets three links
               an hour, and this one has had its three.
+            </p>
+            <p className="problem">Try again in {waitInWords(answer.seconds)}.</p>
+          </>
+        ) : (
+          <>
+            <p>
+              No link was sent to <strong>{email}</strong>.{" "}
+              {wall === "client"
+                ? "Many sign-in links have been asked for from your internet connection in the last hour, so it has to wait before it can ask for another, whichever address is typed."
+                : "More sign-in links than usual have been asked for in the last hour, so email sign-in links are paused for everybody for a while."}
             </p>
             <p className="problem">Try again in {waitInWords(answer.seconds)}.</p>
           </>
@@ -228,11 +246,24 @@ export function LinkRequestedScreen({
             label="Send another link"
           />
         </Form>
-        <Form method="get" action="/sign-in">
-          <Destination destination={destination} />
-          <Click clickId={clickId} />
-          <Button variant="secondary">Use a different address</Button>
-        </Form>
+        {anyAddressRefused ? (
+          googleEnabled ? (
+            <>
+              <p className="or">Signing in with Google works in the meantime.</p>
+              <Form method="post" action="/sign-in/google" reloadDocument>
+                <Destination destination={destination} />
+                <Click clickId={clickId} />
+                <GoogleButton />
+              </Form>
+            </>
+          ) : null
+        ) : (
+          <Form method="get" action="/sign-in">
+            <Destination destination={destination} />
+            <Click clickId={clickId} />
+            <Button variant="secondary">Use a different address</Button>
+          </Form>
+        )}
       </div>
     </GatePage>
   );
