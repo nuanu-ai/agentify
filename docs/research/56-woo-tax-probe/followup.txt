@@ -1,0 +1,16 @@
+follow-up by hand after the run, 2026-10-21T10:14:35Z: the Seattle shop's download cart placed at the shop's own locality
+
+######## mode us taxable
+mode us: base US:WA, calc_taxes yes, prices_include_tax no, shipping taxable, flat no, rates 2
+ download 20 at 1.00, cart placed at US WA Seattle 98101
+  cart: items 1.00 +tax 0.11 | shipping 0.00 +tax 0.00 | total_tax 0.11 | total_price 1.11 | tax_lines [('WA State', '6.5%', '0.07'), ('Seattle', '4.05%', '0.04')]
+  cart line: prices.price 1.00 line_subtotal 1.00 line_subtotal_tax 0.11
+ download 26 at 19.95, cart placed at US WA Seattle 98101
+  cart: items 19.95 +tax 2.11 | shipping 0.00 +tax 0.00 | total_tax 2.11 | total_price 22.06 | tax_lines [('WA State', '6.5%', '1.30'), ('Seattle', '4.05%', '0.81')]
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 2.11
+ download 28 at 99.99, cart placed at US WA Seattle 98101
+  cart: items 99.99 +tax 10.55 | shipping 0.00 +tax 0.00 | total_tax 10.55 | total_price 110.54 | tax_lines [('WA State', '6.5%', '6.50'), ('Seattle', '4.05%', '4.05')]
+  cart line: prices.price 99.99 line_subtotal 99.99 line_subtotal_tax 10.55
+
+######## mode off none
+mode off: base US:CA, calc_taxes no, prices_include_tax no, shipping none, flat no, rates 0
