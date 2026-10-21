@@ -54,13 +54,12 @@ import {
   shipmentInTheShop,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
-import {
-  type QuoteBinding,
-  rateOfTheConnection,
-  type WooConnection,
-  type WooOrderFacts,
-  type WooPermission,
-  type WooShops,
+import type {
+  QuoteBinding,
+  WooConnection,
+  WooOrderFacts,
+  WooPermission,
+  WooShops,
 } from "./woo-shops.js";
 
 /**
@@ -995,7 +994,11 @@ export const quoteFromTheShop = async (
   const rate =
     price.currency === "USD"
       ? null
-      : await rateOfTheConnection(parts.shops, connection, price.currency);
+      : await parts.shops.currentRate(
+          connection.accountId,
+          new URL(connection.shopUrl).origin,
+          price.currency,
+        );
   if (price.currency !== "USD" && rate === null) {
     return unpriced(`the shop sells in ${price.currency}, and no rate is set for it`);
   }

@@ -51,13 +51,7 @@ import {
   type ShopKeys,
   type WooOrderLookup,
 } from "./woo-shop.js";
-import {
-  rateOfTheConnection,
-  type ShopCurrency,
-  type ShopTotal,
-  type WooConnection,
-  type WooShops,
-} from "./woo-shops.js";
+import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-shops.js";
 import {
   type ImportOutcome,
   type ShopAnswer,
@@ -354,7 +348,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     const currency = connection?.currency ?? null;
     if (connection === null || currency === null || currency.code === "USD") return null;
     const [current, read] = await Promise.all([
-      rateOfTheConnection(shops, connection, currency.code),
+      shops.currentRate(person.id, originOf(connection), currency.code),
       reference(currency.code),
     ]);
     return { currency, current, reference: read };
@@ -440,7 +434,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     if (sells !== null) await shops.noteCurrency(person.id, sells);
     let rate: string | null = null;
     if (sells !== null && sells.code !== "USD") {
-      const current = await rateOfTheConnection(shops, connection, sells.code);
+      const current = await shops.currentRate(person.id, originOf(connection), sells.code);
       if (current === null) {
         // A rate is a setting of the merchant's, as a wallet or a site is.
         await resulted({ outcome: "blocked", reason_code: "profile_missing" });
@@ -828,7 +822,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         );
       }
       const shopOrigin = originOf(connection);
-      const previous = await rateOfTheConnection(shops, connection, currency.code);
+      const previous = await shops.currentRate(person.id, shopOrigin, currency.code);
       const setAt = new Date();
       // Handed over before the rate is written: a rate nobody was told of could
       // sell the shop's goods for cents unseen, so no notice means no rate.

@@ -45,7 +45,7 @@ const CONNECTION: WooConnection = {
   ...KEYS,
   permissions: "read_write",
   revision: "grant_1",
-  connectedAt: new Date("2026-10-01T08:00:00.000Z"),
+  connectedAt: NOW,
   currency: { code: "IDR", decimals: 0 },
 };
 
@@ -791,17 +791,5 @@ describe("a paid order whose price bound a rupiah amount to no rate", () => {
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(placed).toEqual([]);
-  });
-});
-
-describe("a rate saved before the shop was connected again", () => {
-  it("prices nothing, so a reconnected shop sells only at a rate set since", async () => {
-    const shops = memoryWooShops();
-    await shops.saveRate("acc_1", SHOP, RATE);
-    const reconnected = { ...CONNECTION, revision: "grant_2", connectedAt: NOW };
-
-    const answer = await quoteFromTheShop(reconnected, QUESTION, NOW, parts(shops));
-
-    expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
   });
 });

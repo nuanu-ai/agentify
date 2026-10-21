@@ -256,9 +256,7 @@ answer, the rate is saved all the same, with a note that it was not compared
 with anything. Every rate saved is sent to your account's email address with
 the rate before it, and a rate whose message could not be sent is not saved,
 because a rate nobody was told of could sell your goods for cents unseen.
-Every rate you have saved is kept, and a rate belongs to the connection it was
-set under: once you disconnect the shop and connect it again, or connect again
-to renew its keys, nothing is published or sold until you set a rate again.
+Every rate you have saved is kept.
 
 Your rate keeps selling until you change it, however old it is: the page shows
 when you set it and how far it now stands from Coinbase's, and keeping it

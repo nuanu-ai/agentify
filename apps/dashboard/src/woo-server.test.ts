@@ -3118,18 +3118,36 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
     });
 
-    it("asks for a rate again once the shop is disconnected and connected again", async () => {
-      const running = await started(inRupiah);
+    it("says the rate was saved when the import it runs finds the shop now sells in another currency", async () => {
+      const running = await started({
+        ...inRupiah,
+        catalogue: async () => ({
+          ok: true,
+          products: [
+            aProduct({ prices: { price: "1450", currency_code: "EUR", currency_minor_unit: 2 } }),
+          ],
+        }),
+        inspectProduct: async (_keys, merchantItemId) => ({
+          ok: true,
+          product: {
+            kind: "download",
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_sarong",
+            fileName: "Sarong pattern.pdf",
+            price: { amount: "14.50", currency: "EUR" },
+            fingerprint: "sarong-in-euros",
+            tax: { mode: "off" as const },
+          },
+        }),
+      });
       await connectedIn(running);
-      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
-      await running.get("/woocommerce");
-      await running.post("/woocommerce/disconnect");
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
-      await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
 
-      const screen = await running.get("/woocommerce");
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
 
-      expect(readable(screen.html)).toContain("Nothing is published until you set one");
+      const said = readable(saved.html);
+      expect(said).toContain("Your rate of 18000 IDR per US dollar was saved");
+      expect(said).toContain("your shop sells in EUR");
+      expect(await pricesOnSale(running)).toEqual([]);
     });
 
     it("is refused for a shop priced in US dollars", async () => {

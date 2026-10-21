@@ -382,28 +382,6 @@ const claimOf = (row: {
   return { kind: "unknown", attemptedAt: row.attemptedAt };
 };
 
-/**
- * The rate a connection sells at: the shop's latest for the currency, saved
- * since the shop was connected. A rate is a setting of the connection, so a
- * shop disconnected and connected again, keys renewed included, is asked for
- * one again rather than selling at a rate set before, which stays in the
- * history all the same.
- */
-export const rateOfTheConnection = async (
-  shops: Pick<WooShops, "currentRate">,
-  connection: Pick<WooConnection, "accountId" | "shopUrl" | "connectedAt">,
-  currency: string,
-): Promise<SavedRate | null> => {
-  const latest = await shops.currentRate(
-    connection.accountId,
-    new URL(connection.shopUrl).origin,
-    currency,
-  );
-  return latest !== null && latest.setAt.getTime() >= connection.connectedAt.getTime()
-    ? latest
-    : null;
-};
-
 const currencyOfRow = (row: {
   readonly currency: string | null;
   readonly currencyDecimals: number | null;
