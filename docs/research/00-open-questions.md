@@ -24,7 +24,6 @@ and git keeps the entries that were here.
 | Paging and search in the dashboard's lists of cards, orders and receipts, which hold hundreds of orders without breaking but let one be found only by eye | product owner | — |
 | Selling through a WooCommerce shop and one's own code at once: the design is ready (a card remembers the integration that published it, one queue per integration) and is built when a real merchant needs it | product owner | ADR-0036 |
 | How a connected WooCommerce shop's cards follow its products as they are added, changed and removed; today only a manual import, which takes nothing off sale | product owner | ADR-0023 |
-| Whether the WooCommerce connector sells in a shop's own currency at that currency's decimals, such as rupiah written with none: of 29 Indonesian WooCommerce shops measured, 1 could connect, conditionally, and the rule that a shop prices in US dollars alone stops 9 | product owner | `55-woo-shop-census.md` |
 | How a "not available" answer to a price check gives its reason, so an agent can tell "out of stock" from "not shipped there" and from "the address lacks what the merchant needs" | product owner | `37-physical-goods.md` |
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
 | A seller's name and site are read as they are now, also in orders already delivered, so a renamed seller shows the new name on an old order | product owner | ADR-0034 |
@@ -38,6 +37,7 @@ and git keeps the entries that were here.
 | Whether Coinbase Wallet pays the network fee in USDC with no paymaster of ours, and what a first payout does when the wallet holds no USDC yet; checked by hand on the test channel | product owner | `48-merchant-wallet-onboarding.md` |
 | The smallest price production settles: the facilitator refuses amounts under a minimum it does not publish while publication accepts 0.001 USD, and production is not to be measured (2026-09-25), so this returns when a merchant prices under a cent | product owner | `36-zero-price.md` |
 | Who pays for the purchase that first lists a card in the Bazaar, which at a real price sends the merchant its own price from Agentify's wallet | product owner, when a merchant with expensive goods arrives | `04-spike-bazaar-listing.md` |
+| Whether an Indonesian merchant may accept USDC through Agentify for goods priced in rupiah, given the Currency Law's requirement of the rupiah for payments in Indonesia and Bank Indonesia's position that crypto assets are not a means of payment, and what that makes of Agentify's own part; answered before an Indonesian shop sells on the live channel | product owner, with legal counsel | `58-woo-shop-currency.md` |
 
 ## Before parcels sell on the live channel
 

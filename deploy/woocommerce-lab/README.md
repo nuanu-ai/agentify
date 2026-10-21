@@ -144,10 +144,10 @@ host after a reset, priced in rupiah by default or in US dollars when asked:
 ./realistic-profile.sh USD    # US dollars, with cents
 ```
 
-The connector refuses a shop that prices in rupiah when it is connected,
-because it sells in US dollars only. The rupiah shop is the one the census
-found, and it is the one for a story about that refusal; a story that must
-connect and sell uses the same shop priced in dollars. The script can be run
+The rupiah shop is the one the census found. The connector sells from it at
+a rate its merchant sets on the dashboard's WooCommerce page, and publishes
+nothing from it until one is set; a story about a shop priced in dollars uses
+the same shop priced in dollars. The script can be run
 again over a shop that already holds the profile, in either currency, and
 rebuilds the same catalogue. It is not part of the baseline: a reset returns
 the shop to the baseline, and unlike a reset the profile downloads its plugins

@@ -27,9 +27,9 @@ address comes from that Connect, never from the callback. Requests go only to
 that checked and pinned public address, with TLS host verification and no
 redirect off the shop.
 
-Two classes of simple product in US dollars are imported from a shop at its root
-address, by the conditions the merchant guide lists
-(`apps/docs/woocommerce.md`), and anything else is named and skipped. A card is
+Two classes of simple product are imported from a shop at its root address, by
+the conditions the merchant guide lists (`apps/docs/woocommerce.md`), and
+anything else is named and skipped. A card is
 priced at every purchase, and an accepted price answer durably binds its
 `price_id` to a fingerprint of the product and the settings it is sold under,
 which the product read at payment must match. A download is virtual and
@@ -50,7 +50,8 @@ as sent, Completed in the shop is its shipment, and the connector keeps and logs
 nothing of the address.
 
 What a sale from a shop that calculates tax means, and the one-cent match of
-every shop's order to its payment, are ADR-0041.
+every shop's order to its payment, are ADR-0041. A shop priced in another currency than US
+dollars sells at a rate its merchant sets, as ADR-0044 records.
 
 The dashboard fills orders as the merchant's worker in the process it shares
 with the gateway ([research 35](../research/35-one-process.md)), recording one

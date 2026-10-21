@@ -40,7 +40,10 @@ whose catalogue shows prices otherwise than they are entered is not sold from,
 because the import reads the price as shown and a buyer pays it as entered.
 
 An order from any shop, tax on or off, is taken on when its total is what was
-paid or within one cent of it, either way (the product owner, 2026-10-21). The
+paid or within one cent of it, either way (the product owner, 2026-10-21). In a
+shop priced in another currency the cent is one of the shop's smallest written
+units, and the order is held to the amount the price bound in that currency
+(ADR-0044). The
 difference is recorded on the shop's order, which carries what was paid beside
 its own total, and in the connector's record of the sale, which the merchant's
 Orders screen reads. An order further from what was paid is not taken on. A

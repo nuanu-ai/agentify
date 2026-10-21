@@ -579,3 +579,25 @@ the rate changes after a price answer; whether the buyer is told anything
 about the seller's rate, which would mean a field in the public contract;
 saving a rate re-running the import; and the decision record drafted above.
 The legal frame is for his counsel.
+
+## What was built
+
+The product owner's word of 2026-10-21 settled the points left open above
+([ADR-0044](../decisions/0044-a-shop-in-another-currency-sells-at-its-merchants-rate.md)),
+and the build departs from this proposal in these places. The scope reads
+"zero or two" as the shop's Number of decimals alone, the setting every total
+is matched at, and no ISO table is consulted, so a shop in a three-decimal
+currency that writes its prices with two is admitted. The notice of a saved
+rate goes to the email address of the account that connected the shop, the
+one the connection and the rate belong to, rather than to every account of the
+merchant, and it is handed to the mail before the rate is written: a rate whose
+notice could not be sent is not saved, and the screen says so. The rate history
+keeps the reference shown and whether the rate was typed a second time, but not
+the difference between them, which follows from the two. Rate versions rise
+across all shops rather than per shop. The connection remembers the currency
+and decimals last read, at Connect from the public catalogue and at each import
+from the shop's own settings, so the screen can ask for the right rate without
+reading the shop; nothing is priced from that copy. The product a mistyped rate
+is shown against is the first one the shop's public catalogue lists, read when
+the guard is shown. The one-cent match, read in the shop's currency as one of
+its smallest written units, was confirmed by the product owner the same day.

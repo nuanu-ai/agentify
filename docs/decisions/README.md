@@ -51,6 +51,7 @@ written in; the rest are in English.
 | [0043](0043-the-purchase-door-refuses-before-any-charge.md) | At most twenty of a merchant's purchases wait for payment at once; a purchase charged before its goods is refused while the merchant's own code has not polled for ten minutes; an attempt that ended with nothing charged or held is deleted thirty days on. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
 | [0041](0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md) | A WooCommerce shop that calculates tax is sold from where its cart and its order agree: downloads only with prices entered including tax, parcels at the cart's total, tax rounded at the subtotal, and every shop's order taken on within one cent of the payment, the difference recorded. |
+| [0044](0044-a-shop-in-another-currency-sells-at-its-merchants-rate.md) | A WooCommerce shop priced in another currency, one Coinbase gives a rate for at no decimals or two, sells at a rate its merchant sets and Agentify keeps every version of; a price binds the shop's amount, the dollars and the rate, and the shop's order is matched in its own currency. |
 
 ### Parcels
 
