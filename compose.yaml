@@ -515,9 +515,9 @@ services:
       # Mandatory in Caddy, so that no stack falls back to a front page nobody
       # chose.
       AGENTIFY_FRONT_PAGE: scanner_front_page
-      # Set by hand because Caddy cannot derive it from the chain, so the release
-      # checks it against the channel before anything starts and against the
-      # rendered pages afterwards.
+      # Set by hand because Caddy cannot derive it from the chain, so the
+      # release's preflight checks it against the channel before anything
+      # starts.
       AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
       # What the scanner's pages in the documentation say of the site and its
       # operator, filled in when Caddy serves them, from the very values the

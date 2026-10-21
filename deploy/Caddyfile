@@ -259,10 +259,10 @@
 
 			try_files {path} {path}.html
 			# AGENTIFY_SURFACE_MODE is set by hand rather than derived (Caddy cannot
-			# read the chain identifier), so the release checks it against the
-			# channel before anything starts and against the rendered pages
-			# afterwards. Comment-shaped delimiters keep the files readable without
-			# Caddy; `mime` keeps templating off stylesheets, scripts and data.
+			# read the chain identifier), so the release's preflight checks it
+			# against the channel before anything starts. Comment-shaped delimiters
+			# keep the files readable without Caddy; `mime` keeps templating off
+			# stylesheets, scripts and data.
 			templates {
 				mime text/html
 				between <!--{{ }}-->
