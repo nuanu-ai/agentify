@@ -15,11 +15,7 @@ import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "dr
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
-import {
-  type AnalyticsEvent,
-  record as recordEvent,
-  recordObserved,
-} from "../../analytics/index.js";
+import { type AnalyticsEvent, record, recordObserved } from "../../analytics/index.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -101,6 +97,20 @@ const noEnvelopes: Envelopes = {
   },
   committed() {},
 };
+
+/**
+ * Records an analytics event inside the caller's transaction, under a
+ * savepoint of its own: it commits or rolls back with the caller's writes,
+ * and an outbox that cannot take it costs the event and one log line, never
+ * the order or the payment it is written beside.
+ */
+async function recordAlong(tx: Queries, event: AnalyticsEvent, at: Date): Promise<void> {
+  try {
+    await tx.transaction((savepoint) => record(savepoint, event, at));
+  } catch (thrown) {
+    console.error(`[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+  }
+}
 
 /** Somewhere a statement can be run: the pool, or a transaction on it. */
 type Queries = NodePgDatabase | Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
@@ -718,7 +728,7 @@ export class PostgresStore implements Store {
         // Recorded ahead of the insert, so an insert refused as a duplicate
         // takes the event back with it.
         if (analytics !== undefined) {
-          await recordEvent(tx, analytics, new Date(record.order.timestamps.createdAt));
+          await recordAlong(tx, analytics, new Date(record.order.timestamps.createdAt));
         }
         await tx.insert(orders).values(rowFor(record));
         return true;
@@ -931,7 +941,7 @@ export class PostgresStore implements Store {
       // events back with it.
       const observed = saved === undefined ? [] : (analytics?.(row.record, saved) ?? []);
       for (const { event, at } of observed) {
-        await recordEvent(tx, event, new Date(at));
+        await recordAlong(tx, event, new Date(at));
       }
 
       // The writes that must not be lost go in this transaction, so a process
