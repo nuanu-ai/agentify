@@ -9,7 +9,12 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
-import type { AnalyticsEvent, DashboardViewed, UiBlocked } from "@agentify/gateway/analytics";
+import type {
+  AnalyticsEvent,
+  AuthResult,
+  DashboardViewed,
+  UiBlocked,
+} from "@agentify/gateway/analytics";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
@@ -146,6 +151,19 @@ const refusedAs = (answer: Answer<unknown> & { ok: false }): Blocked =>
               : { outcome: "blocked", reason_code: "unknown" };
 
 const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input" };
+
+/** A sign-in link that is unknown, expired, spent or missing. */
+const LINK_REFUSED: AuthResult = {
+  name: "agc_auth_result",
+  actor: "human",
+  source: "dashboard",
+  fields: {
+    method: "email_link",
+    stage: "verify",
+    outcome: "blocked",
+    reason_code: "invalid_link",
+  },
+};
 
 /** Which stack this is, said on every page; nothing is said on the live one. */
 export interface Surface {
@@ -994,6 +1012,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const token = typeof named === "string" ? named : "";
         const link = token === "" ? null : await identity.landingOf(token);
         if (link === null) {
+          // Decided here: the page drawn has no press, so nothing after it
+          // records this refusal again.
+          observe(LINK_REFUSED);
           return await refuseLink(cookie);
         }
         return {
@@ -1006,20 +1027,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async open(cookie, form) {
         const named = once(form.getAll("token"));
         const token = typeof named === "string" ? named : "";
-        if (token === "") {
-          // Decided here; a token the identity is asked about is its own to record.
-          observe({
-            name: "agc_auth_result",
-            actor: "human",
-            source: "dashboard",
-            fields: {
-              method: "email_link",
-              stage: "verify",
-              outcome: "blocked",
-              reason_code: "invalid_link",
-            },
-          });
-        }
+        // Decided here; a token the identity is asked about is its own to record.
+        if (token === "") observe(LINK_REFUSED);
         const opened =
           token === "" ? { status: "refused" as const } : await identity.openLink(token);
         if (opened.status === "refused") {
