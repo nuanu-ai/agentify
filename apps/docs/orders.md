@@ -631,7 +631,8 @@ agent signs, so a repeat names the order it repeats and we carry that order on
 from where it stopped.
 
 To recover a lost answer, the agent signs a new payment for that same payment
-request from the same wallet, and once the facilitator verifies it, the agent
+request from the same wallet, and once Agentify has checked that signature,
+without asking the facilitator and whatever the wallet holds now, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
 is charged again once paid, so recovery always signs the kept request again. The payment

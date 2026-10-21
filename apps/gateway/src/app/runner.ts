@@ -127,7 +127,7 @@ export type PresentResult =
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
   /** A payment fit only to return a paid purchase, for an order that would now charge it. */
-  | { readonly kind: "payee_left" }
+  | { readonly kind: "only_returns" }
   | { readonly kind: "no_such_order" };
 
 /** What one hold on an order came to, before its effects are carried out. */
@@ -150,7 +150,7 @@ type PresentDecided =
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
-  | { readonly kind: "payee_left" };
+  | { readonly kind: "only_returns" };
 
 export type Applied =
   | {
@@ -444,9 +444,9 @@ export class OrderRunner {
       readonly recovery?: PaymentRecoveryContext;
       readonly fingerprint: string;
       /**
-       * Checked against the split a paid order's money went to, which is no
-       * longer where its merchant is paid, so the payment may return the
-       * purchase and must not be charged.
+       * Checked only to give back a paid purchase, so it must not be charged:
+       * by this gateway alone, or against the split a paid order's money went
+       * to, which is no longer where its merchant is paid.
        */
       readonly onlyReturns?: boolean;
     },
@@ -473,9 +473,9 @@ export class OrderRunner {
           return { result: { kind: "already_yours", state: found.order.state } };
         }
         // The order came to take a new charge while the payment was checked,
-        // and charged now its money would go to a wallet the merchant left.
+        // and the payment was checked only to give a paid purchase back.
         if (verified?.onlyReturns === true) {
-          return { result: { kind: "payee_left" } };
+          return { result: { kind: "only_returns" } };
         }
 
         let order = found.order;

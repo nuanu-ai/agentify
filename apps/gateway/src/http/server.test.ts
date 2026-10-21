@@ -17,6 +17,7 @@ import {
   theMerchantKey,
   workUntilStopped,
 } from "../testing/harness.js";
+import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { buildApp, refusal } from "./server.js";
 import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
@@ -1193,17 +1194,18 @@ describe("what an agent is told when the money is not settled", () => {
 });
 
 describe("whose purchase it is", () => {
-  /** A payment signed by one address, against a challenge that was issued. */
-  const paidBy = (challenge: string, from: string, nonce: string) => {
+  /**
+   * A payment signed by one address's wallet, against a challenge that was
+   * issued, valid for as long as the challenge asks from the harness's now.
+   */
+  const paidBy = async (challenge: string, from: string, nonce: string) => {
     const accepted = decodePaymentRequiredHeader(challenge).accepts[0];
     if (accepted === undefined) throw new Error("no payment option was offered");
-    return encodePaymentSignatureHeader({
-      x402Version: 2,
-      accepted,
-      payload: {
-        signature: "0xsigned",
-        authorization: { from, to: PAY_TO, value: "80000000", nonce },
-      },
+    if (open === null) throw new Error("no gateway is running to pay");
+    const wallet = from === BUYER ? BUYER_WALLET : STRANGER_WALLET;
+    return signedPayment(wallet, accepted, {
+      nonce,
+      validBefore: open.harnessed.now() + accepted.maxTimeoutSeconds * 1_000,
     });
   };
 
@@ -1215,8 +1217,10 @@ describe("whose purchase it is", () => {
     return priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
   };
 
-  const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  const STRANGER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const BUYER_WALLET = aWallet("the buyer");
+  const STRANGER_WALLET = aWallet("somebody else");
+  const BUYER = BUYER_WALLET.address.toLowerCase();
+  const STRANGER = STRANGER_WALLET.address.toLowerCase();
 
   // Both payments are held at verification and released together, so the
   // in-lock ownership guard decides and not scheduling. The tests must not
@@ -1231,8 +1235,8 @@ describe("whose purchase it is", () => {
 
   const raceTwoPayments = async (served: Served, harnessed: Harness, itemId: string) => {
     const challenge = await challengeFor(served, itemId);
-    const buyerHeader = paidBy(challenge, BUYER, "0x01");
-    const strangerHeader = paidBy(challenge, STRANGER, "0x02");
+    const buyerHeader = await paidBy(challenge, BUYER, "0x01");
+    const strangerHeader = await paidBy(challenge, STRANGER, "0x02");
 
     const release = harnessed.facilitator.holdVerification();
     const race = Promise.all([
@@ -1328,13 +1332,13 @@ describe("whose purchase it is", () => {
     harnessed.facilitator.willVerify({ verified: "unknown", message: "not asked yet" });
     await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: paidBy(challenge, BUYER, "0x01") },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },
     });
 
     harnessed.facilitator.willRefuseVerification("signature", "not a signature at all");
     const meddling = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: paidBy(challenge, STRANGER, "0x02") },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, STRANGER, "0x02") },
     });
 
     expect(meddling.status).toBe(409);
@@ -1355,8 +1359,8 @@ describe("whose purchase it is", () => {
       { settled: true, transaction: "0xsecond" },
     );
     const challenge = await challengeFor(served, itemId);
-    const first = paidBy(challenge, BUYER, "0x01");
-    const repeat = paidBy(challenge, BUYER, "0x02");
+    const first = await paidBy(challenge, BUYER, "0x01");
+    const repeat = await paidBy(challenge, BUYER, "0x02");
 
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
@@ -1401,13 +1405,13 @@ describe("whose purchase it is", () => {
 
     const bought = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: paidBy(challenge, BUYER, "0x01") },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },
     });
     expect(bought.status).toBe(200);
 
     const stranger = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: paidBy(challenge, STRANGER, "0x02") },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, STRANGER, "0x02") },
     });
 
     expect(stranger.status).toBe(409);

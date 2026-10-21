@@ -47,6 +47,12 @@ export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
 const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 
+/**
+ * How far another clock may differ from ours: an agent's when it sets an
+ * authorization's expiry, and the chain's when recovery searches by time.
+ */
+export const CLOCK_SKEW_SECONDS = 30;
+
 /** Where in the requirements' `extra` the order's payment reference is written. */
 export const PAYMENT_REF_IN_EXTRA = "payment_ref";
 

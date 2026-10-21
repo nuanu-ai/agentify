@@ -11,6 +11,7 @@ import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
+import type { PaymentChain } from "../ports/payment-chain.js";
 import type { Queue } from "../ports/queue.js";
 import type {
   Integration,
@@ -38,6 +39,12 @@ export interface Runtime {
    * answered with, measured by the code that writes the header.
    */
   readonly widestChallenge: (card: Card) => number;
+  /**
+   * The chain a payment for an order already paid is read against, absent
+   * where no chain endpoint is configured. A contract wallet's signature for
+   * such an order then goes to the payment layer like any other payment.
+   */
+  readonly chain?: PaymentChain;
 }
 
 export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {

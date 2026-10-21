@@ -269,6 +269,15 @@ export type OrderLookup<T> =
   | { readonly found: true; readonly result: T }
   | { readonly found: false };
 
+/**
+ * The order holding a payment's claim, and whether it kept the claim because
+ * the payment was taken for it.
+ */
+export interface ClaimHolder {
+  readonly orderId: string;
+  readonly retained: boolean;
+}
+
 /** Whether a payment is this order's to spend. */
 export type PaymentClaim =
   | { readonly claimed: true }
@@ -818,6 +827,14 @@ export interface Store {
    * authorisation be spent once at each merchant.
    */
   claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim>;
+
+  /**
+   * Who holds the claim on a payment, or null where nobody does; it claims
+   * nothing. A payment checked without the payment layer is refused when
+   * another order holds it, or this order kept it, before anything about the
+   * order is compared with it.
+   */
+  paymentClaimHolder(fingerprint: string): Promise<ClaimHolder | null>;
 
   /**
    * Lets go of a claim this order took and then could not use because the

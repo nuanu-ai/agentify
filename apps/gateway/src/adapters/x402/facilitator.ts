@@ -23,6 +23,7 @@ import { getDefaultAsset } from "@x402/evm";
 import {
   atomicUnits,
   authorisedUntil,
+  CLOCK_SKEW_SECONDS,
   PAYMENT_REF_IN_EXTRA,
   type PaymentEdge,
 } from "../../http/x402.js";
@@ -36,12 +37,6 @@ import type {
   VerifyOutcome,
 } from "../../ports/facilitator.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
-
-/**
- * How far another clock may differ from ours: an agent's when it sets an
- * authorization's expiry, and the chain's when recovery searches by time.
- */
-const CLOCK_SKEW_SECONDS = 30;
 
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;

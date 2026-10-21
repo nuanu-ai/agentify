@@ -62,8 +62,10 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { isAddress } from "viem";
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
+import { PaymentEdge } from "../http/x402.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
@@ -99,6 +101,7 @@ import {
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
+import { returningPayment } from "./returning-payment.js";
 import {
   endingSentenceOf,
   OrderRunner,
@@ -260,12 +263,7 @@ export type PurchaseAttempt =
   | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
-  | {
-      readonly step: "payment_already_spent";
-      readonly heldBy: string;
-      /** Whether that order is still one an agent could collect anything from. */
-      readonly collectable: boolean;
-    }
+  | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
   | { readonly step: "payment_not_taken"; readonly why: string; readonly retryable: boolean }
   /** The payment layer did not vouch for this payment; nothing was touched. */
@@ -376,10 +374,12 @@ export class Gateway {
    * would take the next order.
    */
   readonly #held = new Map<string, Set<HeldPoll>>();
+  readonly #edge: PaymentEdge;
 
   constructor(runtime: Runtime) {
     this.runtime = runtime;
     this.runner = new OrderRunner(runtime);
+    this.#edge = new PaymentEdge(runtime.config);
   }
 
   /**
@@ -1398,19 +1398,39 @@ export class Gateway {
       payingMerchant === null
         ? null
         : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
-    const payTo =
-      before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order)
-        ? before.payTo
-        : payeeNow;
-    const onlyReturns = payTo?.toLowerCase() !== payeeNow?.toLowerCase();
+    const paidFor =
+      before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order);
+    const payTo = paidFor ? before.payTo : payeeNow;
 
-    const verified = await this.runtime.facilitator.verify({
-      paymentRef: before.paymentRef,
-      amount: price.amount,
-      currency: price.currency,
-      payment,
-      payTo,
-    });
+    // A payment for an order already paid is never charged, so it is checked
+    // here and not by the payment layer, which would refuse a wallet that
+    // could not pay again: getting back a purchase must not depend on what is
+    // left in the wallet that paid for it. Only a wallet can sign again, so an
+    // order owned by a payment's fingerprint, where the payment layer named no
+    // payer, is still checked there.
+    const checkedHere =
+      paidFor && before.paidBy !== null && isAddress(before.paidBy)
+        ? await returningPayment(
+            payment,
+            { ...before, orderId, price },
+            {
+              edge: this.#edge,
+              now: this.runtime.clock(),
+              claimHolder: (held) => this.runtime.store.paymentClaimHolder(held),
+              ...(this.runtime.chain === undefined ? {} : { chain: this.runtime.chain }),
+            },
+          )
+        : null;
+    const onlyReturns = checkedHere !== null || payTo?.toLowerCase() !== payeeNow?.toLowerCase();
+    const verified =
+      checkedHere ??
+      (await this.runtime.facilitator.verify({
+        paymentRef: before.paymentRef,
+        amount: price.amount,
+        currency: price.currency,
+        payment,
+        payTo,
+      }));
 
     const current = await this.runtime.store.orderById(orderId);
     if (current === null) return { step: "no_such_item" };
@@ -1423,8 +1443,8 @@ export class Gateway {
       // was charged. On an order already paid for, the payer is most likely
       // presenting a payment it already used, having lost the answer.
       // Anyone holding the payment request can make up a payment that is
-      // refused, so its answer is the same whether or not the order was paid,
-      // and says only what this payment did.
+      // refused, so its answer never says whether the order was paid, only
+      // what this payment did.
       const why =
         verified.verified === "unknown"
           ? verified.message
@@ -1449,16 +1469,17 @@ export class Gateway {
       };
     }
 
-    // The owner is who the payment layer says paid, never the address the
-    // payment declares of itself. Where the layer names no payer, the
+    // The owner is who the payment layer says paid, or whose signature this
+    // gateway checked, never the address the payment declares of itself.
+    // Where the layer names no payer, the
     // payment's fingerprint stands in; it is derived from what was signed, so
     // it is no more forgeable.
     const owner = walletThatPaid(verified.payer) ?? fingerprint;
 
     // A payer who is not the buyer of an order already paid for is turned
     // away before the order tells it anything more. Verifying moves no money,
-    // so without this any wallet holding the price could try addresses
-    // against a paid parcel. The decision that counts is taken again under
+    // and for a paid order needs no money in the wallet, so without this any
+    // wallet could try addresses against a paid parcel. The decision that counts is taken again under
     // the order's lock below; this one only answers sooner.
     if (before.paidBy !== null && before.paidBy !== owner) {
       return { step: "not_this_purchase" };
@@ -1530,16 +1551,7 @@ export class Gateway {
     // so a payment that never checked out never burns a claim.
     const claim = await this.runtime.store.claimPayment(fingerprint, orderId);
     if (!claim.claimed) {
-      const holder = await this.runtime.store.orderById(claim.heldBy);
-      return {
-        step: "payment_already_spent",
-        heldBy: claim.heldBy,
-        // Whether that order is still open, and so worth going back to
-        // whatever its status reads: an open order whose charge went quiet may
-        // hold goods and moved money, and an agent told it was over would pay
-        // a second time.
-        collectable: holder !== null && isOpen(holder.order.state),
-      };
+      return { step: "payment_already_spent" };
     }
 
     // In the synchronous mode the goods reach the agent only through the park.
@@ -1585,14 +1597,16 @@ export class Gateway {
         ? noPaymentTakenFor(now.order)
         : { step: "not_this_purchase" };
     }
-    if (taken.kind === "payee_left") {
+    if (taken.kind === "only_returns") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
       // What this payment is told if it is presented again, now that the order
-      // checks it against where the merchant is paid today.
+      // takes a new charge: checked by the payment layer, against where the
+      // merchant is paid today.
+      const moved = payTo?.toLowerCase() !== payeeNow?.toLowerCase();
       return {
         step: "payment_not_verified",
-        why: `nothing was charged: ${NEXT_STEP_AFTER.price_stale}`,
+        why: `nothing was charged: ${NEXT_STEP_AFTER[moved ? "price_stale" : "signature"]}`,
         retryable: false,
       };
     }

@@ -600,16 +600,16 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("not_selling", attempt.message));
 
     case "payment_already_spent":
-      // One authorisation may not buy two orders. The agent is pointed at the
-      // other order only if it is still open; one that is over is a dead end.
+      // One authorisation may not buy two orders. Nothing is said of the other
+      // order, not even whether it is over: anyone can read a used
+      // authorization off the chain and point it at any reference. Its buyer
+      // already holds that order's own answer, which says where it stands.
       return written(
         response,
         CONFLICT,
         refusal(
           "payment_already_spent",
-          attempt.collectable
-            ? `this payment was already presented for order ${attempt.heldBy}, which is still open; one payment buys one order`
-            : `this payment was already presented for order ${attempt.heldBy}, which is over; one payment buys one order, so this one needs a fresh payment`,
+          "this payment was already presented for another purchase, and one payment buys one order: if that purchase is yours, its own answer says where it stands, and this one needs a fresh payment",
         ),
       );
 
