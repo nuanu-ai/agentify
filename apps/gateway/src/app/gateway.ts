@@ -108,6 +108,7 @@ import {
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
 import {
+  type ActingMerchant,
   endingSentenceOf,
   OrderRunner,
   RECONCILE_PAYMENTS,
@@ -1945,6 +1946,7 @@ export class Gateway {
     merchantId: string,
     priceId: string,
     response: QuoteResponse,
+    by?: Caller,
   ): Promise<QuoteAnswerAck | QuoteAnswerRefused> {
     const unsellable = response.available ? priceProblemsOf(response.price) : [];
     if (unsellable.length > 0) {
@@ -1974,7 +1976,7 @@ export class Gateway {
           }
         : { kind: "quote_answered", at, available: false },
       { priceId },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     // Finished either way: a second answer could only be told the same, and
@@ -1996,15 +1998,16 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     answer: HandlerAnswer,
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     if ("delivered" in answer) {
-      return this.deliverOrder(merchantId, orderId, answer.delivered, "handler");
+      return this.deliverOrder(merchantId, orderId, answer.delivered, "handler", by);
     }
     if ("refused" in answer) {
-      return this.refuseOrder(merchantId, orderId, answer.refused, "handler");
+      return this.refuseOrder(merchantId, orderId, answer.refused, "handler", by);
     }
 
-    return this.#takeOrderOn(merchantId, orderId, answer.accepted);
+    return this.#takeOrderOn(merchantId, orderId, answer.accepted, by);
   }
 
   /**
@@ -2019,6 +2022,7 @@ export class Gateway {
     orderId: string,
     delivery: Delivery,
     from: "handler" | "call" = "call",
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     // Read before the check, so an order that is not this merchant's is
     // answered exactly as one that never existed.
@@ -2048,7 +2052,7 @@ export class Gateway {
         delivery: parcel ? { ...delivery, shipped_at: asTimestamp(at) } : delivery,
         openDeliveryId: null,
       },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     // A parcel's shipment is the exception to repeats: a different shipment is
@@ -2080,6 +2084,7 @@ export class Gateway {
     orderId: string,
     refusal: Refusal,
     from: "handler" | "call" = "call",
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     const at = this.runtime.clock();
     const applied = await this.runner.apply(
@@ -2088,7 +2093,7 @@ export class Gateway {
         ? { kind: "handler_refused", at, code: refusal.code, message: refusal.message }
         : { kind: "refuse_called", at, code: refusal.code, message: refusal.message },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
     return this.#answerFor(applied, "refused");
   }
@@ -2098,12 +2103,13 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     request: OrderCloseRequest,
+    by?: Caller,
   ): Promise<OrderCloseResponse | null> {
     const applied = await this.runner.apply(
       orderId,
       { kind: "close_called", at: this.runtime.clock(), ...request },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
     const answered = this.#answerFor(applied, "accepted");
     return answered === null || !answered.ok ? answered : { ok: true };
@@ -2119,8 +2125,9 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     acceptance: Acceptance,
+    by?: Caller,
   ): Promise<OrderAcceptResponse | null> {
-    const taken = await this.#takeOrderOn(merchantId, orderId, acceptance);
+    const taken = await this.#takeOrderOn(merchantId, orderId, acceptance, by);
     return taken === null || !taken.ok ? taken : { ok: true };
   }
 
@@ -2134,6 +2141,7 @@ export class Gateway {
     merchantId: string,
     orderId: string,
     _acceptance: Acceptance,
+    by?: Caller,
   ): Promise<OrderCallResponse | null> {
     // The acceptance carries no field, since `AcceptanceSchema` is empty: the
     // merchant is held to the card's delivery deadline and to nothing they say
@@ -2143,7 +2151,7 @@ export class Gateway {
       orderId,
       { kind: "handler_accepted", at },
       { openDeliveryId: null },
-      { merchantId },
+      actingAs(merchantId, by),
     );
 
     return this.#answerFor(applied, "accepted");
@@ -2452,6 +2460,16 @@ const overWithNothingHeld = (record: StoredOrder): boolean =>
  * refusal carries the machine's own code, which the contract's open set of
  * codes allows, together with the state the order was in.
  */
+/**
+ * The merchant an order call is held to, and how they made it: a key is their
+ * worker, a session is a person in the dashboard. A caller who says neither
+ * is left unnamed rather than guessed.
+ */
+function actingAs(merchantId: string, by: Caller | undefined): ActingMerchant {
+  if (by === undefined) return { merchantId };
+  return { merchantId, actor: by.kind === "key" ? "merchant_worker" : "human" };
+}
+
 function refusedCall(rejection: TransitionRejection): CallError {
   const closed = !isOpen(rejection.state);
   return {
