@@ -372,9 +372,9 @@ export const inspectProductInTheShop = async (
     // Not phrased as a setting to change: tax calculation covers the whole
     // shop, so switching it off for this would stop tax for every customer.
     unsupported.push(
-      "WooCommerce calculates tax in this shop, and this connector cannot sell from such a shop" +
-        " yet (turning tax calculation off would stop the shop charging tax to every customer," +
-        " not only to agents, so it is not a setting to change for Agentify)",
+      "WooCommerce calculates tax in this shop, which this connector cannot sell from yet" +
+        " (turning tax calculation off would stop it for every order the shop takes, so it is" +
+        " not the way round this)",
     );
   }
   if (kind === "download") {

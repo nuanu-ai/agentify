@@ -198,8 +198,9 @@ function WhatCanBeImported() {
         </li>
       </ul>
       <p className={styles.sub}>
-        A shop that calculates tax cannot sell through the connector yet. Do not turn tax off for
-        it: the setting covers the whole shop, so every customer would stop being charged tax.
+        A shop that calculates tax cannot sell through the connector yet. Do not turn tax
+        calculation off to get round this: tax would then go uncalculated on every order the shop
+        takes.
       </p>
       <a className={styles.more} href={GUIDE}>
         Connector guide

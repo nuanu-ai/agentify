@@ -14,13 +14,6 @@ priced in US dollars, whose stock is not counted. The shop as a whole needs
 prices written with two decimals (WooCommerce → Settings → General → Number of
 decimals) and permalinks set to anything other than Plain.
 
-The connector cannot yet sell from a shop in which WooCommerce calculates tax,
-and the import leaves every product of such a shop where it is. Do not turn tax
-calculation off to get round this. It is one setting for the whole shop, so
-turning it off stops the shop charging tax to every one of its customers, not
-only to the buyers who come through Agentify. Whether a sale owes tax is
-yours to settle, and this page does not answer it.
-
 Such a product becomes one of two kinds of card:
 
 | The product in your shop | What the buyer gets | What your shop gets |
@@ -31,6 +24,13 @@ Such a product becomes one of two kinds of card:
 Every other product stays in your shop untouched, and the import names it with
 the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
+
+The connector cannot yet sell from a shop in which WooCommerce calculates tax,
+and the import leaves every product of such a shop where it is. Do not turn tax
+calculation off to get round this. It is one setting for the whole shop, so
+turning it off stops WooCommerce calculating tax on every order the shop takes,
+not only on the orders that come through Agentify. Whether a sale owes tax is
+yours to settle, and this page does not answer it.
 
 At every purchase the connector asks your shop for the product's price, and
 for a parcel the shipping rate, and your shop has four seconds to answer. A
