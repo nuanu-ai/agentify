@@ -585,6 +585,22 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
+    describe("a merchant's last poll", () => {
+      it("is the latest instant written, never moved back by an older one, and nobody else's", async () => {
+        // Two gateway processes write it from two clocks without serialising.
+        const store = await twoMerchants();
+
+        expect(await store.lastContact(A)).toBeNull();
+        await store.noteContact(A, 5_000);
+        await store.noteContact(A, 3_000);
+
+        expect(await store.lastContact(A)).toBe(5_000);
+        expect(await store.lastContact(B)).toBeNull();
+        await store.noteContact(A, 8_000);
+        expect(await store.lastContact(A)).toBe(8_000);
+      });
+    });
+
     describe("a merchant", () => {
       it("is written down once, and is not written over by a second attempt", async () => {
         // The sandbox seed runs at every start and finds its merchant already

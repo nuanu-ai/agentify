@@ -1,7 +1,8 @@
 /**
  * What a purchase meets at the door, before any price is asked and before
  * anything is charged: how many of one seller's purchases may wait for payment
- * at once.
+ * at once, and whether a purchase that charges before its goods is taken from a
+ * seller whose own process has gone quiet.
  *
  * Each test puts its card in the store directly, so that a test is about the
  * purchase and not the publishing door.
@@ -10,7 +11,15 @@
 import { type Card, CardSchema, type QuoteResponse } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Integration } from "../ports/store.js";
-import { type Harness, harness, type Served, serve, workUntilStopped } from "../testing/harness.js";
+import {
+  type Harness,
+  harness,
+  paymentNamingNoPayer,
+  type Served,
+  serve,
+  workOnce,
+  workUntilStopped,
+} from "../testing/harness.js";
 
 /** A card whose price its seller is asked at every purchase, as a shop's always is. */
 const pricedCard: Card = CardSchema.parse({
@@ -23,6 +32,29 @@ const pricedCard: Card = CardSchema.parse({
   fulfill_deadline_seconds: 3_600,
   price_check: "handler",
 });
+
+/** A card charged at the purchase, its goods to follow, at the price it carries. */
+const prepaidCard: Card = CardSchema.parse({
+  merchant_item_id: "esim-30d",
+  title: "A thirty day eSIM",
+  description: "Thirty days of data in Indonesia",
+  price: { amount: "25.00", currency: "USD" },
+  result: { activation_code: { type: "string" } },
+  fulfillment: "async",
+  fulfill_deadline_seconds: 3_600,
+});
+
+/** A card whose goods come in the answer and are charged after it. */
+const syncCard: Card = CardSchema.parse({
+  merchant_item_id: "room-101",
+  title: "A room for the night",
+  description: "One night in room 101",
+  price: { amount: "80.00", currency: "USD" },
+  result: { access_code: { type: "string" } },
+  fulfillment: "sync",
+});
+
+const MINUTE = 60_000;
 
 const priced: QuoteResponse = {
   available: true,
@@ -42,8 +74,8 @@ afterEach(async () => {
   open = null;
 });
 
-const started = async () => {
-  const harnessed = await harness();
+const started = async (overrides: Record<string, string> = {}) => {
+  const harnessed = await harness(overrides);
   const served = await serve(harnessed);
   open = { harnessed, served };
   return { harnessed, served };
@@ -149,6 +181,103 @@ describe("purchases waiting for payment", () => {
       body: { params: {} },
     });
     await worker.stop();
+
+    expect(answered.status).toBe(402);
+  });
+});
+
+/** The harness's own seller with one card of theirs on sale, through their own code. */
+const selling = async (harnessed: Harness, card: Card): Promise<string> =>
+  (await harnessed.store.publishCard(harnessed.merchant.id, card, harnessed.now())).id;
+
+describe("a purchase that charges before its goods", () => {
+  it("is refused before anything is charged once the seller has not polled for ten minutes, and sells again at their first poll, while a card they paused stays paused", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, prepaidCard);
+    const pausedId = await selling(harnessed, { ...prepaidCard, merchant_item_id: "esim-90d" });
+    await harnessed.store.setCardPaused(harnessed.merchant.id, pausedId, true);
+
+    harnessed.advance(11 * MINUTE);
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(refused.status).toBe(409);
+    const { error } = refused.body as Refused;
+    expect(error.code).toBe("seller_not_taking_orders");
+    expect(error.retryable).toBe(true);
+    expect(error.message).toContain("nothing was charged");
+    expect(error.message).toContain("not taking orders right now");
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+
+    await workOnce(harnessed, {}, 0);
+    const taken = await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
+    const stillPaused = await served.call("POST", `/x402/${pausedId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(taken.status).toBe(402);
+    expect(stillPaused.status).toBe(409);
+    expect((stillPaused.body as Refused).error.code).toBe("not_selling");
+  });
+
+  it("is taken until ten minutes have passed since the seller last polled", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, prepaidCard);
+
+    harnessed.advance(10 * MINUTE);
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(answered.status).toBe(402);
+  });
+
+  it("is not charged at a price named before the seller went quiet and paid after", async () => {
+    // A price that holds five minutes, so the payment arrives with its price
+    // still standing and only the seller's silence between them.
+    const { harnessed } = await started({ QUOTE_TTL_MS: String(5 * MINUTE) });
+    const itemId = await selling(harnessed, prepaidCard);
+    harnessed.advance(9 * MINUTE);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+
+    harnessed.advance(3 * MINUTE);
+    const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
+    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, payment, fingerprint);
+
+    expect(paid.step).toBe("seller_not_taking_orders");
+    expect(harnessed.facilitator.verifies).toStrictEqual([]);
+    expect(harnessed.facilitator.settles).toStrictEqual([]);
+    expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
+  });
+
+  it("is taken from a seller selling through their WooCommerce shop however long since anything polled", async () => {
+    // The connector that fills a shop's orders runs inside Agentify, so the
+    // shop is in touch whenever Agentify is.
+    const { harnessed, served } = await started();
+    const itemId = await sellingThrough(harnessed, harnessed.merchant.id, "woocommerce");
+
+    harnessed.advance(60 * MINUTE);
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced, through: "woocommerce" });
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+    await worker.stop();
+
+    expect(answered.status).toBe(402);
+  });
+});
+
+describe("a synchronous purchase", () => {
+  it("is priced for a seller who has not polled for ten minutes, since nothing is charged before their answer", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, syncCard);
+
+    harnessed.advance(11 * MINUTE);
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
 
     expect(answered.status).toBe(402);
   });

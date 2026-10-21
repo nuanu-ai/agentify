@@ -300,6 +300,53 @@ if (databaseUrl === null) {
       await store.setSelling(A, "open");
     });
 
+    describe("a seller's last poll", () => {
+      const prepaid: Card = {
+        merchant_item_id: "esim-30d",
+        title: "A thirty day eSIM",
+        description: "Thirty days of data in Indonesia",
+        price: { amount: "25.00", currency: "USD" },
+        result: { activation_code: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 3_600,
+      };
+
+      /** A gateway started afresh over this database, as after a restart, with none of the last one's memory. */
+      const restarted = () => {
+        const config = testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" });
+        return new Gateway({
+          config,
+          store: PostgresStore.over(contract.db, "eip155:84532", countedIds()),
+          queue: new MemoryQueue(),
+          facilitator: new ScriptedFacilitator(),
+          clock: () => now,
+          ids: countedIds(),
+          announcer: nobodyAnnounces,
+          widestChallenge: widestChallengeOn(config),
+        });
+      };
+
+      afterEach(async () => {
+        await pool.query("delete from orders where merchant_id = $1", [A]);
+        await pool.query("delete from cards where merchant_id = $1", [A]);
+      });
+
+      it("outlives a restart: a gateway started afresh sells a prepaid card of a seller who polled before it, and refuses it once they have been silent ten minutes", async () => {
+        const card = await store.publishCard(A, prepaid, now);
+        await gateway.poll(A, 0);
+        const afresh = restarted();
+        await afresh.start();
+        try {
+          expect((await afresh.beginPurchase(card.id, {})).step).toBe("pay");
+
+          now += 11 * 60_000;
+          expect((await afresh.beginPurchase(card.id, {})).step).toBe("seller_not_taking_orders");
+        } finally {
+          await afresh.stop();
+        }
+      });
+    });
+
     describe("the birth of an order and a switch of integration", () => {
       // A birth holds its merchant's row while it counts and writes, and a
       // switch holds it for update while it counts the orders that hold it, so
