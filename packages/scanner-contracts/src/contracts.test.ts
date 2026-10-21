@@ -20,7 +20,7 @@ import {
 } from "./index.js";
 
 describe("canonical contracts", () => {
-  it("answers a report without a waitlist, and refuses one that still carries it", () => {
+  it("answers a report, and refuses one carrying a field the contract does not name", () => {
     const report = {
       scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
       host: "bloomandco.com",
@@ -46,7 +46,7 @@ describe("canonical contracts", () => {
     expect(
       reportResponseSchema.safeParse({
         ...report,
-        waitlist: { entry_id: report.scan_id, position: "7", answer: null },
+        unnamed_field: "anything",
       }).success,
     ).toBe(false);
   });
