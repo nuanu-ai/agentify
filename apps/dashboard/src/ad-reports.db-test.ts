@@ -1027,6 +1027,30 @@ if (databaseUrl === null) {
       expect(await storeRowOf(later)).toMatchObject({ state: "lapsed", click_id: null });
     });
 
+    it("tells the tracker of one merchant once, even when an account that came from an ad before its first card joins it afterwards", async () => {
+      const merchant = await aMerchant();
+      // Registered first, but named no merchant when the first card came.
+      const joinsLater = await fromAnAd(CLICKS[1], null, HOUR);
+      await fromAnAd(CLICKS[0], merchant);
+      clock += MINUTE;
+      const firstCardAt = clock;
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(200, 200);
+      await report(post);
+      await pool.query("update dashboard_accounts set merchant_id = $1 where id = $2", [
+        merchant,
+        joinsLater,
+      ]);
+      clock += MINUTE;
+
+      expect(await report(post)).toBe(false);
+
+      expect(received.map((request) => request.body)).toStrictEqual([
+        storeReport(CLICKS[0], firstCardAt),
+      ]);
+      expect(await storeRowOf(joinsLater)).toMatchObject({ state: "lapsed", click_id: null });
+    });
+
     it("never reports a merchant whose first card was published before the registration, and erases the click", async () => {
       const merchant = await aMerchant();
       await publish(merchant, "room-1");
