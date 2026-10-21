@@ -696,8 +696,9 @@ export const inspectProductInTheShop = async (
         product.download_limit,
         product.download_expiry,
         // A download's order is taxed where the shop is, whatever the rounding
-        // or the address tax is based on, so only the entry moves its price.
-        entered ?? taxes,
+        // or the address tax is based on, and sells only where prices hold their
+        // tax, so whether tax is calculated is all that moves its price.
+        taxes,
         method,
         login,
         afterPayment,
