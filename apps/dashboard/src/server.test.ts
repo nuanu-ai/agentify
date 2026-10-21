@@ -6868,7 +6868,7 @@ describe("closing fulfillment from Orders", () => {
     );
   });
 
-  it("shows what was recorded, and no doubt, when the lists read after a lost answer show the order closed", async () => {
+  it("leads to what was recorded, as a confirmed closure does, when the lists read after a lost answer show the order closed", async () => {
     const running = await started({
       client: (real) => ({
         ...real,
@@ -6885,10 +6885,12 @@ describe("closing fulfillment from Orders", () => {
 
     const posted = await running.browser.post("/orders", { order_id: id, message: typed });
 
-    expect(posted.status).toBe(200);
-    expect(mainOf(posted.html)).not.toContain(CLOSURE_NOTES.unconfirmed);
-    expect(mainOf(posted.html)).toContain(typed);
-    expect(formsIn(posted.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+    // Sent on rather than drawn, so a reload does not repeat the press.
+    expect(posted.status).toBe(303);
+    const read = await running.browser.get(posted.to ?? "");
+    expect(mainOf(read.html)).not.toContain(CLOSURE_NOTES.unconfirmed);
+    expect(mainOf(read.html)).toContain(typed);
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
   });
 
   it("keeps a refusal from an order that ended in the dashboard when no list can be read", async () => {
