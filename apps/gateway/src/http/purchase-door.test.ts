@@ -15,6 +15,7 @@ import type { Integration } from "../ports/store.js";
 import {
   type Harness,
   harness,
+  loggedWhile,
   paymentNamingNoPayer,
   type Served,
   serve,
@@ -184,6 +185,46 @@ describe("purchases waiting for payment", () => {
     await worker.stop();
 
     expect(answered.status).toBe(402);
+  });
+
+  it("are said in the log at most once a minute while a seller's purchases are refused for them, naming the seller and how many wait", async () => {
+    // A price that holds five minutes, so the twenty still wait a minute on.
+    const { harnessed, served } = await started({ QUOTE_TTL_MS: String(5 * MINUTE) });
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+    const refuse = () =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: { from: "a buyer's own words" } },
+      });
+
+    const first = await loggedWhile(async () => {
+      await refuse();
+      harnessed.advance(30_000);
+      await refuse();
+    });
+    harnessed.advance(31_000);
+    const later = await loggedWhile(refuse);
+
+    const lines = (said: string) => said.split("\n").filter((line) => line.includes(merchantId));
+    expect(lines(first)).toHaveLength(1);
+    expect(lines(first)[0]).toContain("20 purchases");
+    expect(lines(later)).toHaveLength(1);
+    expect(first + later).not.toContain("a buyer's own words");
+  });
+
+  it("are told to their seller, only while as many wait as the limit allows", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+
+    const busy = await harnessed.gateway.standingOf(merchantId);
+    harnessed.advance(31_000);
+    const free = await harnessed.gateway.standingOf(merchantId);
+
+    expect(busy.busy).toBe(true);
+    expect(free.busy).toBe(false);
   });
 
   it("are counted for each seller apart, so one seller's twenty hold up nobody else", async () => {

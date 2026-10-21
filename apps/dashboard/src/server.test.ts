@@ -3781,6 +3781,17 @@ describe("a merchant who has left", () => {
     expect(reasonsIn(after)).toStrictEqual([]);
   });
 
+  it("is told over its pages while twenty purchases wait for payment and new ones are refused", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    for (let one = 0; one < 20; one += 1) {
+      await harnessed.gateway.beginPurchase(itemId, {});
+    }
+    await browser.signIn();
+
+    expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
+  });
+
   it("is not told prepaid purchases are refused while it sells only goods made in the answer", async () => {
     const { browser, gateway, harnessed } = await started();
     await publish(gateway, roomCard);
