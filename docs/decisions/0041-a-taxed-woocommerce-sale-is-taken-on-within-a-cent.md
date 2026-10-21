@@ -60,7 +60,8 @@ before tax, which matches its order but charges every buyer the tax of the
 shop's own city; predicting the half cent from the cart, which a compound rate
 defeats because the cart's tax lines do not say which rate is compound; and
 withdrawing parcels from shops that calculate tax, which would refuse them all
-for cases that come to a cent. Two ways that would close the class rather than
+for cases that come to a cent: a small inaccuracy is no reason to stop selling
+them (the product owner, 2026-10-21). Two ways that would close the class rather than
 bound it, having the shop's own Store API checkout build the order from the cart
 it priced, or creating the order unpaid and marking it paid only once its total
 matches, are not taken now; research 56 keeps them as directions for later.
