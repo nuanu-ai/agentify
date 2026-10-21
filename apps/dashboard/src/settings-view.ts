@@ -17,8 +17,9 @@ import { type MomentView, momentView } from "./views.js";
 import { APPROVAL_GIVEN } from "./words.js";
 
 /**
- * What the page is drawn from: the gateway's answers, all read together, and
- * where this deployment's chain shows an address.
+ * What the page is drawn from: the gateway's answers, all read together,
+ * where this deployment's chain shows an address, and the account's own
+ * choice about product analytics.
  */
 export interface Settings {
   readonly sellerName: string | null;
@@ -31,6 +32,7 @@ export interface Settings {
   readonly walletChain: number | null;
   /** Read on the live channel only. */
   readonly liveApproval?: boolean;
+  readonly analyticsOptedOut: boolean;
 }
 
 /**
@@ -112,7 +114,11 @@ export interface SettingsView {
   readonly wallet: WalletView;
   /** Null in the sandbox, where nothing is ever deployed, and where no split can hold money. */
   readonly payout: PayoutView | null;
-  readonly account: Readonly<{ signOutOthers: string; notice: string | null }>;
+  readonly account: Readonly<{
+    signOutOthers: string;
+    notice: string | null;
+    analyticsOptedOut: boolean;
+  }>;
 }
 
 const SETTLES: Readonly<Record<SurfaceMode, string>> = {
@@ -285,6 +291,7 @@ export const settingsView = (
     account: {
       signOutOthers: SIGN_OUT_EVERY_OTHER_DEVICE,
       notice: press?.kind === "account" ? press.notice : null,
+      analyticsOptedOut: settings.analyticsOptedOut,
     },
   };
 };

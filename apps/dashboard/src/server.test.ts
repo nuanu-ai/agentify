@@ -7236,13 +7236,13 @@ describe("what the pages record for product analytics", () => {
 
     expect((await running.browser.get("/cards")).status).toBe(200);
     expect((await running.browser.get("/orders.data")).status).toBe(200);
-    expect((await running.browser.get("/settings/payout-wallet")).status).toBe(200);
+    expect((await running.browser.get("/settings")).status).toBe(200);
     await settle();
 
     expect(recorded(running)).toStrictEqual([
       viewOf("cards", owner),
       viewOf("orders", owner),
-      viewOf("payout_wallet", owner),
+      viewOf("settings", owner),
     ]);
   });
 
@@ -7267,6 +7267,7 @@ describe("what the pages record for product analytics", () => {
     await running.browser.get("/");
     await running.browser.get("/no-such-page");
     await running.browser.get("/settings/site");
+    await running.browser.get("/settings/payout-wallet");
     await running.browser.get(`/sign-in/open?token=${"D".repeat(32)}`);
     await settle();
 
@@ -7486,7 +7487,8 @@ describe("what the pages record for product analytics", () => {
 
     const out = await running.browser.post("/settings/analytics", { analytics: "off" });
 
-    expect(out.to).toBe("/settings");
+    expect(out.status).toBe(200);
+    expect(formTo(out.html, "post", "/settings/analytics")?.fields.get("analytics")).toBe("on");
     expect(await running.identity.analyticsOptedOut(owner.person)).toBe(true);
     const otherPerson = await running.identity.byEmail(OTHER);
     expect(await running.identity.analyticsOptedOut(otherPerson?.id ?? "")).toBe(false);
