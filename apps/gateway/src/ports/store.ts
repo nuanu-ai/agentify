@@ -448,6 +448,23 @@ export interface CatalogEntry {
   readonly integration: Integration;
 }
 
+/**
+ * The analytics a store method that commits a fact records with it: an event,
+ * or one made from what the method committed, where null records none.
+ */
+export type AnalyticsOf<R> = AnalyticsEvent | ((committed: R) => AnalyticsEvent | null);
+
+/** The event `analytics` makes of what was committed, or null. */
+export const analyticsEventOf = <R>(
+  analytics: AnalyticsOf<R> | undefined,
+  committed: R,
+): AnalyticsEvent | null =>
+  analytics === undefined
+    ? null
+    : typeof analytics === "function"
+      ? analytics(committed)
+      : analytics;
+
 /** Which merchant an order belongs to, where a read is one merchant's alone. */
 export interface MerchantScope {
   readonly merchantId: string;
@@ -496,11 +513,12 @@ export interface Store {
    * Records the one operator grant that admits a merchant to live sales. The
    * first call writes `at`; every later call returns the original instant with
    * `changed:false`. Null means the merchant is absent. It does not move the
-   * merchant's `updated_at`.
+   * merchant's `updated_at`. `analytics` is recorded with the first grant only.
    */
   grantLiveApproval(
     id: string,
     at: number,
+    analytics?: AnalyticsOf<{ readonly merchant: StoredMerchant; readonly changed: boolean }>,
   ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /** Every merchant, for the command that lists them. */
@@ -509,20 +527,28 @@ export interface Store {
   /**
    * Sets or clears one merchant's listing name and returns the merchant as they
    * now stand, or null where there is no such merchant. The value must already
-   * be validated, by `setServiceName` in `app/merchants.ts`.
+   * be validated, by `setServiceName` in `app/merchants.ts`. `analytics` is
+   * recorded only when the name the row held is a different one.
    */
   setServiceName(
     id: string,
     serviceName: string | null,
     at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
   ): Promise<StoredMerchant | null>;
 
   /**
    * Sets one merchant's shop site and returns the merchant as they now stand,
    * or null where there is no such merchant. The value must already be
-   * validated, by `setSellerSite` in `app/merchants.ts`.
+   * validated, by `setSellerSite` in `app/merchants.ts`. `analytics` is
+   * recorded only when the site the row held is a different one.
    */
-  setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null>;
+  setSellerSite(
+    id: string,
+    sellerSite: string,
+    at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
+  ): Promise<StoredMerchant | null>;
 
   /**
    * Writes the merchant's payout wallet only where the row still holds
@@ -541,12 +567,15 @@ export interface Store {
    * wallet and network are recorded at another address. A wallet and its
    * split's wallet are matched in either spelling. A set address cannot be
    * cleared, as the type of `next` says; ending sales is the pause.
+   * `analytics` is asked only of a write that landed, and since the row held
+   * `expected`, comparing that with what was written tells whether it changed.
    */
   setPayoutWallet(
     id: string,
     expected: PayoutWalletRead,
     next: PayoutWalletWrite,
     at: number,
+    analytics?: AnalyticsOf<WalletWritten>,
   ): Promise<WalletWritten | "moved" | null>;
 
   // --- the payout splits ----------------------------------------------------
@@ -606,6 +635,7 @@ export interface Store {
       readonly digest: string;
     },
     at: number,
+    analytics?: AnalyticsOf<StoredKey>,
   ): Promise<StoredKey>;
 
   /**
@@ -672,12 +702,17 @@ export interface Store {
    * none is named: a publish through the other integration under the same
    * identifier changes nothing and answers the card as it stands, whose
    * `integration` says whose it is.
+   *
+   * `analytics` is recorded only when this call made a new card, as the write
+   * itself decides it: of publishes racing with one new identifier, one makes
+   * the card and the rest update it.
    */
   publishCard(
     merchantId: string,
     card: Card,
     at: number,
     integration?: Integration,
+    analytics?: AnalyticsOf<StoredCard>,
   ): Promise<StoredCard>;
 
   /**
@@ -702,8 +737,14 @@ export interface Store {
    * the card as it now stands; null where this merchant has no such card, the
    * same answer as no such card anywhere. Republishing does not clear a pause,
    * so editing a price never puts a product taken off sale back on it.
+   * `analytics` is recorded only when the card was not already as asked.
    */
-  setCardPaused(merchantId: string, id: string, paused: boolean): Promise<StoredCard | null>;
+  setCardPaused(
+    merchantId: string,
+    id: string,
+    paused: boolean,
+    analytics?: AnalyticsOf<StoredCard>,
+  ): Promise<StoredCard | null>;
 
   /**
    * Whether this merchant is taking new orders, the word the order machine is
@@ -712,8 +753,15 @@ export interface Store {
    */
   selling(merchantId: string): Promise<MerchantSelling>;
 
-  /** Stops this merchant's selling, or starts it again. */
-  setSelling(merchantId: string, selling: MerchantSelling): Promise<void>;
+  /**
+   * Stops this merchant's selling, or starts it again. `analytics` is recorded
+   * only when the merchant was not already selling as asked.
+   */
+  setSelling(
+    merchantId: string,
+    selling: MerchantSelling,
+    analytics?: AnalyticsEvent,
+  ): Promise<void>;
 
   /**
    * Moves this merchant to the other integration, or says which orders hold
@@ -723,8 +771,15 @@ export interface Store {
    * One transaction, holding the merchant's row against the birth of an
    * order (`addOrder` with an integration), so no order can be made for a
    * card in the moment it goes off sale.
+   *
+   * `analytics` is recorded in that transaction only when the switch stopped
+   * the merchant's selling.
    */
-  switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch>;
+  switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch>;
 
   // --- orders ---------------------------------------------------------------
 

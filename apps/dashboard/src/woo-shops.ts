@@ -8,6 +8,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
+import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
@@ -114,6 +115,12 @@ type OrderClaim =
 // shipped or closed. The store methods below are the only transitions.
 
 export interface WooShops {
+  /**
+   * Records a product analytics event of the connector's that has no write of
+   * its own, such as an import's result, outside any transaction. It never
+   * rejects.
+   */
+  recordAnalytics(event: AnalyticsEvent, at: Date): Promise<void>;
   beginGrant(grant: WooGrant): Promise<void>;
   /**
    * One account-serialised operation, because a callback is unauthenticated and
@@ -125,6 +132,11 @@ export interface WooShops {
    * issued, one already spent and one expired, without telling them apart:
    * on a route anybody can post to, that would answer questions about somebody
    * else's account. An expired row stays so its owner can see the attempt that ended.
+   *
+   * The connection is recorded for product analytics in the same transaction,
+   * and so is a refusal of a callback whose account is known: one that came
+   * after its Connect's time was up, or that names a shop other than the one
+   * connected. A token nobody holds records nothing.
    */
   connectFromGrant(
     token: string,
@@ -216,6 +228,29 @@ export interface WooShops {
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
 
 /**
+ * A shop's connection as product analytics counts it. The keys arrive because
+ * the person who pressed Connect approved them in their own shop, so it is
+ * theirs, though the shop's server sends them.
+ */
+const connectionResult = (
+  accountId: string,
+  merchantId: string | null,
+  settled:
+    | { readonly outcome: "completed" }
+    | {
+        readonly outcome: "blocked";
+        readonly reason_code: "session_expired" | "identity_mismatch";
+      },
+): AnalyticsEvent =>
+  ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "woocommerce",
+    refs: merchantId === null ? { person: accountId } : { merchant: merchantId, person: accountId },
+    fields: { step: "woo_connection", integration: "woocommerce", ...settled },
+  }) as AnalyticsEvent;
+
+/**
  * A row with the shop's order and a permission is a placed download, whatever
  * phase it was written in: older rows read `create_unknown` and were placed all
  * the same. A placed row with no permission is a parcel's, answered on
@@ -249,6 +284,8 @@ export const postgresWooShops = (pool: Pool): WooShops => {
   const db = drizzle(pool);
 
   return {
+    recordAnalytics: (event, at) => recordObserved(db, event, at),
+
     async beginGrant(grant) {
       await db.transaction(async (tx) => {
         // Serialises two Connect presses by this account, so replacing its row
@@ -282,6 +319,18 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         await tx.execute(
           sql`select ${accounts.id} from ${accounts} where ${accounts.id} = ${seen.accountId} for update`,
         );
+        const [account] = await tx
+          .select({ merchantId: accounts.merchantId })
+          .from(accounts)
+          .where(eq(accounts.id, seen.accountId));
+        // Never failing the connection: a callback that failed would have the
+        // shop take its key back.
+        const resulted = (settled: Parameters<typeof connectionResult>[2]) =>
+          recordAlong(
+            tx,
+            connectionResult(seen.accountId, account?.merchantId ?? null, settled),
+            now,
+          );
         const [grant] = await tx
           .delete(wooGrants)
           .where(
@@ -292,7 +341,17 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             ),
           )
           .returning();
-        if (grant === undefined) return null;
+        if (grant === undefined) {
+          // Still there, it was late; gone, another callback spent it first,
+          // and that one's result is the one recorded.
+          const [late] = await tx
+            .select({ token: wooGrants.token })
+            .from(wooGrants)
+            .where(and(eq(wooGrants.token, token), eq(wooGrants.accountId, seen.accountId)));
+          if (late !== undefined)
+            await resulted({ outcome: "blocked", reason_code: "session_expired" });
+          return null;
+        }
 
         const [connected] = await tx
           .select({ shopUrl: wooShops.shopUrl })
@@ -302,6 +361,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           connected !== undefined &&
           new URL(connected.shopUrl).origin !== new URL(grant.shopUrl).origin
         ) {
+          await resulted({ outcome: "blocked", reason_code: "identity_mismatch" });
           return null;
         }
 
@@ -326,6 +386,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
               connectedAt: connection.connectedAt,
             },
           });
+        await resulted({ outcome: "completed" });
         return connection;
       });
     },
@@ -609,7 +670,14 @@ export const postgresWooShops = (pool: Pool): WooShops => {
  * In the product tree rather than under `testing/`, so the two implementations
  * can be read side by side.
  */
-export const memoryWooShops = (): WooShops => {
+/**
+ * Kept in memory for tests, with what it recorded for product analytics in the
+ * order recorded. It knows no accounts, so its events name no merchant.
+ */
+export const memoryWooShops = (): WooShops & {
+  readonly recordedAnalytics: readonly { readonly event: AnalyticsEvent; readonly at: Date }[];
+} => {
+  const analytics: { event: AnalyticsEvent; at: Date }[] = [];
   const grants = new Map<string, WooGrant>();
   const shops = new Map<string, WooConnection>();
   const quotes = new Map<
@@ -645,6 +713,14 @@ export const memoryWooShops = (): WooShops => {
   });
 
   return {
+    get recordedAnalytics() {
+      return [...analytics];
+    },
+
+    async recordAnalytics(event, at) {
+      analytics.push({ event, at });
+    },
+
     async beginGrant(grant) {
       for (const [token, found] of grants) {
         if (found.accountId === grant.accountId) {
@@ -656,7 +732,14 @@ export const memoryWooShops = (): WooShops => {
 
     async connectFromGrant(token, keys, now) {
       const grant = grants.get(token);
-      if (grant === undefined || grant.expiresAt.getTime() <= now.getTime()) return null;
+      if (grant === undefined) return null;
+      const resulted = (settled: Parameters<typeof connectionResult>[2]) => {
+        analytics.push({ event: connectionResult(grant.accountId, null, settled), at: now });
+      };
+      if (grant.expiresAt.getTime() <= now.getTime()) {
+        resulted({ outcome: "blocked", reason_code: "session_expired" });
+        return null;
+      }
       // `beginGrant` keeps exactly one row per account, so a present token is
       // still the current intent; consume and write happen with no await
       // between them.
@@ -666,6 +749,7 @@ export const memoryWooShops = (): WooShops => {
         connected !== undefined &&
         new URL(connected.shopUrl).origin !== new URL(grant.shopUrl).origin
       ) {
+        resulted({ outcome: "blocked", reason_code: "identity_mismatch" });
         return null;
       }
       const connection: WooConnection = {
@@ -676,6 +760,7 @@ export const memoryWooShops = (): WooShops => {
         connectedAt: now,
       };
       shops.set(grant.accountId, connection);
+      resulted({ outcome: "completed" });
       return connection;
     },
 
