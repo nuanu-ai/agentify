@@ -264,6 +264,43 @@ if (databaseUrl === null) {
       expect(await identity.analyticsOptedOut(person.id)).toBe(false);
     });
 
+    it("leaves waiting what is about a person when they press the choice they already hold, and settles it once the choice changes", async () => {
+      const person = await signIn();
+      await identity.attachMerchant(person.id, async () => "mer_kept");
+      await pool.query("delete from commerce_analytics_events");
+      await pool.query(
+        "insert into commerce_analytics_events (id, name, occurred_at, actor_type, source, properties, refs, next_attempt_at) values (gen_random_uuid(), 'agc_payment_result', now(), 'buyer_agent', 'gateway', $1, $2, now() - interval '1 minute')",
+        [
+          { payment_state: "paid", money_mode: "test", network: "base_sepolia" },
+          { merchant: "mer_kept", order: "ord_1", attempt: "att_1" },
+        ],
+      );
+      const unavailable = (async () => new Response(null, { status: 503 })) as typeof fetch;
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      await deliverOnce({ pool, target: SENDING, fetch: unavailable });
+      const waiting = async () =>
+        (
+          await pool.query<{ state: string; attempts: number; last_outcome: string }>(
+            "select state, attempts, last_outcome from commerce_analytics_events",
+          )
+        ).rows;
+      expect(await waiting()).toStrictEqual([
+        { state: "pending", attempts: 1, last_outcome: "http_503" },
+      ]);
+
+      await identity.setAnalyticsOptOut(person.id, false);
+
+      expect(await waiting()).toStrictEqual([
+        { state: "pending", attempts: 1, last_outcome: "http_503" },
+      ]);
+
+      await identity.setAnalyticsOptOut(person.id, true);
+
+      expect(await waiting()).toStrictEqual([
+        { state: "suppressed", attempts: 1, last_outcome: "opted_out" },
+      ]);
+    });
+
     it("sends nothing recorded while a person was opted out once they opt back in, and what they do after", async () => {
       const person = await signIn();
       await identity.attachMerchant(person.id, async () => "mer_opted");
