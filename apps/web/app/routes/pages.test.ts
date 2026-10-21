@@ -44,7 +44,7 @@ describe("the front page", () => {
   });
 
   it.each(["/", "/store", "/local"])(
-    "leads an agent that buys from %s, under the form, to where it starts, which names the catalogue",
+    "leads an agent that buys from %s, under the form, to where it starts, which names the catalog",
     async (path) => {
       const { html } = await page(path);
       const formAt = html.indexOf("<form");

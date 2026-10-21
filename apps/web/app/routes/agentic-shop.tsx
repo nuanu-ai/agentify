@@ -4,6 +4,7 @@ import { type MetaArgs, useLoaderData } from "react-router";
 
 import { SiteFooter, SiteHeader } from "../../components/site-chrome";
 import { AGENTIC_SHOP, numbered } from "../../content/agentic-shop";
+import { LANDING_SHARED_CONTENT } from "../../content/landing";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import type { RichText } from "../../content/public-editorial";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
@@ -40,6 +41,8 @@ const HERO = {
 function Arrow({ diagonal = false }: { diagonal?: boolean }) {
   return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
 }
+
+const { agentDoor } = LANDING_SHARED_CONTENT;
 
 /** The words alone, links read as their text. */
 const plain = (of: RichText): string =>
@@ -103,7 +106,9 @@ export default function AgenticShopPage() {
               </a>
             </div>
             <p className={styles.heroNote}>
-              <Words of={hero.note} />
+              <Words of={hero.note} /> <br />
+              {agentDoor.lead} <a href={agentDoor.href}>{agentDoor.label}</a>
+              {agentDoor.rest}
             </p>
           </div>
           <div className={styles.heroVisual}>

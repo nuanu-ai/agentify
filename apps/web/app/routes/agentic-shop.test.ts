@@ -101,6 +101,29 @@ describe("the sell-to-agents page", () => {
     );
   });
 
+  it("leads an agent that buys to where it starts, which names the catalog, on the page and in its Markdown", async () => {
+    const { links } = await drawn("/agentic-shop");
+    const markdown = await (
+      await ask("/agentic-shop", { headers: { accept: "text/markdown" } })
+    ).text();
+    const starts = await (await ask("/llms.txt", { headers: { accept: "text/plain" } })).text();
+
+    expect(links).toContain("/llms.txt");
+    expect(markdown).toContain("](https://agentify.ad/llms.txt)");
+    expect(starts).toContain("/x402/catalog");
+  });
+
+  it("keeps the line for an agent apart from the note before it, for a reader that strips the tags", async () => {
+    const { html } = await drawn("/agentic-shop");
+    const paragraph =
+      html.match(
+        /<p\b[^>]*>((?:(?!<p\b|<\/p>)[\s\S])*href="\/llms\.txt"(?:(?!<\/p>)[\s\S])*)<\/p>/,
+      )?.[1] ?? "";
+
+    expect(paragraph).not.toBe("");
+    expect(paragraph.replace(/<[^>]+>/g, "")).not.toMatch(/[a-z][.!?][A-Z]/);
+  });
+
   it("links the site's privacy notice and invites no application", async () => {
     const { links, meta } = await drawn("/agentic-shop");
 

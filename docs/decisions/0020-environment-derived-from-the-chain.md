@@ -1,7 +1,8 @@
 # 0020. What environment this is, the chain answers
 
 Date: 2026-08-31
-Status: accepted; merges what was ADR-0008
+Status: accepted; merges what was ADR-0008; revised 2026-10-21: the edge's
+surface mode also opens the scanner's `llms.txt`
 
 ## Context
 
@@ -36,6 +37,14 @@ says in its log and on its pages that nothing it accepts is real, and alone may
 stand the configured `PAY_TO_ADDRESS` in for a merchant who set no wallet,
 since a payment challenge needs an address and nothing there settles; elsewhere
 that merchant is refused (ADR-0019).
+
+The two processes that hold no chain settings, the edge (Caddy) and the
+scanner, take the channel they name from `AGENTIFY_SURFACE_MODE`, set by hand
+on each host: the edge for the documentation's notice, the scanner for the
+first line of `llms.txt`, which tells an agent whether its money is real. On a
+deployed channel it cannot disagree with the chain, because the release's
+preflight pins both the mode and the chain to the channel before anything
+starts.
 
 Credentials go to Coinbase's facilitator or nowhere, decided by the address,
 never by whether they are set. `CDP_API_KEY_ID` or `CDP_API_KEY_SECRET` beside

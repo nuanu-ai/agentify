@@ -1,6 +1,7 @@
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
 import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
+import { surfaceMode } from "./server/config";
 
 const labels = {
   "/": "Website diagnostic and selling to agents",
@@ -10,8 +11,30 @@ const labels = {
   "/terms": "Terms of use",
 } as const satisfies Record<(typeof PUBLIC_PAGE_PATHS)[number], string>;
 
+const LIVE_SITE = "https://agentify.ad";
+
+/**
+ * What the text opens with on each kind of stack: an agent that reads it must
+ * not take test or pretend money for real, nor this stack for the live site.
+ */
+const opening = (displayBrand: string) => ({
+  live: [`# ${displayBrand}`],
+  test: [
+    `# ${displayBrand}'s test channel, paid in test money on Base Sepolia: the live site is ${LIVE_SITE}`,
+    "",
+    "A merchant's engineer tries an integration here before selling for real. Payments are test USDC on Base Sepolia (eip155:84532), so the money is not real; buying here works as described below, with this channel's catalogue.",
+  ],
+  sandbox: [
+    `# ${displayBrand}'s sandbox, where no payment is real: the live site is ${LIVE_SITE}`,
+    "",
+    "No chain stands behind this stack: every payment it accepts is pretend, nothing arrives at the address in a payment challenge, and no receipt it writes points at a transfer.",
+  ],
+});
+
 export function buildLlmsText(): string {
   const { baseUrl, displayBrand } = getPublicAppConfig();
+  const opened =
+    opening(displayBrand)[surfaceMode.parse(process.env.AGENTIFY_SURFACE_MODE ?? "sandbox")];
   const whole = (path: string): string => new URL(path, baseUrl).toString();
   const links = PUBLIC_PAGE_PATHS.map((path) => `- [${labels[path]}](${whole(path)})`);
   const documentation = DOCS_PAGES.map(
@@ -19,7 +42,7 @@ export function buildLlmsText(): string {
   );
 
   return [
-    `# ${displayBrand}`,
+    ...opened,
     "",
     "Agentify is a bounded public-HTTP diagnostic for website agent-readiness. It does not test a particular model's answer, execute tools, log in, or promise rankings, traffic, sales, or certification.",
     "",

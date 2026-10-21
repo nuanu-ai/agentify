@@ -102,7 +102,16 @@ async function expectProxy(baseUrl, requestPath, role) {
   const response = await fetch(`${baseUrl}${requestPath}`);
   assert.equal(response.status, 200, requestPath);
   assert.equal(response.headers.get("referrer-policy"), "same-origin", requestPath);
-  const body = await response.json();
+  // Every upstream here answers JSON, so anything else was written by Caddy.
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    assert.fail(
+      `${requestPath} was answered by the edge itself, not passed to the ${role}: ${text.split("\n")[0]}`,
+    );
+  }
   assert.equal(body.role, role, requestPath);
   assert.equal(body.path, requestPath, requestPath);
   return body;
@@ -156,12 +165,20 @@ async function expectUnmarked(baseUrl, requestPath) {
 }
 
 /**
- * The test channel is not the site: every answer asks not to be listed, its
- * robots.txt keeps crawlers out, and its llms.txt says on its first line that
- * it is the test channel, paid in test money, and where the live site is.
+ * The test channel is not the site: every answer asks not to be listed and its
+ * robots.txt keeps crawlers out. Its llms.txt is the scanner's, which opens
+ * with the channel itself, so the edge passes it through as it does on the
+ * live channel and writes none of its own.
  */
 async function expectTestChannelUnlisted(baseUrl) {
-  for (const requestPath of ["/", "/docs/", "/x402/catalog", "/dashboard/sign-in", "/missing"]) {
+  for (const requestPath of [
+    "/",
+    "/docs/",
+    "/x402/catalog",
+    "/dashboard/sign-in",
+    "/llms.txt",
+    "/missing",
+  ]) {
     const response = await fetch(`${baseUrl}${requestPath}`);
     assert.match(response.headers.get("x-robots-tag") ?? "", /\bnoindex\b/, requestPath);
   }
@@ -176,25 +193,7 @@ async function expectTestChannelUnlisted(baseUrl) {
     "the test channel's robots.txt lets a crawler in",
   );
 
-  const llms = await fetch(`${baseUrl}/llms.txt`);
-  assert.equal(llms.status, 200);
-  assert.match(llms.headers.get("content-type") ?? "", /^text\/plain(?:;|$)/);
-  const [firstLine] = (await llms.text()).split("\n");
-  assert.match(
-    firstLine ?? "",
-    /test channel/i,
-    "llms.txt does not open by naming the test channel",
-  );
-  assert.match(
-    firstLine ?? "",
-    /test money/i,
-    "llms.txt does not open by saying the money is a test",
-  );
-  assert.match(
-    firstLine ?? "",
-    /https:\/\/agentify\.ad\b/,
-    "llms.txt does not open with the live site",
-  );
+  await expectProxy(baseUrl, "/llms.txt", "scanner");
 }
 
 /** The live channel's crawler answers are the scanner's own, and nothing asks not to be listed. */

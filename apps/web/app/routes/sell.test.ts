@@ -68,6 +68,14 @@ describe("the merchant landing", () => {
     expect(html).not.toMatch(/<form\b/);
   });
 
+  it("leads an agent that buys to where it starts, which names the catalog", async () => {
+    const links = linksIn(await (await ask("/sell")).text());
+    const starts = await (await ask("/llms.txt", { headers: { accept: "text/plain" } })).text();
+
+    expect(links).toContain("/llms.txt");
+    expect(starts).toContain("/x402/catalog");
+  });
+
   it("leads from the site's footer to the privacy notice and the terms, as every public page does", async () => {
     const html = await (await ask("/sell")).text();
     const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)?.[0] ?? "";
