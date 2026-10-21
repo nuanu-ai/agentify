@@ -9,7 +9,6 @@ import {
   deliveryOutbox,
   leadScans,
   leads,
-  merchantApplications,
   paymentSignals,
   rateLimitEvents,
   rateWindows,
@@ -23,14 +22,6 @@ import {
 
 const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
-
-async function deleteExpiredMerchantApplications(db: Database, now = new Date()) {
-  const deleted = await db
-    .delete(merchantApplications)
-    .where(lt(merchantApplications.expiresAt, now))
-    .returning({ id: merchantApplications.id });
-  return deleted.length;
-}
 
 export async function listUnverifiedLeadRetentionCandidates(
   db: Database,
@@ -220,7 +211,6 @@ export async function runRetentionCleanup(
   },
 ) {
   const now = input.now ?? new Date();
-  const merchantApplicationsDeleted = await deleteExpiredMerchantApplications(db, now);
   const registrationIntentsDeleted = await deleteRetainedRegistrationIntents(db, now);
   const rateLimitRowsDeleted = await deleteExpiredRateLimitState(db, now);
   const candidates = await listUnverifiedLeadRetentionCandidates(db, {
@@ -240,7 +230,6 @@ export async function runRetentionCleanup(
     if (result.status === "anonymized") leadsAnonymized += 1;
   }
   return {
-    merchantApplicationsDeleted,
     registrationIntentsDeleted,
     rateLimitRowsDeleted,
     leadsAnonymized,

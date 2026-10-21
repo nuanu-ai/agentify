@@ -21,24 +21,6 @@ import {
 const utcTimestamp = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const uuidV7Check = (column: AnyPgColumn) => sql`substring(${column}::text, 15, 1) = '7'`;
 
-export const merchantApplications = pgTable(
-  "merchant_applications",
-  {
-    id: uuid("id").primaryKey(),
-    idempotencyKeyHash: text("idempotency_key_hash").notNull(),
-    requestHash: text("request_hash").notNull(),
-    payloadCiphertext: text("payload_ciphertext").notNull(),
-    policyVersion: text("policy_version").notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-  },
-  (table) => [
-    check("merchant_applications_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("merchant_applications_idempotency_uidx").on(table.idempotencyKeyHash),
-    index("merchant_applications_expiry_idx").on(table.expiresAt),
-  ],
-);
-
 export const segmentEnum = pgEnum("segment", ["store", "owner", "local"]);
 export const scanStatusEnum = pgEnum("scan_status", [
   "accepted",

@@ -48,7 +48,6 @@ export default [
   at("privacy", "routes/privacy.tsx"),
   at("terms", "routes/terms.tsx"),
   at("agentic-shop", "routes/agentic-shop.tsx"),
-  at("agentic-shop/privacy", "routes/agentic-shop.privacy.tsx"),
   at("sell", "routes/sell.tsx"),
   at("admin", "routes/admin.tsx"),
   at("data-request", "routes/data-request.tsx"),

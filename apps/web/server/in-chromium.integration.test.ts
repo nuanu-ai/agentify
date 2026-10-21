@@ -144,7 +144,6 @@ describe("a page in Chromium", () => {
     "/privacy",
     "/terms",
     "/agentic-shop",
-    "/agentic-shop/privacy",
     "/data-request",
     "/email/unsubscribe",
   ])("comes alive without a complaint: %s", async (path) => {

@@ -9,7 +9,6 @@ import {
   deliveryOutbox,
   leadScans,
   leads,
-  merchantApplications,
   migrateDatabase,
   paymentSignals,
   rateLimitEvents,
@@ -618,52 +617,12 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         windowStart: new Date(now.getTime() - 2 * 86_400_000),
         expiresAt: new Date(now.getTime() - 86_400_000),
       });
-    const expiredApplicationId = createUuidV7();
-    const currentApplicationId = createUuidV7();
-    await getDatabase()
-      .db.insert(merchantApplications)
-      .values([
-        {
-          id: expiredApplicationId,
-          idempotencyKeyHash: "expired-application",
-          requestHash: "expired-request",
-          payloadCiphertext: "expired-ciphertext",
-          policyVersion: "merchant-application-2026-09-09",
-          expiresAt: new Date(now.getTime() - 1),
-        },
-        {
-          id: currentApplicationId,
-          idempotencyKeyHash: "current-application",
-          requestHash: "current-request",
-          payloadCiphertext: "current-ciphertext",
-          policyVersion: "merchant-application-2026-09-09",
-          expiresAt: new Date(now.getTime() + 86_400_000),
-        },
-      ]);
 
     await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
-      merchantApplicationsDeleted: 1,
       registrationIntentsDeleted: 1,
       rateLimitRowsDeleted: 2,
     });
-    expect(
-      await getDatabase()
-        .db.select()
-        .from(merchantApplications)
-        .where(eq(merchantApplications.id, currentApplicationId)),
-    ).toEqual([
-      {
-        id: currentApplicationId,
-        idempotencyKeyHash: "current-application",
-        requestHash: "current-request",
-        payloadCiphertext: "current-ciphertext",
-        policyVersion: "merchant-application-2026-09-09",
-        createdAt: expect.any(Date),
-        expiresAt: expect.any(Date),
-      },
-    ]);
     await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
-      merchantApplicationsDeleted: 0,
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
     });

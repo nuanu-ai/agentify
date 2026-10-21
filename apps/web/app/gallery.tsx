@@ -684,17 +684,6 @@ const PUBLIC: GalleryState[] = [
   ),
   own(
     {
-      id: "scanner-agentic-shop-privacy",
-      screen: "Merchant application privacy",
-      when: "Somebody who sent the retired merchant application looks up what happens to it.",
-      cause:
-        "The notice the closed application form was sent under, kept while its submissions expire.",
-    },
-    "/agentic-shop/privacy",
-    "routes/agentic-shop.privacy.tsx",
-  ),
-  own(
-    {
       id: "scanner-sell",
       screen: "Merchant landing with prices",
       when: "Somebody opens /sell.",

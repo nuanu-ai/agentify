@@ -31,7 +31,6 @@ const TABLES = [
   "delivery_outbox",
   "lead_scans",
   "leads",
-  "merchant_applications",
   "payment_signals",
   "rate_limit_events",
   "rate_windows",

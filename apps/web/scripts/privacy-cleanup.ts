@@ -1,6 +1,5 @@
 import {
   listUnverifiedLeadRetentionCandidates,
-  merchantApplications,
   rateLimitEvents,
   rateWindows,
   registrationIntents,
@@ -21,10 +20,6 @@ async function main() {
   const { db, pool } = getDatabase();
   try {
     if (process.env.PRIVACY_CLEANUP_DRY_RUN === "true") {
-      const now = new Date();
-      const overdueMerchants = await db.execute<{ count: number }>(
-        sql`select count(*)::int as count from ${merchantApplications} where ${merchantApplications.expiresAt} < ${now}`,
-      );
       const candidates = await listUnverifiedLeadRetentionCandidates(db, {
         limit: batchSize,
       });
@@ -41,7 +36,6 @@ async function main() {
       process.stdout.write(
         `${JSON.stringify({
           dryRun: true,
-          overdueMerchantApplications: overdueMerchants.rows[0]?.count ?? 0,
           overdueRegistrationIntents: overdueRegistrationIntents.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,

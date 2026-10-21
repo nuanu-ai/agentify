@@ -183,6 +183,13 @@
       "when": 1792577236096,
       "tag": "0025_the_scanner_keeps_no_unused_data",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792577637522,
+      "tag": "0026_the_scanner_keeps_no_merchant_applications",
+      "breakpoints": true
     }
   ]
 }
