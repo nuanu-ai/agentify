@@ -346,8 +346,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
 
       // A shop priced in another currency would have every product refused at
       // import, so it is refused before the switch below takes the code's
-      // cards off sale. Asked alongside the grant screen so a shop that does
-      // not answer costs one wait, not two.
+      // cards off sale. Asked alongside the grant screen, so Connect waits for
+      // the slower of the two rather than both in turn.
       //
       // A shop with plain permalinks answers the grant address with its own
       // front page and a 200, so a merchant sent there would land on their
