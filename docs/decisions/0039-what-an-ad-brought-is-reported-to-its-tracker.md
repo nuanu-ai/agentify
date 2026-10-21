@@ -46,11 +46,12 @@ Each report keeps its own copy of the click from the verifying transaction
 until it is delivered, refused or given up, a day after the reported fact at the
 latest; the store's goes too when 30 days pass without a first card, so no click
 outlives 30 days from the registration. The outcomes stay until the account's
-deletion. Delivery is at least once, safe because the tracker keeps one of each
-event per click. Only the live channel reports, each report switched on by
-itself and the store's only beside the registration's; the process refuses to
-start otherwise or on the test channel, and a laptop posts only to a fake
-receiver.
+deletion. Delivery is at least once. For `reg` that is safe because the tracker
+keeps one `reg` per click; for `store_connected` it relies on the tracker
+keeping one per click as well, which the tracker has not confirmed. Only the
+live channel reports, each report switched on by itself and the store's only
+beside the registration's; the process refuses to start otherwise or on the
+test channel, and a laptop posts only to a fake receiver.
 
 ## Alternatives rejected
 

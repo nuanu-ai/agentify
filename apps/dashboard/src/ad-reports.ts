@@ -18,8 +18,10 @@
  * fact, nor 30 days after the registration.
  *
  * A process that stops after the tracker accepted a post and before the
- * commit leaves the row pending, and it is posted again. That cannot become a
- * second conversion: the tracker keeps one of each event per click.
+ * commit leaves the row pending, and it is posted again. For `reg` that cannot
+ * become a second conversion, since the tracker keeps one `reg` per click; for
+ * `store_connected` it relies on the tracker keeping one per click too, which
+ * the tracker has not confirmed.
  *
  * Switched off, the loop still runs and posts nothing: it gives up every
  * report still pending once its day is over and lapses every store report
