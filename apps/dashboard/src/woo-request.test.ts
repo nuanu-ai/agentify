@@ -73,6 +73,43 @@ describe("the WooCommerce network boundary", () => {
     expect(opened).toBe(0);
   });
 
+  const headersSentBy = async (init?: RequestInit) => {
+    const sent: Headers[] = [];
+    const request = wooRequestWith({
+      resolve: async () => ["153.124.160.16"],
+      open: async (_target, _address, given) => {
+        sent.push(new Headers(given.headers));
+        return new Response("ok", { status: 200 });
+      },
+    });
+    await request("https://shop.example.com/wp-json/wc/store/v1/products", init);
+    return sent;
+  };
+
+  it.each<[string, RequestInit | undefined]>([
+    ["a catalogue read", undefined],
+    [
+      "an order creation",
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+    ],
+  ])("identifies Agentify to the shop in %s", async (_name, init) => {
+    const sent = await headersSentBy(init);
+    expect(sent.map((headers) => headers.get("user-agent"))).toEqual([
+      "Agentify/1 (+https://agentify.ad)",
+    ]);
+  });
+
+  it("keeps Agentify's identity over a caller's User-Agent and keeps the caller's other headers", async () => {
+    const [sent] = await headersSentBy({
+      headers: new Headers({
+        "User-Agent": "Mozilla/5.0",
+        authorization: "Basic a2V5OnNlY3JldA==",
+      }),
+    });
+    expect(sent?.get("user-agent")).toBe("Agentify/1 (+https://agentify.ad)");
+    expect(sent?.get("authorization")).toBe("Basic a2V5OnNlY3JldA==");
+  });
+
   it("pins a public resolution while preserving the TLS host name", async () => {
     const opened: { host: string; address: string }[] = [];
     const request = wooRequestWith({
