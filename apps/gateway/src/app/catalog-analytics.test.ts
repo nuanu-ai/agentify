@@ -67,6 +67,25 @@ afterEach(async () => {
 
 const bearer = (key: string): Record<string, string> => ({ authorization: `Bearer ${key}` });
 
+/** What `work` settles with, or "still waiting" once a second has passed without it. */
+const within = async <T>(work: Promise<T>): Promise<T | "still waiting"> =>
+  await Promise.race([
+    work,
+    new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 1_000)),
+  ]);
+
+/** A record of analytics that never ends, one that throws, and one that rejects. */
+const RECORDINGS_GONE_WRONG: readonly [string, () => Promise<void>][] = [
+  ["never ends", () => new Promise<void>(() => undefined)],
+  [
+    "throws",
+    () => {
+      throw new Error("the outbox broke");
+    },
+  ],
+  ["rejects", async () => await Promise.reject(new Error("the outbox broke"))],
+];
+
 /** The events of one name the store has recorded so far, oldest first. */
 const recorded = <Name extends AnalyticsEvent["name"]>(
   harnessed: Harness,
@@ -211,6 +230,54 @@ describe("the result of publishing a card", () => {
       },
     ]);
   });
+});
+
+describe("a refusal whose recording goes wrong", () => {
+  for (const [wrong, recording] of RECORDINGS_GONE_WRONG) {
+    it(`answers a refused publication at once when recording it ${wrong}`, async () => {
+      const { harnessed } = await started();
+      vi.spyOn(harnessed.store, "recordAnalytics").mockImplementation(recording);
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const merchant = await harnessed.gateway.registerMerchant();
+
+      const refused = await within(harnessed.gateway.publishCard(merchant, {}, "api"));
+
+      expect(refused).toMatchObject({ ok: false });
+    });
+
+    it(`throws a failed publication's own failure at once when recording it ${wrong}`, async () => {
+      const { harnessed } = await started();
+      vi.spyOn(harnessed.store, "recordAnalytics").mockImplementation(recording);
+      vi.spyOn(harnessed.store, "publishCard").mockRejectedValueOnce(
+        new Error("the database went away"),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const failed = await within(
+        harnessed.gateway.publishCard(harnessed.merchant.id, cardFor("room-1")).then(
+          () => "published",
+          (thrown: unknown) => (thrown instanceof Error ? thrown.message : "not an error"),
+        ),
+      );
+
+      expect(failed).toBe("the database went away");
+    });
+
+    it(`answers a body the API refused with its 400 at once when recording it ${wrong}`, async () => {
+      const { harnessed, served } = await started();
+      vi.spyOn(harnessed.gateway, "setupRefused").mockImplementation(recording);
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const refused = await within(
+        served.call("POST", "/v0/seller-name", {
+          body: { seller_name: "é".repeat(40) },
+          headers: bearer(harnessed.merchant.key),
+        }),
+      );
+
+      expect(refused).toMatchObject({ status: 400, body: { error: { code: "malformed_body" } } });
+    });
+  }
 });
 
 describe("a card or a merchant taken off sale and put back", () => {
