@@ -59,6 +59,20 @@ describe("the WooCommerce network boundary", () => {
     },
   );
 
+  it("refuses a plain-http shop address before opening a socket", async () => {
+    let opened = 0;
+    const request = wooRequestWith({
+      resolve: async () => ["153.124.160.16"],
+      open: async () => {
+        opened += 1;
+        return new Response("never");
+      },
+    });
+
+    await expect(request("http://shop.example.com/wp-json")).rejects.toThrow(/https/i);
+    expect(opened).toBe(0);
+  });
+
   it("pins a public resolution while preserving the TLS host name", async () => {
     const opened: { host: string; address: string }[] = [];
     const request = wooRequestWith({
