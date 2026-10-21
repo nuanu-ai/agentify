@@ -7178,3 +7178,440 @@ describe("closing fulfillment from Orders", () => {
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 });
+
+describe("what the pages record for product analytics", () => {
+  /** Every event recorded, as the memory store holds it, without its time. */
+  const recorded = (running: Running) =>
+    (running.rows.commerce_analytics_events ?? []).map(({ occurredAt, ...event }) => event);
+  const named = (running: Running, name: string) =>
+    recorded(running).filter((event) => event.name === name);
+  /**
+   * An observation is not waited for by the page, so what a request records
+   * may land a moment after its answer; anything it would record twice lands
+   * by then too.
+   */
+  const settle = async () => await new Promise((resolve) => setTimeout(resolve, 30));
+  /** Starts a test's count from nothing, once what came before has landed. */
+  const fromNow = async (running: Running) => {
+    await settle();
+    running.rows.commerce_analytics_events = [];
+  };
+  const viewOf = (screen: string, refs?: Record<string, string>) => ({
+    name: "agc_dashboard_viewed",
+    actor: "human",
+    source: "dashboard",
+    ...(refs === undefined ? {} : { refs }),
+    fields: { screen },
+  });
+  const blockedOf = (
+    screen: string,
+    operation: string,
+    outcome: string,
+    reason: string,
+    refs: Record<string, string>,
+  ) => ({
+    name: "agc_ui_blocked",
+    actor: "human",
+    source: "dashboard",
+    refs,
+    fields: { screen, operation, outcome, reason_code: reason },
+  });
+  const theOwner = async (running: Running) => {
+    const person = await running.identity.byEmail(PERSON);
+    if (person === null) throw new Error("the owner has no account");
+    return { person: person.id, merchant: running.theMerchant };
+  };
+  const refused = (status: number, why: string, code?: string) => async () => ({
+    ok: false as const,
+    status,
+    why,
+    ...(code === undefined ? {} : { code }),
+  });
+
+  it("records one view of the screen a document load or a navigation inside the application shows", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+
+    expect((await running.browser.get("/cards")).status).toBe(200);
+    expect((await running.browser.get("/orders.data")).status).toBe(200);
+    expect((await running.browser.get("/settings")).status).toBe(200);
+    await settle();
+
+    expect(recorded(running)).toStrictEqual([
+      viewOf("cards", owner),
+      viewOf("orders", owner),
+      viewOf("settings", owner),
+    ]);
+  });
+
+  it("records the sign-in screen shown to nobody signed in as a view naming no person", async () => {
+    const running = await started();
+    const stranger = await running.another();
+
+    expect((await stranger.get("/sign-in")).status).toBe(200);
+    await settle();
+
+    expect(recorded(running)).toStrictEqual([viewOf("sign_in")]);
+  });
+
+  it("records no view for a prefetch, a read the gate sent elsewhere, or a page that is no screen", async () => {
+    const running = await started();
+    const stranger = await running.another();
+    await stranger.get("/cards");
+    await running.browser.signIn();
+    await fromNow(running);
+
+    await running.browser.sending({ "sec-purpose": "prefetch" }).get("/orders.data");
+    await running.browser.get("/");
+    await running.browser.get("/no-such-page");
+    await running.browser.get("/settings/site");
+    await running.browser.get("/settings/payout-wallet");
+    await running.browser.get(`/sign-in/open?token=${"D".repeat(32)}`);
+    await settle();
+
+    expect(recorded(running)).toStrictEqual([]);
+  });
+
+  it("records no view for the read of the page a press was just answered on, and counts the next move", async () => {
+    const running = await started();
+    const itemId = await publish(running.gateway, roomCard);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    const drawn = cardSwitchesIn((await running.browser.get("/cards")).html)[0];
+    if (drawn === undefined) throw new Error("the cards draw no switch");
+    const [path = "", query = ""] = drawn.action.split("?");
+    await fromNow(running);
+
+    const pressed = await running.browser.post(
+      `${path}.data?${query}`,
+      Object.fromEntries(drawn.fields),
+    );
+    const reread = await running.browser.get("/cards.data");
+    const moved = await running.browser.get("/orders.data");
+    await settle();
+
+    expect([pressed.status, reread.status, moved.status]).toStrictEqual([202, 200, 200]);
+    expect(await purchasable(running.gateway, itemId)).toBe(false);
+    expect(named(running, "agc_dashboard_viewed")).toStrictEqual([viewOf("orders", owner)]);
+  });
+
+  it("names the screen by its route, whatever prefix the dashboard is mounted under", async () => {
+    const running = await started({ base: "/dashboard" });
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+
+    expect((await running.browser.get("/dashboard/receipts")).status).toBe(200);
+    await settle();
+
+    expect(recorded(running)).toStrictEqual([viewOf("receipts", owner)]);
+  });
+
+  it("records a screen that could not be read as one failed load beside its view", async () => {
+    const running = await started({
+      client: (real) => ({ ...real, cards: refused(503, "the catalog is unavailable") }),
+    });
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+
+    expect((await running.browser.get("/cards")).status).toBe(503);
+    await settle();
+
+    expect(recorded(running)).toStrictEqual([
+      viewOf("cards", owner),
+      blockedOf("cards", "load_screen", "failed", "dependency_unavailable", owner),
+    ]);
+  });
+
+  it("records a screen whose read was not answered in time as one failed load for its time", async () => {
+    const running = await started({
+      client: (real) => ({ ...real, keys: async () => lateAnswer(10) }),
+    });
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+
+    await running.browser.get("/keys.data");
+    await settle();
+
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([
+      blockedOf("keys", "load_screen", "failed", "timeout", owner),
+    ]);
+  });
+
+  it("records no problem for a refused press whose outcome the setup records itself", async () => {
+    const running = await started({
+      client: (real) => ({ ...real, setSellerName: refused(400, "that name is taken") }),
+    });
+    await running.browser.signIn();
+    await running.browser.get("/settings");
+    await fromNow(running);
+
+    const pressed = await running.browser.post("/settings", { seller_name: "Freeland" });
+    await settle();
+
+    expect(pressed.status).toBe(400);
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([]);
+  });
+
+  it("records a refused switch on the cards as one blocked change of selling, and no failed load", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        setSelling: refused(409, "the merchant has left Agentify", "merchant_departed"),
+      }),
+    });
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/cards");
+    await fromNow(running);
+
+    const pressed = await running.browser.post(STOP_SELLING);
+    await settle();
+
+    expect(pressed.status).toBe(409);
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([
+      blockedOf("cards", "change_selling", "blocked", "merchant_unavailable", owner),
+    ]);
+  });
+
+  it("records a switch whose answer never came as a change of selling of unknown outcome", async () => {
+    const running = await started({
+      client: (real) => ({ ...real, setSelling: async () => lateAnswer(10) }),
+    });
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/cards");
+    await fromNow(running);
+
+    await running.browser.post(STOP_SELLING);
+    await settle();
+
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([
+      blockedOf("cards", "change_selling", "unknown", "timeout", owner),
+    ]);
+  });
+
+  it("records a merchant that could not be made as one failed creation, and a merchant made as none", async () => {
+    let available = false;
+    const running = await started({
+      registrar: {
+        register: async () =>
+          available
+            ? { ok: true, document: "mer_after_retry" }
+            : { ok: false, status: 503, why: "the registry is unavailable" },
+      },
+    });
+    await running.browser.signIn(FRESH.email);
+    const person = await running.identity.byEmail(FRESH.email);
+    await running.browser.get("/merchant");
+    await fromNow(running);
+
+    const failed = await running.browser.post("/merchant", {});
+    available = true;
+    await running.browser.post("/merchant", {});
+    await settle();
+
+    expect(failed.status).toBe(503);
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([
+      blockedOf("merchant", "create_merchant", "failed", "dependency_unavailable", {
+        person: person?.id ?? "",
+      }),
+    ]);
+    expect(named(running, "agc_merchant_created")).toStrictEqual([
+      {
+        name: "agc_merchant_created",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant: "mer_after_retry", person: person?.id ?? "" },
+      },
+    ]);
+  });
+
+  it("records a closure refused for its explanation as one blocked closing of an order", async () => {
+    const running = await started();
+    const itemId = await publish(running.gateway, esimCard);
+    await buyOverHttp(running.harnessed, running.gateway, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const [order] = await running.harnessed.gateway.orders(running.theMerchant, true);
+    if (order === undefined) throw new Error("the paid order was not open");
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/orders");
+    await fromNow(running);
+
+    const pressed = await running.browser.post("/orders", {
+      order_id: order.order.id,
+      message: "x".repeat(2001),
+    });
+    await settle();
+
+    expect(pressed.status).toBe(400);
+    expect(named(running, "agc_ui_blocked")).toStrictEqual([
+      blockedOf("orders", "close_order", "blocked", "invalid_input", owner),
+    ]);
+  });
+
+  it("records an address refused before any link is asked for once, and a limit the identity met once", async () => {
+    const running = await started();
+    const stranger = await running.another();
+
+    const refusedAddress = await stranger.post("/sign-in", { email: "not an address" });
+    await stranger.post("/sign-in", { email: OTHER });
+    const limited = await stranger.post("/sign-in", { email: OTHER });
+    await settle();
+
+    expect([refusedAddress.status, limited.status]).toStrictEqual([400, 202]);
+    const results = named(running, "agc_auth_result").map((event) => event.fields);
+    expect(results).toStrictEqual([
+      { method: "email_link", stage: "start", outcome: "blocked", reason_code: "invalid_input" },
+      { method: "email_link", stage: "start", outcome: "blocked", reason_code: "rate_limited" },
+    ]);
+  });
+
+  it("opts the signed-in account out of product analytics and back in, and draws the choice", async () => {
+    const running = await started();
+    await running.identity.make(OTHER, running.theMerchant);
+    const other = await running.another();
+    await other.signIn(OTHER);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    const settings = await running.browser.get("/settings");
+    expect(formTo(settings.html, "post", "/settings/analytics")?.fields.get("analytics")).toBe(
+      "off",
+    );
+
+    const out = await running.browser.post("/settings/analytics", { analytics: "off" });
+
+    expect(out.status).toBe(200);
+    expect(formTo(out.html, "post", "/settings/analytics")?.fields.get("analytics")).toBe("on");
+    expect(await running.identity.analyticsOptedOut(owner.person)).toBe(true);
+    const otherPerson = await running.identity.byEmail(OTHER);
+    expect(await running.identity.analyticsOptedOut(otherPerson?.id ?? "")).toBe(false);
+    const drawn = await running.browser.get("/settings");
+    expect(formTo(drawn.html, "post", "/settings/analytics")?.fields.get("analytics")).toBe("on");
+
+    await running.browser.post("/settings/analytics", { analytics: "on" });
+    expect(await running.identity.analyticsOptedOut(owner.person)).toBe(false);
+  });
+
+  it("refuses a choice about product analytics from a page drawn for another account", async () => {
+    const running = await started();
+    await running.identity.make(OTHER, running.theMerchant);
+    const other = await running.another();
+    await other.signIn(OTHER);
+    const theirs = shownMarkIn((await other.get("/settings")).html);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/settings");
+
+    const forged = await running.browser.post("/settings/analytics", {
+      [DRAWN_FOR]: theirs ?? "",
+      analytics: "off",
+    });
+    const odd = await running.browser.post("/settings/analytics", { analytics: "maybe" });
+    const otherPerson = await running.identity.byEmail(OTHER);
+    // A form of the signed-in account's own that names another account.
+    const naming = await running.browser.post("/settings/analytics", {
+      analytics: "off",
+      person: otherPerson?.id ?? "",
+      account: otherPerson?.id ?? "",
+    });
+
+    expect(forged.status).toBe(409);
+    expect(odd.status).toBe(400);
+    expect(naming.status).toBe(200);
+    expect(await running.identity.analyticsOptedOut(owner.person)).toBe(true);
+    expect(await running.identity.analyticsOptedOut(otherPerson?.id ?? "")).toBe(false);
+  });
+
+  const setupOf = (step: string, reason: string, refs: Record<string, string>) => ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "dashboard",
+    refs,
+    fields: { step, integration: "api", outcome: "blocked", reason_code: reason },
+  });
+
+  it("records a seller name refused before the gateway is asked as one blocked setup step, on both screens that take it", async () => {
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/choose-name");
+    await fromNow(running);
+
+    const chosen = await running.browser.post("/choose-name", { seller_name: "" });
+    await running.browser.get("/settings");
+    const renamed = await running.browser.post("/settings", { seller_name: "x".repeat(500) });
+    await settle();
+
+    expect([chosen.status, renamed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("seller_name", "profile_missing", owner),
+      setupOf("seller_name", "invalid_input", owner),
+    ]);
+  });
+
+  it("records a site refused before the gateway is asked as one blocked setup step", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/settings");
+    await fromNow(running);
+
+    const emptied = await running.browser.post("/settings/site", { seller_site: "" });
+    const malformed = await running.browser.post("/settings/site", {
+      seller_site: "http://freeland.example/shop",
+    });
+    await settle();
+
+    expect([emptied.status, malformed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("seller_site", "seller_site_missing", owner),
+      setupOf("seller_site", "invalid_input", owner),
+    ]);
+  });
+
+  it("records a payout wallet refused before the gateway is asked as one blocked setup step", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/settings");
+    await fromNow(running);
+
+    const emptied = await running.browser.post("/settings/payout-wallet", { payout_wallet: "" });
+    const malformed = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: "0x123",
+    });
+    await settle();
+
+    expect([emptied.status, malformed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("payout_wallet", "wallet_missing", owner),
+      setupOf("payout_wallet", "invalid_input", owner),
+    ]);
+  });
+
+  it("signs a person in and draws every screen while no analytics event can be recorded", async () => {
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        observe: async () => {
+          throw new Error("the analytics table is missing");
+        },
+      }),
+    });
+
+    expect((await running.browser.post("/sign-in", { email: "not an address" })).status).toBe(400);
+    await running.browser.signIn();
+    for (const path of ALL_SECTIONS) {
+      expect((await running.browser.get(path)).status, path).toBe(200);
+    }
+    await settle();
+  });
+});

@@ -246,6 +246,7 @@ const viewOf = ({
       payoutSplits: splits ?? splitsFor(mode, wallet, pending === undefined ? {} : { pending }),
       addressPage: configOn(mode).addressPage,
       walletChain: configOn(mode).walletChain,
+      analyticsOptedOut: false,
       ...(liveApproval === undefined ? {} : { liveApproval }),
     },
     press,

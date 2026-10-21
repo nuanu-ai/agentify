@@ -527,6 +527,7 @@ const settingsOf = (more: Partial<Settings> = {}, mode: SurfaceMode = "live"): S
   payoutSplits: splitsOf(mode, PAID_INTO),
   addressPage: ADDRESSES[mode],
   walletChain: WALLET_CHAINS[mode],
+  analyticsOptedOut: false,
   ...more,
 });
 
@@ -2617,6 +2618,7 @@ const SETTINGS: GalleryState[] = [
       payoutSplits: splitsOf("test", null),
       addressPage: ADDRESSES.test,
       walletChain: WALLET_CHAINS.test,
+      analyticsOptedOut: false,
     }),
     {
       mode: "test",
@@ -2892,6 +2894,17 @@ const SETTINGS: GalleryState[] = [
       { kind: "account", notice: signedOutOthers(2) },
     ),
     { path: "/settings/sign-out-others" },
+  ),
+  settings(
+    {
+      id: "dashboard-settings-analytics-off",
+      screen: "Settings",
+      when: "A person turns product analytics off for their account.",
+      cause:
+        "From then on no analytics event about them, or about the merchant their account names, leaves Agentify.",
+    },
+    settingsView("live", WHO, { ...settingsOf(), liveApproval: true, analyticsOptedOut: true }),
+    { path: "/settings/analytics" },
   ),
 ];
 

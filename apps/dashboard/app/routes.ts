@@ -44,6 +44,7 @@ export default [
       route("settings", "routes/settings.tsx", [
         route("site", "routes/settings-site.ts"),
         route("sign-out-others", "routes/settings-sign-out-others.ts"),
+        route("analytics", "routes/settings-analytics.ts"),
         route("payout-wallet/cancel", "routes/settings-payout-wallet-cancel.ts"),
       ]),
       route("settings/payout-wallet", "routes/settings-payout-wallet.tsx"),
