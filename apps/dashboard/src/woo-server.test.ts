@@ -2943,6 +2943,23 @@ describe("a shop priced in another currency than US dollars", () => {
   });
 
   describe("importing before a rate is set", () => {
+    it("is counted as an import blocked for a setting the merchant has not made", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      await running.post("/woocommerce/import");
+
+      expect(
+        running
+          .connectorAnalytics()
+          .filter(
+            (event) => event.name === "agc_setup_result" && event.fields.step === "woo_import",
+          ),
+      ).toMatchObject([
+        { fields: { outcome: "blocked", reason_code: "profile_missing", imported_count: 0 } },
+      ]);
+    });
+
     it("publishes nothing and says a rate is wanted first", async () => {
       const running = await started(inRupiah);
       await connectedIn(running);
