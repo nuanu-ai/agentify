@@ -175,14 +175,44 @@ const NAMES_NO_VISITOR: ReadonlySet<IpBlockReason> = new Set([
   "link_local",
 ]);
 
+/** A port the writer left after the address, in either `a.b.c.d:port` or `[v6]:port` form. */
+const withoutPort = (written: string): string => {
+  const trimmed = written.trim();
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(trimmed);
+  if (bracketed?.[1] !== undefined) return bracketed[1];
+  return /^(\d+\.\d+\.\d+\.\d+):\d+$/.exec(trimmed)?.[1] ?? trimmed;
+};
+
+const dotted = (address: number): string =>
+  [24, 16, 8, 0].map((shift) => (address >>> shift) & 0xff).join(".");
+
 /**
- * Whether a client address the edge wrote can stand for one visitor. A
- * private, CGNAT, loopback or link-local address, in any of its IPv6 forms, is
- * an ingress, a proxy or a shared network that many visitors arrive through,
- * and so is a value that is no address at all; a limit per client must not
- * count all of them as one.
+ * Who a limit per client counts a request as, from the address the edge wrote.
+ * A visitor's key is its IPv4 address, whatever IPv6 form carries it, or its
+ * IPv6 /64, since one machine commonly holds a whole /64 and can rotate within
+ * it. Visitors behind a carrier's or an office's NAT reach the edge from its
+ * public exit and are one client; that is the price of counting per address.
+ * A private, CGNAT, loopback or link-local address at the edge is never one
+ * visitor's but an ingress or proxy in front of it, and with a value that is
+ * no address at all it counts as the one unknown client, so a limit of its own
+ * still bounds it.
  */
-export const namesAVisitor = (address: string): boolean => {
+export type CountedClient = Readonly<{ visitor: true; key: string }> | Readonly<{ visitor: false }>;
+
+export const countedClient = (written: string): CountedClient => {
+  const address = withoutPort(written);
   const classified = classifyIp(address);
-  return classified.allowed || !NAMES_NO_VISITOR.has(classified.reason);
+  if (!classified.allowed && NAMES_NO_VISITOR.has(classified.reason)) return { visitor: false };
+  if (classified.family === 4) {
+    const parsed = v4(address);
+    return parsed === null ? { visitor: false } : { visitor: true, key: dotted(parsed) };
+  }
+  const words = parseIpv6(address);
+  if (words === null) return { visitor: false };
+  const carried = carriedV4(words);
+  if (carried !== undefined) return { visitor: true, key: dotted(carried) };
+  return {
+    visitor: true,
+    key: `${[...words.slice(0, 4)].map((word) => word.toString(16)).join(":")}::/64`,
+  };
 };

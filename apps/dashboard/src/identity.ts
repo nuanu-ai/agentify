@@ -9,7 +9,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { namesAVisitor } from "@agentify/scanner/ip";
+import { countedClient } from "@agentify/scanner/ip";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
@@ -110,13 +110,23 @@ const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 const LINK_RATE_LIMIT = 3;
 export const LINK_MIN_INTERVAL_MS = 60 * 1000;
-/** Sign-in links in the rolling hour from one client, whatever addresses it types. */
+/** Sign-in links in the rolling hour from one visitor, whatever addresses it types. */
 export const LINK_CLIENT_LIMIT = 10;
+/**
+ * Sign-in links in the rolling hour from every request whose address names no
+ * visitor, together: on a channel whose ingress hides visitors' addresses, all
+ * of its visitors.
+ */
+export const LINK_UNKNOWN_CLIENT_LIMIT = 30;
 /**
  * Links of one purpose the channel sends in the rolling hour, whoever asks. A
  * mail provider pauses a sender whose bounces and complaints climb, and both
  * channels send from one domain: a pause would stop email sign-in everywhere
  * and every live payout-wallet change, which waits on its announcement mail.
+ * The ceiling turns that into a wall that clears within the hour. It is a lever
+ * as well as a guard: twenty addresses asking ten links each spend it, and then
+ * nobody on the channel gets an emailed link until the hour clears. Google
+ * sign-in does not pass through it. Its first refusal in a window is logged.
  */
 export const LINK_CHANNEL_LIMIT = 200;
 const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -216,6 +226,7 @@ const googleControlsEmail = (email: string, profile: Record<string, unknown>): b
 const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
 
 export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
+  const watchCeiling = ceilingWatch();
   const postman = parts.postman ?? postmanFor(config);
   const reporting = config.registrationPostback !== null;
   const base = `${config.publicBaseUrl}${config.basePath}`;
@@ -884,18 +895,27 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // behind a send, and a refused send would undo it.
     async requestLink(rawEmail, destination, { client, clickId }) {
       const email = emailAs(rawEmail);
-      const clientHash = namesAVisitor(client) ? clientKey(config.authSecret, client) : null;
+      const counted = countedClient(client);
+      const asking: ClientCount = counted.visitor
+        ? {
+            hash: clientKey(config.authSecret, counted.key),
+            limit: LINK_CLIENT_LIMIT,
+            wall: "client",
+          }
+        : {
+            hash: clientKey(config.authSecret, UNKNOWN_CLIENT),
+            limit: LINK_UNKNOWN_CLIENT_LIMIT,
+            wall: "shared",
+          };
       try {
         if (parts.pool === undefined) {
           await inMemoryTransaction(async (_bound, rows) => {
             cleanupOldLinksInMemory(rows, new Date());
           });
           return await inMemoryTransaction(async (bound, rows) => {
-            const rated = memoryRate(
-              rows,
-              rateKey(config.authSecret, email),
+            const rated = watchCeiling(
               "dashboard",
-              clientHash,
+              memoryRate(rows, rateKey(config.authSecret, email), "dashboard", asking),
             );
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
@@ -910,11 +930,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
         return await db.transaction(async (tx) => {
           await lockEmail(tx, email);
-          const rated = await postgresRate(
-            tx,
-            rateKey(config.authSecret, email),
+          const rated = watchCeiling(
             "dashboard",
-            clientHash,
+            await postgresRate(tx, rateKey(config.authSecret, email), "dashboard", asking),
           );
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
           return await requestWith(
@@ -938,7 +956,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const now = new Date();
             cleanupOldLinksInMemory(rows, now);
             const digestKey = reportDigestKeyInMemory(rows, now);
-            const rated = memoryRate(rows, rateKey(digestKey, request.email), "report", null);
+            const rated = watchCeiling(
+              "report",
+              memoryRate(rows, rateKey(digestKey, request.email), "report", null),
+            );
             if (!rated.sent) {
               return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
             }
@@ -960,7 +981,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           const digestKey = await reportDigestKeyInPostgres(tx, now);
           await cleanupOldLinksInPostgres(tx, now);
           await lockEmail(tx, request.email);
-          const rated = await postgresRate(tx, rateKey(digestKey, request.email), "report", null);
+          const rated = watchCeiling(
+            "report",
+            await postgresRate(tx, rateKey(digestKey, request.email), "report", null),
+          );
           if (!rated.sent) {
             return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
           }
@@ -1443,6 +1467,12 @@ export const rateKey = (secret: string, email: string): string =>
 const clientKey = (secret: string, client: string): string =>
   createHmac("sha256", secret).update(`dashboard-link-client:${client}`).digest("hex");
 
+/** Never a visitor's key, which is an address or a /64. */
+const UNKNOWN_CLIENT = "unknown";
+
+/** Whom a sign-in link is counted against besides its address, and how many it gets. */
+type ClientCount = Readonly<{ hash: string; limit: number; wall: "client" | "shared" }>;
+
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
 
 /**
@@ -1456,13 +1486,13 @@ type LinkRate =
 
 /**
  * The sends of one purpose inside the rolling hour, oldest first: of this
- * address, of this client (null for a report link, which has none, and for an
- * address that names no visitor), and of the whole channel. A list may stop at its limit's length, which is all a limit
- * reads.
+ * address, of the client it is counted against (null for a report link, which
+ * has none here), and of the whole channel. A list may stop at its limit's
+ * length, which is all a limit reads.
  */
 type CountedSends = Readonly<{
   address: readonly Date[];
-  client: readonly Date[] | null;
+  client: Readonly<{ sentAt: readonly Date[]; count: ClientCount }> | null;
   channel: readonly Date[];
 }>;
 
@@ -1516,11 +1546,14 @@ function latestOf(refusals: readonly (LinkRefusal | null)[]): LinkRefusal | null
 }
 
 function refusalIn(counted: CountedSends, now: Date): LinkRefusal | null {
-  const client = counted.client === null ? null : hourFreesAt(counted.client, LINK_CLIENT_LIMIT);
+  const client =
+    counted.client === null ? null : hourFreesAt(counted.client.sentAt, counted.client.count.limit);
   const channel = hourFreesAt(counted.channel, LINK_CHANNEL_LIMIT);
   return latestOf([
     addressRefusal(counted.address, now),
-    client === null ? null : { wall: "client", retryAt: client },
+    client === null || counted.client === null
+      ? null
+      : { wall: counted.client.count.wall, retryAt: client },
     channel === null ? null : { wall: "ceiling", retryAt: channel },
   ]);
 }
@@ -1540,7 +1573,7 @@ function memoryRate(
   rows: MemoryRows,
   emailHash: string,
   purpose: "dashboard" | "report",
-  clientHash: string | null,
+  asking: ClientCount | null,
 ): LinkRate {
   const now = new Date();
   const all = (rows.dashboard_link_sends ?? []).filter(
@@ -1564,9 +1597,12 @@ function memoryRate(
     {
       address,
       client:
-        clientHash === null
+        asking === null
           ? null
-          : sentAt(inTheHour.filter((row) => row.clientHash === clientHash)),
+          : {
+              sentAt: sentAt(inTheHour.filter((row) => row.clientHash === asking.hash)),
+              count: asking,
+            },
       channel: sentAt(inTheHour),
     },
     now,
@@ -1575,12 +1611,39 @@ function memoryRate(
   rows.dashboard_link_sends.push({
     id: randomUUID(),
     emailHash,
-    clientHash,
+    clientHash: asking?.hash ?? null,
     purpose,
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
   return { sent: true, retryAt: waitAfter([...address, now], now) };
+}
+
+const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
+
+/**
+ * Writes one warning line when the channel's ceiling of a purpose first
+ * refuses, and again only once a send of that purpose has gone through since,
+ * so an alert can hang on it without counting refusals. Each process keeps its
+ * own note, so every process writes its own line. The line names no address.
+ */
+function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => LinkRate {
+  const full = new Set<"dashboard" | "report">();
+  return (purpose, rated) => {
+    if (rated.sent) {
+      full.delete(purpose);
+    } else if (rated.wall === "ceiling" && !full.has(purpose)) {
+      full.add(purpose);
+      const now = new Date();
+      const from = new Date(now.getTime() - LINK_RATE_WINDOW_MS);
+      console.warn(
+        `[dashboard] link ceiling reached: purpose=${CEILING_WORDS[purpose]}` +
+          ` limit=${LINK_CHANNEL_LIMIT} window=${from.toISOString()}/${now.toISOString()}` +
+          ` refused_until=${rated.retryAt.toISOString()}`,
+      );
+    }
+    return rated;
+  };
 }
 
 /**
@@ -1594,16 +1657,16 @@ async function postgresRate(
   tx: DashboardTransaction,
   emailHash: string,
   purpose: "dashboard" | "report",
-  clientHash: string | null,
+  asking: ClientCount | null,
 ): Promise<LinkRate> {
   const now = new Date();
   const cutoff = new Date(now.getTime() - LINK_RATE_WINDOW_MS);
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-rate:${purpose}:${emailHash}`}, 0))`,
   );
-  if (clientHash !== null) {
+  if (asking !== null) {
     await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-client:${purpose}:${clientHash}`}, 0))`,
+      sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-client:${purpose}:${asking.hash}`}, 0))`,
     );
   }
   await tx.delete(linkSends).where(lte(linkSends.expiresAt, now));
@@ -1623,9 +1686,12 @@ async function postgresRate(
     {
       address,
       client:
-        clientHash === null
+        asking === null
           ? null
-          : await newest(LINK_CLIENT_LIMIT, eq(linkSends.clientHash, clientHash)),
+          : {
+              sentAt: await newest(asking.limit, eq(linkSends.clientHash, asking.hash)),
+              count: asking,
+            },
       channel: await newest(LINK_CHANNEL_LIMIT),
     },
     now,
@@ -1634,7 +1700,7 @@ async function postgresRate(
   await tx.insert(linkSends).values({
     id: randomUUID(),
     emailHash,
-    clientHash,
+    clientHash: asking?.hash ?? null,
     purpose,
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),

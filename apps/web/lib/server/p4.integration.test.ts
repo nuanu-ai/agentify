@@ -1440,6 +1440,11 @@ describe("P4 dashboard-owned scanner identity", () => {
       expect(visitor.status).toBe(202);
     } finally {
       process.env.REGISTRATION_ENABLED = "false";
+      // The other tests here ask without a forwarded address, into this same
+      // shared hour.
+      await getDatabase().pool.query(
+        "delete from rate_limit_events where kind = 'registration_ip_hour'",
+      );
     }
   });
 

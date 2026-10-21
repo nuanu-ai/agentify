@@ -1,4 +1,4 @@
-import { namesAVisitor } from "@agentify/scanner/ip";
+import { countedClient } from "@agentify/scanner/ip";
 import { registrationRequestSchema } from "@agentify/scanner-contracts";
 import type { Params } from "react-router";
 import { visitorOf } from "../../../../lib/server/auth";
@@ -22,10 +22,15 @@ import {
 import { authorizeScan } from "../../../../lib/server/scans";
 
 /**
- * A stranger's asks from one client address in the rolling hour, whatever scans
+ * A stranger's asks from one visitor in the rolling hour, whatever scans
  * and addresses it uses: each sends mail to the address typed.
  */
 const REPORT_LINK_ASKS_PER_CLIENT_HOUR = 10;
+/**
+ * The same, together, for every ask whose address names no visitor: on a
+ * channel whose ingress hides visitors' addresses, all of its visitors.
+ */
+const REPORT_LINK_ASKS_PER_UNKNOWN_CLIENT_HOUR = 30;
 
 async function register(request: Request, params: Params): Promise<Response> {
   if (!hasSameOrigin(request))
@@ -138,18 +143,22 @@ async function register(request: Request, params: Params): Promise<Response> {
     }
     // Counts asks, not links sent, as the scan's own hour does: the address's
     // hour is the one given back when no link went out.
-    const client = clientAddress(request);
-    if (namesAVisitor(client)) {
-      const fromClient = await consumeRateLimitsAtomically([
-        {
-          keyHash: hmacHex(getServerConfig().hmacSecret, "registration-ip", client),
-          kind: "registration_ip_hour",
-          limit: REPORT_LINK_ASKS_PER_CLIENT_HOUR,
-        },
-      ]);
-      if (!fromClient.allowed)
-        return linkCooldownResponse(request, { retryAt: fromClient.retryAt, wall: "unspecified" });
-    }
+    const client = countedClient(clientAddress(request));
+    const fromClient = await consumeRateLimitsAtomically([
+      client.visitor
+        ? {
+            keyHash: hmacHex(getServerConfig().hmacSecret, "registration-ip", client.key),
+            kind: "registration_ip_hour",
+            limit: REPORT_LINK_ASKS_PER_CLIENT_HOUR,
+          }
+        : {
+            keyHash: hmacHex(getServerConfig().hmacSecret, "registration-ip", "unknown"),
+            kind: "registration_ip_hour",
+            limit: REPORT_LINK_ASKS_PER_UNKNOWN_CLIENT_HOUR,
+          },
+    ]);
+    if (!fromClient.allowed)
+      return linkCooldownResponse(request, { retryAt: fromClient.retryAt, wall: "unspecified" });
     const result = await createScannerRegistrationIntent(scan, {
       ...parsed.data,
       email: email ?? "",

@@ -807,6 +807,17 @@ const SIGNING_IN: GalleryState[] = [
   ),
   signIn(
     {
+      id: "dashboard-sign-in-shared-spent",
+      screen: "Sign in",
+      when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
+      cause:
+        "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
+    },
+    "/sign-in",
+    asked({ wall: "shared", seconds: 1_980 }),
+  ),
+  signIn(
+    {
       id: "dashboard-sign-in-ceiling",
       screen: "Sign in",
       when: "Somebody asks for a link in an hour the site has already sent its share of links in.",

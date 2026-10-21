@@ -160,10 +160,10 @@ function WaitingButton({
  * delivery, since the provider's side is unknown here. It says a link went to
  * this address.
  *
- * A refusal by the client's or the channel's hour reads the same for every
- * address, so it cannot tell anybody which of them has an account. Another
- * address would be refused as well, so these two offer Google instead of a
- * different address.
+ * A refusal by the client's, the shared or the channel's hour reads the same
+ * for every address, so it cannot tell anybody which of them has an account.
+ * Another address would be refused as well, so these offer Google instead of
+ * a different address.
  */
 export function LinkRequestedScreen({
   chrome,
@@ -182,7 +182,7 @@ export function LinkRequestedScreen({
 }>) {
   const pressed = usePressed();
   const wall = "wall" in answer ? answer.wall : null;
-  const anyAddressRefused = wall === "client" || wall === "ceiling";
+  const anyAddressRefused = wall === "client" || wall === "shared" || wall === "ceiling";
   const heading = wall === null || wall === "interval" ? "Check your mail" : "Try again later";
   return (
     <GatePage chrome={chrome} title={heading}>
@@ -231,7 +231,9 @@ export function LinkRequestedScreen({
               No link was sent to <strong>{email}</strong>.{" "}
               {wall === "client"
                 ? "Many sign-in links have been asked for from your internet connection in the last hour, so it has to wait before it can ask for another, whichever address is typed."
-                : "More sign-in links than usual have been asked for in the last hour, so email sign-in links are paused for everybody for a while."}
+                : wall === "shared"
+                  ? "Many sign-in links have been asked for in the last hour by visitors this site cannot tell apart from you, so email sign-in links for all of them are paused for a while."
+                  : "More sign-in links than usual have been asked for in the last hour, so email sign-in links are paused for everybody for a while."}
             </p>
             <p className="problem">Try again in {waitInWords(answer.seconds)}.</p>
           </>
