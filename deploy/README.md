@@ -839,6 +839,25 @@ the host's file says, and the application itself refuses to start with the
 switch on that channel, because the tracker would count a test registration as
 a real one.
 
+Beside it, PRODUCTION may name `STORE_POSTBACK_ENABLED=true`, which stays off
+until the tracker accepts the event. With it on, a sign-in from the tracker's
+landing page that makes a first account also keeps the click with that account
+for at most 30 days, and the dashboard tells the tracker once per merchant, at
+the same address and with the same key, that the person connected a store:
+the body is the click, `"event": "store_connected"` and `event_time`, the Unix
+seconds at which the merchant the account names published its first product
+card, through the API or the WooCommerce import, within those 30 days. Only
+the earliest such sign-up of a merchant reports, and none reports for a
+merchant whose first card came before it. The click is erased once that report
+is delivered, refused or given up, which happens a day after the first card at
+the latest and never past the 30 days, or at the end of the 30 days with no
+first card. Each outcome is one log line such as `store report delivered:
+http_200`. The application refuses to start with this switch on and
+`REGISTRATION_POSTBACK_ENABLED` off, and on TEST, where the same file fixes it
+off too. Turned off again, it keeps no click for new sign-ups, posts no store
+report, gives up those already due once their day is over and lets the waiting
+ones lapse at their 30 days.
+
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
 `STRIPE_*` and `APIFY_*` settings, `REGISTRATION_ENABLED`,

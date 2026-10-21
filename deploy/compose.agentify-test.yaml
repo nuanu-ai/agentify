@@ -11,13 +11,14 @@ services:
     volumes:
       - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
 
-  # The test channel never reports a registration to the ad tracker, because
-  # nothing signed up here is a real person from a real ad. The switch is fixed
-  # here so no line in the host's environment file can turn it on; turned on,
-  # the application refuses to start on this channel.
+  # The test channel never reports a registration or a store to the ad tracker,
+  # because nothing signed up here is a real person from a real ad. The
+  # switches are fixed here so no line in the host's environment file can turn
+  # them on; turned on, the application refuses to start on this channel.
   app:
     environment:
       REGISTRATION_POSTBACK_ENABLED: "false"
+      STORE_POSTBACK_ENABLED: "false"
       # An explicitly empty value disables background chain recovery.
       PAYMENT_RPC_URL: "${AGENTIFY_PAYMENT_RPC_URL-https://sepolia.base.org}"
 
