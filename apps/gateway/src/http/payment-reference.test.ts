@@ -842,70 +842,80 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
   });
 });
 
-describe("a payment checked against where a paid order's money went", () => {
-  it("is not charged to the split the seller left when the order comes to take a new charge while it is checked", async () => {
-    // The buyer renews its payment request for a paid order whose seller has
-    // moved their wallet, and while the renewal is being checked the order's
-    // own charge fails, so a payment would now be charged anew.
-    const { harnessed, served } = await started();
-    const itemId = await publish(harnessed, syncCard);
-    let handOver: () => void = () => undefined;
-    const goods = new Promise<void>((resolve) => {
-      handOver = resolve;
-    });
-    const worker = workUntilStopped(harnessed, {
-      onOrder: async () => {
-        await goods;
-        return { delivered: { access_code: "SESAME" } };
-      },
-    });
-    let release: () => void = () => undefined;
-    try {
-      const challenge = await challengeFor(served, itemId);
-      const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-      const orderId = opened?.order.id ?? "";
-      const buying = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
-      await vi.waitFor(async () =>
-        expect((await harnessed.store.orderById(orderId))?.paidBy).not.toBeNull(),
-      );
-      const paidTo = (await harnessed.store.orderById(orderId))?.payTo;
-      await setPayoutWallet(
-        harnessed.store,
-        harnessed.runtime.config.payoutSplit,
-        harnessed.merchant.id,
-        MOVED_TO,
-        harnessed.now(),
-      );
-      const claim = harnessed.store.claimPayment.bind(harnessed.store);
-      const checked = new Promise<void>((resolve) => {
-        release = resolve;
+describe("a payment presented to get back a paid order", () => {
+  it.each([
+    ["the split the seller left", true, /start a new purchase/],
+    ["the split it was checked against", false, /sign a new payment for this order/],
+  ])(
+    "is not charged to %s when the order comes to take a new charge while it is checked",
+    async (_split, moved, next) => {
+      // The buyer renews its payment request for a paid order, and while the
+      // renewal is being checked the order's own charge fails, so a payment
+      // would now be charged anew. The renewal was checked only to give the
+      // purchase back, whether or not the seller has moved their wallet since.
+      const { harnessed, served } = await started();
+      const itemId = await publish(harnessed, syncCard);
+      let handOver: () => void = () => undefined;
+      const goods = new Promise<void>((resolve) => {
+        handOver = resolve;
       });
-      let claiming = false;
-      vi.spyOn(harnessed.store, "claimPayment").mockImplementationOnce(async (...args) => {
-        claiming = true;
-        await checked;
-        return claim(...args);
+      const worker = workUntilStopped(harnessed, {
+        onOrder: async () => {
+          await goods;
+          return { delivered: { access_code: "SESAME" } };
+        },
       });
-      const renewing = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02"));
-      await vi.waitFor(() => expect(claiming).toBe(true));
-      harnessed.facilitator.willSettle({ settled: false, reason: "refused in the script" });
-      handOver();
-      await buying;
-      await reaching(harnessed, orderId, "delivered_unpaid");
-      release();
+      let release: () => void = () => undefined;
+      try {
+        const challenge = await challengeFor(served, itemId);
+        const [opened] = await harnessed.store.orders(harnessed.merchant.id);
+        const orderId = opened?.order.id ?? "";
+        const buying = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+        await vi.waitFor(async () =>
+          expect((await harnessed.store.orderById(orderId))?.paidBy).not.toBeNull(),
+        );
+        const paidTo = (await harnessed.store.orderById(orderId))?.payTo;
+        if (moved) {
+          await setPayoutWallet(
+            harnessed.store,
+            harnessed.runtime.config.payoutSplit,
+            harnessed.merchant.id,
+            MOVED_TO,
+            harnessed.now(),
+          );
+        }
+        const claim = harnessed.store.claimPayment.bind(harnessed.store);
+        const checked = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        let claiming = false;
+        vi.spyOn(harnessed.store, "claimPayment").mockImplementationOnce(async (...args) => {
+          claiming = true;
+          await checked;
+          return claim(...args);
+        });
+        const renewing = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02"));
+        await vi.waitFor(() => expect(claiming).toBe(true));
+        harnessed.facilitator.willSettle({ settled: false, reason: "refused in the script" });
+        handOver();
+        await buying;
+        await reaching(harnessed, orderId, "delivered_unpaid");
+        release();
 
-      const renewed = await renewing;
+        const renewed = await renewing;
 
-      expect(harnessed.facilitator.settles.map((charge) => charge.payTo)).toStrictEqual([paidTo]);
-      expect(renewed.status).toBe(409);
-      expect(renewed.body).toMatchObject({ error: { code: "payment_not_verified" } });
-      expect(JSON.stringify(renewed.body)).toMatch(/nothing was charged/i);
-    } finally {
-      handOver();
-      release();
-      await worker.stop();
-    }
-  });
+        expect(harnessed.facilitator.settles.map((charge) => charge.payTo)).toStrictEqual([paidTo]);
+        expect(renewed.status).toBe(409);
+        expect(renewed.body).toMatchObject({ error: { code: "payment_not_verified" } });
+        expect(JSON.stringify(renewed.body)).toMatch(/nothing was charged/i);
+        expect(JSON.stringify(renewed.body)).toMatch(next);
+      } finally {
+        handOver();
+        release();
+        await worker.stop();
+      }
+    },
+  );
 });
 
 /** A guide sent to whoever the buyer names, and a second product of the same seller. */
