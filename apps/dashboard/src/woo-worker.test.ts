@@ -20,6 +20,7 @@ import {
   type AgentOrderStatus,
   type Order,
   QuoteRequestSchema,
+  type ShipToLocality,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
@@ -37,6 +38,7 @@ import {
   type RatesRead,
   type ShipmentRead,
   type ShopKeys,
+  type ShopTax,
   type SoldItem,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
@@ -2146,6 +2148,369 @@ describe("a parcel's paid order", () => {
 
     expect(written).toContain("the shop at https://shop.example.com granted");
     expect(written).not.toContain("exam\nple");
+  });
+});
+
+describe("a parcel from a shop that calculates tax", () => {
+  // The tax probe's shops and the carts they answered for the tote bag at
+  // 20.00 with taxable shipping, in the shape the cart read gives them.
+  const DENPASAR = { country: "ID", state: "BA", city: "Denpasar", postal_code: "80361" };
+  const BERLIN = { country: "DE", state: "DE-BE", city: "Berlin", postal_code: "10115" };
+  const JAKARTA = { country: "ID", state: "JK", city: "Jakarta", postal_code: "10110" };
+  const SAN_FRANCISCO = { country: "US", state: "CA", city: "San Francisco", postal_code: "94105" };
+  const PARIS = { country: "FR", city: "Paris", postal_code: "75001" };
+  const SEATTLE = { country: "US", state: "WA", city: "Seattle", postal_code: "98101" };
+  const rate = (instanceId: string, title: string, cost: string, tax: string) => ({
+    methodId: "flat_rate",
+    instanceId,
+    title,
+    cost,
+    tax,
+  });
+  const cartPricing = (
+    total: string,
+    goods: string,
+    taxes: string[],
+    cheapest: ReturnType<typeof rate>,
+  ): RatesRead => ({
+    ok: true,
+    rates: [cheapest],
+    priced: { ok: true, total, goods, taxes, rate: cheapest },
+  });
+  const CARTS: Readonly<Record<string, RatesRead>> = {
+    Denpasar: cartPricing("23.33", "20.00", ["PPN 11%"], rate("1", "Bali courier", "3.00", "0.33")),
+    Jakarta: cartPricing("25.55", "20.00", ["PPN 11%"], rate("3", "Standard", "5.00", "0.55")),
+    "San Francisco": cartPricing("25.52", "18.02", [], rate("2", "Standard", "7.50", "0.00")),
+    Berlin: cartPricing("25.83", "20.00", ["MwSt. 19%"], rate("8", "Paket", "4.90", "0.93")),
+    // The German shop keeping one gross price for every buyer: its Paris cart
+    // keeps the goods at 20.00 under the French rate, and its order to the
+    // same address came to 32.05.
+    Paris: cartPricing("31.88", "20.00", ["TVA 20%"], rate("11", "Standard", "9.90", "1.98")),
+    Seattle: cartPricing(
+      "28.74",
+      "22.11",
+      ["Seattle 4.05%", "WA State 6.5%"],
+      rate("12", "Standard", "6.00", "0.63"),
+    ),
+  };
+  const theTote = (
+    tax: ShopTax,
+    fingerprint = "accepted-parcel-fingerprint",
+  ): ProductInspection => ({
+    ok: true,
+    product: {
+      kind: "parcel",
+      productId: "28",
+      price: { amount: "20.00", currency: "USD" },
+      tax,
+      fingerprint,
+    },
+  });
+  const IN_BALI = theTote({ mode: "included", base: DENPASAR });
+  const IN_BERLIN = theTote({ mode: "included", base: BERLIN });
+  const IN_SEATTLE = theTote({ mode: "excluded" });
+  const NOW = "2026-09-14T12:00:00.000Z";
+  const item = merchantItemIdFor("https://shop.example.com", "28");
+
+  /** The carts asked, by city, and the parts that answer them. */
+  const parts = (inspected: ProductInspection, shops = memoryWooShops()) => {
+    const asked: string[] = [];
+    return {
+      asked,
+      shops,
+      filling: {
+        shops,
+        now: () => new Date(NOW),
+        inspectProduct: async () => inspected,
+        shippingRates: async (
+          _connection: WooConnection,
+          _productId: string,
+          where: ShipToLocality,
+        ) => {
+          asked.push(where.city);
+          return CARTS[where.city] ?? { ok: true as const, rates: [], priced: NOT_PRICED };
+        },
+      } satisfies Filling,
+    };
+  };
+  const quoted = (filling: Filling, place: ShipToLocality) =>
+    quoteFromTheShop(
+      connection(),
+      {
+        merchant_item_id: item,
+        price_id: "prc_parcel",
+        purpose: "purchase",
+        expires_at: "2026-09-14T12:01:00.000Z",
+        ship_to: place,
+      },
+      new Date(NOW),
+      filling,
+    );
+
+  it("prices a parcel from a shop entering prices before tax at its cart's whole price for the place", async () => {
+    const shop = parts(IN_SEATTLE);
+
+    expect(await quoted(shop.filling, SEATTLE)).toStrictEqual({
+      available: true,
+      price: { amount: "28.74", currency: "USD" },
+      as_of: NOW,
+    });
+    expect(shop.asked).toStrictEqual(["Seattle"]);
+    expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item)).toBe(
+      "accepted-parcel-fingerprint",
+    );
+  });
+
+  it("prices an inclusive shop's parcel at its cart's whole price where the place is taxed as the shop's own address", async () => {
+    const shop = parts(IN_BALI);
+
+    expect(await quoted(shop.filling, JAKARTA)).toStrictEqual({
+      available: true,
+      price: { amount: "25.55", currency: "USD" },
+      as_of: NOW,
+    });
+    expect([...shop.asked].sort()).toStrictEqual(["Denpasar", "Jakarta"]);
+  });
+
+  it("names no price before payment where an inclusive shop taxes the place otherwise than its own address", async () => {
+    // No tax for San Francisco, and the French rate for Paris where the shop
+    // keeps one gross price, whose order would not charge what its cart does.
+    for (const [inspected, place] of [
+      [IN_BALI, SAN_FRANCISCO],
+      [IN_BERLIN, PARIS],
+    ] as const) {
+      const shop = parts(inspected);
+
+      expect(await quoted(shop.filling, place), place.city).toStrictEqual({
+        available: false,
+        as_of: NOW,
+      });
+      expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item), place.city).toBeNull();
+    }
+  });
+
+  it("gives no price where the inclusive shop's cart for its own address cannot be read", async () => {
+    // An answer that could not be read said nothing, and the silence refuses
+    // the sale on a WooCommerce card.
+    const shop = parts(IN_BALI);
+    const filling: Filling = {
+      ...shop.filling,
+      shippingRates: async (_connection, _productId, where) =>
+        where.city === "Denpasar"
+          ? { ok: true, rates: [], priced: NOT_PRICED }
+          : (CARTS[where.city] ?? { ok: true, rates: [], priced: NOT_PRICED }),
+    };
+
+    expect(await quoted(filling, JAKARTA)).toBeNull();
+    expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item)).toBeNull();
+  });
+
+  const ADDRESS_IN = (place: ShipToLocality) => ({
+    name: "Probe Buyer",
+    line_one: "1 Probe Street",
+    city: place.city,
+    ...(place.state === undefined ? {} : { state: place.state }),
+    ...(place.postal_code === undefined ? {} : { postal_code: place.postal_code }),
+    country: place.country,
+    phone_number: "+10000000000",
+  });
+  const paidFor = (place: ShipToLocality, amount: string): Order =>
+    anOrder({
+      merchant_item_id: item,
+      price: { amount, currency: "USD", at: NOW, as_of: NOW },
+      price_id: "prc_parcel",
+      ship_to: ADDRESS_IN(place),
+    });
+  const aParcelShop = () => {
+    const placed: ParcelSold[] = [];
+    return {
+      placed,
+      place: async (_keys: ShopKeys, sold: ParcelSold): Promise<ParcelMade> => {
+        placed.push(sold);
+        return { ok: true, id: "336", number: "336" };
+      },
+    };
+  };
+  const filled = (filling: Filling, order: Order, shop: ReturnType<typeof aParcelShop>) =>
+    fillFromTheShop(
+      order,
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling,
+        placeParcel: shop.place,
+        quotedProduct: async () => "accepted-parcel-fingerprint",
+      },
+      NO_SPLIT,
+    );
+
+  it("places a taxed parcel at the rate its cart priced while the cart still charges what was paid", async () => {
+    for (const [inspected, place, paid, mode] of [
+      [IN_SEATTLE, SEATTLE, "28.74", "excluded"],
+      [IN_BALI, JAKARTA, "25.55", "included"],
+    ] as const) {
+      const shop = aParcelShop();
+
+      const answer = await filled(parts(inspected).filling, paidFor(place, paid), shop);
+
+      expect(answer, place.city).toStrictEqual({ accepted: {} });
+      const cart = CARTS[place.city];
+      expect(shop.placed, place.city).toMatchObject([
+        {
+          paid: { amount: paid, currency: "USD" },
+          rate: cart?.ok && cart.priced.ok ? cart.priced.rate : null,
+          tax: mode,
+        },
+      ]);
+    }
+  });
+
+  it("refuses a taxed parcel whose cart no longer charges what was paid, and posts nothing", async () => {
+    // Paid at the Seattle cart's 28.74; its cart now says 28.11, as it did
+    // with the shipping untaxed.
+    const shop = aParcelShop();
+    const shops = memoryWooShops();
+    const filling: Filling = {
+      ...parts(IN_SEATTLE, shops).filling,
+      shippingRates: async () =>
+        cartPricing(
+          "28.11",
+          "22.11",
+          ["Seattle 4.05%", "WA State 6.5%"],
+          rate("13", "Standard", "6.00", "0.00"),
+        ),
+    };
+
+    const answer = await filled(filling, paidFor(SEATTLE, "28.74"), shop);
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+  });
+
+  it("refuses an inclusive shop's parcel to a place not taxed as its own address, and posts nothing", async () => {
+    // Paid at the Paris cart's 31.88: the order to that address came to 32.05.
+    const shop = aParcelShop();
+
+    const answer = await filled(parts(IN_BERLIN).filling, paidFor(PARIS, "31.88"), shop);
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+  });
+
+  /**
+   * A shop answering the product check in process from its settings, the way
+   * `wc/v3` answers each setting and each settings group.
+   */
+  const aShopSetTo =
+    (settings: Readonly<Record<string, string>>): WooRequest =>
+    async (url) => {
+      const path = new URL(url).pathname;
+      if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
+      if (path.endsWith("/settings/tax") || path.endsWith("/settings/general")) {
+        return Response.json(Object.entries(settings).map(([id, value]) => ({ id, value })));
+      }
+      if (path.includes("/settings/")) {
+        const id = path.split("/").at(-1) ?? "";
+        return Response.json({ id, value: settings[id] ?? "" });
+      }
+      const parcel = path.endsWith("/28");
+      return Response.json({
+        id: parcel ? 28 : 11,
+        type: "simple",
+        status: "publish",
+        purchasable: true,
+        stock_status: "instock",
+        manage_stock: false,
+        sold_individually: false,
+        virtual: !parcel,
+        downloadable: !parcel,
+        download_limit: -1,
+        download_expiry: -1,
+        price: parcel ? "20.00" : "25.00",
+        downloads: parcel
+          ? []
+          : [
+              {
+                id: "dl_guide",
+                name: "Guide",
+                file: "https://shop.example.com/protected/guide.txt",
+              },
+            ],
+      });
+    };
+  const BALI_SETTINGS = {
+    woocommerce_currency: "USD",
+    woocommerce_calc_taxes: "yes",
+    woocommerce_price_num_decimals: "2",
+    woocommerce_file_download_method: "force",
+    woocommerce_downloads_require_login: "no",
+    woocommerce_downloads_grant_access_after_payment: "yes",
+    woocommerce_downloads_redirect_fallback_allowed: "no",
+    woocommerce_ship_to_countries: "",
+    woocommerce_ship_to_destination: "shipping",
+    woocommerce_prices_include_tax: "yes",
+    woocommerce_tax_display_shop: "incl",
+    woocommerce_tax_based_on: "shipping",
+    woocommerce_tax_round_at_subtotal: "no",
+    woocommerce_default_country: "ID:BA",
+    woocommerce_store_city: "Denpasar",
+    woocommerce_store_postcode: "80361",
+  } as const;
+
+  it("refuses before any order is made when a tax setting changed between the quote and the payment", async () => {
+    for (const [what, product, before, after, place] of [
+      [
+        "a parcel's rounding",
+        "28",
+        BALI_SETTINGS,
+        { ...BALI_SETTINGS, woocommerce_tax_round_at_subtotal: "yes" },
+        JAKARTA,
+      ],
+      [
+        "tax turned on under a download",
+        "11",
+        { ...BALI_SETTINGS, woocommerce_calc_taxes: "no" },
+        BALI_SETTINGS,
+        null,
+      ],
+    ] as const) {
+      let settings: Readonly<Record<string, string>> = before;
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+      const downloads = aShopThatAccepts();
+      const merchantItemId = merchantItemIdFor("https://shop.example.com", product);
+      const filling: Filling = {
+        ...parts(IN_BALI, shops).filling,
+        inspectProduct: (keys, itemId) =>
+          inspectProductInTheShop(keys, itemId, aShopSetTo(settings)),
+        placeParcel: shop.place,
+        placeOrder: downloads.place,
+      };
+      const question = {
+        merchant_item_id: merchantItemId,
+        price_id: "prc_changed",
+        purpose: "purchase" as const,
+        expires_at: "2026-09-14T12:01:00.000Z",
+        ...(place === null ? {} : { ship_to: place }),
+      };
+
+      const answer = await quoteFromTheShop(connection(), question, new Date(NOW), filling);
+      expect(answer, what).toMatchObject({ available: true });
+      settings = after;
+      const price = answer?.available === true ? answer.price.amount : "";
+      const order = anOrder({
+        merchant_item_id: merchantItemId,
+        price: { amount: price, currency: "USD", at: NOW, as_of: NOW },
+        price_id: "prc_changed",
+        ...(place === null ? {} : { ship_to: ADDRESS_IN(place) }),
+      });
+      const refused = await fillFromTheShop(order, connection(), MERCHANT_EMAIL, filling, NO_SPLIT);
+
+      expect(refused, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
+      expect(shop.placed, what).toHaveLength(0);
+      expect(downloads.placed, what).toHaveLength(0);
+    }
   });
 });
 
