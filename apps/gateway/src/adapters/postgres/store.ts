@@ -15,6 +15,7 @@ import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "dr
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
+import { type AnalyticsEvent, recordObserved } from "../../analytics/index.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -135,6 +136,12 @@ export class PostgresStore implements Store {
 
   get network(): string {
     return this.#network;
+  }
+
+  // --- product analytics ----------------------------------------------------
+
+  async recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void> {
+    await recordObserved(this.#db, event, new Date(at));
   }
 
   // --- merchants and their keys ---------------------------------------------

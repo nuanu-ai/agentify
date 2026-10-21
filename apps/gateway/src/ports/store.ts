@@ -19,6 +19,7 @@ import type {
   ShipTo,
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import type { AnalyticsEvent } from "../analytics/events.js";
 import type { PayoutSplit } from "../split/parameters.js";
 import type { PaymentRecoveryContext } from "./facilitator.js";
 
@@ -459,6 +460,23 @@ export interface Store {
    * never read as a wallet's split.
    */
   readonly network: string;
+
+  // --- product analytics ----------------------------------------------------
+
+  /**
+   * Records a product analytics event that has no business write of its own,
+   * such as a publish refused before anything was written, outside any
+   * transaction. It never rejects: a failure is one line in the log.
+   *
+   * A fact that must be recorded together with a business write is recorded by
+   * the store method that commits the write. That method takes an optional last
+   * argument `analytics?: AnalyticsEvent | ((committed: R) => AnalyticsEvent |
+   * null)`, where `R` is what the method resolves with, and records the event
+   * in the same transaction only when the write committed something, nothing
+   * when the function returns null; the memory store keeps it beside the
+   * events this method records.
+   */
+  recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void>;
 
   // --- merchants and their keys ---------------------------------------------
 

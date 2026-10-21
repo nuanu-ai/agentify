@@ -9,6 +9,7 @@
 
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type { AnalyticsEvent } from "../../analytics/events.js";
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
   type CatalogEntry,
@@ -110,6 +111,8 @@ export class MemoryStore implements Store {
   readonly #ids: Ids;
   readonly #now: Clock;
   readonly #envelopes: Envelopes;
+  /** Every analytics event recorded, in the order recorded. */
+  readonly #analytics: { readonly event: AnalyticsEvent; readonly at: Date }[] = [];
 
   constructor(
     network: string,
@@ -125,6 +128,17 @@ export class MemoryStore implements Store {
 
   get network(): string {
     return this.#network;
+  }
+
+  // --- product analytics ----------------------------------------------------
+
+  /** What a test reads back: every analytics event recorded, in recording order. */
+  get recordedAnalytics(): readonly { readonly event: AnalyticsEvent; readonly at: Date }[] {
+    return [...this.#analytics];
+  }
+
+  async recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void> {
+    this.#analytics.push({ event, at: new Date(at) });
   }
 
   // --- merchants and their keys ---------------------------------------------
