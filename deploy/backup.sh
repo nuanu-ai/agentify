@@ -36,6 +36,11 @@ for database in "${databases[@]}"; do # the lines of each COPY block, which the 
     /^COPY / { table = substr($0, 6); sub(/ (\(.*\) )?FROM stdin;$/, "", table); rows = 0; copying = 1 }' >> "$work/counts"
 done
 cd "$work"
+# A restic run that died, on a bucket error or killed at its timeout, leaves
+# its lock in the repository, and the lock refuses every later run. unlock
+# removes only a lock whose process is gone from this host or that nobody has
+# refreshed for thirty minutes, so a check running beside this backup keeps its.
+restic unlock
 snapshot="$(restic backup --retry-lock 5m --json --quiet --tag production -- ./*.dump roles.sql counts production.env release.json)"
 snapshot="$(sed -n 's/.*"snapshot_id":"\([0-9a-f]\{8\}\).*/\1/p' <<< "$snapshot")"
 # One group: restic groups by host and paths by default, and every snapshot's

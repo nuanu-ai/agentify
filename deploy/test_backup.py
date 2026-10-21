@@ -210,11 +210,13 @@ class Backups(unittest.TestCase):
         self.assertIn(second[:8], self.status())
         self.assertEqual(list((self.world / "repo/locks").iterdir()), [])
 
-    def test_a_backup_leaves_the_lock_of_a_run_still_going_and_stores_nothing(self):
-        said = self.run_script(
+    def while_a_prune_runs(self, script):
+        return self.run_script(
             "(set -a; . /etc/agentify/backup.env; PRUNE_HANGS=1 restic prune) &\n"
-            "until compgen -G '/h/world/repo/locks/*' > /dev/null; do sleep 0.1; done\n"
-            "backup")
+            "until compgen -G '/h/world/repo/locks/*' > /dev/null; do sleep 0.1; done\n" + script)
+
+    def test_a_backup_leaves_the_lock_of_a_run_still_going_and_stores_nothing(self):
+        said = self.while_a_prune_runs("backup")
         self.assertRegex(said, r"(?m)^backup exit [1-9]")
         self.assertIn("already locked", said)
         self.assertEqual(self.snapshots(), [])
@@ -224,6 +226,13 @@ class Backups(unittest.TestCase):
         said = self.run_script("PRUNE_DIES=1 backup\ncheck")
         self.assertIn("check exit 0", said)
         self.assertIn("passed", self.status())
+
+    def test_a_check_leaves_the_lock_of_a_run_still_going(self):
+        self.run_script("backup")
+        said = self.while_a_prune_runs("check")
+        self.assertRegex(said, r"(?m)^check exit [1-9]")
+        self.assertIn("already locked", said)
+        self.assertEqual(len(list((self.world / "repo/locks").iterdir())), 1)
 
     def test_a_check_restores_the_latest_snapshot_whole_and_leaves_only_the_live_databases(self):
         said = self.run_script("backup\ncheck")

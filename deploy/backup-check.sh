@@ -34,6 +34,9 @@ trap 'exit 143' INT TERM HUP
 (($(wc -w <<< "$postgres") == 1)) || { echo "backup-check: PRODUCTION's postgres container is not running, so nothing was restored." >&2; exit 1; }
 work="$(mktemp -d /var/tmp/agentify-backup-check.XXXXXX)"
 drop
+# The lock a dead run left would refuse the check; deploy/backup.sh says which
+# locks unlock removes.
+restic unlock
 restic check --retry-lock 5m --quiet
 snapshot="$(restic snapshots --retry-lock 5m --json latest | sed -n 's/.*"short_id":"\([0-9a-f]*\)".*/\1/p')"
 restic restore "$snapshot" --retry-lock 5m --quiet --target "$work"
