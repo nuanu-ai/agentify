@@ -475,14 +475,23 @@ export interface Store {
   merchantById(id: string): Promise<StoredMerchant | null>;
 
   /**
-   * Records the one operator grant that admits a merchant to live sales. The
-   * first call writes `at`; every later call returns the original instant with
-   * `changed:false`. Null means the merchant is absent. It does not move the
-   * merchant's `updated_at`.
+   * Records the operator grant that admits a merchant to live sales. The first
+   * call writes `at`; every later call while the grant stands returns the
+   * original instant with `changed:false`. Null means the merchant is absent.
+   * It does not move the merchant's `updated_at`.
    */
   grantLiveApproval(
     id: string,
     at: number,
+  ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
+
+  /**
+   * Clears the operator's grant, so the merchant stands as one never approved.
+   * A call that finds no grant changes nothing and says `changed:false`. Null
+   * means the merchant is absent. It does not move the merchant's `updated_at`.
+   */
+  withdrawLiveApproval(
+    id: string,
   ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /** Every merchant, for the command that lists them. */

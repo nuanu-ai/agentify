@@ -925,7 +925,8 @@ needed there. A repeated grant preserves the original approval time. If the
 write's answer is lost, the result is unknown: find the merchant again to read
 the status, or repeat the same approval safely. The existing `pnpm approve
 <email>` terminal command grants the same permission. Neither route proves that
-a particular payment occurred.
+a particular payment occurred. The screen does not withdraw an approval; the
+terminal command below does.
 
 ## Who opens /admin
 
@@ -963,6 +964,25 @@ and records the approval; it says so when the approval already exists or the
 account is unknown. Approval publishes nothing and supplies no missing seller
 name or payout wallet, and TEST never needs it. When SSH does not complete,
 the outcome is unknown, and running the same command again shows it.
+
+The approval is withdrawn the same way:
+
+```sh
+pnpm approve --withdraw <email>
+```
+
+It finds the merchant by the same address and clears the approval, and says
+whether there was one to clear; running it again changes nothing and says so in
+the same words each time. From then on the merchant stands as one the operator
+never approved: a new live purchase from them is refused before any payment is
+asked for, their cards leave the live catalogue, and publishing lists
+`no_operator_approval`. It is a pause rather than a cancellation: orders already
+opened keep their fulfilment, the merchant still delivers them, and nothing is
+refunded or closed. `pnpm approve <email>` admits the merchant again, with a new
+approval time, and their cards sell again without being republished. An
+unknown address is refused with words and nothing is written. The command
+reaches only a revision deployed with it; an older one refuses it for want of
+the script and changes nothing.
 
 ## Starting an address over on TEST
 

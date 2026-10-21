@@ -175,7 +175,7 @@ describe("pnpm approve's local production wrapper", () => {
     expect(output).not.toMatch(/approval failed|was not approved/i);
   });
 
-  it("treats a terminated ssh process as an unknown one-way outcome", async () => {
+  it("treats a terminated ssh process as an unknown outcome", async () => {
     const result = await invoked([EMAIL], 0, true);
     const output = `${result.stdout}\n${result.stderr}`;
 

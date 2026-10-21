@@ -73,6 +73,9 @@ if (databaseUrl === null) {
       directory,
       {
         grant: async (merchantId) => await grantLiveApproval(store, merchantId, at),
+        withdraw: async () => {
+          throw new Error("only the grant is asked for here");
+        },
       },
       { say: (line) => lines.push(line) },
       "grant",

@@ -1,10 +1,11 @@
 /**
- * The server-side half of `pnpm approve <email>`.
+ * The server-side half of `pnpm approve <email>` and, given `--withdraw`, of
+ * `pnpm approve --withdraw <email>`.
  *
  * It reads the address from standard input, shares one database pool between
  * the dashboard resolver and gateway store, and refuses every payment network
  * except the existing live network classification. The administrative screen
- * grants the same approval; no merchant credential can grant it.
+ * grants the same approval; no merchant credential can grant or withdraw it.
  */
 
 import { environmentOf } from "@agentify/core";
@@ -14,8 +15,9 @@ import {
   PostgresStore,
   randomIds,
   systemClock,
+  withdrawLiveApproval,
 } from "@agentify/gateway";
-import { runApproval } from "./approval-command.js";
+import { type ApprovalAction, runApproval } from "./approval-command.js";
 import { PostgresApprovalDirectory } from "./approval-directory.js";
 
 /** The live network `PAYMENT_NETWORK` names, or null, said, where it names none. */
@@ -47,7 +49,20 @@ const emailFromStdin = async (): Promise<string> => {
   return input;
 };
 
+/** Null, said, for anything but no argument or the one flag. */
+const actionAsked = (): ApprovalAction | null => {
+  const asked = process.argv.slice(2);
+  if (asked.length === 0) return "grant";
+  if (asked.length === 1 && asked[0] === "--withdraw") return "withdraw";
+  console.error("PRODUCTION approval refused: the only argument this takes is --withdraw.");
+  return null;
+};
+
 const main = async (): Promise<number> => {
+  const action = actionAsked();
+  if (action === null) {
+    return 1;
+  }
   const network = liveNetwork();
   if (network === null) {
     return 1;
@@ -69,8 +84,10 @@ const main = async (): Promise<number> => {
       new PostgresApprovalDirectory(connected.pool),
       {
         grant: async (merchantId) => await grantLiveApproval(store, merchantId, systemClock()),
+        withdraw: async (merchantId) => await withdrawLiveApproval(store, merchantId),
       },
       { say: (line) => console.log(line) },
+      action,
     );
   } catch {
     console.error(

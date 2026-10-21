@@ -26,7 +26,8 @@ merchant at start-up: the release refuses a channel configured to. The
 operator's terminal looks after what exists — lists merchants, keys and
 accounts, disables a key, takes a listing name away, ends a person's sessions,
 moves the operator flag. Live sales approval is an administrative action in
-the web cabinet (ADR-0026 §6) and remains available at the terminal. None of
+the web cabinet (ADR-0026 §6) and remains available at the terminal, which
+also withdraws it. None of
 these permissions implies a staffed order-resolution service. Only the laptop's stack seeds its
 sandbox merchant, so that one command brings it up selling (ADR-0010).
 

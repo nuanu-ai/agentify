@@ -148,22 +148,37 @@ export async function setPayoutWallet(
   }
 }
 
-export interface LiveApprovalGrant {
+export interface LiveApprovalChange {
   readonly merchant: StoredMerchant;
   readonly changed: boolean;
 }
 
 /**
  * Admits one merchant to live publication. The protected administrative screen
- * and terminal command call this; no merchant-key route can make this decision. Null means no such
- * merchant; `changed: false` means already admitted.
+ * and terminal command call this; no merchant-key route can make this
+ * decision. Null means no such merchant; `changed: false` means already
+ * admitted.
  */
 export async function grantLiveApproval(
   store: Store,
   merchantId: string,
   at: number,
-): Promise<LiveApprovalGrant | null> {
+): Promise<LiveApprovalChange | null> {
   return store.grantLiveApproval(merchantId, at);
+}
+
+/**
+ * Withdraws one merchant's admission to live sales: from then on they stand as
+ * a merchant never approved, so nothing new of theirs is published or sold
+ * live, while orders already opened play out as under a pause. Only the
+ * operator's terminal command calls this. Null means no such merchant;
+ * `changed: false` means there was no approval to withdraw.
+ */
+export async function withdrawLiveApproval(
+  store: Store,
+  merchantId: string,
+): Promise<LiveApprovalChange | null> {
+  return store.withdrawLiveApproval(merchantId);
 }
 
 /**

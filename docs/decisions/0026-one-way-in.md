@@ -76,8 +76,11 @@ The page links to `/dashboard/admin/live-sales`, which checks the same flag
 on each request and admits one existing merchant after explicit confirmation.
 Its forms also pass the dashboard's origin and account checks; the operator
 needs no merchant of their own. Approval is live-only and idempotent, and does
-not bypass another selling guard or assert a payment outcome. No staff queue
-is promised by this permission.
+not bypass another selling guard or assert a payment outcome. The operator's
+terminal can withdraw it, just as idempotently: the merchant then stands as
+one never approved, refused new live sales and publication, while orders
+already opened play out as under a pause. No staff queue is promised by this
+permission.
 
 **7. One gate protects dashboard pages.** Its exceptions are sign-in, sign-out,
 the link landing page, Google start and callback, styles and built scripts,
