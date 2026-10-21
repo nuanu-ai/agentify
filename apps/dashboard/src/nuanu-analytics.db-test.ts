@@ -47,8 +47,8 @@ const gatewayMigrationsIn = join(here, "..", "..", "gateway", "drizzle");
 const SITE_ID = "123";
 const API_KEY = ["qa", "synthetic", "nuanu", "api", "key"].join("-");
 const INGEST_TOKEN = ["qa", "synthetic", "ingest", "token"].join("-");
-const REFERENCE_KEY = ["qa", "synthetic", "reference", "key", "0123456789abcdef"].join("-");
-const OTHER_REFERENCE_KEY = ["qa", "other", "reference", "key", "0123456789abcdef"].join("-");
+const REFERENCE_KEY = ["qa", "synthetic", "reference", "key"].join("-").padEnd(40, "x");
+const OTHER_REFERENCE_KEY = ["qa", "other", "reference", "key"].join("-").padEnd(40, "x");
 
 /** Every raw identifier these tests record carries `_raw_`, so none can leave unnoticed. */
 const RAW = {

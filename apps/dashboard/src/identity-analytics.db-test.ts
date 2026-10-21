@@ -42,7 +42,7 @@ const SENDING = (() => {
     NUANU_ANALYTICS_ENABLED: "true",
     NUANU_ANALYTICS_SITE_ID: "123",
     NUANU_ANALYTICS_API_KEY: ["qa", "synthetic", "nuanu", "api", "key"].join("-"),
-    NUANU_ANALYTICS_REF_KEY: ["qa", "synthetic", "reference", "key", "0123456789abcdef"].join("-"),
+    NUANU_ANALYTICS_REF_KEY: ["qa", "synthetic", "reference", "key"].join("-").padEnd(40, "x"),
   }).nuanuAnalytics;
   if (target === null) throw new Error("the configuration sends nothing");
   return target;

@@ -504,7 +504,7 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
 describe("sending product analytics to Nuanu Analytics", () => {
   const API_KEY = ["qa", "synthetic", "nuanu", "api", "key"].join("-");
   const INGEST_TOKEN = ["qa", "synthetic", "ingest", "token"].join("-");
-  const REFERENCE_KEY = ["qa", "synthetic", "reference", "key", "0123456789abcdef"].join("-");
+  const REFERENCE_KEY = ["qa", "synthetic", "reference", "key"].join("-").padEnd(40, "x");
   const RECEIVER = "http://127.0.0.1:4020";
   const SWITCHED_ON = {
     NUANU_ANALYTICS_ENABLED: "true",
