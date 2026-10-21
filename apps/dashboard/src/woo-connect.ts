@@ -14,6 +14,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { z } from "zod";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** The name in the key row the merchant reads in their shop. */
@@ -223,3 +224,49 @@ const whatAPlainPermalinkShopLooksLike = (shop: URL): string =>
   " rewrite rule, and with Settings → Permalinks set to Plain there is no rule to serve it," +
   " so WordPress falls through to the shop's front page without an error. Set permalinks to" +
   " anything other than Plain, save, and press Connect again.";
+
+/** Loose, as the import's own read is: only the currency is asked of it. */
+const PricedProductSchema = z.looseObject({
+  prices: z.looseObject({ currency_code: z.string().regex(/^[A-Z]{3}$/) }),
+});
+
+/**
+ * The currency the shop's keyless Store API prices one product in, or null
+ * where the shop did not clearly say: no products, the API off or blocked, a
+ * redirect, an answer too slow or not a product list. Null means not known,
+ * never "not dollars", so a caller goes on and the import judges every
+ * product. Redirects are not followed: an answer from another host would be
+ * another site's prices.
+ */
+export const currencyOfTheShop = async (
+  shopUrl: string,
+  request: WooRequest = wooRequest,
+): Promise<string | null> => {
+  try {
+    const answered = await request(
+      `${shopUrlAs(shopUrl)}/wp-json/wc/store/v1/products?per_page=1`,
+      {
+        redirect: "manual",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+      },
+    );
+    if (answered.status !== 200) return null;
+    const listed: unknown = JSON.parse(await answered.text());
+    if (!Array.isArray(listed)) return null;
+    const read = PricedProductSchema.safeParse(listed[0]);
+    return read.success ? read.data.prices.currency_code : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Said beside the Connect button. Nothing was switched, so the code's cards are
+ * named as they were rather than as on sale: a merchant may have paused them,
+ * or already sell through this shop.
+ */
+export const notPricedInDollars = (currency: string): string =>
+  `Your shop's catalogue prices its products in ${currency}, and Agentify sells in US dollars` +
+  " only, so none of them could be imported. Nothing was changed: the cards your own code" +
+  " published stay as they were, and your shop was not asked for keys.";
