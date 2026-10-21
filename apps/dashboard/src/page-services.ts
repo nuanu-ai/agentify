@@ -1365,9 +1365,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async disable(person, keyId) {
         const stopped = await gatewayAs(person).disableKey(keyId);
-        // Including the refusal the screen never offers a control for: the
-        // gateway will not disable the key its caller holds. Whoever reaches
-        // this anyway is told what the gateway said.
         if (!stopped.ok) return problemOf(stopped);
         noted(person, `revoked the key ${keyId}`);
         // A redirect, so a reload does not press it again.
