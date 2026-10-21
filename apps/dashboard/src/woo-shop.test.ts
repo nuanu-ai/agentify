@@ -1105,9 +1105,222 @@ describe("the protected product check", () => {
     }
   });
 
-  it("refuses a product from a shop that calculates tax, and says so", async () => {
+  /**
+   * The two shops of the tax probe: one in Bali entering prices with
+   * Indonesia's VAT inside them, one in Seattle entering them before
+   * Washington's sales tax, each showing its catalogue the way it enters it.
+   */
+  const BALI = {
+    woocommerce_prices_include_tax: "yes",
+    woocommerce_tax_display_shop: "incl",
+    woocommerce_tax_based_on: "shipping",
+    woocommerce_tax_round_at_subtotal: "no",
+    woocommerce_default_country: "ID:BA",
+    woocommerce_store_city: "Denpasar",
+    woocommerce_store_postcode: "80361",
+  } as const;
+  const SEATTLE = {
+    woocommerce_prices_include_tax: "no",
+    woocommerce_tax_display_shop: "excl",
+    woocommerce_tax_based_on: "shipping",
+    woocommerce_tax_round_at_subtotal: "no",
+    woocommerce_default_country: "US:WA",
+    woocommerce_store_city: "Seattle",
+    woocommerce_store_postcode: "98101",
+  } as const;
+  type TaxedShop = Readonly<Record<keyof typeof BALI, string>>;
+
+  /**
+   * A shop that calculates tax, answering its tax and general settings as
+   * `wc/v3` answers a settings group: every setting of the group in one list.
+   */
+  const taxingAnswer =
+    (shop: TaxedShop, calcTaxes: string, origin?: string) =>
+    (path: string): { status: number; body: unknown } => {
+      if (path === "/protected/guide.txt") return { status: 403, body: {} };
+      const group = (ids: readonly (keyof TaxedShop)[]) => ({
+        status: 200,
+        body: ids.map((id) => ({ id, value: shop[id] })),
+      });
+      if (path === "/wp-json/wc/v3/settings/tax") {
+        return group([
+          "woocommerce_prices_include_tax",
+          "woocommerce_tax_display_shop",
+          "woocommerce_tax_based_on",
+          "woocommerce_tax_round_at_subtotal",
+        ]);
+      }
+      if (path === "/wp-json/wc/v3/settings/general") {
+        return group([
+          "woocommerce_default_country",
+          "woocommerce_store_city",
+          "woocommerce_store_postcode",
+        ]);
+      }
+      if (path.includes("woocommerce_calc_taxes")) {
+        return { status: 200, body: settingAt(path, calcTaxes) };
+      }
+      if (path.includes("/settings/")) {
+        return { status: 200, body: settingAt(path, parcelSettingFor(path)) };
+      }
+      if (path.endsWith("/28")) return { status: 200, body: parcelDocument() };
+      return {
+        status: 200,
+        body:
+          origin === undefined
+            ? productDocument()
+            : productDocument({
+                downloads: [
+                  {
+                    id: "dl_guide",
+                    name: "Agentify guide.txt",
+                    file: `${origin}/protected/guide.txt`,
+                  },
+                ],
+              }),
+      };
+    };
+
+  /**
+   * A shop that calculates tax, answering its tax and general settings as
+   * `wc/v3` answers a settings group: every setting of the group in one list.
+   */
+  const shopTaxing = (shop: TaxedShop, calcTaxes = "yes") =>
+    shopAnswering((asked) => taxingAnswer(shop, calcTaxes)(asked.url));
+
+  /**
+   * The same shop answered in process at one fixed address, because the
+   * address is part of a fingerprint.
+   */
+  const TAXING_SHOP = "https://shop.example.com";
+  const fingerprintIn = async (shop: TaxedShop, product: "11" | "28", calcTaxes = "yes") => {
+    const read = await inspectProductInTheShop(
+      connectionTo(TAXING_SHOP),
+      merchantItemIdFor(TAXING_SHOP, product),
+      async (url) => {
+        const said = taxingAnswer(shop, calcTaxes, TAXING_SHOP)(new URL(url).pathname);
+        return Response.json(said.body, { status: said.status });
+      },
+    );
+    if (!read.ok) throw new Error(`the product check refused: ${read.why}`);
+    return read.product.fingerprint;
+  };
+
+  const readFrom = (shop: Stand, product: "11" | "28") =>
+    inspectProduct(connectionTo(shop.url), merchantItemIdFor(shop.url, product));
+
+  it("sells a download from a shop whose prices are entered with tax inside them", async () => {
+    stand = await shopTaxing(BALI);
+
+    expect(await readFrom(stand, "11")).toMatchObject({
+      ok: true,
+      product: { kind: "download", tax: { mode: "included" } },
+    });
+  });
+
+  it("refuses a download from a shop that enters prices before tax, as the shop's no", async () => {
+    // The tax is added for the buyer's address, which a download's buyer does
+    // not give, so no price quoted beforehand is the one the order charges.
+    stand = await shopTaxing(SEATTLE);
+
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: false, again: false, saidNo: true });
+  });
+
+  it("sells a parcel from a shop that calculates tax either way, and knows where an inclusive shop is based", async () => {
+    stand = await shopTaxing(BALI);
+    const inclusive = await readFrom(stand, "28");
+    await stand.close();
+    stand = await shopTaxing(SEATTLE);
+    const exclusive = await readFrom(stand, "28");
+
+    expect(inclusive).toMatchObject({
+      ok: true,
+      product: {
+        kind: "parcel",
+        tax: {
+          mode: "included",
+          base: { country: "ID", state: "BA", city: "Denpasar", postal_code: "80361" },
+        },
+      },
+    });
+    expect(exclusive).toMatchObject({
+      ok: true,
+      product: { kind: "parcel", tax: { mode: "excluded" } },
+    });
+  });
+
+  it("refuses a shop whose catalogue shows prices otherwise than they are entered, naming the setting", async () => {
+    // The import reads the catalogue's price, and these shops show 0.90 and
+    // 1.11 there for a product entered at 1.00, which is not what is charged.
+    for (const shop of [
+      { ...BALI, woocommerce_tax_display_shop: "excl" },
+      { ...SEATTLE, woocommerce_tax_display_shop: "incl" },
+    ]) {
+      stand = await shopTaxing(shop);
+      for (const product of ["11", "28"] as const) {
+        expect(
+          await readFrom(stand, product),
+          `${shop.woocommerce_default_country} ${product}`,
+        ).toMatchObject({
+          ok: false,
+          saidNo: true,
+          why: expect.stringContaining("Display prices in the shop"),
+        });
+      }
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses a parcel from a shop that calculates tax on an address other than the shipping one", async () => {
+    for (const basedOn of ["billing", "base"]) {
+      stand = await shopTaxing({ ...BALI, woocommerce_tax_based_on: basedOn });
+
+      expect(await readFrom(stand, "28"), basedOn).toMatchObject({
+        ok: false,
+        saidNo: true,
+        why: expect.stringContaining("Calculate tax based on"),
+      });
+      // A download's order carries no address, so it is taxed where the shop
+      // is whichever address the setting names.
+      expect(await readFrom(stand, "11"), basedOn).toMatchObject({ ok: true });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not ask for a shop's tax settings to judge a product while tax calculation is off", async () => {
+    // WooCommerce may not serve its tax settings at all with tax off.
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.endsWith("/settings/tax") || asked.url.endsWith("/settings/general")) {
+        return { status: 404, body: { code: "rest_setting_setting_group_invalid" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      }
+      return {
+        status: 200,
+        body: asked.url.endsWith("/28") ? parcelDocument() : productDocument(),
+      };
+    });
+
+    expect(await readFrom(stand, "11")).toMatchObject({
+      ok: true,
+      product: { tax: { mode: "off" } },
+    });
+    expect(await readFrom(stand, "28")).toMatchObject({
+      ok: true,
+      product: { tax: { mode: "off" } },
+    });
+  });
+
+  it("says it could not read the tax settings of a shop that calculates tax, not that the shop said no", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.endsWith("/settings/tax")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
       if (asked.url.includes("woocommerce_calc_taxes")) {
         return { status: 200, body: settingAt(asked.url, "yes") };
       }
@@ -1117,12 +1330,30 @@ describe("the protected product check", () => {
       return { status: 200, body: productDocument() };
     });
 
-    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: false, again: false, saidNo: false });
+  });
 
-    expect(read).toMatchObject({
-      ok: false,
-      why: expect.stringContaining("tax calculation"),
-    });
+  it("gives a product a new fingerprint when its shop turns tax calculation on", async () => {
+    // A quote accepted before the change is then refused before an order is
+    // made, rather than filled under tax it was not priced with.
+    for (const product of ["11", "28"] as const) {
+      expect(await fingerprintIn(BALI, product, "yes"), product).not.toBe(
+        await fingerprintIn(BALI, product, "no"),
+      );
+    }
+  });
+
+  it("gives a parcel a new fingerprint when any tax setting that moves its price changes", async () => {
+    const accepted = await fingerprintIn(BALI, "28");
+    for (const changed of [
+      { ...BALI, woocommerce_prices_include_tax: "no", woocommerce_tax_display_shop: "excl" },
+      { ...BALI, woocommerce_tax_round_at_subtotal: "yes" },
+      { ...BALI, woocommerce_default_country: "ID:JK", woocommerce_store_city: "Jakarta" },
+      { ...BALI, woocommerce_store_postcode: "80111" },
+    ]) {
+      expect(await fingerprintIn(changed, "28"), JSON.stringify(changed)).not.toBe(accepted);
+    }
+    expect(await fingerprintIn({ ...BALI }, "28")).toBe(accepted);
   });
 
   it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {
