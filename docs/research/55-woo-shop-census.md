@@ -739,4 +739,254 @@ are added.
 
 ## Results
 
-The census has not run yet.
+### How the run went
+
+The census ran on 2026-10-21, from the test host, as written above: every
+shop was requested from the test host's Indonesian network and nothing was
+requested from the production host. The scripts that did it, none of which
+names a shop, are kept beside this note in `55-woo-shop-census/`: the screener
+that sent the requests (`screen.py`, with `run.py` around it), the inclusion
+and origin rules (`include.py`), the extraction of the raw answers
+(`extract.py`), the verdict (`verdict.ts`, run against the connector's own
+`cardsFromTheShop` at `d874a68f`), the counts (`stats.py`) and the network
+lookup (`asn.sh`). The search results, the candidate lists, the shops'
+addresses and their answers are raw data kept outside the repository. The
+host's temporary directory was copied off and removed when the run ended.
+
+All 62 queries were run: the 54 main ones and all eight reserves, because the
+Indonesian, the American and the European groups each ran out of main queries
+before their target. They returned 574 results, of which 440 were pages about
+merchants; 312 of those pages could be read, and the rest answered with an
+error or a block of their own. The pages yielded 1,675 candidates. The census
+requested 1,716 sites, counting the targets of front-page redirects to another
+domain, and sent them about 5,800 requests, never more than seven to one site.
+A further 41 European candidates were recorded as "country's share reached"
+without being requested, because their domain belonged to a country that
+already had five shops.
+
+Of the requested sites, 86 turned out to run WooCommerce and 54 of those were
+included: 22 in Indonesia, 15 of them in Bali, 7 in the United States and 25
+in Europe (five each from the Netherlands, Belgium and Italy, four each from
+Spain and the United Kingdom, one each from Poland and Ireland; none from
+Germany or France, whose queries named no WooCommerce shop the rules could
+place). Twenty-seven WooCommerce shops were excluded because the origin rule
+could not place them from their front page, two because their listing held
+no products, and three because their country already had five. Another 157
+sites, about one in eleven of those requested, answered the front page with a
+Cloudflare challenge, or in a few cases with a 429, so their platform is
+unknown; 92 of those came from the American queries. That is the main reason
+the American group is small.
+
+**The Indonesian group ended with 22 shops, below the 25 that rule 1 of the
+decision rule requires**, and the American group with 7 against a target of
+20. Both are reported as measured and neither was stretched.
+
+### Decisions the note did not foresee
+
+The strata were run partly in parallel on the host to fit the day, so the
+American and European queries were screened while the Indonesian ones were
+still running. Afterwards the inclusion and stop rules were applied again to
+every record in the note's order, Bali, the rest of Indonesia, the United
+States, Europe; no record had to be discarded and no candidate before a stop
+had been left unrequested.
+
+Link shorteners and affiliate trackers found on pages about merchants (for
+example `bit.ly` and the networks that redirect to a shop for a commission)
+were dropped as candidates, because their own address leads to no merchant. A
+publisher's sister sites were taken to be the domains linked from every
+distinct page of that publisher that the census read, when it read two or
+more. When a front page redirected to another domain, the target was screened
+as the next candidate.
+
+A shop's group was decided by the origin rules alone, whichever query found
+it, so two American coffee roasters named by a Bali guide count in the
+American group. The note's address rule was implemented as code reading the
+front page's visible text. Three corrections were made to that code after the
+first tables had been computed, each to make it follow the rule as written
+rather than to change a result: a holding page is now recognised by its title
+or by a short page that says little else, because "accessories coming soon" on
+a Bali surf shop's front page had excluded a working shop; a postal address is
+now read anywhere on the page when a postcode, a town and a separator precede
+the country's name, because three Italian roasters print their address in the
+footer away from the word "contact"; and a calling code is now read only from
+a number written in international form, because an American shop's local
+number beginning with 30 had been placed in Greece. The corrections left the
+Indonesian and American groups as they were. In Europe they moved one shop
+from Malta back to the Netherlands, removed the American shop from Greece and
+let an Irish shop take the last place; the first table had shown one European
+shop as "could, conditionally", and it was that misplaced American shop.
+
+Question P12 counts a candidate as selling from its own site when it runs
+WooCommerce, Shopify, BigCommerce, Magento, OpenCart or PrestaShop, or runs
+Squarespace, Wix or Webflow with a cart on its front page; the note did not say
+how to decide it.
+
+### The verdicts
+
+| Group | Shops | Could, conditionally | Cannot | Unknown |
+| --- | --- | --- | --- | --- |
+| Bali | 15 | 1 | 14 | 0 |
+| Indonesia outside Bali | 7 | 0 | 7 | 0 |
+| Indonesia | 22 | 1 (5%, interval 1–22%) | 21 | 0 |
+| United States | 7 | 6 (86%, interval 49–97%) | 0 | 1 |
+| Europe | 25 | 0 (0%, interval 0–13%) | 20 | 5 |
+
+"Could, conditionally" means that at least one product passed every check the
+public listing allows, and it remains an upper bound: tax calculation, the
+product's class and its shipping or download settings cannot be seen from
+outside.
+
+In Indonesia the first reason recorded for the 21 shops that cannot connect
+was the currency for 11, more than 200 products for 7, prices in dollars
+written with no decimals for one, a WooCommerce shop whose Store API does not
+answer for one, and a listing that answered with a page of its own for one.
+The currency alone, with its own decimals allowed, is the sole blocker for 7
+of the 22 shops (32%), and the dollar decimals for one more; no other reason
+alone stops any Indonesian shop. The one Indonesian shop that could connect,
+conditionally, is a Bali surfboard shaper selling 13 boards in US dollars as
+simple products whose stock is not counted; they would sell as parcels.
+
+In the United States six of the seven shops could connect, conditionally, and
+the seventh answered the listing with a 429. Four of the six have a
+qualifying product whose description fits the 500 characters a card allows.
+
+In Europe the first reason for the 20 shops that cannot connect was the
+currency for 11 and more than 200 products for 7; one shop closes its REST API
+to visitors and one has no Store API. The currency alone is the sole blocker
+for 9 of the 25 (36%). Of the five unknown, two disallow the listing path in
+`robots.txt`, two did not answer the hundred-product page within fifteen
+seconds or reset the connection while answering a one-product page at once,
+and one answered 429.
+
+### What the shops look like
+
+The table gives the measures per group. A share is of the shops in the group
+unless it says otherwise; currency and catalogue size are of the shops whose
+listing could be read (20 in Indonesia, 6 in the United States, 20 and 18 in
+Europe).
+
+| Measure | Indonesia (Bali) | United States | Europe |
+| --- | --- | --- | --- |
+| Currency | rupiah 80% (86%), dollar 15%, pound 5% | dollar 100% | euro 75%, pound 20%, złoty 5% |
+| Rupiah written with no decimals | 15 of 16 | — | — |
+| More than 200 products | 35% (29%) | 0% | 39% |
+| Median catalogue size | 123 | 21.5 | 121 |
+| Simple products, of all listed | 72% (59%) | 38% | 58% |
+| Managed stock, inferred, of simple products in stock | 38% | 22% | 66% |
+| Sold individually, of all listed | 6% | 5% | under 1% |
+| Weight or dimensions filled, of all listed | 51% | 44% | 15% |
+| Price suffix | 0% | 0% | 0% |
+| Tax wording elsewhere in the price | 0% | 0% | 0% |
+| Plain permalinks or a sub-path | 0% | 0% | 0% |
+| `robots.txt` disallows the listing | 0% | 0% | 8% |
+| Listing blocked (step 1) | 0% | 14% | 4% |
+| Readable by the honest request | 91% | 86% | 72% |
+| Readable by the connector's own request | 91% | 86% | 72% |
+| Multi-currency plugin visible | 9% | 14% | 24% |
+| Listing served from a cache | 5% | 0% | 4% |
+
+The blocked shares above are measured from an Indonesian network. For the
+Indonesian and American groups they are a lower bound for what the connector
+would meet calling from Germany on the live channel; for the European group
+they make no claim about the live channel.
+
+No included shop, in any group, printed a price suffix, and none carried tax
+wording elsewhere in its price. Two WooCommerce shops outside the sample did:
+a Spanish shop printing "IVA incluido" and an Italian one printing "IVA
+inclusa", both excluded because the origin rule could not place them from
+their front page.
+
+The plugins visible on at least a fifth of the Indonesian shops, WooCommerce
+itself aside, are Elementor (45%), Contact Form 7 (36%), the Xendit payment
+plugin for Indonesian virtual accounts (32%), Elementor Pro (27%) and Google
+Site Kit (23%); a WhatsApp chat or order plugin of some make is visible on 32%,
+though no single one reaches a fifth. Among hosting signals, Cloudflare is in
+front of 36% of the Indonesian shops and LiteSpeed serves 32%; no other
+reaches a fifth. By the networks their addresses resolve to, 7 of the 22
+Indonesian shops are served from Indonesian networks and 11 from American
+ones, mostly Cloudflare. The European shops' most common plugin is Contact
+Form 7 (24%), and their servers are mostly nginx (44%) and Apache (32%);
+Cloudflare is in front of 8%. The plugin `extensions` the Store API reported
+were few: a Google Analytics integration and a tag manager.
+
+Some anonymized examples: a Bali jewellery shop with 174 simple products in
+rupiah at no decimals, stopped by the currency alone; a Bali ceramics maker
+with more than 6,000 products, refused whole for size before its currency is
+even read; an Indonesian furniture shop pricing in US dollars with 341 products,
+stopped by the 200-product ceiling alone; an Indonesian tea exporter pricing
+in pounds; five Italian coffee roasters, each with between 33 and 162 products
+in euros, each stopped by the currency alone; a Dutch shop whose REST API
+answers only signed-in users.
+
+### The connector's own request
+
+In Indonesia and the United States the connector's own request, without a
+User-Agent, was answered exactly as the honest one. In Europe two shops, a
+Dutch wholesaler of scarves and bags and a Polish pottery shop, both served by
+Apache, answered
+the honest request with their product list and the connector's request with a
+bare Apache 403 page: 2 of the 25 European shops (8%, interval 2–25%). Both
+have more than 200 products and price in their own currency, so their verdict
+does not change, but for a shop like them the connector would be refused at
+the door whatever its catalogue held. Two more European shops failed the
+honest hundred-product request, one by a fifteen-second timeout and one by a
+reset connection, and answered the connector's one-product request at once;
+that difference is the size of the page, not the User-Agent, and the
+connector's own import asks for a hundred products per page under the same
+fifteen-second limit, so it would fail there too.
+
+### The predictions
+
+Held: P1 for Indonesia as a whole (rupiah 80%); P3 (all six readable American
+shops in dollars at two decimals); P5 in both groups (72% and 38% simple); P6
+for Indonesia (38%); P7 (no suffix in either group); P8 (no plain permalinks
+or sub-path anywhere); P9 for the United States (14%); P10 for Indonesia (5%)
+and Bali (7%); P11 (currency the sole blocker for 32%); P12 for Bali (25%) and
+the rest of Indonesia (37%); P13 in full (Elementor 45%, a WhatsApp plugin 32%,
+LiteSpeed by header or plugin 36%, Cloudflare 36%); P14 in both groups (0%);
+and every part of P15 but one (euro 75%; pound and złoty 25%; no dollar shop;
+all at two decimals; 58% simple; 66% managed stock; 4% blocked; the
+connector's request refused for 8%; none could connect).
+
+Failed: P1 for Bali (86% against 55–85%) and for the rest of Indonesia (67%
+against at least 90%, from six readable shops); P2 (15 of 16 rupiah shops at no
+decimals against 40–75%); P4 in both groups (35% of Indonesian shops over 200
+against 10–30%, and none of the American ones against 15–35%); P6 for the
+United States (22% against 35–70%); P9 for Indonesia (none blocked against
+3–15%); P10 for the United States (86% against 25–60%); P12 for the United
+States (10% against 15–35%); and the suffix part of P15 (none against 15–50%).
+
+### The decision rule, applied
+
+1. **Too few shops.** The Indonesian group ended with 22 included shops,
+   fewer than 25. Rules 2 to 5 are therefore not applied: the result is
+   reported as insufficient, and nothing about the dollar rule, other sole
+   blockers, the realistic lab or bot protection is decided from it. The
+   numbers above stand as observations. The screening counts say why the
+   group is small: guides about Bali and Indonesian merchants link far more
+   often to Shopify (47 of the 84 Indonesian merchants found selling from
+   their own site) than to WooCommerce (23), most of what they link to is not
+   a shop at all, and six WooCommerce shops found by the Indonesian queries
+   were lost to the origin rule. The proposal for the next method, for the product owner to accept or
+   change before anything runs, is to keep this method's conduct, measures and
+   verdict and change only how Indonesian shops are found: take candidates
+   from the Indonesian merchants who list a website on the payment gateways
+   and couriers Indonesian WooCommerce shops use (the Xendit plugin is visible
+   on a third of the shops found here), add queries for Indonesian product
+   categories in Indonesian, and let the origin rule read one more page, the
+   shop's contact page, when the front page gives no address.
+2. **The dollar rule**, 3. **other sole blockers**, 4. **the realistic lab**
+   and 5. **bot protection**: not applied, by rule 1.
+6. **The connector's missing User-Agent.** Two included European shops
+   answered the honest request with a JSON list and refused the connector's
+   own request. The missing User-Agent is therefore recorded as a defect of
+   the connector, to be fixed by sending an honest User-Agent, and not as a
+   product question.
+7. **Tax in Europe.** No included European shop printed a price suffix: the
+   measured lower bound of European shops with tax calculation on is 0 of 25
+   (interval 0–13%), with no suffix text in the sample. This lower bound is
+   uninformative, since it means only that these shops do not use
+   WooCommerce's suffix to say their prices include tax, and the two suffixes
+   seen ("IVA incluido", "IVA inclusa") come from shops outside the sample.
+   Both are handed to the separate probe that is studying whether shops with
+   tax calculation on can be supported.
