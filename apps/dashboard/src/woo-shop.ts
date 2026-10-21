@@ -71,14 +71,9 @@ export type ShopTax =
   | { readonly mode: "off" }
   /**
    * Prices are entered with tax inside them, which WooCommerce splits out at
-   * the rates of `base`, the shop's own address. `roundsAtSubtotal` says the
-   * shop rounds tax once for the order rather than on each line.
+   * the rates of `base`, the shop's own address.
    */
-  | {
-      readonly mode: "included";
-      readonly base: ShipToLocality;
-      readonly roundsAtSubtotal: boolean;
-    }
+  | { readonly mode: "included"; readonly base: ShipToLocality }
   /** Prices are entered before tax, which is added for the buyer's address. */
   | { readonly mode: "excluded" };
 
@@ -465,6 +460,20 @@ export const inspectProductInTheShop = async (
           " charge",
       );
     }
+    // Rounding per line, such a shop's cart rounds a shipping tax that falls on
+    // half a cent up and its order rounds it down, by a compound rate as well,
+    // so its cart's total is not the price its order charges.
+    if (
+      kind === "parcel" &&
+      entered === "included" &&
+      taxSettings.value("woocommerce_tax_round_at_subtotal") !== "yes"
+    ) {
+      unsupported.push(
+        "the shop's prices are entered with tax and it rounds tax per line, where its order can" +
+          " round the tax on shipping a cent away from the price its cart quotes (WooCommerce →" +
+          ' Settings → Tax → "Round tax at subtotal level, instead of rounding per line")',
+      );
+    }
     // Only the shipping address is known to price a parcel's cart and its
     // order alike; the order carries no billing address to tax by.
     if (kind === "parcel" && taxSettings.value("woocommerce_tax_based_on") !== "shipping") {
@@ -580,7 +589,6 @@ export const inspectProductInTheShop = async (
           city: general.value("woocommerce_store_city"),
           ...(postcode === "" ? {} : { postal_code: postcode }),
         },
-        roundsAtSubtotal: roundAtSubtotal === "yes",
       };
     }
     // The class is hashed first, so a parcel's digest can never equal a

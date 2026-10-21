@@ -346,22 +346,6 @@ export const fillFromTheShop = async (
 type EligibleParcel = Extract<EligibleWooProduct, { readonly kind: "parcel" }>;
 
 /**
- * Whether a rate's tax on a shipping cost falls exactly on half a cent, which
- * an inclusive shop rounding per line rounds up in its cart and down in its
- * order. Null where the rate, as the cart writes it ("19%", "4.05%"), cannot
- * be read.
- */
-const onHalfACent = (cost: string, rate: string): boolean | null => {
-  const written = /^(\d+)(?:\.(\d+))?%$/.exec(rate);
-  const cents = centsOf(cost);
-  if (written === null || cents === null) return null;
-  const fraction = written[2] ?? "";
-  const percent = BigInt(`${written[1]}${fraction}`);
-  const whole = 100n * 10n ** BigInt(fraction.length);
-  return (cents * percent) % whole === whole / 2n;
-};
-
-/**
  * What a parcel from a shop that calculates tax sells at: its cart's whole
  * price for the place, at which the order made for that place charges the
  * same, so long as the cart holds the goods at the product's own price, which
@@ -408,23 +392,6 @@ const taxedParcelPrice = (
     return {
       ok: false,
       why: "the shop taxes this place otherwise than its own address, where its order would not charge what its cart does",
-      again: false,
-      saidNo: true,
-    };
-  }
-  // Without the tax lines the rates on the shipping are not known, so neither
-  // is whether one falls on half a cent.
-  if (
-    !product.tax.roundsAtSubtotal &&
-    place.rate.tax !== "0.00" &&
-    (place.taxes.length === 0 ||
-      place.taxes.some(
-        (tax) => onHalfACent(place.rate.cost, tax.split(" ").at(-1) ?? "") !== false,
-      ))
-  ) {
-    return {
-      ok: false,
-      why: "the shop rounds tax per line, and the tax on this shipping falls on half a cent or its rates cannot be read, which its order may round otherwise than its cart",
       again: false,
       saidNo: true,
     };
