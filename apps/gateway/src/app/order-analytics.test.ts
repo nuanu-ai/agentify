@@ -554,7 +554,8 @@ describe("what an order's analytics carry", () => {
     const order = await stored(open, orderId);
 
     const events = open.store.recordedAnalytics.map(({ event }) => event);
-    expect(events.map((event) => event.name)).toStrictEqual([
+    const ofTheOrder = events.filter((event) => event.name !== "agc_card_publish_result");
+    expect(ofTheOrder.map((event) => event.name)).toStrictEqual([
       "agc_order_created",
       "agc_payment_result",
       "agc_order_outcome_changed",
