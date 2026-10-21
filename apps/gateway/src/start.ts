@@ -12,6 +12,7 @@ import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { recoveryOn } from "./adapters/x402/recovery.js";
+import { signaturesOn } from "./adapters/x402/signatures.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import { RefusedToStart } from "./app/recorded-splits.js";
@@ -217,6 +218,7 @@ export async function startGateway(
     // applies at once and nobody is told.
     announcer,
     widestChallenge: widestChallengeOn(config),
+    signatures: signaturesOn(config.payment.network, config.payment.rpcUrl),
   };
 
   const gateway = new Gateway(runtime);
