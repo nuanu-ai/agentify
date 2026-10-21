@@ -424,7 +424,7 @@ const taxedParcelPrice = (
   ) {
     return {
       ok: false,
-      why: "the shop rounds tax per line and the tax on this shipping falls on half a cent, which its order rounds otherwise than its cart",
+      why: "the shop rounds tax per line, and the tax on this shipping falls on half a cent or its rates cannot be read, which its order may round otherwise than its cart",
       again: false,
       saidNo: true,
     };
