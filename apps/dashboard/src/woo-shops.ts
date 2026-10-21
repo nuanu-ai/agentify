@@ -69,7 +69,7 @@ export interface AppliedRate {
 }
 
 /** Coinbase's rate as read while a rate was saved, which the guard compared it with. */
-export interface ReferenceShown {
+interface ReferenceShown {
   readonly rate: string;
   readonly source: string;
   readonly readAt: Date;
@@ -107,7 +107,7 @@ type QuoteToBind = Omit<QuoteBinding, "rate"> & { readonly rateVersion: number |
  * dollars paid: the amount the shop's order was held to and the rate the
  * dollars were converted at.
  */
-export interface ConvertedSale {
+interface ConvertedSale {
   readonly inTheShop: Money;
   readonly rate: { readonly version: number; readonly rate: string; readonly setAt: string };
 }

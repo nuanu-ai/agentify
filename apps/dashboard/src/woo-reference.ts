@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 
-export const REFERENCE_SOURCE = "Coinbase";
+const REFERENCE_SOURCE = "Coinbase";
 
 const COINBASE_RATES = "https://api.coinbase.com/v2/exchange-rates?currency=USD";
 
