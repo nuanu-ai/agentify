@@ -278,7 +278,7 @@ if (databaseUrl === null) {
         id: "env_after_left",
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_left",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -373,7 +373,7 @@ if (databaseUrl === null) {
         id: "env_expiry_1",
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_expiry",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -433,7 +433,7 @@ if (databaseUrl === null) {
         id,
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_delayed_env",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -505,7 +505,7 @@ if (databaseUrl === null) {
         id: "env_held_3",
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_held",
           at: "2026-08-26T12:00:00.000Z",
         },

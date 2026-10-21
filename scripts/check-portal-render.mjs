@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * Checks that the portal's examples reached the built pages, and that every
- * built page carries what Caddy fills in where Caddy can find it.
- *
- * `packages/contracts/src/portal-fixtures.test.ts` holds each example to its
- * schema and to the pages that name it. No test can see whether the build
- * turned `<<< @/examples/…` into the file's content or printed the line as
- * text: a pipeline that stopped understanding the include would leave the
- * suite green while every example vanished from the site.
+ * Checks the documentation as the build wrote it to disk, after prerender:
+ * every example a page includes is shown whole on that built page, every
+ * built page carries the surface marker above the page, and no built page
+ * carries a template escaped as `&lt;!--{{`, which Caddy cannot find. The
+ * unit tests render the Markdown; only the built HTML shows what prerender
+ * made of it. Whether an example passes its schema it leaves to
+ * `packages/contracts/src/portal-fixtures.test.ts`.
  *
  * Run it after `pnpm --filter @agentify/docs build`. The built HTML, with tags
  * removed and entities decoded, must contain the example's whole text.

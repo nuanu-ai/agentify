@@ -68,12 +68,7 @@ export const NO_PENDING_HANDLER = [
  * purchase in one of them whose payment stage is still `none` waits on its
  * buyer, and holds one of its seller's places at the door (`Birth`).
  */
-export const WAITING_FOR_PAYMENT = [
-  "created",
-  "quoted",
-  "awaiting_confirmation",
-  "confirmed",
-] as const satisfies readonly OrderState[];
+export const WAITING_FOR_PAYMENT = ["created", "quoted"] as const satisfies readonly OrderState[];
 
 /**
  * Whether a purchase waits on its buyer's payment at `at`, and so holds one of
@@ -81,37 +76,29 @@ export const WAITING_FOR_PAYMENT = [
  * and with its price still able to stand. A price holds for the quote's time
  * to live from when it was named, and a question still unanswered may name
  * one until its own window ends; past that the order is over in all but the
- * reminder that closes it, which may fire late or not at all. A purchase that
- * waits on a confirmation counts until it is closed.
+ * reminder that closes it, which may fire late or not at all.
  */
 export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
   const { order } = record;
   if (!(WAITING_FOR_PAYMENT as readonly string[]).includes(order.state)) return false;
   if (order.payment !== "none") return false;
   const { quoteResponseMs, quoteTtlMs } = order.policy.deadlines;
-  switch (order.state) {
-    case "quoted":
-      return order.timestamps.quotedAt === null || order.timestamps.quotedAt + quoteTtlMs > at;
-    case "created":
-      return order.timestamps.createdAt + quoteResponseMs + quoteTtlMs > at;
-    default:
-      return true;
-  }
+  return order.state === "quoted"
+    ? order.timestamps.quotedAt === null || order.timestamps.quotedAt + quoteTtlMs > at
+    : order.timestamps.createdAt + quoteResponseMs + quoteTtlMs > at;
 };
 
 /**
  * Whether an order is an attempt that lapsed unpaid: it ended rejected or
- * expired with no payment ever verified, no goods held for its buyer, nothing
- * presented to pay with, and its merchant never asked to confirm it, which is
- * what an event about it would follow. Nothing of anybody's money or goods
- * rests on such an order. Whether a receipt or a payment claim names it is the
+ * expired with no payment ever verified, no goods held for its buyer and
+ * nothing presented to pay with. Nothing of anybody's money or goods rests on
+ * such an order. Whether a receipt or a payment claim names it is the
  * store's to ask besides, at the moment it would forget the order.
  */
 export const lapsedAttempt = (record: StoredOrder): boolean =>
   (record.order.state === "rejected" || record.order.state === "expired") &&
   record.order.payment === "none" &&
   !record.order.heldFulfillment &&
-  record.order.timestamps.confirmationRequestedAt == null &&
   record.payment == null &&
   record.paidBy == null &&
   record.paymentAttempt == null &&

@@ -12,6 +12,6 @@ refusal with a sentence to show.
 
 The descriptions of the purchase route, the order status route and the
 merchant's list of orders say so, and say that an order which ended rejected or
-expired with nothing charged or held and no confirmation asked of its merchant
-is deleted thirty days after it was last written, after which its identifier is
-answered as one that names no order and it leaves the merchant's list.
+expired with nothing charged or held is deleted thirty days after it was last
+written, after which its identifier is answered as one that names no order and
+it leaves the merchant's list.

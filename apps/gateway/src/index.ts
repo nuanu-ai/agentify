@@ -34,7 +34,6 @@ export { type GatewayConfig, loadConfig } from "./config.js";
 export {
   bodyRefused,
   CONFLICT,
-  merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,

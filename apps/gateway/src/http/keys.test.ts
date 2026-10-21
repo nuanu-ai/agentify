@@ -623,17 +623,3 @@ describe("the mark a call leaves on the key it was made with", () => {
     );
   });
 });
-
-describe("the merchant every ordinary test sells as", () => {
-  it("holds the one key it opens the door with, which is what the seeded merchant is for", async () => {
-    // The harness writes its merchant straight into the store, as the sandbox
-    // seed does, with no registration. Its key must still open the door and be
-    // the one key its list names.
-    const { served, harnessed } = await started();
-
-    expect(await opensTheDoor(served, harnessed.merchant.key)).toBe(true);
-    expect(await keyIdsOf(harnessed, harnessed.merchant.id)).toStrictEqual([
-      harnessed.merchant.keyId,
-    ]);
-  });
-});

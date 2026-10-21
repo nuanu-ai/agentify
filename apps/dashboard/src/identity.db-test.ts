@@ -1140,7 +1140,7 @@ if (databaseUrl === null) {
       });
 
       expect(await registrations()).toMatchObject([{ account_id: made.id, click_id: CLICK }]);
-      expect(await countIn("dashboard_ad_reports")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
     });
 
     it("writes nothing for a token that opens nothing or for the landing page's read, and one registration for a link opened twice", async () => {
@@ -1169,7 +1169,8 @@ if (databaseUrl === null) {
       await pool.query("update dashboard_verifications set expires_at = now() + interval '1 hour'");
       await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
-      expect(await countIn("dashboard_ad_reports")).toBe(1);
+      expect(await registrations()).toHaveLength(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
     });
 
     it("writes no registration for a report link opened by a new address", async () => {
@@ -1243,7 +1244,7 @@ if (databaseUrl === null) {
       expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
       expect(await countIn("dashboard_accounts")).toBe(1);
       expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
-      expect(await countIn("dashboard_ad_reports")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
     });
 
     it("makes one account and one registration when two links with clicks for one new address are opened at once", async () => {
@@ -1307,7 +1308,7 @@ if (databaseUrl === null) {
       });
       const bystander = await identity.openLink(tokenIn(messages[1] as Message));
       if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
-      expect(await countIn("dashboard_ad_reports")).toBe(2);
+      expect(await countIn("dashboard_ad_reports")).toBe(4);
 
       await expect(
         identity.deleteUnattachedPerson({
@@ -1320,7 +1321,7 @@ if (databaseUrl === null) {
       expect(await registrations()).toMatchObject([
         { account_id: bystander.person.id, click_id: ANOTHER_CLICK },
       ]);
-      expect(await countIn("dashboard_ad_reports")).toBe(1);
+      expect(await countIn("dashboard_ad_reports")).toBe(2);
     });
 
     it("still opens a link stored in the shape without a click, and writes no registration", async () => {
@@ -1521,19 +1522,9 @@ if (databaseUrl === null) {
         )
       ).rows;
 
-    /** Both reports switched on, posting to a laptop's receiver. */
-    function storeReportingOn(messages: Message[]) {
-      return identityOn(messages, "accepted", {
-        REGISTRATION_POSTBACK_ENABLED: "true",
-        REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
-        REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
-        STORE_POSTBACK_ENABLED: "true",
-      });
-    }
-
-    it("leaves the store report waiting with its own copy of the click beside the registration, dated by the same sign-in", async () => {
+    it("leaves the store report waiting with its own copy of the click beside the registration, dated by the same sign-in, with only the registration report switched on", async () => {
       const messages: Message[] = [];
-      const identity = storeReportingOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", {
         ...ONE_CLIENT,
         clickId: CLICK,
@@ -1559,20 +1550,6 @@ if (databaseUrl === null) {
       expect(registration).toMatchObject({ click_id: CLICK, state: "pending" });
     });
 
-    it("keeps no click for a store report when that report is switched off, and writes the registration alone", async () => {
-      const messages: Message[] = [];
-      const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", {
-        ...ONE_CLIENT,
-        clickId: CLICK,
-      });
-
-      await identity.openLink(tokenIn(messages[0] as Message));
-
-      expect(await storeReports()).toStrictEqual([]);
-      expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
-    });
-
     it("leaves a store report waiting for a Google sign-in from an ad that makes a new address's account", async () => {
       const google = googleExchange();
       vi.stubGlobal("fetch", google.fetch);
@@ -1583,7 +1560,6 @@ if (databaseUrl === null) {
               REGISTRATION_POSTBACK_ENABLED: "true",
               REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
               REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
-              STORE_POSTBACK_ENABLED: "true",
             }),
             google: { clientId: "offline-client", clientSecret: "offline-secret" },
           },
@@ -1608,7 +1584,7 @@ if (databaseUrl === null) {
 
     it("leaves neither report when the store report cannot be written, and the link still opens", async () => {
       const messages: Message[] = [];
-      const identity = storeReportingOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", {
         ...ONE_CLIENT,
         clickId: CLICK,
@@ -1638,7 +1614,7 @@ if (databaseUrl === null) {
 
     it("removes both reports with an account deleted for privacy", async () => {
       const messages: Message[] = [];
-      const identity = storeReportingOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", {
         ...ONE_CLIENT,
         clickId: CLICK,

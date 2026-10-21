@@ -18,8 +18,6 @@ const reach = (state: OrderState): Order => {
         quoteTtlMs: 10_000,
         settleResponseMs: 10_000,
         syncResponseMs: 10_000,
-        paymentAfterConfirmationMs: 10_000,
-        confirmationResponseMs: 10_000,
         asyncFulfillmentMs: 10_000,
       },
       redelivery: { baseDelayMs: 1_000, factor: 2, maxDelayMs: 10_000, maxAttempts: 2 },

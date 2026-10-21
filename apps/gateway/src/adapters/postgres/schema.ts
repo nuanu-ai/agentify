@@ -9,6 +9,7 @@
  * float.
  */
 
+import type { MerchantSelling } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { sql } from "drizzle-orm";
 import {
@@ -85,8 +86,8 @@ export const merchants = pgTable(
      * as well as the switch.
      */
     liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
-    /** The order machine's own word: open, paused or departed. */
-    selling: text("selling").notNull(),
+    /** The order machine's own word, which the check below keeps to its list. */
+    selling: text("selling").$type<MerchantSelling>().notNull(),
     /**
      * The integration this merchant sells through. A new merchant starts on
      * `api`, their own code; only a switch moves it.
@@ -101,6 +102,7 @@ export const merchants = pgTable(
       sql`(${table.pendingPayoutWallet} is null) = (${table.pendingPayoutWalletFrom} is null)`,
     ),
     check("merchants_integration_known", sql`${table.integration} in ('api', 'woocommerce')`),
+    check("merchants_selling_known", sql`${table.selling} in ('open', 'paused')`),
   ],
 );
 

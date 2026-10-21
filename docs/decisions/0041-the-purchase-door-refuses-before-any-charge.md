@@ -42,11 +42,10 @@ is enough, with nobody switching anything on, and because a refused purchase
 charges nothing, so a retry costs the buyer nothing.
 
 An order that ended rejected or expired with nothing charged, nothing held for
-its buyer, nothing presented to pay with and no confirmation asked of its
-merchant is deleted thirty days after it was last written, by a daily job in
-bounded batches, unless a receipt or a payment claim names it. Its identifier
-is then answered as one that names no order. Nothing with money, a claim, a
-receipt, an event or goods is deleted.
+its buyer and nothing presented to pay with is deleted thirty days after it was
+last written, by a daily job in bounded batches, unless a receipt or a payment
+claim names it. Its identifier is then answered as one that names no order.
+Nothing with money, a claim, a receipt or goods is deleted.
 
 ## Alternatives rejected
 

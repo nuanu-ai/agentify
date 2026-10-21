@@ -230,8 +230,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const watchCeiling = ceilingWatch();
   const postman = parts.postman ?? postmanFor(config);
   const reporting = config.registrationPostback !== null;
-  const reportsOf = (accountId: string, clickId: string): AdReport[] =>
-    adReportsOf(accountId, clickId, config.storePostback);
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
   const sending = new AsyncLocalStorage<LinkSend>();
@@ -544,7 +542,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       // A plain insert on both sides: an account verified for the first time
       // cannot have a registration yet, and one already there is a broken
       // invariant that fails the press rather than being skipped.
-      await register(reportsOf(opened.response.user.id, registering));
+      await register(adReportsOf(opened.response.user.id, registering));
     }
     return {
       status: "opened",
@@ -675,7 +673,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         throw new GoogleTransactionRefused();
       }
       if (clickId !== undefined && active.firstVerification === true) {
-        await register(reportsOf(opened.user.id, clickId));
+        await register(adReportsOf(opened.user.id, clickId));
       }
       return { status: "opened", person: personFrom(opened.user), destination, setCookies };
     });
@@ -1428,25 +1426,22 @@ function clickIdIn(callback: URL): string | undefined {
 
 /**
  * The registration's report, due at once since nothing about a new
- * registration is worth waiting for, and, where the store report is switched
- * on, that report waiting for the merchant's first card with its own copy of
- * the click.
+ * registration is worth waiting for, and the store report waiting for the
+ * merchant's first card with its own copy of the click.
  */
-function adReportsOf(accountId: string, clickId: string, storeReported: boolean): AdReport[] {
+function adReportsOf(accountId: string, clickId: string): AdReport[] {
   const now = new Date();
-  const registration: AdReport = {
-    accountId,
-    event: "reg",
-    clickId,
-    state: "pending",
-    attempts: 0,
-    nextAttemptAt: now,
-    createdAt: now,
-    eventAt: now,
-  };
-  if (!storeReported) return [registration];
   return [
-    registration,
+    {
+      accountId,
+      event: "reg",
+      clickId,
+      state: "pending",
+      attempts: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      eventAt: now,
+    },
     {
       accountId,
       event: "store_connected",

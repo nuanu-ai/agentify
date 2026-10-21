@@ -64,17 +64,6 @@ export const GATEWAY_FAILED: Refused = {
 };
 
 /**
- * A departed merchant asking to sell again, refused in the flow's words:
- * leaving changed their open orders and left paid ones unfulfilled, which
- * selling again would unwind.
- */
-export const merchantDeparted = (why: string): Refused => ({
-  status: CONFLICT,
-  code: "merchant_departed",
-  message: why,
-});
-
-/**
  * A body that is not what the call takes. The reasons are joined into the
  * sentence itself, because workers and pages print the sentence, not the list.
  */

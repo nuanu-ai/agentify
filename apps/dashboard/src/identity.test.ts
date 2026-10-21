@@ -631,8 +631,10 @@ const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
 const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 
-const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
+const adReportsIn = (rows: Record<string, Record<string, unknown>[]>) =>
   rows.dashboard_ad_reports ?? [];
+const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
+  adReportsIn(rows).filter((row) => row.event === "reg");
 
 describe("the registration a link asked for with an ad's click leaves for the tracker", () => {
   it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
@@ -665,22 +667,15 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     expect(due).toBeLessThanOrEqual(Date.now());
   });
 
-  it("leaves the store report waiting with its own copy of the click beside the registration where that report is switched on", async () => {
-    const storeReporting = loadConfig({
-      ...SETTINGS,
-      REGISTRATION_POSTBACK_ENABLED: "true",
-      REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
-      REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
-      STORE_POSTBACK_ENABLED: "true",
-    });
-    const { identity, messages, rows } = memoryIdentity("accepted", storeReporting);
+  it("leaves the store report waiting with its own copy of the click beside the registration, with only the registration report switched on", async () => {
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
 
     const opened = await identity.openLink(tokenIn(messages[0] as Message));
 
     if (opened.status !== "opened") throw new Error("the link did not open");
-    const [registration, store] = registrationsIn(rows);
-    expect(registrationsIn(rows)).toHaveLength(2);
+    const [registration, store] = adReportsIn(rows);
+    expect(adReportsIn(rows)).toHaveLength(2);
     expect(registration).toMatchObject({ event: "reg", clickId: CLICK, state: "pending" });
     expect(store).toStrictEqual({
       accountId: opened.person.id,
@@ -709,7 +704,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     const opened = await off.identity.openLink(tokenIn(on.messages[0] as Message));
 
     expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
-    expect(registrationsIn(on.rows)).toStrictEqual([]);
+    expect(adReportsIn(on.rows)).toStrictEqual([]);
   });
 
   it("refuses to send a link carrying a click it could not read back, and sends or counts nothing", async () => {
@@ -739,7 +734,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     });
 
     expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("writes no registration for an address that already has a verified account, even with a fresh click", async () => {
@@ -754,7 +749,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     });
 
     expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("writes one registration for an address whose only account the operator made unverified, at its first verification", async () => {
@@ -785,7 +780,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
     expect(rows.dashboard_accounts).toHaveLength(0);
     expect(rows.dashboard_sessions).toHaveLength(0);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("leaves one registration when the same link is opened twice", async () => {
@@ -809,7 +804,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
     expect(rows.dashboard_accounts).toHaveLength(0);
     expect(rows.dashboard_verifications).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("writes no registration for a report link opened by a new address", async () => {
@@ -827,7 +822,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     });
 
     expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
@@ -888,7 +883,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     });
 
     expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([]);
+    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
@@ -926,7 +921,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
       expect(rows.dashboard_verifications).toHaveLength(1);
       expect(rows.dashboard_accounts).toHaveLength(0);
       expect(rows.dashboard_sessions).toHaveLength(0);
-      expect(registrationsIn(rows)).toStrictEqual([]);
+      expect(adReportsIn(rows)).toStrictEqual([]);
     }
   });
 
@@ -956,6 +951,6 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     expect(await store.byId(made.id)).toMatchObject({ confirmed: false });
     expect(rows.dashboard_sessions).toHaveLength(0);
     expect(rows.dashboard_verifications).toHaveLength(1);
-    expect(registrationsIn(rows)).toStrictEqual([planted]);
+    expect(adReportsIn(rows)).toStrictEqual([planted]);
   });
 });

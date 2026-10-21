@@ -60,11 +60,6 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
           ? deadlines.settleBeforeGoodsMs
           : deadlines.settleResponseMs,
       syncResponseMs: deadlines.syncResponseMs,
-      paymentAfterConfirmationMs: deadlines.paymentAfterConfirmationMs,
-      confirmationResponseMs:
-        card.confirm_deadline_seconds === undefined
-          ? deadlines.defaultConfirmationResponseMs
-          : card.confirm_deadline_seconds * 1_000,
       // A parcel's deadline is the time to hand it to a carrier, which its
       // card always names; the clock runs from the charge either way.
       asyncFulfillmentMs:
@@ -91,12 +86,6 @@ export function cardAsHeld(card: Card, config: GatewayConfig): Card {
   switch (card.fulfillment) {
     case "async":
       return { ...card, fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs) };
-    case "confirm":
-      return {
-        ...card,
-        confirm_deadline_seconds: seconds(deadlines.confirmationResponseMs),
-        fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs),
-      };
     case "sync":
     case "ship":
       return card;
@@ -117,8 +106,7 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
  * payout address, no seller name) into the one word the order machine's guard
  * reads. A merchant who cannot sell must be refused here, before an order is
  * opened, or the order would be one nobody can pay; the operator's own address
- * never stands in for a missing one. A departed merchant stays departed
- * whatever the card says.
+ * never stands in for a missing one.
  *
  * A card published through an integration the merchant is not selling through
  * reads as paused too: nothing of that integration draws the merchant's
@@ -130,9 +118,9 @@ export function sellingFor(
   sellable: boolean,
   through: Integration,
 ): MerchantSelling {
-  return merchant === "open" && (card.paused || !sellable || card.integration !== through)
-    ? "paused"
-    : merchant;
+  return merchant === "open" && !card.paused && sellable && card.integration === through
+    ? "open"
+    : "paused";
 }
 
 /**

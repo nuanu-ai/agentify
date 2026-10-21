@@ -293,8 +293,8 @@ if (databaseUrl === null) {
       if (p2 === null) throw new Error("the P2 account was not made");
       await pool.query(
         `insert into dashboard_woo_shops
-           (account_id, shop_url, consumer_key, consumer_secret, permissions, connected_at)
-         values ($1, 'https://shop.example', 'ck_preserved', 'cs_preserved', 'read_write', now())`,
+           (account_id, shop_url, consumer_key, consumer_secret, permissions, revision, connected_at)
+         values ($1, 'https://shop.example', 'ck_preserved', 'cs_preserved', 'read_write', 'first', now())`,
         [p2.id],
       );
       await expect(

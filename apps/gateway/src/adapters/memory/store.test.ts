@@ -32,15 +32,13 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
   order: {
     id,
     state,
-    mode: { needsConfirmation: false, settle: "after_fulfillment" },
+    mode: { settle: "after_fulfillment" },
     policy: {
       deadlines: {
         quoteResponseMs: 1,
         quoteTtlMs: 1,
         settleResponseMs: 1,
         syncResponseMs: 1,
-        paymentAfterConfirmationMs: 1,
-        confirmationResponseMs: 1,
         asyncFulfillmentMs: 1,
       },
       redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
@@ -56,8 +54,6 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
     timestamps: {
       createdAt: 0,
       quotedAt: null,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,

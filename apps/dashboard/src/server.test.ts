@@ -1328,8 +1328,10 @@ const openLatest = async (running: Running, browser: Browser = running.browser):
     .post(action.pathname, { token: action.searchParams.get("token") ?? "" });
 };
 
-const registrationsIn = (running: Running): Record<string, unknown>[] =>
+const adReportsIn = (running: Running): Record<string, unknown>[] =>
   running.rows.dashboard_ad_reports ?? [];
+const registrationsIn = (running: Running): Record<string, unknown>[] =>
+  adReportsIn(running).filter((row) => row.event === "reg");
 
 /**
  * Whether anything a sign-in keeps on the server until it is finished, a
@@ -1392,7 +1394,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     const opened = await openLatest(running);
     expect(opened.status).toBe(303);
     expect((await running.identity.byEmail(FRESH.email))?.confirmed).toBe(true);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("leaves one pending registration holding the click, and nothing else of the sign-in, once a link asked for with it is opened", async () => {
@@ -1405,7 +1407,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
       email: FRESH.email,
     });
     expect(asked.status).toBe(202);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
 
     const opened = await openLatest(running);
 
@@ -1475,7 +1477,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     const opened = await openLatest(running);
 
     expect(opened.status).toBe(303);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("keeps the click on the page that refuses an address", async () => {
@@ -1566,7 +1568,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     expect(page.to).toBe("/cards");
     expect(running.mails).toHaveLength(mailed);
     expect(running.rows.dashboard_link_sends).toHaveLength(sends ?? 0);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 });
 
@@ -1672,7 +1674,7 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     expect(keptWhileAway).toBe(false);
     expect(returned.status).toBe(303);
     expect((await running.identity.byEmail("person@gmail.com"))?.confirmed).toBe(true);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("draws the Google page as it is for a visitor with no click, or one it cannot read", async () => {
@@ -1764,7 +1766,7 @@ describe("the link's page for a link asked for with an ad's click", () => {
       { name: undefined, value: undefined },
     ]);
     expect(await running.identity.byEmail(FRESH.email)).toBeNull();
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 });
 
@@ -3740,102 +3742,6 @@ describe("a card held off sale by what its merchant lacks", () => {
   });
 });
 
-describe("a merchant who has left", () => {
-  // Nothing sets this state through a route, so it is reached through the
-  // store, and the page is what is asserted.
-  it("is not offered a button that puts them back on sale", async () => {
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const page = (await browser.get("/cards")).html;
-    const text = readable(page);
-
-    expect(text).toContain("left");
-    // No selling control at all: "stop all selling" for a merchant who has left
-    // is the same confusion under the other label.
-    expect(formTo(page, "post", START_SELLING)).toBeUndefined();
-    expect(formTo(page, "post", STOP_SELLING)).toBeUndefined();
-    expect(text).not.toContain("Resume all sales");
-    expect(text).not.toContain("Pause all sales");
-    // A departure does not let accepted orders play out; a pause does.
-    expect(text).not.toContain("play out as usual");
-  });
-
-  it("is told over Cards and Orders when its integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, esimCard);
-    await browser.signIn();
-    const since = "2026-08-26 12:00:00 UTC";
-
-    harnessed.advance(11 * 60_000);
-    const cards = (await browser.get("/cards")).html;
-    const orders = (await browser.get("/orders")).html;
-    await harnessed.gateway.poll(harnessed.merchant.id, 0);
-    const after = (await browser.get("/cards")).html;
-
-    expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
-    expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
-    expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
-    expect(reasonsIn(after)).toStrictEqual([]);
-  });
-
-  it("is told over its pages while twenty purchases wait for payment and new ones are refused", async () => {
-    const { browser, gateway, harnessed } = await started();
-    const itemId = await publish(gateway, roomCard);
-    for (let one = 0; one < 20; one += 1) {
-      await harnessed.gateway.beginPurchase(itemId, {});
-    }
-    await browser.signIn();
-
-    expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
-  });
-
-  it("is not told prepaid purchases are refused while it sells only goods made in the answer", async () => {
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-
-    harnessed.advance(11 * 60_000);
-
-    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
-  });
-
-  it("is offered no switch on a card, not even one they paused before they left", async () => {
-    // A card's own switch puts nothing back on sale once its merchant has
-    // left, so a Resume beside it would promise what nothing here does.
-    const { browser, gateway, harnessed } = await started();
-    const room = await publish(gateway, roomCard);
-    await publish(gateway, esimCard);
-    await browser.signIn();
-    await browser.post(switchOf(room, "pause"));
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const page = (await browser.get("/cards")).html;
-
-    expect(reasonsIn(page)).toStrictEqual(["left"]);
-    expect(readable(page)).toContain("Paused by you");
-    expect(cardSwitchesIn(page)).toStrictEqual([]);
-  });
-
-  it("is told what the gateway said, not that the gateway is down", async () => {
-    // The gateway answers 409 with a reason; shown as "did not answer", it
-    // would send a merchant to check a service that is running.
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const refused = await browser.post(START_SELLING);
-
-    expect(refused.status).toBe(409);
-    const text = readable(refused.html);
-    expect(text).toMatch(/this merchant has left/i);
-    expect(text).not.toContain("did not answer");
-  });
-});
-
 describe("the orders screen", () => {
   it("shows a finished order with its state in the merchant's words", async () => {
     const { browser, gateway, harnessed } = await started();
@@ -4139,6 +4045,45 @@ describe("the banner about the account", () => {
     expect(cards.status).toBe(200);
     expect(readable(cards.html)).toContain("A room for the night");
     expect(readable(cards.html)).not.toContain("could not be checked");
+  });
+
+  it("says over Cards and Orders when the integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    const since = "2026-08-26 12:00:00 UTC";
+
+    harnessed.advance(11 * 60_000);
+    const cards = (await browser.get("/cards")).html;
+    const orders = (await browser.get("/orders")).html;
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const after = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
+    expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
+    expect(reasonsIn(after)).toStrictEqual([]);
+  });
+
+  it("says new purchases are refused while twenty wait for payment", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    for (let one = 0; one < 20; one += 1) {
+      await harnessed.gateway.beginPurchase(itemId, {});
+    }
+    await browser.signIn();
+
+    expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
+  });
+
+  it("does not say prepaid purchases are refused while the merchant sells only goods made in the answer", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    harnessed.advance(11 * 60_000);
+
+    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
   });
 });
 

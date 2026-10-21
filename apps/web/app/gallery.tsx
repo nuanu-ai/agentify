@@ -37,9 +37,8 @@ import {
 } from "../components/operator-dashboard.server";
 import { getPublicEditorialPage, type PublicEditorialPath } from "../content/public-editorial";
 import { getPublicAppConfig, type PublicAppConfig } from "../lib/app-config";
-import type { CardSignalState } from "../lib/card-signal-ui";
 import { PENDING_SCAN_STORAGE_KEY, type PendingScanRequest } from "../lib/pending-scan";
-import { type ReportCardSignal, reportView } from "../lib/report-view";
+import { reportView } from "../lib/report-view";
 import { resumeIntentKey, serializeResumeIntent } from "../lib/resume-intent";
 import { type ScanFixtureName, scanFixture } from "../lib/scan-fixtures";
 import type { getBrowserAnalyticsConfig } from "../lib/server/browser-analytics-config";
@@ -487,11 +486,9 @@ const report = (
   drawn: ReportResponse,
   {
     observation,
-    card,
     scene,
   }: {
     observation?: BrowserObservationStatusResponse;
-    card?: CardSignalState;
     scene?: BrowserScene;
   } = {},
 ) =>
@@ -504,20 +501,6 @@ const report = (
           brand: SITE.displayBrand,
           promptEnabled: true,
           shareEnabled: true,
-          cardSignal: {
-            adapter: "local",
-            publishableKey: null,
-            signedInAs: WHO,
-            ...(card === undefined
-              ? {}
-              : {
-                  initialSignal: {
-                    signalId: uuidOf("the card signal"),
-                    status: card,
-                    clientSecret: null,
-                  },
-                }),
-          } satisfies ReportCardSignal,
         }),
       },
     },
@@ -681,17 +664,6 @@ const PUBLIC: GalleryState[] = [
     },
     "/agentic-shop",
     "routes/agentic-shop.tsx",
-  ),
-  own(
-    {
-      id: "scanner-agentic-shop-privacy",
-      screen: "Merchant application privacy",
-      when: "Somebody who sent the retired merchant application looks up what happens to it.",
-      cause:
-        "The notice the closed application form was sent under, kept while its submissions expire.",
-    },
-    "/agentic-shop/privacy",
-    "routes/agentic-shop.privacy.tsx",
   ),
   own(
     {
@@ -1110,46 +1082,6 @@ const REPORTS: GalleryState[] = [
   ),
   report(
     {
-      id: "scanner-report-card-saving",
-      screen: "Full report",
-      when: "A report owner who agreed to save a card comes back while the provider confirms it.",
-      cause: "The card signal waits for the payment provider's confirmation.",
-    },
-    reportOf(46),
-    { card: "setup_pending" },
-  ),
-  report(
-    {
-      id: "scanner-report-card-saved",
-      screen: "Full report",
-      when: "A report owner saved a card for a future purchase.",
-      cause: "The payment provider confirmed the card; nothing was charged.",
-    },
-    reportOf(46),
-    { card: "attached" },
-  ),
-  report(
-    {
-      id: "scanner-report-card-removed",
-      screen: "Full report",
-      when: "A report owner removed the card they saved.",
-      cause: "The provider confirmed the card was detached.",
-    },
-    reportOf(46),
-    { card: "detached" },
-  ),
-  report(
-    {
-      id: "scanner-report-card-failed",
-      screen: "Full report",
-      when: "Saving a card did not go through.",
-      cause: "The payment provider did not confirm the card.",
-    },
-    reportOf(46),
-    { card: "failed" },
-  ),
-  report(
-    {
       id: "scanner-report-confirmed",
       screen: "Full report",
       when: "A visitor opens the emailed link after asking for the fix prompt on the scan page.",
@@ -1332,7 +1264,7 @@ const ACCOUNT: GalleryState[] = [
       screen: "Data request",
       when: "A signed-in person confirms the deletion and it completes at once.",
       cause:
-        "The card was cleared first, then the reports, shares and personal data were anonymized.",
+        "The reports, shares and personal data were anonymized, and the sign-in was removed unless it holds a seller dashboard.",
     },
     "/data-request",
     "routes/data-request",

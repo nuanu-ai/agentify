@@ -34,7 +34,6 @@ describe("the account banner", () => {
     ["without a seller name", { ...READY, sellerName: null }, {}, "no_seller_name"],
     ["without a payout wallet", { ...READY, payout: { wallet: null } }, {}, "no_payout_wallet"],
     ["with all sales paused", READY, { selling: "paused" }, "paused"],
-    ["who has left", READY, { selling: "departed" }, "left"],
     ["selling through a WooCommerce shop", READY, { through: "woocommerce" }, "through_shop"],
   ] as const)("names a merchant %s", (_who, viewer, read, reason) => {
     const notes = accountOf(viewer, read);
@@ -91,20 +90,11 @@ describe("the account banner", () => {
     ]);
   });
 
-  it("says only that the merchant has left, since nothing else would put a card on sale", () => {
-    const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
-
-    expect(reasonsOf(viewer, { selling: "departed", through: "woocommerce" })).toStrictEqual([
-      "left",
-    ]);
-  });
-
   it("says it could not check where a read failed, beside what the other reads found", () => {
     expect(reasonsOf({ ...READY, sellerName: null }, { unread: true })).toStrictEqual([
       "no_seller_name",
       "unread",
     ]);
-    expect(reasonsOf(READY, { selling: "departed", unread: true })).toStrictEqual(["left"]);
   });
 
   it("names nothing that rests on what the page did not read", () => {

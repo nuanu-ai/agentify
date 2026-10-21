@@ -227,8 +227,8 @@ export const reportDeletionTombstones = pgTable(
  * row per account and event. `reg` is the registration, written pending in
  * the transaction that makes the address's first verified account, where a
  * link asked for with the click is pressed or a Google sign-in started with it
- * comes back. `store_connected` is written beside it, waiting, where that
- * report is switched on: it becomes pending once the account's merchant
+ * comes back. `store_connected`, which the tracker is told as `lead`, is
+ * written beside it, waiting: it becomes pending once the account's merchant
  * publishes its first card within 30 days of the registration and the
  * registration's report was delivered, if no other account of that merchant
  * took it, and lapses otherwise.
@@ -348,7 +348,7 @@ export const wooShops = pgTable("dashboard_woo_shops", {
    */
   permissions: text("permissions").notNull(),
   /** Changes on every reconnect. */
-  revision: text("revision").notNull().default("legacy"),
+  revision: text("revision").notNull(),
   connectedAt: moment("connected_at"),
 });
 

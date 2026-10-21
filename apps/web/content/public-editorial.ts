@@ -38,7 +38,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   eyebrow: "Privacy · deployment policy",
   title: "Privacy and data controls",
   intro:
-    "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, marketing, and card signals.",
+    "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, and marketing.",
   sections: [
     {
       id: "controller",
@@ -71,7 +71,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
           kind: "list",
           items: [
             "Submitted and canonical target URL, target host/hash, segment, and scan status.",
-            "Structured check outcomes, score, coverage, rubric version, and coarse fingerprint signals.",
+            "Structured check outcomes, score, coverage, and rubric version.",
             "When passive browser observation is enabled: sanitized finding codes and aggregate counts/timings. Raw page content, screenshots, cookies, console messages, accessibility trees, and provider run IDs are not retained in reports.",
             "Hashed network rate keys; raw IP addresses are not stored.",
             "Email, international phone, role, and registration choices only when the contact form is submitted. Email and phone are encrypted with separate lookup HMAC domains; phone is contact data and is not treated as verified.",
@@ -89,7 +89,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, marketing email, and card signal are independent choices. Declining an optional category does not turn it into essential processing. If you allow neither product analytics nor ads measurement, no visit or funnel events and no campaign tags are recorded for you; the reports to the ad tracker of a registration from our ad and of its store's first product, described under processors, are apart from these choices.",
+            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, and marketing email are independent choices. Declining an optional category does not turn it into essential processing. If you allow neither product analytics nor ads measurement, no visit or funnel events and no campaign tags are recorded for you; the reports to the ad tracker of a registration from our ad and of its store's first product, described under processors, are apart from these choices.",
         },
       ],
     },
@@ -111,7 +111,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier and the time of that first publication alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, and Cloudflare Turnstile for abuse challenges. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. AI Samurai passes both reports on to Meta, where our ads run, with what it recorded itself when the ad was clicked; we send it nothing but the identifier. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },
@@ -123,11 +123,11 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
           kind: "list",
           items: [
             "Operational logs: 14 days, without email, raw IP, secrets, or full URL query.",
-            "Expired or used registration intents and legacy verification tokens: the executable retention cleanup removes them after 7 days.",
+            "Expired or used registration intents: the executable retention cleanup removes them 7 days after they were used or expired.",
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
             "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, cleared from 7 days after the link expired; kept with a Google sign-in, which may take ten minutes, until your return from Google uses it up, or, if that never happens, cleared from 7 days after those ten minutes. If that is the first time you sign in with your address, it is kept with your account until the tracker accepts or refuses the report of the registration or a day of attempts has passed, and is then erased. A second copy, for the report of your store's first product, is kept with your account for at most 30 days from that sign-in: it is erased once that report is accepted or refused or a day of attempts has passed, or once the report can no longer be made, and when the 30 days end at the latest. What stays with your account, until the account is deleted, is a record of whether each report went through and when. Otherwise nothing about the click is kept once you sign in.",
             "Raw analytics events: 13 months.",
-            "Structured scan/check/fingerprint dataset: 24 months, then review or anonymization.",
+            "Structured scan and check dataset: 24 months, then review or anonymization.",
           ],
         },
       ],
@@ -142,7 +142,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("Use the "),
             link("data-request route", "/data-request"),
             text(
-              " for access, correction, unsubscribe, or verified deletion. Deletion first detaches or cancels the optional card signal and verifies provider state; only then is report access closed, shares revoked, and lead, waitlist, analytics-delivery, and owned-scan identifiers removed or irreversibly anonymized. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
+              " for access, correction, unsubscribe, or verified deletion. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
             ),
           ],
         },

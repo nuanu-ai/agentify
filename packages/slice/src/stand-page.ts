@@ -215,7 +215,6 @@ const select = <T extends string>(name: string, choices: readonly Choice<T>[], v
 const SELLING_WORDS: Readonly<Record<SellingState, { text: string; tone: string }>> = {
   open: { text: "selling", tone: "ok" },
   paused: { text: "paused", tone: "warn" },
-  departed: { text: "left", tone: "" },
 };
 
 /** What a buyer of this card is in for, in the merchant's own terms. */
@@ -231,9 +230,6 @@ const cardTerms = (card: Card): string => {
           ? "delivered later, with no deadline"
           : `delivered later, within ${card.fulfill_deadline_seconds} s`,
       );
-      break;
-    case "confirm":
-      terms.push("confirmed first");
       break;
   }
   if (card.price_check !== undefined) {
@@ -318,7 +314,7 @@ const publicRow = (
     <div class="under mono">${escaped(item.id)}</div>
   </td>
   <td>${escaped(item.price.amount)} ${escaped(item.price.currency)}${item.price_checked_at_purchase ? '<div class="under">asked again at purchase</div>' : ""}</td>
-  <td>${escaped(item.fulfillment === "sync" ? "in the purchase" : item.fulfillment === "async" ? "later" : "after a confirmation")}</td>
+  <td>${escaped(item.fulfillment === "sync" ? "in the purchase" : item.fulfillment === "async" ? "later" : item.fulfillment === "ship" ? "by parcel" : item.fulfillment)}</td>
   <td class="ctl"><div class="actions">${form("choose", hidden("item_id", item.id), item.id === chosen ? "Chosen" : "Choose", item.id !== chosen)}</div></td>
 </tr>`;
 

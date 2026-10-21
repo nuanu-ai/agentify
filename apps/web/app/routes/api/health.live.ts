@@ -2,7 +2,6 @@ import { getBrowserAnalyticsConfig } from "../../../lib/server/browser-analytics
 import { getServerConfig } from "../../../lib/server/config";
 import { requestHeaders } from "../../../lib/server/http";
 import { methods } from "../../../lib/server/methods";
-import { getStripeCardSignalConfig } from "../../../lib/server/stripe-card-signal-config";
 
 function live(request: Request): Response {
   // Runtime configuration is part of whether this exact image can serve its
@@ -10,7 +9,6 @@ function live(request: Request): Response {
   try {
     getServerConfig();
     getBrowserAnalyticsConfig();
-    getStripeCardSignalConfig();
   } catch {
     return Response.json(
       { status: "configuration_invalid" },

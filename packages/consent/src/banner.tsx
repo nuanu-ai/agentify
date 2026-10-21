@@ -10,12 +10,6 @@ import {
 import { type KeyboardEvent as KeyPress, useCallback, useEffect, useRef, useState } from "react";
 import { CONSENT_CHANGED_EVENT, OPEN_PRIVACY_CHOICES_EVENT } from "./events.js";
 
-const policy = {
-  policyVersion: CONSENT_POLICY_VERSION,
-  requireOptInForAdsMeasurement: true,
-  requireOptInForProductAnalytics: true,
-};
-
 /**
  * Run in the page's head before anything is painted: where a choice made
  * under the current policy is kept, a banner its script has not yet read the
@@ -84,7 +78,7 @@ const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> =
   ads_measurement: ads,
 });
 
-export function ConsentPreferencesPanel(props: {
+function ConsentPreferencesPanel(props: {
   productAnalytics: boolean;
   adsMeasurement: boolean;
   saving: boolean;
@@ -286,7 +280,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
     // Set once the site has recorded the choice, which the browser keeping it can still fail after.
     let recorded = false;
     const snapshot = createConsentSnapshot({
-      policy,
+      policyVersion: CONSENT_POLICY_VERSION,
       decisions: decisions(product, ads),
       source: "banner",
     });

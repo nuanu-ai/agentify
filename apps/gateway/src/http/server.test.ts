@@ -453,12 +453,12 @@ describe("what a call may carry", () => {
     const { served } = await started();
 
     const answered = await served.call("POST", "/v0/catalog/publish", {
-      body: { ...syncCard, fulfillment: "confirm" },
+      body: { ...syncCard, fulfill_deadline_seconds: 900 },
       headers: asMerchant,
     });
 
     expect(answered.status).toBe(422);
-    expect(JSON.stringify(answered.body)).toContain("no shape on the wire yet");
+    expect(JSON.stringify(answered.body)).toContain("sets no delivery deadline");
   });
 
   it("carries an identifier with a slash in it through the address unharmed", async () => {
@@ -2012,38 +2012,6 @@ describe("the merchant's own catalog and the pause switch", () => {
 
     expect(again.status).toBe(200);
     expect(again.body).toStrictEqual(first.body);
-  });
-
-  it("does not put a merchant who has left back on sale", async () => {
-    // A departure closed the open orders and left refunds owed; resuming would
-    // put the merchant back on sale with none of it unwound. No route sets
-    // "departed", so the store sets it here.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const resumed = await served.call("POST", "/v0/selling/resume", { headers: asMerchant });
-
-    expect(resumed.status).toBe(409);
-    expect((resumed.body as { error: { code: string } }).error.code).toBe("merchant_departed");
-    expect(await harnessed.store.selling(harnessed.merchant.id)).toBe("departed");
-    // And the merchant is still gone as far as an agent is concerned.
-    expect(
-      (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
-    ).toBe(409);
-  });
-
-  it("does not describe a departure as a pause either", async () => {
-    // The other direction of the same rule. Pausing a merchant who has left
-    // would say their open orders are playing out, which they are not.
-    const { served, harnessed } = await started();
-    await publish(served, syncCard);
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const paused = await served.call("POST", "/v0/selling/pause", { headers: asMerchant });
-
-    expect(paused.status).toBe(409);
-    expect(await harnessed.store.selling(harnessed.merchant.id)).toBe("departed");
   });
 
   it("says there is no such product rather than pausing nothing quietly", async () => {

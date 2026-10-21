@@ -144,7 +144,6 @@ export async function createOrReplayScan(
           ads_measurement: false,
           marketing_email: false,
           dataset_reuse: false,
-          card_signal: false,
         },
         source: "scan_submit",
       });

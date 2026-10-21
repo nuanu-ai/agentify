@@ -56,7 +56,7 @@ export function ScanTeaser({
           {notice}
           <ResultHead
             coverage={teaser.coverage}
-            host={data.target_host ?? "Private website diagnostic"}
+            host={data.target_host}
             level={teaser.level}
             line={[SCAN_STATUS_LINES[data.status], scanDay(data.updated_at)]
               .filter(Boolean)

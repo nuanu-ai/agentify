@@ -9,7 +9,7 @@
  * are the same answer.
  */
 
-import { listedAsOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
+import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import {
   and,
@@ -629,7 +629,7 @@ export class PostgresStore implements Store {
       .orderBy(cards.asOf);
     return rows.map((row) => ({
       card: storedCardOf(row.card),
-      merchant: sellingWordOf(row.selling),
+      merchant: row.selling,
       payoutWallet: payoutWalletOf(row),
       serviceName: row.serviceName,
       sellerSite: row.sellerSite,
@@ -661,7 +661,7 @@ export class PostgresStore implements Store {
         `there is no merchant ${merchantId}, so there is no word for whether they are selling`,
       );
     }
-    return sellingWordOf(row.selling);
+    return row.selling;
   }
 
   async setSelling(merchantId: string, selling: MerchantSelling): Promise<void> {
@@ -710,7 +710,7 @@ export class PostgresStore implements Store {
       }
 
       const comingBack =
-        to === "api" && sellingWordOf(merchant.selling) === "open"
+        to === "api" && merchant.selling === "open"
           ? await tx
               .select({ id: cards.id })
               .from(cards)
@@ -1442,7 +1442,7 @@ function storedMerchantOf(
     serviceName: string | null;
     sellerSite: string | null;
     liveApprovedAt: Date | null;
-    selling: string;
+    selling: MerchantSelling;
     integration: string;
     createdAt: Date;
   },
@@ -1454,7 +1454,7 @@ function storedMerchantOf(
     sellerSite: row.sellerSite,
     payoutWallet: payoutWalletOf(row),
     liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
-    selling: sellingWordOf(row.selling),
+    selling: row.selling,
     integration: integrationOf(row.integration),
     createdAt: row.createdAt.getTime(),
   };
@@ -1484,19 +1484,6 @@ function storedKeyOf(row: {
     lastUsedAt: row.lastUsedAt === null ? null : row.lastUsedAt.getTime(),
     lastUserAgent: row.lastUserAgent,
   };
-}
-
-/**
- * The selling word out of a text column. An unknown word throws rather than
- * guessing whether somebody is selling.
- */
-function sellingWordOf(word: string): MerchantSelling {
-  if (!(MERCHANT_SELLING as readonly string[]).includes(word)) {
-    throw new Error(
-      `the merchant's selling state is "${word}", which is not one of ${MERCHANT_SELLING.join(", ")}`,
-    );
-  }
-  return word as MerchantSelling;
 }
 
 function integrationOf(word: string): Integration {

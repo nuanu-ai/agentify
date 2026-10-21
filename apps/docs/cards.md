@@ -228,7 +228,7 @@ something fails, so the product decides it:
 | A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping your price handler names |
 | A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
 | A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
-| Every order has to be confirmed by hand before the buyer pays | none yet: the confirmation mode is designed and cannot be published | — |
+| Every order has to be confirmed by hand before the buyer pays | none: no mode lets you confirm an order before the buyer pays | — |
 
 What happens inside each mode is on [Orders and fulfillment modes](/orders),
 and one handler can serve products in different modes, telling them apart by

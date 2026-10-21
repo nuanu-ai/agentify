@@ -481,16 +481,15 @@ landing's view is recorded only after consent, by script on the page. A page
 without script would show a banner whose choice cannot be made, or no banner,
 and would record no landing at all. What a page that hydrates costs is held
 instead by the speed budget below, and by loading the heavy parts behind an
-import when they are needed: the card form's Stripe, the registration form and
-the large panels of a report.
+import when they are needed: the registration form and the large panels of a
+report.
 
 The second is one script limit for every page. The budget is checked against
 each build in CI, as the brotli-compressed script a page asks for on its first
 visit, and it has three limits. Every dashboard page keeps to 100 KB, which
 its pages meet with room, since they carry no consent banner and no analytics.
 A scanner page a stranger lands on keeps to 105 KB: the front page and the two
-segment landings, the sell-to-agents page and its notice, a shared result, the
-trust pages, the merchant landing and the page that says there is no such
+segment landings, the sell-to-agents page, a shared result, the trust pages, the merchant landing and the page that says there is no such
 page. The framework alone is about 88 KB of each of them and the consent
 banner, the analytics and the scan form bring the front page to about 99 KB,
 so a limit of 100 KB would leave no room for any change to a landing. A

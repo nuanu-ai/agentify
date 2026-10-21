@@ -119,15 +119,13 @@ export const anOrder = (
   order: {
     id,
     state,
-    mode: { needsConfirmation: false, settle: "after_fulfillment" },
+    mode: { settle: "after_fulfillment" },
     policy: {
       deadlines: {
         quoteResponseMs: 1,
         quoteTtlMs: 1,
         settleResponseMs: 1,
         syncResponseMs: 1,
-        paymentAfterConfirmationMs: 1,
-        confirmationResponseMs: 1,
         asyncFulfillmentMs: 1,
       },
       redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
@@ -143,8 +141,6 @@ export const anOrder = (
     timestamps: {
       createdAt: at.createdAt ?? 1_000,
       quotedAt: null,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -1685,7 +1681,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         return { ...base, ...more, order: { ...base.order, ...changed.order } };
       };
 
-      it("is forgotten a batch at a time once last written before the instant, and nothing with money, a claim, a receipt, an event or goods goes with it", async () => {
+      it("is forgotten a batch at a time once last written before the instant, and nothing with money, a claim, a receipt or goods goes with it", async () => {
         const store = await twoMerchants();
         const forgotten = ["ord_refused", "ord_lapsed", "ord_lapsed_too", "ord_theirs"];
         await store.addOrder(
@@ -1713,17 +1709,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addOrder(
           ended("ord_charge_unknown", "rejected", { order: { payment: "outcome_unknown" } }),
         );
-        // A merchant asked to confirm is told when the buyer never pays.
-        await store.addOrder(
-          ended("ord_confirmation_asked", "expired", {
-            order: {
-              timestamps: {
-                ...anOrder("x", "expired").order.timestamps,
-                confirmationRequestedAt: 500,
-              },
-            },
-          }),
-        );
         await store.addOrder(ended("ord_claimed", "expired"));
         await store.claimPayment("fp_claimed", "ord_claimed");
         await store.addOrder(ended("ord_receipted", "expired"));
@@ -1731,7 +1716,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addOrder(
           ended("ord_delivered", "delivered", { order: { payment: "settled" } }),
         );
-        await store.addOrder(ended("ord_cancelled", "cancelled"));
         await store.addOrder(ended("ord_waiting", "quoted"));
         const everyOrder = async () => [
           ...(await idsOf(store.orders(A))),
@@ -1930,7 +1914,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addOrder(anOrder("ord_1", "created"));
 
         await store.withOrder("ord_1", (found) => ({
-          result: { ...found, order: { ...found.order, state: "cancelled" as const } },
+          result: { ...found, order: { ...found.order, state: "expired" as const } },
         }));
 
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
@@ -1948,7 +1932,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const asA = await store.withOrder(
           "ord_1",
           (found) => ({
-            save: { ...found, order: { ...found.order, state: "cancelled" as const } },
+            save: { ...found, order: { ...found.order, state: "expired" as const } },
             result: "moved it",
           }),
           { merchantId: A },

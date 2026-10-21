@@ -708,8 +708,8 @@ until `/etc/agentify/backup.env` exists, root's with mode 600. TEST takes no
 backups, since its data is test data.
 
 It refuses while root is in the "password must be changed" state, because in
-that state `sudo` refuses to switch accounts, and it stopped every production
-release on 2026-09-22. Check it yourself with:
+that state `sudo` refuses to switch accounts and a release cannot run. Check it
+yourself with:
 
 ```sh
 sudo chage -l root | grep -i 'password must be changed' && echo 'change root password first'
@@ -820,58 +820,52 @@ purchase.
 PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
 `REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters,
 all of them visible ASCII: no space, line break or typographic dash. With the
-switch on, the dashboard tells the tracker once, at
-`https://aisamuraihub.com/postback`, that a person its ad sent made their
-first account: every visitor arriving from the tracker's landing page whose
-sign-in, by a mailed link or with Google, is their address's first, with
-nothing asked on screen; the tracker's click identifier is all it sends.
+switch on, the dashboard tells the tracker, at
+`https://aisamuraihub.com/postback` and with that key, two things about a
+visitor arriving from the tracker's landing page, with nothing asked on screen
+and nothing about the person but the tracker's click identifier. The first is
+that they made their first account, as `"event": "reg"`: every such visitor whose
+sign-in, by a mailed link or with Google, is their address's first. The second
+is that they connected a store, as `"event": "lead"`, the tracker's word for
+it: the merchant their account names published its first product card, through
+the API or the WooCommerce import, within 30 days of that sign-up. A live card
+needs the operator's approval first, so the 30 days include that wait. Only the
+earliest such sign-up of a merchant reports its store, none reports for a
+merchant whose first card came before it, and the store is reported only after
+the sign-up's registration report was delivered, never for a sign-up whose
+registration report was refused or given up. The tracker keeps one `reg` per
+click and, as its team stated on 2026-10-21, one `lead` per click, which it
+dates at its arrival and passes to Meta as a Lead. How it answers a `reg`
+posted a second time, after the application stopped between the tracker's
+answer and the record of it, is not confirmed: an answer other than 200 would
+refuse that registration report and so lapse its store report.
+
 Each outcome is one line in the application's log, such as
-`registration report delivered: http_200`, naming no person and no click. With
-the switch on and no such key the application refuses to start; with it off the
-key is not read, so the key can go into the file first, and the application only
-gives up any registration report still pending a day after its sign-up, so no
-registration report keeps its click past that day. A store report, below, keeps
-a copy of the click of its own, which can stay up to 30 days after the sign-up
-and goes at once when its registration report is given up; a click kept with a
-link nobody pressed, or with a Google sign-in nobody finished, goes when that
-record is cleared, from 7 days after it expired.
-On TEST a line naming the switch changes nothing:
+`registration report delivered: http_200` or `store report delivered:
+http_200`, naming no person and no click, and a store report that lapses
+unposted says why, as in `1 waiting store report lapsed:
+no_first_card_in_30_days`. With the switch on and no such key the application
+refuses to start; with it off the key is not read, so the key can go into the
+file first. Each report keeps its own copy of the click. The registration
+report's copy is erased once the report is delivered, refused or given up, a
+day after the sign-up at the latest. The store report's copy is erased once
+that report is delivered, refused or given up, which happens a day after the
+first card at the latest and never past the 30 days, at once when the
+registration report is refused or given up, or at the end of the 30 days with
+no first card. With the switch off the application posts nothing: it gives up
+any report still pending once its day is over, lets a waiting store report
+lapse once it can no longer be posted, at its 30 days at the latest, and keeps
+no click for new sign-ups. A click kept with a link nobody pressed, or
+with a Google sign-in nobody finished, goes when that record is cleared, from 7
+days after it expired. On TEST a line naming the switch changes nothing:
 `deploy/compose.agentify-test.yaml` fixes it off for the application whatever
 the host's file says, and the application itself refuses to start with the
 switch on that channel, because the tracker would count a test registration as
 a real one.
 
-Beside it, PRODUCTION may name `STORE_POSTBACK_ENABLED=true`. With it on, a
-sign-in from the tracker's landing page that makes a first account also keeps
-the click with that account for at most 30 days, and the dashboard tells the
-tracker once per merchant, at the same address and with the same key, that the
-person connected a store: the body is the click, `"event": "store_connected"`
-and `event_time`, the Unix seconds at which the merchant the account names
-published its first product card, through the API or the WooCommerce import,
-within those 30 days. A live card needs the operator's approval first, so the
-30 days include that wait. Only the earliest such sign-up of a merchant reports, and
-none reports for a merchant whose first card came before it. The store is
-reported only after the sign-up's registration report was delivered, and never
-for a sign-up whose registration report was refused or given up. The click is
-erased once that report is delivered, refused or given up, which happens a day
-after the first card at the latest and never past the 30 days, at once when the
-registration report is refused or given up, or at the end of the 30 days with
-no first card. Each outcome is one log line such as `store report delivered:
-http_200`, and a store report that lapses unposted says why, as in `1 waiting
-store report lapsed: no_first_card_in_30_days`. The switch stays off until the
-tracker confirms that it accepts exactly this body, keeps one
-`store_connected` per click and answers a repeated `reg` with 200, because a
-report is posted again when the process stops between the tracker's answer and
-the record of it, and a repeated `reg` the tracker turned away would leave the
-store unreported. The application
-refuses to start with this switch on and `REGISTRATION_POSTBACK_ENABLED` off,
-and on TEST, where the same file fixes it off too. Turned off again, it keeps
-no click for new sign-ups, posts no store report, gives up those already due
-once their day is over and lets the waiting ones lapse at their 30 days.
-
 The scanner's remaining settings — `PRIVACY_EMAIL`,
-`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
-`STRIPE_*` and `APIFY_*` settings, `REGISTRATION_ENABLED`,
+`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`
+and `APIFY_*` settings, `REGISTRATION_ENABLED`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`

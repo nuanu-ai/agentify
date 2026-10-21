@@ -2,33 +2,24 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
 import {
-  analyticsEvents,
   consentSnapshots,
   createDatabase,
   createUuidV7,
-  deliveryOutbox,
   leadScans,
   leads,
-  merchantApplications,
   migrateDatabase,
-  paymentSignals,
   rateLimitEvents,
   rateWindows,
   registrationIntents,
-  runRetentionCleanup,
   scannerIdentityDeletionOperations,
   scanShares,
   scans,
   sessions,
   waitlistEntries,
-  webhookReceipts,
 } from "@agentify/scanner-database";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { action as setUpCardSignalRoute } from "../../app/routes/api/v1/card-signals.setup-intents";
-import { action as confirmCardSignalLocallyRoute } from "../../app/routes/api/v1/card-signals.signalId.local-confirm";
-import { action as removeCardRoute } from "../../app/routes/api/v1/card-signals.signalId.payment-method";
 import { visitorOf } from "./auth";
 import { encryptSensitiveValue, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
@@ -39,14 +30,6 @@ import {
   retryPendingScannerIdentityDeletions,
   runScannerIdentityDeletionOperation,
 } from "./scanner-identity-deletion";
-import {
-  detachCardSignal,
-  getOwnedCardSignalForReport,
-  processCardSignalWebhook,
-  setupCardSignal,
-} from "./stripe-card-signal";
-import { localWebhookSignature } from "./stripe-card-signal-crypto";
-import { LocalStripeCardSignalProvider } from "./stripe-card-signal-provider";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
@@ -59,10 +42,6 @@ process.env.TOKEN_HMAC_SECRET = tokenHmacSecret;
 process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.REPORT_IDENTITY_SECRET = "d".repeat(32);
 process.env.DASHBOARD_IDENTITY_URL = "http://127.0.0.1:1";
-process.env.CARD_SIGNAL_ENABLED = "true";
-process.env.STRIPE_ADAPTER = "local";
-const stripeWebhookSecret = "p5-webhook-secret";
-process.env.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
 process.env.ANALYTICS_RUNTIME_ENV = "test";
 process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "true";
 process.env.POSTHOG_API_KEY = "p5-posthog-test-key";
@@ -73,7 +52,6 @@ const migrationsFolder = fileURLToPath(
   new URL("../../../../packages/scanner-database/migrations", import.meta.url),
 );
 const admin = createDatabase(connectionString, { max: 1 });
-const provider = new LocalStripeCardSignalProvider("p5-webhook-secret");
 let dashboardServer: Server | undefined;
 let sellerDashboardMode: "unavailable" | "retained" | "deleted" = "retained";
 let dashboardDelayMs = 0;
@@ -122,7 +100,6 @@ async function createLeadFixture(label: string, input: { verified?: boolean } = 
     categories: {
       essential_processing: true,
       product_analytics: true,
-      card_signal: true,
     },
     source: "test",
   });
@@ -239,131 +216,6 @@ afterAll(async () => {
 });
 
 describe("P5 privacy and terminal scanner identity deletion", () => {
-  it("records no card signal for a press from a page loaded for another address, or none", async () => {
-    // A report page loaded for one address can still be open after the session
-    // changed in another tab to someone who also owns the scan; the consent
-    // and the card would otherwise be recorded under a person who never saw
-    // the box.
-    const fixture = await createLeadFixture("card-loaded-for");
-    const cookie = signedInAs(fixture.email);
-    const pressed = (body: object) =>
-      setUpCardSignalRoute({
-        request: new Request("http://localhost:3000/api/v1/card-signals/setup-intents", {
-          method: "POST",
-          headers: {
-            cookie,
-            origin: "http://localhost:3000",
-            "content-type": "application/json",
-            "idempotency-key": `card-loaded-for-${createUuidV7()}`,
-          },
-          body: JSON.stringify(body),
-        }),
-        params: {},
-      });
-    const consented = { scan_id: fixture.scanId, card_signal_consent: true };
-    const signals = async () =>
-      (
-        await getDatabase()
-          .db.select({ id: paymentSignals.id })
-          .from(paymentSignals)
-          .where(eq(paymentSignals.leadId, fixture.leadId))
-      ).length;
-
-    for (const named of ["somebody-else@example.com", undefined]) {
-      const refused = await pressed({ ...consented, signed_in_as: named });
-      expect(refused.status, String(named)).toBe(409);
-      const { error } = (await refused.json()) as { error: { code: string; message: string } };
-      expect(error.code).toBe("page_not_matched");
-      expect(error.message).toContain(fixture.email);
-    }
-    expect(await signals()).toBe(0);
-
-    // The same press from a page loaded for the address signed in now goes through.
-    const accepted = await pressed({ ...consented, signed_in_as: fixture.email });
-    expect(accepted.status).toBe(201);
-    expect(await signals()).toBe(1);
-  });
-
-  it("attaches once, hydrates current state, rejects replay drift, and detaches", async () => {
-    const fixture = await createLeadFixture("card-lifecycle");
-    const cookieHeader = signedInAs(fixture.email);
-    const visitor = await visitorOf(cookieHeader);
-    const setup = await setupCardSignal({
-      visitor,
-      scanId: fixture.scanId,
-      idempotencyKey: "p5-browser-idempotency-key",
-      provider,
-    });
-    expect(setup).toMatchObject({
-      status: "setup_pending",
-      adapter: "local",
-      clientSecret: expect.any(String),
-    });
-    if (!("signalId" in setup)) throw new Error("setup_failed");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
-      signalId: setup.signalId,
-      status: "setup_pending",
-      clientSecret: expect.any(String),
-    });
-    const signal = onlyRow(
-      await getDatabase()
-        .db.select()
-        .from(paymentSignals)
-        .where(eq(paymentSignals.id, setup.signalId)),
-    );
-    const delivery = await provider.confirmLocalSetup(signal.setupIntentId);
-    const concurrent = await Promise.all([
-      processCardSignalWebhook({ ...delivery, provider }),
-      processCardSignalWebhook({ ...delivery, provider }),
-    ]);
-    expect(concurrent.map((result) => result.status).sort()).toEqual(["duplicate", "processed"]);
-    const stored = onlyRow(
-      await getDatabase().db.select().from(paymentSignals).where(eq(paymentSignals.id, signal.id)),
-    );
-    expect(stored.status).toBe("attached");
-    expect(stored.paymentMethodIdCiphertext).toMatch(/^v1\./);
-    expect(stored.paymentMethodIdCiphertext).not.toContain("pm_local");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
-      signalId: signal.id,
-      status: "attached",
-      clientSecret: null,
-    });
-    expect(
-      (
-        await getDatabase()
-          .db.select({ count: sql<number>`count(*)::int` })
-          .from(analyticsEvents)
-          .where(eq(analyticsEvents.name, "card_attached"))
-      )[0]?.count,
-    ).toBe(1);
-    expect(
-      (await getDatabase().db.select({ count: sql<number>`count(*)::int` }).from(deliveryOutbox))[0]
-        ?.count,
-    ).toBe(1);
-    expect(
-      (
-        await getDatabase().db.select({ count: sql<number>`count(*)::int` }).from(webhookReceipts)
-      )[0]?.count,
-    ).toBe(1);
-
-    const replayBody = delivery.rawBody.replace('"data":', '"unexpected":"changed","data":');
-    await expect(
-      processCardSignalWebhook({
-        rawBody: replayBody,
-        signature: localWebhookSignature(replayBody, stripeWebhookSecret),
-        provider,
-      }),
-    ).rejects.toThrow("stripe_event_replay_mismatch");
-    await expect(detachCardSignal({ signalId: signal.id, visitor, provider })).resolves.toEqual({
-      status: "detached",
-    });
-    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
-      signalId: signal.id,
-      status: "detached",
-      clientSecret: null,
-    });
-  });
-
   it("revokes locally during dashboard outage, then completes retained-person deletion", async () => {
     const fixture = await createLeadFixture("deletion-outage");
     await getDatabase()
@@ -380,31 +232,13 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
           generated_at: new Date().toISOString(),
         },
       });
-    const customerId = await provider.createCustomer({
-      leadId: fixture.leadId,
-      idempotencyKey: "deletion-outage-customer",
-    });
-    const setup = await provider.createSetup({
-      customerId,
-      leadId: fixture.leadId,
-      scanId: fixture.scanId,
-      idempotencyKey: "deletion-outage-setup",
-    });
-    await getDatabase().db.insert(paymentSignals).values({
-      id: createUuidV7(),
-      leadId: fixture.leadId,
-      stripeCustomerId: customerId,
-      setupIntentId: setup.id,
-      status: "setup_pending",
-      consentSnapshotId: fixture.consentId,
-    });
     const cookieHeader = signedInAs(fixture.email);
     await expect(visitorOf(cookieHeader)).resolves.toMatchObject({ leadId: fixture.leadId });
 
     sellerDashboardMode = "unavailable";
-    await expect(
-      requestScannerIdentityDeletion({ leadId: fixture.leadId, provider }),
-    ).resolves.toBe("requested");
+    await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
+      "requested",
+    );
     const blockedLead = onlyRow(
       await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
     );
@@ -417,7 +251,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       kind: "person",
       leadId: null,
     });
-    expect((await provider.retrieveCustomer(customerId)).deleted).toBe(false);
 
     const operation = onlyRow(
       await getDatabase()
@@ -433,7 +266,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     await expect(
       runScannerIdentityDeletionOperation({
         operationId: operation.operationId,
-        provider,
       }),
     ).resolves.toBe("completed");
 
@@ -442,14 +274,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     );
     expect(deletedLead.emailNormalizedCiphertext).toBe("deleted");
     expect(deletedLead.anonymizedAt).toBeInstanceOf(Date);
-    expect((await provider.retrieveCustomer(customerId)).deleted).toBe(true);
-    expect((await provider.retrieveSetup(setup.id)).status).toBe("canceled");
-    expect(
-      await getDatabase()
-        .db.select()
-        .from(paymentSignals)
-        .where(eq(paymentSignals.leadId, fixture.leadId)),
-    ).toEqual([]);
     expect(
       await getDatabase().db.select().from(leadScans).where(eq(leadScans.leadId, fixture.leadId)),
     ).toEqual([]);
@@ -546,41 +370,50 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(lead.anonymizedAt).toBeNull();
   });
 
-  it("rechecks unverified retention eligibility after a concurrent verification", async () => {
+  it("leaves a person who confirms their address while the retention cleanup runs as they are", async () => {
     const fixture = await createLeadFixture("retention-race", {
       verified: false,
     });
-    const now = new Date();
+    // The oldest unverified lead, so a cleanup of one reaches it first.
     await getDatabase()
       .db.update(leads)
-      .set({ createdAt: new Date(now.getTime() - 31 * 86_400_000) })
+      .set({ createdAt: new Date("2000-01-01T00:00:00.000Z") })
       .where(eq(leads.id, fixture.leadId));
-    let markWaiting!: () => void;
-    let releaseWaiting!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      markWaiting = resolve;
-    });
-    const continueCleanup = new Promise<void>((resolve) => {
-      releaseWaiting = resolve;
-    });
-    const cleanup = runRetentionCleanup(getDatabase().db, {
-      now,
-      beforeLeadAnonymize: async () => {
-        markWaiting();
-        await continueCleanup;
-      },
-    });
-    await waiting;
-    await getDatabase()
-      .db.update(leads)
-      .set({ verifiedAt: new Date() })
-      .where(eq(leads.id, fixture.leadId));
-    releaseWaiting();
-    expect((await cleanup).leadsAnonymized).toBe(0);
-    expect(
-      (await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)))[0]
-        ?.anonymizedAt,
-    ).toBeNull();
+    const confirming = await admin.pool.connect();
+    try {
+      await confirming.query("begin");
+      await confirming.query("select id from leads where id = $1 for update", [fixture.leadId]);
+      const confirmingPid = (
+        await confirming.query<{ pid: number }>("select pg_backend_pid() as pid")
+      ).rows[0]?.pid;
+      const cleanup = executeRetentionCleanup({ batchSize: 1 });
+      // The cleanup has listed the lead and now waits for the confirmation.
+      await expect
+        .poll(
+          async () =>
+            (
+              await getDatabase().pool.query<{ waiting: number }>(
+                "select count(*)::int as waiting from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+                [confirmingPid],
+              )
+            ).rows[0]?.waiting,
+          { timeout: 5_000, interval: 20 },
+        )
+        .toBe(1);
+      await confirming.query("update leads set verified_at = now() where id = $1", [
+        fixture.leadId,
+      ]);
+      await confirming.query("commit");
+
+      await expect(cleanup).resolves.toMatchObject({ candidatesProcessed: 1, leadsAnonymized: 0 });
+    } finally {
+      confirming.release();
+    }
+    const lead = onlyRow(
+      await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
+    );
+    expect(lead.anonymizedAt).toBeNull();
+    expect(lead.verifiedAt).toBeInstanceOf(Date);
   });
 
   it("expires registration and rate evidence at its retention idempotently", async () => {
@@ -618,52 +451,12 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         windowStart: new Date(now.getTime() - 2 * 86_400_000),
         expiresAt: new Date(now.getTime() - 86_400_000),
       });
-    const expiredApplicationId = createUuidV7();
-    const currentApplicationId = createUuidV7();
-    await getDatabase()
-      .db.insert(merchantApplications)
-      .values([
-        {
-          id: expiredApplicationId,
-          idempotencyKeyHash: "expired-application",
-          requestHash: "expired-request",
-          payloadCiphertext: "expired-ciphertext",
-          policyVersion: "merchant-application-2026-09-09",
-          expiresAt: new Date(now.getTime() - 1),
-        },
-        {
-          id: currentApplicationId,
-          idempotencyKeyHash: "current-application",
-          requestHash: "current-request",
-          payloadCiphertext: "current-ciphertext",
-          policyVersion: "merchant-application-2026-09-09",
-          expiresAt: new Date(now.getTime() + 86_400_000),
-        },
-      ]);
 
-    await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
-      merchantApplicationsDeleted: 1,
+    await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
       registrationIntentsDeleted: 1,
       rateLimitRowsDeleted: 2,
     });
-    expect(
-      await getDatabase()
-        .db.select()
-        .from(merchantApplications)
-        .where(eq(merchantApplications.id, currentApplicationId)),
-    ).toEqual([
-      {
-        id: currentApplicationId,
-        idempotencyKeyHash: "current-application",
-        requestHash: "current-request",
-        payloadCiphertext: "current-ciphertext",
-        policyVersion: "merchant-application-2026-09-09",
-        createdAt: expect.any(Date),
-        expiresAt: expect.any(Date),
-      },
-    ]);
-    await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
-      merchantApplicationsDeleted: 0,
+    await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
     });
@@ -691,71 +484,5 @@ describe("the operator page", () => {
       (overviewBefore ?? 0) + 1,
       (dailyBefore ?? 0) + 1,
     ]);
-  });
-  it("neither confirms nor removes a card for a press from a page loaded for another address, or none", async () => {
-    // A's report stays open while B signs in elsewhere: a press there must
-    // not act, and the refusal names who is signed in now.
-    const fixture = await createLeadFixture("card-kept");
-    const owner = signedInAs(fixture.email);
-    const elsewhere = signedInAs("card-kept-elsewhere@example.com");
-    const sent = (method: string, path: string, cookie: string, body: object) =>
-      new Request(`http://localhost:3000${path}`, {
-        method,
-        headers: {
-          cookie,
-          origin: "http://localhost:3000",
-          "content-type": "application/json",
-          "idempotency-key": `card-kept-${createUuidV7()}`,
-        },
-        body: JSON.stringify(body),
-      });
-    const setUp = await setUpCardSignalRoute({
-      request: sent("POST", "/api/v1/card-signals/setup-intents", owner, {
-        scan_id: fixture.scanId,
-        card_signal_consent: true,
-        signed_in_as: fixture.email,
-      }),
-      params: {},
-    });
-    const { signal_id: signalId } = (await setUp.json()) as { signal_id: string };
-    const confirm = (cookie: string, named: string | undefined) =>
-      confirmCardSignalLocallyRoute({
-        request: sent("POST", `/api/v1/card-signals/${signalId}/local-confirm`, cookie, {
-          signed_in_as: named,
-        }),
-        params: { signalId },
-      });
-    const remove = (cookie: string, named: string | undefined) =>
-      removeCardRoute({
-        request: sent("DELETE", `/api/v1/card-signals/${signalId}/payment-method`, cookie, {
-          signed_in_as: named,
-        }),
-        params: { signalId },
-      });
-    const status = async () =>
-      onlyRow(
-        await getDatabase()
-          .db.select({ status: paymentSignals.status })
-          .from(paymentSignals)
-          .where(eq(paymentSignals.id, signalId)),
-      ).status;
-    const refusedFor = async (answer: Response, signedInNow: string) => {
-      expect(answer.status).toBe(409);
-      const { error } = (await answer.json()) as { error: { code: string; message: string } };
-      expect(error.code).toBe("page_not_matched");
-      expect(error.message).toContain(signedInNow);
-    };
-
-    await refusedFor(await confirm(elsewhere, fixture.email), "card-kept-elsewhere@example.com");
-    await refusedFor(await confirm(owner, undefined), fixture.email);
-    expect(await status()).toBe("setup_pending");
-    expect((await confirm(owner, fixture.email)).status).toBe(200);
-    expect(await status()).toBe("attached");
-
-    await refusedFor(await remove(elsewhere, fixture.email), "card-kept-elsewhere@example.com");
-    await refusedFor(await remove(owner, undefined), fixture.email);
-    expect(await status()).toBe("attached");
-    expect((await remove(owner, fixture.email)).status).toBe(200);
-    expect(await status()).toBe("detached");
   });
 });

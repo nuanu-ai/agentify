@@ -36,11 +36,7 @@ describe("browser analytics dedup", () => {
   it("does not call either SDK when consent is denied", async () => {
     const delivered = { posthog: false, meta: false };
     const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: {},
       source: "banner",
     });
@@ -65,11 +61,7 @@ describe("browser analytics dedup", () => {
 
   it("deduplicates per destination only after successful delivery", async () => {
     const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true, ads_measurement: true },
       source: "banner",
     });
@@ -98,11 +90,7 @@ describe("browser analytics dedup", () => {
 
   it("retries only the destination that failed before its once-key was stored", async () => {
     const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true, ads_measurement: true },
       source: "banner",
     });

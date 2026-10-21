@@ -1453,6 +1453,81 @@ if (databaseUrl === null) {
     });
   });
 
+  describe("the migration that drops the confirmation step from stored orders", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 23)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_plain','Plain','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("takes the confirmation's flag, instants and deadlines out of every order and leaves the rest as it was", async () => {
+      const kept = {
+        order: {
+          id: "ord_kept",
+          state: "delivered",
+          mode: { settle: "on_purchase", parcel: true },
+          policy: {
+            deadlines: { quoteTtlMs: 30_000, asyncFulfillmentMs: 86_400_000 },
+            redelivery: { maxAttempts: 5 },
+          },
+          timestamps: { createdAt: 1, paidAt: 2 },
+        },
+        merchantId: "mch_plain",
+        params: { needsConfirmation: true },
+      };
+      const written = {
+        ...kept,
+        order: {
+          ...kept.order,
+          id: "ord_written",
+          mode: { needsConfirmation: false, ...kept.order.mode },
+          policy: {
+            ...kept.order.policy,
+            deadlines: {
+              ...kept.order.policy.deadlines,
+              paymentAfterConfirmationMs: 300_000,
+              confirmationResponseMs: 3_600_000,
+            },
+          },
+          timestamps: {
+            ...kept.order.timestamps,
+            confirmationRequestedAt: null,
+            confirmedAt: null,
+          },
+        },
+      };
+      for (const record of [kept, written]) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,'delivered',false,'mch_plain','itm_plain','sku',$2,now(),now())",
+          [record.order.id, JSON.stringify(record)],
+        );
+      }
+
+      for (const statement of await statementsOf("0023_order_drops_confirmation.sql")) {
+        await pool.query(statement);
+      }
+
+      const rows = (await pool.query("select id, record from orders order by id")).rows;
+      expect(rows).toStrictEqual([
+        { id: "ord_kept", record: kept },
+        { id: "ord_written", record: { ...kept, order: { ...kept.order, id: "ord_written" } } },
+      ]);
+    });
+  });
+
   describe("the migration that marks the attempts that lapsed unpaid", () => {
     let pool: Pool;
     beforeAll(async () => {
@@ -1462,7 +1537,7 @@ if (databaseUrl === null) {
       const journal = JSON.parse(
         await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
       ) as { entries: { idx: number; tag: string }[] };
-      for (const entry of journal.entries.filter((entry) => entry.idx < 24)) {
+      for (const entry of journal.entries.filter((entry) => entry.idx < 26)) {
         for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
       }
       await pool.query(
@@ -1473,14 +1548,13 @@ if (databaseUrl === null) {
       await pool.end();
     });
 
-    it("marks an order that ended rejected or expired with nothing charged, held or asked of its merchant, and no other", async () => {
+    it("marks an order that ended rejected or expired with nothing charged or held, and no other", async () => {
       const ended = (id: string, state: string, order: object = {}, record: object = {}) => ({
         order: {
           id,
           state,
           payment: "none",
           heldFulfillment: false,
-          timestamps: { confirmationRequestedAt: null },
           ...order,
         },
         merchantId: "mch_lapsed",
@@ -1495,13 +1569,9 @@ if (databaseUrl === null) {
         ended("ord_lapsed", "expired"),
         ended("ord_goods_held", "expired", { heldFulfillment: true }),
         ended("ord_charge_failed", "rejected", { payment: "settle_failed" }),
-        ended("ord_confirmation_asked", "expired", {
-          timestamps: { confirmationRequestedAt: 500 },
-        }),
         ended("ord_presented", "expired", {}, { payment: "PAYMENT" }),
         ended("ord_attempted", "expired", {}, { paymentAttempt: { id: "att_1" } }),
         ended("ord_delivered", "delivered", { payment: "settled" }),
-        ended("ord_cancelled", "cancelled"),
         ended("ord_waiting", "quoted"),
       ];
       for (const row of rows) {
@@ -1511,7 +1581,7 @@ if (databaseUrl === null) {
         );
       }
 
-      for (const statement of await statementsOf("0024_order_lapsed_attempts.sql")) {
+      for (const statement of await statementsOf("0026_order_lapsed_attempts.sql")) {
         await pool.query(statement);
       }
 

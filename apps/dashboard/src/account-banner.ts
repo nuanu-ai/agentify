@@ -47,7 +47,6 @@ const FROM_FINDING: Readonly<Record<Exclude<MerchantFinding, "no_seller_site">, 
 const FROM_SELLING: Readonly<Record<SellingState, AccountReason | null>> = {
   open: null,
   paused: "paused",
-  departed: "left",
 };
 
 /** The order the banner says them in, broadest first. */
@@ -69,13 +68,8 @@ const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
     : { reason, ...ACCOUNT_WORDS[reason] };
 };
 
-/**
- * Empty where the account is selling as usual and every fact was read.
- * Leaving is said alone: nothing else on the list would put a card back on
- * sale once a merchant has left.
- */
+/** Empty where the account is selling as usual and every fact was read. */
 export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly AccountNote[] => {
-  if (read.selling === "departed") return [noteOf("left", read)];
   const found = new Set<AccountReason>(
     readinessSeenBy(viewer).missing.flatMap((finding) =>
       finding === "no_seller_site" ? [] : [FROM_FINDING[finding]],
