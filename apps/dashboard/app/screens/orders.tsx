@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { ClosurePressed, OrdersView, ToldOrders } from "../../src/views.js";
+import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
 import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
@@ -16,6 +16,7 @@ import {
 } from "../components/list.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
+import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
@@ -188,10 +189,12 @@ const OrderDetails = ({
   place: OrdersView["listing"]["place"];
 }>) => {
   const said = pressed?.id === row.id ? pressed : null;
+  // A refusal is said under the box it is about; with no form left, here.
+  const told = said === null ? null : (said.note ?? (row.closing === null ? said.refusal : null));
   return (
     <RowMore
       summary="Order details"
-      wide={row.closing !== null || row.closure !== null || row.paymentUnresolved}
+      wide={row.closing !== null || row.closure !== null || row.paymentUnresolved || said !== null}
       id={`details-${row.id}`}
       open={row.opened || said !== null || undefined}
       of={row.product}
@@ -232,10 +235,16 @@ const OrderDetails = ({
             keeps checking it.
           </p>
         ) : null}
-        {said?.note == null ? null : (
+        {told === null ? null : (
           <p className="problem" role="alert">
-            {said.note}
+            {told}
           </p>
+        )}
+        {said === null || said.typed === "" || row.closing !== null ? null : (
+          <>
+            <p className={styles.help}>The explanation you typed:</p>
+            <p className={`${styles.help} ${styles.typed}`}>{said.typed}</p>
+          </>
         )}
         {row.closing === null ? null : (
           <CloseFulfillment
@@ -442,5 +451,29 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       )}
       {note}
     </>
+  );
+}
+
+/**
+ * A closure's answer where the orders could not be read after it: what was
+ * typed is kept on the page, since no form is drawn to keep it in. Only an
+ * explanation refused before it was sent can be said to have changed nothing.
+ */
+export function ClosureUnlistedScreen({ view }: Readonly<{ view: ClosureUnlisted }>) {
+  const { note, refusal, typed } = view.pressed;
+  return (
+    <NotLoaded again={view.again}>
+      <div className="what">{note ?? refusal}</div>
+      {typed === "" ? null : (
+        <>
+          <p className="why">The explanation you typed:</p>
+          <p className="why words">{typed}</p>
+        </>
+      )}
+      <p className="why">Your orders could not be loaded.</p>
+      {note === null ? (
+        <p className="why">Nothing was closed, and loading them changed nothing.</p>
+      ) : null}
+    </NotLoaded>
   );
 }

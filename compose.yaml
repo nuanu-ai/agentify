@@ -69,7 +69,7 @@
 #   AGENTIFY_PAYMENT_RPC_URL  chain reads for payment recovery  disabled
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
-#   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
+#   AGENTIFY_SURFACE_MODE     the channel the pages name      sandbox
 #   AGENTIFY_POSTGRES_PUBLISH  the database port published   5432:5432
 #                           here, or a narrower bind
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
@@ -420,6 +420,11 @@ services:
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
       SCAN_ACCEPTANCE_ENABLED: "${SCAN_ACCEPTANCE_ENABLED:-true}"
       REMEDIATION_PROMPT_ENABLED: "${REMEDIATION_PROMPT_ENABLED:-true}"
+      # The edge's variable, read by llms.txt for the line that tells an agent
+      # whether its money is real. The scanner's liveness check, which activation
+      # reads before it stops anything, refuses a value that names no channel;
+      # the preflight checks the edge's against the channel.
+      AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
       # Who the operator of this site is, in the words its trust pages print.
       # A deployment answers for itself; a laptop is nobody's operator.
       PRIVACY_EMAIL: "${PRIVACY_EMAIL:-privacy@agentify.ad}"
@@ -512,9 +517,9 @@ services:
       # Mandatory in Caddy, so that no stack falls back to a front page nobody
       # chose.
       AGENTIFY_FRONT_PAGE: scanner_front_page
-      # Set by hand because Caddy cannot derive it from the chain, so the release
-      # checks it against the channel before anything starts and against the
-      # rendered pages afterwards.
+      # Set by hand because Caddy cannot derive it from the chain, so the
+      # release's preflight checks it against the channel before anything
+      # starts.
       AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
       # What the scanner's pages in the documentation say of the site and its
       # operator, filled in when Caddy serves them, from the very values the

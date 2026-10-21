@@ -55,9 +55,13 @@ import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
   CLOSURE_NOTES,
+  type ClosurePressed,
+  type ClosureUnlisted,
   cardsPlace,
   cardsView,
   closable,
+  closedForGood,
+  drawnClosedForGood,
   type FrameView,
   type OrdersView,
   ordersPlace,
@@ -199,7 +203,7 @@ export interface PageServices {
   };
   /** Stops this merchant's future Agentify fulfillment for one order. */
   readonly fulfillment: {
-    close(person: Person, form: FormData): Promise<Outcome<OrdersView>>;
+    close(person: Person, form: FormData): Promise<Outcome<OrdersView | ClosureUnlisted>>;
   };
   /** The card switches; each form carries the list it was drawn on. */
   readonly selling: {
@@ -283,12 +287,12 @@ export interface PageParts {
  * refusal keeps the gateway's status, and nothing is claimed beyond what it
  * said.
  */
+const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
+  `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
+
 export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
   kind: "problem",
-  problem: {
-    status: answer.status === 0 ? 504 : answer.status,
-    said: `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`,
-  },
+  problem: { status: answer.status === 0 ? 504 : answer.status, said: saidOf(answer) },
 });
 
 /**
@@ -1032,61 +1036,81 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           };
         }
         const said = typeof typed === "string" ? typed : "";
-        if (!request.success) {
-          // The contract's own reason, said of the box it is about.
-          const reason = request.error.issues[0]?.message ?? "";
-          const page = await ordersScreen(
-            person,
-            new URLSearchParams({ q: id.data, details: id.data }),
-          );
-          if (page.kind !== "view") return page;
-          return {
-            kind: "view",
-            status: 400,
-            view: {
-              ...page.view,
-              pressed: {
-                id: id.data,
-                note: null,
-                refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
-                typed: said,
-              },
-            },
-          };
-        }
-        const gateway = gatewayAs(person);
-        const closed = await gateway.closeOrder(id.data, request.data);
-        const order = new URLSearchParams({ q: id.data, details: id.data });
         // Back to the list the closure was pressed on, the order opened there.
         const place = ordersPlace(fieldsIn(form));
         const drawn = `${base}${place}${place.includes("?") ? "&" : "?"}${new URLSearchParams({ details: id.data })}#details-${encodeURIComponent(id.data)}`;
+        // Drawn here rather than redirected to, so what was typed stays in
+        // the box and a reload does not repeat the note. Lists that cannot be
+        // read beside it do not take the press's answer away.
+        const answered = async (
+          pressed: ClosurePressed,
+          status: number,
+        ): Promise<Outcome<OrdersView | ClosureUnlisted>> => {
+          const page = await ordersScreen(
+            person,
+            new URLSearchParams({ q: id.data, details: id.data }),
+          ).catch(() => {
+            console.error("[dashboard] the orders beside a closure could not be read");
+            return null;
+          });
+          if (page?.kind !== "view") {
+            return { kind: "view", status, view: { pressed, again: drawn } };
+          }
+          // Lists that show the closure recorded confirm it as a reread would.
+          if (
+            pressed.note === CLOSURE_NOTES.unconfirmed &&
+            drawnClosedForGood(page.view, id.data)
+          ) {
+            return { kind: "redirect", location: drawn };
+          }
+          return { kind: "view", status, view: { ...page.view, pressed } };
+        };
+        if (!request.success) {
+          // The contract's own reason, said of the box it is about.
+          const reason = request.error.issues[0]?.message ?? "";
+          return await answered(
+            {
+              id: id.data,
+              note: null,
+              refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+              typed: said,
+            },
+            400,
+          );
+        }
+        const gateway = gatewayAs(person);
+        const closed = await gateway.closeOrder(id.data, request.data);
         if (closed.ok) return { kind: "redirect", location: drawn };
         const refused = closed.status !== 0 && closed.status < 500;
         if (refused && closed.status !== 409) return problemOf(closed);
         // A timed-out write may have committed, and a refused one may have
-        // lost to a delivery or an ending: only a fresh read says which.
-        const read = await gateway.getOrder(id.data);
-        if (read.ok && read.document.merchant_closure !== undefined) {
+        // lost to a delivery or an ending: only a fresh read says which. A read
+        // that throws knows no more than one that was not answered.
+        const read = await gateway.getOrder(id.data).catch(() => {
+          console.error("[dashboard] the order a closure was pressed on could not be read");
+          return null;
+        });
+        const order = read?.ok === true ? read.document : null;
+        const open =
+          order?.merchant_closure === undefined
+            ? null
+            : await gateway.orders(true).catch(() => null);
+        if (order !== null && open?.ok === true && closedForGood(order, open.document)) {
           return { kind: "redirect", location: drawn };
         }
-        if (refused && (!read.ok || closable(read.document))) return problemOf(closed);
-        // Drawn here rather than redirected to, so what was typed stays in
-        // the box and a reload does not repeat the note.
-        const page = await ordersScreen(person, order);
-        if (page.kind !== "view") return page;
-        return {
-          kind: "view",
-          status: refused ? 409 : 503,
-          view: {
-            ...page.view,
-            pressed: {
-              id: id.data,
-              note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
-              refusal: null,
-              typed: said,
-            },
+        return await answered(
+          {
+            id: id.data,
+            note: !refused
+              ? CLOSURE_NOTES.unconfirmed
+              : order !== null && !closable(order)
+                ? CLOSURE_NOTES.ended
+                : saidOf(closed),
+            refusal: null,
+            typed: said,
           },
-        };
+          refused ? 409 : 503,
+        );
       },
     },
 

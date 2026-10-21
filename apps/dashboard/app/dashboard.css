@@ -480,7 +480,8 @@ form.inline {
   overflow-wrap: anywhere;
 }
 /* Somebody's own words, kept on the lines they wrote them on. */
-.more-facts .words {
+.more-facts .words,
+.callout .words {
   white-space: pre-wrap;
 }
 .more-facts .ident {

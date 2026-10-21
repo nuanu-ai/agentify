@@ -1205,6 +1205,10 @@ html:has(.sell) {
 .sell .final-cta .eyebrow {
   color: var(--accent-on-dark);
 }
+.sell .final-cta p a {
+  color: var(--accent-on-dark);
+  text-decoration: underline;
+}
 .sell .final-cta > div:last-child {
   width: 390px;
   flex: 0 0 390px;

@@ -266,6 +266,35 @@ describe("one paid order, in the merchant's own shop", () => {
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
   });
 
+  it("does not tell the buyer the shop was silent when its answer to the product check broke off", async () => {
+    // The shop answered and its answer could not be read: the order is still
+    // refused, in words true of that.
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+    const cutOff = async () =>
+      new Response(
+        new ReadableStream({ start: (controller) => controller.error(new Error("cut off")) }),
+        { status: 200 },
+      );
+
+    const answer = await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(shops, shop.place),
+        inspectProduct: (asked, merchantItemId) =>
+          inspectProductInTheShop(asked, merchantItemId, cutOff),
+      },
+      NO_SPLIT,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(JSON.stringify(answer)).not.toMatch(/did not answer/i);
+    expect(shop.placed).toHaveLength(0);
+    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+  });
+
   it("refuses an order the shop said nothing about, and says the shop did not answer", async () => {
     // The refusal's words reach the buyer's agent. A shop that timed out has
     // said nothing about the product, so the reason is that the shop did not

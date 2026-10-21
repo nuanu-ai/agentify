@@ -12,7 +12,7 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { formsIn, readable } from "../../src/testing/html.js";
-import { ordersView } from "../../src/views.js";
+import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
@@ -712,6 +712,17 @@ describe("an order's details", () => {
     expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
   });
 
+  it("are drawn under a wide row where a press made on the order is said", () => {
+    // An order that ended before its closure arrived has nothing else to
+    // read there, and the merchant must still see what became of the press.
+    const orders = ordersOf([{ id: SAME_HEAD, status: "delivered" }]);
+    const view = ordersView("live", CARDS, orders, orders);
+    const pressed = { id: SAME_HEAD, note: CLOSURE_NOTES.ended, refusal: null, typed: "" };
+    const html = served(() => <OrdersScreen view={{ ...view, pressed }} />);
+
+    expect(detailsOf(html, SAME_HEAD)).toContain("wide");
+  });
+
   it("are reached from Needs you without searching for an order already on the page", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
     const opens = (address: string, open = orders) =>
@@ -724,5 +735,49 @@ describe("an order's details", () => {
     expect(opens("q=vpn&show=open")?.search).toBe(`?q=vpn&show=open&details=${FIRST}`);
     // Where the list below does not hold it, the order is found by its ID.
     expect(opens("show=open", ordersOf([]))?.search).toBe(`?q=${FIRST}&details=${FIRST}`);
+  });
+});
+
+describe("a closure recorded", () => {
+  it("is read alike off an order with the open list and off the orders drawn from them", () => {
+    // The press confirms a closure off the order and the open list, or off
+    // the page drawn from the lists; both must say the same of every order.
+    const closed = { closed_at: "2026-10-19T09:30:00Z" };
+    const unresolved = idOf("5b5b", "c0c0", "b");
+    const base = ordersOf([
+      { id: FIRST, status: "unfulfilled" },
+      { id: SAME_HEAD, status: "fulfillment_closed" },
+      { id: SAME_TAIL, status: "fulfillment_closed" },
+      { id: unresolved, status: "fulfillment_closed" },
+    ]).orders;
+    const orders = OrderListSchema.parse({
+      orders: base.map((order) =>
+        order.id === FIRST
+          ? order
+          : {
+              ...order,
+              merchant_closure: closed,
+              ...(order.id === unresolved ? { payment_status: "unresolved" } : {}),
+            },
+      ),
+    });
+    // Paid after its closure, so open again; the others are not.
+    const open = OrderListSchema.parse({
+      orders: orders.orders.filter((order) => order.id === FIRST || order.id === SAME_TAIL),
+    });
+
+    const said = orders.orders.map((order) => {
+      const view = ordersView(
+        "live",
+        CARDS,
+        orders,
+        open,
+        new URLSearchParams({ q: order.id, details: order.id }),
+      );
+      return [closedForGood(order, open), drawnClosedForGood(view, order.id)];
+    });
+
+    expect(said.map(([read]) => read)).toStrictEqual([false, true, false, true]);
+    expect(said.every(([read, drawn]) => read === drawn)).toBe(true);
   });
 });

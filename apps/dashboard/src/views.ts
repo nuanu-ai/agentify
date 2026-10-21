@@ -424,6 +424,16 @@ export interface ClosurePressed {
   readonly typed: string;
 }
 
+/**
+ * What became of a closure, drawn where the lists beside it could not be
+ * read: the press's own answer stands, and the lists are offered again.
+ */
+export interface ClosureUnlisted {
+  readonly pressed: ClosurePressed;
+  /** The list the closure was pressed on, the order opened there. */
+  readonly again: string;
+}
+
 export interface OrdersView {
   /** The gateway lists no order at all, so there is nothing to search or narrow. */
   readonly none: boolean;
@@ -701,6 +711,23 @@ export const CLOSURE_NOTES = {
     "Your closure could not be confirmed. If this order is still open, closing it again is safe.",
   ended: "Nothing was closed: this order ended before your closure arrived.",
 } as const;
+
+/**
+ * A closure is recorded where the order is closed by its merchant and no
+ * longer open: an order paid after its closure still carries that closure,
+ * and is open again until it is closed a second time.
+ */
+export const closedForGood = (
+  order: Pick<OrderList["orders"][number], "id" | "status" | "merchant_closure">,
+  open: OrderList,
+): boolean =>
+  order.status === "fulfillment_closed" &&
+  order.merchant_closure !== undefined &&
+  !open.orders.some((one) => one.id === order.id);
+
+/** Whether the orders drawn show this one closed for good, by the rule above. */
+export const drawnClosedForGood = (view: OrdersView, id: string): boolean =>
+  view.listing.rows.some((row) => row.id === id && row.closure !== null && row.closing === null);
 
 /**
  * Closure stops what Agentify would still deliver, so it is offered only where

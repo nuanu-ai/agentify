@@ -138,3 +138,9 @@
   color: var(--muted);
   font-size: var(--text-small);
 }
+
+/* What the merchant typed where no box is left to keep it, on its own lines. */
+.typed {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -48,6 +48,8 @@ describe("the liveness probe", () => {
     ["APP_BASE_URL", "not-an-origin"],
     ["POSTHOG_BROWSER_KEY", "configured-without-a-host"],
     ["ANALYTICS_RUNTIME_ENV", "unknown-environment"],
+    // llms.txt would otherwise have to guess whether an agent's money is real.
+    ["AGENTIFY_SURFACE_MODE", "staging"],
   ])("refuses invalid %s before the image can be accepted as healthy", async (key, value) => {
     vi.stubEnv(key, value);
     const answered = await ask("/api/health/live");
