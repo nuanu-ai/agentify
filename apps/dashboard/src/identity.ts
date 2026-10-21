@@ -263,7 +263,7 @@ async function recordWithin(tx: Savepoints, event: AnalyticsEvent): Promise<void
   try {
     await tx.transaction(async (savepoint) => await record(savepoint, event, new Date()));
   } catch (thrown) {
-    console.error(`[dashboard] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+    console.error(`[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`);
   }
 }
 
