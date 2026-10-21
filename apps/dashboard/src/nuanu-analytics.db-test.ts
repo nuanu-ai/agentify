@@ -737,6 +737,36 @@ if (databaseUrl === null) {
     });
   });
 
+  describe("two senders at once", () => {
+    it("posts an event two turns reach together exactly once", async () => {
+      await recorded(viewed);
+      let posts = 0;
+      let answer: (() => void) | undefined;
+      const answered = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      const slow = (async () => {
+        posts += 1;
+        await answered;
+        return new Response(null, { status: 200 });
+      }) as typeof fetch;
+
+      const first = deliverOnce({ pool, target: ON_TEST, fetch: slow, now });
+      while (posts === 0) await sleep(1);
+      let secondEnded = false;
+      const second = deliverOnce({ pool, target: ON_TEST, fetch: slow, now }).finally(() => {
+        secondEnded = true;
+      });
+      const deadline = Date.now() + 1_000;
+      while (!secondEnded && posts === 1 && Date.now() < deadline) await sleep(1);
+      answer?.();
+
+      expect(await Promise.all([first, second])).toStrictEqual(["next", "idle"]);
+      expect(posts).toBe(1);
+      expect(await onlyRow()).toMatchObject({ state: "sent", attempts: 1 });
+    });
+  });
+
   describe("which event goes first", () => {
     it("posts a business event before the screens viewed and the problems shown waiting ahead of it", async () => {
       const shownProblem: UiBlocked = {
