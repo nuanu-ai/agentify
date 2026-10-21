@@ -249,12 +249,7 @@ export type PurchaseAttempt =
   | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
-  | {
-      readonly step: "payment_already_spent";
-      readonly heldBy: string;
-      /** Whether that order is still one an agent could collect anything from. */
-      readonly collectable: boolean;
-    }
+  | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
   | { readonly step: "payment_not_taken"; readonly why: string; readonly retryable: boolean }
   /** The payment layer did not vouch for this payment; nothing was touched. */
@@ -1572,16 +1567,7 @@ export class Gateway {
     // so a payment that never checked out never burns a claim.
     const claim = await this.runtime.store.claimPayment(fingerprint, orderId);
     if (!claim.claimed) {
-      const holder = await this.runtime.store.orderById(claim.heldBy);
-      return {
-        step: "payment_already_spent",
-        heldBy: claim.heldBy,
-        // Whether that order is still open, and so worth going back to
-        // whatever its status reads: an open order whose charge went quiet may
-        // hold goods and moved money, and an agent told it was over would pay
-        // a second time.
-        collectable: holder !== null && isOpen(holder.order.state),
-      };
+      return { step: "payment_already_spent" };
     }
 
     // In the synchronous mode the goods reach the agent only through the park.

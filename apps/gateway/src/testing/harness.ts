@@ -471,7 +471,8 @@ function encoded(
 
 /**
  * A payment `wallet` signs against the payment request `order`'s challenge
- * carried, made out to where the order is paid, with the fingerprint the
+ * carried, made out to where the order is paid or, for an order not paid yet,
+ * to `terms.payTo`, with the fingerprint the
  * purchase route takes of it. Unlike {@link authorisation} it is a real
  * signature, which is what getting back a paid purchase is checked by.
  */
@@ -485,7 +486,12 @@ export async function signedFor(
   const edge = new PaymentEdge(config);
   const price = order.order.price;
   if (price === null) throw new Error(`${order.order.id} has no price to sign for`);
-  const requirements = edge.requirementsFor(price, order.paymentRef, order.payTo);
+  // An order not paid yet has no address of its own, so the test names one.
+  const requirements = edge.requirementsFor(
+    price,
+    order.paymentRef,
+    order.payTo ?? terms.payTo ?? null,
+  );
   const payment = await signedPayment(wallet, requirements, {
     validBefore: clock() + requirements.maxTimeoutSeconds * 1_000,
     ...terms,

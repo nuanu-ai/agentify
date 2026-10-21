@@ -12,6 +12,7 @@ import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
   type CatalogEntry,
+  type ClaimHolder,
   type Integration,
   type IntegrationSwitch,
   type MerchantScope,
@@ -727,8 +728,13 @@ export class MemoryStore implements Store {
     });
   }
 
-  async paymentClaimHolder(fingerprint: string): Promise<string | null> {
-    return this.#withPaymentClaims(() => this.#paymentClaims.get(fingerprint)?.orderId ?? null);
+  async paymentClaimHolder(fingerprint: string): Promise<ClaimHolder | null> {
+    return this.#withPaymentClaims(() => {
+      const claim = this.#paymentClaims.get(fingerprint);
+      return claim === undefined
+        ? null
+        : { orderId: claim.orderId, retained: claim.retained === true };
+    });
   }
 
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {

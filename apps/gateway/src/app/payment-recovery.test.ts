@@ -230,7 +230,13 @@ describe("recovering a payment without another charge", () => {
 
   it("requires a fresh payment signed by its payer to retrieve goods after the original authorization was consumed", async () => {
     const { h, recovery, orderId } = await purchase();
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    const quoted = await h.store.orderById(orderId);
+    if (quoted === null) throw new Error("the order is gone");
+    const original = await signedFor(h, quoted, PAYER_WALLET, {
+      nonce: recovery.nonce,
+      payTo: recovery.payTo,
+    });
+    await h.gateway.payPurchase(orderId, original.payment, original.fingerprint);
     await h.gateway.deliverOrder(h.merchant.id, orderId, { activation_code: "BOUGHT" });
     h.facilitator.willRefuseVerification("signature", "the authorization was consumed");
     const retried = await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
@@ -240,7 +246,6 @@ describe("recovering a payment without another charge", () => {
     expect(JSON.stringify(retried)).not.toContain("BOUGHT");
     const paid = await h.store.orderById(orderId);
     if (paid === null) throw new Error("the order is gone");
-    const original = await signedFor(h, paid, PAYER_WALLET, { nonce: recovery.nonce });
     const replayed = await h.gateway.payPurchase(orderId, original.payment, original.fingerprint);
     expect(replayed.step).toBe("payment_not_verified");
     expect(replayed).not.toHaveProperty("delivery");

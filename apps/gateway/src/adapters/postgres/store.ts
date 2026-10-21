@@ -19,6 +19,7 @@ import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
   type CatalogEntry,
+  type ClaimHolder,
   INTEGRATIONS,
   type Integration,
   type IntegrationSwitch,
@@ -980,12 +981,12 @@ export class PostgresStore implements Store {
     return row.orderId === orderId ? { claimed: true } : { claimed: false, heldBy: row.orderId };
   }
 
-  async paymentClaimHolder(fingerprint: string): Promise<string | null> {
+  async paymentClaimHolder(fingerprint: string): Promise<ClaimHolder | null> {
     const [row] = await this.#db
-      .select({ orderId: paymentClaims.orderId })
+      .select({ orderId: paymentClaims.orderId, retained: paymentClaims.retained })
       .from(paymentClaims)
       .where(eq(paymentClaims.fingerprint, fingerprint));
-    return row?.orderId ?? null;
+    return row ?? null;
   }
 
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {

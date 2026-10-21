@@ -8,8 +8,8 @@
  *
  * The order's reference travels in the payment's unsigned copy of the offer,
  * so one wallet's authorization fits every order of the same price and payee.
- * What binds an authorization to one order is that no other order has ever
- * taken it: its claim here, and its use on the chain.
+ * What binds an authorization to one order is its claim here, and, where the
+ * chain answers, its use there.
  */
 
 import { decodePaymentSignatureHeader } from "@x402/core/http";
@@ -24,14 +24,14 @@ import {
 } from "../http/x402.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
 import type { PaymentChain } from "../ports/payment-chain.js";
-import type { StoredOrder } from "../ports/store.js";
+import type { ClaimHolder, StoredOrder } from "../ports/store.js";
 
 /** What a payment for a paid order is checked with. */
 export interface ReturnCheck {
   readonly edge: PaymentEdge;
   readonly now: number;
-  /** The order that holds the claim on a payment's fingerprint, if any. */
-  readonly claimHolder: (fingerprint: string) => Promise<string | null>;
+  /** Who holds the claim on a payment's fingerprint, if anyone. */
+  readonly claimHolder: (fingerprint: string) => Promise<ClaimHolder | null>;
   readonly chain?: PaymentChain;
 }
 
@@ -39,15 +39,11 @@ export interface ReturnCheck {
  * The payment checked against `paid`'s own terms: a verified outcome naming
  * the wallet that signed it, whichever wallet that is, or a refusal. Null
  * where this gateway cannot tell without the payment layer: a signature only
- * the chain can judge, or whether the chain saw it used, with no chain to ask
- * or a chain that did not answer.
+ * the chain can judge, with no chain to ask or a chain that did not answer.
  */
 export async function returningPayment(
   payment: string,
-  paid: Pick<
-    StoredOrder,
-    "paymentRef" | "payTo" | "payment" | "paymentRecovery" | "paymentFingerprint"
-  > & {
+  paid: Pick<StoredOrder, "paymentRef" | "payTo"> & {
     readonly orderId: string;
     readonly price: { readonly amount: string; readonly currency: string };
   },
@@ -153,17 +149,20 @@ export async function returningPayment(
     payer: authorization.from,
     nonce: authorization.nonce,
   });
+  // A claim this order holds and has kept is the one that paid it; one it
+  // holds and has not kept is an earlier return, which may come again.
   const holder = await claimHolder(fingerprint);
-  if (paidWith(paid, authorization, fingerprint) || (holder !== null && holder !== paid.orderId)) {
+  if (holder !== null && (holder.orderId !== paid.orderId || holder.retained)) {
     return ALREADY_USED;
   }
+  // A second guard where the chain answers. The claims, with the cap on how
+  // long a payment stays valid, are what bind an authorization to one order,
+  // so a chain that does not answer leaves the decision to them.
   if (chain !== undefined) {
-    try {
-      if (await chain.used(ours.asset, authorization.from, authorization.nonce))
-        return ALREADY_USED;
-    } catch {
-      return null;
-    }
+    const used = await chain
+      .used(ours.asset, authorization.from, authorization.nonce)
+      .catch(() => false);
+    if (used) return ALREADY_USED;
   }
   return {
     verified: true,
@@ -252,39 +251,6 @@ function authorizationIn(payload: PaymentPayload): {
     signature: signed.signature as Hex,
   };
 }
-
-/**
- * Whether `authorization` is the one that paid this order, wherever the order
- * keeps that one: the fingerprint it was claimed under, the terms saved for
- * recovery, and the payment itself while it is kept.
- */
-function paidWith(
-  paid: Pick<StoredOrder, "payment" | "paymentRecovery" | "paymentFingerprint">,
-  authorization: Authorization,
-  fingerprint: string,
-): boolean {
-  const presented = nonceOf(authorization.from, authorization.nonce);
-  if (paid.paymentFingerprint === fingerprint) return true;
-  if (
-    paid.paymentRecovery !== undefined &&
-    nonceOf(paid.paymentRecovery.payer, paid.paymentRecovery.nonce) === presented
-  ) {
-    return true;
-  }
-  if (paid.payment === null) return false;
-  try {
-    const kept = authorizationIn(decodePaymentSignatureHeader(paid.payment));
-    return (
-      kept !== null && nonceOf(kept.authorization.from, kept.authorization.nonce) === presented
-    );
-  } catch {
-    // A kept payment that cannot be read names no authorization.
-    return false;
-  }
-}
-
-const nonceOf = (payer: string, nonce: string): string =>
-  `${payer.toLowerCase()}:${nonce.toLowerCase()}`;
 
 /**
  * An authorization some order has taken. Its words are the same whichever
