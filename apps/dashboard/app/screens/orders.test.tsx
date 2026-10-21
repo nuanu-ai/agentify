@@ -305,30 +305,47 @@ describe("the counts beside a search", () => {
 });
 
 describe("a shop's order a cent from what the buyer paid", () => {
-  it("says in the order's details what the shop's order totals, and says nothing where it is the same", () => {
-    const orders = ordersOf([{ id: FIRST }]);
-    const details = (totals: Readonly<Record<string, ShopTotal>>) =>
-      readable(
-        served(() => (
-          <OrdersScreen
-            view={ordersView(
-              "live",
-              CARDS,
-              orders,
-              orders,
-              new URLSearchParams({ details: FIRST }),
-              {},
-              {},
-              { page: null, of: 0 },
-              totals,
-            )}
-          />
-        )),
-      );
+  const orders = ordersOf([{ id: FIRST }]);
+  const details = (totals: Readonly<Record<string, ShopTotal>>) =>
+    readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(
+            "live",
+            CARDS,
+            orders,
+            orders,
+            new URLSearchParams({ details: FIRST }),
+            {},
+            {},
+            { page: null, of: 0 },
+            totals,
+          )}
+        />
+      )),
+    );
 
+  it("says in the order's details what the shop's order totals, and says nothing where it is the same", () => {
     expect(details({ [FIRST]: { total: "5.01", converted: null } })).toContain("5.01 USD");
     expect(details({ [FIRST]: { total: "5.00", converted: null } })).not.toContain("Shop's order");
     expect(details({})).not.toContain("Shop's order");
+  });
+
+  it("says, for a sale from a shop in another currency, the shop's amount and the rate the buyer paid at", () => {
+    const said = details({
+      [FIRST]: {
+        total: "90001",
+        converted: {
+          inTheShop: { amount: "90000", currency: "IDR" },
+          rate: { version: 4, rate: "18000", setAt: "2026-10-09T10:00:00.000Z" },
+        },
+      },
+    });
+
+    expect(said).toContain(
+      "90001 IDR in your shop, paid as 5.00 USDC at your rate of 18000 IDR per US dollar, set 2026-10-09 10:00:00 UTC",
+    );
+    expect(said).not.toContain("within a cent");
   });
 });
 
