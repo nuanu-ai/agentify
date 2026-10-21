@@ -31,8 +31,9 @@ export default defineConfig({
     globalSetup: ["./vitest.db.setup.ts"],
     include: ["apps/*/src/**/*.db-test.ts"],
     // The offline suite's network refusal. A database is not reached with
-    // `fetch`, so this still rules out a call to somebody's live API.
-    setupFiles: ["./vitest.setup.ts"],
+    // `fetch`, so this still rules out a call to somebody's live API. And the
+    // refusal of a log line that opens an order.
+    setupFiles: ["./vitest.setup.ts", "./vitest.logs.setup.ts"],
     passWithNoTests: false,
     // Verbose so that the sentence explaining a skip is printed; "1 skipped"
     // alone reads like a pass.
