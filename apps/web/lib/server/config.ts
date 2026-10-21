@@ -10,6 +10,12 @@ const booleanEnv = z
 const optionalNonEmpty = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
 
+/**
+ * Which channel this is, as the edge is told it: llms.txt opens by saying
+ * whether an agent's money is real here.
+ */
+export const surfaceMode = z.enum(["sandbox", "test", "live"]);
+
 const schema = z.object({
   APP_BASE_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
@@ -35,6 +41,7 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  AGENTIFY_SURFACE_MODE: surfaceMode.default("sandbox"),
 });
 
 export function getServerConfig() {
