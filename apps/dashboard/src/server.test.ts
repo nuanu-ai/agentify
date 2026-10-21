@@ -7631,6 +7631,38 @@ describe("what the pages record for product analytics", () => {
     ]);
   });
 
+  it("answers a refused seller name and goes on answering when the lookup of its integration throws", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        integration: () => {
+          throw new Error("the gateway client broke");
+        },
+      }),
+    });
+    await unname(running);
+    await running.browser.signIn();
+    await running.browser.get("/choose-name");
+    await fromNow(running);
+    const rejected: unknown[] = [];
+    const rejection = (reason: unknown) => rejected.push(reason);
+    process.on("unhandledRejection", rejection);
+    const told = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const chosen = await running.browser.post("/choose-name", { seller_name: "" });
+      await settle();
+      const after = await running.browser.get("/choose-name");
+
+      expect([chosen.status, after.status]).toStrictEqual([400, 200]);
+    } finally {
+      process.off("unhandledRejection", rejection);
+    }
+    expect(rejected).toStrictEqual([]);
+    expect(told.mock.calls.flat().join("\n")).toContain("a refused setup step went unrecorded");
+    expect(named(running, "agc_setup_result")).toStrictEqual([]);
+  });
+
   it("records a site refused before the gateway is asked as one blocked setup step", async () => {
     const running = await started();
     await running.browser.signIn();
