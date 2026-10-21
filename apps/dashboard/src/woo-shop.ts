@@ -91,7 +91,13 @@ export type EligibleWooProduct = EligibleDownload | EligibleParcel;
  * the seller's no.
  */
 type NotSellable =
-  | { readonly ok: false; readonly why: string; readonly again: true }
+  | {
+      readonly ok: false;
+      readonly why: string;
+      readonly again: true;
+      /** The shop answered, and its answer broke off before it could be read. */
+      readonly cutOff?: true;
+    }
   | { readonly ok: false; readonly why: string; readonly again: false; readonly saidNo: boolean };
 
 export type ProductInspection =
@@ -226,6 +232,7 @@ export const inspectProductInTheShop = async (
         ok: false,
         why: `The shop's answer to the protected ${checkAt(brokenAt)} check broke off (${statusAt(brokenAt)}).`,
         again: true,
+        cutOff: true,
       };
     }
     const busyAt = indices.find((index) => worthAskingAgain(answers[index]?.response.status ?? 0));
