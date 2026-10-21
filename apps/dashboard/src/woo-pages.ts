@@ -76,6 +76,11 @@ export interface ShopCalls {
 export interface WooPages {
   recovery(person: Person, orderId: string): Promise<Outcome<WooRecoveryView>>;
   recover(person: Person, orderId: string, form: FormData): Promise<Outcome<WooRecoveryView>>;
+  /** What the shop's orders for these sales total, where the connector placed them. */
+  shopTotals(
+    person: Person,
+    orderIds: readonly string[],
+  ): Promise<Readonly<Record<string, string>>>;
   recoveryLinks(
     person: Person,
     orderIds: readonly string[],
@@ -274,6 +279,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   return {
     recovery: recovery.page,
     recover: recovery.recover,
+    async shopTotals(person, orderIds) {
+      if (person.merchant === null) return {};
+      return await shops.shopTotals(person.id, orderIds);
+    },
     async recoveryLinks(person, orderIds) {
       if (person.merchant === null) return {};
       const ids = await shops.recoverableOrders(person.id, orderIds);

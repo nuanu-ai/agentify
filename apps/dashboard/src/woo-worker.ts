@@ -307,7 +307,7 @@ export const fillFromTheShop = async (
     };
     const bound = await parts.shops.recordOrder(
       order.id,
-      { id: made.id, number: made.number, permission },
+      { id: made.id, number: made.number, permission, total: made.total },
       parts.now(),
     );
     if (bound) {
@@ -609,7 +609,7 @@ const fillParcelFromTheShop = async (
   if (made.ok) {
     const bound = await parts.shops.recordOrder(
       order.id,
-      { id: made.id, number: made.number, permission: null },
+      { id: made.id, number: made.number, permission: null, total: made.total },
       parts.now(),
     );
     if (bound) return { accepted: {} };

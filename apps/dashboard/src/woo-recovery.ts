@@ -230,6 +230,7 @@ const recover = async (
       permissionFor(connection, made, inspected.product, person.email),
       made.id,
       made.number,
+      made.total,
       parts,
       gateway,
     );
@@ -272,6 +273,7 @@ const recover = async (
     permission,
     looked.order.id,
     looked.order.number,
+    looked.order.total,
     parts,
     gateway,
   );
@@ -282,12 +284,13 @@ const bindAndDeliver = async (
   permission: WooPermission,
   wooOrderId: string,
   number: string,
+  total: string,
   parts: Omit<WooRecoveryParts, "identity">,
   gateway: RecoveryGateway,
 ): Promise<WooRecoveryOutcome> => {
   const bound = await parts.shops.recordOrder(
     orderId,
-    { id: wooOrderId, number, permission },
+    { id: wooOrderId, number, permission, total },
     parts.now(),
   );
   if (!bound) {

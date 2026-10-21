@@ -134,6 +134,13 @@
       "when": 1792579989814,
       "tag": "0018_woo_shop_revision_has_no_default",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792591149778,
+      "tag": "0019_woo_order_total",
+      "breakpoints": true
     }
   ]
 }
