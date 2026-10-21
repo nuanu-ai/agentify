@@ -147,7 +147,7 @@ class Backups(unittest.TestCase):
         # run gives the tree back to the user running the tests, keeping modes.
         prelude = textwrap.dedent("""\
             trap 'status=$?; chown -R "$OWNER" /h; exit $status' EXIT
-            mkdir -p /run/lock /etc/agentify /var/lib/agentify /usr/local/sbin /etc/cron.d /etc/systemd/system
+            mkdir -p /run/lock /etc/agentify /var/lib/agentify /usr/local/sbin /etc/systemd/system
             ln -s /h/state /var/lib/agentify/production
             install -m 600 /h/etc/production.env /etc/agentify/production.env
             [[ ! -f /h/etc/backup.env ]] || install -m "${BACKUP_ENV_MODE:-600}" /h/etc/backup.env /etc/agentify/backup.env
@@ -252,11 +252,9 @@ class Backups(unittest.TestCase):
 
     def install(self, channel, **environment):
         said = self.run_script(
-            "echo '*/10 * * * * root /usr/local/sbin/agentify-backup-interim' > /etc/cron.d/agentify-backup-interim\n"
-            "touch /usr/local/sbin/agentify-backup-interim\n"
             "cp /etc/agentify/production.env /etc/agentify/test.env\n"
             f"/h/tree/deploy/install.sh {channel}; echo \"install exit $?\"\n"
-            "find /usr/local/sbin /etc/systemd/system /etc/cron.d -name 'agentify*' -printf '%f\\n' | sort > /h/world/installed",
+            "find /usr/local/sbin /etc/systemd/system -name 'agentify*' -printf '%f\\n' | sort > /h/world/installed",
             **environment,
         )
         return said, (self.world / "installed").read_text().split()
@@ -264,7 +262,7 @@ class Backups(unittest.TestCase):
     BACKUP = ["agentify-backup", "agentify-backup-check", "agentify-backup-check.service",
               "agentify-backup-credentials", "agentify-backup-failed@.service", "agentify-backup.service", "agentify-backup.timer"]
 
-    def test_production_installs_the_backup_starts_its_timers_and_removes_the_interim_job(self):
+    def test_production_installs_the_backup_and_starts_its_timers(self):
         said, installed = self.install("production")
         self.assertIn("install exit 0", said)
         self.assertEqual([name for name in installed if name.startswith("agentify-backup")], self.BACKUP)
@@ -274,7 +272,7 @@ class Backups(unittest.TestCase):
     def test_production_without_a_root_600_backup_env_is_refused_and_installs_nothing(self):
         said, installed = self.install("production", BACKUP_ENV_MODE="644")
         self.assertRegex(said, r"(?m)^install exit 1$")
-        self.assertEqual(installed, ["agentify-backup-interim", "agentify-backup-interim"])
+        self.assertEqual(installed, [])
 
     def test_test_takes_no_backups(self):
         said, installed = self.install("test")
