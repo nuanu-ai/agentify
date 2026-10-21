@@ -170,6 +170,27 @@ tote and can change numeric IDs: identify current products by SKU/name and
 record their IDs. Boundary mutations use copies of these products in an
 isolated shop. They are test inputs, not invented customer requirements.
 
+The lab is one shop built to exactly what the connector demands, not a shop
+as merchants run them, and every story run on it inherits what it leaves out.
+It prices in US dollars and calculates no tax. It runs WooCommerce with no
+other plugin, so nothing in it changes a price, a cart, a checkout or an order
+the way a real shop's extensions do. It holds eight products at most, far
+below the 200 an import reads, which H-09 reaches only with controlled copies,
+and none of them counts its stock. Nothing in front of it screens automated
+requests, as a real shop's bot protection or its host's firewall may. Its
+offline payment methods are switched off, so a person cannot complete an
+ordinary order in it as a customer, and the mail it sends reaches nobody who
+reads it. A pass on the lab says nothing about a shop that differs from it in
+any of these ways.
+
+A second lab profile, the realistic profile, is being prepared from a census
+of real WooCommerce shops in research note 55, and what it contains is that
+note's to decide. Stories marked “realistic profile” need it and are blocked
+until it exists. The stories about tax run instead on isolated copies of the
+lab shop with tax calculation turned on and set as each row names; such a copy
+answers for the one setting it changes and does not stand in for the
+realistic profile.
+
 Keep a durable merchant operation record keyed by Agentify order ID. For a
 local deterministic effect, record its result and stock change in one
 transaction with a uniqueness constraint. Count arrivals separately from
