@@ -17,6 +17,7 @@ import { loadConfig } from "./config.js";
 import { migrateAccounts } from "./database.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
+import { deliverOnce } from "./nuanu-analytics.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
@@ -30,6 +31,22 @@ const migrationsIn = join(here, "..", "drizzle");
 const gatewayMigrationsIn = join(here, "..", "..", "gateway", "drizzle");
 
 const EMAIL = "person@example.com";
+
+/** A sender switched on; the tests stand in for Nuanu, so nothing leaves. */
+const SENDING = (() => {
+  const target = loadConfig({
+    DATABASE_URL: "postgres://agentify:agentify@postgres:5432/agentify",
+    AUTH_SECRET: TEST_AUTH_SECRET,
+    PAYMENT_NETWORK: "eip155:84532",
+    FACILITATOR_URL: "https://x402.org/facilitator",
+    NUANU_ANALYTICS_ENABLED: "true",
+    NUANU_ANALYTICS_SITE_ID: "123",
+    NUANU_ANALYTICS_API_KEY: ["qa", "synthetic", "nuanu", "api", "key"].join("-"),
+    NUANU_ANALYTICS_REF_KEY: ["qa", "synthetic", "reference", "key", "0123456789abcdef"].join("-"),
+  }).nuanuAnalytics;
+  if (target === null) throw new Error("the configuration sends nothing");
+  return target;
+})();
 /** Synthetic: it passes the click identifier's pattern and no tracker issued it. */
 const CLICK = "qa_click_0123456789abcdef";
 
@@ -245,6 +262,61 @@ if (databaseUrl === null) {
 
       await identity.setAnalyticsOptOut(person.id, false);
       expect(await identity.analyticsOptedOut(person.id)).toBe(false);
+    });
+
+    it("sends nothing recorded while a person was opted out once they opt back in, and what they do after", async () => {
+      const person = await signIn();
+      await identity.attachMerchant(person.id, async () => "mer_opted");
+      const stranger = await signIn("stranger@example.com");
+      await identity.attachMerchant(stranger.id, async () => "mer_stranger");
+      const sent: string[] = [];
+      const nuanu = (async (_input: unknown, init?: RequestInit) => {
+        sent.push(JSON.parse(String(init?.body)).event_name);
+        return new Response(null, { status: 200 });
+      }) as typeof fetch;
+      const drained = async () => {
+        while ((await deliverOnce({ pool, target: SENDING, fetch: nuanu })) !== "idle");
+      };
+      await drained();
+      sent.length = 0;
+      const viewed = (who: { id: string; merchant: { id: string } | null }) =>
+        identity.observe({
+          name: "agc_dashboard_viewed",
+          actor: "human",
+          source: "dashboard",
+          refs: { person: who.id, ...(who.merchant === null ? {} : { merchant: who.merchant.id }) },
+          fields: { screen: "cards" },
+        });
+      const ordered = async (merchant: string) => {
+        await pool.query(
+          "insert into commerce_analytics_events (id, name, occurred_at, actor_type, source, properties, refs, next_attempt_at) values (gen_random_uuid(), 'agc_order_created', now(), 'buyer_agent', 'gateway', $1, $2, now())",
+          [
+            { integration: "api", money_mode: "test", network: "base_sepolia" },
+            { merchant, order: "ord_1", item: "card_1" },
+          ],
+        );
+      };
+      const owner = { id: person.id, merchant: { id: "mer_opted" } };
+
+      await viewed(owner);
+      await identity.setAnalyticsOptOut(person.id, true);
+      await viewed(owner);
+      await ordered("mer_opted");
+      await viewed({ id: stranger.id, merchant: { id: "mer_stranger" } });
+      await identity.setAnalyticsOptOut(person.id, false);
+      await drained();
+
+      expect(sent).toStrictEqual(["agc_dashboard_viewed"]);
+
+      await viewed(owner);
+      await ordered("mer_opted");
+      await drained();
+
+      expect(sent).toStrictEqual([
+        "agc_dashboard_viewed",
+        "agc_order_created",
+        "agc_dashboard_viewed",
+      ]);
     });
   });
 }
