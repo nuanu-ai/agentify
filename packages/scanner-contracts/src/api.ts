@@ -100,7 +100,7 @@ export const scanStatusResponseSchema = z
     progress: z.object({ completed: z.number().int().min(0), total: z.literal(18) }).strict(),
     checks: z.array(scanProgressCheckSchema).max(18),
     updated_at: z.iso.datetime({ offset: true }),
-    target_host: z.string().min(1).optional(),
+    target_host: z.string().min(1),
     // Present when the site answered the scanner's request for its home page
     // with a bot challenge or a refusal, which leaves the scan without a
     // verdict.

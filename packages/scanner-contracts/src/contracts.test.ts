@@ -121,6 +121,7 @@ describe("canonical contracts", () => {
       progress: { completed: 18, total: 18 },
       checks: [],
       updated_at: "2026-07-13T12:00:00.000Z",
+      target_host: "example.com",
     };
     for (const stop_reason of ["no_public_site", "forbidden_redirect", "certificate_invalid"])
       expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(true);
