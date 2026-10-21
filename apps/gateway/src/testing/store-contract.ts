@@ -1751,8 +1751,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is left out of a merchant's orders when asked, and read apart a page at a time, newest first, with how many there are", async () => {
-        // A list that carries a price: one that ended before it had one is not
-        // listed anywhere, and is not counted here either.
+        // One that ended before it had a price is read here too, the one place
+        // a merchant can find it.
         const store = await twoMerchants();
         const price = { amount: "5.00", currency: "USD", asOf: 0 };
         const priced = (id: string, state: Order["state"], createdAt: number, merchantId = A) => {
@@ -1771,14 +1771,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           "ord_5",
         ]);
         expect(await idsOf(store.orders(A))).toHaveLength(5);
-        const first = await store.lapsedAttempts(A, { offset: 0, limit: 1 });
-        const second = await store.lapsedAttempts(A, { offset: 1, limit: 1 });
-        expect(first.orders.map((one) => one.order.id)).toStrictEqual(["ord_4"]);
+        const first = await store.lapsedAttempts(A, { offset: 0, limit: 2 });
+        const second = await store.lapsedAttempts(A, { offset: 2, limit: 2 });
+        expect(first.orders.map((one) => one.order.id)).toStrictEqual(["ord_4", "ord_3"]);
         expect(second.orders.map((one) => one.order.id)).toStrictEqual(["ord_2"]);
-        expect(first.of).toBe(2);
+        expect(first.of).toBe(3);
         expect(await store.lapsedAttempts(A, { offset: 0, limit: 0 })).toStrictEqual({
           orders: [],
-          of: 2,
+          of: 3,
         });
       });
 

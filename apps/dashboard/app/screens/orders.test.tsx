@@ -12,7 +12,13 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { formsIn, readable } from "../../src/testing/html.js";
-import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
+import {
+  CLOSURE_NOTES,
+  closedForGood,
+  drawnClosedForGood,
+  type LapsedAttempt,
+  ordersView,
+} from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
@@ -785,14 +791,15 @@ describe("a closure recorded", () => {
 describe("the purchases that lapsed unpaid", () => {
   // As the gateway reads them apart: a page of them, newest first, and how
   // many there are in all.
-  const page = (from: number) =>
-    ordersOf(
-      Array.from({ length: 50 }, (_, at) => ({
-        id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
-        status: at % 2 === 0 ? "expired" : "rejected",
-        at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
-      })),
-    );
+  const page = (from: number): LapsedAttempt[] =>
+    Array.from({ length: 50 }, (_, at) => ({
+      id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
+      merchant_item_id: "vpn-1m",
+      status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
+      price: { amount: "5.00", currency: "USD" },
+      at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
+      test: false,
+    }));
 
   it("are listed under their own segment a page at a time, and in no other", () => {
     const second = page(50);
@@ -822,7 +829,7 @@ describe("the purchases that lapsed unpaid", () => {
     );
 
     expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
-      second.orders.map((order) => order.id),
+      second.map((attempt) => attempt.id),
     );
     expect(there.listing.cut).toStrictEqual({
       from: 51,
@@ -843,6 +850,49 @@ describe("the purchases that lapsed unpaid", () => {
     const text = readable(served(() => <OrdersScreen view={there} />));
     expect(text).toContain("Showing 51–100 of 120");
     expect(text).toContain("Closed on time limit");
+  });
+
+  it("include one that ended before any price was named, shown without a price", () => {
+    const unpriced: LapsedAttempt = {
+      id: idOf("0aa0", "beef"),
+      merchant_item_id: "vpn-1m",
+      status: "rejected",
+      price: null,
+      at: "2026-10-11T23:00:00Z",
+      test: false,
+    };
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams("show=lapsed"),
+      {},
+      {},
+      { page: [unpriced], of: 1 },
+    );
+
+    expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
+      [unpriced.id, "No price"],
+    ]);
+    expect(readable(served(() => <OrdersScreen view={view} />))).toContain("VPN, one month");
+  });
+
+  it("are said, beside a search, to be left out of it and kept under Lapsed", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ q: "ord_ffff" }),
+      {},
+      {},
+      { page: null, of: 3 },
+    );
+
+    const text = readable(served(() => <OrdersScreen view={view} />));
+    expect(text).toContain("No order matches");
+    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed.");
   });
 
   it("are not offered beside a search, which reads only the other orders", () => {

@@ -10,7 +10,14 @@
  */
 
 import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gateway";
-import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
+import {
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  workOnce,
+  workUntilStopped,
+} from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
@@ -473,18 +480,33 @@ describe("the orders a page reads", () => {
     if (!room.ok) throw new Error("the room was refused");
     const older = await lapsedUnpaid(harnessed, room.id);
     const newer = await lapsedUnpaid(harnessed, room.id);
+    // A purchase the merchant's price check refused, which never had a price.
+    const priced = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      ...A_ROOM,
+      merchant_item_id: "room-102",
+      price_check: "handler",
+    });
+    if (!priced.ok) throw new Error("the priced room was refused");
+    harnessed.advance(1_000);
+    const worker = workUntilStopped(harnessed, { onQuote: () => ({ available: false }) });
+    const unpriced = await harnessed.gateway.beginPurchase(priced.id, {});
+    await worker.stop();
+    if (unpriced.step !== "settled")
+      throw new Error(`the refusal did not end it: ${unpriced.step}`);
 
     const idsIn = (answer: Awaited<ReturnType<typeof client.orders>>) =>
       answer.ok ? answer.document.orders.map((order) => order.id) : answer.why;
     expect(idsIn(await client.orders(false))).toStrictEqual([paid]);
     expect(idsIn(await client.orders(true))).toStrictEqual([paid]);
     const page = await client.lapsedAttempts(1);
-    expect(page.ok ? page.document.of : page.why).toBe(2);
-    expect(page.ok ? page.document.orders.orders.map((order) => order.id) : []).toStrictEqual([
+    expect(page.ok ? page.document.of : page.why).toBe(3);
+    expect(page.ok ? page.document.attempts.map((attempt) => attempt.id) : []).toStrictEqual([
+      unpriced.order.order.id,
       newer,
       older,
     ]);
-    expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 2 });
+    expect(page.ok ? page.document.attempts[0]?.price : undefined).toBeNull();
+    expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 3 });
   });
 });
 
