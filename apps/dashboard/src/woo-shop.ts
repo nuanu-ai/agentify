@@ -368,7 +368,15 @@ export const inspectProductInTheShop = async (
     if (product.download_expiry !== -1) unsupported.push("its download access expires");
   }
   if (currency !== "USD") unsupported.push("the shop currency is not USD");
-  if (taxes !== "no") unsupported.push("WooCommerce tax calculation is not disabled");
+  if (taxes !== "no") {
+    // Not phrased as a setting to change: tax calculation covers the whole
+    // shop, so switching it off for this would stop tax for every customer.
+    unsupported.push(
+      "WooCommerce calculates tax in this shop, and this connector cannot sell from such a shop" +
+        " yet (turning tax calculation off would stop the shop charging tax to every customer," +
+        " not only to agents, so it is not a setting to change for Agentify)",
+    );
+  }
   if (kind === "download") {
     if (method !== "force") unsupported.push("the download method is not Force Downloads");
     if (login !== "no") unsupported.push("downloads require a WooCommerce login");

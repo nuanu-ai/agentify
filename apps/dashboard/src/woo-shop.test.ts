@@ -1105,7 +1105,7 @@ describe("the protected product check", () => {
     }
   });
 
-  it("refuses a shop that calculates taxes and names the setting to repair", async () => {
+  it("refuses a product from a shop that calculates tax, and says so", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
       if (asked.url.includes("woocommerce_calc_taxes")) {

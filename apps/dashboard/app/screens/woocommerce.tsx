@@ -194,11 +194,13 @@ function WhatCanBeImported() {
         </li>
         <li>
           <Tick />
-          <span>
-            In the shop, <b>tax calculation is off</b> and permalinks are set to anything but Plain
-          </span>
+          <span>In the shop, permalinks are set to anything but Plain</span>
         </li>
       </ul>
+      <p className={styles.sub}>
+        A shop that calculates tax cannot sell through the connector yet. Do not turn tax off for
+        it: the setting covers the whole shop, so every customer would stop being charged tax.
+      </p>
       <a className={styles.more} href={GUIDE}>
         Connector guide
       </a>
