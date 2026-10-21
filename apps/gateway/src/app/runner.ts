@@ -64,10 +64,10 @@ import {
   RecoveryFailure,
   type SettleOutcome,
 } from "../ports/facilitator.js";
-import type { Reminder } from "../ports/queue.js";
 import type {
   Birth,
   Born,
+  ClockAtBirth,
   MerchantScope,
   OrderChange,
   PaymentAttempt,
@@ -184,6 +184,23 @@ export interface Swept {
   refused: number;
 }
 
+/** A reminder for each deadline in `after` that was not already running in `before`. */
+function clocksFor(
+  before: readonly Deadline[],
+  after: readonly Deadline[],
+  orderId: string,
+  now: number,
+): ClockAtBirth[] {
+  return after
+    .filter(
+      (deadline) => !before.some((was) => was.kind === deadline.kind && was.at === deadline.at),
+    )
+    .map((deadline) => ({
+      reminder: { kind: "deadline", orderId, deadline: deadline.kind, at: deadline.at },
+      afterMs: Math.max(deadline.at - now, 0),
+    }));
+}
+
 /**
  * Whether this effect runs after the order is written rather than being
  * written with it. An effect belongs with the write when nothing can re-drive
@@ -242,10 +259,6 @@ export class OrderRunner {
   ): Promise<Born> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
-    // The clock is started before the order is written: a reminder for an order
-    // never written finds nothing, while an order written with no clock on it is
-    // one nothing will ever close.
-    await this.#arm([], deadlines(record.order), record.order.id);
 
     // `addOrder` takes nothing to write alongside the order, so an effect that
     // must be written with it is refused here, before the order exists.
@@ -256,7 +269,10 @@ export class OrderRunner {
       );
     }
 
-    const born = await this.#runtime.store.addOrder(record, birth);
+    const born = await this.#runtime.store.addOrder(record, {
+      ...birth,
+      clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
+    });
     if (born !== "written") {
       return born;
     }
@@ -750,21 +766,8 @@ export class OrderRunner {
     after: readonly Deadline[],
     orderId: string,
   ): Promise<void> {
-    const now = this.#runtime.clock();
-    for (const deadline of after) {
-      const alreadyRunning = before.some(
-        (was) => was.kind === deadline.kind && was.at === deadline.at,
-      );
-      if (alreadyRunning) {
-        continue;
-      }
-      const reminder: Reminder = {
-        kind: "deadline",
-        orderId,
-        deadline: deadline.kind,
-        at: deadline.at,
-      };
-      await this.#runtime.queue.remind(reminder, Math.max(deadline.at - now, 0));
+    for (const clock of clocksFor(before, after, orderId, this.#runtime.clock())) {
+      await this.#runtime.queue.remind(clock.reminder, clock.afterMs);
     }
   }
 

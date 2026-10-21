@@ -30,6 +30,7 @@ import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
+import type { Reminder } from "../../ports/queue.js";
 import {
   type Birth,
   type Born,
@@ -95,6 +96,8 @@ export interface Envelopes {
     priceQuestion: string | null,
   ): Promise<void>;
   committed(merchantIds: readonly string[]): void;
+  /** Sets a reminder an order's birth asked for, in the transaction that writes the order. */
+  remindWithin(tx: DrizzleTransactionLike, reminder: Reminder, afterMs: number): Promise<void>;
 }
 
 /**
@@ -113,6 +116,11 @@ const noEnvelopes: Envelopes = {
     );
   },
   committed() {},
+  async remindWithin(_tx, reminder) {
+    throw new Error(
+      `this store was built with no queue to set the clock of ${reminder.orderId} on: a store that writes orders is given one`,
+    );
+  },
 };
 
 /** Somewhere a statement can be run: the pool, or a transaction on it. */
@@ -771,6 +779,9 @@ export class PostgresStore implements Store {
           return "too_many_waiting";
         }
         await tx.insert(orders).values(rowFor(record));
+        for (const clock of birth.clocks ?? []) {
+          await this.#envelopes.remindWithin(tx, clock.reminder, clock.afterMs);
+        }
         return "written";
       });
     } catch (thrown) {

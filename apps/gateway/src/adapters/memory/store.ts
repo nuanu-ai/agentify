@@ -10,6 +10,7 @@
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
+import type { Reminder } from "../../ports/queue.js";
 import {
   type Birth,
   type Born,
@@ -58,6 +59,8 @@ export interface Envelopes {
    * takes them off the stream once the order recording the erasure is written.
    */
   forget(merchantId: string, orderId: string, priceQuestion: string | null): Promise<() => void>;
+  /** Sets a reminder an order's birth asked for, once the order is written. */
+  remind(reminder: Reminder, afterMs: number): Promise<void>;
 }
 
 /**
@@ -74,6 +77,11 @@ const noEnvelopes: Envelopes = {
   async forget(_merchantId, orderId) {
     throw new Error(
       `this store was built with no stream to take ${orderId}'s envelopes off: a store that writes orders is given a stream`,
+    );
+  },
+  async remind(reminder) {
+    throw new Error(
+      `this store was built with no queue to set the clock of ${reminder.orderId} on: a store that writes orders is given one`,
     );
   },
 };
@@ -596,6 +604,17 @@ export class MemoryStore implements Store {
     }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
     this.#written.set(record.order.id, this.#now());
+    // Set after the write and taken back with it where one is refused, as the
+    // transaction on Postgres rolls back the order with its clocks.
+    try {
+      for (const clock of birth?.clocks ?? []) {
+        await this.#envelopes.remind(clock.reminder, clock.afterMs);
+      }
+    } catch (thrown) {
+      this.#orders.delete(record.order.id);
+      this.#written.delete(record.order.id);
+      throw thrown;
+    }
     return "written";
   }
 

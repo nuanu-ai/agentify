@@ -21,6 +21,7 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import type { PayoutSplit } from "../split/parameters.js";
 import type { PaymentRecoveryContext } from "./facilitator.js";
+import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
   | {
@@ -100,6 +101,18 @@ export const lapsedAttempt = (record: StoredOrder): boolean =>
 export interface Birth {
   readonly through: Integration;
   readonly waitingAtMost: number;
+  /**
+   * The reminders that close the order on time, written with it or not at
+   * all: a refused birth leaves none behind, and an order written with no
+   * clock on it is one nothing would close.
+   */
+  readonly clocks?: readonly ClockAtBirth[];
+}
+
+/** A reminder set at the birth of an order, and how long from now it waits. */
+export interface ClockAtBirth {
+  readonly reminder: Reminder;
+  readonly afterMs: number;
 }
 
 /**
@@ -804,9 +817,10 @@ export interface Store {
    * through the integration named and fewer than `waitingAtMost` of their
    * purchases wait for payment (`WAITING_FOR_PAYMENT`); the count and the write
    * are one step against every other birth for that merchant, and the write and
-   * `switchIntegration` wait for each other on the merchant. A purchase always
-   * names one; without one the write is unconditional, which is how a test sets
-   * an order down.
+   * `switchIntegration` wait for each other on the merchant. Its clocks are
+   * written in the same step, so a birth refused for either reason writes
+   * nothing. A purchase always names one; without one the write is
+   * unconditional, which is how a test sets an order down.
    */
   addOrder(record: StoredOrder, birth?: Birth): Promise<Born>;
 

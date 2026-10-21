@@ -344,7 +344,9 @@ if (databaseUrl === null) {
         const config = testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" });
         return new Gateway({
           config,
-          store: PostgresStore.over(contract.db, "eip155:84532", countedIds()),
+          // Its clocks go on the suite's queue, as a restarted process's would
+          // on the one queue the database holds.
+          store: PostgresStore.over(contract.db, "eip155:84532", countedIds(), queue.envelopes()),
           queue: new MemoryQueue(),
           facilitator: new ScriptedFacilitator(),
           clock: () => now,
