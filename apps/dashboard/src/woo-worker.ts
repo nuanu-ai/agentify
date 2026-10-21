@@ -183,16 +183,20 @@ export const fillFromTheShop = async (
     // Refused either way, with the true reason: a shop that did not answer, or
     // whose answer could not be read, has said nothing about the product.
     const silent = !inspected.ok && inspected.again;
+    const cutOff = !inspected.ok && inspected.again && inspected.cutOff === true;
     const unread = !inspected.ok && !inspected.again && !inspected.saidNo;
     if (!inspected.ok && unread) unreadable(order.id, inspected.why);
     return {
       refused: {
         code: "cannot_fulfill",
-        message: silent
-          ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
-          : unread
-            ? UNREADABLE_PRODUCT
-            : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+        message: cutOff
+          ? "The shop's answer to the product check broke off and could not be read when this" +
+            " order was placed, so no WooCommerce order was created."
+          : silent
+            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+            : unread
+              ? UNREADABLE_PRODUCT
+              : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
   }

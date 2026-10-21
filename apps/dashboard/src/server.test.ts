@@ -29,6 +29,7 @@ import {
   MERCHANT_FINDINGS,
   type MerchantKey,
   type MerchantKeyList,
+  OrderCloseRequestSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalDirectory } from "./approval-command.js";
@@ -59,6 +60,7 @@ import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
+import { CLOSURE_NOTES } from "./views.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
@@ -6674,6 +6676,332 @@ describe("closing fulfillment from Orders", () => {
     ).toBe(typed);
     // The open list and the whole one, read once, by the press's own answer.
     expect(readsAfter).toBe(2);
+  });
+
+  it.each([
+    ["fails", async (): Promise<never> => Promise.reject(new Error("the list could not be read"))],
+    ["is not answered", async () => lateAnswer(10)],
+  ] as const)(
+    "keeps an unconfirmed closure in the dashboard when every list read after it %s",
+    async (_, failed) => {
+      // The closure is recorded, but its answer and the read that would
+      // confirm it are lost, and none of the lists beside it can be drawn.
+      let down = false;
+      const running = await started({
+        client: (real) => ({
+          ...real,
+          closeOrder: async (id, request) => {
+            await real.closeOrder(id, request);
+            down = true;
+            return lateAnswer(10);
+          },
+          getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
+          cards: async () => (down ? await failed() : await real.cards()),
+          orders: async (open) => (down ? await failed() : await real.orders(open)),
+          unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+          paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
+        }),
+      });
+      const id = await paid(running);
+      await running.browser.signIn();
+      const typed = "Payment returned outside Agentify.";
+
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+      error.mockRestore();
+
+      expect(posted.status).toBe(503);
+      expect(posted.html).toContain('aria-label="Dashboard sections"');
+      const main = readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(posted.html)?.[1] ?? "");
+      expect(main).toContain(CLOSURE_NOTES.unconfirmed);
+      expect(main).toContain(typed);
+      expect(main).not.toMatch(/changed nothing/i);
+      const back = [...posted.html.matchAll(/<a\b[^>]*href="([^"]*)"/g)]
+        .map((link) => (link[1] ?? "").replaceAll("&amp;", "&"))
+        .find((href) => href.includes(`details=${id}`));
+      expect(back).toBeDefined();
+
+      down = false;
+      const later = await running.browser.get(back ?? "");
+      expect(readable(later.html)).toContain("Closed by you");
+    },
+  );
+
+  it("says in the dashboard that nothing changed when an explanation is refused and no list can be read", async () => {
+    // A refused explanation never reached the gateway, so the press changed
+    // nothing, which the page can say even where it cannot draw the lists.
+    let down = false;
+    const failed = async (): Promise<never> =>
+      Promise.reject(new Error("the list could not be read"));
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        cards: async () => (down ? await failed() : await real.cards()),
+        orders: async (open) => (down ? await failed() : await real.orders(open)),
+        unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+        paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    down = true;
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const typed = "The delivery deadline was missed.\rA refund was sent outside Agentify.";
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+    error.mockRestore();
+
+    expect(posted.status).toBe(400);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    const main = readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(posted.html)?.[1] ?? "");
+    expect(main).toMatch(/changed nothing/i);
+    // The contract's own reason, and the words a list that could not be read
+    // is said with on its own page.
+    const reason = OrderCloseRequestSchema.safeParse({ message: typed }).error?.issues[0]?.message;
+    expect(reason).toBeDefined();
+    expect(main).toContain((reason ?? "").replace(/^a closure message /, ""));
+    const unreadPage = await quietly(async () => await running.browser.get("/orders"));
+    const unreadSaid = /<div class="what">([^<]*)<\/div>/.exec(unreadPage.html)?.[1];
+    expect(unreadSaid).toBeDefined();
+    expect(main).toContain(readable(unreadSaid ?? ""));
+    expect(
+      [...posted.html.matchAll(/<a\b[^>]*href="([^"]*)"/g)].some((link) =>
+        (link[1] ?? "").includes(`details=${id}`),
+      ),
+    ).toBe(true);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
+  /** The reads the orders page is drawn from, failing while `down` says so. */
+  const listsFailing = (real: GatewayClient, down: () => boolean) => {
+    const failed = async (): Promise<never> =>
+      Promise.reject(new Error("the list could not be read"));
+    return {
+      cards: async () => (down() ? await failed() : await real.cards()),
+      orders: async (open: boolean) => (down() ? await failed() : await real.orders(open)),
+      unfulfilledOrders: async () => (down() ? await failed() : await real.unfulfilledOrders()),
+      paidIntoSplits: async () => (down() ? await failed() : await real.paidIntoSplits()),
+    };
+  };
+  const mainOf = (html: string): string =>
+    readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? "");
+  const quietly = async <T>(during: () => Promise<T>): Promise<T> => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      return await during();
+    } finally {
+      error.mockRestore();
+    }
+  };
+
+  it("keeps an unconfirmed closure in the dashboard when the read that would confirm it throws", async () => {
+    // The closure is recorded, its answer is lost, and then the store goes:
+    // the confirming read throws rather than answering late.
+    let down = false;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        ...listsFailing(real, () => down),
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          down = true;
+          return lateAnswer(10);
+        },
+        getOrder: async (id) => {
+          if (down) throw new Error("the store went away");
+          return await real.getOrder(id);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "Payment returned outside Agentify.";
+
+    const posted = await quietly(
+      async () => await running.browser.post("/orders", { order_id: id, message: typed }),
+    );
+
+    expect(posted.status).toBe(503);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    expect(mainOf(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
+    expect(mainOf(posted.html)).toContain(typed);
+  });
+
+  it("does not take a closure from before for a second one whose answer was lost", async () => {
+    // An order paid after its first closure is open again and still carries
+    // that closure; only the order no longer being open shows a second one.
+    let lose = false;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) =>
+          lose ? lateAnswer(10) : await real.closeOrder(id, request),
+      }),
+    });
+    const itemId = await publish(running.gateway, esimCard);
+    const priced = await running.harnessed.gateway.beginPurchase(itemId, {});
+    if (priced.step !== "pay") throw new Error("the order was not priced");
+    const id = priced.order.order.id;
+    running.harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await running.harnessed.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await running.browser.signIn();
+    await running.browser.post("/orders", { order_id: id, message: "Payment did not arrive." });
+    const pending = await running.harnessed.store.orderById(id);
+    if (pending?.paymentAttempt === undefined) throw new Error("the payment attempt is missing");
+    await running.harnessed.gateway.runner.completePaymentAttempt(
+      id,
+      pending.paymentAttempt.id,
+      { settled: true, transaction: "late-transaction" },
+      "facilitator",
+    );
+    lose = true;
+
+    const again = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The payment arrived late; it will be returned.",
+    });
+
+    expect(again.status).toBe(503);
+    expect(mainOf(again.html)).toContain(CLOSURE_NOTES.unconfirmed);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure?.message).toBe(
+      "Payment did not arrive.",
+    );
+  });
+
+  it("leads to what was recorded, as a confirmed closure does, when the lists read after a lost answer show the order closed", async () => {
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          return lateAnswer(10);
+        },
+        getOrder: async () => lateAnswer(10),
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "Payment returned outside Agentify.";
+
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+
+    // Sent on rather than drawn, so a reload does not repeat the press.
+    expect(posted.status).toBe(303);
+    const read = await running.browser.get(posted.to ?? "");
+    expect(mainOf(read.html)).not.toContain(CLOSURE_NOTES.unconfirmed);
+    expect(mainOf(read.html)).toContain(typed);
+    expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
+  });
+
+  it("keeps a refusal from an order that ended in the dashboard when no list can be read", async () => {
+    let down = false;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        ...listsFailing(real, () => down),
+        closeOrder: async (id, request) => {
+          await real.deliverOrder(id, { iccid: "arrived first" });
+          const refused = await real.closeOrder(id, request);
+          down = true;
+          return refused;
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    const typed = "Too late.";
+
+    const posted = await quietly(
+      async () => await running.browser.post("/orders", { order_id: id, message: typed }),
+    );
+
+    expect(posted.status).toBe(409);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    expect(mainOf(posted.html)).toContain(CLOSURE_NOTES.ended);
+    expect(mainOf(posted.html)).toContain(typed);
+  });
+
+  it.each([
+    ["throws", async (): Promise<never> => Promise.reject(new Error("the store went away"))],
+    ["is not answered", async () => lateAnswer(10)],
+  ] as const)(
+    "says the gateway's refusal in the dashboard when the read after it %s",
+    async (_, unread) => {
+      let refusal = "";
+      const running = await started({
+        client: (real) => ({
+          ...real,
+          closeOrder: async (id, request) => {
+            await real.deliverOrder(id, { iccid: "arrived first" });
+            const refused = await real.closeOrder(id, request);
+            if (!refused.ok) refusal = refused.why;
+            return refused;
+          },
+          getOrder: async () => await unread(),
+        }),
+      });
+      const id = await paid(running);
+      await running.browser.signIn();
+
+      const posted = await quietly(
+        async () => await running.browser.post("/orders", { order_id: id, message: "Too late." }),
+      );
+
+      expect(posted.status).toBe(409);
+      expect(posted.html).toContain('aria-label="Dashboard sections"');
+      expect(refusal).not.toBe("");
+      expect(mainOf(posted.html)).toContain(refusal.slice(1));
+      // No form is drawn for an order that ended, so what was typed is kept
+      // beside what became of it.
+      expect(mainOf(posted.html)).toContain("Too late.");
+    },
+  );
+
+  it("says why an explanation was refused on an order a stale page still offered to close", async () => {
+    // Closed meanwhile in another tab: no form is left to say the reason
+    // under, and a page drawn after a refusal is not taken for a closure.
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect((await running.browser.post("/orders", { order_id: id })).status).toBe(303);
+    const typed = "The delivery deadline was missed.\rA refund was sent outside Agentify.";
+
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+
+    expect(posted.status).toBe(400);
+    const reason = OrderCloseRequestSchema.safeParse({ message: typed }).error?.issues[0]?.message;
+    expect(reason).toBeDefined();
+    expect(mainOf(posted.html)).toContain((reason ?? "").replace(/^a closure message /, ""));
+  });
+
+  it("keeps an unconfirmed closure in the dashboard when the open list cannot be read to confirm it", async () => {
+    // The order carries a closure, which says nothing until the open list
+    // shows it is no longer open.
+    let down = false;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          down = true;
+          return lateAnswer(10);
+        },
+        orders: async (open) => {
+          if (down && open) throw new Error("the open list could not be read");
+          return await real.orders(open);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const posted = await quietly(
+      async () => await running.browser.post("/orders", { order_id: id, message: "Returned." }),
+    );
+
+    expect(posted.status).toBe(503);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    expect(mainOf(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
   });
 
   it("leads back to the list the closure was pressed on, with the order opened", async () => {

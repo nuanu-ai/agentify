@@ -173,7 +173,9 @@ const recover = async (
   );
   if (!inspected.ok && inspected.again) {
     return unresolved(
-      "The shop did not answer the product check. Nothing was changed, and the recovery can be run again.",
+      inspected.cutOff === true
+        ? "The shop's answer to the product check broke off and could not be read. Nothing was changed, and the recovery can be run again."
+        : "The shop did not answer the product check. Nothing was changed, and the recovery can be run again.",
     );
   }
   if (!inspected.ok && !inspected.saidNo) {
