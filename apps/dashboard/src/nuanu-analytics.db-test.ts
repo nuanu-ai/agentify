@@ -735,6 +735,54 @@ if (databaseUrl === null) {
     });
   });
 
+  describe("which event goes first", () => {
+    it("posts a business event before the screens viewed and the problems shown waiting ahead of it", async () => {
+      const shownProblem: UiBlocked = {
+        name: "agc_ui_blocked",
+        actor: "human",
+        source: "dashboard",
+        refs: { person: RAW.person },
+        fields: {
+          screen: "cards",
+          operation: "load_screen",
+          outcome: "failed",
+          reason_code: "dependency_unavailable",
+        },
+      };
+      const paid: PaymentResult = {
+        name: "agc_payment_result",
+        actor: "buyer_agent",
+        source: "gateway",
+        refs: { merchant: RAW.merchant, order: RAW.order, attempt: RAW.attempt },
+        fields: {
+          payment_state: "paid",
+          money_mode: "test",
+          network: "base_sepolia",
+          amount: "1.00",
+          currency: "USDC",
+        },
+      };
+      for (let view = 0; view < 5; view += 1) {
+        await recorded(view % 2 === 0 ? viewed : shownProblem, new Date(clock - HOUR + view));
+      }
+      await recorded(paid);
+      await recorded(ordered);
+      const { post, received } = nuanu();
+
+      await drained(ON_TEST, post);
+
+      expect(received.map((request) => JSON.parse(request.body).event_name)).toStrictEqual([
+        "agc_payment_result",
+        "agc_order_created",
+        "agc_dashboard_viewed",
+        "agc_ui_blocked",
+        "agc_dashboard_viewed",
+        "agc_ui_blocked",
+        "agc_dashboard_viewed",
+      ]);
+    });
+  });
+
   describe("how long an event waits", () => {
     it("gives up unsent an event more than seven days old, which Nuanu would date by its arrival", async () => {
       await recorded(viewed, new Date(clock - 7 * DAY - MINUTE));
