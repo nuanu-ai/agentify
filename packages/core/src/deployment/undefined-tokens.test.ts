@@ -6,10 +6,10 @@
  *
  * Every `var(--name)` in the repository's own stylesheets must have a `--name:`
  * declared in some stylesheet of the repository, or set inline from a component
- * as `"--name":`. VitePress's own `--vp-*` tokens are defined by its theme at
- * run time. React Router's generated route types under `.react-router` are
- * left alone: they hold no styles, and the route tests rewrite them while this
- * file reads the tree, so a file listed a moment ago can be gone when read.
+ * as `"--name":`. React Router's generated route types under `.react-router`
+ * are left alone: they hold no styles, and the route tests rewrite them while
+ * this file reads the tree, so a file listed a moment ago can be gone when
+ * read.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -44,7 +44,6 @@ for (const file of files) {
   const css = readFileSync(file, "utf8");
   for (const [, name = ""] of css.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) defined.add(name);
   for (const [, name = ""] of css.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
-    if (name.startsWith("--vp-")) continue;
     const where = used.get(name) ?? new Set<string>();
     where.add(file.slice(ROOT.length));
     used.set(name, where);
