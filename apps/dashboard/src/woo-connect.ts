@@ -15,6 +15,8 @@
 
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { plainTextOfHtml } from "./html-text.js";
+import { decimalOfMinorUnits } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** The name in the key row the merchant reads in their shop. */
@@ -225,23 +227,39 @@ const whatAPlainPermalinkShopLooksLike = (shop: URL): string =>
   " so WordPress falls through to the shop's front page without an error. Set permalinks to" +
   " anything other than Plain, save, and press Connect again.";
 
-/** Loose, as the import's own read is: only the currency is asked of it. */
+/** Loose, as the import's own read is: only the currency and one price are asked of it. */
 const PricedProductSchema = z.looseObject({
-  prices: z.looseObject({ currency_code: z.string().regex(/^[A-Z]{3}$/) }),
+  name: z.string().default(""),
+  prices: z.looseObject({
+    price: z.string(),
+    currency_code: z.string().regex(/^[A-Z]{3}$/),
+    currency_minor_unit: z.number().int(),
+  }),
 });
 
 /**
- * The currency the shop's keyless Store API prices one product in, or null
- * where the shop did not clearly say: no products, the API off or blocked, a
- * redirect, an answer too slow or not a product list. Null means not known,
- * never "not dollars", so a caller goes on and the import judges every
- * product. Redirects are not followed: an answer from another host would be
- * another site's prices.
+ * What one product of the shop's public catalogue says: the currency it prices
+ * in, the decimals it writes, and that product with its price, which the rate
+ * screen uses to show what a mistyped rate would charge.
  */
-export const currencyOfTheShop = async (
+export interface ShopSample {
+  readonly currency: string;
+  readonly decimals: number;
+  /** Null where its name or price could not be read as text and an amount. */
+  readonly product: { readonly name: string; readonly price: string } | null;
+}
+
+/**
+ * One product of the shop's keyless Store API, or null where the shop did not
+ * clearly say: no products, the API off or blocked, a redirect, an answer too
+ * slow or not a product list. Null means not known, never "not dollars", so a
+ * caller goes on and the import judges every product. Redirects are not
+ * followed: an answer from another host would be another site's prices.
+ */
+export const sampleOfTheShop = async (
   shopUrl: string,
   request: WooRequest = wooRequest,
-): Promise<string | null> => {
+): Promise<ShopSample | null> => {
   try {
     const answered = await request(
       `${shopUrlAs(shopUrl)}/wp-json/wc/store/v1/products?per_page=1`,
@@ -255,7 +273,15 @@ export const currencyOfTheShop = async (
     const listed: unknown = JSON.parse(await answered.text());
     if (!Array.isArray(listed)) return null;
     const read = PricedProductSchema.safeParse(listed[0]);
-    return read.success ? read.data.prices.currency_code : null;
+    if (!read.success) return null;
+    const { prices } = read.data;
+    const name = plainTextOfHtml(read.data.name).text;
+    const price = decimalOfMinorUnits(prices.price, prices.currency_minor_unit);
+    return {
+      currency: prices.currency_code,
+      decimals: prices.currency_minor_unit,
+      product: name === "" || price === null ? null : { name, price },
+    };
   } catch {
     return null;
   }
@@ -264,11 +290,27 @@ export const currencyOfTheShop = async (
 /**
  * Said beside the Connect button, as what was seen: one product, asked
  * anonymously from our server, which a currency switcher answering by visitor
- * would also have shown. Nothing was switched, so the sentence promises only
+ * would also have shown. Nothing was switched, so each sentence promises only
  * that, true whether the merchant sold through their code or the shop.
  */
-export const notPricedInDollars = (currency: string): string =>
+const NOTHING_CHANGED =
+  " Nothing was changed: you sell as you did before pressing Connect, and your shop was not" +
+  " asked for keys.";
+
+export const writesOtherDecimals = (currency: string, decimals: number): string =>
+  `When we asked your shop's public catalogue just now, it wrote its prices in ${currency} with` +
+  ` ${decimals} decimals. Agentify sells from a shop priced in another currency than US dollars` +
+  " only where the shop writes its prices with no decimals or with two (WooCommerce → Settings →" +
+  ` General → Number of decimals), so Connect stopped here.${NOTHING_CHANGED}`;
+
+export const noReferenceFor = (currency: string): string =>
+  `When we asked your shop's public catalogue just now, it priced its products in ${currency},` +
+  ` and Coinbase gives no rate for ${currency}. You set the rate your shop's prices are converted` +
+  " at yourself, and Agentify sells from a shop in another currency than US dollars only where it" +
+  ` can show you Coinbase's rate beside yours, so Connect stopped here.${NOTHING_CHANGED}`;
+
+export const referenceUnanswered = (currency: string): string =>
   `When we asked your shop's public catalogue just now, it priced its products in ${currency}.` +
-  " Agentify sells in US dollars only, so none of them could be imported and Connect stopped" +
-  " here. Nothing was changed: you sell as you did before pressing Connect, and your shop was" +
-  " not asked for keys.";
+  " Before connecting such a shop, Agentify checks that Coinbase gives a rate for its currency, to" +
+  " show beside the rate you set, and Coinbase did not answer just now, so whether it gives one" +
+  ` is not known.${NOTHING_CHANGED} Wait a moment and press Connect again.`;

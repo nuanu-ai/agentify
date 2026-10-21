@@ -547,6 +547,18 @@ const CONNECTED: ShopState = {
   shop: { shopUrl: SHOP, permissions: "read_write", connectedAt: new Date("2026-10-12T09:12:00Z") },
 };
 
+/**
+ * A shop priced in rupiah, written with no decimals as most Indonesian shops
+ * write it, beside Coinbase's open rate as it read on 2026-10-21.
+ */
+const IN_RUPIAH = { code: "IDR", decimals: 0 } as const;
+const COINBASE_RUPIAH = {
+  ok: true,
+  rate: "18035.292596",
+  source: "Coinbase",
+  readAt: new Date("2026-10-21T14:52:48Z"),
+} as const;
+
 const WAITING_FOR_KEYS: ShopState = { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 3 };
 const NO_KEYS: ShopState = { kind: "unanswered", shopUrl: SHOP };
 
@@ -2180,7 +2192,7 @@ const shop = (
 /** The answer to a press on the shop screen, drawn at the press's own address. */
 const shopPress = (
   told: Told,
-  press: "connect" | "import" | "switch" | "disconnect",
+  press: "connect" | "import" | "rate" | "switch" | "disconnect",
   view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
   account: ShopAccount = {},
 ) =>
@@ -2282,6 +2294,68 @@ const WOOCOMMERCE: GalleryState[] = [
         kind: "connected",
         shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date("2026-10-12T09:12:00Z") },
       }),
+    ),
+  ),
+  shop(
+    {
+      id: "dashboard-woocommerce-rate-wanted",
+      screen: "WooCommerce",
+      when: "A merchant connected a shop priced in rupiah and has set no rate.",
+      cause: "Nothing is published from a shop in another currency until its merchant sets a rate.",
+    },
+    shopOn(
+      shopRead(CONNECTED, {
+        rate: { currency: IN_RUPIAH, current: null, reference: COINBASE_RUPIAH },
+      }),
+    ),
+  ),
+  shop(
+    {
+      id: "dashboard-woocommerce-rate-set",
+      screen: "WooCommerce",
+      when: "A merchant opens the screen of a rupiah shop whose rate was set some days ago.",
+      cause: "The rate's age is shown against Coinbase's open rate, read as the screen opened.",
+    },
+    shopOn(
+      shopRead(CONNECTED, {
+        rate: {
+          currency: IN_RUPIAH,
+          current: {
+            version: 3,
+            currency: "IDR",
+            rate: "18000",
+            setAt: new Date("2026-10-09T10:00:00Z"),
+            setBy: "owner@example.com",
+            reference: null,
+            confirmed: false,
+          },
+          reference: COINBASE_RUPIAH,
+        },
+      }),
+    ),
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-rate-retyped",
+      screen: "WooCommerce",
+      when: "A merchant saves a rupiah rate with a zero missing.",
+      cause: "A rate more than a tenth from Coinbase's is saved only once it is typed again.",
+    },
+    "rate",
+    shopOn(
+      shopRead(CONNECTED, {
+        rate: { currency: IN_RUPIAH, current: null, reference: COINBASE_RUPIAH },
+      }),
+      {
+        rate: {
+          typed: "1800",
+          again:
+            "1800 IDR per US dollar is 90.0% below Coinbase's 18035.292596, read at 2026-10-21" +
+            " 14:52:48 UTC. So Rayon Sarong, priced 240000 IDR, would sell for 133.34 USD" +
+            " instead of 13.31 USD. Type the rate again to save it; if you wrote a dot between" +
+            " thousands, leave it out.",
+        },
+      },
     ),
   ),
   ((typed) =>

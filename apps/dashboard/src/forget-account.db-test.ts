@@ -192,15 +192,29 @@ if (databaseUrl === null) {
         permissions: "read_write",
         revision: "first",
         connectedAt: now,
+        currency: null,
       });
       await woo.beginGrant({
         token: "t".repeat(43),
         accountId: person.id,
         shopUrl: SHOP,
+        currency: null,
         startedAt: now,
         expiresAt: new Date(now.getTime() + 60_000),
       });
-      await woo.recordQuote(person.id, "prc_one", "room-101", "fingerprint", now, now);
+      await woo.recordQuote(
+        person.id,
+        "prc_one",
+        "room-101",
+        {
+          fingerprint: "fingerprint",
+          inTheShop: { amount: "25.00", currency: "USD" },
+          paid: { amount: "25.00", currency: "USD" },
+          rateVersion: null,
+        },
+        now,
+        now,
+      );
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
       // The registration's report and the store report waiting beside it.
       expect(await countOf("dashboard_ad_reports", "account_id", person.id)).toBe(2);

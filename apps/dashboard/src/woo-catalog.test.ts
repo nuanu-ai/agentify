@@ -193,6 +193,39 @@ describe("turning a shop's products into cards", () => {
     expect(why["2"]).not.toContain("Number of decimals");
   });
 
+  it("prices a rupiah product in US dollars at the merchant's rate, rounded up to the cent", () => {
+    const rupiah = (id: number, price: string) =>
+      product({ id, prices: { price, currency_code: "IDR", currency_minor_unit: 0 } });
+
+    const { cards, skipped } = cardsFromTheShop(
+      [rupiah(1, "250000"), rupiah(2, "2000"), rupiah(3, "40500000")],
+      "https://shop.example.com",
+      { currency: "IDR", decimals: 0, rate: "18000" },
+    );
+
+    expect(skipped).toEqual([]);
+    expect(cards.map((one) => one.card.price)).toEqual([
+      { amount: "13.89", currency: "USD" },
+      { amount: "0.12", currency: "USD" },
+      { amount: "2250.00", currency: "USD" },
+    ]);
+    for (const one of cards) expect(CardSchema.safeParse(one.card).success).toBe(true);
+  });
+
+  it("leaves a product the public catalogue prices in another currency than the shop's setting", () => {
+    // A currency switcher answering the catalogue by visitor is the usual
+    // cause; the rate was set for the setting's currency, not the visitor's.
+    const { cards, skipped } = cardsFromTheShop(
+      [product({ id: 1, prices: { price: "1450", currency_code: "EUR", currency_minor_unit: 2 } })],
+      "https://shop.example.com",
+      { currency: "IDR", decimals: 0, rate: "18000" },
+    );
+
+    expect(cards).toEqual([]);
+    expect(skipped[0]?.why).toContain("EUR");
+    expect(skipped[0]?.why).toContain("IDR");
+  });
+
   it("leaves a product priced at zero in the shop, in the door's own words", () => {
     // Nothing sells at zero, so the product is named as left in the shop with
     // the reason publishing would give; one cent is the other side of the line.

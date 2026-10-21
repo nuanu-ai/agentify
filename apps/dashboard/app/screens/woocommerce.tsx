@@ -4,6 +4,7 @@ import { Navigate } from "react-router";
 import type {
   ConnectionView,
   NoKeysYet,
+  RateView,
   Refusal,
   WooImportView,
   WooShopView,
@@ -175,7 +176,8 @@ function WhatCanBeImported() {
         <li>
           <Tick />
           <span>
-            <b>Simple products</b> priced in USD, published, without stock management
+            <b>Simple products</b>, published, without stock management, from a shop priced in US
+            dollars or in another currency at a rate you set
           </span>
         </li>
         <li>
@@ -241,6 +243,67 @@ function BeforeImportingNote({
       Nothing was imported. Set {before.what} in <a href={`${base}/settings`}>Settings</a>, then
       import again.
     </p>
+  );
+}
+
+/**
+ * The rate of a shop priced in another currency: the merchant's own, and
+ * Coinbase's open rate beside it as plain text, which catches a mistyped rate
+ * and prices nothing. A rate far from it is asked for a second time.
+ */
+function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
+  const { current, reference } = rate;
+  return (
+    <FormPanel action="/woocommerce/rate" title="Exchange rate" attention={current === null}>
+      {(pending) => (
+        <>
+          <p className={styles.sub}>
+            Your shop sells in {rate.named}. Buyers pay in US dollars, at the rate you set: how many{" "}
+            {rate.currency} one US dollar buys.
+            {current === null ? " Nothing is published until you set one." : null}
+          </p>
+          {rate.saved === null ? null : <p className={styles.arrived}>{rate.saved}</p>}
+          {current === null ? null : (
+            <p className={current.far ? "problem" : styles.sub}>
+              Your rate, {current.rate} {rate.currency} per US dollar, was set{" "}
+              <Moment at={current.setAt} /> by {current.setBy}
+              {current.gap === null ? "." : `; it is ${current.gap} Coinbase's open rate.`}
+            </p>
+          )}
+          {reference.kind === "read" ? (
+            <p className={styles.sub}>
+              Reference: {reference.rate} {rate.currency} per US dollar, open rate, source:
+              Coinbase, read <Moment at={reference.readAt} />.
+            </p>
+          ) : reference.kind === "unlisted" ? (
+            <p className="problem">
+              Coinbase gives no rate for {rate.currency}, so no rate can be saved for this shop.
+            </p>
+          ) : (
+            <p className={styles.sub}>
+              Coinbase's rate could not be read just now, so a rate saved now is not compared with
+              anything.
+            </p>
+          )}
+          <input type="hidden" name="currency" value={rate.currency} autoComplete="off" />
+          <Field
+            label={`${rate.currency} per US dollar`}
+            name="rate"
+            inputMode="decimal"
+            defaultValue={rate.typed === "" ? (current?.rate ?? "") : rate.typed}
+            required
+          />
+          {rate.again === null ? null : (
+            <>
+              <p className="problem">{rate.again}</p>
+              <Field label="The same rate, typed again" name="again" inputMode="decimal" required />
+            </>
+          )}
+          <Button pending={pending}>Save rate</Button>
+          {rate.problem === null ? null : <p className="problem">{rate.problem}</p>}
+        </>
+      )}
+    </FormPanel>
   );
 }
 
@@ -358,6 +421,7 @@ function Connected({
       ) : null}
       <div className={styles.cols}>
         <div className={styles.stack}>
+          {connection.rate === null ? null : <RatePanel rate={connection.rate} />}
           <FormPanel action="/woocommerce/import" title="Import products">
             {(pending) => (
               <>
@@ -438,6 +502,7 @@ export function WooImportScreen({ view, base }: Readonly<{ view: WooImportView; 
   ];
   return (
     <div className={styles.page}>
+      {view.rateSaved === null ? null : <p className={styles.arrived}>{view.rateSaved}</p>}
       <p className={styles.read}>
         <span className={styles.shop}>{view.shopUrl}</span> ·{" "}
         {`${view.read} ${view.read === 1 ? "product" : "products"} read`}

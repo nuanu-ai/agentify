@@ -18,7 +18,9 @@ import type { Problem } from "./results.js";
 /**
  * The currencies a price may be written in. A card priced in "USD" is charged
  * in USDC on the configured chain, one for one. Every other currency is
- * refused: there is no exchange rate anywhere in Agentify to charge it at.
+ * refused: Agentify holds no exchange rate to charge it at. A shop connected
+ * through the dashboard and priced in another currency has its prices
+ * converted at its merchant's own rate before any of them reaches this rule.
  */
 export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC"]);
 

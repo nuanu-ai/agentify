@@ -14,7 +14,10 @@ import type { Integration } from "@agentify/gateway";
 import { type MomentView, momentView } from "./views.js";
 import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
+import { gapOf } from "./woo-money.js";
+import type { ReferenceRead } from "./woo-reference.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
+import type { SavedRate, ShopCurrency } from "./woo-shops.js";
 import { SITE_IN_SETTINGS, UNSET_WORDS, type Unset, type Way } from "./words.js";
 
 /**
@@ -158,6 +161,40 @@ export interface ConnectionView {
   readonly switching: Refusal | null;
   readonly productsAtMost: number;
   readonly beforeImporting: BeforeImporting | null;
+  /** Null where the shop sells in US dollars, or its currency was never read. */
+  readonly rate: RateView | null;
+}
+
+/**
+ * The rate a shop priced in another currency sells at, which the merchant sets:
+ * how many units of the shop's currency one US dollar buys, with Coinbase's
+ * open rate beside it as a reference that prices nothing.
+ */
+export interface RateView {
+  readonly currency: string;
+  /** "Indonesian Rupiah (IDR)". */
+  readonly named: string;
+  readonly current: {
+    readonly rate: string;
+    readonly setAt: MomentView;
+    readonly setBy: string;
+    /** How the current rate stands against the reference read now, where one was. */
+    readonly gap: string | null;
+    readonly far: boolean;
+  } | null;
+  readonly reference:
+    | { readonly kind: "read"; readonly rate: string; readonly readAt: MomentView }
+    /** Coinbase answered and gives no rate for the currency. */
+    | { readonly kind: "unlisted" }
+    /** Coinbase did not answer, which says nothing about the currency. */
+    | { readonly kind: "unread" };
+  /** The rate just typed, kept in the field. */
+  readonly typed: string;
+  /** A rate standing far from the reference, to be typed again before it is saved. */
+  readonly again: string | null;
+  readonly problem: string | null;
+  /** What a press of Save rate did, where it saved one. */
+  readonly saved: string | null;
 }
 
 export interface WooShopView {
@@ -198,6 +235,12 @@ export interface WooShopView {
 export interface ShopRead {
   readonly state: ShopState;
   readonly through: Integration;
+  /** For a connected shop in another currency: its rate now and Coinbase's. */
+  readonly rate?: {
+    readonly currency: ShopCurrency;
+    readonly current: SavedRate | null;
+    readonly reference: ReferenceRead;
+  };
 }
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
@@ -209,7 +252,44 @@ export interface ShopAnswer {
   readonly cameBack?: boolean;
   /** Where the screen answers a press of Import: what was unset at that moment. */
   readonly refused?: readonly Unset[];
+  /** Where it answers a press of Save rate, or an Import that wanted a rate first. */
+  readonly rate?: {
+    readonly typed?: string;
+    readonly again?: string;
+    readonly problem?: string;
+    readonly saved?: string;
+  };
 }
+
+const CURRENCY_NAMES = new Intl.DisplayNames(["en"], { type: "currency" });
+
+const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): RateView => {
+  const { currency, current, reference } = read;
+  const gap = current !== null && reference.ok ? gapOf(current.rate, reference.rate) : null;
+  return {
+    currency: currency.code,
+    named: `${CURRENCY_NAMES.of(currency.code) ?? currency.code} (${currency.code})`,
+    current:
+      current === null
+        ? null
+        : {
+            rate: current.rate,
+            setAt: momentView(current.setAt.toISOString()),
+            setBy: current.setBy,
+            gap: gap?.shown ?? null,
+            far: gap?.far ?? false,
+          },
+    reference: reference.ok
+      ? { kind: "read", rate: reference.rate, readAt: momentView(reference.readAt.toISOString()) }
+      : reference.listed === false
+        ? { kind: "unlisted" }
+        : { kind: "unread" },
+    typed: answer.rate?.typed ?? "",
+    again: answer.rate?.again ?? null,
+    problem: answer.rate?.problem ?? null,
+    saved: answer.rate?.saved ?? null,
+  };
+};
 
 export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => {
   const { state } = read;
@@ -230,6 +310,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
               refused.length === 0
                 ? null
                 : { what: refused.map((one) => UNSET_WORDS[one]).join(" and ") },
+            rate: read.rate === undefined ? null : rateViewOf(read.rate, answer),
           }
         : null,
     wayBack: state.kind !== "connected" && read.through === "woocommerce",
@@ -296,6 +377,8 @@ interface RefusedRow extends Refused {
 export interface WooImportView {
   readonly screen: "import";
   readonly shopUrl: string;
+  /** Where the import ran because a rate was saved: what was saved. */
+  readonly rateSaved: string | null;
   /** Every product the shop listed, whatever became of it. */
   readonly read: number;
   /**
@@ -316,6 +399,7 @@ export const wooImportView = (
   shopUrl: string,
   outcomes: readonly ImportOutcome[],
   skipped: readonly SkippedProduct[],
+  rateSaved: string | null = null,
 ): WooImportView => {
   const published = outcomes.filter((one): one is Published => "published" in one);
   const refused = outcomes.filter((one): one is Refused => "problems" in one);
@@ -324,6 +408,7 @@ export const wooImportView = (
   return {
     screen: "import",
     shopUrl,
+    rateSaved,
     read: outcomes.length + skipped.length,
     finished: unanswered.length === 0,
     published: published.map((one) => ({ ...one, code: merchantItemIdFor(shopUrl, one.id) })),

@@ -20,6 +20,15 @@ const FACTS: WooOrderFacts = {
   amount: "25.00",
   currency: "USD",
 };
+const SHOP = "https://shop.example.com";
+const RUPIAH = {
+  currency: "IDR",
+  rate: "18000",
+  setAt: NOW,
+  setBy: "owner@example.com",
+  reference: { rate: "18035.292596", source: "Coinbase", readAt: NOW },
+  confirmed: false,
+};
 const PERMISSION: WooPermission = {
   shopOrigin: "https://shop.example.com",
   productId: "11",
@@ -67,6 +76,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -89,6 +99,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -116,6 +127,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -131,6 +143,7 @@ export const wooShopsContract = (
           token: "first",
           accountId: accounts.one,
           shopUrl: "https://first.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -138,6 +151,7 @@ export const wooShopsContract = (
           token: "other",
           accountId: accounts.other,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -145,6 +159,7 @@ export const wooShopsContract = (
           token: "second",
           accountId: accounts.one,
           shopUrl: "https://second.example.com",
+          currency: null,
           startedAt: LATER,
           expiresAt: MUCH_LATER,
         });
@@ -164,6 +179,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -181,6 +197,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -195,6 +212,7 @@ export const wooShopsContract = (
           token: "first",
           accountId: accounts.one,
           shopUrl: "https://first.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -202,6 +220,7 @@ export const wooShopsContract = (
           token: "second",
           accountId: accounts.one,
           shopUrl: "https://second.example.com",
+          currency: null,
           startedAt: LATER,
           expiresAt: MUCH_LATER,
         });
@@ -218,6 +237,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -258,6 +278,30 @@ export const wooShopsContract = (
   });
 
   describe(`${name}: what the shop's orders total`, () => {
+    it("keeps, for a sale from a shop in another currency, the shop's amount and the rate it was paid at", async () => {
+      await using(async (shops, accounts) => {
+        const converted = {
+          inTheShop: { amount: "250000", currency: "IDR" },
+          rate: { version: 7, rate: "18000", setAt: "2026-10-09T10:00:00.000Z" },
+        };
+        await shops.claimOrder(
+          accounts.one,
+          "ord_rupiah",
+          { ...FACTS, amount: "13.89", converted },
+          NOW,
+        );
+        await shops.recordOrder(
+          "ord_rupiah",
+          { id: "15", number: "WOO-15", permission: PERMISSION, total: "250001" },
+          NOW,
+        );
+
+        expect(await shops.shopTotals(accounts.one, ["ord_rupiah"])).toEqual({
+          ord_rupiah: { total: "250001", converted },
+        });
+      });
+    });
+
     it("keeps the total each placed order recorded in the shop, for its own account alone", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(
@@ -293,7 +337,10 @@ export const wooShopsContract = (
             "ord_unknown",
             "ord_missing",
           ]),
-        ).toEqual({ ord_cent: "32.00", ord_even: "25.00" });
+        ).toEqual({
+          ord_cent: { total: "32.00", converted: null },
+          ord_even: { total: "25.00", converted: null },
+        });
         expect(await shops.shopTotals(accounts.one, [])).toEqual({});
       });
     });
@@ -313,6 +360,7 @@ export const wooShopsContract = (
       permissions: "read_write",
       revision: "grant_1",
       connectedAt: NOW,
+      currency: null,
     });
 
     it("reads back what was written", async () => {
@@ -340,6 +388,7 @@ export const wooShopsContract = (
             token: "pending-token",
             accountId: accounts.one,
             shopUrl,
+            currency: null,
             startedAt: NOW,
             expiresAt: MUCH_LATER,
           });
@@ -361,6 +410,7 @@ export const wooShopsContract = (
             token: "renewed-token",
             accountId: accounts.one,
             shopUrl,
+            currency: null,
             startedAt: NOW,
             expiresAt: MUCH_LATER,
           });
@@ -382,6 +432,7 @@ export const wooShopsContract = (
           token: "replacement-token",
           accountId: accounts.one,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -424,6 +475,7 @@ export const wooShopsContract = (
           token: "forgotten-token",
           accountId: accounts.one,
           shopUrl: "https://forgotten.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -431,6 +483,7 @@ export const wooShopsContract = (
           token: "other-token",
           accountId: accounts.other,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -453,6 +506,7 @@ export const wooShopsContract = (
           token: "racing-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -469,32 +523,180 @@ export const wooShopsContract = (
   });
 
   describe(`${name}: a price question`, () => {
-    it("binds one price id to one merchant product fingerprint", async () => {
+    const DOLLAR_SALE = {
+      fingerprint: FACTS.productFingerprint,
+      inTheShop: { amount: "25.00", currency: "USD" },
+      paid: { amount: "25.00", currency: "USD" },
+      rateVersion: null,
+    };
+
+    it("binds one price id to one product, the amount the shop is held to and the dollars paid", async () => {
       await using(async (shops, accounts) => {
         expect(
           await shops.recordQuote(
             accounts.one,
             "prc_1",
             FACTS.merchantItemId,
-            FACTS.productFingerprint,
+            DOLLAR_SALE,
             MUCH_LATER,
             NOW,
           ),
         ).toBe(true);
-        expect(await shops.quotedProduct(accounts.one, "prc_1", FACTS.merchantItemId)).toBe(
-          FACTS.productFingerprint,
-        );
-        expect(await shops.quotedProduct(accounts.other, "prc_1", FACTS.merchantItemId)).toBeNull();
+        expect(await shops.quotedSale(accounts.one, "prc_1", FACTS.merchantItemId)).toEqual({
+          fingerprint: FACTS.productFingerprint,
+          inTheShop: { amount: "25.00", currency: "USD" },
+          paid: { amount: "25.00", currency: "USD" },
+          rate: null,
+        });
+        expect(await shops.quotedSale(accounts.other, "prc_1", FACTS.merchantItemId)).toBeNull();
         expect(
           await shops.recordQuote(
             accounts.one,
             "prc_1",
             FACTS.merchantItemId,
-            "different-product",
+            { ...DOLLAR_SALE, fingerprint: "different-product" },
             MUCH_LATER,
             NOW,
           ),
         ).toBe(false);
+      });
+    });
+
+    it("binds a price from a shop in another currency to the rate it was converted at, through later rates", async () => {
+      await using(async (shops, accounts) => {
+        const first = await shops.saveRate(accounts.one, SHOP, RUPIAH);
+        const sale = {
+          fingerprint: FACTS.productFingerprint,
+          inTheShop: { amount: "250000", currency: "IDR" },
+          paid: { amount: "13.89", currency: "USD" },
+          rateVersion: first.version,
+        };
+        expect(
+          await shops.recordQuote(
+            accounts.one,
+            "prc_2",
+            FACTS.merchantItemId,
+            sale,
+            MUCH_LATER,
+            NOW,
+          ),
+        ).toBe(true);
+        await shops.saveRate(accounts.one, SHOP, { ...RUPIAH, rate: "16000", setAt: LATER });
+
+        expect(await shops.quotedSale(accounts.one, "prc_2", FACTS.merchantItemId)).toEqual({
+          fingerprint: FACTS.productFingerprint,
+          inTheShop: { amount: "250000", currency: "IDR" },
+          paid: { amount: "13.89", currency: "USD" },
+          rate: { version: first.version, currency: "IDR", rate: "18000", setAt: NOW },
+        });
+        // A second answer to the same question at another amount or rate is
+        // a price no order could be held to.
+        for (const other of [
+          { ...sale, inTheShop: { amount: "250001", currency: "IDR" } },
+          { ...sale, paid: { amount: "13.90", currency: "USD" } },
+          { ...sale, rateVersion: null },
+        ]) {
+          expect(
+            await shops.recordQuote(
+              accounts.one,
+              "prc_2",
+              FACTS.merchantItemId,
+              other,
+              MUCH_LATER,
+              NOW,
+            ),
+          ).toBe(false);
+        }
+      });
+    });
+  });
+
+  describe(`${name}: the rates a merchant sets`, () => {
+    it("keeps every rate saved, and the latest for the shop and the currency is the current one", async () => {
+      await using(async (shops, accounts) => {
+        const first = await shops.saveRate(accounts.one, SHOP, RUPIAH);
+        expect(await shops.currentRate(accounts.one, SHOP, "IDR")).toEqual({
+          version: first.version,
+          ...RUPIAH,
+        });
+
+        const second = await shops.saveRate(accounts.one, SHOP, {
+          ...RUPIAH,
+          rate: "17950.5",
+          setAt: LATER,
+          reference: null,
+          confirmed: true,
+        });
+        expect(second.version).toBeGreaterThan(first.version);
+        expect(await shops.currentRate(accounts.one, SHOP, "IDR")).toEqual({
+          version: second.version,
+          ...RUPIAH,
+          rate: "17950.5",
+          setAt: LATER,
+          reference: null,
+          confirmed: true,
+        });
+      });
+    });
+
+    it("has no rate for another currency, another shop or another account", async () => {
+      await using(async (shops, accounts) => {
+        const saved = await shops.saveRate(accounts.one, SHOP, RUPIAH);
+
+        expect(await shops.currentRate(accounts.one, SHOP, "EUR")).toBeNull();
+        expect(
+          await shops.currentRate(accounts.one, "https://other.example.com", "IDR"),
+        ).toBeNull();
+        expect(await shops.currentRate(accounts.other, SHOP, "IDR")).toBeNull();
+        expect(saved.version).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe(`${name}: the currency a shop sells in`, () => {
+    it("carries the currency read at Connect onto the connection, and the one an import reads after it", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: SHOP,
+          currency: { code: "IDR", decimals: 0 },
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+        const connected = await shops.connectFromGrant(
+          "a-token",
+          { consumerKey: "ck_abc", consumerSecret: "cs_def", permissions: "read_write" },
+          NOW,
+        );
+        expect(connected?.currency).toEqual({ code: "IDR", decimals: 0 });
+
+        await shops.noteCurrency(accounts.one, { code: "EUR", decimals: 2 });
+        expect((await shops.connectionOf(accounts.one))?.currency).toEqual({
+          code: "EUR",
+          decimals: 2,
+        });
+        await shops.noteCurrency(accounts.other, { code: "JPY", decimals: 0 });
+        expect(await shops.connectionOf(accounts.other)).toBeNull();
+      });
+    });
+
+    it("knows no currency for a shop whose catalogue gave none at Connect", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: SHOP,
+          currency: null,
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+        const connected = await shops.connectFromGrant(
+          "a-token",
+          { consumerKey: "ck_abc", consumerSecret: "cs_def", permissions: "read_write" },
+          NOW,
+        );
+        expect(connected?.currency).toBeNull();
       });
     });
   });

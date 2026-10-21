@@ -8,8 +8,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  currencyOfTheShop,
   isTheGrantScreen as inspectGrantScreen,
+  sampleOfTheShop,
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
@@ -216,7 +216,7 @@ describe("the currency a shop prices in, asked before Connect", () => {
   // Only a clear answer counts: null is "not known", and Connect then goes on
   // as before, so every case here that is not a product priced in a currency
   // must come back null rather than as a guess.
-  const pricedIn = (url: string) => currencyOfTheShop(url, fetch);
+  const pricedIn = async (url: string) => (await sampleOfTheShop(url, fetch))?.currency ?? null;
   const storeProduct = (currency: unknown, minorUnit = 2) => ({
     id: 7,
     name: "Batik scarf",
@@ -241,7 +241,11 @@ describe("the currency a shop prices in, asked before Connect", () => {
             }
           : { status: 404, type: "application/json", body: '{"code":"rest_no_route"}' },
       );
-      expect(await pricedIn(shop.url), `${currency} ${minorUnit}`).toBe(currency);
+      expect(await sampleOfTheShop(shop.url, fetch), `${currency} ${minorUnit}`).toMatchObject({
+        currency,
+        decimals: minorUnit,
+        product: { name: "Batik scarf" },
+      });
       await shop.close();
       shop = null;
     }
@@ -291,6 +295,6 @@ describe("the currency a shop prices in, asked before Connect", () => {
     const failing = async (): Promise<Response> => {
       throw new Error("the operation was aborted due to timeout");
     };
-    expect(await currencyOfTheShop("https://shop.example.com", failing)).toBeNull();
+    expect(await sampleOfTheShop("https://shop.example.com", failing)).toBeNull();
   });
 });

@@ -60,7 +60,9 @@ contract.
 Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
 may write its price in USD or USDC; either way the buyer is asked for the same
 number of USDC. There is no exchange-rate conversion in between, so a price in
-any other currency is refused when the card is published. The test channel
+any other currency is refused when the card is published. A WooCommerce shop
+priced in another currency is converted at its merchant's own rate before any
+price reaches Agentify ([how](/woocommerce#a-shop-priced-in-another-currency)). The test channel
 uses Base Sepolia and test USDC, which is worth nothing; the live channel uses
 Base and real USDC. Turning USDC into money in a bank happens outside
 Agentify.

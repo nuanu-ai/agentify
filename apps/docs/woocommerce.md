@@ -10,9 +10,11 @@ channel for now, where the money is not real.
 ## What can be imported
 
 The connector imports a product only when it is a published simple product
-that WooCommerce marks purchasable and in stock, priced in US dollars, whose
-stock is not counted and which is not limited to one in an order (Sold
-individually). The shop's own settings have to allow it too, as
+that WooCommerce marks purchasable and in stock, whose stock is not counted and
+which is not limited to one in an order (Sold individually). A shop priced in US
+dollars sells at its own prices; a shop priced in another currency sells at a
+rate you set, as [A shop priced in another currency](#a-shop-priced-in-another-currency)
+describes. The shop's own settings have to allow it too, as
 [Settings of your whole shop](#settings-of-your-whole-shop) describes.
 
 Such a product becomes one of two kinds of card:
@@ -45,7 +47,10 @@ An order your shop totals at what the buyer paid, or within a cent of it, is
 taken on: the order carries what the buyer paid among its Agentify lines
 (`agentify_paid`), and your Orders screen shows the shop's total beside it
 where the two differ, so your shop's books can differ by a cent from the
-USDC you received for that sale. An order further from it is not taken on.
+USDC you received for that sale. An order further from it is not taken on. In
+a shop priced in another currency the same holds in that currency, with one of
+its smallest written amounts, a rupiah where prices have no decimals, in place
+of the cent.
 
 ## Settings of your whole shop
 
@@ -57,9 +62,11 @@ nothing to change; the import names any setting that stands in a product's
 way, and where to find it. What a shop that calculates tax needs is in
 [the next section](#shops-that-calculate-tax).
 
-Prices have to be written with two decimals (WooCommerce → Settings → General
-→ Number of decimals), which is WooCommerce's default. That setting is how many
-decimals every price in the shop is shown with, to every customer.
+A shop priced in US dollars has to write its prices with two decimals
+(WooCommerce → Settings → General → Number of decimals), which is WooCommerce's
+default; a shop priced in another currency with no decimals or with two. That
+setting is how many decimals every price in the shop is shown with, to every
+customer.
 
 Permalinks have to be anything other than Plain (Settings → Permalinks, in
 WordPress), because a site with Plain permalinks does not serve the addresses
@@ -182,12 +189,14 @@ Agentify cannot create the order in your shop. Agentify never asks for your
 shop password.
 
 Before your browser leaves for the shop, Agentify reads one product from your
-shop's public catalogue to learn the currency it is priced in. A shop whose
-catalogue answers in a currency other than US dollars is refused there, before
-you approve anything, and nothing changes in how you sell. When
-the catalogue gives no clear answer, because the shop has no products yet or
-does not serve its public catalogue, Connect goes ahead and the import names
-each product it cannot sell.
+shop's public catalogue to learn the currency it is priced in and the decimals
+it writes. A shop priced in another currency than US dollars is refused there,
+before you approve anything and with nothing changed in how you sell, when its
+prices are written with any number of decimals other than none or two, or when
+Coinbase gives no rate for its currency. When Coinbase does not answer, Connect
+stops and asks you to press it again in a moment. When the catalogue gives no
+clear answer, because the shop has no products yet or does not serve its public
+catalogue, Connect goes ahead and the import names each product it cannot sell.
 
 Every request the connector makes to your shop names itself with the User-Agent
 `Agentify/1 (+https://agentify.ad)`, so if a firewall or security plugin in
@@ -216,6 +225,55 @@ one slow order creation need not delay the next purchase or price question.
 If all four are busy, later questions wait and may expire. A repeat of an
 order already being created shares that attempt; the connector's durable
 record still prevents a second shop creation after a restart.
+
+## A shop priced in another currency
+
+A shop priced in another currency than US dollars, such as rupiah, sells at an
+exchange rate you set on the WooCommerce page of your dashboard: how many units
+of your currency one US dollar buys, written in digits, such as 18000 for
+eighteen thousand rupiah, with a dot only before a fraction and nothing between
+thousands. The currency is your shop's own setting, read from the shop; you do
+not choose it, and a shop priced in US dollars is asked for no rate. Nothing
+from such a shop is published until you set one, and saving a rate imports
+your products again, so your cards carry their prices at it.
+
+A buyer pays in US dollars, as USDC: your shop's price, or for a parcel your
+cart's total, divided by your rate and rounded up to the next cent, so, for
+example, a product priced Rp 240.000 at 18000 rupiah to the dollar sells for
+13.34 USD.
+The buyer is told the dollar price and nothing about your rate. Agentify takes
+no currency margin, and its 0.1% commission is of the USDC paid. What that USDC
+is worth in your currency when you sell it depends on your exchange and its
+spread, which your rate should allow for.
+
+Beside the field the page shows Coinbase's open rate, with the moment Agentify
+read it, because Coinbase's answer carries no time of its own. It is there to
+catch a mistyped rate and decides no price. A rate more than a tenth away from
+it is saved only once you type it a second time, and the page shows what one of
+your products would then cost in dollars; a rate written the wrong way round,
+or with a digit missing, is the mistake this catches. When Coinbase does not
+answer, the rate is saved all the same, with a note that it was not compared
+with anything. Every rate saved is sent to your account's email address with
+the rate before it, and a rate whose message could not be sent is not saved,
+because a rate nobody was told of could sell your goods for cents unseen.
+Every rate you have saved is kept.
+
+Your rate keeps selling until you change it, however old it is, and also after
+you disconnect the shop and connect it again: the page shows
+when you set it and how far it now stands from Coinbase's, and keeping it
+current is yours. A price a buyer was given holds at the rate it was given at,
+even if you change the rate before the order reaches your shop, because the
+buyer has paid by then. If your shop's currency changes, every purchase is
+refused before payment until you set a rate for the new one; a rate set for
+the old currency is never applied to it. Should the shop change back to a
+currency you set a rate for before, the last rate you set for it applies again.
+
+Your shop's order is made in your currency at your own price, and its Agentify
+lines carry what the buyer paid in USDC (`agentify_paid`), the amount it was
+priced at in your currency (`agentify_shop_amount`) and the rate with the
+moment you set it (`agentify_rate`). Your Orders screen shows the same for the
+sale, for example "240000 IDR in your shop, paid as 13.34 USDC at your rate of
+18000 IDR per US dollar".
 
 ## Your shop or your code, one at a time
 
@@ -349,6 +407,9 @@ WooCommerce → Settings → Advanced → REST API.
 - Parcels on the live channel. A parcel sells on the test channel only, and
   how a live parcel's time to ship is set is not decided.
 - How a buyer reaches your support to arrange a remedy outside Agentify.
+- Whether a merchant in Indonesia may accept USDC through Agentify for goods
+  priced in rupiah, given the country's Currency Law; Agentify has not settled
+  it, and whether a sale is lawful where your shop is remains yours to judge.
 - Downloads from a shop whose prices are entered before tax, which would need
   the buyer's address at the moment the price is asked; parcels from a shop
   whose prices hold their tax to a place taxed otherwise than the shop's own

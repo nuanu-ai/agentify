@@ -26,7 +26,8 @@ import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
-import type { Preflight } from "./woo-connect.js";
+import type { Preflight, ShopSample } from "./woo-connect.js";
+import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
@@ -37,6 +38,12 @@ import {
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
+const IN_DOLLARS: ShopSample = {
+  currency: "USD",
+  decimals: 2,
+  product: { name: "Canvas tote bag", price: "25.00" },
+};
+const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://dashboard.example.com";
 
@@ -85,6 +92,8 @@ interface Running {
   readonly read: string[];
   /** For reading their catalogue off the gateway. */
   readonly ownKey: string;
+  /** Every message the dashboard handed to its mail provider, the sign-in links among them. */
+  readonly messages: readonly Message[];
   get(path: string): Promise<Visit>;
   /**
    * A browser coming back from its shop without a session. The session cookie
@@ -129,8 +138,12 @@ afterEach(async () => {
 
 interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
-  /** US dollars where a test does not say. */
-  readonly currency?: (shopUrl: string) => Promise<string | null>;
+  /** One product priced in US dollars where a test does not say. */
+  readonly sample?: (shopUrl: string) => Promise<ShopSample | null>;
+  /** Coinbase's rupiah rate as it read on 2026-10-21 where a test does not say. */
+  readonly reference?: (currency: string) => Promise<ReferenceRead>;
+  /** Every message handed over where a test does not say. */
+  readonly mailRefused?: boolean;
   readonly catalogue?: (shopUrl: string) => Promise<CatalogueRead>;
   readonly inspectProduct?: (
     keys: Parameters<typeof inspectProductInTheShop>[0],
@@ -254,6 +267,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     gateway: harnessed.gateway,
     identity,
     wooShops: shops,
+    postman: async (message) => {
+      if (standing.mailRefused === true) return "refused";
+      messages.push(message);
+      return "accepted";
+    },
     ...(silent === undefined
       ? {}
       : {
@@ -278,8 +296,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           ? { ok: true }
           : await standing.grantScreen(authorizeUrl);
       },
-      currency: async (shopUrl) =>
-        standing.currency === undefined ? "USD" : await standing.currency(shopUrl),
+      sample: async (shopUrl) =>
+        standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl),
+      reference: async (currency) =>
+        standing.reference === undefined
+          ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
+          : await standing.reference(currency),
       catalogue: async (shopUrl) => {
         read.push(shopUrl);
         return standing.catalogue === undefined
@@ -369,6 +391,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     asked,
     read,
     ownKey,
+    messages,
     get: (path) => visit("GET", `${base}${path}`),
     getWithoutCookie: (path) => visit("GET", `${base}${path}`, { noCookie: true }),
     post: (path, form = {}) =>
@@ -625,11 +648,13 @@ describe("the keys arriving from the shop", () => {
       permissions: "read_write",
       revision: "connected-token",
       connectedAt: new Date(),
+      currency: null,
     });
     await running.shops.beginGrant({
       token: "old-unanswered-token",
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt: new Date(Date.now() - 40 * 60_000),
       expiresAt: new Date(Date.now() - 25 * 60_000),
     });
@@ -687,6 +712,7 @@ describe("the keys arriving from the shop", () => {
       token: "newer-token",
       accountId: running.accountId,
       shopUrl: "https://second.example.com",
+      currency: null,
       startedAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60_000),
     });
@@ -1336,6 +1362,7 @@ describe("importing the catalogue", () => {
       token: "a-token-that-came-back",
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt,
       expiresAt: new Date(startedAt.getTime() + 15 * 60_000),
     });
@@ -1631,6 +1658,7 @@ describe("what the integrations screen says about a shop", () => {
       token: `token-from-${minutes}-minutes-ago`,
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt: new Date(began),
       expiresAt: new Date(began + 15 * 60_000),
     });
@@ -2093,7 +2121,12 @@ describe("merchant delivery recovery", () => {
       accountId,
       priceId,
       merchantItemId,
-      facts.productFingerprint,
+      {
+        fingerprint: facts.productFingerprint,
+        inTheShop: { amount: facts.amount, currency: "USD" },
+        paid: { amount: facts.amount, currency: "USD" },
+        rateVersion: null,
+      },
       new Date(now.getTime() + 3600000),
       now,
     );
@@ -2109,6 +2142,7 @@ describe("merchant delivery recovery", () => {
       // which the operator's command would create the order.
       revision: neverAsked ? "grant_again" : "grant_recovery",
       connectedAt: now,
+      currency: null,
     });
     if (placed)
       await running.shops.recordOrder(
@@ -2290,25 +2324,31 @@ describe("one integration at a time", () => {
     expect((await theCodePolls(running)).status).toBe(409);
   });
 
-  it("refuses a shop priced in rupiah before sending the merchant to approve keys, and keeps the code's cards on sale", async () => {
+  it("refuses a shop writing three decimals before sending the merchant to approve keys, and keeps the code's cards on sale", async () => {
     // Every product of such a shop would be refused at import, so switching
     // first would take the code's cards off sale for a shop that can sell
     // nothing, and the shop would hand over write keys for nothing.
-    const running = await started({ currency: async () => "IDR" });
+    const running = await started({
+      sample: async () => ({
+        currency: "KWD",
+        decimals: 3,
+        product: { name: "Dallah coffee pot", price: "12.500" },
+      }),
+    });
     await running.signIn();
     const card = await publishedByTheCode(running);
 
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
     expect(pressed.to).toBeNull();
-    expect(readable(pressed.html)).toContain("IDR");
+    expect(readable(pressed.html)).toContain("KWD with 3 decimals");
     expect(await onSale(running)).toContain(card);
     expect((await theCodePolls(running)).status).toBe(200);
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
   });
 
   it("sends a shop priced in US dollars to approve keys as before", async () => {
-    const running = await started({ currency: async () => "USD" });
+    const running = await started({ sample: async () => IN_DOLLARS });
     await running.signIn();
 
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -2320,7 +2360,7 @@ describe("one integration at a time", () => {
   it("sends a shop whose currency could not be read to approve keys, leaving the verdict to the import", async () => {
     // Not knowing the currency is not knowing it is another one: a shop with
     // no products yet, or its Store API turned off, connects as before.
-    const running = await started({ currency: async () => null });
+    const running = await started({ sample: async () => null });
     await running.signIn();
     const card = await publishedByTheCode(running);
 
@@ -2430,6 +2470,7 @@ describe("one integration at a time", () => {
       token: "stale-other-shop",
       accountId: running.accountId,
       shopUrl: "https://other.example.com",
+      currency: null,
       startedAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60_000),
     });
@@ -2765,3 +2806,374 @@ const COMPLETED_IMPORT = {
   failed_count: 0,
   skipped_count: 0,
 } as const;
+
+describe("a shop priced in another currency than US dollars", () => {
+  /** The lab's realistic shop: rupiah written with no decimals. */
+  const IN_RUPIAH: ShopSample = {
+    currency: "IDR",
+    decimals: 0,
+    product: { name: "Rayon Sarong", price: "240000" },
+  };
+  const rupiahProduct = aProduct({
+    id: 41,
+    name: "Rayon Sarong",
+    prices: { price: "240000", currency_code: "IDR", currency_minor_unit: 0 },
+  });
+  const inRupiah: Standing = {
+    sample: async () => IN_RUPIAH,
+    catalogue: async () => ({ ok: true, products: [rupiahProduct] }),
+    inspectProduct: async (_keys, merchantItemId) => ({
+      ok: true,
+      product: {
+        kind: "download",
+        productId: merchantItemId.split("_").at(-1) ?? "",
+        downloadId: "dl_sarong",
+        fileName: "Sarong pattern.pdf",
+        price: { amount: "240000", currency: "IDR" },
+        fingerprint: "sarong-in-rupiah",
+        tax: { mode: "off" as const },
+      },
+    }),
+  };
+
+  const connectedIn = async (running: Running): Promise<void> => {
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(pressed.status).toBe(303);
+    await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
+    await running.get("/woocommerce");
+  };
+
+  const pricesOnSale = async (running: Running): Promise<readonly string[]> => {
+    const answered = await running.gateway.call("GET", "/v0/cards", {
+      headers: { authorization: `Bearer ${running.ownKey}` },
+    });
+    return (answered.body as { cards: { card: { price: { amount: string } } }[] }).cards.map(
+      (one) => one.card.price.amount,
+    );
+  };
+
+  const rateNotices = (running: Running) =>
+    running.messages.filter((message) => message.subject.includes("exchange rate"));
+
+  describe("at Connect", () => {
+    it("connects a shop priced in rupiah, a currency Coinbase gives a rate for", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      expect((await running.shops.connectionOf(running.accountId))?.currency).toEqual({
+        code: "IDR",
+        decimals: 0,
+      });
+    });
+
+    it("refuses a currency Coinbase gives no rate for, in plain words, and changes nothing", async () => {
+      const running = await started({
+        sample: async () => ({ ...IN_RUPIAH, currency: "XAF" }),
+        reference: async () => ({ ok: false, listed: false }),
+      });
+      await running.signIn();
+
+      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+      expect(pressed.to).toBeNull();
+      expect(readable(pressed.html)).toContain("Coinbase gives no rate for XAF");
+      expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    });
+
+    it("asks for Connect to be pressed again when Coinbase did not answer, without saying there is no rate", async () => {
+      const running = await started({
+        ...inRupiah,
+        reference: async () => ({ ok: false, listed: null }),
+      });
+      await running.signIn();
+
+      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+      expect(pressed.to).toBeNull();
+      const said = readable(pressed.html);
+      expect(said).toContain("did not answer");
+      expect(said).toContain("press Connect again");
+      expect(said).not.toContain("gives no rate");
+      expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    });
+
+    it("asks Coinbase nothing for a shop priced in US dollars", async () => {
+      const asked: string[] = [];
+      const running = await started({
+        reference: async (currency) => {
+          asked.push(currency);
+          return { ok: false, listed: null };
+        },
+      });
+      await running.signIn();
+
+      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+      expect(pressed.status).toBe(303);
+      expect(asked).toEqual([]);
+    });
+  });
+
+  describe("on the shop screen", () => {
+    it("asks for the rate in units of the shop's currency per dollar, beside Coinbase's open rate and when it was read", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      const screen = await running.get("/woocommerce");
+
+      const said = readable(screen.html);
+      expect(said).toContain("Indonesian Rupiah (IDR)");
+      expect(said).toContain("Nothing is published until you set one");
+      expect(said).toContain("open rate, source: Coinbase");
+      expect(said).toContain("18035.292596");
+      expect(said).toContain("2026-10-21 14:52:48 UTC");
+      expect(screen.html).toContain('name="rate"');
+    });
+
+    it("shows a shop priced in US dollars no rate at all", async () => {
+      const running = await started();
+      await connectedIn(running);
+
+      const screen = await running.get("/woocommerce");
+
+      expect(screen.html).not.toContain('name="rate"');
+      expect(readable(screen.html)).not.toContain("Coinbase");
+    });
+  });
+
+  describe("importing before a rate is set", () => {
+    it("is counted as an import blocked for a setting the merchant has not made", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      await running.post("/woocommerce/import");
+
+      expect(
+        running
+          .connectorAnalytics()
+          .filter(
+            (event) => event.name === "agc_setup_result" && event.fields.step === "woo_import",
+          ),
+      ).toMatchObject([
+        { fields: { outcome: "blocked", reason_code: "profile_missing", imported_count: 0 } },
+      ]);
+    });
+
+    it("publishes nothing and says a rate is wanted first", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      const imported = await running.post("/woocommerce/import");
+
+      expect(await pricesOnSale(running)).toEqual([]);
+      expect(readable(imported.html)).toContain("Nothing was imported");
+      expect(imported.html).toContain('name="rate"');
+    });
+  });
+
+  describe("saving a rate", () => {
+    it("saves a rate near Coinbase's, tells the account's email, and imports the shop at it", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      expect(saved.status).toBe(200);
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "18000",
+        setBy: PERSON,
+        reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
+        confirmed: false,
+      });
+      // Rp 240.000 at 18000 rupiah to the dollar, rounded up to the cent.
+      expect(await pricesOnSale(running)).toEqual(["13.34"]);
+      const [notice] = rateNotices(running);
+      expect(notice?.to).toBe(PERSON);
+      expect(notice?.body).toContain("18000 IDR per US dollar");
+      expect(notice?.body).toContain("No rate was set before");
+    });
+
+    it("names the previous rate in the notice of the next one", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      await running.get("/woocommerce");
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "17500" });
+
+      expect(rateNotices(running).at(-1)?.body).toContain("The previous rate was 18000 IDR");
+      expect(await pricesOnSale(running)).toEqual(["13.72"]);
+    });
+
+    it("asks for a rate more than a tenth from Coinbase's to be typed again, showing what a product would cost", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      const said = readable(asked.html);
+      expect(said).toContain("90.0% below");
+      expect(said).toContain("Rayon Sarong");
+      expect(said).toContain("133.34 USD");
+      expect(said).toContain("13.31 USD");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(rateNotices(running)).toEqual([]);
+      expect(await pricesOnSale(running)).toEqual([]);
+    });
+
+    it("saves that rate once it is typed again, and keeps that it was", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800", again: "1800" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "1800",
+        confirmed: true,
+      });
+    });
+
+    it("does not take a second typing that differs from the first", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800", again: "18000" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+    });
+
+    it("saves a rate with a note that nothing was compared when Coinbase did not answer", async () => {
+      const running = await started({
+        ...inRupiah,
+        reference: async () => ({ ok: false, listed: null }),
+      });
+      await running.signIn();
+      await running.shops.beginGrant({
+        token: "rupiah-token",
+        accountId: running.accountId,
+        shopUrl: SHOP,
+        currency: { code: "IDR", decimals: 0 },
+        startedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await running.postJson("/woocommerce/callback", grantedBody("rupiah-token"));
+      await running.get("/woocommerce");
+
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      expect(readable(saved.html)).toContain("was not compared with anything");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "1800",
+        reference: null,
+      });
+    });
+
+    it("saves nothing when its notice cannot be sent, and says so", async () => {
+      const running = await started({ ...inRupiah, mailRefused: true });
+      await running.signIn();
+      await running.shops.beginGrant({
+        token: "rupiah-token",
+        accountId: running.accountId,
+        shopUrl: SHOP,
+        currency: { code: "IDR", decimals: 0 },
+        startedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await running.postJson("/woocommerce/callback", grantedBody("rupiah-token"));
+      await running.get("/woocommerce");
+
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      expect(readable(saved.html)).toContain("could not be sent");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+    });
+
+    it("saves nothing for a currency the shop no longer sells in", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.shops.noteCurrency(running.accountId, { code: "EUR", decimals: 2 });
+
+      const refused = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      expect(readable(refused.html)).toContain("EUR");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(await running.shops.currentRate(running.accountId, SHOP, "EUR")).toBeNull();
+    });
+
+    it("saves nothing for a rate written with a separator between thousands", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+
+      for (const rate of ["18,000", "18 000", "-18000", ""]) {
+        await running.post("/woocommerce/rate", { currency: "IDR", rate });
+      }
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+    });
+
+    it("saves nothing for a currency Coinbase answered it gives no rate for", async () => {
+      const running = await started({
+        ...inRupiah,
+        reference: async () => ({ ok: false, listed: false }),
+      });
+      await running.signIn();
+      await running.shops.beginGrant({
+        token: "rupiah-token",
+        accountId: running.accountId,
+        shopUrl: SHOP,
+        currency: { code: "IDR", decimals: 0 },
+        startedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await running.postJson("/woocommerce/callback", grantedBody("rupiah-token"));
+      await running.get("/woocommerce");
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+    });
+
+    it("says the rate was saved when the import it runs finds the shop now sells in another currency", async () => {
+      const running = await started({
+        ...inRupiah,
+        catalogue: async () => ({
+          ok: true,
+          products: [
+            aProduct({ prices: { price: "1450", currency_code: "EUR", currency_minor_unit: 2 } }),
+          ],
+        }),
+        inspectProduct: async (_keys, merchantItemId) => ({
+          ok: true,
+          product: {
+            kind: "download",
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_sarong",
+            fileName: "Sarong pattern.pdf",
+            price: { amount: "14.50", currency: "EUR" },
+            fingerprint: "sarong-in-euros",
+            tax: { mode: "off" as const },
+          },
+        }),
+      });
+      await connectedIn(running);
+
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      const said = readable(saved.html);
+      expect(said).toContain("Your rate of 18000 IDR per US dollar was saved");
+      expect(said).toContain("your shop sells in EUR");
+      expect(await pricesOnSale(running)).toEqual([]);
+    });
+
+    it("is refused for a shop priced in US dollars", async () => {
+      const running = await started();
+      await connectedIn(running);
+
+      await running.post("/woocommerce/rate", { currency: "USD", rate: "1" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "USD")).toBeNull();
+    });
+  });
+});

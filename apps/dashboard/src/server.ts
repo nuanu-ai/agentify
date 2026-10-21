@@ -23,6 +23,7 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { liveSalesFor } from "./live-sales.js";
+import type { Postman } from "./mail.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
@@ -61,6 +62,8 @@ export interface DashboardParts {
   readonly wooShops?: WooShops;
   /** Only tests pass another. */
   readonly shop?: ShopCalls;
+  /** The connector's own messages; the dashboard's mail where absent, as a deployment leaves it. */
+  readonly postman?: Postman;
 }
 
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
@@ -197,6 +200,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
                 clientFor: (acting) => clientFor(acting),
                 shops: wooShops,
                 ...(parts.shop === undefined ? {} : { shop: parts.shop }),
+                ...(parts.postman === undefined ? {} : { postman: parts.postman }),
               }),
       }),
       config.cookieSecure,

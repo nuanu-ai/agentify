@@ -21,6 +21,7 @@ import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   type HandlerAnswer,
   localityOf,
+  type Money,
   type Order,
   type QuoteRequest,
   type QuoteResponse,
@@ -30,9 +31,11 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
-import { amountOfCents, centsOf, productIdFromMerchantItem, withinACent } from "./woo-catalog.js";
+import { productIdFromMerchantItem } from "./woo-catalog.js";
+import { dollarsAt, minorOf, sumOf, withinOneUnit } from "./woo-money.js";
 import {
   type CartPrice,
+  type Converted,
   createTheOrderInTheShop,
   createTheParcelInTheShop,
   type EligibleWooProduct,
@@ -51,7 +54,13 @@ import {
   shipmentInTheShop,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
-import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
+import type {
+  QuoteBinding,
+  WooConnection,
+  WooOrderFacts,
+  WooPermission,
+  WooShops,
+} from "./woo-shops.js";
 
 /**
  * A shop as a log line names it. Its address is kept as the merchant typed it,
@@ -86,12 +95,54 @@ export interface Filling {
   /** A deployment passes nothing. */
   readonly placeParcel?: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>;
   /** Test seam for the durable quote binding; production reads `WooShops`. */
-  readonly quotedProduct?: (
+  readonly quotedSale?: (
     connection: WooConnection,
     priceId: string,
     merchantItemId: string,
-  ) => Promise<string | null>;
+  ) => Promise<QuoteBinding | null>;
 }
+
+const sameMoney = (one: Money, other: Money): boolean =>
+  one.amount === other.amount && one.currency === other.currency;
+
+/**
+ * The price an order's `price_id` was bound to. A binding that converts a shop
+ * in US dollars, or holds a shop in another currency to no rate, is not one
+ * this connector writes, and is read as none.
+ */
+const boundSale = async (
+  connection: WooConnection,
+  order: Order,
+  parts: Filling,
+): Promise<QuoteBinding | null> => {
+  if (order.price_id === undefined) return null;
+  const bound = await (parts.quotedSale === undefined
+    ? parts.shops.quotedSale(connection.accountId, order.price_id, order.merchant_item_id)
+    : parts.quotedSale(connection, order.price_id, order.merchant_item_id));
+  return bound === null || (bound.inTheShop.currency === "USD") !== (bound.rate === null)
+    ? null
+    : bound;
+};
+
+/** What the ledger keeps of a converted sale beside the dollars paid. */
+const convertedFacts = (bound: QuoteBinding | null): Pick<WooOrderFacts, "converted"> =>
+  bound?.rate == null
+    ? {}
+    : {
+        converted: {
+          inTheShop: bound.inTheShop,
+          rate: {
+            version: bound.rate.version,
+            rate: bound.rate.rate,
+            setAt: bound.rate.setAt.toISOString(),
+          },
+        },
+      };
+
+const conversionOf = (order: Order, bound: QuoteBinding): Converted | undefined =>
+  bound.rate === null
+    ? undefined
+    : { paid: { amount: order.price.amount, currency: order.price.currency }, rate: bound.rate };
 
 /**
  * One paid order drawn off the stream, filled from the shop with the split
@@ -157,16 +208,8 @@ export const fillFromTheShop = async (
   }
   const inspected = await productInTheShop(connection, order.merchant_item_id, parts);
   const eligible = inspected.ok ? inspected.product : null;
-  const quoted =
-    order.price_id === undefined
-      ? null
-      : parts.quotedProduct === undefined
-        ? await parts.shops.quotedProduct(
-            connection.accountId,
-            order.price_id,
-            order.merchant_item_id,
-          )
-        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
+  const bound = await boundSale(connection, order, parts);
+  const quoted = bound?.fingerprint ?? null;
   const facts: WooOrderFacts = {
     shopOrigin: new URL(connection.shopUrl).origin,
     connectionRevision: connection.revision,
@@ -182,6 +225,7 @@ export const fillFromTheShop = async (
     productFingerprint: quoted ?? "unbound-price-id",
     amount: order.price.amount,
     currency: order.price.currency,
+    ...convertedFacts(bound),
   };
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
@@ -215,9 +259,12 @@ export const fillFromTheShop = async (
       },
     };
   }
+  // The shop is held to the amount bound to the price, and the payment to the
+  // dollars answered for it; a rate the merchant changed since does not move
+  // either, because the buyer has paid at the one bound.
   if (
-    eligible.price.amount !== order.price.amount ||
-    eligible.price.currency !== order.price.currency
+    !sameMoney(eligible.price, bound?.inTheShop ?? order.price) ||
+    (bound !== null && !sameMoney(order.price, bound.paid))
   ) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
@@ -228,7 +275,7 @@ export const fillFromTheShop = async (
       },
     };
   }
-  if (quoted === null || quoted !== eligible.fingerprint) {
+  if (bound === null || quoted !== eligible.fingerprint) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
@@ -290,10 +337,11 @@ export const fillFromTheShop = async (
     // WooCommerce mail whatever address is on it, and nothing in the request
     // can stop that.
     email: orderEmail,
-    price: { amount: order.price.amount, currency: order.price.currency },
+    price: bound.inTheShop,
     download: { id: eligible.downloadId, name: eligible.fileName },
     paidInto,
     tax: eligible.tax,
+    ...withConversion(conversionOf(order, bound)),
   });
 
   if (made.ok) {
@@ -387,7 +435,7 @@ const taxedParcelPrice = (
   const place = at.priced;
   // The cart rounds the goods' amount before tax and their tax each on its
   // own, so between them they can come to a cent over the price.
-  if (!withinACent(place.goods, product.price.amount)) return otherGoods;
+  if (!withinOneUnit(place.goods, product.price.amount)) return otherGoods;
   // The goods' own tax is compared as well as the tax lines, which a shop
   // showing its tax as one total leaves empty.
   if (
@@ -447,16 +495,8 @@ const fillParcelFromTheShop = async (
   }
   const address = ShipToSchema.safeParse(order.ship_to);
   const productId = productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id);
-  const quoted =
-    order.price_id === undefined
-      ? null
-      : parts.quotedProduct === undefined
-        ? await parts.shops.quotedProduct(
-            connection.accountId,
-            order.price_id,
-            order.merchant_item_id,
-          )
-        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
+  const bound = await boundSale(connection, order, parts);
+  const quoted = bound?.fingerprint ?? null;
   const facts: WooOrderFacts = {
     kind: "parcel",
     shopOrigin: new URL(connection.shopUrl).origin,
@@ -467,6 +507,7 @@ const fillParcelFromTheShop = async (
     productFingerprint: quoted ?? "unbound-price-id",
     amount: order.price.amount,
     currency: order.price.currency,
+    ...convertedFacts(bound),
   };
   const refuse = async (message: string): Promise<HandlerAnswer> => {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
@@ -506,11 +547,14 @@ const fillParcelFromTheShop = async (
     );
   }
   const product = inspected.product;
-  if (quoted === null || quoted !== product.fingerprint) {
+  if (bound === null || quoted !== product.fingerprint || !sameMoney(order.price, bound.paid)) {
     return await refuse(
       "The shop's product changed after this purchase was quoted, so no WooCommerce order was created.",
     );
   }
+  // The shipping is not bound, so it is found again against the amount the
+  // shop is held to, in the shop's own currency.
+  const heldTo = bound.inTheShop;
   if (!rates.ok && rates.again) {
     console.error(`[dashboard] ${orderFingerprint(order.id)} waits: ${rates.why}`);
     return null;
@@ -529,20 +573,28 @@ const fillParcelFromTheShop = async (
     );
   }
   let rate: ShippingRate | undefined;
+  if (rates.currency !== null && rates.currency !== product.price.currency) {
+    return await refuse(
+      "The shop's cart priced shipping to this place in another currency than the product, so no" +
+        " WooCommerce order was created.",
+    );
+  }
   if (product.tax.mode === "off") {
-    if (rates.rates.some((one) => one.tax !== "0.00")) {
+    if (rates.rates.some((one) => minorOf(one.tax)?.minor !== 0n)) {
       return await refuse(
         "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
           " WooCommerce order was created.",
       );
     }
-    const goods = centsOf(product.price.amount);
-    const paid =
-      order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
+    const goods = minorOf(product.price.amount);
+    const total = heldTo.currency === product.price.currency ? minorOf(heldTo.amount) : null;
     rate =
-      goods === null || paid === null
+      goods === null || total === null || goods.decimals !== total.decimals
         ? undefined
-        : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
+        : rates.rates.find((one) => {
+            const cost = minorOf(one.cost);
+            return cost?.decimals === goods.decimals && cost.minor === total.minor - goods.minor;
+          });
   } else {
     const priced = taxedParcelPrice(product, rates, atBase);
     if (!priced.ok && priced.again) {
@@ -564,7 +616,7 @@ const fillParcelFromTheShop = async (
       );
     }
     rate =
-      priced.total === order.price.amount && order.price.currency === product.price.currency
+      priced.total === heldTo.amount && heldTo.currency === product.price.currency
         ? priced.rate
         : undefined;
   }
@@ -606,12 +658,13 @@ const fillParcelFromTheShop = async (
     orderId: order.id,
     productId,
     email: orderEmail,
-    paid: { amount: order.price.amount, currency: order.price.currency },
+    total: heldTo,
     goods: product.price.amount,
     rate,
     address: address.data,
     paidInto,
     tax: product.tax.mode,
+    ...withConversion(conversionOf(order, bound)),
   });
   if (made.ok) {
     const bound = await parts.shops.recordOrder(
@@ -652,6 +705,10 @@ const fillParcelFromTheShop = async (
   );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
+
+/** Written only where there is one, so a dollar shop's sale carries none. */
+const withConversion = (converted: Converted | undefined): { converted?: Converted } =>
+  converted === undefined ? {} : { converted };
 
 const UNREADABLE_PRODUCT =
   "The shop's answer to the product check could not be read or trusted when this order was" +
@@ -822,13 +879,15 @@ const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {
 };
 
 /** Null where there is none. */
-const cheapestCents = (rates: readonly ShippingRate[]): bigint | null => {
-  let cheapest: bigint | null = null;
+const cheapestOf = (rates: readonly ShippingRate[]): string | null => {
+  let cheapest: { readonly cost: string; readonly minor: bigint } | null = null;
   for (const rate of rates) {
-    const cost = centsOf(rate.cost);
-    if (cost !== null && (cheapest === null || cost < cheapest)) cheapest = cost;
+    const cost = minorOf(rate.cost);
+    if (cost !== null && (cheapest === null || cost.minor < cheapest.minor)) {
+      cheapest = { cost: rate.cost, minor: cost.minor };
+    }
   }
-  return cheapest;
+  return cheapest?.cost ?? null;
 };
 
 /**
@@ -903,21 +962,25 @@ export const quoteFromTheShop = async (
   if (place !== undefined && product.kind !== "parcel") {
     return unpriced("the product in the shop is no longer a parcel");
   }
+  // In the shop's currency until it is converted, once, below.
   let price = product.price;
   if (product.kind === "parcel") {
     if (rates === null) return unpriced("the question carries no place to ship to");
     if (!rates.ok) return rates.again || !rates.saidNo ? silent(rates.why) : unpriced(rates.why);
+    if (rates.currency !== null && rates.currency !== product.price.currency) {
+      return unpriced(`the shop's cart priced shipping in ${rates.currency}`);
+    }
     if (product.tax.mode === "off") {
       // Such a shop's order carries no tax, so no rate that does is a price.
-      if (rates.rates.some((one) => one.tax !== "0.00")) {
+      if (rates.rates.some((one) => minorOf(one.tax)?.minor !== 0n)) {
         return unpriced("the shop calculates no tax, and its cart taxes the shipping rate");
       }
-      const goods = centsOf(product.price.amount);
-      const carriage = cheapestCents(rates.rates);
-      if (goods === null || carriage === null) {
-        return unpriced("the shop has no shipping rate to that place");
+      const carriage = cheapestOf(rates.rates);
+      const total = carriage === null ? null : sumOf(product.price.amount, carriage);
+      if (total === null) {
+        return unpriced("the shop has no shipping rate to that place at its own decimals");
       }
-      price = { amount: amountOfCents(goods + carriage), currency: product.price.currency };
+      price = { amount: total, currency: product.price.currency };
     } else {
       const priced = taxedParcelPrice(product, rates, atBase);
       if (!priced.ok) {
@@ -926,15 +989,36 @@ export const quoteFromTheShop = async (
       price = { amount: priced.total, currency: product.price.currency };
     }
   }
+  // The merchant's rate, read from the dashboard's own database: no request
+  // leaves for it while the buyer waits, and none is guessed where none is set.
+  const rate =
+    price.currency === "USD"
+      ? null
+      : await parts.shops.currentRate(
+          connection.accountId,
+          new URL(connection.shopUrl).origin,
+          price.currency,
+        );
+  if (price.currency !== "USD" && rate === null) {
+    return unpriced(`the shop sells in ${price.currency}, and no rate is set for it`);
+  }
+  const dollars = rate === null ? price.amount : dollarsAt(price.amount, rate.rate);
+  if (dollars === null) return unpriced("the shop's amount is not one the rate converts");
+  const paid = { amount: dollars, currency: "USD" };
   const recorded = await parts.shops.recordQuote(
     connection.accountId,
     question.price_id,
     question.merchant_item_id,
-    product.fingerprint,
+    {
+      fingerprint: product.fingerprint,
+      inTheShop: price,
+      paid,
+      rateVersion: rate?.version ?? null,
+    },
     new Date(question.expires_at),
     at,
   );
-  return recorded ? { available: true, price, as_of: at.toISOString() } : unavailable;
+  return recorded ? { available: true, price: paid, as_of: at.toISOString() } : unavailable;
 };
 
 /** Where an inclusive shop's parcel is also asked about: the shop's own address. */

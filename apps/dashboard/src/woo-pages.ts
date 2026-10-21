@@ -18,28 +18,30 @@ import {
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
+import { type Postman, postmanFor } from "./mail.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
 import { unsetIn } from "./viewer.js";
-import {
-  cardsFromTheShop,
-  decimalOfMinorUnits,
-  merchantItemIdFor,
-  USD_SCALE,
-} from "./woo-catalog.js";
+import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-catalog.js";
 import {
   APP_NAME,
   authorizeUrlFor,
-  currencyOfTheShop,
   GRANT_MINUTES,
   isTheGrantScreen,
-  notPricedInDollars,
+  noReferenceFor,
   type Preflight,
+  referenceUnanswered,
+  type ShopSample,
+  sampleOfTheShop,
   shopUrlAs,
   theStateToken,
   whatIsWrongWithTheShopUrl,
+  writesOtherDecimals,
 } from "./woo-connect.js";
+import { dollarsAt, gapOf, minorOf, rateWrittenAs, shopDecimalsOf } from "./woo-money.js";
+import { rateNoticeMessage } from "./woo-rate-mail.js";
 import { type WooRecoveryView, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
+import { type ReferenceRead, referenceRateOf } from "./woo-reference.js";
 import {
   type CatalogueRead,
   catalogueOf,
@@ -49,7 +51,7 @@ import {
   type ShopKeys,
   type WooOrderLookup,
 } from "./woo-shop.js";
-import type { WooShops } from "./woo-shops.js";
+import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-shops.js";
 import {
   type ImportOutcome,
   type ShopAnswer,
@@ -59,7 +61,7 @@ import {
   wooImportView,
   wooShopView,
 } from "./woo-views.js";
-import { SITE_IN_SETTINGS, type Unset } from "./words.js";
+import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /**
  * The calls that reach a merchant's shop. Only tests pass others: both real
@@ -69,7 +71,9 @@ import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 export interface ShopCalls {
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
   /** Null where the shop did not clearly say. */
-  readonly currency: (shopUrl: string) => Promise<string | null>;
+  readonly sample: (shopUrl: string) => Promise<ShopSample | null>;
+  /** Coinbase's rate for one US dollar; not the shop's, but read only beside it. */
+  readonly reference?: (currency: string) => Promise<ReferenceRead>;
   readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
   readonly inspectProduct: (keys: ShopKeys, merchantItemId: string) => Promise<ProductInspection>;
   readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
@@ -82,7 +86,7 @@ export interface WooPages {
   shopTotals(
     person: Person,
     orderIds: readonly string[],
-  ): Promise<Readonly<Record<string, string>>>;
+  ): Promise<Readonly<Record<string, ShopTotal>>>;
   recoveryLinks(
     person: Person,
     orderIds: readonly string[],
@@ -91,6 +95,8 @@ export interface WooPages {
   shop(person: Person, query: URLSearchParams): Promise<Outcome<WooShopView>>;
   connect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
   importCatalogue(person: Person): Promise<Outcome<WooShopView | WooImportView>>;
+  /** Saves the rate of a shop in another currency, and imports the shop again at it. */
+  setRate(person: Person, form: FormData): Promise<Outcome<WooShopView | WooImportView>>;
   switchToShop(person: Person): Promise<Outcome<WooShopView>>;
   disconnect(person: Person): Promise<Outcome<WooShopView>>;
   /**
@@ -108,6 +114,8 @@ export interface WooParts {
   readonly clientFor: (acting: Acting) => GatewayClient;
   readonly shops: WooShops;
   readonly shop?: ShopCalls;
+  /** The dashboard's own mail by default; tests pass another. */
+  readonly postman?: Postman;
 }
 
 /**
@@ -209,9 +217,9 @@ const NOTHING_COUNTED: ImportCounts = { imported_count: 0, failed_count: 0, skip
 type ReasonCode = ReturnType<typeof publishRefusalReason>;
 
 /**
- * One import run's result as product analytics counts it: one event per press
- * of Import, whatever it came to, the products it published counted as
- * imported whether or not their cards were new.
+ * One import run's result as product analytics counts it: one event per run,
+ * pressed or run again by a saved rate, whatever it came to, the products it
+ * published counted as imported whether or not their cards were new.
  */
 const importResult = (
   person: Person,
@@ -231,13 +239,27 @@ const importResult = (
     fields: { step: "woo_import", integration: "woocommerce", ...settled, ...counts },
   }) as SetupResult;
 
+const originOf = (connection: WooConnection): string => new URL(connection.shopUrl).origin;
+
+/** The currency and decimals the first product check that passed read off the shop's settings. */
+const currencyRead = (inspections: readonly ProductInspection[]): ShopCurrency | null => {
+  for (const one of inspections) {
+    if (!one.ok) continue;
+    const decimals = minorOf(one.product.price.amount)?.decimals;
+    if (decimals !== undefined) return { code: one.product.price.currency, decimals };
+  }
+  return null;
+};
+
 export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages {
   const base = config.basePath;
   const { identity, shops } = parts;
   /** Where a shop sends the merchant back to, and posts the keys to. */
   const whereWeAre = `${config.publicBaseUrl}${base}`;
   const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
-  const currency = parts.shop?.currency ?? currencyOfTheShop;
+  const sample = parts.shop?.sample ?? sampleOfTheShop;
+  const reference = parts.shop?.reference ?? ((code: string) => referenceRateOf(code));
+  const postman = parts.postman ?? postmanFor(config);
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
   const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
   const recovery = wooRecoveryPagesFor({
@@ -300,15 +322,258 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     status = 200,
   ): Promise<Outcome<WooShopView>> => {
     const gateway = gatewayAs(person);
-    const [state, integration] = await Promise.all([
+    const [state, integration, rate] = await Promise.all([
       shopStateOf(shops, person.id),
       gateway.integration(),
+      rateOf(person),
     ]);
     if (!integration.ok) return problemOf(integration);
     return {
       kind: "view",
       status,
-      view: wooShopView({ state, through: integration.document.through }, answer),
+      view: wooShopView(
+        { state, through: integration.document.through, ...(rate === null ? {} : { rate }) },
+        answer,
+      ),
+    };
+  };
+
+  /**
+   * For a connected shop in another currency: the rate it sells at now and
+   * Coinbase's beside it, read each time the screen is drawn. Nothing for a
+   * shop in US dollars, which no rate is asked of and Coinbase is not read for.
+   */
+  const rateOf = async (person: Person) => {
+    const connection = await shops.connectionOf(person.id);
+    const currency = connection?.currency ?? null;
+    if (connection === null || currency === null || currency.code === "USD") return null;
+    const [current, read] = await Promise.all([
+      shops.currentRate(person.id, originOf(connection), currency.code),
+      reference(currency.code),
+    ]);
+    return { currency, current, reference: read };
+  };
+
+  /**
+   * Import, as the button runs it and as saving a rate runs it again, which
+   * says what was saved in every answer it gives.
+   */
+  const importFor = async (
+    person: Person,
+    rateSaved: string | null,
+  ): Promise<Outcome<WooShopView | WooImportView>> => {
+    const saved = rateSaved === null ? {} : { rate: { saved: rateSaved } };
+    const resulted = (settled: Parameters<typeof importResult>[1], counts?: ImportCounts) =>
+      shops.recordAnalytics(importResult(person, settled, counts), new Date());
+
+    const connection = await shops.connectionOf(person.id);
+    if (connection === null) {
+      await resulted({ outcome: "blocked", reason_code: "no_connection" });
+      return { kind: "redirect", location: `${base}/woocommerce` };
+    }
+
+    // Asked before the shop is read, like the settings below: a merchant
+    // selling through their code would have every imported card refused, so
+    // the shop screen offers them the switch instead.
+    const integration = await gatewayAs(person).integration();
+    if (!integration.ok) {
+      await resulted({ outcome: "failed", reason_code: "internal_error" });
+      return problemOf(integration);
+    }
+    if (integration.document.through !== "woocommerce") {
+      await resulted({ outcome: "blocked", reason_code: "integration_mismatch" });
+      return await drawTheShop(
+        person,
+        {
+          switching:
+            "Nothing was imported: you sell through your own code, so nothing imported would sell. Sell through this shop first.",
+          ...saved,
+        },
+        409,
+      );
+    }
+
+    // Asked before the shop: the gateway refuses every card of a merchant
+    // missing any of these, so importing would inspect every product for
+    // nothing and repeat the refusal per product in words naming an API
+    // route. A gateway that cannot answer this would not take a card either.
+    const unset = await unsetOf(gatewayAs(person));
+    if (!unset.ok) {
+      await resulted({ outcome: "failed", reason_code: "internal_error" });
+      return problemOf(unset);
+    }
+    if (unset.document.length > 0) {
+      // Counted as the gateway counts a card refused for the same lack.
+      await resulted({ outcome: "blocked", reason_code: publishRefusalReason(unset.document) });
+      noted(
+        person,
+        `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
+          ` ${connection.shopUrl} was not read and nothing was published`,
+      );
+      return await drawTheShop(person, { refused: unset.document, ...saved }, 409);
+    }
+
+    // The ceiling goes in, so a catalogue too large is refused after three
+    // round trips to somebody else's shop rather than fifty.
+    const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
+    if (!read.ok) {
+      await resulted({ outcome: "blocked", reason_code: "catalogue_unavailable" });
+      return await drawTheShop(person, { problem: read.why, ...saved }, 502);
+    }
+
+    const inspections = await mapAtMost(read.products, 4, async (product) => ({
+      product,
+      inspected: await inspectProduct(
+        connection,
+        merchantItemIdFor(connection.shopUrl, String(product.id)),
+      ),
+    }));
+    // The shop's own settings, as every product check read them, name what it
+    // sells in; noted for the screen, which asks for a rate in that currency.
+    const sells = currencyRead(inspections.map((one) => one.inspected));
+    if (sells !== null) await shops.noteCurrency(person.id, sells);
+    let rate: string | null = null;
+    if (sells !== null && sells.code !== "USD") {
+      const current = await shops.currentRate(person.id, originOf(connection), sells.code);
+      if (current === null) {
+        // A rate is a setting of the merchant's, as a wallet or a site is.
+        await resulted({ outcome: "blocked", reason_code: "profile_missing" });
+        noted(
+          person,
+          `pressed Import for a shop selling in ${sells.code} with no rate set, so nothing was published`,
+        );
+        return await drawTheShop(
+          person,
+          {
+            rate: {
+              ...saved.rate,
+              problem:
+                `Nothing was imported: your shop sells in ${sells.code}, and no rate is set for` +
+                " it yet. Set one below; saving it imports your products at it.",
+            },
+          },
+          409,
+        );
+      }
+      rate = current.rate;
+    }
+
+    const qualified = inspections.map(({ product, inspected }) => {
+      if (!inspected.ok) {
+        return { ...product, qualification_problem: inspected.why };
+      }
+      const publicPrice = decimalOfMinorUnits(
+        product.prices.price,
+        product.prices.currency_minor_unit,
+      );
+      // Compared only at the decimals the shop's settings write; a catalogue
+      // at others is refused by `cardsFromTheShop` in words naming the
+      // shop's Number of decimals, whereas comparing "25" with "25.00" here
+      // would call two equal prices different.
+      if (
+        product.prices.currency_minor_unit === minorOf(inspected.product.price.amount)?.decimals &&
+        (publicPrice !== inspected.product.price.amount ||
+          product.prices.currency_code !== inspected.product.price.currency)
+      ) {
+        return {
+          ...product,
+          qualification_problem:
+            "The public catalog price does not match the protected WooCommerce product price.",
+        };
+      }
+      // The Store API's list does not say whether a product is virtual or a
+      // download, so the class the protected check found is written in.
+      const checked = inspected.product;
+      return {
+        ...product,
+        status: "publish",
+        virtual: checked.kind === "download",
+        downloadable: checked.kind === "download",
+        manage_stock: false,
+        download_limit: -1,
+        download_expiry: -1,
+        downloads:
+          checked.kind === "download"
+            ? [{ id: checked.downloadId, name: checked.fileName, file: "protected-by-woo" }]
+            : [],
+        qualification_problem: null,
+      };
+    });
+    const { cards, skipped } =
+      sells === null
+        ? cardsFromTheShop(qualified, connection.shopUrl)
+        : cardsFromTheShop(qualified, connection.shopUrl, {
+            currency: sells.code,
+            decimals: sells.decimals,
+            rate,
+          });
+    const gateway = gatewayAs(person);
+    const outcomes: ImportOutcome[] = [];
+    let firstRefusal: ReasonCode | null = null;
+    for (const [index, one] of cards.entries()) {
+      const published = await publishedOrNot(gateway, one.card);
+      if (!published.ok) {
+        // The gateway did not answer, or answered with something else: not a
+        // refused card, and said as what it is.
+        outcomes.push({ id: one.id, title: one.title, failed: published.why });
+        outcomes.push(
+          ...cards
+            .slice(index + 1)
+            .map((later) => ({ id: later.id, title: later.title, notAttempted: true as const })),
+        );
+        break;
+      }
+      if (published.document.ok) {
+        outcomes.push({ id: one.id, title: one.title, published: published.document.id });
+        continue;
+      }
+      firstRefusal ??= publishRefusalReason(
+        published.document.error.problems.map((problem) => problem.code),
+      );
+      // The gateway's findings word for word, telling the merchant which
+      // field to change in their shop; the shop's site is the exception, set
+      // in Settings by the person here rather than through the API.
+      outcomes.push({
+        id: one.id,
+        title: one.title,
+        problems: published.document.error.problems.map((problem) =>
+          problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
+            ? SITE_IN_SETTINGS
+            : problem.path.length === 0
+              ? problem.message
+              : `${problem.path.join(".")}: ${problem.message}`,
+        ),
+      });
+    }
+
+    const counted = (kind: "published" | "problems" | "failed" | "notAttempted") =>
+      outcomes.filter((one) => kind in one).length;
+    // A product left unattempted after a failure is passed over like one the
+    // shop's catalogue could not make a card of.
+    const counts: ImportCounts = {
+      imported_count: counted("published"),
+      failed_count: counted("problems") + counted("failed"),
+      skipped_count: skipped.length + counted("notAttempted"),
+    };
+    await resulted(
+      // The card whose publication failed may have been published.
+      counted("failed") > 0
+        ? { outcome: "unknown", reason_code: "internal_error" }
+        : counts.failed_count === 0
+          ? { outcome: "completed" }
+          : counts.imported_count > 0
+            ? { outcome: "partial" }
+            : { outcome: "blocked", reason_code: firstRefusal ?? "invalid_input" },
+      counts,
+    );
+    noted(
+      person,
+      `imported ${counts.imported_count} of` +
+        ` ${read.products.length} products from ${connection.shopUrl}`,
+    );
+    return {
+      kind: "view",
+      view: wooImportView(connection.shopUrl, outcomes, skipped, rateSaved),
     };
   };
 
@@ -389,17 +654,38 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         callbackUrl: `${whereWeAre}/woocommerce/callback`,
       });
 
-      // A shop priced in another currency would have every product refused at
-      // import, so it is refused before the switch below takes the code's
-      // cards off sale. Asked alongside the grant screen, so Connect waits for
-      // the slower of the two rather than both in turn.
+      // A shop that could sell nothing, in a currency or at decimals out of
+      // scope, is refused before the switch below takes the code's cards off
+      // sale. Asked alongside the grant screen, so Connect waits for the slower
+      // of the two rather than both in turn.
       //
       // A shop with plain permalinks answers the grant address with its own
       // front page and a 200, so a merchant sent there would land on their
       // shop with nothing to report.
-      const [pricedIn, looked] = await Promise.all([currency(shopUrl), grantScreen(authorize)]);
-      if (pricedIn !== null && pricedIn !== "USD") {
-        return await drawTheShop(person, { problem: notPricedInDollars(pricedIn), typed }, 400);
+      const [sampled, looked] = await Promise.all([sample(shopUrl), grantScreen(authorize)]);
+      const decimals = sampled === null ? null : shopDecimalsOf(String(sampled.decimals));
+      if (sampled !== null && sampled.currency !== "USD") {
+        if (decimals === null) {
+          return await drawTheShop(
+            person,
+            { problem: writesOtherDecimals(sampled.currency, sampled.decimals), typed },
+            400,
+          );
+        }
+        const listed = await reference(sampled.currency);
+        if (!listed.ok) {
+          return await drawTheShop(
+            person,
+            {
+              problem:
+                listed.listed === false
+                  ? noReferenceFor(sampled.currency)
+                  : referenceUnanswered(sampled.currency),
+              typed,
+            },
+            listed.listed === false ? 400 : 503,
+          );
+        }
       }
       if (!looked.ok) {
         return await drawTheShop(person, { problem: looked.why, typed }, 400);
@@ -423,6 +709,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         token,
         accountId: person.id,
         shopUrl,
+        currency:
+          sampled === null || decimals === null ? null : { code: sampled.currency, decimals },
         startedAt,
         expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
       });
@@ -430,174 +718,159 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return { kind: "redirect", location: authorize };
     },
 
-    async importCatalogue(person) {
-      const resulted = (settled: Parameters<typeof importResult>[1], counts?: ImportCounts) =>
-        shops.recordAnalytics(importResult(person, settled, counts), new Date());
+    importCatalogue: async (person) => await importFor(person, null),
+
+    async setRate(person, form) {
       const connection = await shops.connectionOf(person.id);
       if (connection === null) {
-        await resulted({ outcome: "blocked", reason_code: "no_connection" });
         return { kind: "redirect", location: `${base}/woocommerce` };
       }
-
-      // Asked before the shop is read, like the settings below: a merchant
-      // selling through their code would have every imported card refused, so
-      // the shop screen offers them the switch instead.
-      const integration = await gatewayAs(person).integration();
-      if (!integration.ok) {
-        await resulted({ outcome: "failed", reason_code: "internal_error" });
-        return problemOf(integration);
-      }
-      if (integration.document.through !== "woocommerce") {
-        await resulted({ outcome: "blocked", reason_code: "integration_mismatch" });
+      const currency = connection.currency;
+      if (currency === null || currency.code === "USD") {
         return await drawTheShop(
           person,
           {
-            switching:
-              "Nothing was imported: you sell through your own code, so nothing imported would sell. Sell through this shop first.",
+            problem:
+              currency === null
+                ? "Nothing was saved: Agentify has not read your shop's currency yet. Import your products once, which reads it."
+                : "Nothing was saved: your shop sells in US dollars, which need no rate.",
           },
           409,
         );
       }
-
-      // Asked before the shop: the gateway refuses every card of a merchant
-      // missing any of these, so importing would inspect every product for
-      // nothing and repeat the refusal per product in words naming an API
-      // route. A gateway that cannot answer this would not take a card either.
-      const unset = await unsetOf(gatewayAs(person));
-      if (!unset.ok) {
-        await resulted({ outcome: "failed", reason_code: "internal_error" });
-        return problemOf(unset);
-      }
-      if (unset.document.length > 0) {
-        // Counted as the gateway counts a card refused for the same lack.
-        await resulted({ outcome: "blocked", reason_code: publishRefusalReason(unset.document) });
-        noted(
+      const named = once(form.getAll("rate"));
+      const typed = typeof named === "string" ? named.trim() : "";
+      const asked = once(form.getAll("currency"));
+      if (asked !== currency.code) {
+        return await drawTheShop(
           person,
-          `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
-            ` ${connection.shopUrl} was not read and nothing was published`,
+          {
+            rate: {
+              problem:
+                `Nothing was saved: your shop now sells in ${currency.code}, not` +
+                ` ${typeof asked === "string" ? asked : "the currency this page was drawn for"}.` +
+                ` Set a rate for ${currency.code} below.`,
+            },
+          },
+          409,
         );
-        return await drawTheShop(person, { refused: unset.document }, 409);
       }
-
-      // The ceiling goes in, so a catalogue too large is refused after three
-      // round trips to somebody else's shop rather than fifty.
-      const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
-      if (!read.ok) {
-        await resulted({ outcome: "blocked", reason_code: "catalogue_unavailable" });
-        return await drawTheShop(person, { problem: read.why }, 502);
+      const rate = rateWrittenAs(typed);
+      if (rate === null) {
+        return await drawTheShop(
+          person,
+          {
+            rate: {
+              typed,
+              problem:
+                `Nothing was saved. Write how many ${currency.code} one US dollar buys in digits,` +
+                " with a dot only before a fraction of at most six digits and nothing between" +
+                " thousands: 18000, not 18,000 or 18 000.",
+            },
+          },
+          400,
+        );
       }
-
-      const qualified = await mapAtMost(read.products, 4, async (product) => {
-        const inspected = await inspectProduct(
-          connection,
-          merchantItemIdFor(connection.shopUrl, String(product.id)),
+      const read = await reference(currency.code);
+      if (!read.ok && read.listed === false) {
+        return await drawTheShop(
+          person,
+          {
+            rate: {
+              typed,
+              problem:
+                `Nothing was saved: Coinbase gives no rate for ${currency.code}, and Agentify sells` +
+                " from a shop in another currency than US dollars only where it can show you" +
+                " Coinbase's rate beside yours.",
+            },
+          },
+          409,
         );
-        if (!inspected.ok) {
-          return { ...product, qualification_problem: inspected.why };
-        }
-        const publicPrice = decimalOfMinorUnits(
-          product.prices.price,
-          product.prices.currency_minor_unit,
-        );
-        // Compared only at the scale the connector sells at; a catalogue at
-        // another scale is refused by `cardsFromTheShop` in words naming the
-        // shop's Number of decimals, whereas comparing "25" with "25.00" here
-        // would call two equal prices different.
-        if (
-          product.prices.currency_minor_unit === USD_SCALE &&
-          (publicPrice !== inspected.product.price.amount ||
-            product.prices.currency_code !== inspected.product.price.currency)
-        ) {
-          return {
-            ...product,
-            qualification_problem:
-              "The public catalog price does not match the protected WooCommerce product price.",
-          };
-        }
-        // The Store API's list does not say whether a product is virtual or a
-        // download, so the class the protected check found is written in.
-        const checked = inspected.product;
-        return {
-          ...product,
-          status: "publish",
-          virtual: checked.kind === "download",
-          downloadable: checked.kind === "download",
-          manage_stock: false,
-          download_limit: -1,
-          download_expiry: -1,
-          downloads:
-            checked.kind === "download"
-              ? [{ id: checked.downloadId, name: checked.fileName, file: "protected-by-woo" }]
-              : [],
-          qualification_problem: null,
-        };
-      });
-      const { cards, skipped } = cardsFromTheShop(qualified, connection.shopUrl);
-      const gateway = gatewayAs(person);
-      const outcomes: ImportOutcome[] = [];
-      let firstRefusal: ReasonCode | null = null;
-      for (const [index, one] of cards.entries()) {
-        const published = await publishedOrNot(gateway, one.card);
-        if (!published.ok) {
-          // The gateway did not answer, or answered with something else: not a
-          // refused card, and said as what it is.
-          outcomes.push({ id: one.id, title: one.title, failed: published.why });
-          outcomes.push(
-            ...cards
-              .slice(index + 1)
-              .map((later) => ({ id: later.id, title: later.title, notAttempted: true as const })),
-          );
-          break;
-        }
-        if (published.document.ok) {
-          outcomes.push({ id: one.id, title: one.title, published: published.document.id });
-          continue;
-        }
-        firstRefusal ??= publishRefusalReason(
-          published.document.error.problems.map((problem) => problem.code),
-        );
-        // The gateway's findings word for word, telling the merchant which
-        // field to change in their shop; the shop's site is the exception, set
-        // in Settings by the person here rather than through the API.
-        outcomes.push({
-          id: one.id,
-          title: one.title,
-          problems: published.document.error.problems.map((problem) =>
-            problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
-              ? SITE_IN_SETTINGS
-              : problem.path.length === 0
-                ? problem.message
-                : `${problem.path.join(".")}: ${problem.message}`,
-          ),
-        });
       }
-
-      const counted = (kind: "published" | "problems" | "failed" | "notAttempted") =>
-        outcomes.filter((one) => kind in one).length;
-      // A product left unattempted after a failure is passed over like one the
-      // shop's catalogue could not make a card of.
-      const counts: ImportCounts = {
-        imported_count: counted("published"),
-        failed_count: counted("problems") + counted("failed"),
-        skipped_count: skipped.length + counted("notAttempted"),
-      };
-      await resulted(
-        // The card whose publication failed may have been published.
-        counted("failed") > 0
-          ? { outcome: "unknown", reason_code: "internal_error" }
-          : counts.failed_count === 0
-            ? { outcome: "completed" }
-            : counts.imported_count > 0
-              ? { outcome: "partial" }
-              : { outcome: "blocked", reason_code: firstRefusal ?? "invalid_input" },
-        counts,
+      // The guard catches a digit too many or too few and a rate written the
+      // wrong way round; it never refuses a rate the merchant typed twice.
+      const gap = read.ok ? gapOf(rate, read.rate) : null;
+      const confirmed = gap?.far === true;
+      const again = once(form.getAll("again"));
+      if (read.ok && gap?.far === true && rateWrittenAs(String(again ?? "")) !== rate) {
+        const example = await sample(connection.shopUrl);
+        const product =
+          example?.product === null ||
+          example === null ||
+          example.currency !== currency.code ||
+          minorOf(example.product.price)?.decimals !== currency.decimals
+            ? null
+            : example.product;
+        const costs =
+          product === null
+            ? "What one of your products would cost could not be shown, because your shop's catalogue did not answer just now."
+            : `So ${product.name}, priced ${product.price} ${currency.code}, would sell for` +
+              ` ${dollarsAt(product.price, rate) ?? "?"} USD instead of` +
+              ` ${dollarsAt(product.price, read.rate) ?? "?"} USD.`;
+        return await drawTheShop(
+          person,
+          {
+            rate: {
+              typed: rate,
+              again:
+                `${rate} ${currency.code} per US dollar is ${gap.shown} Coinbase's ${read.rate},` +
+                ` read at ${moment(read.readAt.toISOString())}. ${costs} Type the rate again to` +
+                " save it; if you wrote a dot between thousands, leave it out.",
+            },
+          },
+          409,
+        );
+      }
+      const shopOrigin = originOf(connection);
+      const previous = await shops.currentRate(person.id, shopOrigin, currency.code);
+      const setAt = new Date();
+      // Handed over before the rate is written: a rate nobody was told of could
+      // sell the shop's goods for cents unseen, so no notice means no rate.
+      const handed = await postman(
+        rateNoticeMessage({
+          to: person.email,
+          shopOrigin,
+          currency: currency.code,
+          rate,
+          previous: previous?.rate ?? null,
+          setAt,
+          setBy: person.email,
+          screen: `${whereWeAre}/woocommerce`,
+        }),
       );
+      if (handed !== "accepted") {
+        return await drawTheShop(
+          person,
+          {
+            rate: {
+              typed: rate,
+              problem:
+                `Nothing was saved: every new rate is mailed to ${person.email}, and that message` +
+                " could not be sent just now. Try again in a moment.",
+            },
+          },
+          503,
+        );
+      }
+      await shops.saveRate(person.id, shopOrigin, {
+        currency: currency.code,
+        rate,
+        setAt,
+        setBy: person.email,
+        reference: read.ok ? { rate: read.rate, source: read.source, readAt: read.readAt } : null,
+        confirmed,
+      });
       noted(
         person,
-        `imported ${counts.imported_count} of` +
-          ` ${read.products.length} products from ${connection.shopUrl}`,
+        `set the rate of the WooCommerce shop at ${shopOrigin} to ${rate} ${currency.code} per US dollar`,
       );
-      return { kind: "view", view: wooImportView(connection.shopUrl, outcomes, skipped) };
+      return await importFor(
+        person,
+        read.ok
+          ? `Your rate of ${rate} ${currency.code} per US dollar was saved.`
+          : `Your rate of ${rate} ${currency.code} per US dollar was saved. Coinbase's rate could` +
+              " not be read just now, so this rate was not compared with anything.",
+      );
     },
 
     async switchToShop(person) {
