@@ -48,7 +48,10 @@ goods nothing is there to make; a synchronous purchase ends uncharged on its
 own when nobody answers. It is asked when the purchase is priced and again
 when the payment arrives, so a price named just before your process went quiet
 is not charged after. Ten minutes without a poll is when it starts refusing,
-and Agentify notices within half a minute after that. A shop connected through
+and Agentify notices within half a minute after that. A process whose every
+handler is busy asks for no new work and so does not poll either: one held up
+that long by slow handlers is counted as quiet too, which keeps buyers from
+paying for orders it has no room to take. A shop connected through
 WooCommerce is never refused for it, because its orders are filled inside
 Agentify; a shop that fails answers its price question with the failure.
 Both refusals are retryable, and neither charges anything.
