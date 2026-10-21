@@ -1,7 +1,7 @@
 # 0039. What an ad brought is reported to its tracker
 
 Date: 2026-10-15
-Status: accepted (the product owner, 2026-10-19 and 2026-10-21)
+Status: accepted; the product owner's words are quoted where they are his
 
 ## Context
 
