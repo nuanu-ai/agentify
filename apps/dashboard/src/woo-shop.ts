@@ -373,8 +373,8 @@ export const inspectProductInTheShop = async (
     // shop, so switching it off for this would stop tax for every customer.
     unsupported.push(
       "WooCommerce calculates tax in this shop, which this connector cannot sell from yet" +
-        " (turning tax calculation off would stop it for every order the shop takes, so it is" +
-        " not the way round this)",
+        " (turning tax calculation off would stop WooCommerce calculating tax on every order the" +
+        " shop takes, so it is not the way round this)",
     );
   }
   if (kind === "download") {
