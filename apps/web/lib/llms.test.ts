@@ -79,9 +79,16 @@ describe("llms.txt", () => {
     // another release's instructions, and buys with real money.
     const test = on(TEST, "test");
 
+    const [first = "", ...rest] = test.split("\n");
+    // Every mention of the live site's name, with or without a scheme or a path.
+    const liveNamed = (text: string): string[] =>
+      text.replaceAll(TEST, "").match(/agentify\.ad\S*/gi) ?? [];
+
     expect(linksIn(test).length).toBeGreaterThan(0);
     for (const link of linksIn(test)) expect(link.startsWith(`${TEST}/`), link).toBe(true);
-    expect(test).not.toContain(`${LIVE}/`);
+    expect(first).toContain(LIVE);
+    expect(liveNamed(first)).toEqual(["agentify.ad"]);
+    expect(liveNamed(rest.join("\n"))).toEqual([]);
     expect(linksIn(test)).toContain(`${TEST}/x402/catalog`);
   });
 
