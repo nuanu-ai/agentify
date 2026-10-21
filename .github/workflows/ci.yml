@@ -152,11 +152,13 @@ jobs:
       # process comes up, answers its probe and a page, and stops when told.
       - run: pnpm scanner:test:start
       # Runs the site just built, on loopback, so it comes after the build. The
-      # built server reads APP_BASE_URL when it answers, not when it was built,
-      # for the absolute URLs in its robots and sitemap.
+      # built server reads APP_BASE_URL and AGENTIFY_SURFACE_MODE when it
+      # answers, not when it was built: the live site's address for the absolute
+      # URLs in its robots and sitemap, and the live channel for its llms.txt.
       - run: pnpm scanner:self-readiness
         env:
           APP_BASE_URL: https://agentify.ad
+          AGENTIFY_SURFACE_MODE: live
           DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
           MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
       # The door to the operator's dashboard is the router's answer, so it is
