@@ -122,14 +122,14 @@ describe("what goes in", () => {
 
 describe("a refusal", () => {
   it("reaches the page in the words and under the status the route at the door gives it", async () => {
-    // A merchant on the keys screen and their engineer reading the API are told
-    // the same thing about a missing key.
+    // A merchant on the cards screen and their engineer reading the API are
+    // told the same thing about a missing product.
     const harnessed = await started();
     const served = await serve(harnessed);
     if (open !== null) open.served = served;
 
-    const onThePage = await asTheOwner(harnessed).disableKey("mk_nobody_was_issued");
-    const atTheDoor = await served.call("POST", "/v0/keys/mk_nobody_was_issued/disable", {
+    const onThePage = await asTheOwner(harnessed).pauseCard("item_nobody_published", true);
+    const atTheDoor = await served.call("POST", "/v0/cards/item_nobody_published/pause", {
       headers: { authorization: `Bearer ${harnessed.merchant.key}` },
     });
 
@@ -140,7 +140,7 @@ describe("a refusal", () => {
       code: refused.code,
       why: refused.message,
     });
-    expect(refused.code).toBe("no_such_key");
+    expect(refused.code).toBe("no_such_item");
   });
 
   it("answers an order of another merchant's as one that is not there", async () => {

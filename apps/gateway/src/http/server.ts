@@ -509,8 +509,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   call_refused: false,
 
   not_authorised: false,
-  no_such_key: false,
-  key_opened_this_call: false,
 
   no_such_route: false,
   no_such_item: false,

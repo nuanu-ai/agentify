@@ -8,15 +8,15 @@
  */
 
 /**
- * The hundred characters a key's label is held to at the door, plus one for
- * the ellipsis that says a longer label was cut.
+ * The hundred characters a key's label is held to when it is issued, plus one
+ * for the ellipsis that says a longer label was cut.
  */
 const LONGEST_ANNOUNCED_LABEL = 101;
 
 /**
  * A key's label as an announcement carries it: one line, cut to a hundred
  * characters with an ellipsis saying so. Stored labels are not all held to the
- * door's limit, so every announced label goes through this.
+ * issuing limit, so every announced label goes through this.
  */
 export function announcedLabel(label: string): string {
   const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
@@ -33,20 +33,11 @@ export function announcedLabel(label: string): string {
 }
 
 /**
- * Who asked for a wallet change: the account a dashboard session is signed in
- * as. It names the account, not a person, because a stolen session is signed
- * in as the owner all the same.
+ * Who asked for a wallet change or a new key: the account a dashboard session
+ * is signed in as. It names the account, not a person, because a stolen
+ * session is signed in as the owner all the same.
  */
 export type AskedInTheDashboard = { readonly kind: "signed_in"; readonly email: string };
-
-/**
- * Who asked for a new key: a dashboard session, or a key of the merchant's own
- * code named by its label and identifier as their list of keys shows it, so
- * the reader can find and disable it. The label is always `announcedLabel`'s.
- */
-export type AskedWith =
-  | AskedInTheDashboard
-  | { readonly kind: "merchant_code"; readonly id: string; readonly label: string };
 
 /** An address in the mixed-case checksummed spelling a wallet shows. */
 type Wallet = string;
@@ -105,7 +96,7 @@ interface KeyIssued {
   readonly kind: "key_issued";
   readonly merchant_id: string;
   readonly key: { readonly id: string; readonly label: string };
-  readonly asked_with: AskedWith;
+  readonly asked_with: AskedInTheDashboard;
 }
 
 export type Announcement = WalletSet | WalletChange | WalletChangeCancelled | KeyIssued;

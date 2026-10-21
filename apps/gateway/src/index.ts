@@ -30,7 +30,6 @@ export {
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
 } from "./http/merchant-answers.js";

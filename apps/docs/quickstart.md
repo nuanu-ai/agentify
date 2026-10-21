@@ -103,10 +103,11 @@ characters that tells it from the next one, and copy it: the secret is shown
 once. Keep it with your other secrets and out of source control.
 
 Any key you issue can do everything your code can: publish cards, read orders
-and receipts, take a card or all selling off sale and put it back, set your
-seller name and site, and issue and revoke other keys. None of them can change
-the wallet. So if a key leaks, revoke it on API Keys together with every key
-you did not create yourself, and issue a fresh one for your code.
+and receipts, take a card or all selling off sale and put it back, and set your
+seller name and site. None of them can change the wallet, issue another key or
+revoke one; only the dashboard does those. So if a key leaks, revoke it on API
+Keys and issue a fresh one for your code: once revoked it can do nothing more,
+and it cannot have left another key of its own behind.
 
 This step worked if Settings shows your seller name and your wallet and you
 hold a key that starts with `csk_test_`.

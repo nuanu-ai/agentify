@@ -125,8 +125,8 @@ describe("a wallet change", () => {
 
 describe("a key's label, which somebody else may have written", () => {
   it("is written into the message so that no mail client makes a link of it", async () => {
-    // A leaked key can issue a key named like an instruction with an address in
-    // it, so the label is shown as data: quoted, on one line, with nothing a
+    // Whoever is signed in to the dashboard, the owner or not, can name a key
+    // like an instruction with an address in it, so the label is shown as data: quoted, on one line, with nothing a
     // mail client would turn into a link.
     const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
 

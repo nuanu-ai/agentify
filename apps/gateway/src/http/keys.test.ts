@@ -1,13 +1,13 @@
 /**
- * Registering a merchant, and the keys they keep afterwards. A merchant and
- * their first key are made in-process, the way the dashboard makes them;
- * everything after goes through `serve`, so what is asserted is the answer a
- * merchant's own client receives. Rules about another merchant's keys, or
+ * Registering a merchant, and the keys they keep afterwards. Merchants and
+ * their keys are made, listed and disabled in-process, the way the dashboard
+ * does it, since no key reaches those calls; what a key then opens goes
+ * through `serve`, so it is the answer a merchant's own client receives. Rules about another merchant's keys, or
  * about registering twice, are tested with two merchants, because one cannot
  * show them.
  */
 
-import type { Card, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { keyDigest } from "../app/merchants.js";
@@ -80,12 +80,6 @@ const readyToSell = async (harnessed: Harness, served: Served, made: Registered,
     SIGNED_IN,
   );
   expect(typeof paidAt, JSON.stringify(paidAt)).toBe("object");
-};
-
-const keysWith = async (served: Served, key: string): Promise<MerchantKeyList> => {
-  const answered = await served.call("GET", "/v0/keys", { headers: bearer(key) });
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return answered.body as MerchantKeyList;
 };
 
 /** Whether a key still opens the door, asked with the smallest call there is. */
@@ -248,222 +242,127 @@ describe("registering a merchant", () => {
   });
 });
 
+/** The ids of a merchant's keys, as the dashboard lists them. */
+const keyIdsOf = async (harnessed: Harness, merchantId: string): Promise<string[]> =>
+  (await harnessed.gateway.merchantKeys(merchantId)).map((key) => key.id);
+
+/** One more key, issued the way the dashboard issues it. */
+const issued = (harnessed: Harness, merchantId: string, label: string) =>
+  harnessed.gateway.issueMerchantKey(merchantId, label, SIGNED_IN);
+
 describe("the keys a merchant holds", () => {
-  it("lists every key of theirs, and the key the call came in on is one of them", async () => {
-    // The calling key is always on the list, so a screen can offer to disable
-    // every row but that one.
-    const { served, harnessed } = await started();
-    const made = await registered(harnessed);
-    const worker = await issued(served, made.secret, "the worker on the small box");
-
-    const asTheFirst = await keysWith(served, made.secret);
-    const asTheWorker = await keysWith(served, worker.secret);
-
-    expect(asTheFirst.keys.map((key) => key.id)).toStrictEqual([made.keyId, worker.key.id]);
-    expect(asTheWorker.keys.map((key) => key.id)).toStrictEqual([made.keyId, worker.key.id]);
-    expect(asTheFirst.keys.map((key) => key.id)).toContain(asTheFirst.this_call);
-  });
-
-  it("names a different key when the call is made with a different key", async () => {
-    // `this_call` is the key that opened this call, not the merchant's first
-    // key or the list's first row. Named wrongly, a screen would offer to
-    // disable the one key the gateway answers 409 to.
-    const { served, harnessed } = await started();
-    const made = await registered(harnessed);
-    const second = await issued(served, made.secret, "a second worker");
-
-    const asTheFirst = await keysWith(served, made.secret);
-    const asTheSecond = await keysWith(served, second.secret);
-
-    expect(asTheFirst.this_call).toBe(made.keyId);
-    expect(asTheSecond.this_call).toBe(second.key.id);
-    // The same keys are listed both times. Only ids are compared: each read is
-    // itself a call and marks its own key as used, so the rows differ.
-    expect(asTheSecond.keys.map((key) => key.id)).toStrictEqual(
-      asTheFirst.keys.map((key) => key.id),
-    );
-  });
-
-  it("lists no key of another merchant's", async () => {
+  it("lists every key of theirs and no key of another merchant's", async () => {
     // Another merchant's list would reveal how many workers they run and what
     // each is called. An unscoped list passes every single-merchant assertion.
-    const { served, harnessed } = await started();
+    const { harnessed } = await started();
     const first = await registered(harnessed);
     const second = await registered(harnessed);
+    const worker = await issued(harnessed, first.merchant_id, "the worker on the small box");
 
-    const forFirst = await keysWith(served, first.secret);
-    const forSecond = await keysWith(served, second.secret);
-
-    expect(forFirst.keys.map((key) => key.id)).toStrictEqual([first.keyId]);
-    expect(forSecond.keys.map((key) => key.id)).toStrictEqual([second.keyId]);
+    expect(await keyIdsOf(harnessed, first.merchant_id)).toStrictEqual([
+      first.keyId,
+      worker.key.id,
+    ]);
+    expect(await keyIdsOf(harnessed, second.merchant_id)).toStrictEqual([second.keyId]);
   });
 
   it("keeps a revoked key in the list with the instant it stopped", async () => {
     // After an incident the question is when a key stopped working.
-    const { served, harnessed } = await started();
+    const { harnessed } = await started();
     const made = await registered(harnessed);
-    const second = await issued(served, made.secret, "a second worker");
+    const second = await issued(harnessed, made.merchant_id, "a second worker");
 
-    await served.call("POST", `/v0/keys/${second.key.id}/disable`, {
-      headers: bearer(made.secret),
-    });
+    await harnessed.gateway.disableMerchantKey(made.merchant_id, second.key.id);
 
-    const listed = await keysWith(served, made.secret);
-    const revoked = listed.keys.find((key) => key.id === second.key.id);
+    const listed = await harnessed.gateway.merchantKeys(made.merchant_id);
+    const revoked = listed.find((key) => key.id === second.key.id);
     expect(revoked?.disabled_at).toBe(new Date(harnessed.now()).toISOString());
   });
 });
 
-/** One key issued through the route, with the answer read back. */
-const issued = async (
-  served: Served,
-  key: string,
-  label: string,
-): Promise<{ key: { id: string; label: string }; secret: string }> => {
-  const answered = await served.call("POST", "/v0/keys", { body: { label }, headers: bearer(key) });
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return answered.body as { key: { id: string; label: string }; secret: string };
-};
-
 describe("issuing another key", () => {
-  it("issues a key that opens the door, leaving the one that asked for it working", async () => {
+  it("issues a key that opens the door, leaving the merchant's others working", async () => {
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
 
-    const second = await issued(served, made.secret, "a second worker");
+    const second = await issued(harnessed, made.merchant_id, "a second worker");
 
     expect(second.key.label).toBe("a second worker");
     expect(await opensTheDoor(served, second.secret)).toBe(true);
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
 
-  it("issues the key to the merchant who asked and to nobody else", async () => {
+  it("issues the key to the merchant it was asked for and to nobody else", async () => {
     const { served, harnessed } = await started();
     const first = await registered(harnessed);
     const second = await registered(harnessed);
     await readyToSell(harnessed, served, first, "First shop");
     const itemId = await publish(served, first.secret, cardFor("a-room", "A room"));
 
-    const another = await issued(served, first.secret, "another of the first shop's");
+    const another = await issued(harnessed, first.merchant_id, "another of the first shop's");
 
     const seen = await served.call("GET", "/v0/cards", { headers: bearer(another.secret) });
     expect((seen.body as { cards: { id: string }[] }).cards.map((card) => card.id)).toStrictEqual([
       itemId,
     ]);
-    expect((await keysWith(served, second.secret)).keys.map((key) => key.id)).toStrictEqual([
-      second.keyId,
-    ]);
+    expect(await keyIdsOf(harnessed, second.merchant_id)).toStrictEqual([second.keyId]);
   });
 });
 
 describe("disabling a key", () => {
-  it("stops the named key and leaves the one that asked for it working", async () => {
+  it("stops the named key and leaves the merchant's others working", async () => {
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
-    const second = await issued(served, made.secret, "a second worker");
+    const second = await issued(harnessed, made.merchant_id, "a second worker");
 
-    const answered = await served.call("POST", `/v0/keys/${second.key.id}/disable`, {
-      headers: bearer(made.secret),
-    });
+    const disabled = await harnessed.gateway.disableMerchantKey(made.merchant_id, second.key.id);
 
-    expect(answered.status).toBe(200);
-    expect(
-      (answered.body as { key: { disabled_at: string | null } }).key.disabled_at,
-    ).not.toBeNull();
+    expect(disabled?.key.disabled_at).not.toBeNull();
     expect(await opensTheDoor(served, second.secret)).toBe(false);
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
 
-  it("refuses to disable the key the call was made with", async () => {
-    // Otherwise one call would lock out whoever holds that key.
+  it("disables any key from the dashboard, the one the merchant's code calls with too", async () => {
+    // A signed-in session calls with no key, so no key is its own to keep.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
 
-    const answered = await served.call("POST", `/v0/keys/${made.keyId}/disable`, {
-      headers: bearer(made.secret),
-    });
-
-    expect(answered.status).toBe(409);
-    expect((answered.body as { error: { code: string } }).error.code).toBe("key_opened_this_call");
-    // A refusal that had already written the revocation would be worse than no
-    // rule at all.
-    expect(await opensTheDoor(served, made.secret)).toBe(true);
-  });
-
-  it("refuses the caller's own key even where the merchant has others", async () => {
-    // The rule is about the calling key, not about the last working key.
-    const { served, harnessed } = await started();
-    const made = await registered(harnessed);
-    const worker = await issued(served, made.secret, "the worker on the small box");
-
-    const answered = await served.call("POST", `/v0/keys/${worker.key.id}/disable`, {
-      headers: bearer(worker.secret),
-    });
-
-    expect(answered.status).toBe(409);
-    expect(await opensTheDoor(served, worker.secret)).toBe(true);
-  });
-
-  it("disables any key from the dashboard, which holds none", async () => {
-    // A signed-in session calls with no key, so it may disable any key,
-    // including the one the merchant's code calls with.
-    const { served, harnessed } = await started();
-    const made = await registered(harnessed);
-
-    const disabled = await harnessed.gateway.disableMerchantKey(
-      made.merchant_id,
-      made.keyId,
-      SIGNED_IN,
-    );
+    const disabled = await harnessed.gateway.disableMerchantKey(made.merchant_id, made.keyId);
 
     expect(disabled).toMatchObject({ key: { id: made.keyId } });
     expect(await opensTheDoor(served, made.secret)).toBe(false);
   });
 
   it("answers another merchant's key exactly as a key that never existed", async () => {
-    // Answered differently, a caller walking identifiers would learn which of
+    // Answered differently, a session walking identifiers would learn which of
     // them are other merchants' real keys.
     const { served, harnessed } = await started();
     const first = await registered(harnessed);
     const second = await registered(harnessed);
 
-    const theirs = await served.call("POST", `/v0/keys/${second.keyId}/disable`, {
-      headers: bearer(first.secret),
-    });
-    const nobodys = await served.call("POST", "/v0/keys/mk_nobody_was_issued/disable", {
-      headers: bearer(first.secret),
-    });
+    const theirs = await harnessed.gateway.disableMerchantKey(first.merchant_id, second.keyId);
+    const nobodys = await harnessed.gateway.disableMerchantKey(
+      first.merchant_id,
+      "mk_nobody_was_issued",
+    );
 
-    expect(theirs.status).toBe(404);
-    expect(theirs.body).toStrictEqual(nobodys.body);
+    expect(theirs).toBeNull();
+    expect(nobodys).toBeNull();
     expect(await opensTheDoor(served, second.secret)).toBe(true);
   });
 
   it("answers a second disabling the same way and keeps the first instant", async () => {
     // A retry after a dropped connection must not move the instant an incident
     // is reconstructed from.
-    const { served, harnessed } = await started();
+    const { harnessed } = await started();
     const made = await registered(harnessed);
-    const second = await issued(served, made.secret, "a second worker");
+    const second = await issued(harnessed, made.merchant_id, "a second worker");
 
-    const first = await served.call("POST", `/v0/keys/${second.key.id}/disable`, {
-      headers: bearer(made.secret),
-    });
+    const first = await harnessed.gateway.disableMerchantKey(made.merchant_id, second.key.id);
     harnessed.advance(60_000);
-    const again = await served.call("POST", `/v0/keys/${second.key.id}/disable`, {
-      headers: bearer(made.secret),
-    });
+    const again = await harnessed.gateway.disableMerchantKey(made.merchant_id, second.key.id);
 
-    expect(again.status).toBe(200);
-    expect(again.body).toStrictEqual(first.body);
-  });
-
-  it("takes no key of a merchant who presents none", async () => {
-    const { served } = await started();
-
-    expect((await served.call("GET", "/v0/keys")).status).toBe(401);
-    expect((await served.call("POST", "/v0/keys", { body: { label: "x" } })).status).toBe(401);
-    expect((await served.call("POST", "/v0/keys/mk_whichever/disable")).status).toBe(401);
+    expect(again).toStrictEqual(first);
   });
 });
 
@@ -583,14 +482,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   };
 
   /** Issues another key for the same merchant and returns its id. */
-  const spareKey = async (served: Served, key: string, label: string): Promise<string> => {
-    const answered = await served.call("POST", "/v0/keys", {
-      body: { label },
-      headers: bearer(key),
-    });
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    return (answered.body as { key: { id: string } }).key.id;
-  };
+  const spareKey = async (harnessed: Harness, merchantId: string, label: string) =>
+    (await harnessed.gateway.issueMerchantKey(merchantId, label, SIGNED_IN)).key.id;
 
   /** The smallest call there is, made with one key. */
   const callWith = async (served: Served, key: string): Promise<void> => {
@@ -603,7 +496,7 @@ describe("the mark a call leaves on the key it was made with", () => {
     // nobody could tell which one is safe to revoke.
     const { served, harnessed } = await started();
     const { merchant } = harnessed;
-    const idle = await spareKey(served, merchant.key, "the one nobody calls");
+    const idle = await spareKey(harnessed, merchant.id, "the one nobody calls");
 
     await callWith(served, merchant.key);
 
@@ -680,15 +573,15 @@ describe("the mark a call leaves on the key it was made with", () => {
 });
 
 describe("the merchant every ordinary test sells as", () => {
-  it("still reaches its own keys, which is what the seeded merchant is for", async () => {
+  it("holds the one key it opens the door with, which is what the seeded merchant is for", async () => {
     // The harness writes its merchant straight into the store, as the sandbox
-    // seed does, with no registration. Its key must still resolve to a key row
-    // that the list names.
+    // seed does, with no registration. Its key must still open the door and be
+    // the one key its list names.
     const { served, harnessed } = await started();
 
-    const listed = await keysWith(served, harnessed.merchant.key);
-
-    expect(listed.this_call).toBe(harnessed.merchant.keyId);
-    expect(listed.keys.map((key) => key.id)).toStrictEqual([harnessed.merchant.keyId]);
+    expect(await opensTheDoor(served, harnessed.merchant.key)).toBe(true);
+    expect(await keyIdsOf(harnessed, harnessed.merchant.id)).toStrictEqual([
+      harnessed.merchant.keyId,
+    ]);
   });
 });

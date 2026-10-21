@@ -10,7 +10,6 @@
 
 import { outcomeFor } from "@agentify/core";
 import type {
-  IssueKeyRequest,
   OrderListQuery,
   PurchaseRequest,
   RouteName,
@@ -19,7 +18,7 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
+import type { Gateway, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
@@ -30,7 +29,6 @@ import {
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
-  NO_SUCH_KEY,
   NO_SUCH_ORDER,
   OK,
   PAYMENT_REQUIRED,
@@ -72,10 +70,6 @@ function callersKey({ keyId }: RouteCall): string {
     );
   }
   return keyId;
-}
-
-function keyCaller(call: RouteCall): Caller {
-  return { kind: "key", keyId: callersKey(call) };
 }
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
@@ -133,54 +127,6 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         status: OK,
         document: await gateway.payoutWallet(merchantOf(call)),
       }),
-    },
-
-    list_keys: {
-      serve: async (call) => ({
-        status: OK,
-        document: {
-          keys: await gateway.merchantKeys(merchantOf(call)),
-          this_call: callersKey(call),
-        },
-      }),
-    },
-
-    issue_key: {
-      serve: async (call) => ({
-        status: OK,
-        document: await gateway.issueMerchantKey(
-          merchantOf(call),
-          (call.body as IssueKeyRequest).label,
-          keyCaller(call),
-        ),
-      }),
-    },
-
-    disable_key: {
-      serve: async (call) => {
-        const disabled = await gateway.disableMerchantKey(
-          merchantOf(call),
-          call.params.key_id ?? "",
-          keyCaller(call),
-        );
-
-        if (disabled === "locked_out") {
-          // A call may not disable the key it was made with, or the caller
-          // would be left with nothing to reach the gateway.
-          return written(
-            call.response,
-            CONFLICT,
-            refusal(
-              "key_opened_this_call",
-              "this is the key this call was made with, and disabling it would leave the caller with nothing to reach the gateway",
-            ),
-          );
-        }
-        if (disabled === null) {
-          return refusedWith(call.response, NO_SUCH_KEY);
-        }
-        return { status: OK, document: disabled };
-      },
     },
 
     get_order: {

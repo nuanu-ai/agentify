@@ -40,7 +40,10 @@ key and no session.
 
 Every route a merchant's key reaches acts on that key's merchant alone: the card
 list, the orders, the receipts, the pause switches, the worker poll and the
-answer routes. A worker draws from a queue its merchant has to themselves, since
+answer routes. No key reaches the keys themselves. A key is issued, listed and
+disabled only by a person signed in to the merchant's dashboard, or disabled
+from the operator's terminal, so a key that leaks cannot issue itself a
+successor or disable the merchant's own, and disabling it ends what it can do. A worker draws from a queue its merchant has to themselves, since
 the queue hands out work by name and a filter on a shared queue would draw a
 stranger's envelope to read it, after which it is offered to nobody again.
 
@@ -63,7 +66,10 @@ Registration hands nobody a stranger's money. Every query of a merchant's data
 carries the merchant, and one that forgets it is caught only by the store's
 tests, which therefore seed two merchants and assert about both.
 
-Rejected: a database per merchant, real isolation whose migrations, connection
+Rejected: keys that issue and disable keys over the API, refusing only the
+key a call was made with, where a leaked key issues itself a successor before
+it is disabled and the intrusion outlives the revocation meant to end it; a
+database per merchant, real isolation whose migrations, connection
 pools and provisioning per tenant nothing at this scale earns, against a failure
 the store's tests exist to catch; keys in the environment, one per merchant,
 where every key change is a deployment, nobody can revoke one key of several and
