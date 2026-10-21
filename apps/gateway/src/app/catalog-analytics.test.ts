@@ -383,16 +383,6 @@ describe("a card or a merchant taken off sale and put back", () => {
       })),
     );
   });
-
-  it("records nothing for a departed merchant's refused resume", async () => {
-    const { harnessed } = await started();
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const refused = await harnessed.gateway.setSelling(harnessed.merchant.id, "open", SIGNED_IN);
-
-    expect(refused.ok).toBe(false);
-    expect(recorded(harnessed, "agc_selling_changed")).toStrictEqual([]);
-  });
 });
 
 describe("the merchant's setup", () => {

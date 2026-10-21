@@ -5,7 +5,7 @@
  * flow meant to do, so an event says no more than the order that was written.
  */
 
-import { type Closure, type Order, outcomeFor } from "@agentify/core";
+import { type Order, outcomeFor } from "@agentify/core";
 import type {
   AnalyticsEvent,
   OrderCreated,
@@ -188,7 +188,7 @@ function reasonFor(order: Order, outcome: BuyerOutcome): ReasonCode | null {
   return order.closure === null ? null : reasonOfClosure(order.closure);
 }
 
-function reasonOfClosure(closure: Closure): ReasonCode | null {
+function reasonOfClosure(closure: NonNullable<Order["closure"]>): ReasonCode | null {
   switch (closure.cause) {
     case "unavailable":
     case "merchant_refused":
@@ -201,7 +201,6 @@ function reasonOfClosure(closure: Closure): ReasonCode | null {
       return "deadline_expired";
     case "payment_not_verified":
     case "payment_outcome_unknown":
-    case "merchant_departed":
       return null;
   }
 }
