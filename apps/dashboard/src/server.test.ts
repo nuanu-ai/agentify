@@ -6957,6 +6957,53 @@ describe("closing fulfillment from Orders", () => {
     },
   );
 
+  it("says why an explanation was refused on an order a stale page still offered to close", async () => {
+    // Closed meanwhile in another tab: no form is left to say the reason
+    // under, and a page drawn after a refusal is not taken for a closure.
+    const running = await started();
+    const id = await paid(running);
+    await running.browser.signIn();
+    expect((await running.browser.post("/orders", { order_id: id })).status).toBe(303);
+    const typed = "The delivery deadline was missed.\rA refund was sent outside Agentify.";
+
+    const posted = await running.browser.post("/orders", { order_id: id, message: typed });
+
+    expect(posted.status).toBe(400);
+    const reason = OrderCloseRequestSchema.safeParse({ message: typed }).error?.issues[0]?.message;
+    expect(reason).toBeDefined();
+    expect(mainOf(posted.html)).toContain((reason ?? "").replace(/^a closure message /, ""));
+  });
+
+  it("keeps an unconfirmed closure in the dashboard when the open list cannot be read to confirm it", async () => {
+    // The order carries a closure, which says nothing until the open list
+    // shows it is no longer open.
+    let down = false;
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        closeOrder: async (id, request) => {
+          await real.closeOrder(id, request);
+          down = true;
+          return lateAnswer(10);
+        },
+        orders: async (open) => {
+          if (down && open) throw new Error("the open list could not be read");
+          return await real.orders(open);
+        },
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+
+    const posted = await quietly(
+      async () => await running.browser.post("/orders", { order_id: id, message: "Returned." }),
+    );
+
+    expect(posted.status).toBe(503);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    expect(mainOf(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
+  });
+
   it("leads back to the list the closure was pressed on, with the order opened", async () => {
     const running = await started();
     const id = await paid(running);
