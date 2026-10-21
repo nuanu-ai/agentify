@@ -49,14 +49,17 @@ const PRODUCT: EligibleWooProduct = {
   tax: { mode: "off" as const },
 };
 
-const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
+const gatewayOrder = (
+  status: OrderWithStatus["status"],
+  facts: WooOrderFacts = FACTS,
+): OrderWithStatus => ({
   payment_status: status === "payment_unresolved" ? "unresolved" : "paid",
   id: "ord_1",
-  merchant_item_id: FACTS.merchantItemId,
+  merchant_item_id: facts.merchantItemId,
   params: {},
   price: {
-    amount: FACTS.amount,
-    currency: FACTS.currency,
+    amount: facts.amount,
+    currency: facts.currency,
     at: "2026-09-18T09:59:00.000Z",
     as_of: "2026-09-18T09:58:00.000Z",
   },
@@ -109,13 +112,13 @@ const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
   ...changes,
 });
 
-const setup = async (phase: "precreate_refused" | "create_unknown") => {
+const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACTS) => {
   const shops = memoryWooShops();
   await shops.recordQuote(
     "acc_1",
-    FACTS.priceId,
-    FACTS.merchantItemId,
-    FACTS.productFingerprint,
+    facts.priceId,
+    facts.merchantItemId,
+    facts.productFingerprint,
     new Date("2026-09-18T11:00:00.000Z"),
     NOW,
   );
@@ -129,14 +132,18 @@ const setup = async (phase: "precreate_refused" | "create_unknown") => {
     connectedAt: NOW,
   });
   if (phase === "precreate_refused") {
-    await shops.recordPrecreateRefusal("acc_1", "ord_1", FACTS, NOW);
+    await shops.recordPrecreateRefusal("acc_1", "ord_1", facts, NOW);
   } else {
-    await shops.claimOrder("acc_1", "ord_1", FACTS, NOW);
+    await shops.claimOrder("acc_1", "ord_1", facts, NOW);
   }
   return shops;
 };
 
-const parts = (shops: Awaited<ReturnType<typeof setup>>, overrides: Partial<Parts> = {}) => {
+const parts = (
+  shops: Awaited<ReturnType<typeof setup>>,
+  overrides: Partial<Parts> = {},
+  facts = FACTS,
+) => {
   let delivered = 0;
   let created = 0;
   let read = 0;
@@ -163,7 +170,7 @@ const parts = (shops: Awaited<ReturnType<typeof setup>>, overrides: Partial<Part
       getOrder: async () => {
         return {
           ok: true as const,
-          document: gatewayOrder(status),
+          document: gatewayOrder(status, facts),
         };
       },
       deliverOrder: async () => {
@@ -701,6 +708,66 @@ describe("exact Woo order recovery", () => {
       state: "delivered",
     });
     expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 0 });
+  });
+
+  /**
+   * A sale of the Bali shop's download at 1.00 and the order the tax probe
+   * got for it with the line left to the shop: 1.00 with 0.10 of tax inside.
+   */
+  const TAXED_FACTS: WooOrderFacts = { ...FACTS, amount: "1.00" };
+  const INCLUSIVE: EligibleWooProduct = {
+    ...PRODUCT,
+    price: { amount: "1.00", currency: "USD" },
+    tax: { mode: "included" },
+  };
+  const BALI_ORDER = {
+    total: "1.00",
+    totalTax: "0.10",
+    subtotal: "0.90",
+    lineTotal: "0.90",
+    lineTax: "0.10",
+  };
+  const recoveringWith = async (product: EligibleWooProduct, order: Partial<WooOrderRead>) => {
+    const shops = await setup("create_unknown", TAXED_FACTS);
+    const test = parts(
+      shops,
+      {
+        inspectProduct: async () => ({ ok: true, product }),
+        readOrder: async () => ({ ok: true, order: shopOrder(order) }),
+      },
+      TAXED_FACTS,
+    );
+    return {
+      shops,
+      outcome: await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    };
+  };
+
+  it("binds an inclusive shop's order holding the price paid with its tax inside", async () => {
+    const { outcome } = await recoveringWith(INCLUSIVE, BALI_ORDER);
+
+    expect(outcome).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
+  });
+
+  it("does not bind an inclusive shop's order whose total is not the price paid", async () => {
+    // The German shop's order for a Paris buyer: 1.01 for a price of 1.00.
+    const { outcome, shops } = await recoveringWith(INCLUSIVE, {
+      total: "1.01",
+      totalTax: "0.17",
+      subtotal: "0.84",
+      lineTotal: "0.84",
+      lineTax: "0.17",
+    });
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused", typed: true });
+    expect(outcome.ok ? "" : outcome.why).toContain("total");
+    expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("does not bind an order carrying tax for a sale from a shop that calculated none", async () => {
+    const { outcome } = await recoveringWith({ ...INCLUSIVE, tax: { mode: "off" } }, BALI_ORDER);
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused", typed: true });
   });
 
   it("keeps an unknown create unbound when the exact Woo order does not correlate", async () => {
