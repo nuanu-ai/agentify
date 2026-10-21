@@ -1350,6 +1350,55 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
+  it("sends no report link past one client's hour, whatever scans and addresses it uses, and still sends another client's", async () => {
+    // Documentation addresses, as the edge writes them.
+    const crowded = { "x-forwarded-for": "198.51.100.7" };
+    const elsewhere = { "x-forwarded-for": "198.51.100.8" };
+    const sentBefore = sentLinks.length;
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      // Two scans, so neither scan's own hour is what refuses.
+      for (const label of ["client-hour-a", "client-hour-b"]) {
+        const { scan, accessToken } = await createFreshCompletedScan(label);
+        for (let asked = 0; asked < 5; asked += 1) {
+          const answer = await registrationRequest(
+            scan.id,
+            accessToken,
+            registrationBody(`${label}-${asked}@example.com`),
+            crowded,
+          );
+          expect(answer.status).toBe(202);
+        }
+      }
+      const { scan, accessToken } = await createFreshCompletedScan("client-hour-c");
+
+      const refused = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("client-hour-c@example.com"),
+        crowded,
+      );
+      expect(refused.status).toBe(429);
+      const refusal = (await refused.json()) as {
+        error: { code: string; retry_after_seconds?: number };
+      };
+      expect(refusal.error.code).toBe("verification_link_cooldown");
+      expect(refusal.error.retry_after_seconds).toBeGreaterThan(60);
+      expect(sentLinks).toHaveLength(sentBefore + 10);
+
+      const another = await registrationRequest(
+        scan.id,
+        accessToken,
+        registrationBody("client-hour-c@example.com"),
+        elsewhere,
+      );
+      expect(another.status).toBe(202);
+      expect(sentLinks).toHaveLength(sentBefore + 11);
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
   it("refuses a signed-in ask past the scan's hour as asks, not as links", async () => {
     const { scan, accessToken } = await createFreshCompletedScan("signed-in-cooldown");
     const cookie = signedInAs("signed-in-cooldown@example.com");
