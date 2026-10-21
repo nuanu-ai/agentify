@@ -538,3 +538,15 @@ whose whole tax fell on half a cent. The half-cent rule was therefore replaced:
 a parcel from a shop whose prices hold their tax sells only where tax is
 rounded at the subtotal. Downloads were unaffected throughout, as P4 found,
 and the shop entering prices before tax agreed under both settings.
+
+The rule did not hold for downloads either. In the outside run that followed,
+the same German shop with the 10% rate and the 5% compound one, rounding per
+line, was paid 1.00 for a download left to the shop to price and recorded an
+order of 1.01 with 0.14 of tax; rounding at the subtotal it recorded 1.00, and
+99.99 for the download at 99.99. P4 had measured single rates only. So the
+rule became one for every sale from a shop with tax on, downloads and
+parcels, prices entered with tax or before it: tax must be rounded at the
+subtotal. A shop with tax off is not asked about the rounding. On the one-item
+orders measured, switching a shop from rounding per line to rounding at the
+subtotal moved an order's tax by a cent at most (21.78 to 21.79, 7.72 to
+7.73, 22.06 to 22.05); orders of several lines were not measured.
