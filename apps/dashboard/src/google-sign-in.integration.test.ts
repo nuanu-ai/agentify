@@ -200,7 +200,7 @@ describe("Google sign-in in the built dashboard", () => {
 describe("a Google sign-in from an ad in the built dashboard", () => {
   const registrationOf = async (email: string) => {
     const person = await identity.byEmail(email);
-    return (rows.dashboard_registration_postbacks ?? []).filter(
+    return (rows.dashboard_ad_reports ?? []).filter(
       (row) => person !== null && row.accountId === person.id,
     );
   };

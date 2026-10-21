@@ -338,7 +338,7 @@ describe("Google dashboard identity", () => {
  */
 const CLICK = "qa_click_0123456789abcdef";
 
-const registrationsIn = (rows: MemoryRows) => rows.dashboard_registration_postbacks ?? [];
+const registrationsIn = (rows: MemoryRows) => rows.dashboard_ad_reports ?? [];
 
 describe("the registration a Google sign-in started with an ad's click leaves for the tracker", () => {
   it("leaves one pending registration holding the click, and nothing else of the sign-in, when the Google sign-in makes a new address's account", async () => {
@@ -358,6 +358,8 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
         nextAttemptAt: expect.any(Date),
         lastOutcome: null,
         createdAt: expect.any(Date),
+        event: "reg",
+        eventAt: expect.any(Date),
         settledAt: null,
       },
     ]);
