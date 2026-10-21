@@ -21,21 +21,38 @@ export function speaksContract(version: string): boolean {
   return version === CONTRACT_VERSION;
 }
 
+/** The name this package is published under, as its manifest writes it. */
+const PACKAGE_NAME = "@nuanu-ai/agentify";
+
 /**
- * The release this package is, from its manifest, which sits one level above
- * this file both in the sources and in the published build. A bundle that
- * leaves the manifest behind loses only the number, never the import.
+ * The release a manifest names, if it is this package's own. Bundled into one
+ * file, the manifest one level up is the merchant's, whose version would be a
+ * false claim about this package, so any other name gives none.
  */
-const release = (): string | undefined => {
+export const releaseNamedIn = (manifest: string): string | undefined => {
   try {
-    const manifest = readFileSync(new URL("../package.json", import.meta.url), "utf8");
-    return (JSON.parse(manifest) as { version?: string }).version;
+    const read = JSON.parse(manifest) as { name?: unknown; version?: unknown };
+    return read.name === PACKAGE_NAME && typeof read.version === "string"
+      ? read.version
+      : undefined;
   } catch {
     return undefined;
   }
 };
 
-const version = release();
+/**
+ * The manifest sits one level above this file both in the sources and in the
+ * published build. A bundle that leaves it behind loses only the number.
+ */
+const manifestText = (): string => {
+  try {
+    return readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  } catch {
+    return "";
+  }
+};
+
+const version = releaseNamedIn(manifestText());
 
 /** What every call says this package is, in its `user-agent` header. */
 export const userAgent = version === undefined ? "agentify-sdk" : `agentify-sdk/${version}`;

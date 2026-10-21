@@ -105,6 +105,11 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
    * released, was skipped. The rest of the batch is handled.
    */
   EVENT_SKIPPED: "event_skipped",
+  /**
+   * A price question for a purpose this package does not know was left
+   * unanswered, which ends it before any money, as a silent price check does.
+   */
+  QUOTE_SKIPPED: "quote_skipped",
   /** The answer was produced and could not be delivered to the gateway. */
   ANSWER_FAILED: "answer_failed",
   /** The gateway would not take the answer: it names an order it cannot close. */
@@ -301,6 +306,9 @@ const versionSpokenIn = (body: unknown): string | undefined => {
   return typeof named === "string" && named !== "" ? named : undefined;
 };
 
+const askedForAKnownPurpose = (question: Read<QuoteRequest>): question is QuoteRequest =>
+  question.purpose !== UNKNOWN_WORD;
+
 /** Refuses to compile if a kind is added to the contract and not handled here. */
 const assertEveryKindIsHandled = (envelope: never): never => {
   throw new TypeError(
@@ -369,7 +377,7 @@ export const startWorker = (
       fatal: true,
       // Both versions are in the sentence, so the merchant can tell which end
       // needs upgrading.
-      message: `the gateway speaks contract version ${spoken} and this SDK speaks ${contractVersion}; the worker stopped rather than handle orders in a dialect it may be reading wrong`,
+      message: `the gateway speaks contract version ${spoken} and this SDK speaks ${contractVersion}; the worker takes no more work, finishes what it already holds and stops, rather than handle orders in a dialect it may be reading wrong`,
     });
   };
 
@@ -544,6 +552,7 @@ export const startWorker = (
       report({
         kind: WORKER_PROBLEM_KINDS.EVENT_SKIPPED,
         fatal: false,
+        ...(event.order_id === undefined ? {} : { subject: event.order_id }),
         message: `an event this package cannot read, "${event.named}", arrived and was skipped; a newer release of @nuanu-ai/agentify handles it, and orders.list({ open: true }) still finds every paid order waiting on you`,
       });
       return;
@@ -583,7 +592,16 @@ export const startWorker = (
         await handleOrder(envelope.payload);
         return;
       case "quote_request":
-        await handleQuote(envelope.payload);
+        if (askedForAKnownPurpose(envelope.payload)) {
+          await handleQuote(envelope.payload);
+        } else {
+          report({
+            kind: WORKER_PROBLEM_KINDS.QUOTE_SKIPPED,
+            fatal: false,
+            subject: envelope.payload.price_id,
+            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which ends it as a silent price check does, before any money; a newer release of @nuanu-ai/agentify answers it`,
+          });
+        }
         return;
       case "order_event":
         await handleEvent(envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
@@ -690,6 +708,10 @@ export const startWorker = (
 
       if (!speaksContract(answer.document.contract_version)) {
         reportTheMismatch(answer.document.contract_version);
+        // What is already in a handler may have issued goods; its answer goes
+        // out before the stop, which would otherwise abort it.
+        stopping = true;
+        await Promise.all(active);
         return;
       }
 

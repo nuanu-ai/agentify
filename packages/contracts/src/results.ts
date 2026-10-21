@@ -30,11 +30,9 @@ import { IdentifierSchema } from "./primitives.js";
  * `purchase_already_closed`: a synchronous handler answered after its
  * deadline; the work exists and a repeat purchase will collect it.
  *
- * Branch on `ok` and record the word. A client that checks answers against its
- * own copy of this schema, as the SDK does, reads a word it does not know as an
- * unreadable answer. From the first external merchant, such a change moves
- * `CONTRACT_VERSION` so an older worker stops at its version check. During
- * the pilot, keep workers current with the gateway.
+ * Branch on `ok` and record the word. The list grows without moving
+ * `CONTRACT_VERSION`: a reader made with `readerOf`, as the SDK's is, reads a
+ * word it does not know as `unknown`, and the call still succeeded.
  */
 export const ORDER_CALL_RESULTS = Object.freeze([
   "accepted",
