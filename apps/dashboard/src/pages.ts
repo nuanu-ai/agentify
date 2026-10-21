@@ -331,24 +331,28 @@ export function pagesHandler(
   const visits = new WeakSet<Request>();
   /**
    * Each press a script sent and that was answered without a problem, by the
-   * value of the cookie it was given, until the moment its page's read stops
-   * being taken for the press's own. A press answered with a problem is read
-   * again by nothing.
+   * value of the cookie it was given: the page it was posted to, and the
+   * moment a read of that page stops being taken for the press's own. A press
+   * answered with a problem is read again by nothing.
    */
-  const awaitingRead = new Map<string, number>();
-  const awaitRead = (pressed: string): void => {
-    awaitingRead.set(pressed, Date.now() + REREAD_WITHIN_MS);
+  const awaitingRead = new Map<string, Readonly<{ page: string; until: number }>>();
+  const awaitRead = (pressed: string, page: string): void => {
+    awaitingRead.set(pressed, { page, until: Date.now() + REREAD_WITHIN_MS });
     for (const [oldest] of awaitingRead) {
       if (awaitingRead.size <= REREADS_KEPT) break;
       awaitingRead.delete(oldest);
     }
   };
-  /** Whether this is the first read since the press this cookie was given by. */
-  const readAfterPress = (pressed: string | undefined): boolean => {
+  /**
+   * Whether this read of `page` is the first since the press this cookie was
+   * given by, and of the page that press was posted to; a press that led to
+   * another screen leaves that screen's read a visit.
+   */
+  const readAfterPress = (pressed: string | undefined, page: string): boolean => {
     if (pressed === undefined) return false;
-    const until = awaitingRead.get(pressed);
+    const awaited = awaitingRead.get(pressed);
     awaitingRead.delete(pressed);
-    return until !== undefined && until >= Date.now();
+    return awaited !== undefined && awaited.page === page && awaited.until >= Date.now();
   };
 
   const mount = (compiled: ServerBuild): Mounted => {
@@ -478,11 +482,11 @@ export function pagesHandler(
       // That read is the press's own, and a person moving on is a visit.
       if (pressed !== undefined && data) {
         response.once("finish", () => {
-          if (response.statusCode < 400) awaitRead(pressed);
+          if (response.statusCode < 400) awaitRead(pressed, pageOf(url.pathname));
         });
       }
       if (request.method === "GET" && !prefetched(request.headers)) {
-        const pressRead = readAfterPress(pressedIn(request.headers.cookie));
+        const pressRead = readAfterPress(pressedIn(request.headers.cookie), pageOf(url.pathname));
         if (!(pressRead && data)) visits.add(request);
       }
       const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
