@@ -1002,6 +1002,7 @@ if (databaseUrl === null) {
       expect(await storeRowOf(later)).toMatchObject({
         click_id: null,
         state: "lapsed",
+        last_outcome: "first_card_before_registration",
         event_at: null,
         settled_at: new Date(clock),
       });
@@ -1024,7 +1025,11 @@ if (databaseUrl === null) {
         storeReport(CLICKS[0], firstCardAt),
       ]);
       expect(await storeRowOf(earliest)).toMatchObject({ state: "delivered", click_id: null });
-      expect(await storeRowOf(later)).toMatchObject({ state: "lapsed", click_id: null });
+      expect(await storeRowOf(later)).toMatchObject({
+        state: "lapsed",
+        click_id: null,
+        last_outcome: "belongs_to_another_account",
+      });
     });
 
     it("tells the tracker of one merchant once, even when an account that came from an ad before its first card joins it afterwards", async () => {
@@ -1048,7 +1053,11 @@ if (databaseUrl === null) {
       expect(received.map((request) => request.body)).toStrictEqual([
         storeReport(CLICKS[0], firstCardAt),
       ]);
-      expect(await storeRowOf(joinsLater)).toMatchObject({ state: "lapsed", click_id: null });
+      expect(await storeRowOf(joinsLater)).toMatchObject({
+        state: "lapsed",
+        click_id: null,
+        last_outcome: "belongs_to_another_account",
+      });
     });
 
     it("never reports a merchant whose first card was published before the registration, and erases the click", async () => {
@@ -1066,6 +1075,7 @@ if (databaseUrl === null) {
       expect(await storeRowOf(account)).toMatchObject({
         click_id: null,
         state: "lapsed",
+        last_outcome: "first_card_before_registration",
         event_at: null,
         settled_at: new Date(clock),
       });
@@ -1095,6 +1105,7 @@ if (databaseUrl === null) {
         expect(await storeRowOf(account)).toMatchObject({
           click_id: null,
           state: "lapsed",
+          last_outcome: "no_first_card_in_30_days",
           event_at: null,
           settled_at: new Date(clock),
         });
@@ -1129,9 +1140,33 @@ if (databaseUrl === null) {
       expect(await storeRowOf(counted)).toMatchObject({ state: "delivered", click_id: null });
       expect(await storeRowOf(uncounted)).toMatchObject({
         state: "lapsed",
+        last_outcome: "no_first_card_in_30_days",
         click_id: null,
         event_at: null,
       });
+    });
+
+    it("gives up, without posting it or saying it became due, a store report whose first card is found only after a day has passed since it", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant);
+      const firstCardAt = clock;
+      await publish(merchant, "room-1");
+      clock = firstCardAt + DAY;
+      const { post, received } = tracker(200);
+
+      expect(await report(post)).toBe(false);
+
+      expect(received).toStrictEqual([]);
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 0,
+        last_outcome: null,
+        event_at: new Date(firstCardAt),
+        settled_at: new Date(clock),
+      });
+      expect(told).toHaveLength(1);
+      expect(told[0]).toMatch(/given up/);
     });
 
     it("carries the first publication's time, not a republish's, and the card keeps that time", async () => {
@@ -1424,6 +1459,7 @@ if (databaseUrl === null) {
       expect(await storeRowOf(account)).toMatchObject({
         click_id: null,
         state: "lapsed",
+        last_outcome: "registration_not_delivered",
         event_at: null,
         settled_at: new Date(clock),
       });
@@ -1445,6 +1481,7 @@ if (databaseUrl === null) {
         expect(await storeRowOf(account)).toMatchObject({
           click_id: null,
           state: "lapsed",
+          last_outcome: "registration_not_delivered",
           event_at: null,
         });
       }
@@ -1465,7 +1502,11 @@ if (databaseUrl === null) {
         `{"clickid":"${CLICKS[0]}","event":"reg"}`,
         storeReport(CLICKS[1], firstCardAt),
       ]);
-      expect(await storeRowOf(refused)).toMatchObject({ click_id: null, state: "lapsed" });
+      expect(await storeRowOf(refused)).toMatchObject({
+        click_id: null,
+        state: "lapsed",
+        last_outcome: "registration_not_delivered",
+      });
       expect(await storeRowOf(next)).toMatchObject({ click_id: null, state: "delivered" });
     });
 
@@ -1492,6 +1533,7 @@ if (databaseUrl === null) {
       expect(await storeRowOf(account)).toMatchObject({
         click_id: null,
         state: "lapsed",
+        last_outcome: "registration_not_delivered",
         event_at: null,
       });
     });
@@ -1516,7 +1558,28 @@ if (databaseUrl === null) {
       expect(received.map((request) => request.body)).toStrictEqual([
         `{"clickid":"${CLICK}","event":"reg"}`,
       ]);
-      expect(await storeRowOf(account)).toMatchObject({ click_id: null, state: "lapsed" });
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "lapsed",
+        last_outcome: "switched_off_past_30_days",
+      });
+    });
+
+    it("says in the log why waiting store reports lapsed, in one line for each reason", async () => {
+      const merchant = await aMerchant();
+      const registeredAt = clock;
+      await fromAnAd(CLICKS[0], merchant);
+      await fromAnAd(CLICKS[1], null);
+      await fromAnAd(CLICKS[2], null);
+      clock = registeredAt + HOUR;
+      await publish(merchant, "room-1");
+      clock = registeredAt + 30 * DAY;
+
+      expect(await report(tracker().post, false)).toBe(false);
+
+      expect(told.filter((line) => line.includes("lapsed"))).toHaveLength(2);
+      expect(told.filter((line) => line.includes("switched_off_past_30_days"))).toHaveLength(1);
+      expect(told.filter((line) => line.includes("no_first_card_in_30_days"))).toHaveLength(1);
     });
 
     it("gives up a store report already pending once a day has passed since the first card, without posting it", async () => {
@@ -1600,7 +1663,11 @@ if (databaseUrl === null) {
 
       expect(received).toHaveLength(1);
       expect(await storeRowOf(pending)).toMatchObject({ click_id: null, state: "given_up" });
-      expect(await storeRowOf(aged)).toMatchObject({ click_id: null, state: "lapsed" });
+      expect(await storeRowOf(aged)).toMatchObject({
+        click_id: null,
+        state: "lapsed",
+        last_outcome: "no_first_card_in_30_days",
+      });
       expect(await storeRowOf(young)).toMatchObject({ click_id: CLICKS[2], state: "waiting" });
     });
   });
