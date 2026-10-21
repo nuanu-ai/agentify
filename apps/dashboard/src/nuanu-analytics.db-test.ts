@@ -671,7 +671,9 @@ if (databaseUrl === null) {
       expect(waits).toStrictEqual([MINUTE, 5 * MINUTE, 30 * MINUTE, 2 * HOUR, 6 * HOUR, 6 * HOUR]);
     });
 
-    for (const status of [401, 403, 404]) {
+    // A redirect is a configuration problem too: the endpoint named is not the one
+    // that takes events, and following it would hand the key to another address.
+    for (const status of [401, 403, 404, 301, 308]) {
       it(`keeps the event after ${status}, pauses for minutes and names a configuration problem`, async () => {
         await recorded(viewed);
         const { post, received } = nuanu(status, 200);
