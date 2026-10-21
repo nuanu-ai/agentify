@@ -217,20 +217,31 @@ describe("the currency a shop prices in, asked before Connect", () => {
   // as before, so every case here that is not a product priced in a currency
   // must come back null rather than as a guess.
   const pricedIn = (url: string) => currencyOfTheShop(url, fetch);
-  const storeProduct = (currency: unknown) => ({
+  const storeProduct = (currency: unknown, minorUnit = 2) => ({
     id: 7,
     name: "Batik scarf",
-    prices: { price: "15000000", currency_code: currency, currency_minor_unit: 2 },
+    prices: { price: "15000000", currency_code: currency, currency_minor_unit: minorUnit },
   });
 
   it("reads the currency of the shop's public catalogue", async () => {
-    for (const currency of ["IDR", "USD"]) {
-      shop = await shopAnswering(() => ({
-        status: 200,
-        type: "application/json",
-        body: JSON.stringify([storeProduct(currency)]),
-      }));
-      expect(await pricedIn(shop.url)).toBe(currency);
+    // Routed as a WooCommerce shop routes it: the keyless Store API answers,
+    // and an address it does not serve is a 404.
+    for (const [currency, minorUnit] of [
+      ["IDR", 2],
+      ["IDR", 0],
+      ["USD", 2],
+      ["USD", 0],
+    ] as const) {
+      shop = await shopAnswering((path) =>
+        new URL(path, "http://shop").pathname === "/wp-json/wc/store/v1/products"
+          ? {
+              status: 200,
+              type: "application/json",
+              body: JSON.stringify([storeProduct(currency, minorUnit)]),
+            }
+          : { status: 404, type: "application/json", body: '{"code":"rest_no_route"}' },
+      );
+      expect(await pricedIn(shop.url), `${currency} ${minorUnit}`).toBe(currency);
       await shop.close();
       shop = null;
     }
