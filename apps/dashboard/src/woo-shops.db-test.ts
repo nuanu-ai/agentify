@@ -43,24 +43,13 @@ if (databaseUrl === null) {
 } else {
   const pool = new Pool({ connectionString: databaseUrl });
 
-  // Drops whatever tables exist rather than a list of names, since a list falls
-  // behind the next migration. The migrator's journal schema goes too: it is
-  // not in `public`, and left behind it would say everything is applied while
-  // the tables are gone.
-  await pool.query(`
-    do $$
-    declare
-      present text;
-    begin
-      select string_agg(format('%I.%I', schemaname, tablename), ', ')
-        into present
-        from pg_tables
-       where schemaname = 'public';
-      if present is not null then
-        execute 'drop table ' || present || ' cascade';
-      end if;
-    end $$;
-  `);
+  // Drops whatever exists rather than a list of names, since a list falls
+  // behind the next migration; the gateway's functions and triggers go with
+  // its tables. The migrator's journal schema goes too: it is not in `public`,
+  // and left behind it would say everything is applied while the tables are
+  // gone.
+  await pool.query("drop schema public cascade");
+  await pool.query("create schema public");
   await pool.query("drop schema if exists drizzle cascade");
   // The gateway's tables too: a connection's analytics event is written to the
   // gateway's outbox, in the transaction that writes the connection.

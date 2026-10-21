@@ -478,12 +478,16 @@ export const gatewayFor = (
       ),
     pauseCard: (itemId, paused) =>
       call(paused ? "pausing a card" : "resuming a card", async () => {
-        const card = await application.setCardPaused(merchantId, itemId, paused);
+        const card = await application.setCardPaused(merchantId, itemId, paused, caller);
         return card === null ? refusedAs(NO_SUCH_ITEM) : answered(API_ROUTES.pause_card, card);
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {
-        const changed = await application.setSelling(merchantId, selling ? "open" : "paused");
+        const changed = await application.setSelling(
+          merchantId,
+          selling ? "open" : "paused",
+          caller,
+        );
         return changed.ok
           ? answered(API_ROUTES.pause_selling, changed.cards)
           : refusedAs(merchantDeparted(changed.why));
@@ -587,7 +591,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         const held = answered(
           API_ROUTES.set_seller_name,
-          await application.setSellerName(merchantId, asked.value),
+          await application.setSellerName(merchantId, asked.value, caller),
         );
         return held.ok ? done(held.document.seller_name) : held;
       }),
@@ -604,7 +608,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         const held = answered(
           API_ROUTES.set_seller_name,
-          await application.setSellerName(merchantId, asked.value),
+          await application.setSellerName(merchantId, asked.value, caller),
         );
         return held.ok ? done(held.document.seller_site) : held;
       }),
@@ -657,7 +661,7 @@ export const gatewayFor = (
       call("publishing a card", async () =>
         answered(
           API_ROUTES.publish_card,
-          await application.publishCard(merchantId, card, "woocommerce"),
+          await application.publishCard(merchantId, card, "woocommerce", caller),
         ),
       ),
     integration: () =>

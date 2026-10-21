@@ -65,6 +65,11 @@ export interface MountedRoute {
    * with no document as the probe, not a mistake.
    */
   readonly checksItsOwnBody?: boolean;
+  /**
+   * Told of a body this route's schema refused, before the refusal is
+   * answered; it cannot change the answer. The call carries the body as sent.
+   */
+  readonly refusedBody?: (call: RouteCall) => Promise<void>;
 }
 
 /** The most a request body may be. A card with a large schema is still small. */
@@ -300,6 +305,15 @@ async function answer(
   if (carriesBody && route.request !== undefined && handler.checksItsOwnBody !== true) {
     const held = hold(route.request, request.body);
     if (!held.ok) {
+      await handler.refusedBody?.({
+        params: request.params as Record<string, string>,
+        body: request.body,
+        query: undefined,
+        merchantId: caller?.merchantId ?? null,
+        keyId: caller?.keyId ?? null,
+        request,
+        response,
+      });
       response
         .status(400)
         .json(

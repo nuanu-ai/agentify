@@ -7,6 +7,7 @@
 
 import type { AnalyticsEvent } from "@agentify/gateway/analytics";
 import { type Harness, harness } from "@agentify/gateway/testing";
+import type { CardInput } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
@@ -17,7 +18,7 @@ afterEach(async () => {
   open = null;
 });
 
-const card = {
+const card: CardInput = {
   merchant_item_id: "room-101",
   title: "A room for the night",
   description: "One night in room 101",

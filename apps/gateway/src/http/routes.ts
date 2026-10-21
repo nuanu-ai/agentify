@@ -78,6 +78,12 @@ function keyCaller(call: RouteCall): Caller {
   return { kind: "key", keyId: callersKey(call) };
 }
 
+/** The setup steps a seller-name body asked for, whatever else is wrong with it. */
+function sellerStepsNamedIn(body: unknown): ("seller_name" | "seller_site")[] {
+  if (typeof body !== "object" || body === null) return [];
+  return (["seller_name", "seller_site"] as const).filter((step) => Object.hasOwn(body, step));
+}
+
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
   const edge = new PaymentEdge(config);
@@ -88,7 +94,12 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       // the contract's list of findings.
       checksItsOwnBody: true,
       serve: async (call) => {
-        const published = await gateway.publishCard(merchantOf(call), call.body);
+        const published = await gateway.publishCard(
+          merchantOf(call),
+          call.body,
+          "api",
+          keyCaller(call),
+        );
         return { status: published.ok ? OK : UNPROCESSABLE, document: published };
       },
     },
@@ -124,8 +135,14 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     set_seller_name: {
       serve: async (call) => ({
         status: OK,
-        document: await gateway.setSellerName(merchantOf(call), call.body as SellerNameRequest),
+        document: await gateway.setSellerName(
+          merchantOf(call),
+          call.body as SellerNameRequest,
+          keyCaller(call),
+        ),
       }),
+      refusedBody: (call) =>
+        gateway.setupRefused(merchantOf(call), sellerStepsNamedIn(call.body), keyCaller(call)),
     },
 
     get_payout_wallet: {
@@ -146,6 +163,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     },
 
     issue_key: {
+      refusedBody: (call) => gateway.setupRefused(merchantOf(call), ["api_key"], keyCaller(call)),
       serve: async (call) => ({
         status: OK,
         document: await gateway.issueMerchantKey(
@@ -368,7 +386,7 @@ async function sellingSet(
   call: RouteCall,
   selling: "open" | "paused",
 ): Promise<RouteAnswer> {
-  const changed = await gateway.setSelling(merchantOf(call), selling);
+  const changed = await gateway.setSelling(merchantOf(call), selling, keyCaller(call));
   if (!changed.ok) {
     return refusedWith(call.response, merchantDeparted(changed.why));
   }
@@ -385,7 +403,12 @@ async function cardPaused(
   call: RouteCall,
   paused: boolean,
 ): Promise<RouteAnswer> {
-  const card = await gateway.setCardPaused(merchantOf(call), call.params.item_id ?? "", paused);
+  const card = await gateway.setCardPaused(
+    merchantOf(call),
+    call.params.item_id ?? "",
+    paused,
+    keyCaller(call),
+  );
   if (card === null) {
     return refusedWith(call.response, NO_SUCH_ITEM);
   }

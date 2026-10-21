@@ -10,7 +10,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
-import type { AnalyticsEvent } from "@agentify/gateway/analytics";
+import type { AnalyticsEvent, SetupResult } from "@agentify/gateway/analytics";
 import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
@@ -2502,7 +2502,10 @@ describe("the analytics of a shop's connection and its imports", () => {
   const imports = (running: Running) =>
     running
       .connectorAnalytics()
-      .filter((event) => event.name === "agc_setup_result" && event.fields.step === "woo_import");
+      .filter(
+        (event): event is SetupResult =>
+          event.name === "agc_setup_result" && event.fields.step === "woo_import",
+      );
 
   /** A product the shop's protected check reads as a parcel, so a merchant with no site is refused it. */
   const parcelsAndDownloads: Standing["inspectProduct"] = async (_keys, merchantItemId) => {
