@@ -7,6 +7,15 @@ measured, and they are executed as written. The results are appended under
 their own heading once the census ends; nothing above that heading changes
 after this commit.
 
+The note was amended once, on the same day and before any catalogue was read,
+after a review of the first version. The amendment adds three things. The
+census also sends the listing request exactly as the connector sends it,
+without a User-Agent, because the first version could only say that the two
+might be treated differently. It reads each shop's `robots.txt` before the
+listing and respects it. And it says that the test host's Indonesian network
+is a kinder vantage point than the one the live channel would call from.
+Nothing in the first version had been measured when it was amended.
+
 ## Why this census
 
 Agentify lets AI agents buy from merchants, and a merchant who runs a
@@ -249,12 +258,13 @@ excluded. The counts of that record are published with the results.
 
 ## Conduct towards the shops
 
-Every request to a shop is a GET to a public address: the front page, and the
-Store API's product listing. The census never sends a POST and never touches
+Every request to a shop is a GET to a public address: the front page,
+`/robots.txt`, and the Store API's product listing. The census never sends a
+POST and never touches
 the Store API cart or checkout, because a cart leaves a session in the shop;
 it never opens `/wc-auth/`, fills a form or signs in.
 
-A shop receives at most five requests, redirect hops included, at most one
+A shop receives at most seven requests, redirect hops included, at most one
 per second and a half, and the census moves to the next shop only when it is
 done with this one. The requests are, in order:
 
@@ -262,14 +272,29 @@ done with this one. The requests are, in order:
    redirects to https addresses on the same registrable domain. The address
    the redirects end on is the shop's root address for everything below, as
    it would be what a merchant types into the connector.
-2. `GET /wp-json/wc/store/v1/products?per_page=100&page=1`, with the header
-   `Accept: application/json`, following no redirect.
-3. Only when the second request did not answer with a JSON list and was
+2. `GET /robots.txt` at that address, following at most one redirect on the
+   same registrable domain. Its rules are read the way RFC 9309 says: the
+   group for a user agent whose name `AgentifyResearch` matches applies, or
+   else the group for `*`; within it the longest matching `Allow` or
+   `Disallow` path wins, and `Allow` wins a tie. An answer of 400 to 499
+   means no rules. A challenge or 429 ends the shop's census as below. A 500
+   or above, or no answer, means everything is disallowed, as the RFC says. A
+   path disallowed for the census is not requested: a shop whose
+   `robots.txt` disallows `/wp-json/wc/store/v1/products` gets no listing
+   request at all, neither the honest one nor the connector's.
+3. `GET /wp-json/wc/store/v1/products?per_page=100&page=1`, with the header
+   `Accept: application/json`, following no redirect: the honest request.
+4. `GET /wp-json/wc/store/v1/products?per_page=1`, sent the way the connector
+   sends it (described below): the connector's own request. It is sent only
+   when the shop is a WooCommerce shop by the front page or by the honest
+   request.
+5. Only when the honest request did not answer with a JSON list and was
    neither challenged nor rate-limited: when the front page's HTML loads
    `/wp-content/` under a sub-path and never at the root, the same listing
    under that sub-path with `per_page=1`; otherwise
-   `GET /?rest_route=/wc/store/v1/products&per_page=1`.
-4. Further pages of the listing, at `per_page=100`, only when they are needed:
+   `GET /?rest_route=/wc/store/v1/products&per_page=1`, each only if
+   `robots.txt` allows its path.
+6. Further pages of the listing, at `per_page=100`, only when they are needed:
    page two when `X-WP-Total` is between 101 and 200, or when the header is
    absent and page one held a hundred products; page three when the header is
    absent and page two held a hundred too.
@@ -278,14 +303,22 @@ A request that is answered 429 or with a challenge page ends the census of
 that shop, and the answer is recorded. When the budget runs out before a
 needed page, that page is unread, and what depends on it is unknown.
 
-Every request carries the User-Agent
-`AgentifyResearch/1.0 (WooCommerce shop census; +https://agentify.ad)`, no
-cookie and no request for compression, and waits fifteen seconds for an
-answer and ten megabytes for its body, the connector's own limits. The
-connector's own requests carry no User-Agent at all. A firewall that judges a
-request by that header may therefore treat the census and the connector
-differently, in either direction, and the census cannot tell which; this is
-said wherever a block is reported.
+Every request is HTTP/1.1, written byte for byte by the census's script over
+a TLS connection to an address the shop's name resolved to, with no cookie,
+no request for compression and `Connection: keep-alive`, and waits fifteen
+seconds for an answer and ten megabytes for its body, which are the
+connector's own limits. The honest requests carry the User-Agent
+`AgentifyResearch/1.0 (WooCommerce shop census; +https://agentify.ad)`. The
+connector's own request carries exactly what
+`apps/dashboard/src/woo-request.ts` sends for a catalogue page and nothing
+else: `accept: application/json`, `host` and `Connection: keep-alive`, in
+that order, with no User-Agent, which is what Node 24 put on the wire when
+the census checked it. So the honest listing request and the connector's
+differ only in the User-Agent, the number of products asked for and the
+second or two between them. The TLS handshake is made by Python's OpenSSL on
+the test host, not by Node's, so a firewall that recognises clients by their
+handshake may still tell the connector from the census; the census cannot
+measure that.
 
 The requests to shops run from the test host, the vantage the connector's
 requests leave from on the test channel, as an ordinary user, without sudo,
@@ -324,6 +357,19 @@ a 503 whose page says the site is under maintenance. Where an answer fits two
 classes, *Challenged* wins, then *Rate-limited*, then *Unreachable*, then the
 rest as written. All of this is observed, from one vantage point and with the
 census's User-Agent; whether a browser would get through is not measured.
+
+The connector's own request is put in the same classes, and a shop is
+**readable by the connector's own request** when that answer is *Readable*.
+That is reported as a share of each group, beside the share readable by the
+honest request, and every shop where the two differ in class is listed in
+anonymized form with both classes.
+
+The vantage point matters. The test host leaves the internet through an
+Indonesian network, so to an Indonesian shop's host it looks local. The live
+channel, if the connector reaches it, calls from a datacentre in Germany,
+which a firewall is more likely to treat as foreign or automated. Every
+blocked share this census measures is therefore a lower bound for what the
+connector would meet on the live channel, and is reported as one.
 
 The front page's answer is put in the same classes, so that a firewall
 guarding only the API can be told from one guarding the whole site.
@@ -427,8 +473,12 @@ matches.
 
 The verdict on an included WooCommerce shop is reached by the following steps,
 in order, and the first step that decides it is final. Every reason that
-applies is recorded, not only the deciding one.
+applies is recorded, not only the deciding one. The verdict uses the honest
+request's answers throughout; the connector's own request is reported beside
+it.
 
+0. **robots.txt.** If the shop's `robots.txt` disallows the listing path for
+   the census, the verdict is **unknown (robots.txt)**, counted separately.
 1. **Access.** If the listing was *Challenged*, *Rate-limited*, *Refused by a
    firewall* or *Unreachable*, the verdict is **unknown (blocked)** or
    **unknown (unreachable)**.
@@ -462,6 +512,13 @@ sentence. Beside it, the census reports how many conditional shops have at
 least one qualifying product whose description, as the connector would carry
 it, fits the 500 characters a published card allows, because a product over
 that length is imported but waits for the merchant to shorten it.
+
+Beside the verdict, the census counts the shops that answer the honest
+request with a JSON list and refuse the connector's own request, that is,
+put it in any class other than *Readable*. That is its own line in the
+analysis of sole blockers below, reported with the verdict each such shop
+received from the honest data, because for those shops the connector would
+stop at the door whatever their catalogue holds.
 
 Every **cannot** is also read for its **sole blocker**: the one reason that,
 treated as passed while everything else stays as observed, would turn the
@@ -539,6 +596,12 @@ WhatsApp chat or order plugin on 20–50%, LiteSpeed (by header or plugin) on
 30–60%, and Cloudflare in front on 25–55%. Indonesian shared hosting is
 largely LiteSpeed, and Indonesian buyers order through WhatsApp.
 
+**P14.** The shops that answer the honest request with a JSON list and refuse
+the connector's own request: 0–15% of the Indonesian shops and 0–15% of the
+control group. A request with no User-Agent is a common sign of a script, and
+some hosting firewalls and Cloudflare's browser integrity check refuse it,
+but most shops run neither in a mode that inspects requests to the API.
+
 ## The decision rule
 
 The rule is applied to the Indonesian group, because that is the market the
@@ -578,7 +641,13 @@ each, but the thresholds are applied to the observed share and nothing else.
    using the protection most common among the blocked shops, and a test story:
    what the merchant reads when their shop refuses the connector. Between 3%
    and 10%, it is the test story alone. Below 3%, it is recorded and nothing
-   follows.
+   follows. The share is a lower bound for the live channel, as said above,
+   and is reported as one.
+6. **The connector's missing User-Agent.** If even one included shop, in
+   either group, answers the honest request with a JSON list and refuses the
+   connector's own request, the missing User-Agent is recorded as a defect of
+   the connector, to be fixed by sending an honest User-Agent, and not as a
+   product question.
 
 No change to the connector's code follows from this census directly; each
 outcome above is a question put to the product owner or a lab built later.
