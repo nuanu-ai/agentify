@@ -435,9 +435,9 @@ became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
-An order that ended `rejected` or `expired` with nothing charged, nothing held
-for its buyer and no payment ever taken for it is deleted thirty days after it
-ended, at the first daily clean-up after that. From then on `orders.get`
+An order that ended `rejected` or `expired` with nothing charged or held and no
+confirmation asked of you is deleted thirty days after it was last written, at
+the first daily clean-up after that. From then on `orders.get`
 refuses it with `no_such_order`, as an order that never existed, it is no
 longer in `orders.list`, and the agent's status address answers it as an
 unknown order. Your dashboard lists such

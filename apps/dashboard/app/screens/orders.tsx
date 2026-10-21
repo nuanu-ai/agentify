@@ -432,7 +432,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         <>
           <OrderList view={view} />
           <p className="note">
-            Nothing was charged for these, and each is kept for thirty days after it ended.
+            Nothing was charged for these, and each is deleted thirty days after it was last
+            written.
           </p>
         </>
       ) : here?.key === "needs" ? (

@@ -1,7 +1,7 @@
 # The purchase door refuses before any charge
 
-Status: approved by the product owner, 2026-10-21, in this form and with these
-numbers.
+Status: approved by the product owner on 2026-10-21 as proposed: at most
+twenty purchases waiting for payment, ten minutes of silence, thirty days.
 
 ## Context
 
