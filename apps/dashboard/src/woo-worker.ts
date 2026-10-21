@@ -152,7 +152,7 @@ export const fillFromTheShop = async (
     return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
   }
   const inspected = await productInTheShop(connection, order.merchant_item_id, parts);
-  const eligible = inspected.ok && inspected.product.tax.mode === "off" ? inspected.product : null;
+  const eligible = inspected.ok ? inspected.product : null;
   const quoted =
     order.price_id === undefined
       ? null
@@ -289,6 +289,7 @@ export const fillFromTheShop = async (
     price: { amount: order.price.amount, currency: order.price.currency },
     download: { id: eligible.downloadId, name: eligible.fileName },
     paidInto,
+    tax: eligible.tax,
   });
 
   if (made.ok) {
@@ -779,8 +780,10 @@ export const quoteFromTheShop = async (
     return inspected.again || !inspected.saidNo ? silent(inspected.why) : unavailable;
   }
   const product = inspected.product;
-  if (product.tax.mode !== "off") {
-    return unpriced("the shop calculates tax, which this connector does not price yet");
+  if (product.kind === "parcel" && product.tax.mode !== "off") {
+    return unpriced(
+      "the shop calculates tax, which this connector does not price a parcel under yet",
+    );
   }
   // A question with a place is a parcel's card, and the goods alone are not a
   // price it can be sold at.

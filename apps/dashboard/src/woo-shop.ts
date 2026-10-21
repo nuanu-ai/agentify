@@ -734,6 +734,8 @@ export interface SoldItem {
   readonly price: Money;
   readonly download: { readonly id: string; readonly name: string };
   readonly paidInto: PaidIntoSplit | null;
+  /** As the product was sold under; it decides how the order's line is priced. */
+  readonly tax: { readonly mode: "off" | "included" };
 }
 
 /**
@@ -1137,8 +1139,12 @@ export const shippingRatesInTheShop = async (
  * stamps, so the merchant ships it; without it the order sits pending although
  * the buyer paid. It also makes the shop send two emails, one to the address on
  * the order, which nothing can suppress, so the order carries the merchant's
- * own address and the buyer receives no shop mail. The price sent is what the
- * buyer paid, not what the shop charges today.
+ * own address and the buyer receives no shop mail. Where the shop calculates no
+ * tax, the price sent is what the buyer paid, not what the shop charges today.
+ * Where prices are entered with tax inside them, the line names only the
+ * product: WooCommerce reads a line's totals as amounts before tax and would
+ * tax them again, so it is left to price the line from the product and split
+ * the tax out, and the order is held to the total paid.
  */
 export const createTheOrderInTheShop = async (
   keys: ShopKeys,
@@ -1167,12 +1173,14 @@ export const createTheOrderInTheShop = async (
     billing: { email: sold.email },
     meta_data: metadataOf(sold.orderId, sold.price, sold.paidInto),
     line_items: [
-      {
-        product_id: productId,
-        quantity: 1,
-        subtotal: sold.price.amount,
-        total: sold.price.amount,
-      },
+      sold.tax.mode === "off"
+        ? {
+            product_id: productId,
+            quantity: 1,
+            subtotal: sold.price.amount,
+            total: sold.price.amount,
+          }
+        : { product_id: productId, quantity: 1 },
     ],
   };
 
@@ -1233,17 +1241,22 @@ export const createTheOrderInTheShop = async (
         total_tax?: unknown;
       }
     | undefined;
+  // With tax inside the price the line holds the amount before tax, and the
+  // tax is the shop's to record; the total is still what was paid.
+  const untaxedAsSold =
+    sold.tax.mode !== "off" ||
+    (made.total_tax === "0.00" &&
+      line?.subtotal === sold.price.amount &&
+      line.total === sold.price.amount &&
+      line.total_tax === "0.00");
   if (
     !["processing", "completed"].includes(String(made.status)) ||
     made.currency !== sold.price.currency ||
     made.total !== sold.price.amount ||
-    made.total_tax !== "0.00" ||
+    !untaxedAsSold ||
     lineItems.length !== 1 ||
     line?.product_id !== productId ||
     line.quantity !== 1 ||
-    line.subtotal !== sold.price.amount ||
-    line.total !== sold.price.amount ||
-    line.total_tax !== "0.00" ||
     made.payment_method !== "agentify" ||
     made.transaction_id !== sold.orderId ||
     billing?.email !== sold.email ||

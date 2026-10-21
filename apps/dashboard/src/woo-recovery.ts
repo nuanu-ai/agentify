@@ -385,7 +385,7 @@ const soldItem = (
   orderId: string,
   email: string,
   facts: WooOrderFacts,
-  product: { downloadId: string; fileName: string },
+  product: { downloadId: string; fileName: string; tax: SoldItem["tax"] },
   paidInto: PaidIntoSplit | null,
 ): SoldItem => ({
   orderId,
@@ -394,6 +394,7 @@ const soldItem = (
   price: { amount: facts.amount, currency: facts.currency },
   download: { id: product.downloadId, name: product.fileName },
   paidInto,
+  tax: product.tax,
 });
 
 const permissionFor = (
