@@ -8,7 +8,7 @@
 import { deadlines } from "@agentify/core";
 import { type Card, CardSchema, type ShipTo } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AnalyticsEvent } from "../analytics/index.js";
+import { type AnalyticsEvent, checkedEvent } from "../analytics/index.js";
 import type { PaymentRecoveryContext } from "../ports/facilitator.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
@@ -66,6 +66,14 @@ const LIVE = {
 let open: Harness | null = null;
 let served: Served | null = null;
 afterEach(async () => {
+  // Every event a flow recorded is one the sender would send.
+  for (const { event } of open?.store.recordedAnalytics ?? []) {
+    expect(
+      checkedEvent({ ...event, refs: event.refs ?? {}, fields: event.fields ?? {} }),
+    ).toStrictEqual({
+      event,
+    });
+  }
   await served?.close();
   served = null;
   await open?.stop();
@@ -323,7 +331,7 @@ describe("a payment attempt's result", () => {
     ]);
   });
 
-  it("is not recorded for a price, a verified payment or a charge still in flight", async () => {
+  it("is not recorded for a price or a payment that was only verified", async () => {
     const { h, orderId, recovery, payTo } = await recoverable("sync");
     await h.store.claimPayment("fp-original", orderId);
 
