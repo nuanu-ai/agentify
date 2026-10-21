@@ -698,6 +698,7 @@ describe("exact Woo order recovery", () => {
           emailUid: "a".repeat(64),
           orderNumber: "WOO-13",
         },
+        total: "25.00",
       },
       NOW,
     );
@@ -753,7 +754,7 @@ describe("exact Woo order recovery", () => {
   it("binds an inclusive shop's order totalled within a cent of the price paid", async () => {
     // The German shop with a 5% compound rate, rounding per line: 1.01 with
     // 0.14 of tax for a price of 1.00.
-    const { outcome } = await recoveringWith(INCLUSIVE, {
+    const { outcome, shops } = await recoveringWith(INCLUSIVE, {
       total: "1.01",
       totalTax: "0.14",
       subtotal: "0.87",
@@ -762,6 +763,7 @@ describe("exact Woo order recovery", () => {
     });
 
     expect(outcome).toMatchObject({ ok: true, state: "delivered" });
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "1.01" });
   });
 
   it("does not bind an inclusive shop's order whose total is more than a cent from the price paid", async () => {
@@ -862,7 +864,11 @@ describe("a parcel's order the shop holds", () => {
     // recovery must not read as a reason not to ship it.
     const shops = memoryWooShops();
     await shops.claimOrder("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
-    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW);
+    await shops.recordOrder(
+      "ord_1",
+      { id: "30", number: "30", permission: null, total: "25.00" },
+      NOW,
+    );
 
     const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
 

@@ -2121,6 +2121,7 @@ describe("merchant delivery recovery", () => {
             emailUid: "a".repeat(64),
             orderNumber: "WOO-13",
           },
+          total: "25.00",
         },
         now,
       );

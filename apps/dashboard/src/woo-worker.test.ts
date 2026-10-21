@@ -322,6 +322,21 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(answer).toMatchObject({ delivered: { order_number: "55" } });
   });
 
+  it("keeps the total the shop's order recorded a cent from what was paid", async () => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+
+    await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(shops, async (keys, sold) => ({ ...(await shop.place(keys, sold)), total: "25.01" })),
+      NO_SPLIT,
+    );
+
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "25.01" });
+  });
+
   it("refuses an order whose price is not the shop's price, and places nothing", async () => {
     // The download can be the bound one and the money still wrong: a sale
     // charged at a price the shop no longer asks is not put in somebody's shop
@@ -1811,6 +1826,20 @@ describe("a parcel's paid order", () => {
     expect(shop.placed).toHaveLength(0);
   });
 
+  it("keeps the total a parcel's order recorded in the shop a cent from what was paid", async () => {
+    const shops = memoryWooShops();
+
+    await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, async () => ({ ok: true, id: "30", number: "30", total: "25.01" })),
+      NO_SPLIT,
+    );
+
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "25.01" });
+  });
+
   it("refuses an order whose shipping no longer costs what was paid, and posts nothing", async () => {
     const shops = memoryWooShops();
     const shop = aParcelShop();
@@ -2710,7 +2739,7 @@ describe("following a parcel to the carrier", () => {
     await shops.claimOrder("acc_1", "ord_1", facts, new Date("2026-09-14T12:00:00.000Z"));
     await shops.recordOrder(
       "ord_1",
-      { id: "30", number: "30", permission: null },
+      { id: "30", number: "30", permission: null, total: "25.00" },
       new Date("2026-09-14T12:00:00.000Z"),
     );
     return shops;
@@ -2906,6 +2935,7 @@ describe("following a parcel to the carrier", () => {
           emailUid: "uid",
           orderNumber: "13",
         },
+        total: "25.00",
       },
       new Date("2026-09-14T12:00:00.000Z"),
     );
@@ -3306,7 +3336,11 @@ describe("the worker that keeps every connected shop served", () => {
       },
       new Date(),
     );
-    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, new Date());
+    await shops.recordOrder(
+      "ord_1",
+      { id: "30", number: "30", permission: null, total: "25.00" },
+      new Date(),
+    );
     let reading = false;
     const worker = startWooWorker({
       shops,
