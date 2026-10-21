@@ -52,6 +52,7 @@ import {
 import { boundedGoogleExchange } from "./google-exchange.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
+import { suppressWaitingAbout } from "./nuanu-analytics.js";
 import { reportLinkMessage } from "./report-mail.js";
 import {
   accounts,
@@ -1425,10 +1426,26 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async setAnalyticsOptOut(personId, optedOut) {
-      await (await contextOf()).adapter.update({
-        model: "user",
-        where: [{ field: "id", value: personId }],
-        update: { analyticsOptOut: optedOut },
+      const choose = async (adapter: Awaited<typeof auth.$context>["adapter"]) =>
+        await adapter.update<{ merchantId?: unknown }>({
+          model: "user",
+          where: [{ field: "id", value: personId }],
+          update: { analyticsOptOut: optedOut },
+        });
+      if (parts.pool === undefined) {
+        await choose((await contextOf()).adapter);
+        return;
+      }
+      await drizzle(parts.pool).transaction(async (tx) => {
+        const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
+        const chosen = await choose((await bound.$context).adapter);
+        if (chosen === null) return;
+        const { merchantId } = chosen;
+        await suppressWaitingAbout(
+          tx,
+          personId,
+          typeof merchantId === "string" && merchantId !== "" ? merchantId : null,
+        );
       });
     },
 

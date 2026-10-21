@@ -224,6 +224,35 @@ const tellTidied = ({ givenUp, why, gone }: Tidied): void => {
 };
 
 /**
+ * Settles as suppressed, in the caller's transaction, every event still
+ * waiting that is about this person or the merchant their account names, so a
+ * change of their choice about analytics, either way, never lets out what was
+ * recorded before it. A row a sender holds is left to it: that sender read the
+ * choice as it stood when it took the row, and does not post one taken while
+ * the person was opted out.
+ */
+export async function suppressWaitingAbout(
+  tx: Pick<Transaction, "execute">,
+  person: string,
+  merchant: string | null,
+): Promise<void> {
+  const theirs =
+    merchant === null
+      ? sql`refs ->> 'person' = ${person}`
+      : sql`(refs ->> 'person' = ${person} or refs ->> 'merchant' = ${merchant})`;
+  await tx.execute(sql`
+    update commerce_analytics_events
+       set state = 'suppressed', next_attempt_at = null, settled_at = now(),
+           last_outcome = 'opted_out'
+     where id in (
+       select id from commerce_analytics_events
+        where state = 'pending' and ${theirs}
+          for update skip locked
+     )
+  `);
+}
+
+/**
  * One turn. A failure of the database is thrown, and the transaction's
  * rollback leaves every row as it was.
  */
