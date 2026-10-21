@@ -294,6 +294,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
             fileName: "Guide",
             price: { amount: "25.00", currency: "USD" },
             fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "off" as const },
           },
         })),
       ...(standing.readOrder === undefined
@@ -840,6 +841,7 @@ describe("importing the catalogue", () => {
           productId: "11",
           price: { amount: "25.00", currency: "USD" },
           fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
         },
       }),
     });
@@ -879,6 +881,7 @@ describe("importing the catalogue", () => {
           productId: "11",
           price: { amount: "25.00", currency: "USD" },
           fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
         },
       }),
     });
@@ -924,6 +927,7 @@ describe("importing the catalogue", () => {
             fileName: "Guide",
             price: { amount: "25.00", currency: "USD" },
             fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "off" as const },
           },
         };
       },
@@ -2156,6 +2160,7 @@ describe("merchant delivery recovery", () => {
             fileName: "Guide",
             price: { amount: "25.00", currency: "USD" },
             fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "off" as const },
           },
         };
       },

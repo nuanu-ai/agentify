@@ -214,6 +214,7 @@ const filling = (
       fileName: "Guide",
       price: { amount: "25.00", currency: "USD" },
       fingerprint: "accepted-download-fingerprint",
+      tax: { mode: "off" as const },
     }),
   quotedProduct: async () => "accepted-download-fingerprint",
 });
@@ -347,6 +348,7 @@ describe("one paid order, in the merchant's own shop", () => {
       fileName: "Guide",
       price: { amount: "25.00", currency: "USD" },
       fingerprint: "accepted-download-fingerprint",
+      tax: { mode: "off" as const },
     };
     const untrue = new Set(
       await Promise.all(
@@ -354,7 +356,13 @@ describe("one paid order, in the merchant's own shop", () => {
           { inspectProduct: async () => RULED_OUT },
           {
             inspectProduct: async () =>
-              showing({ kind: "parcel", productId: "11", price: download.price, fingerprint: "p" }),
+              showing({
+                kind: "parcel",
+                productId: "11",
+                price: download.price,
+                tax: { mode: "off" },
+                fingerprint: "p",
+              }),
           },
           {
             inspectProduct: async () =>
@@ -576,6 +584,7 @@ describe("one paid order, in the merchant's own shop", () => {
             downloadId: "dl_replaced",
             fileName: "Replacement",
             fingerprint: "replacement-download-fingerprint",
+            tax: { mode: "off" as const },
             price: { amount: "25.00", currency: "USD" },
           }),
       },
@@ -603,6 +612,7 @@ describe("one paid order, in the merchant's own shop", () => {
               downloadId: "dl_guide",
               fileName: "Guide",
               fingerprint: "accepted-download-fingerprint",
+              tax: { mode: "off" as const },
               price: { amount: "25.00", currency: "USD" },
             })
           : RULED_OUT,
@@ -726,6 +736,7 @@ describe("the whole way through, against a real gateway", () => {
           fileName: "Guide",
           price: { amount: "25.00", currency: "USD" },
           fingerprint: "accepted-download-fingerprint",
+          tax: { mode: "off" as const },
         }),
       quotedProduct: async () => "accepted-download-fingerprint",
     };
@@ -803,6 +814,7 @@ describe("the whole way through, against a real gateway", () => {
           fileName: "Guide",
           price: { amount: "25.00", currency: "USD" },
           fingerprint: "accepted-download-fingerprint",
+          tax: { mode: "off" as const },
         }),
       quotedProduct: async () => "accepted-download-fingerprint",
     };
@@ -879,6 +891,7 @@ describe("the whole way through, against a real gateway", () => {
           fileName: "Guide",
           price: { amount: "25.00", currency: "USD" },
           fingerprint: "accepted-download-fingerprint",
+          tax: { mode: "off" as const },
         }),
       quotedProduct: async () => "accepted-download-fingerprint",
     };
@@ -1048,6 +1061,7 @@ describe("a price question off the merchant's stream", () => {
     fileName: "Guide",
     price: { amount: "25.00", currency: "USD" },
     fingerprint: "accepted-download-fingerprint",
+    tax: { mode: "off" as const },
   };
 
   const shopShowing =
@@ -1265,6 +1279,7 @@ describe("a parcel's price question", () => {
       productId: "28",
       price: { amount: "20.00", currency: "USD" },
       fingerprint: "accepted-parcel-fingerprint",
+      tax: { mode: "off" as const },
     },
   };
   const rate = (title: string, cost: string, instanceId = "3") => ({
@@ -1419,6 +1434,7 @@ describe("a parcel's price question", () => {
           fileName: "Guide",
           price: { amount: "20.00", currency: "USD" },
           fingerprint: "a-download-now",
+          tax: { mode: "off" as const },
         }),
       shippingRates: async () => ({ ok: true, rates: [rate("Standard", "5.00")] }),
     });
@@ -1545,6 +1561,7 @@ describe("a parcel's paid order", () => {
       productId: "28",
       price: { amount: "20.00", currency: "USD" },
       fingerprint: "accepted-parcel-fingerprint",
+      tax: { mode: "off" as const },
     },
   };
   const rate = (title: string, cost: string, instanceId: string) => ({
@@ -1688,6 +1705,7 @@ describe("a parcel's paid order", () => {
             fileName: "Tote.pdf",
             price: { amount: "20.00", currency: "USD" },
             fingerprint: "accepted-parcel-fingerprint",
+            tax: { mode: "off" as const },
           },
         }),
       },
@@ -1781,6 +1799,7 @@ describe("a parcel's paid order", () => {
             fileName: "Tote.pdf",
             price: { amount: "20.00", currency: "USD" },
             fingerprint: "accepted-parcel-fingerprint",
+            tax: { mode: "off" as const },
           }),
       },
       {
@@ -2285,6 +2304,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
           productId: "28",
           price: { amount: "20.00", currency: "USD" },
           fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
         },
       }),
       shippingRates: async () => ({
@@ -2427,6 +2447,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
           productId: "28",
           price: { amount: "20.00", currency: "USD" },
           fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
         },
       }),
       shippingRates: async () => ({

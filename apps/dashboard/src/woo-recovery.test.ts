@@ -46,6 +46,7 @@ const PRODUCT: EligibleWooProduct = {
   fileName: "agentify-test.txt",
   price: { amount: "0.01", currency: "USD" },
   fingerprint: "accepted-download-fingerprint",
+  tax: { mode: "off" as const },
 };
 
 const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({

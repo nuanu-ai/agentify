@@ -60,13 +60,31 @@ export interface ShopKeys {
   readonly consumerSecret: string;
 }
 
+/**
+ * How WooCommerce taxes a sale from the shop, as far as the price and the
+ * order depend on it.
+ */
+export type ShopTax =
+  /** Tax calculation is off, and an order carries no tax. */
+  | { readonly mode: "off" }
+  /**
+   * Prices are entered with tax inside them, which WooCommerce splits out at
+   * the rates of `base`, the shop's own address.
+   */
+  | { readonly mode: "included"; readonly base: ShipToLocality }
+  /** Prices are entered before tax, which is added for the buyer's address. */
+  | { readonly mode: "excluded" };
+
 /** One protected file handed to the agent. */
 interface EligibleDownload {
   readonly kind: "download";
   readonly productId: string;
   readonly downloadId: string;
   readonly fileName: string;
+  /** What the buyer pays: the price as entered, with any tax inside it. */
   readonly price: Money;
+  /** No download is sold from a shop whose prices are entered before tax. */
+  readonly tax: { readonly mode: "off" | "included" };
   /** Digest of the delivery-critical product, settings and protected source. */
   readonly fingerprint: string;
 }
@@ -75,8 +93,12 @@ interface EligibleDownload {
 interface EligibleParcel {
   readonly kind: "parcel";
   readonly productId: string;
-  /** The goods alone; shipping is the shop's rate for the buyer's place. */
+  /**
+   * The goods as entered, without shipping, and without the tax the buyer's
+   * place adds where prices are entered before tax.
+   */
   readonly price: Money;
+  readonly tax: ShopTax;
   /** Digest of the product and the shop settings a parcel is sold under. */
   readonly fingerprint: string;
 }
@@ -146,6 +168,24 @@ const ProductSchema = z.looseObject({
 /** WooCommerce writes the setting's own id beside its value, matched to the address asked. */
 const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string(), z.boolean()]) });
 
+/** A settings group as `wc/v3` writes one: every setting of the group in one list. */
+const SettingsGroupSchema = z.array(SettingSchema);
+
+/** Read from the tax group only where the shop calculates tax. */
+const TAX_SETTINGS = [
+  "woocommerce_prices_include_tax",
+  "woocommerce_tax_display_shop",
+  "woocommerce_tax_based_on",
+  "woocommerce_tax_round_at_subtotal",
+] as const;
+
+/** The shop's own address, read from the general group for an inclusive shop's parcel. */
+const BASE_SETTINGS = [
+  "woocommerce_default_country",
+  "woocommerce_store_city",
+  "woocommerce_store_postcode",
+] as const;
+
 /**
  * Download and shipping settings are asked for in one batch, one round trip
  * whichever class the product is, and only the answers bearing on its class
@@ -179,15 +219,22 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
     "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
     "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
+    "/wp-json/wc/v3/settings/tax",
+    "/wp-json/wc/v3/settings/general",
   ] as const;
   /** The product first. */
   const BEARING = {
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
+  /** Asked as a whole group rather than one setting. */
+  const GROUPS = [10, 11];
   const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
   /** Which check an answer was, and the status it came with, as a log names them. */
-  const checkAt = (index: number) => (index === 0 ? "product" : `${settingAsked(index)} setting`);
+  const checkAt = (index: number) =>
+    index === 0
+      ? "product"
+      : `${settingAsked(index)} ${GROUPS.includes(index) ? "settings" : "setting"}`;
   const statusAt = (index: number) => `HTTP ${answers[index]?.response.status}`;
   /** Null where the shop never answered; `body` is null where its answer broke off. */
   const answers = await Promise.all(
@@ -216,7 +263,7 @@ export const inspectProductInTheShop = async (
       return undefined;
     }
   };
-  const unanswered = (indices: readonly number[]): ProductInspection | null => {
+  const unanswered = (indices: readonly number[]): NotSellable | null => {
     const lostAt = indices.find((index) => answers[index] === null);
     if (lostAt !== undefined) {
       return {
@@ -353,7 +400,76 @@ export const inspectProductInTheShop = async (
     shipTo,
     destination,
   ] = settings.map((setting) => (setting.success ? setting.data.value : ""));
+  /** The named settings of a group, or why the group cannot be taken for them. */
+  const groupAt = (
+    index: number,
+    ids: readonly string[],
+  ): { readonly ok: true; readonly value: (id: string) => string } | NotSellable => {
+    const lost = unanswered([index]);
+    if (lost !== null) return lost;
+    const listed = SettingsGroupSchema.safeParse(documentOf(index));
+    const found = new Map(
+      listed.success ? listed.data.map((one) => [one.id, String(one.value)] as const) : [],
+    );
+    const missing = ids.find((id) => !found.has(id));
+    if (missing !== undefined) {
+      return {
+        ok: false,
+        why: `The shop's protected ${checkAt(index)} check returned no ${missing} setting (${statusAt(index)}).`,
+        again: false,
+        saidNo: false,
+      };
+    }
+    return { ok: true, value: (id) => found.get(id) ?? "" };
+  };
   const unsupported: string[] = [];
+  // Asked for only where the shop calculates tax: with it off WooCommerce need
+  // not serve them, and nothing they say bears on the sale.
+  let entered: "included" | "excluded" | null = null;
+  let roundAtSubtotal = "";
+  if (taxes === "yes") {
+    const taxSettings = groupAt(10, TAX_SETTINGS);
+    if (!taxSettings.ok) return taxSettings;
+    const includesTax = taxSettings.value("woocommerce_prices_include_tax");
+    roundAtSubtotal = taxSettings.value("woocommerce_tax_round_at_subtotal");
+    if (includesTax === "yes" || includesTax === "no") {
+      entered = includesTax === "yes" ? "included" : "excluded";
+      // The import reads the catalogue's price, which WooCommerce shows with
+      // tax added or taken off when the display differs from the entry, while
+      // the price check and the order go by the price as entered.
+      if (
+        taxSettings.value("woocommerce_tax_display_shop") !==
+        (entered === "included" ? "incl" : "excl")
+      ) {
+        unsupported.push(
+          `the shop's catalogue shows prices ${entered === "included" ? "without" : "with"} tax while` +
+            ` they are entered ${entered === "included" ? "with" : "without"} it, so the price it shows` +
+            " is not the price a card would sell at (WooCommerce → Settings → Tax → Display prices in" +
+            " the shop)",
+        );
+      }
+    } else {
+      unsupported.push("the shop's setting for whether prices are entered with tax is unreadable");
+    }
+    if (kind === "download" && entered === "excluded") {
+      unsupported.push(
+        "the shop's prices are entered before tax, which WooCommerce adds for the buyer's address," +
+          " and the buyer of a download gives none, so no price can be quoted that the order would" +
+          " charge",
+      );
+    }
+    // Only the shipping address is known to price a parcel's cart and its
+    // order alike; the order carries no billing address to tax by.
+    if (kind === "parcel" && taxSettings.value("woocommerce_tax_based_on") !== "shipping") {
+      unsupported.push(
+        "WooCommerce calculates tax in this shop on an address other than the customer's shipping" +
+          " address, and this connector sells a parcel only where it is calculated on the shipping" +
+          " address (WooCommerce → Settings → Tax → Calculate tax based on)",
+      );
+    }
+  } else if (taxes !== "no") {
+    unsupported.push("the shop's tax calculation setting is neither on nor off");
+  }
   if (product.type !== "simple") unsupported.push("it is not a simple product");
   if (product.status !== "publish") unsupported.push("it is not published");
   if (!product.purchasable) unsupported.push("WooCommerce does not mark it purchasable");
@@ -368,15 +484,6 @@ export const inspectProductInTheShop = async (
     if (product.download_expiry !== -1) unsupported.push("its download access expires");
   }
   if (currency !== "USD") unsupported.push("the shop currency is not USD");
-  if (taxes !== "no") {
-    // Not phrased as a setting to change: tax calculation covers the whole
-    // shop, so switching it off for this would stop tax for every customer.
-    unsupported.push(
-      "WooCommerce calculates tax in this shop, which this connector cannot sell from yet" +
-        " (turning tax calculation off would stop WooCommerce calculating tax on every order the" +
-        " shop takes, so it is not the way round this)",
-    );
-  }
   if (kind === "download") {
     if (method !== "force") unsupported.push("the download method is not Force Downloads");
     if (login !== "no") unsupported.push("downloads require a WooCommerce login");
@@ -444,8 +551,33 @@ export const inspectProductInTheShop = async (
     };
   }
   if (kind === "parcel") {
+    let tax: ShopTax = { mode: entered === "excluded" ? "excluded" : "off" };
+    if (entered === "included") {
+      const general = groupAt(11, BASE_SETTINGS);
+      if (!general.ok) return general;
+      const [country = "", state] = general.value("woocommerce_default_country").split(":");
+      if (country === "") {
+        return {
+          ok: false,
+          why: "The shop's general settings name no country it is based in.",
+          again: false,
+          saidNo: false,
+        };
+      }
+      const postcode = general.value("woocommerce_store_postcode");
+      tax = {
+        mode: "included",
+        base: {
+          country,
+          ...(state === undefined || state === "" ? {} : { state }),
+          city: general.value("woocommerce_store_city"),
+          ...(postcode === "" ? {} : { postal_code: postcode }),
+        },
+      };
+    }
     // The class is hashed first, so a parcel's digest can never equal a
     // download's: a product that changed class after its quote has changed.
+    // With tax off the digest is the one it always was.
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify([
@@ -461,7 +593,15 @@ export const inspectProductInTheShop = async (
           product.sold_individually,
           product.virtual,
           product.downloadable,
-          taxes,
+          tax.mode === "off"
+            ? taxes
+            : [
+                tax.mode,
+                roundAtSubtotal,
+                ...(tax.mode === "included"
+                  ? [tax.base.country, tax.base.state, tax.base.city, tax.base.postal_code]
+                  : []),
+              ],
           shipTo,
           destination,
         ]),
@@ -469,7 +609,7 @@ export const inspectProductInTheShop = async (
       .digest("hex");
     return {
       ok: true,
-      product: { kind, productId, price: { amount, currency: "USD" }, fingerprint },
+      product: { kind, productId, price: { amount, currency: "USD" }, tax, fingerprint },
     };
   }
   const download = product.downloads[0];
@@ -553,7 +693,9 @@ export const inspectProductInTheShop = async (
         product.downloadable,
         product.download_limit,
         product.download_expiry,
-        taxes,
+        // A download's order is taxed where the shop is, whatever the rounding
+        // or the address tax is based on, so only the entry moves its price.
+        entered ?? taxes,
         method,
         login,
         afterPayment,
@@ -569,6 +711,7 @@ export const inspectProductInTheShop = async (
       downloadId: download.id,
       fileName: download.name,
       price: { amount, currency: "USD" },
+      tax: { mode: entered === "included" ? "included" : "off" },
       fingerprint,
     },
   };
