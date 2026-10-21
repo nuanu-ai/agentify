@@ -211,10 +211,20 @@ export const inspectProductInTheShop = async (
     }
   };
   const unanswered = (indices: readonly number[]): ProductInspection | null => {
-    if (indices.some((index) => answers[index] === null)) {
+    const lostAt = indices.find((index) => answers[index] === null);
+    if (lostAt !== undefined) {
       return {
         ok: false,
-        why: "The shop did not answer the protected product check.",
+        why: `The shop did not answer the protected ${checkAt(lostAt)} check.`,
+        again: true,
+      };
+    }
+    // Cut off on the way, the answer said nothing either way.
+    const brokenAt = indices.find((index) => answers[index]?.body === null);
+    if (brokenAt !== undefined) {
+      return {
+        ok: false,
+        why: `The shop's answer to the protected ${checkAt(brokenAt)} check broke off (${statusAt(brokenAt)}).`,
         again: true,
       };
     }
@@ -470,11 +480,13 @@ export const inspectProductInTheShop = async (
       saidNo: true,
     };
   }
+  let answered: number | undefined;
   try {
     const exposed = await request(raw, {
       redirect: "manual",
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
+    answered = exposed.status;
     await exposed.body?.cancel();
     if (worthAskingAgain(exposed.status)) {
       return {
@@ -486,7 +498,9 @@ export const inspectProductInTheShop = async (
     if (exposed.status !== 401 && exposed.status !== 403) {
       return {
         ok: false,
-        why: `The downloadable file is public without an order permission: asked without one, it answered HTTP ${exposed.status}.`,
+        why: exposed.ok
+          ? `The downloadable file is public: asked without an order permission, it answered HTTP ${exposed.status}.`
+          : `The downloadable file answered a request without an order permission with HTTP ${exposed.status} rather than a refusal, which this sale cannot rely on to keep it protected.`,
         again: false,
         saidNo: true,
       };
@@ -497,7 +511,10 @@ export const inspectProductInTheShop = async (
     // that broke looks the same.
     return {
       ok: false,
-      why: "The shop's raw download protection could not be verified.",
+      why:
+        answered === undefined
+          ? "The shop's raw download protection could not be verified."
+          : `The shop's raw download protection could not be verified: its answer (HTTP ${answered}) broke off.`,
       again: false,
       saidNo: false,
     };
