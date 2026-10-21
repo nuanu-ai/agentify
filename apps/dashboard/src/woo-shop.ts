@@ -114,7 +114,7 @@ export type EligibleWooProduct = EligibleDownload | EligibleParcel;
  * shop said nothing that could be read or trusted, which is not to be told as
  * the seller's no.
  */
-type NotSellable =
+export type NotSellable =
   | {
       readonly ok: false;
       readonly why: string;

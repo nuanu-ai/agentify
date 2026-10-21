@@ -31,9 +31,12 @@ import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import { amountOfCents, centsOf, productIdFromMerchantItem } from "./woo-catalog.js";
 import {
+  type CartPrice,
   createTheOrderInTheShop,
   createTheParcelInTheShop,
+  type EligibleWooProduct,
   inspectProductInTheShop,
+  type NotSellable,
   type OrderMade,
   type PaidIntoSplit,
   type ParcelMade,
@@ -340,12 +343,55 @@ export const fillFromTheShop = async (
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
+type EligibleParcel = Extract<EligibleWooProduct, { readonly kind: "parcel" }>;
+
 /**
- * The product is held to the one the price was bound to, and the shipping to
- * what was paid above the goods: the cart is asked again for the paid-for
- * place, and the rate costing exactly that difference is the one sold. Where
- * none does, the order is refused before anything reaches the shop, and is a
- * unfulfilled order.
+ * What a parcel from a shop that calculates tax sells at: its cart's whole
+ * price for the place, at which the order made for that place charges the
+ * same. A shop whose prices hold their tax may keep one gross price for every
+ * buyer, which its cart shows and its order, taxing the place at its own rate,
+ * does not; so such a shop's parcel sells only to a place whose cart charges
+ * the goods at the entered price under the same taxes as a cart at the shop's
+ * own address, and that cart unread or answering otherwise sells nothing.
+ */
+const taxedParcelPrice = (
+  product: EligibleParcel,
+  at: Extract<RatesRead, { readonly ok: true }>,
+  atBase: RatesRead | null,
+): CartPrice | NotSellable => {
+  if (!at.priced.ok) return at.priced;
+  if (product.tax.mode !== "included") return at.priced;
+  if (atBase === null) {
+    return { ok: false, why: "the shop's own address was not asked", again: false, saidNo: false };
+  }
+  if (!atBase.ok) return atBase;
+  if (!atBase.priced.ok) return atBase.priced;
+  const base = atBase.priced;
+  const place = at.priced;
+  if (
+    place.goods !== product.price.amount ||
+    base.goods !== product.price.amount ||
+    place.taxes.length !== base.taxes.length ||
+    place.taxes.some((tax, index) => tax !== base.taxes[index])
+  ) {
+    return {
+      ok: false,
+      why: "the shop taxes this place otherwise than its own address, where its order would not charge what its cart does",
+      again: false,
+      saidNo: true,
+    };
+  }
+  return place;
+};
+
+/**
+ * The product is held to the one the price was bound to. Where the shop
+ * calculates no tax, the shipping is held to what was paid above the goods:
+ * the cart is asked again for the paid-for place, and the rate costing exactly
+ * that difference is the one sold. Where it calculates tax, the cart's whole
+ * price for the place, asked again, must be what was paid, and its cheapest
+ * rate is the one sold. Otherwise the order is refused before anything
+ * reaches the shop, and is a unfulfilled order.
  *
  * A shop that does not answer is not a refusal: a parcel has days to ship, so
  * the order comes round again and nothing is written until the shop says
@@ -409,13 +455,20 @@ const fillParcelFromTheShop = async (
       "This paid parcel's order names no address or no product in this shop, so no WooCommerce order was created.",
     );
   }
-  const [inspected, rates] = await Promise.all([
-    productInTheShop(connection, order.merchant_item_id, parts),
+  const askRates = (where: ShipToLocality) =>
     (
       parts.shippingRates ??
-      ((keys: WooConnection, id: string, where: ShipToLocality) =>
-        shippingRatesInTheShop(keys.shopUrl, id, where))
-    )(connection, productId, localityOf(address.data)),
+      ((keys: WooConnection, id: string, at: ShipToLocality) =>
+        shippingRatesInTheShop(keys.shopUrl, id, at))
+    )(connection, productId, where);
+  const inspection = productInTheShop(connection, order.merchant_item_id, parts);
+  const [inspected, rates, atBase] = await Promise.all([
+    inspection,
+    askRates(localityOf(address.data)),
+    inspection.then((read) => {
+      const base = baseOf(read);
+      return base === null ? null : askRates(base);
+    }),
   ]);
   if (!inspected.ok && inspected.again) {
     console.error(`[dashboard] ${order.id} waits: ${inspected.why}`);
@@ -425,11 +478,7 @@ const fillParcelFromTheShop = async (
     unreadable(order.id, inspected.why);
     return await refuse(UNREADABLE_PRODUCT);
   }
-  if (
-    !inspected.ok ||
-    inspected.product.kind !== "parcel" ||
-    inspected.product.tax.mode !== "off"
-  ) {
+  if (!inspected.ok || inspected.product.kind !== "parcel") {
     return await refuse(
       "This shop product is no longer a parcel this connector sells, so no WooCommerce order was created.",
     );
@@ -457,18 +506,46 @@ const fillParcelFromTheShop = async (
         " WooCommerce order was created.",
     );
   }
-  if (rates.rates.some((one) => one.tax !== "0.00")) {
-    return await refuse(
-      "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
-        " WooCommerce order was created.",
-    );
+  let rate: ShippingRate | undefined;
+  if (product.tax.mode === "off") {
+    if (rates.rates.some((one) => one.tax !== "0.00")) {
+      return await refuse(
+        "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
+          " WooCommerce order was created.",
+      );
+    }
+    const goods = centsOf(product.price.amount);
+    const paid =
+      order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
+    rate =
+      goods === null || paid === null
+        ? undefined
+        : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
+  } else {
+    const priced = taxedParcelPrice(product, rates, atBase);
+    if (!priced.ok && priced.again) {
+      console.error(`[dashboard] ${order.id} waits: ${priced.why}`);
+      return null;
+    }
+    if (!priced.ok && !priced.saidNo) {
+      unreadable(order.id, priced.why);
+      return await refuse(
+        "The shop's cart answered about shipping to this place in a way that could not be read or" +
+          " trusted, so no WooCommerce order was created.",
+      );
+    }
+    if (!priced.ok) {
+      console.error(`[dashboard] ${order.id} is refused: ${priced.why}`);
+      return await refuse(
+        "The shop's cart offered no price for this place that this sale can be filled at, so no" +
+          " WooCommerce order was created.",
+      );
+    }
+    rate =
+      priced.total === order.price.amount && order.price.currency === product.price.currency
+        ? priced.rate
+        : undefined;
   }
-  const goods = centsOf(product.price.amount);
-  const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
-  const rate =
-    goods === null || paid === null
-      ? undefined
-      : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
   if (rate === undefined) {
     return await refuse(
       "The shop's shipping to this place no longer costs what was paid for it, so no WooCommerce order was created.",
@@ -754,18 +831,26 @@ export const quoteFromTheShop = async (
   };
   const productId = productIdFromMerchantItem(connection.shopUrl, question.merchant_item_id);
   const place = question.ship_to;
-  // Asked together with the product, because both must fit in the time a price
-  // question has.
-  const shipping =
-    place === undefined || productId === null
+  const askRates = (where: ShipToLocality) =>
+    productId === null
       ? Promise.resolve(null)
       : (
           parts.shippingRates ??
-          ((keys: WooConnection, id: string, where: ShipToLocality) =>
-            shippingRatesInTheShop(keys.shopUrl, id, where))
-        )(connection, productId, place);
+          ((keys: WooConnection, id: string, at: ShipToLocality) =>
+            shippingRatesInTheShop(keys.shopUrl, id, at))
+        )(connection, productId, where);
+  // Asked together with the product, because both must fit in the time a price
+  // question has; the shop's own address as soon as the product check names it.
+  const inspection = productInTheShop(connection, question.merchant_item_id, parts);
   const read = await inTime(
-    Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
+    Promise.all([
+      inspection,
+      place === undefined ? Promise.resolve(null) : askRates(place),
+      inspection.then((answer) => {
+        const base = baseOf(answer);
+        return base === null || place === undefined ? null : askRates(base);
+      }),
+    ]),
     parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
   );
   // "Not available" is the seller's no, so it is said only where the shop's
@@ -782,16 +867,11 @@ export const quoteFromTheShop = async (
     return null;
   };
   if (read === null) return silent("the shop did not answer in time");
-  const [inspected, rates] = read;
+  const [inspected, rates, atBase] = read;
   if (!inspected.ok) {
     return inspected.again || !inspected.saidNo ? silent(inspected.why) : unavailable;
   }
   const product = inspected.product;
-  if (product.kind === "parcel" && product.tax.mode !== "off") {
-    return unpriced(
-      "the shop calculates tax, which this connector does not price a parcel under yet",
-    );
-  }
   // A question with a place is a parcel's card, and the goods alone are not a
   // price it can be sold at.
   if (place !== undefined && product.kind !== "parcel") {
@@ -801,16 +881,24 @@ export const quoteFromTheShop = async (
   if (product.kind === "parcel") {
     if (rates === null) return unpriced("the question carries no place to ship to");
     if (!rates.ok) return rates.again || !rates.saidNo ? silent(rates.why) : unpriced(rates.why);
-    // Such a shop's order carries no tax, so no rate that does is a price.
-    if (rates.rates.some((one) => one.tax !== "0.00")) {
-      return unpriced("the shop calculates no tax, and its cart taxes the shipping rate");
+    if (product.tax.mode === "off") {
+      // Such a shop's order carries no tax, so no rate that does is a price.
+      if (rates.rates.some((one) => one.tax !== "0.00")) {
+        return unpriced("the shop calculates no tax, and its cart taxes the shipping rate");
+      }
+      const goods = centsOf(product.price.amount);
+      const carriage = cheapestCents(rates.rates);
+      if (goods === null || carriage === null) {
+        return unpriced("the shop has no shipping rate to that place");
+      }
+      price = { amount: amountOfCents(goods + carriage), currency: product.price.currency };
+    } else {
+      const priced = taxedParcelPrice(product, rates, atBase);
+      if (!priced.ok) {
+        return priced.again || !priced.saidNo ? silent(priced.why) : unpriced(priced.why);
+      }
+      price = { amount: priced.total, currency: product.price.currency };
     }
-    const goods = centsOf(product.price.amount);
-    const carriage = cheapestCents(rates.rates);
-    if (goods === null || carriage === null) {
-      return unpriced("the shop has no shipping rate to that place");
-    }
-    price = { amount: amountOfCents(goods + carriage), currency: product.price.currency };
   }
   const recorded = await parts.shops.recordQuote(
     connection.accountId,
@@ -822,6 +910,12 @@ export const quoteFromTheShop = async (
   );
   return recorded ? { available: true, price, as_of: at.toISOString() } : unavailable;
 };
+
+/** Where an inclusive shop's parcel is also asked about: the shop's own address. */
+const baseOf = (inspected: ProductInspection): ShipToLocality | null =>
+  inspected.ok && inspected.product.kind === "parcel" && inspected.product.tax.mode === "included"
+    ? inspected.product.tax.base
+    : null;
 
 /** Read the one way both answers read it. */
 const productInTheShop = (
