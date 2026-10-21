@@ -14,7 +14,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnalyticsEvent, OrderCreated } from "../../analytics/index.js";
 import type { StoredOrder } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import { countedIds } from "../../testing/harness.js";
+import { countedIds, loggedWhile } from "../../testing/harness.js";
 import { anOrder } from "../../testing/store-contract.js";
 import { connect, PostgresStore } from "./store.js";
 
@@ -188,6 +188,79 @@ if (databaseUrl === null) {
 
       expect(await outbox()).toStrictEqual([]);
       expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+    });
+  });
+
+  describe("an outbox that cannot take the event", () => {
+    const awayWhile = async (during: () => Promise<void>): Promise<string> => {
+      await pool.query(
+        "alter table commerce_analytics_events rename to commerce_analytics_events_away",
+      );
+      try {
+        return await loggedWhile(during);
+      } finally {
+        await pool.query(
+          "alter table commerce_analytics_events_away rename to commerce_analytics_events",
+        );
+      }
+    };
+
+    it("still writes the order a purchase made, and says so without naming it", async () => {
+      const order = anOrderOf("ord_1");
+
+      const said = await awayWhile(async () => {
+        expect(await store.addOrder(order, "api", created(order))).toBe(true);
+      });
+
+      expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      expect(said).toMatch(/analytics event could not be recorded/);
+      expect(said).not.toContain("ord_1");
+    });
+
+    it("still commits a settled payment, and the order is paid", async () => {
+      const charging: StoredOrder = {
+        ...anOrderOf("ord_1"),
+        order: { ...anOrderOf("ord_1").order, state: "fulfilled", payment: "settling" },
+        paymentAttempt: { id: "pay_attempt_1", startedAt: 5_000, completion: null },
+      };
+      await store.addOrder(charging);
+      const paid: AnalyticsEvent = {
+        name: "agc_payment_result",
+        actor: "system",
+        source: "gateway",
+        refs: { order: "ord_1", merchant: MERCHANT, attempt: "pay_attempt_1" },
+        fields: { payment_state: "paid", money_mode: "test", network: "base_sepolia" },
+      };
+
+      const said = await awayWhile(async () => {
+        await store.withOrder(
+          "ord_1",
+          (found) => ({
+            save: {
+              ...found,
+              order: { ...found.order, state: "delivered", payment: "settled" },
+              paymentAttempt: {
+                id: "pay_attempt_1",
+                startedAt: 5_000,
+                completion: {
+                  settled: true,
+                  transaction: "0xsettled",
+                  executedAt: 6_000,
+                  source: "chain",
+                },
+              },
+            },
+            result: 1,
+          }),
+          undefined,
+          () => [{ event: paid, at: 6_000 }],
+        );
+      });
+
+      const after = await store.orderById("ord_1");
+      expect(after?.order.payment).toBe("settled");
+      expect(after?.paymentAttempt?.completion?.settled).toBe(true);
+      expect(said).toMatch(/analytics event could not be recorded/);
     });
   });
 }
