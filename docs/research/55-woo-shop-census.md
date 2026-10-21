@@ -16,6 +16,14 @@ listing and respects it. And it says that the test host's Indonesian network
 is a kinder vantage point than the one the live channel would call from.
 Nothing in the first version had been measured when it was amended.
 
+It was amended a second time, also on that day and before any shop's catalogue
+in any group was read, to add a third group of shops in Europe at the product
+owner's request. The European group has its own queries, origin rule, target,
+predictions and one decision of its own; it uses the same candidate,
+screening, conduct and measures as the others. The method for the Indonesian
+and American groups is unchanged by it, and the European group decides
+nothing about the Indonesian market.
+
 ## Why this census
 
 Agentify lets AI agents buy from merchants, and a merchant who runs a
@@ -49,9 +57,9 @@ dollars goes to the product owner as a product decision.
 
 Of the WooCommerce shops in the market where Agentify looks for its first
 merchants, Bali and the rest of Indonesia, with a smaller control group of
-shops in the United States, what share could connect and have at least one
-product imported by the connector as it stands today, and what stops the
-rest?
+shops in the United States and a third group in Europe, what share could
+connect and have at least one product imported by the connector as it stands
+today, and what stops the rest?
 
 Three secondary questions ride on the same requests. Which plugins and which
 hosting set-ups, meaning a content-delivery network in front of the shop, bot
@@ -162,6 +170,29 @@ The control group in the United States is fed by these, in this order:
 Reserve queries for the United States, in this order:
 `indie tea company USA online shop`, `small farm shop online USA`.
 
+The European group is fed by these, in this order, which takes one query per
+country in turn so that no country fills the group before the others are
+asked:
+
+41. `nachhaltige Modemarke Online-Shop Deutschland`
+42. `Nederlandse duurzame merken webshop`
+43. `marque française artisanale boutique en ligne`
+44. `marcas españolas sostenibles tienda online`
+45. `brand italiani artigianali negozio online`
+46. `polskie marki odzieżowe sklep internetowy`
+47. `independent UK brands online shop small business`
+48. `kleine Kaffeerösterei online kaufen`
+49. `Dutch independent brands online shop`
+50. `petite torréfaction café vente en ligne France`
+51. `tienda online artesanía España`
+52. `torrefazione artigianale caffè vendita online`
+53. `polska ceramika rękodzieło sklep online`
+54. `best independent jewellery brands UK`
+
+Reserve queries for Europe, in this order: `unabhängige Buchhandlung online
+bestellen`, `boutique en ligne créateurs belges`, `Irish craft brands online
+shop`.
+
 The categories follow what Bali's merchants sell, goods and gift vouchers and
 a few digital products, so that the census does not only find the kind of shop
 the lab already resembles. No public directory of WooCommerce shops is used.
@@ -225,8 +256,14 @@ no address, when the page that named it presents it as based in Bali. An
 Indonesian shop that neither rule places in Bali counts for Indonesia and not
 for Bali. A shop is in the control group when it came from a query for the
 United States and its front page gives an address in the United States or a
-`+1` number with a state named. A shop found by a query for one country that
-belongs to the other is placed by these rules, not by the query; a shop that
+`+1` number with a state named. A shop is in the European group when it
+came from a query for Europe and its front page gives an address in a
+European country, or its address ends in that country's domain, or its
+contact gives that country's calling code; Europe here is the member states
+of the European Union, the United Kingdom, Norway, Switzerland and Iceland,
+and the shop's country is taken from the address, then the domain, then the
+calling code, in that order. A shop found by a query for one group that
+belongs to another is placed by these rules, not by the query; a shop that
 none of them places is excluded as "origin undetermined".
 
 ### How many, and when to stop
@@ -243,6 +280,13 @@ side, which is enough to tell a tenth from a half, and that is the size of
 difference the decision rule below turns on; twenty is enough for a control
 whose job is to show whether a difference is large, not to measure it
 finely.
+
+The European group aims at about twenty-five shops. So that one country does
+not fill it, a country stops contributing once it has five included shops,
+and its later candidates are recorded as "country's share reached" without
+being requested. The group stops at twenty-five, or when its queries and then
+its reserve queries run out, and the number of shops from each country is
+reported.
 
 Within a query, results are taken in the order the tool returned them, and
 within a page about merchants, links in the order they appear. The stopping
@@ -368,8 +412,13 @@ The vantage point matters. The test host leaves the internet through an
 Indonesian network, so to an Indonesian shop's host it looks local. The live
 channel, if the connector reaches it, calls from a datacentre in Germany,
 which a firewall is more likely to treat as foreign or automated. Every
-blocked share this census measures is therefore a lower bound for what the
-connector would meet on the live channel, and is reported as one.
+blocked share this census measures for the Indonesian and American groups is
+therefore a lower bound for what the connector would meet on the live
+channel, and is reported as one. For the European group the comparison does
+not run one way: a German datacentre is local to a European shop's host while
+an Indonesian address is not, but a datacentre is more often treated as
+automated than the test host's network, so the European blocked share is
+reported as measured from Indonesia, with no claim about the live channel.
 
 The front page's answer is put in the same classes, so that a firewall
 guarding only the API can be told from one guarding the whole site.
@@ -403,7 +452,15 @@ prints a price suffix (an element with the class `woocommerce-price-suffix` in
 suffix. A suffix in any listed product's `price_html` is recorded as "tax
 calculation on, inferred from the price suffix". Its absence says nothing and
 is recorded as "tax calculation unknown". A theme or plugin could print its
-own suffix, which is why it stays an inference.
+own suffix, which is why it stays an inference. When a suffix is seen, its
+text is recorded. Beside it, and not used in any verdict, the census records
+whether `price_html` carries tax wording outside a suffix (`MwSt`, `VAT`,
+`BTW`, `TTC`, `HT`, `IVA`, `PPN`, `tax`), because a German shop often
+prints "inkl. MwSt." through a plugin rather than through WooCommerce's
+suffix. For the European group the suffix is the one place where tax
+calculation shows from outside, since European shops usually show prices with
+tax included, and the share of European shops that print one is reported in
+its own right.
 
 **Shipping**, the shop's **download settings** (the download method, a login
 to download, access after payment, the redirect fallback), and whether the
@@ -602,6 +659,18 @@ control group. A request with no User-Agent is a common sign of a script, and
 some hosting firewalls and Cloudflare's browser integrity check refuse it,
 but most shops run neither in a mode that inspects requests to the API.
 
+**P15.** For the European group, before its run. The euro is the currency of
+55–80% of its shops, and a currency other than the euro or the US dollar
+(the pound, the złoty) of 20–45%; a US dollar shop is at most 10%. At least
+90% write prices with two decimals. Simple products make up 45–75% of all
+products listed. Managed stock is inferred for 35–70% of simple products in
+stock. A price suffix appears on 15–50% of the shops, fewer than European
+habits suggest, because many German shops print the tax note through a legal
+plugin rather than the suffix. The listing is blocked for 3–15%. The
+connector's own request is refused where the honest one is answered for
+0–15%. "Could, conditionally" is 0–5%, because almost no European shop prices
+in US dollars.
+
 ## The decision rule
 
 The rule is applied to the Indonesian group, because that is the market the
@@ -644,10 +713,16 @@ each, but the thresholds are applied to the observed share and nothing else.
    follows. The share is a lower bound for the live channel, as said above,
    and is reported as one.
 6. **The connector's missing User-Agent.** If even one included shop, in
-   either group, answers the honest request with a JSON list and refuses the
+   any group, answers the honest request with a JSON list and refuses the
    connector's own request, the missing User-Agent is recorded as a defect of
    the connector, to be fixed by sending an honest User-Agent, and not as a
    product question.
+7. **Tax in Europe.** The European group, like the American one, decides
+   nothing under rules 2 to 5, which are about the Indonesian market. Its
+   share of shops printing a price suffix is reported as the measured lower
+   bound of shops with tax calculation on in that market, with the suffix
+   texts seen, and is handed to the separate probe that is studying whether
+   shops with tax calculation on can be supported.
 
 No change to the connector's code follows from this census directly; each
 outcome above is a question put to the product owner or a lab built later.
