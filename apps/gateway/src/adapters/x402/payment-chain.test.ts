@@ -79,7 +79,9 @@ describe("a contract wallet's signature on the chain", () => {
     await new Promise<void>((resolve) => running?.close(() => resolve()));
     running = null;
 
-    await expect(paymentChainOn(SEPOLIA, url)?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow();
+    await expect(
+      paymentChainOn(SEPOLIA, url)?.accepts(WALLET, DIGEST, SIGNATURE),
+    ).rejects.toThrow();
   });
 
   it("is not judged by an endpoint that fails the call itself", async () => {

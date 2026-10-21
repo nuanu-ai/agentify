@@ -5,22 +5,42 @@
  * terms and that it is fresh. The payment layer would also check that the
  * wallet could pay again, which has no bearing on giving back what it already
  * paid for.
+ *
+ * The order's reference travels in the payment's unsigned copy of the offer,
+ * so one wallet's authorization fits every order of the same price and payee.
+ * What binds an authorization to one order is that no other order has ever
+ * taken it: its claim here, and its use on the chain.
  */
 
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { authorizationTypes } from "@x402/evm";
 import { type Hex, hashTypedData, isAddressEqual, recoverAddress } from "viem";
-import { authorizationFingerprint, PAYMENT_REF_IN_EXTRA, type PaymentEdge } from "../http/x402.js";
+import {
+  authorizationFingerprint,
+  CLOCK_SKEW_SECONDS,
+  PAYMENT_REF_IN_EXTRA,
+  type PaymentEdge,
+} from "../http/x402.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
-import type { SignatureReader } from "../ports/signatures.js";
+import type { PaymentChain } from "../ports/payment-chain.js";
 import type { StoredOrder } from "../ports/store.js";
+
+/** What a payment for a paid order is checked with. */
+export interface ReturnCheck {
+  readonly edge: PaymentEdge;
+  readonly now: number;
+  /** The order that holds the claim on a payment's fingerprint, if any. */
+  readonly claimHolder: (fingerprint: string) => Promise<string | null>;
+  readonly chain?: PaymentChain;
+}
 
 /**
  * The payment checked against `paid`'s own terms: a verified outcome naming
  * the wallet that signed it, whichever wallet that is, or a refusal. Null
  * where this gateway cannot tell without the payment layer: a signature only
- * the chain can judge, with no chain to ask or a chain that did not answer.
+ * the chain can judge, or whether the chain saw it used, with no chain to ask
+ * or a chain that did not answer.
  */
 export async function returningPayment(
   payment: string,
@@ -28,11 +48,10 @@ export async function returningPayment(
     StoredOrder,
     "paymentRef" | "payTo" | "payment" | "paymentRecovery" | "paymentFingerprint"
   > & {
+    readonly orderId: string;
     readonly price: { readonly amount: string; readonly currency: string };
   },
-  edge: PaymentEdge,
-  now: number,
-  signatures?: SignatureReader,
+  { edge, now, claimHolder, chain }: ReturnCheck,
 ): Promise<VerifyOutcome | null> {
   let ours: PaymentRequirements;
   try {
@@ -90,14 +109,16 @@ export async function returningPayment(
       `the signed authorization has already expired; sign one that stays valid for ${ours.maxTimeoutSeconds} seconds, as the offer asks`,
     );
   }
-  if (BigInt(authorization.validAfter) > seconds) {
-    return refused("signature", "the signed authorization is not valid yet");
-  }
-  if (paidWith(paid, ours, authorization)) {
+  const lasts = BigInt(authorization.validBefore) - seconds;
+  const asked = ours.maxTimeoutSeconds;
+  if (lasts > BigInt(asked + CLOCK_SKEW_SECONDS)) {
     return refused(
       "signature",
-      "the signed authorization has already been used, and each payment needs one of its own",
+      `the signed authorization stays valid for ${lasts} seconds, longer than the ${asked} seconds the offer asks for (${CLOCK_SKEW_SECONDS} more are allowed for clock differences); sign one that expires within ${asked} seconds`,
     );
+  }
+  if (BigInt(authorization.validAfter) > seconds) {
+    return refused("signature", "the signed authorization is not valid yet");
   }
 
   const digest = hashTypedData({
@@ -118,10 +139,31 @@ export async function returningPayment(
       nonce: authorization.nonce,
     },
   });
-  const accepted = await signedBy(authorization.from, digest, signature, signatures);
+  const accepted = await signedBy(authorization.from, digest, signature, chain);
   if (accepted === null) return null;
   if (!accepted) {
     return refused("signature", "the signature is not the signing wallet's");
+  }
+
+  // Only for a signature that is the wallet's, so a payment anyone could make
+  // up learns nothing of which authorizations have been taken.
+  const fingerprint = authorizationFingerprint({
+    network: ours.network,
+    asset: ours.asset,
+    payer: authorization.from,
+    nonce: authorization.nonce,
+  });
+  const holder = await claimHolder(fingerprint);
+  if (paidWith(paid, authorization, fingerprint) || (holder !== null && holder !== paid.orderId)) {
+    return ALREADY_USED;
+  }
+  if (chain !== undefined) {
+    try {
+      if (await chain.used(ours.asset, authorization.from, authorization.nonce))
+        return ALREADY_USED;
+    } catch {
+      return null;
+    }
   }
   return {
     verified: true,
@@ -140,7 +182,7 @@ async function signedBy(
   wallet: Hex,
   digest: Hex,
   signature: Hex,
-  signatures: SignatureReader | undefined,
+  chain: PaymentChain | undefined,
 ): Promise<boolean | null> {
   const byKey = signature.length === 2 + 65 * 2;
   if (byKey) {
@@ -151,9 +193,9 @@ async function signedBy(
       // still accept these bytes.
     }
   }
-  if (signatures === undefined) return byKey ? false : null;
+  if (chain === undefined) return byKey ? false : null;
   try {
-    return await signatures.accepts(wallet, digest, signature);
+    return await chain.accepts(wallet, digest, signature);
   } catch {
     return null;
   }
@@ -212,28 +254,17 @@ function authorizationIn(payload: PaymentPayload): {
 }
 
 /**
- * Whether `authorization` is the one that paid the order, wherever the order
- * keeps that one: the terms saved for recovery, the payment itself while it is
- * kept, and the fingerprint it was claimed under. The token keys a used
- * authorization by its signer and nonce, and so does this.
+ * Whether `authorization` is the one that paid this order, wherever the order
+ * keeps that one: the fingerprint it was claimed under, the terms saved for
+ * recovery, and the payment itself while it is kept.
  */
 function paidWith(
   paid: Pick<StoredOrder, "payment" | "paymentRecovery" | "paymentFingerprint">,
-  ours: PaymentRequirements,
   authorization: Authorization,
+  fingerprint: string,
 ): boolean {
   const presented = nonceOf(authorization.from, authorization.nonce);
-  if (
-    paid.paymentFingerprint ===
-    authorizationFingerprint({
-      network: ours.network,
-      asset: ours.asset,
-      payer: authorization.from,
-      nonce: authorization.nonce,
-    })
-  ) {
-    return true;
-  }
+  if (paid.paymentFingerprint === fingerprint) return true;
   if (
     paid.paymentRecovery !== undefined &&
     nonceOf(paid.paymentRecovery.payer, paid.paymentRecovery.nonce) === presented
@@ -254,6 +285,16 @@ function paidWith(
 
 const nonceOf = (payer: string, nonce: string): string =>
   `${payer.toLowerCase()}:${nonce.toLowerCase()}`;
+
+/**
+ * An authorization some order has taken. Its words are the same whichever
+ * order took it, so they say nothing of that order or of this one.
+ */
+const ALREADY_USED: VerifyOutcome = {
+  verified: false,
+  reason: "signature",
+  message: "the signed authorization has already been used, and each payment needs one of its own",
+};
 
 const refused = (
   reason: "signature" | "price_stale",

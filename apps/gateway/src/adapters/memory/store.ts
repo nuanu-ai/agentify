@@ -727,6 +727,10 @@ export class MemoryStore implements Store {
     });
   }
 
+  async paymentClaimHolder(fingerprint: string): Promise<string | null> {
+    return this.#withPaymentClaims(() => this.#paymentClaims.get(fingerprint)?.orderId ?? null);
+  }
+
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {
     // Only the holder lets go, so this can never hand one buyer's signature to
     // another.

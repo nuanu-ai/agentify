@@ -980,6 +980,14 @@ export class PostgresStore implements Store {
     return row.orderId === orderId ? { claimed: true } : { claimed: false, heldBy: row.orderId };
   }
 
+  async paymentClaimHolder(fingerprint: string): Promise<string | null> {
+    const [row] = await this.#db
+      .select({ orderId: paymentClaims.orderId })
+      .from(paymentClaims)
+      .where(eq(paymentClaims.fingerprint, fingerprint));
+    return row?.orderId ?? null;
+  }
+
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {
     // A claim another order holds is never released by this one.
     await this.#db

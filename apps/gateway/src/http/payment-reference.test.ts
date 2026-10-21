@@ -94,7 +94,10 @@ const paymentAgainst = async (
   terms: {
     readonly payTo?: string;
     readonly validBefore?: number;
-    /** The signer's clock, in milliseconds, where it is not the test's own. */
+    /**
+     * The signer's clock, in milliseconds, where it is neither the running
+     * harness's nor, without one, the wall clock.
+     */
     readonly signedAt?: number;
     /** Signed with bytes no wallet signed, as anyone holding the request could. */
     readonly forged?: boolean;
@@ -109,7 +112,7 @@ const paymentAgainst = async (
     ...(terms.forged === true ? { signature: `0x${"ab".repeat(65)}` as const } : {}),
     validBefore:
       terms.validBefore === undefined
-        ? (terms.signedAt ?? Date.now()) + asked.maxTimeoutSeconds * 1_000
+        ? (terms.signedAt ?? open?.harnessed.now() ?? Date.now()) + asked.maxTimeoutSeconds * 1_000
         : terms.validBefore * 1_000,
   });
   const { accepted, payload } = decodePaymentSignatureHeader(signed);

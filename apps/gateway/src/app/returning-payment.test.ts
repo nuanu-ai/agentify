@@ -15,6 +15,7 @@ import { returningPayment } from "./returning-payment.js";
 const NOW = Date.parse("2026-08-26T12:00:00.000Z");
 const edge = new PaymentEdge(testConfig());
 const paid = {
+  orderId: "ord_1",
   paymentRef: "pay_1",
   payTo: "0x00000000000000000000000000000000000000f1",
   payment: null,
@@ -30,6 +31,15 @@ const signed = (signature?: `0x${string}`) =>
     nonce: "0x02",
     validBefore: NOW + 60_000,
     ...(signature === undefined ? {} : { signature }),
+  });
+
+/** The payment checked as a paid order's return, against `chain` where there is one. */
+const checking = (payment: string, chain: PaymentChain | undefined) =>
+  returningPayment(payment, paid, {
+    edge,
+    now: NOW,
+    claimHolder: async () => null,
+    ...(chain === undefined ? {} : { chain }),
   });
 
 /**
@@ -56,26 +66,14 @@ describe("a contract wallet's signature for a paid purchase", () => {
   it("is accepted on the chain's word", async () => {
     const chain = aChain(true);
 
-    const checked = await returningPayment(
-      await signed(CONTRACTS_SIGNATURE),
-      paid,
-      edge,
-      NOW,
-      chain.reader,
-    );
+    const checked = await checking(await signed(CONTRACTS_SIGNATURE), chain.reader);
 
     expect(checked).toMatchObject({ verified: true, payer: WALLET.address });
     expect(chain.asked).toStrictEqual([WALLET.address]);
   });
 
   it("is refused when the chain refuses it", async () => {
-    const checked = await returningPayment(
-      await signed(CONTRACTS_SIGNATURE),
-      paid,
-      edge,
-      NOW,
-      aChain(false).reader,
-    );
+    const checked = await checking(await signed(CONTRACTS_SIGNATURE), aChain(false).reader);
 
     expect(checked).toMatchObject({ verified: false, reason: "signature" });
   });
@@ -84,9 +82,7 @@ describe("a contract wallet's signature for a paid purchase", () => {
     ["no chain is configured", undefined],
     ["the chain did not answer", aChain(new Error("the endpoint did not answer")).reader],
   ])("is left to the payment layer where %s", async (_where, reader) => {
-    expect(
-      await returningPayment(await signed(CONTRACTS_SIGNATURE), paid, edge, NOW, reader),
-    ).toBeNull();
+    expect(await checking(await signed(CONTRACTS_SIGNATURE), reader)).toBeNull();
   });
 });
 
@@ -94,18 +90,15 @@ describe("a key's signature for a paid purchase", () => {
   it("is read here without asking the chain to judge it", async () => {
     const chain = aChain(new Error("the chain was asked"));
 
-    const checked = await returningPayment(await signed(), paid, edge, NOW, chain.reader);
+    const checked = await checking(await signed(), chain.reader);
 
     expect(checked).toMatchObject({ verified: true, payer: WALLET.address });
     expect(chain.asked).toStrictEqual([]);
   });
 
   it("is refused when the chain says its authorization was used", async () => {
-    const checked = await returningPayment(
+    const checked = await checking(
       await signed(),
-      paid,
-      edge,
-      NOW,
       aChain(new Error("the chain was asked"), true).reader,
     );
 
@@ -113,11 +106,8 @@ describe("a key's signature for a paid purchase", () => {
   });
 
   it("is left to the payment layer where the chain cannot say whether it was used", async () => {
-    const checked = await returningPayment(
+    const checked = await checking(
       await signed(),
-      paid,
-      edge,
-      NOW,
       aChain(new Error("the chain was asked"), new Error("the endpoint did not answer")).reader,
     );
 

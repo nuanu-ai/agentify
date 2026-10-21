@@ -1196,13 +1196,17 @@ describe("what an agent is told when the money is not settled", () => {
 describe("whose purchase it is", () => {
   /**
    * A payment signed by one address's wallet, against a challenge that was
-   * issued, and valid for longer than any test runs.
+   * issued, valid for as long as the challenge asks from the harness's now.
    */
   const paidBy = async (challenge: string, from: string, nonce: string) => {
     const accepted = decodePaymentRequiredHeader(challenge).accepts[0];
     if (accepted === undefined) throw new Error("no payment option was offered");
+    if (open === null) throw new Error("no gateway is running to pay");
     const wallet = from === BUYER ? BUYER_WALLET : STRANGER_WALLET;
-    return signedPayment(wallet, accepted, { nonce, validBefore: Date.parse("2100-01-01") });
+    return signedPayment(wallet, accepted, {
+      nonce,
+      validBefore: open.harnessed.now() + accepted.maxTimeoutSeconds * 1_000,
+    });
   };
 
   const challengeFor = async (served: Served, itemId: string) => {

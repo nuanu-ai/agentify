@@ -1862,6 +1862,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
       });
 
+      it("names the order holding a payment's claim, and claims nothing by asking", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted"));
+        expect(await store.paymentClaimHolder("fp-asked")).toBeNull();
+        expect(await store.claimPayment("fp-asked", "ord_2")).toEqual({ claimed: true });
+        expect(await store.paymentClaimHolder("fp-asked")).toBe("ord_2");
+      });
+
       it("keeps an accepted authorization bound to its order after pruning and release", async () => {
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "quoted"));

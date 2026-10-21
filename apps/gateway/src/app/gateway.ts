@@ -1433,10 +1433,13 @@ export class Gateway {
       paidFor && before.paidBy !== null && isAddress(before.paidBy)
         ? await returningPayment(
             payment,
-            { ...before, price },
-            this.#edge,
-            this.runtime.clock(),
-            this.runtime.signatures,
+            { ...before, orderId, price },
+            {
+              edge: this.#edge,
+              now: this.runtime.clock(),
+              claimHolder: (held) => this.runtime.store.paymentClaimHolder(held),
+              ...(this.runtime.chain === undefined ? {} : { chain: this.runtime.chain }),
+            },
           )
         : null;
     const onlyReturns = checkedHere !== null || payTo?.toLowerCase() !== payeeNow?.toLowerCase();

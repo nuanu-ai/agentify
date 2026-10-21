@@ -811,6 +811,14 @@ export interface Store {
   claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim>;
 
   /**
+   * The order holding the claim on a payment, or null where none does; it
+   * claims nothing. A payment checked without the payment layer is refused
+   * when another order holds it, before anything about this order is
+   * compared with it.
+   */
+  paymentClaimHolder(fingerprint: string): Promise<string | null>;
+
+  /**
    * Lets go of a claim this order took and then could not use because the
    * ownership decision turned the presentation away and no money moved; left
    * behind, it would answer that live authorisation's next attempt "already
