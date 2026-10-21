@@ -1,10 +1,10 @@
 /**
  * What the pipeline promises a reader of the built pages: every link into
  * the documentation, from its own pages or from the scanner's and the
- * dashboard's, lands on a page it has and a heading that page carries, with
- * the anchors VitePress gave them; a writer's box keeps its title; and what a
- * deployment decides reaches the page as the template Caddy fills, while a
- * name the documentation does not know stops the build.
+ * dashboard's, lands on a page it has and a heading that page carries; a
+ * writer's box keeps its title; and what a deployment decides reaches the
+ * page as the template Caddy fills, while a name the documentation does not
+ * know stops the build.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -109,7 +109,7 @@ describe("a link into the documentation", () => {
     expect(broken).toEqual([]);
   });
 
-  it("keeps the anchor VitePress gave a heading that starts with a digit", () => {
+  it("gives a heading that starts with a digit an anchor starting with an underscore", () => {
     expect(anchorsOf("/quickstart")).toContain("_1-make-the-merchant-account-ready");
   });
 });

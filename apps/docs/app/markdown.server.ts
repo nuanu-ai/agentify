@@ -1,15 +1,13 @@
 /**
  * The documentation's Markdown turned into HTML at build time by markdown-it,
- * the parser VitePress is built on, with the few rules the pages rely on
- * written to mean what VitePress made them mean: a heading's anchor from
- * VitePress's slug function, or from an explicit `{#id}`; the `::: note`
- * container; the `<<< @/examples/…` include, which reads the
- * file a test validates; a root-relative link mounted under `/docs` and an
- * outside link opened apart; code highlighted by Shiki; and a `mermaid` fence
- * drawn into an inline SVG from its kept drawing. Two rules are the
- * documentation's own: a site value named as `{{origin}}`, and a part kept off
- * a channel inside `:::: unless identity-confirmed` (`site-values.ts`). What
- * the build itself knows, the SDK's release, is written into the source first
+ * with the few rules the pages rely on: a heading's anchor made from its
+ * words, or taken from an explicit `{#id}`; the `::: note` container; the
+ * `<<< @/examples/…` include, which reads the file a test validates; a
+ * root-relative link mounted under `/docs` and an outside link opened apart;
+ * code highlighted by Shiki; a `mermaid` fence drawn into an inline SVG from
+ * its kept drawing; a site value named as `{{origin}}`; and a part kept off a
+ * channel inside `:::: unless identity-confirmed` (`site-values.ts`). What the
+ * build itself knows, the SDK's release, is written into the source first
  * (`build-values.ts`).
  * `WRITING.md` tells a writer which syntax this understands.
  *
@@ -50,12 +48,16 @@ export type RenderedPage = Readonly<{
 
 type Env = { headings: Heading[] };
 
-/** VitePress's slug function, so every anchor a link points at is where it was. */
+/**
+ * A heading's anchor made from its words. Links from the pages, the scanner's
+ * header and the dashboard point at anchors made this way, so a change here
+ * moves their targets.
+ */
 const slugify = (text: string): string =>
   text
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: the slug drops control characters, as VitePress's does
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the slug drops control characters
     .replace(/[\u0000-\u001f]/g, "")
     .replace(/[\s~`!@#$%^&*()\-_+=[\]{}|\\;:"'“”‘’<>,.?/]+/g, "-")
     .replace(/-{2,}/g, "-")

@@ -13,10 +13,9 @@ const reachedAt = (): number => {
 };
 
 /**
- * The section being read, marked in the outline as the page scrolls, as
- * VitePress marks it: none at the top of the page, the last once the page is
- * scrolled to its end, and otherwise the last section whose heading has
- * passed under the site header.
+ * The section being read, marked in the outline as the page scrolls: none at
+ * the top of the page, the last once the page is scrolled to its end, and
+ * otherwise the last section whose heading has passed under the site header.
  */
 export function useSectionInView(ids: readonly string[]): string | null {
   const [inView, setInView] = useState<string | null>(null);
