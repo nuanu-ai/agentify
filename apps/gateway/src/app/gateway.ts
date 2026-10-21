@@ -66,7 +66,12 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import type { CardPublishResult, SellingChanged, SetupResult } from "../analytics/events.js";
+import type {
+  AnalyticsEvent,
+  CardPublishResult,
+  SellingChanged,
+  SetupResult,
+} from "../analytics/events.js";
 import {
   type Announcement,
   type AskedInTheDashboard,
@@ -597,14 +602,11 @@ export class Gateway {
         result({ integration, outcome: "completed" }, made.id),
       );
     } catch (thrown) {
-      await this.runtime.store.recordAnalytics(
-        result({ integration, outcome: "failed", reason_code: "internal_error" }),
-        at,
-      );
+      this.#observe(result({ integration, outcome: "failed", reason_code: "internal_error" }), at);
       throw thrown;
     }
     if (!published.ok) {
-      await this.runtime.store.recordAnalytics(
+      this.#observe(
         result({
           integration,
           outcome: "blocked",
@@ -616,6 +618,21 @@ export class Gateway {
       );
     }
     return published;
+  }
+
+  /**
+   * Records an observation without waiting for it, so the answer it is about
+   * goes out first; a failure to record it is only logged.
+   */
+  #observe(event: AnalyticsEvent, at: number): void {
+    const logged = (thrown: unknown): void => {
+      console.error(`[gateway] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+    };
+    try {
+      this.runtime.store.recordAnalytics(event, at).catch(logged);
+    } catch (thrown) {
+      logged(thrown);
+    }
   }
 
   async #publish(
