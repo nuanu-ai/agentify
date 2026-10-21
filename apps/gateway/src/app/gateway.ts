@@ -66,6 +66,7 @@ import { isAddress } from "viem";
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
 import { PaymentEdge } from "../http/x402.js";
+import { orderFingerprint } from "../order-fingerprint.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
@@ -474,7 +475,7 @@ export class Gateway {
         // the queue's retry is what delivers it again. Catching and re-arming
         // here would mean writing to the database whose failure just threw.
         console.error(
-          `[gateway] a reminder failed (${reminder.kind}, order ${reminder.orderId}): ${failureNamed(thrown)}`,
+          `[gateway] a reminder failed (${reminder.kind}, ${orderFingerprint(reminder.orderId)}): ${failureNamed(thrown)}`,
         );
         throw thrown;
       }
@@ -1625,7 +1626,7 @@ export class Gateway {
       // payment presented, and a mismatch is described with what the payer's
       // client put in it, newlines included.
       console.warn(
-        `[gateway] a payment for ${orderId} did not verify: ${
+        `[gateway] a payment for ${orderFingerprint(orderId)} did not verify: ${
           verified.verified === false
             ? `refused as ${verified.reason}`
             : "the payment layer could not be asked, or did not answer"
@@ -2102,7 +2103,7 @@ export class Gateway {
         // stream rather than being lost with a failed response, and the poll
         // draws past it to whatever is next.
         console.error(
-          `[gateway] could not record the hand-over of ${orderId}: ${failureNamed(thrown)}`,
+          `[gateway] could not record the hand-over of ${orderFingerprint(orderId)}: ${failureNamed(thrown)}`,
         );
         await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
@@ -2124,7 +2125,7 @@ export class Gateway {
           // that is not this merchant's. That cannot happen while envelopes
           // reach only their own merchant's stream, so it is logged loudly.
           console.error(
-            `[gateway] ${merchantId} drew an envelope for ${orderId}, which is not their order`,
+            `[gateway] ${merchantId} drew an envelope for ${orderFingerprint(orderId)}, which is not their order`,
           );
         }
         // The machine refused the hand-over, so nobody is given the order:

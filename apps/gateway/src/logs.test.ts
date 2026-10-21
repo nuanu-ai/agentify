@@ -2,7 +2,8 @@
  * What the gateway's log says when something fails. The operator reads it to
  * act, and it is kept wherever logs go, further than anything the gateway
  * erases: so a line names what failed and the identifiers needed to find it,
- * and nothing the failure carried. Each failure here carries a shop's secret
+ * an order by its fingerprint since its identifier opens it to whoever reads
+ * the line, and nothing the failure carried. Each failure here carries a shop's secret
  * and a newline that would start a forged line, as a driver's or a client's
  * failure can, and neither may reach the log.
  */
@@ -15,6 +16,7 @@ import { RecordingAnnouncer } from "./adapters/memory/announcer.js";
 import { PgBossQueue } from "./adapters/pgboss/queue.js";
 import { connect, type Database, PostgresStore } from "./adapters/postgres/store.js";
 import { SWEEP_EFFECTS } from "./app/runner.js";
+import { orderFingerprint } from "./order-fingerprint.js";
 import type { Reminder } from "./ports/queue.js";
 import type { StoredCard } from "./ports/store.js";
 import { startGateway } from "./start.js";
@@ -36,6 +38,11 @@ const carrying = (): Error => new Error(`${SECRET}${FORGED}`);
 const expectNothingCarried = (written: string): void => {
   expect(written).not.toContain(SECRET);
   expect(written).not.toContain("forged");
+};
+
+const expectTheOrderNamedByFingerprint = (written: string, orderId: string): void => {
+  expect(written).toContain(orderFingerprint(orderId));
+  expect(written).not.toContain(orderId);
 };
 
 const asyncCard: Card = {
@@ -112,7 +119,8 @@ describe("a failure in the gateway's log", () => {
       });
     });
 
-    expect(written).toContain("a reminder failed (deadline, order ord_9)");
+    expect(written).toContain("a reminder failed (deadline, ");
+    expectTheOrderNamedByFingerprint(written, "ord_9");
     expectNothingCarried(written);
   });
 
@@ -145,7 +153,8 @@ describe("a failure in the gateway's log", () => {
       harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
     );
 
-    expect(written).toContain(`a payment for ${orderId} did not verify`);
+    expect(written).toContain("did not verify");
+    expectTheOrderNamedByFingerprint(written, orderId);
     expect(written).toContain("insufficient_funds");
     expectNothingCarried(written);
   });
@@ -160,7 +169,7 @@ describe("a failure in the gateway's log", () => {
       harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
     );
 
-    expect(written).toContain(orderId);
+    expectTheOrderNamedByFingerprint(written, orderId);
     expectNothingCarried(written);
     const kept = (await harnessed.store.orderById(orderId))?.paymentWords ?? [];
     expect(kept.map((word) => word.said)).toContain(`${SECRET}${FORGED}`);
@@ -175,7 +184,8 @@ describe("a failure in the gateway's log", () => {
 
     const written = await loggedWhile(() => harnessed.gateway.poll(harnessed.merchant.id, 0));
 
-    expect(written).toContain(`could not record the hand-over of ${orderId}`);
+    expect(written).toContain("could not record the hand-over");
+    expectTheOrderNamedByFingerprint(written, orderId);
     expectNothingCarried(written);
   });
 
@@ -201,7 +211,8 @@ describe("a failure in the gateway's log", () => {
 
     const written = await loggedWhile(() => sweep(harnessed));
 
-    expect(written).toContain(`the sweep could not repair ${orderId}`);
+    expect(written).toContain("the sweep could not repair");
+    expectTheOrderNamedByFingerprint(written, orderId);
     expectNothingCarried(written);
   });
 
@@ -218,7 +229,8 @@ describe("a failure in the gateway's log", () => {
 
     const written = await loggedWhile(() => sweep(harnessed));
 
-    expect(written).toContain(`the sweep could not receipt ${orderId}`);
+    expect(written).toContain("the sweep could not receipt");
+    expectTheOrderNamedByFingerprint(written, orderId);
     expectNothingCarried(written);
   });
 
@@ -373,7 +385,8 @@ describe("a failure beneath the gateway, in its log", () => {
       results = await handle([{ id: "job_1", data: reminder } as Job<Reminder>]);
     });
 
-    expect(written).toContain("a deadline reminder for ord_9 failed");
+    expect(written).toContain("a deadline reminder for");
+    expectTheOrderNamedByFingerprint(written, "ord_9");
     expectNothingCarried(written);
     expect(results.map((result) => result.status)).toStrictEqual(["failed"]);
     expectNothingCarried(JSON.stringify(results));

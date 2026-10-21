@@ -8,6 +8,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   buyOverHttp,
   type Harness,
@@ -856,8 +857,10 @@ describe("the whole way through, against a real gateway", () => {
 
     expect(answer).toBeNull();
     expect(shop.placed).toStrictEqual([]);
-    // The merchant's log says which order waits, and why.
-    expect(written).toMatch(/ord_1.*could not be read.*nothing answered/);
+    // The log says which order waits, by the order's fingerprint, and why.
+    expect(written).toMatch(/could not be read.*nothing answered/);
+    expect(written).toContain(orderFingerprint("ord_1"));
+    expect(written).not.toContain("ord_1");
   });
 
   it("keeps a committed order unknown when its successful response body is lost", async () => {
