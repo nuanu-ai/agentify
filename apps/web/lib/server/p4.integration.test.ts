@@ -751,6 +751,43 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
+  it("records no country for a saved choice, whatever a request header claims about where it came from", async () => {
+    const { db } = getDatabase();
+    const before = new Set(
+      (await db.select({ id: consentSnapshots.id }).from(consentSnapshots)).map(({ id }) => id),
+    );
+
+    const saved = await persistConsent(
+      new Request("http://localhost:3000/api/v1/consent", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "x-vercel-ip-country": "DE",
+        },
+        body: JSON.stringify({
+          policy_version: CONSENT_POLICY_VERSION,
+          categories: {
+            essential_processing: true,
+            product_analytics: true,
+            ads_measurement: false,
+            marketing_email: false,
+            dataset_reuse: false,
+            card_signal: false,
+          },
+        }),
+      }),
+    );
+
+    expect(saved.status).toBe(201);
+    const stored = (
+      await db
+        .select({ id: consentSnapshots.id, country: consentSnapshots.country })
+        .from(consentSnapshots)
+    ).filter(({ id }) => !before.has(id));
+    expect(stored).toEqual([{ id: expect.any(String), country: null }]);
+  });
+
   it("expires a partner's click cookie the browser may still hold once its visitor saves a choice without ads measurement", async () => {
     const choose = (adsMeasurement: boolean) =>
       persistConsent(
