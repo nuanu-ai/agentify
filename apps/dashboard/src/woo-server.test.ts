@@ -10,6 +10,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
+import type { AnalyticsEvent } from "@agentify/gateway/analytics";
 import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
@@ -71,6 +72,8 @@ interface Running {
   readonly harnessed: Harness;
   readonly identity: Identity;
   readonly shops: WooShops;
+  /** What the connector recorded for product analytics, oldest first. */
+  readonly connectorAnalytics: () => readonly AnalyticsEvent[];
   /**
    * For the tests that put a Connect in the past rather than wait for it to
    * expire.
@@ -355,6 +358,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     harnessed,
     identity,
     shops,
+    connectorAnalytics: () => kept.recordedAnalytics.map(({ event }) => event),
     accountId: person.id,
     url,
     asked,
@@ -2478,3 +2482,230 @@ describe("one integration at a time", () => {
     }
   });
 });
+
+describe("the analytics of a shop's connection and its imports", () => {
+  const connectedFor = async (running: Running): Promise<void> => {
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", {
+      shop_url: SHOP,
+      [DRAWN_FOR]: PERSON,
+    });
+    await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
+  };
+
+  /** The publication results the gateway recorded, as the analytics team reads them. */
+  const publications = (running: Running) =>
+    running.harnessed.store.recordedAnalytics
+      .map(({ event }) => event)
+      .filter((event) => event.name === "agc_card_publish_result");
+
+  const imports = (running: Running) =>
+    running
+      .connectorAnalytics()
+      .filter((event) => event.name === "agc_setup_result" && event.fields.step === "woo_import");
+
+  /** A product the shop's protected check reads as a parcel, so a merchant with no site is refused it. */
+  const parcelsAndDownloads: Standing["inspectProduct"] = async (_keys, merchantItemId) => {
+    const productId = merchantItemId.split("_").at(-1) ?? "";
+    return productId === "12"
+      ? {
+          ok: true,
+          product: {
+            kind: "parcel",
+            productId,
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-parcel-fingerprint",
+          },
+        }
+      : {
+          ok: true,
+          product: {
+            kind: "download",
+            productId,
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+          },
+        };
+  };
+
+  it("records the shop's connection when its keys arrive", async () => {
+    const running = await started();
+    await connectedFor(running);
+
+    expect(
+      running.connectorAnalytics().filter((event) => event.name === "agc_setup_result"),
+    ).toMatchObject([
+      {
+        actor: "human",
+        source: "woocommerce",
+        refs: { person: running.accountId },
+        fields: { step: "woo_connection", integration: "woocommerce", outcome: "completed" },
+      },
+    ]);
+  });
+
+  it("records one result for an import with its three counts, and a publication result per card it published or was refused", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ id: 11 }),
+          aProduct({
+            id: 12,
+            name: "Coffee beans",
+            virtual: false,
+            downloadable: false,
+            downloads: [],
+          }),
+          aProduct({ id: 13, name: "A set of mugs", type: "grouped" }),
+        ],
+      }),
+      inspectProduct: parcelsAndDownloads,
+    });
+    await connectedFor(running);
+
+    await running.post("/woocommerce/import");
+
+    const merchant = running.harnessed.merchant.id;
+    expect(imports(running)).toStrictEqual([
+      {
+        name: "agc_setup_result",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant, person: running.accountId },
+        fields: {
+          step: "woo_import",
+          integration: "woocommerce",
+          outcome: "partial",
+          imported_count: 1,
+          failed_count: 1,
+          skipped_count: 1,
+        },
+      },
+    ]);
+    const [published] = await running.harnessed.store.cards(merchant);
+    expect(publications(running)).toStrictEqual([
+      {
+        name: "agc_card_publish_result",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant, item: published?.id },
+        fields: { integration: "woocommerce", outcome: "completed" },
+      },
+      {
+        name: "agc_card_publish_result",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant },
+        fields: {
+          integration: "woocommerce",
+          outcome: "blocked",
+          reason_code: "seller_site_missing",
+        },
+      },
+    ]);
+  });
+
+  it("records an import again as a run of its own, with no publication for a card already published", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connectedFor(running);
+
+    await running.post("/woocommerce/import");
+    await running.post("/woocommerce/import");
+
+    expect(imports(running).map((event) => event.fields)).toStrictEqual([
+      { ...COMPLETED_IMPORT, imported_count: 1 },
+      { ...COMPLETED_IMPORT, imported_count: 1 },
+    ]);
+    expect(publications(running)).toHaveLength(1);
+  });
+
+  it("records an import of an empty catalogue as completed with nothing imported", async () => {
+    const running = await started();
+    await connectedFor(running);
+
+    await running.post("/woocommerce/import");
+
+    expect(imports(running).map((event) => event.fields)).toStrictEqual([COMPLETED_IMPORT]);
+  });
+
+  it("records an import with every card refused as blocked by the first card's reason", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ id: 12, virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: parcelsAndDownloads,
+    });
+    await connectedFor(running);
+
+    await running.post("/woocommerce/import");
+
+    expect(imports(running).map((event) => event.fields)).toStrictEqual([
+      {
+        ...COMPLETED_IMPORT,
+        outcome: "blocked",
+        reason_code: "seller_site_missing",
+        failed_count: 1,
+      },
+    ]);
+  });
+
+  it("records an import that could not start, and why", async () => {
+    const unread = await started({
+      catalogue: async () => ({ ok: false, why: "The shop did not answer." }),
+    });
+    await unread.signIn();
+    await unread.post("/woocommerce/import");
+    await connectedFor(unread);
+    await unread.post("/woocommerce/import");
+    const reasons = imports(unread).map((event) => event.fields.reason_code);
+    await unread.close();
+    open = null;
+
+    const walletless = await started({ fresh: "named", channel: "test" });
+    await connectedFor(walletless);
+    await walletless.post("/woocommerce/import");
+
+    expect([
+      ...reasons,
+      ...imports(walletless).map((event) => event.fields.reason_code),
+    ]).toStrictEqual(["no_connection", "catalogue_unavailable", "wallet_missing"]);
+    expect(imports(walletless).map((event) => event.fields)).toMatchObject([
+      { outcome: "blocked", imported_count: 0, failed_count: 0, skipped_count: 0 },
+    ]);
+  });
+
+  it("records an import cut short by a publication that failed as unknown, since that card may have been published", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct({ id: 11 }), aProduct({ id: 14 })] }),
+      silent: "publishing fails",
+    });
+    await connectedFor(running);
+
+    await running.post("/woocommerce/import");
+
+    expect(imports(running).map((event) => event.fields)).toStrictEqual([
+      {
+        ...COMPLETED_IMPORT,
+        outcome: "unknown",
+        reason_code: "internal_error",
+        failed_count: 1,
+        skipped_count: 1,
+      },
+    ]);
+  });
+});
+
+const COMPLETED_IMPORT = {
+  step: "woo_import",
+  integration: "woocommerce",
+  outcome: "completed",
+  imported_count: 0,
+  failed_count: 0,
+  skipped_count: 0,
+} as const;
