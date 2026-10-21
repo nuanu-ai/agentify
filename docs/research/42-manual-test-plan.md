@@ -1,6 +1,6 @@
 # Product acceptance: a merchant sells, a buyer receives, and both understand
 
-Date: 2026-10-20. A working protocol, not a record of tests run or a product
+Date: 2026-10-21. A working protocol, not a record of tests run or a product
 decision. Stage 4 includes the SDK and WooCommerce on equal terms. One
 merchant uses one integration at a time. WooCommerce and parcels remain on
 the test channel until their release conditions are met.
@@ -935,6 +935,8 @@ The decisions defining acceptance boundaries are
 [the order key](../decisions/0011-agent-collection-door.md),
 [one integration](../decisions/0036-a-merchant-sells-through-one-integration-at-a-time.md),
 [WooCommerce](../decisions/0023-woocommerce-connect.md),
+[a shop that calculates tax](../decisions/0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md),
+[a shop in another currency](../decisions/0044-a-shop-in-another-currency-sells-at-its-merchants-rate.md),
 [address erasure](../decisions/0032-a-buyers-address-passes-through.md),
 [shipment](../decisions/0033-a-shipped-order-ends-at-the-carrier.md),
 [merchant closure](../decisions/0028-late-goods-settle-a-refund-owed.md),
@@ -943,6 +945,7 @@ The decisions defining acceptance boundaries are
 [payout splits](../decisions/0037-every-payment-goes-to-the-merchants-split.md),
 [registry persistence](../decisions/0038-the-registry-of-payout-splits-is-never-rewritten.md),
 [the purchase door](../decisions/0043-the-purchase-door-refuses-before-any-charge.md),
+[product analytics](../decisions/0042-product-analytics-leave-from-the-server.md),
 [the contract version](../decisions/0006-wire-version.md)
 and [discovery declarations](../decisions/0012-discovery-declaration.md).
 
@@ -956,12 +959,21 @@ Implementation evidence for the organiser lives in the
 [payment recovery](../../apps/gateway/src/adapters/x402/recovery.ts),
 [Postgres store](../../apps/gateway/src/adapters/postgres/store.ts),
 [Woo worker](../../apps/dashboard/src/woo-worker.ts),
-[Woo recovery](../../apps/dashboard/src/woo-recovery.ts) and
+[Woo recovery](../../apps/dashboard/src/woo-recovery.ts),
+[shop amounts and the merchant's rate](../../apps/dashboard/src/woo-money.ts),
+[Coinbase's reference rate](../../apps/dashboard/src/woo-reference.ts),
+[the rate notice](../../apps/dashboard/src/woo-rate-mail.ts),
+[the analytics sender](../../apps/dashboard/src/nuanu-analytics.ts) and
 [payout builder](../../apps/gateway/src/split/payout.ts). It informs fault
 placement, not a rule that every current behavior deserves to pass.
 
 [Research 50](50-commerce-correctness-test.md) records valuable prior checks
 and their omissions. It does not certify this protocol's combined scenarios.
+The [tax probe](56-woo-tax-probe.md), the
+[proposal for shops in another currency](58-woo-shop-currency.md) and
+[what Nuanu Analytics is relied on to do](84-nuanu-analytics-ingest.md) record
+the measurements and the open checks behind H-13 to H-16, H-18 to H-23 and
+I-09.
 
 This plan does not certify chain/provider security, a disaster-recovery restore,
 all browser/mail-client combinations, production capacity or carrier delivery.
