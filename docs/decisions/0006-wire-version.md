@@ -24,13 +24,14 @@ the hood. The storefront's reader is a stranger's agent no handshake reaches.
    fall out of. The gateway writes closed: each answer is held to the closed
    schema before it is sent, so a leaked field fails on our side, not a shop's.
 2. The version is `"2"`, and moves only when a field or a word is renamed or
-   removed, or a field's meaning changes; an older SDK then stops at its first
-   poll answer, with no order in flight, saying it is out of date. An added
-   field, event kind or status word leaves it alone. A word added to a list
-   whose reader has no `unknown` (a call's result, a card's mode or field type,
-   a receipt's outcome, a selling state, a kind of message on the stream) reads
-   to an older SDK as a broken document, so adding one moves the version until
-   that list is read the same way. What no SDK worker reads moves nothing: the
+   removed, or a field's meaning changes; an older SDK then stops at the first
+   poll answer it can read, with no order in flight, saying it is out of date,
+   and reports each one it cannot read as a failed poll naming the version. An
+   added field, event kind or status word leaves it alone. A word added to a
+   list whose reader has no `unknown` (a call's result, an event's reason, a
+   card's mode or field type, a receipt's outcome, a selling state, a kind of
+   message on the stream) reads to an older SDK as a broken document, so
+   adding one moves the version until that list is read the same way. What no SDK worker reads moves nothing: the
    payout wallet's pending fields (ADR-0019), and the routes and refusal codes
    only the dashboard called (`docs/research/35-one-process.md`). Releases of
    `@nuanu-ai/agentify` up to 0.7.1 read strictly while speaking `"2"`, so an

@@ -736,12 +736,14 @@ package you installed reads past what was added:
 
 What your package cannot read past is a change to something it already knows:
 a field or a word renamed or removed, or a field that comes to mean something
-else. Agentify then speaks a new contract version, and your subscription stops
-at its next poll with a `contract_version_mismatch` problem naming both
-versions, before any order reaches your handler; your process stays up and
-sells nothing until you upgrade. A new word in a list with no `unknown`, such
-as the `result` a delivery answers with (`delivered`, `already_delivered` and
-the rest), counts as that kind of change.
+else. Agentify then speaks a new contract version. Your subscription stops at
+the first poll answer it can read, with a `contract_version_mismatch` problem
+naming both versions, and until then reports each answer it cannot read as
+`poll_failed`, naming the version Agentify spoke; no order it cannot read
+reaches your handler, and your process stays up and sells nothing until you
+upgrade. A new word in a list with no `unknown`, such as the `result` a
+delivery answers with (`delivered`, `already_delivered` and the rest) or the
+`reason` an event gives, counts as that kind of change.
 
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, so that we can see which releases
