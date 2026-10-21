@@ -1541,22 +1541,26 @@ if (databaseUrl === null) {
       expect(await storeRowOf(next)).toMatchObject({ click_id: null, state: "delivered" });
     });
 
-    it("with every report switched off, lapses a store report and erases its click once its registration's report is given up at the end of its day", async () => {
+    it("with every report switched off, lapses a store report and erases its click in the very turn that gives up its registration's report at the end of its day", async () => {
       const merchant = await aMerchant();
       const account = await fromAnAd(CLICK, merchant, DAY, "pending");
       await publish(merchant, "room-1");
 
+      // A pause far longer than the test, so only the first turn runs.
       const running = startAdReports({
         pool,
         target: null,
         storeConnected: false,
         fetch: tracker().post,
         now,
-        wait,
-        idleMs: 20,
+        idleMs: 60_000,
       });
       try {
-        await eventually(async () => (await storeRowOf(account)).state !== "waiting", 5_000);
+        await eventually(
+          async () =>
+            (await rows()).find((row) => row.account_id === account)?.state === "given_up",
+          5_000,
+        );
       } finally {
         await running.stop();
       }
