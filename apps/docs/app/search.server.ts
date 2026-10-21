@@ -1,9 +1,9 @@
 /**
  * The search index, built from the rendered pages cut into sections at their
- * headings the way VitePress cuts them: a section is a heading with what
- * follows it up to the next heading, and is titled by the headings above it.
- * A page's title and its introduction are found at the page's own address,
- * every other section at its heading's anchor.
+ * headings: a section is a heading with what follows it up to the next
+ * heading, and is titled by the headings above it. A page's title and its
+ * introduction are found at the page's own address, every other section at
+ * its heading's anchor.
  */
 
 import { docsAddress } from "@agentify/ui/docs";

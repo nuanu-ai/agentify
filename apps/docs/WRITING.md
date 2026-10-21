@@ -163,9 +163,8 @@ the same words on one page gets `-1` after its anchor, a third `-2`. A heading
 can name its anchor itself with `{#id}` at its end, which the scanner's pages
 do so their old anchors keep working.
 
-A box is written as a container: `::: warning <title>` up to a line of `:::`.
-The kinds are `tip`, `info`, `warning`, `danger` and `note`; each but `note`
-prints its kind where it is given no title.
+A box is written as a container: `::: note`, with an optional title after it,
+up to a line of `:::`. `note` is the one kind of box.
 
 An example payload is not written into a page but included from its file with
 a line of its own, `<<< @/examples/card/access-monthly.json`, where `@/` is this

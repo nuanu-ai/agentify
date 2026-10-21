@@ -80,17 +80,7 @@ const targetRoot = path.join(root, packageDir);
 // workspace pool.
 const scannerTarget = defineConfig({
   root: targetRoot,
-  test: {
-    include: ["**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx"],
-    exclude: [
-      "**/node_modules/**",
-      "**/actor.integration.test.ts",
-      "**/analytics-outbox.integration.test.ts",
-      "**/migrations.integration.test.ts",
-      "**/p4.integration.test.ts",
-      "**/p5.integration.test.ts",
-    ],
-  },
+  test: { include: ["**/*.test.ts", "**/*.test.tsx"] },
 });
 
 export default mergeConfig(

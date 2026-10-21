@@ -1,7 +1,6 @@
 /**
- * The include a page writes as `<<< @/examples/card/x.json`, as VitePress
- * reads it: the path after `<<<`, `@/` naming this application, with a region
- * (`#name`) or options (`{2,4}`) after the path cut.
+ * The include a page writes as `<<< @/examples/card/x.json`: the path after
+ * `<<<`, with `@/` naming this application.
  */
 
 import { APP } from "./where.server.js";

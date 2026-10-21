@@ -155,10 +155,10 @@ export function createLogger(input: {
 }
 
 const routePatterns: readonly [RegExp, string][] = [
-  [/^\/(?:dashboard|cabinet)\/(?:assets|styles)\//, "asset"],
-  [/^\/(?:dashboard|cabinet)\/auth(?:\/.*)?$/, "dashboard_auth"],
-  [/^\/(?:dashboard|cabinet)\/healthz$/, "dashboard_health"],
-  [/^\/(?:dashboard|cabinet)(?:\/.*)?$/, "dashboard_page"],
+  [/^\/dashboard\/(?:assets|styles)\//, "asset"],
+  [/^\/dashboard\/auth(?:\/.*)?$/, "dashboard_auth"],
+  [/^\/dashboard\/healthz$/, "dashboard_health"],
+  [/^\/dashboard(?:\/.*)?$/, "dashboard_page"],
   [/^\/(store|local)?$/, "page_landing"],
   [/^\/(methodology|privacy|scanner|terms|data-request)$/, "page_trust"],
   [/^\/admin(?:\/.*)?$/, "page_admin"],
