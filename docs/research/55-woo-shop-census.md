@@ -1126,3 +1126,140 @@ whose front page did not place them.
 Indonesian payment-gateway plugin (Xendit, Midtrans, Duitku, iPaymu or
 Tripay) on 25–55%, an Indonesian shipping plugin on 10–40%, a WhatsApp plugin
 on 20–50%; LiteSpeed (header or plugin) on 25–55% and Cloudflare on 20–50%.
+
+## Second Indonesian sample: results
+
+### How the run went
+
+The second sample ran on 2026-10-21 from the test host, under the conduct
+above and its pre-registration. All 30 of its queries and its three reserve
+queries were run, because the main queries ran out before the target. They
+returned 310 results. Most were marketplace listings, university theses and
+news, and none was a gateway's or courier's list of merchants. The pages about
+merchants yielded 127 candidates that the first sample had not screened. The
+census requested 130 sites, counting the targets of front-page redirects, sent
+them 477 requests, never more than seven
+to one site, and removed the host's temporary directory afterwards. The
+runner that adds the contact-page read and the combined stop, `run2.py`, is
+kept beside the note with the other scripts.
+
+Twelve of the requested sites run WooCommerce. Seven were included, all
+Indonesian: two in Bali and five elsewhere. Four were Malaysian shops that the
+origin rule could not place, and one was a German shop, recorded and not
+added. The contact page was read for two of the four unplaced shops. It placed
+neither, which is right for shops in Malaysia, and the other two had no
+contact link the rule could follow. Four more sites answered the front page
+with a Cloudflare challenge.
+
+Five of the seven new shops came from a single page: a blog post on an
+Indonesian gadget retailer's site about surfing in Bali, linking to five shops
+that share a theme and a set of plugins and look like one company's
+storefronts. The sister-site rule did not catch them, because the census read
+only that one page of the publisher. They are counted as the rules say, and
+the measures below that they weigh on are pointed out.
+
+**The combined Indonesian group has 29 shops**: the first sample's 22 and the
+second's 7, 17 of them in Bali. That is at least the 25 rule 1 requires, so
+rules 2 to 5 are applied to it.
+
+### The verdicts
+
+| Indonesian shops | Shops | Could, conditionally | Cannot | Unknown |
+| --- | --- | --- | --- | --- |
+| Second sample | 7 | 0 | 7 | 0 |
+| Combined | 29 | 1 (3%, interval 1–17%) | 28 | 0 |
+| Combined, in Bali | 17 | 1 | 16 | 0 |
+
+All seven new shops price in rupiah at no decimals. For four, the currency is
+the first reason they cannot connect, and for three it is more than 200
+products. The currency alone is the sole blocker for two of the seven.
+
+In the combined group, the first reason recorded for the 28 that cannot
+connect is the currency for 15 and more than 200 products for 10. One shop
+prices in dollars written with no decimals, one has no Store API, and one
+answers its listing with a page of its own. **The currency alone, with its own
+decimals allowed, is the sole blocker for 9 of the 29 (31%)**, and the dollar
+decimals for one more. No other reason alone stops any shop. The one shop that
+could connect, conditionally, is still the first sample's Bali surfboard
+shaper.
+
+### What the shops look like
+
+| Measure | Second sample | Combined Indonesia |
+| --- | --- | --- |
+| Currency, of shops whose listing was read | rupiah 7 of 7 | rupiah 85%, dollar 11%, pound 4% (27 read) |
+| Rupiah written with no decimals | 7 of 7 | 22 of 23 |
+| More than 200 products | 3 of 7 | 37% |
+| Median catalogue size | 113 | 113 |
+| Simple products, of all listed | 79% | 74% |
+| Managed stock, inferred, of simple products in stock | 15% | 30% |
+| Price suffix | 0 | 0 |
+| Listing blocked (step 1) | 0 | 0 |
+| Readable by the connector's own request | 6 of 7 | 26 of 29 (90%) |
+| Honest request answered, connector's refused | 1 of 7 | 1 of 29 (3%) |
+| Multi-currency plugin visible | 0 | 7% |
+
+The one shop whose two requests differed answered the honest request with its
+list and dropped the connection on the connector's request without sending a
+byte. That looks like a broken connection, not a refusal of a request without
+a User-Agent. It still counts under the note's definition, which takes any
+class other than *Readable*.
+
+The plugins visible on at least a fifth of the 29 shops, WooCommerce aside,
+are Elementor (38%), Contact Form 7 (34%), the Xendit virtual-account plugin
+(28%), Click to Chat for WhatsApp (24%), Elementor Pro (24%) and Google Site
+Kit (21%). Three of the seven shops showing Click to Chat are from the
+five-storefront cluster. Cloudflare is in front of 45% of the shops and
+LiteSpeed serves 45%. No cache layer of a hosting provider reaches a fifth.
+Among the second sample alone, LiteSpeed serves six of the seven and
+Cloudflare fronts five, much of it the cluster again.
+
+### The predictions for the second sample
+
+Held: Q2 (all seven in rupiah, all at no decimals); Q3 (three of seven over
+200); the simple-product half of Q4 (79%); Q5 (none could connect; the
+currency the sole blocker for two of seven, 29%); the blocked half of Q6
+(none); Q7 (WooCommerce runs 12 of the 22 merchant sites the second sample's
+queries found selling from their own site, 55%, at the top of its range); and
+the shipping-plugin part of Q9 (one shop, 14%, shows an Indonesian courier
+plugin).
+
+Failed: Q1 (the combined group reached 29, against 30–40); the managed-stock
+half of Q4 (15% against 30–55%); the connector half of Q6 (one of seven, 14%,
+against 0–10%); Q8 (the contact page placed none of the four unplaced
+shops, against 30–70%); and the other parts of Q9 (Elementor one of seven, a
+payment-gateway plugin one of seven, a WhatsApp plugin four of seven,
+LiteSpeed six of seven, Cloudflare five of seven, all outside their ranges).
+
+### The decision rule, applied to the combined group
+
+1. **Too few shops.** The combined Indonesian group has 29 shops, at least
+   25, so the rules below are applied.
+2. **The dollar rule.** One of the 29 shops (3%) could connect, conditionally,
+   which is fewer than 20%, and the currency is the sole blocker for 9 (31%),
+   which is at least 10%. The rule that a shop prices in US dollars is
+   therefore brought to the product owner as a product decision: whether the
+   connector sells in the shop's own currency, here rupiah written with no
+   decimals. It is entered in [`00-open-questions.md`](00-open-questions.md)
+   with these numbers.
+3. **Other sole blockers.** No other reason alone stops 10% or more of the
+   combined group. The decimals of a dollar shop stop one shop (3%), and more
+   than 200 products stops none alone, so nothing more is entered.
+4. **The realistic lab.** The profile of a second, realistic lab shop takes
+   the six plugins visible on at least a fifth of the combined group, which
+   is fewer than eight, so all of them enter: Elementor, Contact Form 7, the
+   Xendit virtual-account plugin (`woo-xendit-virtual-accounts`), Click to
+   Chat for WhatsApp, Elementor Pro and Google Site Kit. No multi-currency
+   plugin reaches 10% (two shops, 7%). The hosting set-up behind the profile
+   is Cloudflare in front and LiteSpeed as the server; no separate cache layer
+   reaches a fifth. The catalogue is 113 products, the median, priced in
+   rupiah at no decimals, with 74% simple products.
+5. **Bot protection.** None of the 29 shops is blocked at step 1, which is
+   under 3%, so bot protection is recorded and nothing follows. This share
+   was measured from an Indonesian network and is a lower bound for the live
+   channel. Separately, 161 sites across both samples answered the front page
+   with a Cloudflare challenge before their platform could be seen.
+
+Rules 6 and 7 stand as the first results gave them. The second sample adds
+one more shop to rule 6's count, by a dropped connection, and no European
+shop.

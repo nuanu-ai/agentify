@@ -23,6 +23,8 @@ GROUPS = {
     "Bali": lambda s: s["group"] == "ID" and s.get("region") == "Bali",
     "Indonesia outside Bali": lambda s: s["group"] == "ID" and s.get("region") != "Bali",
     "Indonesia": lambda s: s["group"] == "ID",
+    "Indonesia, first sample": lambda s: s["group"] == "ID" and s.get("stratum") in ("B", "I", "IR"),
+    "Indonesia, second sample": lambda s: s["group"] == "ID" and s.get("stratum") in ("I2", "I2R"),
     "United States": lambda s: s["group"] == "US",
     "Europe": lambda s: s["group"] == "EU",
 }
@@ -45,6 +47,9 @@ for name, f in [("Bali", lambda x: x.get("group") == "ID" and x.get("region") ==
     sells = [x for x in screened if x["requested"] and x.get("sells") and f(x)]
     p12[name] = {"WooCommerce": sh(sum(1 for x in sells if x["platform"] == "WooCommerce"), len(sells)),
                  "platforms": dict(Counter(x["platform"] for x in sells))}
+sells2 = [x for x in screened if x["requested"] and x.get("sells") and x["stratum"] in ("I2", "I2R")]
+p12["second sample's queries, any origin"] = {"WooCommerce": sh(sum(1 for x in sells2 if x["platform"] == "WooCommerce"), len(sells2)),
+                                              "platforms": dict(Counter(x["platform"] for x in sells2))}
 out["WooCommerce among merchants selling from their own site"] = p12
 
 def products_of(s):
