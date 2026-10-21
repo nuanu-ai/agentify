@@ -61,12 +61,19 @@ const SCREENS: Readonly<Record<string, Screen>> = {
  * reads the mark a form carries.
  */
 export const middleware: MiddlewareFunction<Response>[] = [
-  async ({ context, pattern }, next) => {
+  async ({ context, pattern, request }, next) => {
     const response = await next();
     const screen = SCREENS[pattern];
     const redirected = response.status >= 300 && response.status < 400;
     if (screen !== undefined && !redirected && context.get(visit)) {
-      context.get(services).shown(screen, signedInOrNobody(context), response.status);
+      context
+        .get(services)
+        .shown(
+          screen,
+          signedInOrNobody(context),
+          response.status,
+          request.headers.get("user-agent"),
+        );
     }
     return response;
   },

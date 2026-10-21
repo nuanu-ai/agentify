@@ -152,6 +152,14 @@ const refusedAs = (answer: Answer<unknown> & { ok: false }): Blocked =>
 
 const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input" };
 
+/**
+ * What a crawler, a link preview, an uptime monitor or a script calls itself
+ * by. A browser always names itself, so saying nothing is a program too.
+ */
+const PROGRAM_NAMES = /bot|crawl|spider|preview|monitor|curl|wget|python-requests|headless/i;
+const fetchedByAProgram = (userAgent: string | null): boolean =>
+  userAgent === null || userAgent.trim() === "" || PROGRAM_NAMES.test(userAgent);
+
 /** A sign-in link that is unknown, expired, spent or missing. */
 const LINK_REFUSED: AuthResult = {
   name: "agc_auth_result",
@@ -232,10 +240,16 @@ export interface ChooseNameView {
 export interface PageServices {
   /**
    * Records for product analytics that a visit was answered with this screen,
-   * at this status, and a failed load where the status is a problem's. It
-   * neither waits for the database nor fails with it.
+   * at this status, and a failed load where the status is a problem's; a
+   * visit by nobody signed in from a program fetching pages is not recorded.
+   * It neither waits for the database nor fails with it.
    */
-  readonly shown: (screen: Screen, person: Person | null, status: number) => void;
+  readonly shown: (
+    screen: Screen,
+    person: Person | null,
+    status: number,
+    userAgent: string | null,
+  ) => void;
   readonly liveSales: LiveSalesPages | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
@@ -906,7 +920,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   return {
-    shown(screen, person, status) {
+    shown(screen, person, status, userAgent) {
+      if (person === null && fetchedByAProgram(userAgent)) return;
       const who = person === null ? {} : { refs: whoIn(person) };
       observe({
         name: "agc_dashboard_viewed",
