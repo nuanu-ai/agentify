@@ -824,8 +824,7 @@ switch on, the dashboard tells the tracker, at
 `https://aisamuraihub.com/postback` and with that key, two things about a
 visitor arriving from the tracker's landing page, with nothing asked on screen
 and nothing about the person but the tracker's click identifier. The first is
-that they
-made their first account, as `"event": "reg"`: every such visitor whose
+that they made their first account, as `"event": "reg"`: every such visitor whose
 sign-in, by a mailed link or with Google, is their address's first. The second
 is that they connected a store, as `"event": "lead"`, the tracker's word for
 it: the merchant their account names published its first product card, through
@@ -834,9 +833,12 @@ needs the operator's approval first, so the 30 days include that wait. Only the
 earliest such sign-up of a merchant reports its store, none reports for a
 merchant whose first card came before it, and the store is reported only after
 the sign-up's registration report was delivered, never for a sign-up whose
-registration report was refused or given up. The tracker keeps one `reg` and
-one `lead` per click, and dates each by its arrival, since neither body
-carries a time.
+registration report was refused or given up. The tracker keeps one `reg` per
+click and, as its team stated on 2026-10-21, one `lead` per click, which it
+dates at its arrival and passes to Meta as a Lead. How it answers a `reg`
+posted a second time, after the application stopped between the tracker's
+answer and the record of it, is not confirmed: an answer other than 200 would
+refuse that registration report and so lapse its store report.
 
 Each outcome is one line in the application's log, such as
 `registration report delivered: http_200` or `store report delivered:

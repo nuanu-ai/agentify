@@ -19,8 +19,9 @@
  * days after the registration.
  *
  * A process that stops after the tracker accepted a post and before the
- * commit leaves the row pending, and it is posted again. That cannot become a
- * second conversion, since the tracker keeps one of each event per click.
+ * commit leaves the row pending, and it is posted again. The tracker keeps one
+ * `reg` per click and, its team says, one `lead`, so that is no second
+ * conversion; how it answers the repeated post is not confirmed.
  *
  * Switched off, the loop still runs and posts nothing: it gives up every
  * report still pending once its time is over and lapses every store report
