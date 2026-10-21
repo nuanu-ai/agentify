@@ -30,11 +30,7 @@ export const persistConsentSnapshot = async (input: {
     ? hmacHex(config.hmacSecret, "anonymous", input.anonymousToken)
     : undefined;
   const snapshot = createConsentSnapshot({
-    policy: {
-      policyVersion: CONSENT_POLICY_VERSION,
-      requireOptInForAdsMeasurement: true,
-      requireOptInForProductAnalytics: true,
-    },
+    policyVersion: CONSENT_POLICY_VERSION,
     decisions: input.decisions,
     ...(input.country ? { country: input.country } : {}),
     source: "banner",

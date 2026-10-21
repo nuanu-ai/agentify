@@ -17,11 +17,7 @@ import { PrivacyChoicesButton } from "./privacy-choices.js";
 const keptUnder = (policyVersion: string): string =>
   JSON.stringify(
     createConsentSnapshot({
-      policy: {
-        policyVersion,
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion,
       decisions: { product_analytics: true, ads_measurement: true },
       source: "banner",
     }),

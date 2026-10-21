@@ -700,11 +700,7 @@ const VISITORS = [
 
 /** The choice of a visitor who answered the consent banner on an earlier visit. */
 const SAVED_CONSENT = createConsentSnapshot({
-  policy: {
-    policyVersion: CONSENT_POLICY_VERSION,
-    requireOptInForAdsMeasurement: true,
-    requireOptInForProductAnalytics: true,
-  },
+  policyVersion: CONSENT_POLICY_VERSION,
   decisions: {},
   source: "banner",
 });

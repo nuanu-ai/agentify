@@ -100,11 +100,7 @@ describe("analytics privacy and dedup contracts", () => {
 
   it("creates no outbox rows when analytics consent is denied", () => {
     const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: {},
       source: "banner",
     });
@@ -121,11 +117,7 @@ describe("analytics privacy and dedup contracts", () => {
   it("gates PostHog and Meta independently", () => {
     const event = baseEvent("landing_view");
     const productOnly = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true },
       source: "banner",
     });
@@ -151,11 +143,7 @@ describe("analytics privacy and dedup contracts", () => {
       },
     };
     const snapshot = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
+      policyVersion: "v1",
       decisions: { product_analytics: true, ads_measurement: false },
       source: "banner",
     });
@@ -187,11 +175,7 @@ describe("analytics privacy and dedup contracts", () => {
   it("reads a kept choice as no choice once the policy it was made under is not the current one", () => {
     const kept = (policyVersion: string) => {
       const snapshot = createConsentSnapshot({
-        policy: {
-          policyVersion,
-          requireOptInForAdsMeasurement: true,
-          requireOptInForProductAnalytics: true,
-        },
+        policyVersion,
         decisions: { product_analytics: true, ads_measurement: true },
         source: "banner",
       });

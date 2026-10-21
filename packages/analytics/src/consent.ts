@@ -13,12 +13,6 @@ export type ConsentSnapshot = {
   source: "banner" | "registration" | "card" | "api";
 };
 
-export type ConsentPolicy = {
-  policyVersion: string;
-  requireOptInForProductAnalytics: boolean;
-  requireOptInForAdsMeasurement: boolean;
-};
-
 export const DEFAULT_CONSENT: ConsentCategories = {
   essential_processing: true,
   product_analytics: false,
@@ -29,7 +23,7 @@ export const DEFAULT_CONSENT: ConsentCategories = {
 };
 
 export const createConsentSnapshot = (input: {
-  policy: ConsentPolicy;
+  policyVersion: string;
   decisions: Partial<ConsentCategories>;
   country?: string;
   source: ConsentSnapshot["source"];
@@ -44,7 +38,7 @@ export const createConsentSnapshot = (input: {
     essential_processing: true,
   };
   return {
-    policyVersion: input.policy.policyVersion,
+    policyVersion: input.policyVersion,
     ...(input.country ? { country: input.country.toUpperCase().slice(0, 2) } : {}),
     categories,
     capturedAt: (input.capturedAt ?? new Date()).toISOString(),
