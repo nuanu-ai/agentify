@@ -1263,7 +1263,8 @@ const ACCOUNT: GalleryState[] = [
       id: "scanner-data-request-deleted",
       screen: "Data request",
       when: "A signed-in person confirms the deletion and it completes at once.",
-      cause: "The reports, shares and personal data were anonymized.",
+      cause:
+        "The reports, shares and personal data were anonymized, and the sign-in was removed unless it holds a seller dashboard.",
     },
     "/data-request",
     "routes/data-request",
