@@ -65,6 +65,7 @@ name. Notes written in Russian stay in Russian.
 | [52-release-delivery](52-release-delivery.md) | what the move to images built once in CI measured | ADR-0016 | English | current |
 | [53-self-hosted-observability](53-self-hosted-observability.md) | how the logs and host telemetry of both channels reach the shared self-hosted observability stack | — | English | current |
 | [54-self-service](54-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
+| [55-sign-in-mail-limits](55-sign-in-mail-limits.md) | how many sign-in and report links the dashboard mails, and what the channel's ceiling protects and costs | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
