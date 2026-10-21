@@ -515,14 +515,14 @@ export const gatewayFor = (
       ),
     lapsedAttempts: (page) =>
       call("reading the purchases that lapsed unpaid", async () => {
-        const pageAt = (at: number) =>
-          application.lapsedAttempts(merchantId, {
-            offset: (at - 1) * PAGE_ROWS,
-            limit: PAGE_ROWS,
-          });
-        const asked = await pageAt(page);
-        const last = Math.max(1, Math.ceil(asked.of / PAGE_ROWS));
-        const read = asked.orders.length === 0 && page > last ? await pageAt(last) : asked;
+        // Counted first, so an address naming any page reads at most the last
+        // one: an offset past every row of the table is one the database refuses.
+        const { of } = await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 });
+        const at = Math.min(page, Math.max(1, Math.ceil(of / PAGE_ROWS)));
+        const read = await application.lapsedAttempts(merchantId, {
+          offset: (at - 1) * PAGE_ROWS,
+          limit: PAGE_ROWS,
+        });
         const listed = answered(API_ROUTES.list_orders, merchantOrderList(read.orders));
         return listed.ok ? done({ orders: listed.document, of: read.of }) : listed;
       }),
