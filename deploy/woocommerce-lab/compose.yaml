@@ -76,6 +76,17 @@ services:
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-config:/config
     networks: [shop]
 
+  # The mail catcher the realistic profile hands the shop's mail to. It starts
+  # only with that profile, keeps mail only while it runs, and its web
+  # interface listens on this host's loopback alone.
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    profiles: [realistic]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks: [shop]
+
 networks:
   shop:
     name: agentify-woo-lab

@@ -39,7 +39,8 @@ export const QuoteRequestSchema = z.strictObject({
    * city and the postal code, and nothing about who receives it, since a price
    * question reaches a merchant for purchases never made. Present on a parcel's
    * question only. The answer is the whole price with shipping to this place
-   * included, or not available where the merchant does not ship there.
+   * and any tax for it included, or not available where the merchant does not
+   * ship there.
    */
   ship_to: ShipToLocalitySchema.optional(),
 

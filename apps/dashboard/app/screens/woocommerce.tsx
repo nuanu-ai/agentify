@@ -189,16 +189,20 @@ function WhatCanBeImported() {
           <Tick />
           <span>
             <b>A parcel</b>: a physical product. The agent pays its price plus your cheapest
-            shipping rate to the buyer, and your shop gets a paid order with the buyer's address
+            shipping rate to the buyer and any tax your shop charges there, and your shop gets a
+            paid order with the buyer's address
           </span>
         </li>
         <li>
           <Tick />
-          <span>
-            In the shop, <b>tax calculation is off</b> and permalinks are set to anything but Plain
-          </span>
+          <span>In the shop, permalinks are set to anything but Plain</span>
         </li>
       </ul>
+      <p className={styles.sub}>
+        Where WooCommerce calculates tax, your shop must round tax at the subtotal; a download then
+        sells only if your prices are entered with tax, and a parcel at what your cart charges with
+        tax. Tax from an outside service is not supported.
+      </p>
       <a className={styles.more} href={GUIDE}>
         Connector guide
       </a>

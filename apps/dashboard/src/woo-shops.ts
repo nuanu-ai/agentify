@@ -184,16 +184,28 @@ export interface WooShops {
     facts: WooOrderFacts,
     now: Date,
   ): Promise<void>;
-  /** A download's permission, or null for a parcel. */
+  /**
+   * A download's permission, or null for a parcel, and what the shop's order
+   * totals.
+   */
   recordOrder(
     orderId: string,
     placed: {
       id: string;
       number: string;
       permission: WooPermission | null;
+      total: string;
     },
     now: Date,
   ): Promise<boolean>;
+  /**
+   * What the shop's orders for these sales of this account total, for the
+   * placed ones; a bounded lookup for the rows of the merchant's Orders screen.
+   */
+  shopTotals(
+    accountId: string,
+    orderIds: readonly string[],
+  ): Promise<Readonly<Record<string, string>>>;
   /** Rows without an exact recovery state are not recoverable. */
   recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
   /** A bounded local lookup for links on this account's visible Orders rows. */
@@ -472,6 +484,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           phase: "placed",
           wooOrderId: placed.id,
           wooOrderNumber: placed.number,
+          wooOrderTotal: placed.total,
           result: placed.permission,
           placedAt: now,
         })
@@ -512,6 +525,21 @@ export const postgresWooShops = (pool: Pool): WooShops => {
                 permission: row.result === null ? null : (row.result as WooPermission),
               },
       };
+    },
+
+    async shopTotals(accountId, orderIds) {
+      if (orderIds.length === 0) return {};
+      const rows = await db
+        .select({ orderId: wooOrders.orderId, total: wooOrders.wooOrderTotal })
+        .from(wooOrders)
+        .where(
+          and(
+            eq(wooOrders.accountId, accountId),
+            inArray(wooOrders.orderId, [...orderIds]),
+            isNotNull(wooOrders.wooOrderTotal),
+          ),
+        );
+      return Object.fromEntries(rows.map((row) => [row.orderId, row.total ?? ""]));
     },
 
     async recoverableOrders(accountId, orderIds) {
@@ -624,6 +652,8 @@ export const memoryWooShops = (): WooShops => {
       phase: "precreate_refused" | "create_unknown" | "placed" | "shipped" | "closed";
       facts: WooOrderFacts;
       placedAt?: Date;
+      /** What the shop's order totals, once placed. */
+      total?: string;
       placed: {
         id: string;
         number: string;
@@ -770,7 +800,8 @@ export const memoryWooShops = (): WooShops => {
     async recordOrder(orderId, placed, now) {
       const found = orders.get(orderId);
       if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
-        orders.set(orderId, { ...found, phase: "placed", placed, placedAt: now });
+        const { total, ...kept } = placed;
+        orders.set(orderId, { ...found, phase: "placed", placed: kept, total, placedAt: now });
         return true;
       }
       return false;
@@ -781,8 +812,19 @@ export const memoryWooShops = (): WooShops => {
       // As the Postgres store reads it: a parcel followed no further has no
       // phase recovery knows.
       if (found === undefined || found.phase === "shipped" || found.phase === "closed") return null;
-      const { placedAt: _placedAt, ...kept } = found;
+      const { placedAt: _placedAt, total: _total, ...kept } = found;
       return { orderId, ...kept, phase: found.phase };
+    },
+
+    async shopTotals(accountId, orderIds) {
+      const asked = new Set(orderIds);
+      return Object.fromEntries(
+        [...orders.entries()].flatMap(([orderId, found]) =>
+          asked.has(orderId) && found.accountId === accountId && found.total !== undefined
+            ? [[orderId, found.total]]
+            : [],
+        ),
+      );
     },
 
     async recoverableOrders(accountId, orderIds) {

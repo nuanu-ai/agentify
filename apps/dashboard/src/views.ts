@@ -362,6 +362,11 @@ interface OrderRow {
   readonly closure: Readonly<{ at: MomentView; message?: string }> | null;
   /** Whether the closure form is offered, and whether it closes the order a second time. */
   readonly closing: "first" | "again" | null;
+  /**
+   * What the order the merchant's shop made for the sale totals, where that is
+   * not what the buyer paid; null otherwise.
+   */
+  readonly shopTotal: string | null;
 }
 
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
@@ -538,6 +543,7 @@ export const ordersView = (
   query: URLSearchParams = new URLSearchParams(),
   owed: Readonly<Record<string, UnfulfilledCause>> = {},
   paidInto: PaidIntoSplits = {},
+  shopTotals: Readonly<Record<string, string>> = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -579,6 +585,10 @@ export const ordersView = (
                   : { message: order.merchant_closure.message }),
               },
         closing: reopened(order) ? "again" : closable(order) ? "first" : null,
+        shopTotal:
+          shopTotals[order.id] === undefined || shopTotals[order.id] === order.price.amount
+            ? null
+            : money({ amount: shopTotals[order.id] as string, currency: order.price.currency }),
         priceSet: momentView(order.price.at),
         day: dayOf(order.price.at),
       } satisfies OrderRow,

@@ -24,6 +24,7 @@ and git keeps the entries that were here.
 | Paging and search in the dashboard's lists of cards, orders and receipts, which hold hundreds of orders without breaking but let one be found only by eye | product owner | — |
 | Selling through a WooCommerce shop and one's own code at once: the design is ready (a card remembers the integration that published it, one queue per integration) and is built when a real merchant needs it | product owner | ADR-0036 |
 | How a connected WooCommerce shop's cards follow its products as they are added, changed and removed; today only a manual import, which takes nothing off sale | product owner | ADR-0023 |
+| Whether the WooCommerce connector sells in a shop's own currency at that currency's decimals, such as rupiah written with none: of 29 Indonesian WooCommerce shops measured, 1 could connect, conditionally, and the rule that a shop prices in US dollars alone stops 9 | product owner | `55-woo-shop-census.md` |
 | How a "not available" answer to a price check gives its reason, so an agent can tell "out of stock" from "not shipped there" and from "the address lacks what the merchant needs" | product owner | `37-physical-goods.md` |
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
 | A seller's name and site are read as they are now, also in orders already delivered, so a renamed seller shows the new name on an old order | product owner | ADR-0034 |

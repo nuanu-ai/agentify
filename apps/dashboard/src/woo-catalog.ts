@@ -139,6 +139,17 @@ export const usdAmountOf = (typed: string): string | null => {
 export const centsOf = (amount: string): bigint | null =>
   /^\d+\.\d{2}$/.test(amount) ? BigInt(amount.replace(".", "")) : null;
 
+/**
+ * Whether a total the shop recorded is the amount paid or a cent either side
+ * of it, which is as far as WooCommerce's own rounding of a cart and an order
+ * made from it was measured to part them; both at two decimals.
+ */
+export const withinACent = (recorded: string, paid: string): boolean => {
+  const shop = centsOf(recorded);
+  const buyer = centsOf(paid);
+  return shop !== null && buyer !== null && shop - buyer <= 1n && buyer - shop <= 1n;
+};
+
 export const amountOfCents = (cents: bigint): string =>
   decimalOfMinorUnits(cents.toString(), USD_SCALE) ?? "";
 

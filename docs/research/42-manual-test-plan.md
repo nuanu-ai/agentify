@@ -170,6 +170,31 @@ tote and can change numeric IDs: identify current products by SKU/name and
 record their IDs. Boundary mutations use copies of these products in an
 isolated shop. They are test inputs, not invented customer requirements.
 
+The lab is one shop built to exactly what the connector demands, not a shop
+as merchants run them, and every story run on it inherits what it leaves out.
+It prices in US dollars and calculates no tax. It runs WooCommerce with no
+other plugin, so nothing in it changes a price, a cart, a checkout or an order
+the way a real shop's extensions do. It holds eight products at most, far
+below the 200 an import reads, which H-09 reaches only with controlled copies,
+and none of them counts its stock. Nothing in front of it screens automated
+requests, as a real shop's bot protection or its host's firewall may. Its
+offline payment methods are switched off, so a person cannot complete an
+ordinary order in it as a customer, and the mail it sends reaches nobody who
+reads it. A pass on the lab says nothing about a shop that differs from it in
+any of these ways.
+
+A second lab profile, the realistic profile, lays over the baseline a shop
+shaped like the Indonesian shops counted in the census of real WooCommerce
+shops ([research note 55](55-woo-shop-census.md)), priced in rupiah or, when
+asked, in US dollars; the [lab README](../../deploy/woocommerce-lab/README.md)
+says what it holds and how it is applied. Stories marked “realistic profile”
+need it. It does not reproduce the bot protection or the web server the census
+saw in front of many of those shops, so a story that needs either sets it up
+first and is blocked until it does. The stories about tax run instead on
+isolated copies of the lab shop with tax calculation turned on and set as each
+row names; such a copy answers for the one setting it changes and does not
+stand in for the realistic profile.
+
 Keep a durable merchant operation record keyed by Agentify order ID. For a
 local deterministic effect, record its result and stock change in one
 transaction with a uniqueness constraint. Count arrivals separately from
@@ -195,15 +220,21 @@ Additional equipment required for certain rows is named explicitly:
 | Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model | Missing |
 | Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count | Missing |
 | Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state | Missing |
+| Shops in each tax mode | Isolated copies of the lab shop with its parcel setup and tax calculation on, a rate for the shop's own area and a different rate for another place the tote ships to, each copy set to one of: prices entered including tax with tax rounded at the subtotal; the same with tax rounded per line; prices entered excluding tax; prices shown in the shop or the cart differently from how they are entered; tax based on the billing or the shop's base address. Each copy records the settings it differs in | Missing |
+| Human checkout and its mail | A payment method a person can complete in the shop as a customer without real money, such as one of WooCommerce's offline methods, and mailboxes the organiser reads for that customer and for the shop's administrator, so both receive what the shop sends | Exists in the realistic profile, described in the lab README: direct bank transfer leaves a customer's order on hold, and every message the shop sends, the customer's and the administrator's, lands in its mail catcher. The baseline has neither |
+| Shop settings snapshot | Read every WooCommerce setting and the WordPress settings a shop depends on, including permalinks, the site address and mail, before the owner first acts and after the last step, and show every difference between the two readings | Missing |
+| Shop request log | Show every request the connector sends to the shop, with its User-Agent, as the shop's own server recorded it | Missing as an instrument: the lab's Caddy keeps no access log of its own, and whether the WordPress container's web server log serves has not been checked |
+| Realistic lab profile | A shop resembling the real shops counted in research note 55, including the plugins and protection they run | Exists: `deploy/woocommerce-lab/realistic-profile.sh`, with the census's common plugins installed but not configured, and without the bot protection and the web server the census also saw, which the lab README says how to add |
 
-These capabilities are requirements for the run. The first two exist as the
-third column names them; the other three do not. Mark the variants that need a
+These capabilities are requirements for the run. Four exist as the third
+column names them, the first two, the human checkout and the realistic lab
+profile; the other six do not. Mark the variants that need a
 missing capability blocked and name the smallest capability that is missing.
 Killing curl after two seconds does not prove a server committed. An in-memory event permutation does not prove a Postgres
 interleaving.
 
-The two existing instruments have limits that decide which variants they can
-carry. The proxy arms one cut per run, and arming another means restarting it;
+The proxy and the merchant barriers have limits that decide which variants
+they can carry. The proxy arms one cut per run, and arming another means restarting it;
 a restart drops whatever is in flight through it, which is itself an unplanned
 cut, so stop the caller first. It cannot pick a poll answer by what it
 carries, which is the smallest capability still missing for J-07's lost-event
@@ -408,8 +439,12 @@ a stubbed exchange is separate engineering evidence.
 
 ## H. A WooCommerce merchant sells and keeps working
 
-Use the actual lab products, a dedicated merchant and the current shop
-configuration. A successful connection badge is a prerequisite, not the result.
+H-01 to H-10 use the actual lab products, a dedicated merchant and the current
+shop configuration. From H-11 on, each row names the shop it needs: an
+isolated copy of the lab shop changed in the settings the row gives, or the
+realistic profile, without which a row marked for it cannot run (see the lab's
+limits under Goods and instruments). A successful connection badge is a
+prerequisite, not the result.
 The owner uses the dashboard and Woo administration; the organiser observes
 remote requests and faults privately.
 
@@ -423,8 +458,43 @@ remote requests and faults privately.
 | H-06 / P1 | Make the shop unreachable, busy, return malformed data or revoke keys before quote; contrast a known unsupported product. Lose a setting irrelevant to this product's class. Repair the shop. | Unknown/unanswered is distinguishable from known unavailable. No charge before a usable offer; irrelevant setting failure does not block the product. Restoring the shop allows a fresh purchase without hidden cleanup. |
 | H-07 / P0 | Revoke keys after a valid download quote. After the charged refusal reconnect the same shop and wait. Open the merchant's Orders and attempt the available recovery for that exact order. Repeat the recovery with an order ID that belongs to another merchant. | Reconnection alone does not create a shop order. Another merchant's order ID reveals nothing about that order and contacts no shop. Supported recovery uses the original bound shop order or validates an exact existing order before releasing saved delivery, unless Agentify fulfillment is closed. Where no supported recovery exists, the unfulfilled purchase and missing delivery path remain visible; the merchant can close future Agentify fulfillment and arrange a remedy with the buyer. No blind shop creation or staffed Agentify recovery is assumed. |
 | H-08 / P0 | Let Woo commit a download order and cut its response. Restart the connector and retry. Test recovery with absent, wrong and exact matching remote order ID. | No second Woo POST/order. Unknown creation is not invented success. Wrong identity cannot release goods; matching recovery retrieves the original permission and delivers once. Repeat recovery and verify the same result. |
-| H-09 / P1 | Import a catalogue just over its 200-product limit using controlled copies. Separately make public product price differ from the authenticated API, and make a product/settings endpoint return a different object's ID. | Oversized import refuses the whole operation rather than silently publishing a prefix. Mismatches name the product/setting and publish no misleading card. The summary distinguishes rejected, unknown and unattempted work; the owner can recover without guessing which products changed. |
+| H-09 / P1 | Import a catalogue just over its 200-product limit using controlled copies. Separately, in the lab, where tax calculation is off, make public product price differ from the authenticated API through a controlled change to what the public catalogue answers, leaving the stored price alone; a difference that comes from how a shop with tax on shows its prices is H-16's case, not this one. Also make a product/settings endpoint return a different object's ID. | Oversized import refuses the whole operation rather than silently publishing a prefix. Mismatches name the product/setting and publish no misleading card. The summary distinguishes rejected, unknown and unattempted work; the owner can recover without guessing which products changed. |
 | H-10 / P0 | Disconnect after orders have safely closed; revoke the shop's API key there. Reconnect and buy a supported product again. | Agentify no longer uses removed connection credentials. The owner understands what disconnect does and what must be revoked at the shop. Reconnection does not resurrect paused cards or lose original payment facts, unfulfilled orders, merchant closures or receipts. |
+| H-11 / P0 | Connecting changes nothing for the shop's other customers. Realistic profile, in a shop that prices in US dollars with tax calculation on. Take the shop settings snapshot before the owner does anything. A person then places an ordinary order as a human customer through the human checkout: a product the connector can sell and one it cannot, delivered to a place the shop taxes. The owner connects the shop following only the public guide and the dashboard, performs every instruction the guide gives as a step of its own, imports, and an agent buys the sellable product. The same person then places the same order again and the snapshot is read a second time. | Compare the two human orders line by line: each item's price, each tax line and its rate, shipping and its tax, the total, the emails the customer and the merchant received, and the shop's reports of orders, revenue, taxes and customers; compare the two snapshots. Every difference is one the guide named, with what it does to the shop's other customers, before the owner acted on it, and none changes what an ordinary customer pays, to the cent. The agent's own order differs from a customer's only in the ways the guide states, such as carrying the owner's email as the customer's. A failure is any changed setting, email or report line the guide did not name beforehand; any guide instruction that changes a shop-wide setting without saying what it does to other customers, whether or not it changed this order; and any cent of difference in what the person paid. |
+| H-12 / P1 | A merchant whose SDK card is on sale presses Connect for the realistic profile priced in Indonesian rupiah, the currency a shop in Bali sells to its local customers in. Separately, on the realistic profile, make the shop's public catalogue unreadable to the connector and press Connect again. | The refusal appears beside the Connect button before the browser leaves for the shop and before any key is asked for: the shop's REST API settings list no new key and no keys reach Agentify. It names the currency the shop prices in and says the connector sells in US dollars only, without inviting the owner to change the shop's currency, which would change what every customer pays. Nothing changes in how the merchant sells: the integration stays their code, the SDK card stays on sale and nothing is paused. An unreadable catalogue does not stop Connect and is never reported as an unsupported currency or an empty shop: Connect goes ahead, and the import names each product it cannot sell. A failure is a browser sent to the shop's approval, a key issued, an integration switched, a card taken off sale, a refusal that does not name the currency or one that suggests switching it. |
+| H-13 / P0 | The tax-mode copy with prices entered including tax and tax rounded at the subtotal. Import, then let an agent buy the gift-wrapping guide, the tote to a place in the shop's own rate area and the tote to the place with the other rate. Before each purchase, read the shop's own cart for the same product and, for the tote, the same address, as a person shopping there sees it. | The download sells at the shop's price, and the shop's order records the tax inside that price at the shop's own rate, in lines that add up to the price. The tote to the shop's own rate area sells at the shop's own cart total, with goods, tax and shipping as the cart has them. The tote to the other rate is refused before payment, with no shop order, in words that let the agent tell a destination this shop cannot be sold to from here apart from a shop that did not answer. The quote, the payment and the person's cart agree to the cent. The shop order's total equals them, or differs by one cent, in which case the order is still taken on, carries what the agent paid among its Agentify lines (`agentify_paid`) and the merchant's Orders screen shows the shop's total beside it. A failure is any cent of difference between the quote, the payment and the person's cart for the same sale, a shop order more than a cent from the payment that is taken on, a one-cent difference the Orders screen does not show, a tax line at a rate other than the shop's own, or a sale to the other rate. |
+| H-14 / P0 | The tax-mode copy with prices entered excluding tax. Import, then let an agent buy the tote to a place at each of the two rates, reading the shop's own cart for the same address first. Then try to buy the gift-wrapping guide. | Each tote sells at the shop's cart total for the buyer's place, so the two totals differ exactly as the shop's two carts do, compared to the cent as in H-13. The download is not sold at any price: the import names it with its reason, or, where a card exists from an import under other settings, its purchase is refused before payment. A failure is a tote sold at a total other than the shop's cart for that place, a download sold at a price that leaves out or guesses the tax, or a refusal that tells the owner to change how the shop enters prices without saying what that does to the shop's customers. |
+| H-15 / P0 | The H-13 copy with tax rounded per line instead of at the subtotal. Choose the tote's price, its shipping rate and the shop's tax rate so that the two roundings give cart totals a cent apart, and show that cent in the person's cart under each setting before buying; prices for which the two roundings agree prove nothing. Import, then let an agent buy the tote to the shop's own rate area, and the download. | Nothing sells from a shop that calculates tax and rounds it per line: the import leaves the tote and the download in the shop and names the rounding setting for each, or, where a card exists from an import under other settings, its purchase is refused before payment, and no shop order exists. A failure is any product sold under per-line rounding, or a refusal that tells the owner to change the rounding without saying that it changes how every order of the shop is rounded. |
+| H-16 / P1 | Copies of the H-13 shop changed one setting at a time: prices shown in the shop excluding tax although entered including it; prices shown during cart and checkout differently from how they are entered; tax based on the customer's billing address; tax based on the shop's base address. Import each. Separately, on the realistic profile, import a shop whose tax an outside tax service calculates. | The copy whose catalogue shows prices otherwise than they are entered has every product refused at import with the display setting named and no card published. The copies that calculate tax on the billing or the shop's base address have the tote refused at import with that setting named, while the download, which gives no address, sells as in H-13. The copy whose cart and checkout show prices otherwise than they are entered is not refused by any check of the connector: record whether its tote and download sell, and compare every sale's four amounts as in H-13. No refusal asks the owner to change a setting without saying what it does to the shop's other customers. Record whether the import recognises the outside tax service; naming it unsupported passes, and a card sold at a price the shop's own checkout would not charge fails. A failure is a card published for a product the connector should have refused here, a refusal that names no setting or the wrong one, or a sale whose total differs from the shop's own checkout by more than H-13 allows. |
+| H-17 / P1 | Read the shop request log while the owner connects and imports, while the connector checks prices and while an agent buys a download and a tote. Separately, on the realistic profile, put the shop behind bot protection that challenges unfamiliar clients, and repeat. | Every request the connector sends, the public catalogue read before any key included, carries a User-Agent naming Agentify's connector rather than imitating a browser or leaving an HTTP library's default, so the owner can recognise it in their logs and allow it. A shop whose protection challenges or blocks the connector leaves an unread or unanswered result, distinguishable from a known refusal, with no charge before a usable offer (H-06); record what the owner is told and whether they can tell that their own protection stopped it. A failure is a request that disguises itself or names nobody, or a challenge page read as a product, a price or an empty catalogue. |
+
+H-11 is run as the owner would run it, with the public guide and the
+dashboard open and nothing else, and the organiser keeps a list beside it. For
+every instruction the guide gives, the list holds the guide's own sentence,
+what that sentence says the instruction does to the shop's other customers,
+and whether the owner read it before acting or only afterwards. A consequence
+the guide explains after the step, or on a page the owner reaches later,
+counts as not named. A refusal from the connector that names a setting becomes
+an instruction when the owner acts on it, and it is listed the same way. The
+two human orders use the same products, quantities, address, shipping method
+and payment method, and the second is placed after the agent's order exists in
+the shop, so that a change caused by the sale, not only by the connection,
+shows up too. What the organiser sets up for the run itself, such as the human
+checkout and its mailboxes, is in place before the first snapshot and stays
+until the second. Order numbers and dates are expected to differ, and the
+agent's sale is expected to appear in the shop's reports; how it appears there
+is what the guide must have said. Any other difference goes into the report
+with the guide's sentence beside it, or as a finding where there is none.
+
+H-13, H-14 and H-16 compare four amounts for every sale, to the cent: the
+price the agent was quoted, what it paid in integer token units (ten thousand units of
+USDC are one cent), the total of the order the shop created and the total of
+the person's cart for the same product and address. Keep the shop order's tax
+lines and rates beside them, and the copy's tax settings as the snapshot read
+them at the time of the sale. Where a row sets one setting against another, as
+H-15 sets per-line rounding against rounding at the subtotal, the amounts are
+chosen so that the two settings give different cents; amounts on which they
+agree prove nothing about the setting.
 
 ## F. A parcel is a physical obligation
 
@@ -435,7 +505,7 @@ the address to prove that it arrived.
 
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
-| F-01 / P1 | Quote the tote to the actual supported country, state and postcode zones, and to an unsupported place. Try missing necessary locality fields and a changed address at payment. | A supported offer includes shipping; unsupported locality or changed priced address refuses before payment. Quote messages expose locality only. Errors let the agent correct the address without guessing a different destination. |
+| F-01 / P1 | Quote the tote to the actual supported country, state and postcode zones, and to an unsupported place. Try missing necessary locality fields and a changed address at payment. | A supported offer includes shipping and, in a shop with tax calculation on, the tax the shop's own cart charges for that place (H-13, H-14); unsupported locality or changed priced address refuses before payment. Quote messages expose locality only. Errors let the agent correct the address without guessing a different destination. |
 | F-02 / P0 | Pay; persist the address at the merchant, then lose the acceptance response and restart. Separately crash before saving it and allow the deadline/erasure to occur. | After acceptance the gateway shows erased_at and never supplies the address again. The merchant's durable copy recovers the accepted work. A missing copy is not fabricated; the paid order remains unfulfilled after its deadline, and the merchant and buyer determine the remedy. Inspect active order/queue/connector data and redacted logs; backups retain data until their stated expiry. |
 | F-03 / P0 | For Woo, change shipping rates after the quote: keep a current rate at the paid cost in one variant and remove every such rate in another. Exercise a cart that fails between add-item and rates; separately a controlled plugin replaces/removes the item. | Only the quoted total can be spent. A matching current cost may be used; no matching cost leaves a paid unfulfilled order with zero Woo POST. No price for the wrong item/cart may be accepted as the requested goods. The wrong-cart refusal is an adversarial hypothesis to verify, not a known implemented check. |
 | F-04 / P0 | Record shipment with tracking and without it on separate orders. Repeat the same shipment, submit a different one and change Woo tracking/status after completion. | Buyer sees shipped, never proof of arrival. Shipment has one durable meaning; identical retry is safe and conflicting SDK shipment is refused. Explain that later Woo edits do not rewrite an already recorded Agentify shipment. A missing native Woo tracking facility leaves that variant unmeasured. |
