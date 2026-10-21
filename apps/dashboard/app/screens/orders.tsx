@@ -211,6 +211,7 @@ const OrderDetails = ({
           <Fact label="Price set">
             <Moment at={row.priceSet} />
           </Fact>
+          {row.inTheShop === null ? null : <Fact label="In your shop">{row.inTheShop}</Fact>}
           {row.shopTotal === null ? null : (
             <Fact label="Shop's order total">
               {row.shopTotal}, within a cent of what the buyer paid

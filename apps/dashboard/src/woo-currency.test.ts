@@ -48,7 +48,7 @@ const CONNECTION: WooConnection = {
   currency: { code: "IDR", decimals: 0 },
 };
 
-/** The lab's batik tote at Rp 250.000, sold as a download from a shop with tax off. */
+/** The lab's Rayon Sarong at Rp 240.000, sold here as a download from a shop with tax off. */
 const settingsOf = (currency: string, decimals: string): Readonly<Record<string, string>> => ({
   woocommerce_currency: currency,
   woocommerce_price_num_decimals: decimals,
@@ -62,10 +62,10 @@ const settingsOf = (currency: string, decimals: string): Readonly<Record<string,
 });
 
 const aShopIn =
-  (currency: string, decimals: string, price = "250000", parcel = false): WooRequest =>
+  (currency: string, decimals: string, price = "240000", parcel = false): WooRequest =>
   async (url) => {
     const at = new URL(url).pathname;
-    if (at === "/protected/batik.pdf") return new Response("", { status: 403 });
+    if (at === "/protected/sarong.pdf") return new Response("", { status: 403 });
     const setting = at.split("/").at(-1) ?? "";
     if (at.includes("/settings/")) {
       return Response.json({ id: setting, value: settingsOf(currency, decimals)[setting] ?? "" });
@@ -85,7 +85,7 @@ const aShopIn =
       price,
       downloads: parcel
         ? []
-        : [{ id: "dl_batik", name: "Batik pattern.pdf", file: `${SHOP}/protected/batik.pdf` }],
+        : [{ id: "dl_sarong", name: "Sarong pattern.pdf", file: `${SHOP}/protected/sarong.pdf` }],
     });
   };
 
@@ -97,7 +97,7 @@ describe("the shop's product, read from a shop priced in rupiah", () => {
 
     expect(read).toMatchObject({
       ok: true,
-      product: { kind: "download", price: { amount: "250000", currency: "IDR" } },
+      product: { kind: "download", price: { amount: "240000", currency: "IDR" } },
     });
   });
 
@@ -173,12 +173,12 @@ const SOLD: SoldItem = {
   orderId: "ord_idr",
   productId: "41",
   email: EMAIL,
-  price: { amount: "250000", currency: "IDR" },
-  download: { id: "dl_batik", name: "Batik pattern.pdf" },
+  price: { amount: "240000", currency: "IDR" },
+  download: { id: "dl_sarong", name: "Sarong pattern.pdf" },
   paidInto: null,
   tax: { mode: "off" },
   converted: {
-    paid: { amount: "13.89", currency: "USD" },
+    paid: { amount: "13.34", currency: "USD" },
     rate: { version: 3, currency: "IDR", rate: "18000", setAt: SET },
   },
 };
@@ -186,16 +186,16 @@ const SOLD: SoldItem = {
 describe("the shop's order for a sale converted at the merchant's rate", () => {
   it("is made in the shop's currency at its own amount, and carries the dollars paid and the rate", async () => {
     const sent: unknown[] = [];
-    const made = await createTheOrderInTheShop(KEYS, SOLD, aShopTotalling("250000", sent));
+    const made = await createTheOrderInTheShop(KEYS, SOLD, aShopTotalling("240000", sent));
 
-    expect(made).toMatchObject({ ok: true, total: "250000" });
+    expect(made).toMatchObject({ ok: true, total: "240000" });
     expect(sent[0]).toMatchObject({
       currency: "IDR",
-      line_items: [{ product_id: 41, quantity: 1, subtotal: "250000", total: "250000" }],
+      line_items: [{ product_id: 41, quantity: 1, subtotal: "240000", total: "240000" }],
       meta_data: [
         { key: "agentify_order_id", value: "ord_idr" },
-        { key: "agentify_paid", value: "13.89 USD" },
-        { key: "agentify_shop_amount", value: "250000 IDR" },
+        { key: "agentify_paid", value: "13.34 USD" },
+        { key: "agentify_shop_amount", value: "240000 IDR" },
         {
           key: "agentify_rate",
           value: "18000 IDR per USD, rate 3, set 2026-10-09T10:00:00.000Z",
@@ -205,12 +205,12 @@ describe("the shop's order for a sale converted at the merchant's rate", () => {
   });
 
   it("is taken on a rupiah either side of the amount, and not two", async () => {
-    for (const total of ["250001", "249999"]) {
+    for (const total of ["240001", "239999"]) {
       expect(await createTheOrderInTheShop(KEYS, SOLD, aShopTotalling(total)), total).toMatchObject(
         { ok: true, total },
       );
     }
-    for (const total of ["250002", "249998", "250000.00"]) {
+    for (const total of ["240002", "239998", "240000.00"]) {
       expect(await createTheOrderInTheShop(KEYS, SOLD, aShopTotalling(total)), total).toMatchObject(
         { ok: false },
       );
@@ -222,36 +222,36 @@ describe("the shop's order for a sale converted at the merchant's rate", () => {
       orderId: "ord_parcel",
       productId: "41",
       email: EMAIL,
-      total: { amount: "274000", currency: "IDR" },
-      goods: "250000",
+      total: { amount: "264000", currency: "IDR" },
+      goods: "240000",
       tax: "off",
       rate: { methodId: "flat_rate", instanceId: "1", title: "Flat rate", cost: "24000", tax: "0" },
       address: {
-        name: "Ni Made Ayu",
-        line_one: "Jl. Raya Ubud No. 8",
-        city: "Gianyar",
+        name: "Nuanu Reception",
+        line_one: "Jl. Raya Kediri, Beraban",
+        city: "Tabanan",
         state: "BA",
-        postal_code: "80571",
+        postal_code: "82121",
         country: "ID",
-        phone_number: "+62361975000",
+        phone_number: "+62 000 0000 0000",
       },
       paidInto: null,
       converted: {
-        paid: { amount: "15.23", currency: "USD" },
+        paid: { amount: "14.67", currency: "USD" },
         rate: { version: 3, currency: "IDR", rate: "18000", setAt: SET },
       },
     };
     const sent: unknown[] = [];
 
-    const made = await createTheParcelInTheShop(KEYS, parcel, aShopTotalling("274001", sent));
+    const made = await createTheParcelInTheShop(KEYS, parcel, aShopTotalling("264001", sent));
 
-    expect(made).toMatchObject({ ok: true, total: "274001" });
+    expect(made).toMatchObject({ ok: true, total: "264001" });
     expect(sent[0]).toMatchObject({
       currency: "IDR",
-      line_items: [{ subtotal: "250000", total: "250000" }],
+      line_items: [{ subtotal: "240000", total: "240000" }],
       shipping_lines: [{ total: "24000" }],
     });
-    expect(await createTheParcelInTheShop(KEYS, parcel, aShopTotalling("274002"))).toMatchObject({
+    expect(await createTheParcelInTheShop(KEYS, parcel, aShopTotalling("264002"))).toMatchObject({
       ok: false,
     });
   });
@@ -295,7 +295,7 @@ describe("the shop's cart, priced in rupiah", () => {
     const read = await shippingRatesInTheShop(
       SHOP,
       "41",
-      { country: "ID", state: "BA", city: "Gianyar", postal_code: "80571" },
+      { country: "ID", state: "BA", city: "Tabanan", postal_code: "82121" },
       cart,
     );
 
@@ -310,11 +310,11 @@ describe("the shop's cart, priced in rupiah", () => {
 const A_DOWNLOAD: EligibleWooProduct = {
   kind: "download",
   productId: "41",
-  downloadId: "dl_batik",
-  fileName: "Batik pattern.pdf",
-  price: { amount: "250000", currency: "IDR" },
+  downloadId: "dl_sarong",
+  fileName: "Sarong pattern.pdf",
+  price: { amount: "240000", currency: "IDR" },
   tax: { mode: "off" },
-  fingerprint: "batik-in-rupiah",
+  fingerprint: "sarong-in-rupiah",
 };
 
 const QUESTION = {
@@ -329,7 +329,7 @@ const anOrder = (overrides: Partial<Order> = {}): Order => ({
   merchant_item_id: ITEM,
   params: {},
   price: {
-    amount: "13.89",
+    amount: "13.34",
     currency: "USD",
     at: NOW.toISOString(),
     as_of: NOW.toISOString(),
@@ -369,13 +369,13 @@ describe("a price question for a card from a shop priced in rupiah", () => {
 
     expect(answer).toEqual({
       available: true,
-      price: { amount: "13.89", currency: "USD" },
+      price: { amount: "13.34", currency: "USD" },
       as_of: NOW.toISOString(),
     });
     expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toEqual({
-      fingerprint: "batik-in-rupiah",
-      inTheShop: { amount: "250000", currency: "IDR" },
-      paid: { amount: "13.89", currency: "USD" },
+      fingerprint: "sarong-in-rupiah",
+      inTheShop: { amount: "240000", currency: "IDR" },
+      paid: { amount: "13.34", currency: "USD" },
       rate: { version: rate.version, currency: "IDR", rate: "18000", setAt: SET },
     });
   });
@@ -402,12 +402,12 @@ describe("a price question for a card from a shop priced in rupiah", () => {
   it("prices a parcel at the goods and the shop's cheapest rupiah rate, converted once", async () => {
     const shops = memoryWooShops();
     await shops.saveRate("acc_1", SHOP, RATE);
-    const tote: EligibleWooProduct = {
+    const sarong: EligibleWooProduct = {
       kind: "parcel",
       productId: "41",
-      price: { amount: "250000", currency: "IDR" },
+      price: { amount: "240000", currency: "IDR" },
       tax: { mode: "off" },
-      fingerprint: "tote-in-rupiah",
+      fingerprint: "sarong-parcel-in-rupiah",
     };
     const rates: RatesRead = {
       ok: true,
@@ -421,15 +421,15 @@ describe("a price question for a card from a shop priced in rupiah", () => {
 
     const answer = await quoteFromTheShop(
       CONNECTION,
-      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Gianyar" } },
+      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
       NOW,
-      { ...parts(shops, tote), shippingRates: async () => rates },
+      { ...parts(shops, sarong), shippingRates: async () => rates },
     );
 
-    // 274000 / 18000 = 15.2222…, rounded up.
-    expect(answer).toMatchObject({ available: true, price: { amount: "15.23", currency: "USD" } });
+    // 264000 / 18000 = 14.6666…, rounded up.
+    expect(answer).toMatchObject({ available: true, price: { amount: "14.67", currency: "USD" } });
     expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toMatchObject({
-      inTheShop: { amount: "274000", currency: "IDR" },
+      inTheShop: { amount: "264000", currency: "IDR" },
     });
   });
 });
@@ -438,12 +438,12 @@ describe("a parcel's price where the shop's cart answers in another currency tha
   it("is not available, rather than adding yen of shipping to rupiah goods", async () => {
     const shops = memoryWooShops();
     await shops.saveRate("acc_1", SHOP, RATE);
-    const tote: EligibleWooProduct = {
+    const sarong: EligibleWooProduct = {
       kind: "parcel",
       productId: "41",
-      price: { amount: "250000", currency: "IDR" },
+      price: { amount: "240000", currency: "IDR" },
       tax: { mode: "off" },
-      fingerprint: "tote-in-rupiah",
+      fingerprint: "sarong-parcel-in-rupiah",
     };
     const inYen = async (): Promise<RatesRead> => ({
       ok: true,
@@ -454,9 +454,9 @@ describe("a parcel's price where the shop's cart answers in another currency tha
 
     const answer = await quoteFromTheShop(
       CONNECTION,
-      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Gianyar" } },
+      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Tabanan" } },
       NOW,
-      { ...parts(shops, tote), shippingRates: inYen },
+      { ...parts(shops, sarong), shippingRates: inYen },
     );
 
     expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
@@ -485,15 +485,15 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
     expect(answer).toMatchObject({ delivered: { order_number: "77" } });
     expect(placed).toMatchObject([
       {
-        price: { amount: "250000", currency: "IDR" },
-        converted: { paid: { amount: "13.89", currency: "USD" }, rate: { rate: "18000" } },
+        price: { amount: "240000", currency: "IDR" },
+        converted: { paid: { amount: "13.34", currency: "USD" }, rate: { rate: "18000" } },
       },
     ]);
     expect(await shops.shopTotals("acc_1", ["ord_idr"])).toMatchObject({
       ord_idr: {
-        total: "250000",
+        total: "240000",
         converted: {
-          inTheShop: { amount: "250000", currency: "IDR" },
+          inTheShop: { amount: "240000", currency: "IDR" },
           rate: { rate: "18000", setAt: SET.toISOString() },
         },
       },
@@ -509,7 +509,7 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
     await fillFromTheShop(anOrder(), CONNECTION, EMAIL, parts(shops, A_DOWNLOAD, placed), null);
 
     expect(placed).toMatchObject([
-      { price: { amount: "250000" }, converted: { rate: { rate: "18000", setAt: SET } } },
+      { price: { amount: "240000" }, converted: { rate: { rate: "18000", setAt: SET } } },
     ]);
   });
 
@@ -519,7 +519,7 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
     const placed: SoldItem[] = [];
 
     const answer = await fillFromTheShop(
-      anOrder({ price: { ...anOrder().price, amount: "13.88" } }),
+      anOrder({ price: { ...anOrder().price, amount: "13.33" } }),
       CONNECTION,
       EMAIL,
       parts(shops, A_DOWNLOAD, placed),
@@ -551,12 +551,12 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
   it("makes a parcel's order at the bound rupiah total with the rate that makes it up", async () => {
     const shops = memoryWooShops();
     await shops.saveRate("acc_1", SHOP, RATE);
-    const tote: EligibleWooProduct = {
+    const sarong: EligibleWooProduct = {
       kind: "parcel",
       productId: "41",
-      price: { amount: "250000", currency: "IDR" },
+      price: { amount: "240000", currency: "IDR" },
       tax: { mode: "off" },
-      fingerprint: "tote-in-rupiah",
+      fingerprint: "sarong-parcel-in-rupiah",
     };
     const rates = async (): Promise<RatesRead> => ({
       ok: true,
@@ -567,10 +567,10 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
       ],
       priced: { ok: false, why: "untaxed", again: false, saidNo: false },
     });
-    const place = { country: "ID", state: "BA", city: "Gianyar", postal_code: "80571" };
+    const place = { country: "ID", state: "BA", city: "Tabanan", postal_code: "82121" };
     const placed: ParcelSold[] = [];
     const filling: Filling = {
-      ...parts(shops, tote),
+      ...parts(shops, sarong),
       shippingRates: rates,
       placeParcel: async (_keys, sold): Promise<ParcelMade> => {
         placed.push(sold);
@@ -581,11 +581,11 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
 
     const answer = await fillFromTheShop(
       anOrder({
-        price: { ...anOrder().price, amount: "15.23" },
+        price: { ...anOrder().price, amount: "14.67" },
         ship_to: {
-          name: "Ni Made Ayu",
-          line_one: "Jl. Raya Ubud No. 8",
-          phone_number: "+62361975000",
+          name: "Nuanu Reception",
+          line_one: "Jl. Raya Kediri, Beraban",
+          phone_number: "+62 000 0000 0000",
           ...place,
         },
       }),
@@ -598,10 +598,10 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
     expect(answer).toEqual({ accepted: {} });
     expect(placed).toMatchObject([
       {
-        total: { amount: "274000", currency: "IDR" },
-        goods: "250000",
+        total: { amount: "264000", currency: "IDR" },
+        goods: "240000",
         rate: { cost: "24000" },
-        converted: { paid: { amount: "15.23", currency: "USD" } },
+        converted: { paid: { amount: "14.67", currency: "USD" } },
       },
     ]);
   });

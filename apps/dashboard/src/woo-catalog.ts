@@ -27,6 +27,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
+import { dollarsAt, type ShopDecimals } from "./woo-money.js";
 
 /**
  * Loose, so the day WooCommerce adds a field it does not refuse a whole
@@ -97,13 +98,6 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
   return `${digits.slice(0, digits.length - scale)}.${digits.slice(digits.length - scale)}`;
 };
 
-/**
- * The `currency_minor_unit` the Store API must answer for a product to be
- * imported; it and the decimals of an order's totals come from the shop's one
- * number-of-decimals setting.
- */
-export const USD_SCALE = 2;
-
 const sentenceOf = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 
@@ -155,12 +149,26 @@ const WHAT_THE_BUYER_RECEIVES = {
 const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
 
 /**
+ * What the shop sells in, by its own settings, and the merchant's rate for it:
+ * how many units of that currency one US dollar buys, null for US dollars.
+ */
+export interface ShopSale {
+  readonly currency: string;
+  readonly decimals: ShopDecimals;
+  readonly rate: string | null;
+}
+
+const IN_DOLLARS: ShopSale = { currency: "USD", decimals: 2, rate: null };
+
+/**
  * In the shop's order, so the merchant reads both lists against their own
- * catalogue screen.
+ * catalogue screen. Every card is priced in US dollars: a shop in another
+ * currency at its merchant's rate, rounded up to the cent.
  */
 export const cardsFromTheShop = (
   products: readonly StoreProduct[],
   shopOrigin = "https://shop.example.com",
+  sale: ShopSale = IN_DOLLARS,
 ): ImportedCatalogue => {
   const cards: ImportedCard[] = [];
   const skipped: SkippedProduct[] = [];
@@ -228,21 +236,23 @@ export const cardsFromTheShop = (
       continue;
     }
 
-    if (product.prices.currency_code !== "USD") {
+    if (product.prices.currency_code !== sale.currency) {
       refused(
-        `The shop prices this product in ${JSON.stringify(product.prices.currency_code)}, and` +
-          " this connector sells in US dollars only.",
+        `The shop's public catalogue prices this product in` +
+          ` ${JSON.stringify(product.prices.currency_code)}, while the shop's own currency setting` +
+          ` is ${sale.currency}, which ${sale.rate === null ? "this connector sells in" : "your rate is set for"}.` +
+          " A plugin that changes the currency by visitor is the usual cause.",
       );
       continue;
     }
-    if (product.prices.currency_minor_unit !== USD_SCALE) {
+    if (product.prices.currency_minor_unit !== sale.decimals) {
       // Named as the setting rather than the prices: a whole-dollar shop that
       // retyped every price with cents would be refused all the same.
       refused(
         `The shop's catalogue writes prices with ${product.prices.currency_minor_unit} decimal` +
-          ` places, and this connector sells at ${USD_SCALE}. Set WooCommerce → Settings → General →` +
-          ` Number of decimals to ${USD_SCALE}; if it already is, something in the shop is` +
-          " changing the decimals its catalogue is written at.",
+          ` places, and this shop is sold from at ${sale.decimals}. Set WooCommerce → Settings →` +
+          ` General → Number of decimals to ${sale.decimals}; if it already is, something in the` +
+          " shop is changing the decimals its catalogue is written at.",
       );
       continue;
     }
@@ -255,18 +265,19 @@ export const cardsFromTheShop = (
       );
       continue;
     }
-    const currency = product.prices.currency_code;
-    if (!CurrencyCodeSchema.safeParse(currency).success) {
+    const dollars = sale.rate === null ? amount : dollarsAt(amount, sale.rate);
+    const currency = sale.rate === null ? product.prices.currency_code : "USD";
+    if (dollars === null || !CurrencyCodeSchema.safeParse(currency).success) {
       refused(
-        `The shop prices this product in ${JSON.stringify(currency)}, which is not a currency` +
-          " code we can put on a card.",
+        `The shop prices this product at ${JSON.stringify(product.prices.price)} in` +
+          ` ${JSON.stringify(product.prices.currency_code)}, which is not an amount we can put on a card.`,
       );
       continue;
     }
     // The contract's own price rule, so a product it would refuse is named here
     // as left in the shop. Only zero can reach it; currency and decimals are
     // settled above.
-    const unsellable = priceProblemsOf({ amount, currency });
+    const unsellable = priceProblemsOf({ amount: dollars, currency });
     if (unsellable.length > 0) {
       refused(unsellable.map((problem) => sentenceOf(problem.message)).join(" "));
       continue;
@@ -308,7 +319,7 @@ export const cardsFromTheShop = (
             merchant_item_id: merchantItemId,
             title,
             description,
-            price: { amount, currency },
+            price: { amount: dollars, currency },
             fulfillment: "ship",
             price_check: "handler",
             ship_within_seconds: SHIP_WITHIN_SECONDS,
@@ -317,7 +328,7 @@ export const cardsFromTheShop = (
             merchant_item_id: merchantItemId,
             title,
             description,
-            price: { amount, currency },
+            price: { amount: dollars, currency },
             result: { ...WHAT_THE_BUYER_RECEIVES },
             fulfillment: "async",
             price_check: "handler",

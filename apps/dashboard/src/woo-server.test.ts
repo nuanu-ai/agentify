@@ -2812,12 +2812,12 @@ describe("a shop priced in another currency than US dollars", () => {
   const IN_RUPIAH: ShopSample = {
     currency: "IDR",
     decimals: 0,
-    product: { name: "Tas batik tulis", price: "250000" },
+    product: { name: "Rayon Sarong", price: "240000" },
   };
   const rupiahProduct = aProduct({
     id: 41,
-    name: "Tas batik tulis",
-    prices: { price: "250000", currency_code: "IDR", currency_minor_unit: 0 },
+    name: "Rayon Sarong",
+    prices: { price: "240000", currency_code: "IDR", currency_minor_unit: 0 },
   });
   const inRupiah: Standing = {
     sample: async () => IN_RUPIAH,
@@ -2827,10 +2827,10 @@ describe("a shop priced in another currency than US dollars", () => {
       product: {
         kind: "download",
         productId: merchantItemId.split("_").at(-1) ?? "",
-        downloadId: "dl_batik",
-        fileName: "Batik pattern.pdf",
-        price: { amount: "250000", currency: "IDR" },
-        fingerprint: "batik-in-rupiah",
+        downloadId: "dl_sarong",
+        fileName: "Sarong pattern.pdf",
+        price: { amount: "240000", currency: "IDR" },
+        fingerprint: "sarong-in-rupiah",
         tax: { mode: "off" as const },
       },
     }),
@@ -2969,8 +2969,8 @@ describe("a shop priced in another currency than US dollars", () => {
         reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
         confirmed: false,
       });
-      // Rp 250.000 at 18000 rupiah to the dollar, rounded up to the cent.
-      expect(await pricesOnSale(running)).toEqual(["13.89"]);
+      // Rp 240.000 at 18000 rupiah to the dollar, rounded up to the cent.
+      expect(await pricesOnSale(running)).toEqual(["13.34"]);
       const [notice] = rateNotices(running);
       expect(notice?.to).toBe(PERSON);
       expect(notice?.body).toContain("18000 IDR per US dollar");
@@ -2986,7 +2986,7 @@ describe("a shop priced in another currency than US dollars", () => {
       await running.post("/woocommerce/rate", { currency: "IDR", rate: "17500" });
 
       expect(rateNotices(running).at(-1)?.body).toContain("The previous rate was 18000 IDR");
-      expect(await pricesOnSale(running)).toEqual(["14.29"]);
+      expect(await pricesOnSale(running)).toEqual(["13.72"]);
     });
 
     it("asks for a rate more than a tenth from Coinbase's to be typed again, showing what a product would cost", async () => {
@@ -2997,9 +2997,9 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const said = readable(asked.html);
       expect(said).toContain("90.0% below");
-      expect(said).toContain("Tas batik tulis");
-      expect(said).toContain("138.89 USD");
-      expect(said).toContain("13.87 USD");
+      expect(said).toContain("Rayon Sarong");
+      expect(said).toContain("133.34 USD");
+      expect(said).toContain("13.31 USD");
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
       expect(rateNotices(running)).toEqual([]);
       expect(await pricesOnSale(running)).toEqual([]);

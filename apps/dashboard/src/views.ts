@@ -369,6 +369,11 @@ interface OrderRow {
    * not what the buyer paid; null otherwise.
    */
   readonly shopTotal: string | null;
+  /**
+   * For a sale from a shop in another currency: what the shop's order totals
+   * there, what the buyer paid and the rate they paid at; null otherwise.
+   */
+  readonly inTheShop: string | null;
 }
 
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
@@ -596,6 +601,17 @@ const setAt = (order: OrderList["orders"][number]): number => {
   return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
 };
 
+const inTheShopOf = (paid: string, shop: ShopTotal | undefined): string | null => {
+  const converted = shop?.converted;
+  if (shop === undefined || converted == null) return null;
+  const { inTheShop, rate } = converted;
+  return (
+    `${money({ amount: shop.total, currency: inTheShop.currency })} in your shop, paid as` +
+    ` ${paid} USDC at your rate of ${rate.rate} ${inTheShop.currency} per US dollar, set` +
+    ` ${moment(rate.setAt)}`
+  );
+};
+
 export const ordersView = (
   mode: SurfaceMode,
   cards: MerchantCardList,
@@ -642,9 +658,12 @@ export const ordersView = (
           },
     closing: reopened(order) ? "again" : closable(order) ? "first" : null,
     shopTotal:
-      shopTotals[order.id] === undefined || shopTotals[order.id]?.total === order.price.amount
+      shopTotals[order.id] === undefined ||
+      shopTotals[order.id]?.converted != null ||
+      shopTotals[order.id]?.total === order.price.amount
         ? null
         : money({ amount: shopTotals[order.id]?.total ?? "", currency: order.price.currency }),
+    inTheShop: inTheShopOf(order.price.amount, shopTotals[order.id]),
     priceSet: momentView(order.price.at),
     day: dayOf(order.price.at),
   });
@@ -695,6 +714,7 @@ export const ordersView = (
           shares: null,
           state: ORDER_WORDS[attempt.status],
           shopTotal: null,
+          inTheShop: null,
           priceSet: momentView(attempt.at),
           day: dayOf(attempt.at),
           payment: "Not paid",
