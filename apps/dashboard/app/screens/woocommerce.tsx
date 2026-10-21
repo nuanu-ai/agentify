@@ -199,9 +199,9 @@ function WhatCanBeImported() {
         </li>
       </ul>
       <p className={styles.sub}>
-        Where WooCommerce calculates tax, a download sells only if your prices are entered with tax,
-        and a parcel at what your cart charges with tax. Tax from an outside service is not
-        supported.
+        Where WooCommerce calculates tax, your shop must round tax at the subtotal; a download then
+        sells only if your prices are entered with tax, and a parcel at what your cart charges with
+        tax. Tax from an outside service is not supported.
       </p>
       <a className={styles.more} href={GUIDE}>
         Connector guide
