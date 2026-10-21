@@ -121,10 +121,11 @@ npm install @nuanu-ai/agentify
 It runs on Node.js 24 or later. The release this page describes is named at
 its top, and what changed between releases is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md).
-Keep the package current: the test channel can speak a change before it is
-released, and during the pilot the contract's version does not move with each
-change, so a release older than Agentify can read a word it does not know as a
-failure.
+A release keeps working when Agentify adds to what it sends: a field it does
+not know beside an order is left out, an event it does not know is skipped with
+a warning, and a status it does not know reads `unknown`. What an order
+delivers is read exactly, so a change there stops your process loudly instead
+([When Agentify is newer than your package](/orders#when-agentify-is-newer-than-your-package)).
 
 The client needs a key and the address of the channel, and nothing after the
 address: it adds the rest of the path itself. The test channel is

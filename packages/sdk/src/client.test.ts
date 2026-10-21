@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { CardInput, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import { releaseNamedIn } from "./contract.js";
 import {
   type AgentifyClient,
   AgentifyError,
@@ -271,6 +273,78 @@ describe("reading orders back", () => {
     expect(gateway?.callsTo("get_order")[0]?.params).toStrictEqual({ order_id: "order-1" });
   });
 
+  it("reads an order whose status this package does not know as unknown, never as an ending", async () => {
+    // A newer gateway may say a word, or a field, this package was not built
+    // with. The order still comes back, and the word it cannot read is the one
+    // reserved word, so no switch over the endings takes it for one of them.
+    const newer = {
+      ...order,
+      status: "on_hold",
+      payment_status: "partly_refunded",
+    };
+    const agentify = await gatewayServing({
+      get_order: () => ({ text: JSON.stringify(newer) }),
+      list_orders: () => ({ text: JSON.stringify({ orders: [newer], next_page: null }) }),
+    });
+
+    const read = await agentify.orders.get("order-1");
+    const listed = await agentify.orders.list({ open: true });
+
+    expect(read.status).toBe("unknown");
+    expect(read.payment_status).toBe("unknown");
+    expect(read.id).toBe(order.id);
+    expect(listed.map((one) => [one.id, one.status, one.payment_status])).toStrictEqual([
+      [order.id, "unknown", "unknown"],
+    ]);
+  });
+
+  it("refuses an order read carrying a field this package does not know rather than hand it back narrowed", async () => {
+    // The open-orders loop delivers from what it reads, so a quantity dropped
+    // here would be delivered once without a word.
+    const agentify = await gatewayServing({
+      get_order: () => ({
+        text: JSON.stringify({
+          ...order,
+          status: "in_progress",
+          payment_status: "paid",
+          quantity: 3,
+        }),
+      }),
+    });
+
+    await expect(agentify.orders.get("order-1")).rejects.toThrow(AgentifyError);
+  });
+
+  it("names a release only out of this package's own manifest, never a bundle's", () => {
+    // Bundled into one file, the manifest beside the code is the merchant's.
+    expect(releaseNamedIn(JSON.stringify({ name: "@nuanu-ai/agentify", version: "0.8.0" }))).toBe(
+      "0.8.0",
+    );
+    expect(releaseNamedIn(JSON.stringify({ name: "my-shop-worker", version: "4.2.0" }))).toBe(
+      undefined,
+    );
+    expect(releaseNamedIn("not json")).toBe(undefined);
+  });
+
+  it("names this package and its version on every call it makes", async () => {
+    // So the gateway can tell which release each merchant runs.
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    const agentify = await gatewayServing({
+      get_order: () => ({ body: { ...order, status: "in_progress", payment_status: "paid" } }),
+      deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
+    });
+
+    await agentify.orders.get("order-1");
+    await agentify.orders.forId("order-1").deliver({ access_url: "https://a.example" });
+
+    expect(gateway?.calls.map((call) => call.userAgent)).toStrictEqual([
+      `agentify-sdk/${version}`,
+      `agentify-sdk/${version}`,
+    ]);
+  });
+
   it("encodes an identifier that carries a slash or a space", async () => {
     // "SKU 100/1" is a valid identifier; unencoded it is a different route.
     const agentify = await gatewayServing({
@@ -427,6 +501,20 @@ describe("closing an order the merchant took on", () => {
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.error.retryable).toBe(true);
     expect(result.ok === false && result.error.message).toMatch(/refuse_order/);
+  });
+
+  it("counts a delivery answered with a result word this package does not know as done, the word read as unknown", async () => {
+    // Beside ok: true the word only informs; a newer word must not turn a
+    // delivery the gateway took into a failure the merchant retries.
+    const agentify = await gatewayServing({
+      deliver_order: () => ({ text: JSON.stringify({ ok: true, result: "delivered_in_part" }) }),
+    });
+
+    const result = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+
+    expect(result).toStrictEqual({ ok: true, result: "unknown" });
   });
 
   it("does not read an order call's answer out of a document that is not one", async () => {

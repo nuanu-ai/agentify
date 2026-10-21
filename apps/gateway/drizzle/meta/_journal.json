@@ -159,29 +159,22 @@
     {
       "idx": 22,
       "version": "7",
-      "when": 1792580218457,
-      "tag": "0022_order_waiting_index",
+      "when": 1792578243464,
+      "tag": "0022_key_last_user_agent",
       "breakpoints": true
     },
     {
       "idx": 23,
       "version": "7",
-      "when": 1792580692107,
-      "tag": "0023_merchant_contact",
+      "when": 1792584139671,
+      "tag": "0023_purchase_door_limits",
       "breakpoints": true
     },
     {
       "idx": 24,
       "version": "7",
-      "when": 1792581099225,
+      "when": 1792584140237,
       "tag": "0024_order_lapsed_attempts",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "7",
-      "when": 1792581682465,
-      "tag": "0025_order_lapsed_index",
       "breakpoints": true
     }
   ]

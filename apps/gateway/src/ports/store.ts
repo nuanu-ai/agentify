@@ -474,6 +474,13 @@ export interface StoredKey {
    * called, and nothing on the row tells the two apart.
    */
   readonly lastUsedAt: number | null;
+  /**
+   * What the call behind `lastUsedAt` said it runs, from its `user-agent`
+   * header, or null where it said nothing or nothing was recorded. It is the
+   * caller's own claim, so it tells the team which release a merchant runs and
+   * proves nothing.
+   */
+  readonly lastUserAgent: string | null;
 }
 
 /** One card in the public catalog, with the word its own merchant sells under. */
@@ -656,13 +663,14 @@ export interface Store {
   ): Promise<StoredKey>;
 
   /**
-   * Records that a call came in on this key at this instant. The caller writes
-   * only once the stored instant has gone stale and swallows a failure here,
-   * since no purchase depends on it. The mark never goes backwards: two gateway
-   * processes write it from two clocks without serialising. A key that is not
-   * there is not an error, and nothing is written.
+   * Records that a call came in on this key at this instant, and what it said
+   * it runs. The caller writes only once the stored instant has gone stale and
+   * swallows a failure here, since no purchase depends on it. The mark never
+   * goes backwards, and the user agent moves with it: two gateway processes
+   * write it from two clocks without serialising. A key that is not there is
+   * not an error, and nothing is written.
    */
-  noteKeyUse(id: string, at: number): Promise<void>;
+  noteKeyUse(id: string, at: number, userAgent: string | null): Promise<void>;
 
   /**
    * Records that one of this merchant's processes polled their stream at this

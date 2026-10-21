@@ -1,5 +1,5 @@
 {
-  "id": "66718195-7629-4c9c-a595-0a0ad8aca439",
+  "id": "3542104d-d472-40e5-9d27-49ab9d730063",
   "prevId": "fe7651e4-5cda-410a-a0ca-09f9b2025090",
   "version": "7",
   "dialect": "postgresql",
@@ -154,6 +154,12 @@
         "last_used_at": {
           "name": "last_used_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_user_agent": {
+          "name": "last_user_agent",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -419,22 +425,6 @@
           ],
           "isUnique": false,
           "where": "\"orders\".\"record\" -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "orders_waiting_idx": {
-          "name": "orders_waiting_idx",
-          "columns": [
-            {
-              "expression": "merchant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"orders\".\"state\" in ('created', 'quoted', 'awaiting_confirmation', 'confirmed')",
           "concurrently": false,
           "method": "btree",
           "with": {}

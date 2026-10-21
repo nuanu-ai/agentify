@@ -1,6 +1,6 @@
 {
-  "id": "61076a48-d0ec-431e-84b5-064db4924261",
-  "prevId": "39a08bf9-c1e6-4040-b672-f46e161216e8",
+  "id": "a00a0932-17f1-4414-b0cd-5431e42b3e8f",
+  "prevId": "577cf1ed-e52e-4104-8f26-141af6789ee0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -193,6 +193,12 @@
         "last_used_at": {
           "name": "last_used_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_user_agent": {
+          "name": "last_user_agent",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -465,6 +471,33 @@
           ],
           "isUnique": false,
           "where": "\"orders\".\"record\" -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_lapsed_merchant_idx": {
+          "name": "orders_lapsed_merchant_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lapsed",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

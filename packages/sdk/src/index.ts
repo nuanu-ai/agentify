@@ -32,15 +32,8 @@ export type {
   MerchantFinding,
   Money,
   Order,
-  OrderCallResponse,
-  OrderCallResult,
   OrderCloseRequest,
   OrderCloseResponse,
-  OrderEvent,
-  OrderList,
-  OrderStatus,
-  OrderWithStatus,
-  PaymentStatus,
   Problem,
   PublishResult,
   QuotePurpose,
@@ -84,6 +77,15 @@ export {
   OUTCOME_UNKNOWN,
 } from "./client.js";
 export { contractVersion, speaksContract } from "./contract.js";
+export type {
+  OrderCallResponse,
+  OrderCallResult,
+  OrderEvent,
+  OrderList,
+  OrderStatus,
+  OrderWithStatus,
+  PaymentStatus,
+} from "./reading.js";
 export type {
   Delivered,
   EventHandler,

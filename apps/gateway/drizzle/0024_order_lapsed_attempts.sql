@@ -14,4 +14,5 @@ WHERE "state" IN ('rejected', 'expired')
   AND "record" ->> 'paidBy' IS NULL
   AND "record" ->> 'paymentAttempt' IS NULL
   AND "record" ->> 'delivery' IS NULL;--> statement-breakpoint
+CREATE INDEX "orders_lapsed_merchant_idx" ON "orders" USING btree ("merchant_id","lapsed","created_at");--> statement-breakpoint
 CREATE INDEX "orders_lapsed_idx" ON "orders" USING btree ("updated_at") WHERE "orders"."lapsed";

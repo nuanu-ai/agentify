@@ -129,6 +129,8 @@ export const merchantKeys = pgTable(
      * way to a purchase.
      */
     lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: "date" }),
+    /** What the call behind `last_used_at` said it runs, or null. Written with it. */
+    lastUserAgent: text("last_user_agent"),
   },
   // Listing one merchant's keys reads by this; the door reads by the unique
   // index on the digest above.

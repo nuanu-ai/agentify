@@ -1,6 +1,6 @@
 {
-  "id": "39a08bf9-c1e6-4040-b672-f46e161216e8",
-  "prevId": "66718195-7629-4c9c-a595-0a0ad8aca439",
+  "id": "577cf1ed-e52e-4104-8f26-141af6789ee0",
+  "prevId": "3542104d-d472-40e5-9d27-49ab9d730063",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -193,6 +193,12 @@
         "last_used_at": {
           "name": "last_used_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_user_agent": {
+          "name": "last_user_agent",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }

@@ -105,7 +105,7 @@ describe("listing a merchant's keys", () => {
     expect(terminal.text()).toContain("the worker's");
   });
 
-  it("says which of a merchant's keys anything is still calling with", async () => {
+  it("says which of a merchant's keys anything is still calling with, and what it said it runs", async () => {
     // The call is on a different day from the keys' creation, so a line
     // printing the wrong instant in the right place cannot pass.
     const terminal = aTerminal();
@@ -113,13 +113,18 @@ describe("listing a merchant's keys", () => {
     await terminal.aKey(merchantId, "the worker's");
     await terminal.aKey(merchantId, "the one nobody calls");
     const [called] = await terminal.store.keysOf(merchantId);
-    await terminal.store.noteKeyUse(called?.id ?? "", Date.parse("2026-08-29T09:30:00.000Z"));
+    await terminal.store.noteKeyUse(
+      called?.id ?? "",
+      Date.parse("2026-08-29T09:30:00.000Z"),
+      "agentify-sdk/0.8.0",
+    );
 
     expect(await terminal.run("keys", merchantId)).toBe(0);
 
     const lineFor = (label: string) =>
       terminal.said.find((line) => line.includes(label)) ?? `no line for ${label}`;
     expect(lineFor("the worker's")).toContain("2026-08-29");
+    expect(lineFor("the worker's")).toContain("agentify-sdk/0.8.0");
     expect(lineFor("the one nobody calls")).not.toContain("2026-08-29");
     // A blank claims a missing record, not an absent call: a key older than the
     // recording of calls looks exactly like this one.
