@@ -10,7 +10,13 @@ import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gatewa
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
+import {
+  identityFor,
+  LINK_CHANNEL_LIMIT,
+  LINK_CLIENT_LIMIT,
+  LINK_MIN_INTERVAL_MS,
+  LINK_RATE_WINDOW_MS,
+} from "./identity.js";
 import type { Message } from "./mail.js";
 import { type GoogleProfile, googleExchange } from "./testing/google.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
@@ -926,6 +932,72 @@ if (databaseUrl === null) {
       const evidence = await pool.query("select email_hash from dashboard_link_sends");
       expect(evidence.rows).toHaveLength(3);
       expect(JSON.stringify(evidence.rows)).not.toContain("person@example.com");
+    });
+
+    it("counts one client's links across two processes, at once as well as one after another, and still lets another client's out", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      const crowded = { client: "198.51.100.7" };
+
+      const answers = await Promise.all(
+        Array.from({ length: LINK_CLIENT_LIMIT + 4 }, (_, sent) =>
+          (sent % 2 === 0 ? one : two).requestLink(
+            `person-${sent}@example.com`,
+            "default",
+            crowded,
+          ),
+        ),
+      );
+
+      expect(answers.filter((answer) => answer.status === "accepted")).toHaveLength(
+        LINK_CLIENT_LIMIT,
+      );
+      expect(answers.filter((answer) => answer.status === "cooldown")).toStrictEqual(
+        Array.from({ length: 4 }, () => ({
+          status: "cooldown",
+          wall: "client",
+          retryAt: expect.any(Date),
+        })),
+      );
+      expect(messages).toHaveLength(LINK_CLIENT_LIMIT);
+      await expect(
+        two.requestLink("one-more@example.com", "default", crowded),
+      ).resolves.toMatchObject({ status: "cooldown", wall: "client" });
+      await expect(
+        one.requestLink("one-more@example.com", "default", { client: "198.51.100.8" }),
+      ).resolves.toMatchObject({ status: "accepted" });
+      const evidence = await pool.query("select * from dashboard_link_sends");
+      expect(JSON.stringify(evidence.rows)).not.toContain("198.51.100");
+    });
+
+    it("refuses every client once the channel has sent its hour's links, and lets them out once the hour has passed", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await pool.query(
+        `insert into dashboard_link_sends (id, email_hash, purpose, sent_at, expires_at)
+         select 'arranged-' || n, md5('arranged-' || n), 'dashboard', now(), now() + interval '7 days'
+         from generate_series(1, $1::int) as n`,
+        [LINK_CHANNEL_LIMIT],
+      );
+
+      for (const client of ["198.51.100.7", "198.51.100.8"]) {
+        await expect(
+          identity.requestLink(`${client}@example.com`, "default", { client }),
+        ).resolves.toMatchObject({
+          status: "cooldown",
+          wall: "ceiling",
+          retryAt: expect.any(Date),
+        });
+      }
+      expect(messages).toHaveLength(0);
+
+      await pool.query("update dashboard_link_sends set sent_at = sent_at - interval '1 hour'");
+
+      await expect(
+        identity.requestLink("person@example.com", "default", { client: "198.51.100.7" }),
+      ).resolves.toMatchObject({ status: "accepted" });
+      expect(messages).toHaveLength(1);
     });
   });
   /**

@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
-import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
+import {
+  identityFor,
+  LINK_CHANNEL_LIMIT,
+  LINK_CLIENT_LIMIT,
+  LINK_MIN_INTERVAL_MS,
+  LINK_RATE_WINDOW_MS,
+} from "./identity.js";
 import type { Message } from "./mail.js";
 import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -337,6 +343,144 @@ describe("dashboard magic links", () => {
     await expect(store.byEmail("person@example.com")).rejects.toThrow(
       "dashboard_account_unreadable_merchant",
     );
+  });
+});
+
+describe("sign-in links counted per client and across the channel", () => {
+  /** Documentation addresses: none of them is anybody's. */
+  const CROWDED = { client: "198.51.100.7" };
+  const ELSEWHERE = { client: "198.51.100.8" };
+  const clientOf = (sent: number) => ({
+    client: `203.0.113.${Math.floor(sent / LINK_CLIENT_LIMIT)}`,
+  });
+
+  it("refuses a client's link past its hourly allowance, sending and counting nothing, while another client still gets one", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      await expect(
+        identity.requestLink(`person-${sent}@example.com`, "default", CROWDED),
+      ).resolves.toMatchObject({ status: "accepted" });
+    }
+    const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
+
+    const refused = await identity.requestLink("one-more@example.com", "default", CROWDED);
+
+    expect(refused).toStrictEqual({
+      status: "cooldown",
+      wall: "client",
+      retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
+    });
+    expect(messages).toHaveLength(LINK_CLIENT_LIMIT);
+    expect(rows.dashboard_link_sends).toHaveLength(LINK_CLIENT_LIMIT);
+    await expect(
+      identity.requestLink("one-more@example.com", "default", ELSEWHERE),
+    ).resolves.toMatchObject({ status: "accepted" });
+    expect(messages.at(-1)?.to).toBe("one-more@example.com");
+  });
+
+  it("lets a client's links out again once its hour has passed", async () => {
+    const { identity, rows } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      await identity.requestLink(`person-${sent}@example.com`, "default", CROWDED);
+    }
+    expect(await identity.requestLink("one-more@example.com", "default", CROWDED)).toMatchObject({
+      status: "cooldown",
+      wall: "client",
+    });
+
+    rewindLinkSends(rows, LINK_RATE_WINDOW_MS);
+
+    await expect(
+      identity.requestLink("one-more@example.com", "default", CROWDED),
+    ).resolves.toMatchObject({ status: "accepted" });
+  });
+
+  it("refuses every client and address once the channel has sent its hour's links, and lets them out once the hour has passed", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+      await expect(
+        identity.requestLink(`person-${sent}@example.com`, "default", clientOf(sent)),
+      ).resolves.toMatchObject({ status: "accepted" });
+    }
+    const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
+
+    for (const [email, asker] of [
+      ["fresh@example.com", ELSEWHERE],
+      ["person-0@example.com", CROWDED],
+    ] as const) {
+      await expect(identity.requestLink(email, "default", asker)).resolves.toStrictEqual({
+        status: "cooldown",
+        wall: "ceiling",
+        retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
+      });
+    }
+    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
+    expect(rows.dashboard_link_sends).toHaveLength(LINK_CHANNEL_LIMIT);
+
+    rewindLinkSends(rows, LINK_RATE_WINDOW_MS);
+
+    await expect(
+      identity.requestLink("fresh@example.com", "default", ELSEWHERE),
+    ).resolves.toMatchObject({ status: "accepted" });
+  });
+
+  it("keeps an address to one link a minute and three an hour whichever client asks", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", { client: "192.0.2.1" });
+
+    await expect(
+      identity.requestLink("person@example.com", "default", { client: "192.0.2.2" }),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "interval" });
+    for (const client of ["192.0.2.3", "192.0.2.4"]) {
+      rewindLinkSends(rows);
+      await expect(
+        identity.requestLink("person@example.com", "default", { client }),
+      ).resolves.toMatchObject({ status: "accepted" });
+    }
+    rewindLinkSends(rows);
+    await expect(
+      identity.requestLink("person@example.com", "default", { client: "192.0.2.5" }),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "hourly" });
+    expect(messages).toHaveLength(3);
+  });
+
+  it("names the client's hour, not the address's minute, when waiting out the minute would change nothing", async () => {
+    const { identity } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", ELSEWHERE);
+    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
+      await identity.requestLink(`person-${sent}@example.com`, "default", CROWDED);
+    }
+
+    const refused = await identity.requestLink("person@example.com", "default", CROWDED);
+
+    expect(refused).toMatchObject({ status: "cooldown", wall: "client" });
+    if (refused.status !== "cooldown") throw new Error("the link should be refused");
+    expect(refused.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
+  });
+
+  it("refuses report links once the channel has sent its hour's report links, and sign-in links still go", async () => {
+    const { identity, messages, store } = memoryIdentity();
+    const report = (email: string) =>
+      store.sendReportLink({
+        operation: "send",
+        email,
+        destination: { report: "019b41a0-7c51-7d63-84bd-a5a20faef497" },
+        request: "019b41a0-7c51-7d63-84bd-a5a20faef498",
+      });
+    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+      await expect(report(`reader-${sent}@example.com`)).resolves.toStrictEqual({
+        status: "accepted",
+      });
+    }
+
+    await expect(report("one-more@example.com")).resolves.toMatchObject({
+      status: "cooldown",
+      retry_at: expect.any(String),
+    });
+    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
+    await expect(
+      identity.requestLink("person@example.com", "default", ONE_CLIENT),
+    ).resolves.toMatchObject({ status: "accepted" });
   });
 });
 
