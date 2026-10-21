@@ -17,3 +17,7 @@ The documents only those routes carried leave the package with them:
 `IssuedKeySchema` and `DisabledKeySchema`, their types, and their entries
 `merchant_key`, `merchant_key_list`, `issue_key_request`, `issued_key` and
 `disabled_key` in `schemas`.
+
+The `publish_card` description no longer calls the operator's approval
+one-time: a merchant whose approval the operator has withdrawn gets
+`no_operator_approval` as one never approved does.

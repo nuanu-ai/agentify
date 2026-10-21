@@ -468,7 +468,7 @@ the same way, with a wallet that receives real USDC on Base and a key that
 starts with `csk_live_`. Nothing is copied from the test channel: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant once; until then publishing lists `no_operator_approval`, and nothing
+merchant; until then publishing lists `no_operator_approval`, and nothing
 of yours sells live. The operator can withdraw that approval later; publishing
 and new live sales are then refused the same way, while the orders you already
 took are still yours to deliver. A parcel's card is refused live (`not_sold_yet`). What

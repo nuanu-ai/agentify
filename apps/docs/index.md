@@ -150,7 +150,7 @@ dispute — are in the [common questions](/faq).
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
    as a separate account, save a wallet for real money there, and have your
    cards published again with a live key. An Agentify operator approves your
-   merchant once before anything sells live.
+   merchant before anything sells live.
 
 What changes between the two channels:
 
@@ -162,7 +162,7 @@ What changes between the two channels:
 | Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
 | API key | starts with `csk_test_` | starts with `csk_live_` |
 | Your first purchase | you make it yourself, with test USDC | — |
-| Agentify's operator | not involved | approves your merchant once before anything sells |
+| Agentify's operator | not involved | approves your merchant before anything sells |
 | Cards | published with a test key | published again with a live key; nothing is copied |
 | WooCommerce | available | not yet |
 | Parcels | sold | not sold yet |
