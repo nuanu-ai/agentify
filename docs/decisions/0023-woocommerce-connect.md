@@ -68,9 +68,9 @@ for every buyer by a filter no outside reader sees. So a download sells only
 where prices are entered with tax, at its price, taxed at the shop's own
 address because its order has none; a parcel sells at its cart's total for the
 locality, tax based on the shipping address, and from an inclusive shop only to
-a locality whose cart taxes the goods as a cart at the shop's own address does,
-and only where that shop rounds tax at the subtotal, since rounding per line
-its cart and order round a half cent of shipping tax apart.
+a locality whose cart taxes the goods as a cart at the shop's own address does;
+and either sells only from a shop rounding tax at the subtotal, since rounding
+per line its cart and order can round a half cent of tax apart.
 Either order is taken on when its total is what was paid, its tax recorded. A
 catalogue shown otherwise than prices are entered, and tax from an outside
 service, are not sold from. With tax off an order's tax must be nothing.
