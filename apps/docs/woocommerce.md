@@ -258,7 +258,8 @@ the rate before it, and a rate whose message could not be sent is not saved,
 because a rate nobody was told of could sell your goods for cents unseen.
 Every rate you have saved is kept.
 
-Your rate keeps selling until you change it, however old it is: the page shows
+Your rate keeps selling until you change it, however old it is, and also after
+you disconnect the shop and connect it again: the page shows
 when you set it and how far it now stands from Coinbase's, and keeping it
 current is yours. A price a buyer was given holds at the rate it was given at,
 even if you change the rate before the order reaches your shop, because the
