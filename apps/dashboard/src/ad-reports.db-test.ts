@@ -1377,6 +1377,126 @@ if (databaseUrl === null) {
     });
   });
 
+  describe("a store report and its registration's report", () => {
+    const eventsOf = (received: readonly Received[]): string[] =>
+      received.map((request) => JSON.parse(String(request.body)).event);
+
+    it("keeps a store report waiting, with its click, while its registration's report is still to be delivered, though the first card came, and posts it after", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant, 0, "pending");
+      const firstCardAt = clock;
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(503, 200, 200);
+
+      await report(post);
+      expect(await report(post)).toBe(false);
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: CLICK,
+        state: "waiting",
+        event_at: null,
+      });
+
+      clock = START.getTime() + MINUTE;
+      await report(post);
+      expect(eventsOf(received)).toStrictEqual(["reg", "reg"]);
+      await report(post);
+
+      expect(eventsOf(received)).toStrictEqual(["reg", "reg", "store_connected"]);
+      expect(received[2]?.body).toBe(storeReport(CLICK, firstCardAt));
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "delivered",
+        event_at: new Date(firstCardAt),
+      });
+    });
+
+    it("lapses a store report and erases its click once its registration's report is refused, though its first card came", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant, 0, "pending");
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(400, 200);
+
+      await report(post);
+      clock += MINUTE;
+      expect(await report(post)).toBe(false);
+
+      expect(eventsOf(received)).toStrictEqual(["reg"]);
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "lapsed",
+        event_at: null,
+        settled_at: new Date(clock),
+      });
+    });
+
+    it("lapses a store report and erases its click once its registration's report is given up, whether or not a first card came", async () => {
+      const merchant = await aMerchant();
+      const withCard = await fromAnAd(CLICKS[0], merchant, DAY, "pending");
+      const withoutMerchant = await fromAnAd(CLICKS[1], null, DAY, "pending");
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(200, 200);
+
+      await report(post);
+      await report(post);
+      expect(await report(post)).toBe(false);
+
+      expect(received).toStrictEqual([]);
+      for (const account of [withCard, withoutMerchant]) {
+        expect(await storeRowOf(account)).toMatchObject({
+          click_id: null,
+          state: "lapsed",
+          event_at: null,
+        });
+      }
+    });
+
+    it("reports the store for the merchant's next registration from an ad when the earliest one's registration report was refused", async () => {
+      const merchant = await aMerchant();
+      const refused = await fromAnAd(CLICKS[0], merchant, 2 * HOUR, "pending");
+      const next = await fromAnAd(CLICKS[1], merchant, HOUR);
+      const { post, received } = tracker(400, 200);
+      await report(post);
+      const firstCardAt = clock;
+      await publish(merchant, "room-1");
+
+      await report(post);
+
+      expect(received.map((request) => request.body)).toStrictEqual([
+        `{"clickid":"${CLICKS[0]}","event":"reg"}`,
+        storeReport(CLICKS[1], firstCardAt),
+      ]);
+      expect(await storeRowOf(refused)).toMatchObject({ click_id: null, state: "lapsed" });
+      expect(await storeRowOf(next)).toMatchObject({ click_id: null, state: "delivered" });
+    });
+
+    it("with every report switched off, lapses a store report and erases its click once its registration's report is given up at the end of its day", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant, DAY, "pending");
+      await publish(merchant, "room-1");
+
+      const running = startAdReports({
+        pool,
+        target: null,
+        storeConnected: false,
+        fetch: tracker().post,
+        now,
+        wait,
+        idleMs: 20,
+      });
+      try {
+        await eventually(async () => (await storeRowOf(account)).state !== "waiting", 5_000);
+      } finally {
+        await running.stop();
+      }
+
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "lapsed",
+        event_at: null,
+      });
+    });
+  });
+
   describe("a store report while that report is switched off", () => {
     it("posts registrations only, and keeps a store report waiting until its 30 days end, then erases its click", async () => {
       const merchant = await aMerchant();
