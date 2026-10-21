@@ -212,13 +212,17 @@ async function expectUpstreamMissing(baseUrl, requestPath, role) {
   assert.equal(await response.text(), `${role} missing`, requestPath);
 }
 
-async function expectSingleForwardedClient(baseUrl, spoofed) {
-  const response = await fetch(`${baseUrl}/api/health`, {
+/**
+ * The scanner limits scans and the dashboard sign-in links by this one address,
+ * so a value the browser sent must not reach either.
+ */
+async function expectSingleForwardedClient(baseUrl, spoofed, requestPath, role) {
+  const response = await fetch(`${baseUrl}${requestPath}`, {
     headers: { "X-Forwarded-For": spoofed },
   });
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.equal(body.role, "scanner");
+  assert.equal(body.role, role);
   assert.equal(typeof body.forwardedFor, "string");
   assert.ok(body.forwardedFor.length > 0);
   assert.notEqual(body.forwardedFor, spoofed);
@@ -467,7 +471,8 @@ try {
   assert.match(await response.text(), /documentation guide/);
 
   for (const baseUrl of [innerBase, edgeBase]) {
-    await expectSingleForwardedClient(baseUrl, "198.51.100.77");
+    await expectSingleForwardedClient(baseUrl, "198.51.100.77", "/api/health", "scanner");
+    await expectSingleForwardedClient(baseUrl, "198.51.100.77", "/dashboard/sign-in", "dashboard");
     for (const adminPath of ["/admin", "/admin/users", "/admin%2Fusers"]) {
       await expectUnmarked(baseUrl, adminPath);
     }
@@ -533,7 +538,7 @@ try {
   await expectLiveChannelListed(liveBase);
 
   console.log(
-    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, keeps one trusted scanner client IP, and keeps the test channel out of search and agents' indexes",
+    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, keeps one trusted client IP for the scanner and the dashboard, and keeps the test channel out of search and agents' indexes",
   );
 } finally {
   for (const container of [liveName, mutatedName, innerName, edgeName]) {
