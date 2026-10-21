@@ -165,10 +165,6 @@ describe("what the agent is told an order came to", () => {
     expect(delivered.payment).toBe("settled");
   });
 
-  it("does not call a purchase closed by the merchant's departure a refusal", () => {
-    expect(outcomeFor(reach("cancelled"))).toBe("cancelled");
-  });
-
   it("changes its answer the moment a late delivery reaches an unfulfilled order", () => {
     const closed = walk(reach("unfulfilled"), [{ kind: "deliver_called", at: T0 + 999 }]);
 

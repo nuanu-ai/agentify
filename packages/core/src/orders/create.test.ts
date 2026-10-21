@@ -73,20 +73,12 @@ describe("creating an order", () => {
   });
 
   it("takes no new order while the merchant is paused", () => {
-    // Pausing is not leaving: new purchases stop, and nothing else changes.
+    // New purchases stop, and nothing else changes.
     const created = createOrder(createInput("async", { selling: "paused" }));
 
     expect(created.ok).toBe(false);
     if (created.ok) return;
     expect(created.rejection.code).toBe("selling_paused");
-  });
-
-  it("takes no new order from a merchant who left", () => {
-    const created = createOrder(createInput("async", { selling: "departed" }));
-
-    expect(created.ok).toBe(false);
-    if (created.ok) return;
-    expect(created.rejection.code).toBe("merchant_departed");
   });
 
   it("starts every order with untouched money and no closure", () => {

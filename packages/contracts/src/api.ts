@@ -557,7 +557,6 @@ export const ERROR_CODES = Object.freeze([
   "key_opened_this_call",
   "malformed_body",
   "malformed_query",
-  "merchant_departed",
   "no_such_item",
   "no_such_key",
   "no_such_order",
@@ -665,7 +664,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/selling/pause",
     auth: "merchant_key",
     description:
-      "Stops all selling for this merchant. No new order is taken for any card, and the orders already accepted play out in the ordinary way — this is a pause and not a departure, so nothing open is closed and this call creates no fulfillment failure. The answer is the whole catalog, because every card's word changed. A merchant who has already left is refused rather than paused: their orders are closed and their unfulfilled paid orders remain recorded, and a pause would describe none of that.",
+      "Stops all selling for this merchant. No new order is taken for any card, and the orders already accepted play out in the ordinary way, so nothing open is closed and this call creates no fulfillment failure. The answer is the whole catalog, because every card's word changed.",
     response: { document: MerchantCardListSchema },
   },
 
@@ -674,7 +673,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/selling/resume",
     auth: "merchant_key",
     description:
-      "Starts selling again. Cards paused in their own right stay paused: stopping all selling did not forget which they were, and putting them all back on sale would sell products their merchant took off. The answer is the whole catalog, so which cards actually came back is a fact rather than an inference. A merchant who has left is refused: leaving closed the orders that were open and left paid orders unfulfilled, and this switch unwinds none of it, so a departure is not undone here.",
+      "Starts selling again. Cards paused in their own right stay paused: stopping all selling did not forget which they were, and putting them all back on sale would sell products their merchant took off. The answer is the whole catalog, so which cards actually came back is a fact rather than an inference.",
     response: { document: MerchantCardListSchema },
   },
 
@@ -797,7 +796,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders/:order_id/close",
     auth: "merchant_key",
     description:
-      "Stops future fulfillment through Agentify for this merchant's order and answers ok: true. The optional message is the merchant's statement to the buyer, which the buyer's agent reads as the merchant's own words; it establishes no refund or settled agreement. It is plain text of at most 2000 characters, an emoji counting as one, and one carrying HTML markup, a character reference, a control character other than the line feed, a bidirectional control character or half of a character cut in two is refused with 400, changing nothing. A retry also answers ok: true and keeps the first closure time and message. Closure keeps the original payment facts, the payment the buyer signed, goods already held and the order's history; it causes no new charge and releases nothing. It cancels no payment: a payment Agentify had already asked the facilitator to execute may still go through after the closure. When it does, the merchant receives order.unfulfilled with reason paid_after_closure, and the order is on the merchant's open order list until the merchant closes it again; that closure records its own time and message. An order whose goods were delivered or whose parcel's shipment is recorded is refused as fulfillment_complete, and one that ended without a charge and holds nothing for its buyer (rejected, declined, expired, cancelled) as nothing_to_close; neither refusal changes the order. An unknown order and another merchant's order are answered identically.",
+      "Stops future fulfillment through Agentify for this merchant's order and answers ok: true. The optional message is the merchant's statement to the buyer, which the buyer's agent reads as the merchant's own words; it establishes no refund or settled agreement. It is plain text of at most 2000 characters, an emoji counting as one, and one carrying HTML markup, a character reference, a control character other than the line feed, a bidirectional control character or half of a character cut in two is refused with 400, changing nothing. A retry also answers ok: true and keeps the first closure time and message. Closure keeps the original payment facts, the payment the buyer signed, goods already held and the order's history; it causes no new charge and releases nothing. It cancels no payment: a payment Agentify had already asked the facilitator to execute may still go through after the closure. When it does, the merchant receives order.unfulfilled with reason paid_after_closure, and the order is on the merchant's open order list until the merchant closes it again; that closure records its own time and message. An order whose goods were delivered or whose parcel's shipment is recorded is refused as fulfillment_complete, and one that ended without a charge and holds nothing for its buyer (rejected, declined, expired) as nothing_to_close; neither refusal changes the order. An unknown order and another merchant's order are answered identically.",
     request: OrderCloseRequestSchema,
     response: { document: OrderCloseResponseSchema },
   },

@@ -188,7 +188,6 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
       return fromExpired(order, event);
     case "rejected":
     case "declined":
-    case "cancelled":
       return fromClosedWithoutMoney(order, event);
     default:
       return assertNever(order.state, "order state");
@@ -460,20 +459,6 @@ function closedOnTheClock(
   return ok(late.order, [...closed.effects, ...late.effects]);
 }
 
-/** The merchant left. A paid order without goods remains unfulfilled. */
-function onDeparture(order: Order): TransitionResult {
-  const closure: Closure = { cause: "merchant_departed" };
-
-  if (order.payment === "settled") {
-    return ok({ ...order, state: "unfulfilled", closure }, [
-      { kind: "mark_unfulfilled", closure },
-      { kind: "emit_merchant_event", event: "order.unfulfilled" },
-    ]);
-  }
-
-  return ok(closeWithoutMoney(order, "cancelled", closure));
-}
-
 /**
  * An order that never reached the handler goes back into the queue, unless
  * another attempt would be pointless. `giveUp` is the deadline this leg of the
@@ -636,8 +621,6 @@ function fromCreated(order: Order, event: StateEvent): TransitionResult {
       return enterQuoted(order, event.at, event.price, "merchant_answer");
     case "quote_silent":
       return onQuoteSilence(order, event.at);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "payment_verified":
@@ -702,8 +685,6 @@ function fromQuoted(order: Order, event: StateEvent): TransitionResult {
             timestamps: { ...order.timestamps, confirmationRequestedAt: event.at },
           })
         : notApplicable(order, event);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -783,8 +764,6 @@ function fromAwaitingConfirmation(order: Order, event: StateEvent): TransitionRe
         ...order,
         dispatch: { ...order.dispatch, attempts: order.dispatch.attempts + 1 },
       });
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -847,8 +826,6 @@ function fromConfirmed(order: Order, event: StateEvent): TransitionResult {
           message: event.message,
         }),
       );
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -899,8 +876,6 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
       // Dropping his answer would misreport an already fulfilled order as
       // unfulfilled when its deadline runs out.
       return fromDispatched(handedOver(order), event);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1051,8 +1026,6 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
         timestamps: { ...order.timestamps, dispatchedAt: event.at },
       });
     }
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1100,7 +1073,6 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     // is always mid-charge and the settling guard has already turned back
     // everything below. These arms exist for the compiler; refusing is the
     // safe thing for them to say if that ever stops being true.
-    case "merchant_departed":
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
@@ -1131,9 +1103,8 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
       // already handed over.
       //
       // Only an order that still stands and where nothing failed is answered as
-      // ordinary this way. On an order that ran out its deadline or closed with
-      // a departed merchant the refusal stays, because `order_already_closed`
-      // is exactly true there.
+      // ordinary this way. On an order that ran out its deadline the refusal
+      // stays, because `order_already_closed` is exactly true there.
       return answer(order, { ok: true, result: "already_delivered" });
     case "order_dispatched":
       // A hand-over of an order that is closed. The gateway gives a worker
@@ -1143,7 +1114,6 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
       return notApplicable(order, event);
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1208,11 +1178,6 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
       return answer(order, NOT_IN_THIS_MODE);
-    case "merchant_departed":
-      // He owes nothing on this order: the goods are made and it is the money
-      // that never came. The portal promises the buyer can still close it with
-      // a repeat, and his leaving takes nothing away from that.
-      return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "confirmation_dispatched":
@@ -1247,9 +1212,6 @@ function fromUnfulfilled(order: Order, event: StateEvent): TransitionResult {
     case "handler_undelivered":
     case "order_dispatched":
     case "purchase_repeated":
-      return ok(order);
-    case "merchant_departed":
-      // Leaving the service does not record a delivery or close fulfillment.
       return ok(order);
     case "quote_answered":
     case "quote_silent":
@@ -1292,7 +1254,6 @@ function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResul
       return answer(order, { ok: false, error: "fulfillment_closed", retryable: false });
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1319,7 +1280,6 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
       // He refused this order himself; goods arriving afterwards are not a
       // late fulfillment of it, they are a contradiction.
       return notApplicable(order, event);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1395,8 +1355,6 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
     case "deliver_called":
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
-      return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "payment_settled":
@@ -1412,7 +1370,7 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
   }
 }
 
-/** `rejected`, `declined` and `cancelled`: closed, and nobody was charged. */
+/** `rejected` and `declined`: closed, and nobody was charged. */
 function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
@@ -1442,7 +1400,6 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
       return order.closure?.cause === "payment_outcome_unknown"
         ? ok({ ...order, payment: "settle_failed", closure: { cause: "payment_not_settled" } })
         : notApplicable(order, event);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":

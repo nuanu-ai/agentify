@@ -578,7 +578,7 @@ describe("the status an agent reads", () => {
     const listed = reason?.properties.code.anyOf.flatMap((branch) => branch.enum ?? []);
 
     expect(listed).toStrictEqual(
-      expect.arrayContaining(["deadline_passed", "refused", "merchant_left", "price_expired"]),
+      expect.arrayContaining(["deadline_passed", "refused", "price_expired"]),
     );
     const owing = {
       ...status,
@@ -1191,23 +1191,6 @@ describe("the route table", () => {
       if (agents) {
         expect(route.path, name).not.toMatch(/\/v\d+(\/|$)/);
       }
-    }
-  });
-
-  it("pauses and resumes with verbs, so leaving cannot be reached by a side door", () => {
-    // One route taking a selling word would accept "departed" as easily as
-    // "paused", and leaving closes open orders and leaves paid orders unfulfilled; no
-    // route takes the word in a body.
-    const switches: RouteDefinition[] = [
-      API_ROUTES.pause_card,
-      API_ROUTES.resume_card,
-      API_ROUTES.pause_selling,
-      API_ROUTES.resume_selling,
-    ];
-
-    for (const route of switches) {
-      expect(route.request, route.path).toBeUndefined();
-      expect(route.auth, route.path).toBe("merchant_key");
     }
   });
 });

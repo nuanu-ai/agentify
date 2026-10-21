@@ -110,8 +110,7 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
  * payout address, no seller name) into the one word the order machine's guard
  * reads. A merchant who cannot sell must be refused here, before an order is
  * opened, or the order would be one nobody can pay; the operator's own address
- * never stands in for a missing one. A departed merchant stays departed
- * whatever the card says.
+ * never stands in for a missing one.
  *
  * A card published through an integration the merchant is not selling through
  * reads as paused too: nothing of that integration draws the merchant's
@@ -123,9 +122,9 @@ export function sellingFor(
   sellable: boolean,
   through: Integration,
 ): MerchantSelling {
-  return merchant === "open" && (card.paused || !sellable || card.integration !== through)
-    ? "paused"
-    : merchant;
+  return merchant === "open" && !card.paused && sellable && card.integration === through
+    ? "open"
+    : "paused";
 }
 
 /**

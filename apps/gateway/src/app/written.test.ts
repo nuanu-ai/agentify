@@ -225,9 +225,6 @@ describe("what this gateway checks before it sends a document", () => {
     const owing = { ...unrefused, status: "unfulfilled", reason: owed("deadline_passed") };
 
     expect(sendable(AgentOrderStatusSchema, owing)).toBe(true);
-    expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("merchant_left") })).toBe(
-      true,
-    );
     expect(sendable(AgentOrderStatusSchema, unrefused)).toBe(true);
     const { reason: _none, ...unexplained } = owing;
     expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);

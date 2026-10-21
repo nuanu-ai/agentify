@@ -108,7 +108,6 @@ export function deadlines(order: Order): readonly Deadline[] {
     case "rejected":
     case "declined":
     case "expired":
-    case "cancelled":
       return [];
 
     default:

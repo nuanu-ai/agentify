@@ -26,7 +26,6 @@ import {
   BAD_REQUEST,
   bodyRefused,
   CONFLICT,
-  merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
@@ -360,19 +359,14 @@ async function orderStatus(
 
 /**
  * All of this merchant's selling stopped or started again, answered with their
- * whole catalog so which cards came back is stated rather than inferred. A
- * departed merchant is refused.
+ * whole catalog so which cards came back is stated rather than inferred.
  */
 async function sellingSet(
   gateway: Gateway,
   call: RouteCall,
   selling: "open" | "paused",
 ): Promise<RouteAnswer> {
-  const changed = await gateway.setSelling(merchantOf(call), selling);
-  if (!changed.ok) {
-    return refusedWith(call.response, merchantDeparted(changed.why));
-  }
-  return { status: OK, document: changed.cards };
+  return { status: OK, document: await gateway.setSelling(merchantOf(call), selling) };
 }
 
 /**

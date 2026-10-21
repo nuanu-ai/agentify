@@ -46,7 +46,6 @@ describe("what a receipt says became of the purchase", () => {
       "payment_unresolved",
       "declined",
       "expired",
-      "cancelled",
       "delivered_unpaid",
     ];
 
@@ -56,7 +55,7 @@ describe("what a receipt says became of the purchase", () => {
   });
 
   it("has no value for an unpaid purchase or an unknown payment", () => {
-    // A refused, declined, expired or cancelled purchase leaves no receipt,
+    // A refused, declined or expired purchase leaves no receipt,
     // and neither does a synchronous delivery whose payment failed. An unknown
     // outcome cannot establish that a payment executed.
     for (const outcome of [
@@ -64,7 +63,6 @@ describe("what a receipt says became of the purchase", () => {
       "payment_unresolved",
       "declined",
       "expired",
-      "cancelled",
       "delivered_unpaid",
       "",
     ]) {

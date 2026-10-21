@@ -124,14 +124,13 @@ describe("a parcel's address", () => {
       code: "cannot_fulfill",
       message: "we do not send parcels there",
     });
-    const departed = must(paid(parcel()), { kind: "merchant_departed", at: T0 + 5 });
     const ranOut = must(handedOver(parcel()), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    for (const { order, effects } of [refused, departed, ranOut]) {
+    for (const { order, effects } of [refused, ranOut]) {
       expect(order.state).toBe("unfulfilled");
       expect(erasures(effects)).toBe(1);
     }

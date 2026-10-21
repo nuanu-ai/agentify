@@ -216,7 +216,6 @@ const select = <T extends string>(name: string, choices: readonly Choice<T>[], v
 const SELLING_WORDS: Readonly<Record<SellingState, { text: string; tone: string }>> = {
   open: { text: "selling", tone: "ok" },
   paused: { text: "paused", tone: "warn" },
-  departed: { text: "left", tone: "" },
 };
 
 /** What a buyer of this card is in for, in the merchant's own terms. */

@@ -1634,7 +1634,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addOrder(anOrder("ord_1", "created"));
 
         await store.withOrder("ord_1", (found) => ({
-          result: { ...found, order: { ...found.order, state: "cancelled" as const } },
+          result: { ...found, order: { ...found.order, state: "expired" as const } },
         }));
 
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
@@ -1652,7 +1652,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const asA = await store.withOrder(
           "ord_1",
           (found) => ({
-            save: { ...found, order: { ...found.order, state: "cancelled" as const } },
+            save: { ...found, order: { ...found.order, state: "expired" as const } },
             result: "moved it",
           }),
           { merchantId: A },

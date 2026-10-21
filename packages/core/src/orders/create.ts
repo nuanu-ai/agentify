@@ -1,7 +1,7 @@
 /**
- * Pausing is not leaving: a paused merchant takes no new order, and his open
- * orders play out as usual. That is why the selling guard lives here at
- * creation and the transition function never asks about it.
+ * A paused merchant takes no new order, and his open orders play out as usual.
+ * That is why the selling guard lives here at creation and the transition
+ * function never asks about it.
  */
 
 import { assertNever } from "../index.js";
@@ -9,7 +9,7 @@ import type { Effect, Order, OrderMode, OrderPolicy, Price } from "./model.js";
 import { effectsOnQuoted } from "./model.js";
 
 /** Whether the merchant is taking new orders. */
-export const MERCHANT_SELLING = ["open", "paused", "departed"] as const;
+export const MERCHANT_SELLING = ["open", "paused"] as const;
 
 export type MerchantSelling = (typeof MERCHANT_SELLING)[number];
 
@@ -21,7 +21,7 @@ const PRICE_CHECKS = ["none", "merchant"] as const;
 
 export type PriceCheck = (typeof PRICE_CHECKS)[number];
 
-const CREATE_REJECTIONS = ["selling_paused", "merchant_departed"] as const;
+const CREATE_REJECTIONS = ["selling_paused"] as const;
 
 type CreateRejection = (typeof CREATE_REJECTIONS)[number];
 
@@ -56,14 +56,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
           // all three. It is the same sentence the payment challenge is refused
           // with a step earlier.
           message: "this product is not on sale at the moment, so no new order is taken",
-        },
-      };
-    case "departed":
-      return {
-        ok: false,
-        rejection: {
-          code: "merchant_departed",
-          message: "the merchant has left, so no new order is taken",
         },
       };
     case "open":

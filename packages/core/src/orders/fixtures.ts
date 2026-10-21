@@ -191,8 +191,6 @@ export function reach(state: OrderState): Order {
       return walk(newOrder("sync"), [
         { kind: "deadline_expired", at: T0 + 999_999, deadline: "quote_expiry" },
       ]);
-    case "cancelled":
-      return walk(newOrder("sync"), [{ kind: "merchant_departed", at: T0 + 1 }]);
     default:
       throw new Error(`no walk is written for the state ${state satisfies never}`);
   }

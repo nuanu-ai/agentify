@@ -55,7 +55,6 @@ import { assertNever } from "../index.js";
  * - `expired` — a deadline ran out. Free for the agent in every case it can
  *   reach, because every deadline whose expiry would leave money taken sends
  *   the order to `unfulfilled` instead.
- * - `cancelled` — the merchant left and the order was open with no money taken.
  */
 export const ORDER_STATES = [
   "created",
@@ -73,7 +72,6 @@ export const ORDER_STATES = [
   "rejected",
   "declined",
   "expired",
-  "cancelled",
 ] as const;
 
 export type OrderState = (typeof ORDER_STATES)[number];
@@ -102,7 +100,6 @@ export const CLOSED_ORDER_STATES = [
   "rejected",
   "declined",
   "expired",
-  "cancelled",
 ] as const;
 
 export function isOpen(state: OrderState): boolean {
@@ -120,7 +117,6 @@ export function endedWithNothingHeld(order: Order): boolean {
     case "failed":
     case "rejected":
     case "declined":
-    case "cancelled":
       return true;
     case "expired":
       return !order.heldFulfillment;
@@ -202,7 +198,7 @@ export function modeOf(fulfillment: FulfillmentMode): OrderMode {
  * hearing back, and it is the only stage in which the machine genuinely does
  * not know where the buyer's money is. It exists so that nothing can close the
  * order as free on a guess: the seconds it lasts are exactly the seconds in
- * which a refusal, a departure or a timer would otherwise tell a buyer his
+ * which a refusal or a timer would otherwise tell a buyer his
  * purchase never happened while his money was already on its way.
  */
 export const PAYMENT_STAGES = [
@@ -362,8 +358,7 @@ export type Closure =
    */
   | { readonly cause: "payment_outcome_unknown" }
   | { readonly cause: "merchant_refused"; readonly code: string; readonly message: string }
-  | { readonly cause: "deadline_expired"; readonly deadline: DeadlineKind }
-  | { readonly cause: "merchant_departed" };
+  | { readonly cause: "deadline_expired"; readonly deadline: DeadlineKind };
 
 /**
  * What the merchant is told about without having asked: the cases his side
@@ -520,7 +515,6 @@ export type OrderEvent =
       readonly message: string;
     }
   | { readonly kind: "close_called"; readonly at: number; readonly message?: string }
-  | { readonly kind: "merchant_departed"; readonly at: number }
   | { readonly kind: "deadline_expired"; readonly at: number; readonly deadline: DeadlineKind };
 
 export type OrderEventKind = OrderEvent["kind"];
@@ -547,7 +541,6 @@ const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
   deliver_called: true,
   refuse_called: true,
   close_called: true,
-  merchant_departed: true,
   deadline_expired: true,
 };
 

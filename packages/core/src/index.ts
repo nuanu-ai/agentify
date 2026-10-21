@@ -41,7 +41,7 @@ export { readinessOf, UNKNOWN } from "./merchant/readiness.js";
  * order before writing it down with `moneyInvariantViolations`.
  */
 export type { MerchantSelling } from "./orders/create.js";
-export { createOrder, MERCHANT_SELLING } from "./orders/create.js";
+export { createOrder } from "./orders/create.js";
 export { deadlines, fulfillmentDeadline } from "./orders/deadlines.js";
 export { transition } from "./orders/machine.js";
 export type {

@@ -55,11 +55,9 @@ export const ORDER_STATUSES = Object.freeze([
    * was to follow it, or the synchronous delivery.
    */
   "expired",
-  /** The merchant left, and orders still open closed with them. */
-  "cancelled",
   /**
    * The original payment completed and fulfillment did not. The reason says
-   * whether the merchant refused, left or missed the deadline. Later delivery
+   * whether the merchant refused or missed the deadline. Later delivery
    * remains possible until the merchant explicitly closes Agentify fulfillment.
    * This says nothing about a refund or the parties' agreement.
    */

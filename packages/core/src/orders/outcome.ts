@@ -44,8 +44,6 @@ export const ORDER_OUTCOMES = [
   "declined",
   /** A deadline ran out. Nothing was charged. */
   "expired",
-  /** The merchant left and the order closed with him. */
-  "cancelled",
   /** The original payment settled and no delivery is recorded. */
   "unfulfilled",
   /** Agentify fulfillment is closed; this says nothing about any refund. */
@@ -106,8 +104,6 @@ export function outcomeFor(order: Order): OrderOutcome {
       return "declined";
     case "expired":
       return "expired";
-    case "cancelled":
-      return "cancelled";
     default:
       return assertNever(order.state, "order state");
   }
@@ -178,7 +174,6 @@ export function endingReasonFor(order: Order): EndingReason | null {
     case "payment_not_verified":
     case "payment_outcome_unknown":
     case "merchant_refused":
-    case "merchant_departed":
       return null;
     default:
       return assertNever(closure, "closure");
@@ -221,7 +216,6 @@ export function onTheMerchantsOpenList(order: Order): boolean {
     case "rejected":
     case "declined":
     case "expired":
-    case "cancelled":
       return false;
     default:
       return assertNever(order.state, "order state");

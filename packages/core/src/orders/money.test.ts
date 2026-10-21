@@ -97,7 +97,7 @@ describe("the invariants of the order's money", () => {
     const dispatched = reach("dispatched");
     const impossible: Order = {
       ...dispatched,
-      state: "cancelled",
+      state: "expired",
       payment: "settling",
       // The charge has a start time, so the only thing wrong with this order is
       // the state it moved on to.
@@ -105,7 +105,7 @@ describe("the invariants of the order's money", () => {
     };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
-      "the payment is being executed and the order has moved on to cancelled, " +
+      "the payment is being executed and the order has moved on to expired, " +
         "so whatever happens to the money now happens to a decided order",
     ]);
   });
@@ -141,18 +141,6 @@ describe("a refusal before the charge never leaves a paid order unfulfilled", ()
       expect(moneyInvariantViolations(order)).toStrictEqual([]);
     });
   }
-});
-
-describe("money taken is always accounted for", () => {
-  it("leaves a paid order unfulfilled when its merchant departs", () => {
-    const paid = walk(newOrder("async"), [
-      { kind: "payment_verified", at: T0 + 1 },
-      { kind: "payment_settled", at: T0 + 2 },
-    ]);
-    const { order } = must(paid, { kind: "merchant_departed", at: T0 + 3 });
-
-    expect(order.state).toBe("unfulfilled");
-  });
 });
 
 describe("an asynchronous purchase is never made at an unknown stock level", () => {

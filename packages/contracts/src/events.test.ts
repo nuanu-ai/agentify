@@ -85,8 +85,8 @@ describe("an unfulfilled paid order", () => {
     });
   }
 
-  it("tells the three ways an order becomes unfulfilled apart", () => {
-    for (const reason of ["refused", "deadline_passed", "merchant_left"]) {
+  it("tells the ways an order becomes unfulfilled apart", () => {
+    for (const reason of ["refused", "deadline_passed", "paid_after_closure"]) {
       expect(UnfulfilledReasonSchema.safeParse(reason).success, reason).toBe(true);
       expect(OrderEventSchema.safeParse({ ...unfulfilled, reason }).success, reason).toBe(true);
     }

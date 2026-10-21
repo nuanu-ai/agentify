@@ -41,7 +41,6 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   payment_unresolved: { text: "Payment outcome unknown", tone: "warn" },
   declined: { text: "Declined at confirmation", tone: "quiet" },
   expired: { text: "Closed on time limit", tone: "quiet" },
-  cancelled: { text: "Closed when you left", tone: "quiet" },
   unfulfilled: { text: "Unfulfilled", tone: "warn" },
   fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
   delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
@@ -114,13 +113,12 @@ export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import a
 export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
 
 /**
- * Why the account as a whole is not selling as usual: the merchant left, all
- * sales are paused, something publishing needs is missing, or the cards their
+ * Why the account as a whole is not selling as usual: all sales are paused,
+ * something publishing needs is missing, or the cards their
  * own code published are off sale while a WooCommerce shop sells; or that what
  * would say so could not be read.
  */
 export type AccountReason =
-  | "left"
   | "paused"
   | "not_approved"
   | "no_seller_name"
@@ -147,11 +145,6 @@ export interface Way {
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
 > = Object.freeze({
-  left: {
-    title: "You have left Agentify",
-    says: "New sales have stopped. Paid orders left unfulfilled stay on Orders, where you can close fulfillment with an explanation to the buyer.",
-    fix: null,
-  },
   paused: {
     title: "All sales are paused",
     says: "No new orders are accepted; the orders you have already accepted play out as usual.",

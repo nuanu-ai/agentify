@@ -3600,63 +3600,6 @@ describe("a card held off sale by what its merchant lacks", () => {
   });
 });
 
-describe("a merchant who has left", () => {
-  // Nothing sets this state through a route, so it is reached through the
-  // store, and the page is what is asserted.
-  it("is not offered a button that puts them back on sale", async () => {
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const page = (await browser.get("/cards")).html;
-    const text = readable(page);
-
-    expect(text).toContain("left");
-    // No selling control at all: "stop all selling" for a merchant who has left
-    // is the same confusion under the other label.
-    expect(formTo(page, "post", START_SELLING)).toBeUndefined();
-    expect(formTo(page, "post", STOP_SELLING)).toBeUndefined();
-    expect(text).not.toContain("Resume all sales");
-    expect(text).not.toContain("Pause all sales");
-    // A departure does not let accepted orders play out; a pause does.
-    expect(text).not.toContain("play out as usual");
-  });
-
-  it("is offered no switch on a card, not even one they paused before they left", async () => {
-    // A card's own switch puts nothing back on sale once its merchant has
-    // left, so a Resume beside it would promise what nothing here does.
-    const { browser, gateway, harnessed } = await started();
-    const room = await publish(gateway, roomCard);
-    await publish(gateway, esimCard);
-    await browser.signIn();
-    await browser.post(switchOf(room, "pause"));
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const page = (await browser.get("/cards")).html;
-
-    expect(reasonsIn(page)).toStrictEqual(["left"]);
-    expect(readable(page)).toContain("Paused by you");
-    expect(cardSwitchesIn(page)).toStrictEqual([]);
-  });
-
-  it("is told what the gateway said, not that the gateway is down", async () => {
-    // The gateway answers 409 with a reason; shown as "did not answer", it
-    // would send a merchant to check a service that is running.
-    const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
-
-    const refused = await browser.post(START_SELLING);
-
-    expect(refused.status).toBe(409);
-    const text = readable(refused.html);
-    expect(text).toMatch(/this merchant has left/i);
-    expect(text).not.toContain("did not answer");
-  });
-});
-
 describe("the orders screen", () => {
   it("shows a finished order with its state in the merchant's words", async () => {
     const { browser, gateway, harnessed } = await started();

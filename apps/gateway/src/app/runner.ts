@@ -1513,8 +1513,6 @@ const UNFULFILLED_WORDS: Readonly<
       : order.mode.parcel === true
         ? "This paid parcel has no shipment recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
         : "This paid order has no delivery recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
-  merchant_left: () =>
-    "The seller stopped selling through Agentify before this paid order was fulfilled. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
 };
 
 /**
@@ -1630,8 +1628,6 @@ function unfulfilledReasonOf(order: Order): UnfulfilledReason {
   switch (closure.cause) {
     case "merchant_refused":
       return "refused";
-    case "merchant_departed":
-      return "merchant_left";
     case "deadline_expired":
     case "payment_outcome_unknown":
       return "deadline_passed";

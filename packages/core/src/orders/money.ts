@@ -7,13 +7,7 @@
 import type { Order, OrderState } from "./model.js";
 
 /** These endings cannot carry a confirmed original payment. */
-const CLOSED_WITHOUT_PAYMENT: readonly OrderState[] = [
-  "rejected",
-  "declined",
-  "expired",
-  "cancelled",
-  "failed",
-];
+const CLOSED_WITHOUT_PAYMENT: readonly OrderState[] = ["rejected", "declined", "expired", "failed"];
 
 /** The states in which the buyer's money has legitimately been taken. */
 const MAY_HOLD_THE_BUYERS_MONEY: readonly OrderState[] = [

@@ -24,8 +24,7 @@ export const ORDER_EVENT_TYPES = Object.freeze({
 
 /**
  * Why a paid order remains unfulfilled: the merchant refused, a deadline
- * passed, they left, or the payment completed after they had closed
- * fulfillment. `deadline_passed` is the delivery deadline after the money
+ * passed, or the payment completed after they had closed fulfillment. `deadline_passed` is the delivery deadline after the money
  * moved, or Agentify's wait for word of a charge that was later reported to
  * have gone through, on an order the merchant was never sent.
  * `paid_after_closure` is a payment that was still unresolved when the merchant
@@ -34,10 +33,10 @@ export const ORDER_EVENT_TYPES = Object.freeze({
  * again.
  */
 export const UnfulfilledReasonSchema = z
-  .enum(["refused", "deadline_passed", "merchant_left", "paid_after_closure"])
+  .enum(["refused", "deadline_passed", "paid_after_closure"])
   .meta({
     description:
-      "Why a paid order has no delivery. refused: the merchant refused it after it was paid. deadline_passed: its delivery deadline passed, or the payment was confirmed only after Agentify had stopped waiting for it and the order was never sent to the merchant. merchant_left: the merchant stopped selling through Agentify before fulfilling it. paid_after_closure: the payment was still unresolved when the merchant closed fulfillment and completed afterwards; the order stays closed, nothing is delivered, and it is on the merchant's open order list until they close it again.",
+      "Why a paid order has no delivery. refused: the merchant refused it after it was paid. deadline_passed: its delivery deadline passed, or the payment was confirmed only after Agentify had stopped waiting for it and the order was never sent to the merchant. paid_after_closure: the payment was still unresolved when the merchant closed fulfillment and completed afterwards; the order stays closed, nothing is delivered, and it is on the merchant's open order list until they close it again.",
   });
 
 export const OrderEventSchema = z.discriminatedUnion("type", [
