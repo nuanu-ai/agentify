@@ -12,8 +12,13 @@ import type {
   QuoteResponse,
   WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentSignatureHeader,
+  encodePaymentSignatureHeader,
+} from "@x402/core/http";
 import type { PaymentPayload } from "@x402/core/types";
+import type { LocalAccount } from "viem";
 import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
@@ -38,7 +43,8 @@ import {
   X402_VERSION,
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
-import type { Integration } from "../ports/store.js";
+import type { Integration, StoredOrder } from "../ports/store.js";
+import { type SignedTerms, signedPayment } from "./signed-payment.js";
 
 export { loggedWhile } from "./logged.js";
 
@@ -455,6 +461,33 @@ function encoded(
   return {
     payment: encodePaymentSignatureHeader(signed),
     fingerprint: paymentFingerprint(signed, edge.token()),
+  };
+}
+
+/**
+ * A payment `wallet` signs against the payment request `order`'s challenge
+ * carried, made out to where the order is paid, with the fingerprint the
+ * purchase route takes of it. Unlike {@link authorisation} it is a real
+ * signature, which is what getting back a paid purchase is checked by.
+ */
+export async function signedFor(
+  worked: { readonly runtime: Runtime },
+  order: StoredOrder,
+  wallet: LocalAccount,
+  terms: Omit<SignedTerms, "validBefore"> & { readonly validBefore?: number },
+): Promise<{ readonly payment: string; readonly fingerprint: string }> {
+  const { config, clock } = worked.runtime;
+  const edge = new PaymentEdge(config);
+  const price = order.order.price;
+  if (price === null) throw new Error(`${order.order.id} has no price to sign for`);
+  const requirements = edge.requirementsFor(price, order.paymentRef, order.payTo);
+  const payment = await signedPayment(wallet, requirements, {
+    validBefore: clock() + requirements.maxTimeoutSeconds * 1_000,
+    ...terms,
+  });
+  return {
+    payment,
+    fingerprint: paymentFingerprint(decodePaymentSignatureHeader(payment), edge.token()),
   };
 }
 

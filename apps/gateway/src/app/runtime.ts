@@ -12,6 +12,7 @@ import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
+import type { SignatureReader } from "../ports/signatures.js";
 import type {
   Integration,
   Store,
@@ -38,6 +39,12 @@ export interface Runtime {
    * answered with, measured by the code that writes the header.
    */
   readonly widestChallenge: (card: Card) => number;
+  /**
+   * Where a contract wallet's signature is judged, absent where no chain
+   * endpoint is configured. Such a signature presented for an order already
+   * paid then goes to the payment layer like any other payment.
+   */
+  readonly signatures?: SignatureReader;
 }
 
 export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {

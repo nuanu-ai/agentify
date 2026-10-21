@@ -3,10 +3,12 @@ import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { authorizationFingerprint } from "../http/x402.js";
 import { type PaymentRecoveryContext, RecoveryFailure } from "../ports/facilitator.js";
-import { drawEverything, type Harness, harness } from "../testing/harness.js";
+import { drawEverything, type Harness, harness, signedFor } from "../testing/harness.js";
+import { aWallet } from "../testing/signed-payment.js";
 import { Gateway } from "./gateway.js";
 
-const PAYER = "0x0000000000000000000000000000000000000008";
+const PAYER_WALLET = aWallet("the payer");
+const PAYER = PAYER_WALLET.address.toLowerCase();
 const TRANSACTION = `0x${"a".repeat(64)}`;
 const card: Card = {
   merchant_item_id: "esim-7d",
@@ -226,8 +228,8 @@ describe("recovering a payment without another charge", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("requires a fresh verified payment to retrieve goods after the original authorization was consumed", async () => {
-    const { h, orderId } = await purchase();
+  it("requires a fresh payment signed by its payer to retrieve goods after the original authorization was consumed", async () => {
+    const { h, recovery, orderId } = await purchase();
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
     await h.gateway.deliverOrder(h.merchant.id, orderId, { activation_code: "BOUGHT" });
     h.facilitator.willRefuseVerification("signature", "the authorization was consumed");
@@ -236,12 +238,18 @@ describe("recovering a payment without another charge", () => {
     expect(JSON.stringify(retried)).not.toContain("nothing was charged");
     expect(JSON.stringify(retried)).not.toContain(orderId);
     expect(JSON.stringify(retried)).not.toContain("BOUGHT");
-    expect(h.facilitator.verifies).toHaveLength(2);
+    const paid = await h.store.orderById(orderId);
+    if (paid === null) throw new Error("the order is gone");
+    const original = await signedFor(h, paid, PAYER_WALLET, { nonce: recovery.nonce });
+    const replayed = await h.gateway.payPurchase(orderId, original.payment, original.fingerprint);
+    expect(replayed.step).toBe("payment_not_verified");
+    expect(replayed).not.toHaveProperty("delivery");
     const forged = await h.gateway.payPurchase(orderId, "FORGED-SIGNATURE", "fp-original");
     expect(forged.step).toBe("payment_not_verified");
     expect(forged).not.toHaveProperty("delivery");
-    h.facilitator.willVerify({ verified: true, payer: PAYER, validUntil: null });
-    const fresh = await h.gateway.payPurchase(orderId, "FRESH", "fp-fresh");
+    expect(h.facilitator.verifies).toHaveLength(1);
+    const renewed = await signedFor(h, paid, PAYER_WALLET, { nonce: "0x02" });
+    const fresh = await h.gateway.payPurchase(orderId, renewed.payment, renewed.fingerprint);
     expect(fresh.step).toBe("settled");
     if (fresh.step !== "settled") throw new Error("the verified buyer lost its purchase");
     expect(fresh.delivery).toEqual({ activation_code: "BOUGHT" });

@@ -17,6 +17,7 @@ import {
   type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
+import type { LocalAccount } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buyOverHttp,
@@ -29,6 +30,7 @@ import {
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
+import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 const parcelCard: Card = CardSchema.parse({
@@ -278,9 +280,10 @@ describe("buying a parcel", () => {
   });
 
   it("does not tell a payer who is not the parcel's buyer whether an address is the one paid for", async () => {
-    // Verifying moves no money, so a wallet holding the price could sign as
-    // many payments as it likes against a paid parcel whose reference was
-    // published, and try addresses with each.
+    // Checking a payment for a paid parcel moves no money and needs none in
+    // the wallet, so any wallet could sign as many payments as it likes
+    // against a paid parcel whose reference was published, and try addresses
+    // with each.
     const { harnessed, served, itemId } = await started();
     const worker = workUntilStopped(harnessed, { onQuote: () => priced });
     const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
@@ -291,21 +294,20 @@ describe("buying a parcel", () => {
       challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     ).accepts[0];
     if (accepted === undefined) throw new Error("no payment was offered");
-    const payingFrom = (from: string, nonce: string, body: unknown) =>
+    const payingFrom = async (from: LocalAccount, nonce: string, body: unknown) =>
       served.call("POST", `/x402/${itemId}/purchase`, {
         body,
         headers: {
-          [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
-            x402Version: 2,
-            accepted,
-            payload: { signature: `0xparcel-${nonce}`, authorization: { from, nonce } },
+          [PAYMENT_SIGNATURE_HEADER]: await signedPayment(from, accepted, {
+            nonce,
+            validBefore: harnessed.now() + accepted.maxTimeoutSeconds * 1_000,
           }),
         },
       });
-    const bought = await payingFrom(`0x${"a".repeat(40)}`, "0x01", { params: {} });
+    const bought = await payingFrom(aWallet("the parcel's buyer"), "0x01", { params: {} });
     expect(bought.status).toBeLessThan(300);
 
-    const stranger = `0x${"b".repeat(40)}`;
+    const stranger = aWallet("somebody else");
     const tried = async (nonce: string, shipTo: ShipTo) => {
       const answered = await payingFrom(stranger, nonce, { params: {}, ship_to: shipTo });
       return { status: answered.status, code: (answered.body as Refused).error.code };

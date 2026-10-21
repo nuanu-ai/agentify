@@ -15,9 +15,11 @@ import {
   type Harness,
   harness,
   paymentNamingNoPayer,
+  signedFor,
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
+import { aWallet } from "../testing/signed-payment.js";
 import { agentOrderStatusOf, orderDocumentOf } from "./runner.js";
 
 /** Two wallets, for the tests that turn on which of them signed. */
@@ -1482,7 +1484,9 @@ describe("two payments racing one order", () => {
     const won = await harnessed.gateway.payPurchase(firstOrder, hers.payment, hers.fingerprint);
     expect(won.step).toBe("under_way");
 
-    const his = authorisation(harnessed, BOB, "0x01");
+    const paid = await harnessed.store.orderById(firstOrder);
+    if (paid === null) throw new Error("the first order is gone");
+    const his = await signedFor(harnessed, paid, aWallet("Bob"), { nonce: "0x01" });
     const lost = await harnessed.gateway.payPurchase(firstOrder, his.payment, his.fingerprint);
     expect(lost.step).toBe("not_this_purchase");
 
