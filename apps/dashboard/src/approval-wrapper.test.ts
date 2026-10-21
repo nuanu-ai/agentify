@@ -134,6 +134,27 @@ describe("pnpm approve's local production wrapper", () => {
     );
   });
 
+  it("asks the remote command to withdraw an approval, the email still only on stdin", async () => {
+    const result = await invoked(["--withdraw", EMAIL]);
+
+    expect(result.code).toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/withdraw/i);
+    await expect(readFile(result.ssh.inputFile, "utf8")).resolves.toBe(`${EMAIL}\n`);
+    const remote = (await readFile(result.ssh.argumentsFile, "utf8")).trim().split("\n");
+    expect(remote.slice(-4)).toStrictEqual([
+      "--filter",
+      "./apps/dashboard",
+      "--fail-if-no-match",
+      "withdraw-approval",
+    ]);
+  });
+
+  it("says how to withdraw in its usage text", async () => {
+    const result = await invoked(["--help"]);
+
+    expect(result.stdout).toMatch(/pnpm approve --withdraw <email>/i);
+  });
+
   it("forwards a refusal from the remote command as its own exit code", async () => {
     const result = await invoked([EMAIL], 1);
     const output = `${result.stdout}\n${result.stderr}`;

@@ -1,12 +1,13 @@
 /**
  * The directory and the gateway are stand-ins here, so these tests hold what
  * the command owns: every uncertain identity is refused before a write, and the
- * operator is told which existing seller the one-way grant changed. The real
+ * operator is told which existing seller the grant or the withdrawal changed. The real
  * resolver and store run together in approval-directory.db-test.ts.
  */
 
 import { describe, expect, it } from "vitest";
 import {
+  type ApprovalAction,
   type ApprovalDirectory,
   type ApprovalDirectoryEntry,
   type LiveApprovalPort,
@@ -43,16 +44,26 @@ const gatewayReturning = (
     readonly merchant: {
       readonly id: string;
       readonly serviceName: string | null;
-      readonly liveApprovedAt: number;
+      readonly liveApprovedAt: number | null;
     };
   } | null,
-): { readonly gateway: LiveApprovalPort; readonly granted: string[] } => {
+): {
+  readonly gateway: LiveApprovalPort;
+  readonly granted: string[];
+  readonly withdrawn: string[];
+} => {
   const granted: string[] = [];
+  const withdrawn: string[] = [];
   return {
     granted,
+    withdrawn,
     gateway: {
       grant: async (merchantId) => {
         granted.push(merchantId);
+        return answer;
+      },
+      withdraw: async (merchantId) => {
+        withdrawn.push(merchantId);
         return answer;
       },
     },
@@ -63,15 +74,20 @@ const run = async (
   rawEmail: string,
   directory: ApprovalDirectory,
   gateway: LiveApprovalPort,
+  action: ApprovalAction = "grant",
 ): Promise<{
   readonly code: number;
   readonly output: string;
   readonly lines: readonly string[];
 }> => {
   const lines: string[] = [];
-  const code = await runApproval(rawEmail, directory, gateway, {
-    say: (line) => lines.push(line),
-  });
+  const code = await runApproval(
+    rawEmail,
+    directory,
+    gateway,
+    { say: (line) => lines.push(line) },
+    action,
+  );
   return { code, output: lines.join("\n"), lines };
 };
 
@@ -169,6 +185,9 @@ describe("the private production approval command", () => {
       grant: async () => {
         throw new Error(`connection failed while using ${secret}`);
       },
+      withdraw: async () => {
+        throw new Error("only the grant is asked for here");
+      },
     };
 
     const result = await run(EMAIL, found.directory, gateway);
@@ -205,5 +224,82 @@ describe("the private production approval command", () => {
     expect(result.lines.every((line) => !line.includes("\u001b") && !line.includes("\r"))).toBe(
       true,
     );
+  });
+});
+
+describe("withdrawing a merchant's production approval", () => {
+  const withdrawnNow = {
+    changed: true,
+    merchant: { id: MERCHANT, serviceName: "The merchant's public name", liveApprovedAt: null },
+  };
+
+  it("withdraws the approval of the one merchant bound to the address, and says it did", async () => {
+    const found = directoryReturning([bound()]);
+    const gateway = gatewayReturning(withdrawnNow);
+
+    const result = await run(
+      "  Merchant@Example.COM\n",
+      found.directory,
+      gateway.gateway,
+      "withdraw",
+    );
+
+    expect(result.code).toBe(0);
+    expect(found.asked).toStrictEqual(["  Merchant@Example.COM\n"]);
+    expect(gateway.withdrawn).toStrictEqual([MERCHANT]);
+    expect(gateway.granted).toStrictEqual([]);
+    expect(result.output).toMatch(/production/i);
+    expect(result.output).toContain(EMAIL);
+    expect(result.output).toContain("The merchant's public name");
+    expect(result.output).toContain(MERCHANT);
+    expect(result.output).toMatch(/withdrawn now/i);
+  });
+
+  it("says the same every time it finds no approval to withdraw", async () => {
+    const found = directoryReturning([bound()]);
+    const gateway = gatewayReturning({ ...withdrawnNow, changed: false });
+
+    const second = await run(EMAIL, found.directory, gateway.gateway, "withdraw");
+    const third = await run(EMAIL, found.directory, gateway.gateway, "withdraw");
+
+    expect(second.code).toBe(0);
+    expect(third).toStrictEqual(second);
+    expect(second.output).toMatch(/not approved/i);
+    expect(second.output).not.toMatch(/withdrawn now/i);
+  });
+
+  it("refuses an address with no account in words, before asking the gateway to write", async () => {
+    const found = directoryReturning([]);
+    const gateway = gatewayReturning(withdrawnNow);
+
+    const result = await run(
+      " Merchant@Example.COM ",
+      found.directory,
+      gateway.gateway,
+      "withdraw",
+    );
+
+    expect(result.code).not.toBe(0);
+    expect(result.output).toMatch(/withdrawal refused: no account matches/i);
+    expect(gateway.withdrawn).toStrictEqual([]);
+  });
+
+  it("does not claim a withdrawal whose write is uncertain", async () => {
+    const found = directoryReturning([bound()]);
+    const gateway: LiveApprovalPort = {
+      grant: async () => {
+        throw new Error("only the withdrawal is asked for here");
+      },
+      withdraw: async () => {
+        throw new Error("the connection was lost");
+      },
+    };
+
+    const result = await run(EMAIL, found.directory, gateway, "withdraw");
+
+    expect(result.code).not.toBe(0);
+    expect(result.output).not.toMatch(/withdrawn now|not approved/i);
+    expect(result.output).toMatch(/unknown/i);
+    expect(result.output).toMatch(/retry/i);
   });
 });
