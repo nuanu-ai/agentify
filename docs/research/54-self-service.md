@@ -188,6 +188,31 @@ order's creation. Ambiguous ownership, an
 unknown payer, unsupported methods or missing terms stay unresolved, and no
 unsupported record is silently reclassified as unpaid.
 
+One recovery sweep runs at a time across gateway processes. It checks up to
+four payments concurrently and reads persisted attempts in pages of one hundred.
+A free slot takes the next payment without waiting for the other checks or the
+whole page, so a slow read does not hold every later merchant behind it. If a
+page cannot be read, the sweep waits for its started checks before releasing
+its lock. Each result still applies under the order's own lock and attempt
+identifier; recovery submits no charge.
+
+Four is a fixed internal limit that leaves room for ordinary gateway work;
+it is not a merchant setting or a measured provider capacity. Four slow reads
+can occupy every slot, and a large sweep can take longer than the minute
+between scheduled runs. The pool improves progress through a backlog without
+establishing a recovery-time guarantee.
+
+The 2026-10-21 backlog verification passes 69 focused tests, including a held
+early payment with recovery continuing beyond the first hundred records. Four
+deliberate regressions are killed: serial processing, unlimited concurrency,
+releasing the sweep lock before draining checks, and waiting for a whole page.
+A separate run without the shared purchase harness or card fixtures uses
+PostgreSQL 17.11 and loopback JSON-RPC for twelve orders. It recovers a finalized
+transfer, keeps an HTTP 429 outcome unknown, retains all twelve authorization
+reservations and starts no second check from another gateway while the sweep
+is held. It submits no recovery charge. This is local scheduling and evidence
+validation, not a public-provider capacity measurement or a live purchase.
+
 A failed poll is logged with the class of its error, and each run logs how
 many payments are unresolved and the age of the oldest, so an operator can see
 that recovery is stuck. At start-up the gateway checks that the RPC answers the
