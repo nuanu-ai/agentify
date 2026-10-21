@@ -2887,6 +2887,41 @@ describe("what the worker writes in the merchant's log when something fails", ()
     expect(written).not.toContain(anOrder().id);
   });
 
+  it("names an order whose delivery could not be bound without the buyer's download secrets", async () => {
+    // The shop's order key and the buyer's uid open that buyer's download.
+    const shops = memoryWooShops();
+    const unbound: WooShops = {
+      ...shops,
+      recordOrder: async () => false,
+      knownOrder: async () => null,
+    };
+    const place = async (_keys: ShopKeys, sold: SoldItem): Promise<OrderMade> => ({
+      ok: true,
+      id: "57",
+      number: "57",
+      orderKey: "wc_order_Q2xh7RkP0aZ3m",
+      downloadId: sold.download.id,
+    });
+    const paid = { paidInto: async () => ({ ok: true as const, document: NO_SPLIT }) };
+
+    let answer: unknown;
+    const written = await loggedWhile(async () => {
+      answer = await filledAsPaid(
+        paid as never,
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        filling(unbound, place),
+      );
+    });
+
+    expect(answer).toBeNull();
+    expect(written).toContain("not durably bound");
+    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).not.toContain("wc_order_");
+    expect(written).not.toContain("download_file");
+  });
+
   it("names the account whose turn failed", async () => {
     const shops = memoryWooShops();
     await shops.connect(connection());
