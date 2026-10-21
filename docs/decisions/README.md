@@ -74,6 +74,7 @@ written in; the rest are in English.
 | [0016](0016-two-channel-releases.md) | Two isolated release channels that pull their releases: images built once in CI, TEST following a tag, production taking an `app-v*` tag a person releases, which also publishes the SDK. |
 | [0029](0029-production-backups-leave-the-host.md) | Production's data and secrets leave the host every ten minutes for one encrypted bucket; TEST is not backed up. |
 | [0040](0040-operational-metrics-stay-private.md) | Operational measurements use private listeners and read-only observations, omit unavailable business data, and contain no customer identifiers or payloads. |
+| [0041](0041-product-analytics-leave-from-the-server.md) | Product analytics are recorded and sent by the server alone, to Nuanu Analytics, in the `commerce-v1` contract's ten events with hashed references, at least once from an outbox, never past seven days, and never about a person who opted out. |
 
 ### The scanner
 
