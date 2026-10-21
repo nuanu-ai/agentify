@@ -139,6 +139,62 @@ Record the following before running a story:
    sign-in links, customer addresses, private download links or public-status
    capabilities to this public repository.
 
+The limits on mail and scans are shared by everyone using a channel at the
+same moment, and a run on the test channel spends them for others too. The
+dashboard sends one email address at most one sign-in link a minute and three
+an hour, one client connection ten an hour whatever addresses it types, with
+an IPv6 client counted by its /64, and the whole channel two hundred an hour
+for each purpose, sign-in and report links counted apart. A request whose
+address names no visitor, because it is a loopback, private, carrier-grade NAT
+or link-local address or cannot be read as an address at all, counts towards
+one shared allowance of thirty sign-in links an hour. The test channel's
+ingress hides visitors' addresses, so every person on the test channel at the
+time, the run's participants and anybody else, shares those thirty, and on the
+local stack a browser on localhost lands in the same shared allowance. A
+request for a link that unlocks a scanner report is counted by the scanner in
+the same way, ten an hour from one visitor and thirty together from visitors it
+cannot tell apart, and then per address and against the channel's ceiling like
+a sign-in link. Google sign-in passes through none of these limits, and the
+refusal screen offers it. The scanner itself takes ten scans an hour from one
+client address, asking for a challenge after the third, and ten scans of one
+shop a day; on the test channel every visitor reads as one client address.
+Budget a run's email links and scans across its participants, and let
+participants sign in with Google where a story does not need an emailed link.
+During a run on the test channel, a refusal naming visitors the site cannot
+tell apart is the expected limit, not a finding, while its words and its
+recovery path are still judged (E-01).
+
+The purchase door refuses two kinds of purchase before anything is charged,
+and both shape any story that buys from an SDK merchant. For a merchant
+selling through their own code, a purchase of a card charged before its goods,
+which is an asynchronous card or a parcel, is refused before its price is
+asked with HTTP 409 seller_not_taking_orders, retryable and with nothing
+charged, while no process of the merchant's own code has polled for ten
+minutes, plus up to thirty seconds for how often a poll is written down. The
+door asks again when the payment arrives, so a price named just before the
+silence does not buy either. A synchronous card is not refused for this, since
+its purchase ends uncharged on its own when nobody answers, and a merchant
+selling through WooCommerce never is. While the refusal applies, the merchant's
+dashboard shows a banner saying when the integration last connected or that it
+never has, and the first poll lifts it with nothing to switch back on. A
+process whose handlers are all busy does not poll, so a merchant barrier held
+for longer than ten minutes meets the same refusal. The SDK merchant's own
+process, the stand for the organiser's merchant, therefore runs and polls
+throughout every story that buys an asynchronous card or a parcel from it. A
+story that stops that process on purpose meets this refusal on new purchases
+of such cards after ten minutes, which is the product working, and its row
+says so.
+
+Whatever the integration, at most twenty purchases of one merchant wait for
+payment at once. A purchase waits while it is being priced, or is priced with
+no payment and its price can still stand; one whose price has lapsed holds no
+place. The twenty-first is refused before its price is asked with HTTP 429
+seller_busy and `Retry-After: 5`, retryable and with nothing charged. The
+gateway writes a line about it at most once a minute for each merchant, and
+the merchant's dashboard shows a banner while it applies. A run that leaves
+many unpaid attempts on one merchant, on purpose as in J-09 or by abandoning
+challenges, reaches it.
+
 This review authorises no run, deployment change, live purchase or destructive
 lab reset. During execution, local disposable data may be changed freely within
 the run's setup. Shared resources and real funds need their named owner and
@@ -257,11 +313,27 @@ yet against the test channel.
 ### What must agree after a sale
 
 Keep one evidence row per order: original intent and card snapshot, order ID,
-the payment reference its challenge carried, payer identity kept privately,
-authorisation identity, request outcome, buyer
+the order's fingerprint, the payment reference its challenge carried, payer
+identity kept privately, authorisation identity, request outcome, buyer
 status, merchant API state, dashboard state, actual merchant effect, receipt,
 and transfer evidence. For a network payment include chain, token, transaction,
 recipient split and amount in integer token units. State the observation time.
+
+No log line carries an order's identifier. A line names an order by its
+fingerprint instead: the word `order` followed by the first twelve hexadecimal
+characters of the SHA-256 of the identifier. The fingerprint in the evidence
+row is how the organiser finds that order's lines, from the gateway and the
+WooCommerce worker alike, and the
+[observability runbook](../../deploy/observability/README.md#finding-an-order-a-log-line-names)
+shows how to go from an order to its fingerprint and back.
+
+An order that ended rejected or expired with no payment ever verified, no
+goods held for its buyer and nothing presented to pay with is an attempt that
+lapsed unpaid. The Orders page lists such attempts only under its Lapsed
+segment, and each is deleted thirty days after it was last written, unless a
+receipt or a payment claim names it; its identifier is then answered as one
+that names no order. Complete the evidence row of such an order during the
+run, since it cannot be read back afterwards.
 
 The buyer pays the merchant's recorded payout split. A later payout withdraws
 from the warehouse to the wallets. A receipt follows confirmed payment and
