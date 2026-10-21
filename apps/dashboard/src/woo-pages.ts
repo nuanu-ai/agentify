@@ -28,8 +28,10 @@ import {
 import {
   APP_NAME,
   authorizeUrlFor,
+  currencyOfTheShop,
   GRANT_MINUTES,
   isTheGrantScreen,
+  notPricedInDollars,
   type Preflight,
   shopUrlAs,
   theStateToken,
@@ -64,6 +66,8 @@ import { SITE_IN_SETTINGS, type Unset } from "./words.js";
  */
 export interface ShopCalls {
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
+  /** Null where the shop did not clearly say. */
+  readonly currency: (shopUrl: string) => Promise<string | null>;
   readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
   readonly inspectProduct: (keys: ShopKeys, merchantItemId: string) => Promise<ProductInspection>;
   readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
@@ -192,6 +196,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   /** Where a shop sends the merchant back to, and posts the keys to. */
   const whereWeAre = `${config.publicBaseUrl}${base}`;
   const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
+  const currency = parts.shop?.currency ?? currencyOfTheShop;
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
   const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
   const recovery = wooRecoveryPagesFor({
@@ -339,10 +344,18 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         callbackUrl: `${whereWeAre}/woocommerce/callback`,
       });
 
-      // A shop with plain permalinks answers this address with its own front
-      // page and a 200, so a merchant sent there would land on their shop with
-      // nothing to report.
-      const looked = await grantScreen(authorize);
+      // A shop priced in another currency would have every product refused at
+      // import, so it is refused before the switch below takes the code's
+      // cards off sale. Asked alongside the grant screen so a shop that does
+      // not answer costs one wait, not two.
+      //
+      // A shop with plain permalinks answers the grant address with its own
+      // front page and a 200, so a merchant sent there would land on their
+      // shop with nothing to report.
+      const [pricedIn, looked] = await Promise.all([currency(shopUrl), grantScreen(authorize)]);
+      if (pricedIn !== null && pricedIn !== "USD") {
+        return await drawTheShop(person, { problem: notPricedInDollars(pricedIn), typed }, 400);
+      }
       if (!looked.ok) {
         return await drawTheShop(person, { problem: looked.why, typed }, 400);
       }
