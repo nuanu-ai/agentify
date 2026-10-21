@@ -65,8 +65,11 @@ name. Notes written in Russian stay in Russian.
 | [52-release-delivery](52-release-delivery.md) | what the move to images built once in CI measured | ADR-0016 | English | current |
 | [53-self-hosted-observability](53-self-hosted-observability.md) | how the logs and host telemetry of both channels reach the shared self-hosted observability stack | — | English | current |
 | [54-self-service](54-self-service.md) | self-service responsibilities, merchant closure boundary and payment recovery evidence | ADR-0023, ADR-0027, ADR-0028 | English | current |
-| [55-sign-in-mail-limits](55-sign-in-mail-limits.md) | how many sign-in and report links the dashboard mails, and what the channel's ceiling protects and costs | — | English | current |
+| [55-woo-shop-census](55-woo-shop-census.md) | a pre-registered census of how many real WooCommerce shops in Indonesia, the United States and Europe could connect, what stops the rest, and its results | ADR-0023 | English | current |
+| [56-woo-tax-probe](56-woo-tax-probe.md) | a pre-registered probe of WooCommerce shops with tax calculation on, with its shop, script and data | ADR-0023 | English | current |
+| [57-sign-in-mail-limits](57-sign-in-mail-limits.md) | how many sign-in and report links the dashboard mails, and what the channel's ceiling protects and costs | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
-`43-one-frontend-stack/` and `47-one-docs-stack/`.
+`43-one-frontend-stack/`, `47-one-docs-stack/`, `55-woo-shop-census/` and
+`56-woo-tax-probe/`.

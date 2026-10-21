@@ -742,6 +742,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
     if (!lapsed.ok) return problemOf(lapsed);
+    const shopTotals =
+      parts.woo === null
+        ? {}
+        : await parts.woo.shopTotals(
+            person,
+            orders.document.orders.map((order) => order.id),
+          );
     const view = ordersView(
       viewing(person).mode,
       cards.document,
@@ -753,6 +760,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
         : { page: lapsed.document.attempts, of: lapsed.document.of },
+      shopTotals,
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
       const links = await parts.woo.recoveryLinks(

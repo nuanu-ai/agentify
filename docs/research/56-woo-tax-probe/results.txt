@@ -1,0 +1,764 @@
+run at 2026-10-21T10:06:37Z against a local WooCommerce shop
+WooCommerce 11.2.1
+
+######## mode off none
+mode off: base US:CA, calc_taxes no, prices_include_tax no, shipping none, flat no, rates 0
+== negative control: tax off, the connector's body today
+  B0: order 53 completed total 1.00 total_tax 0.00 | line subtotal 1.00 total 1.00 total_tax 0.00 | tax_lines [] | against 1.00: EQUAL
+  cart: items 1.00 +tax 0.00 | shipping 0.00 +tax 0.00 | total_tax 0.00 | total_price 1.00 | tax_lines []
+  cart line: prices.price 1.00 line_subtotal 1.00 line_subtotal_tax 0.00
+
+######## mode id none
+mode id: base ID:BA, calc_taxes yes, prices_include_tax yes, shipping none, flat no, rates 1
+== Q1 Indonesia, prices include tax, display incl
+  price read without a cart token: wc/v3 price 1.00, store prices.price 1.00
+-- option woocommerce_tax_display_shop = excl
+  price with display excl: wc/v3 price 1.00, store prices.price 0.90
+-- option woocommerce_tax_display_shop = incl
+  cart: items 0.90 +tax 0.00 | shipping 0.00 +tax 0.00 | total_tax 0.00 | total_price 0.90 | tax_lines []
+  cart line: prices.price 0.90 line_subtotal 0.90 line_subtotal_tax 0.00
+  price with a cart token placed in San Francisco: wc/v3 price 1.00, store prices.price 1.00
+== Q2/Q3 Indonesia downloads, round at subtotal no
+ download 20 at 1.00
+  B0: order 54 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.00: differs
+  B1: order 55 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B2a: order 56 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B2b: order 57 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  cart: items 0.90 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 1.00 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 1.00 line_subtotal 0.90 line_subtotal_tax 0.10
+ download 21 at 2.00
+  B0: order 58 completed total 2.22 total_tax 0.22 | line subtotal 2.00 total 2.00 total_tax 0.22 | tax_lines [('PPN', 11, '0.22', '0.00')] | against 2.00: differs
+  B1: order 59 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  B2a: order 60 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  B2b: order 61 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  cart: items 1.80 +tax 0.20 | shipping 0.00 +tax 0.00 | total_tax 0.20 | total_price 2.00 | tax_lines [('PPN', '11%', '0.20')]
+  cart line: prices.price 2.00 line_subtotal 1.80 line_subtotal_tax 0.20
+ download 23 at 0.99
+  B0: order 62 completed total 1.10 total_tax 0.11 | line subtotal 0.99 total 0.99 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 0.99: differs
+  B1: order 63 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  B2a: order 64 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  B2b: order 65 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  cart: items 0.89 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 0.99 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+ download 29 at 1.03
+  B0: order 66 completed total 1.14 total_tax 0.11 | line subtotal 1.03 total 1.03 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.03: differs
+  B1: order 67 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  B2a: order 68 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  B2b: order 69 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  cart: items 0.93 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 1.03 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 1.03 line_subtotal 0.93 line_subtotal_tax 0.10
+ download 30 at 1.06
+  B0: order 70 completed total 1.18 total_tax 0.12 | line subtotal 1.06 total 1.06 total_tax 0.12 | tax_lines [('PPN', 11, '0.12', '0.00')] | against 1.06: differs
+  B1: order 71 completed total 1.06 total_tax 0.11 | line subtotal 0.95 total 0.95 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.06: EQUAL
+  B2a: order 72 completed total 1.05 total_tax 0.10 | line subtotal 0.95 total 0.95 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.06: differs
+  B2b: order 73 completed total 1.06 total_tax 0.11 | line subtotal 0.95 total 0.95 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.06: EQUAL
+  cart: items 0.95 +tax 0.11 | shipping 0.00 +tax 0.00 | total_tax 0.11 | total_price 1.06 | tax_lines [('PPN', '11%', '0.11')]
+  cart line: prices.price 1.06 line_subtotal 0.95 line_subtotal_tax 0.11
+ download 24 at 4.55
+  B0: order 74 completed total 5.05 total_tax 0.50 | line subtotal 4.55 total 4.55 total_tax 0.50 | tax_lines [('PPN', 11, '0.50', '0.00')] | against 4.55: differs
+  B1: order 75 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  B2a: order 76 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  B2b: order 77 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  cart: items 4.10 +tax 0.45 | shipping 0.00 +tax 0.00 | total_tax 0.45 | total_price 4.55 | tax_lines [('PPN', '11%', '0.45')]
+  cart line: prices.price 4.55 line_subtotal 4.10 line_subtotal_tax 0.45
+ download 25 at 9.99
+  B0: order 78 completed total 11.09 total_tax 1.10 | line subtotal 9.99 total 9.99 total_tax 1.10 | tax_lines [('PPN', 11, '1.10', '0.00')] | against 9.99: differs
+  B1: order 79 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  B2a: order 80 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  B2b: order 81 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  cart: items 9.00 +tax 0.99 | shipping 0.00 +tax 0.00 | total_tax 0.99 | total_price 9.99 | tax_lines [('PPN', '11%', '0.99')]
+  cart line: prices.price 9.99 line_subtotal 9.00 line_subtotal_tax 0.99
+ download 26 at 19.95
+  B0: order 82 completed total 22.14 total_tax 2.19 | line subtotal 19.95 total 19.95 total_tax 2.19 | tax_lines [('PPN', 11, '2.19', '0.00')] | against 19.95: differs
+  B1: order 83 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  B2a: order 84 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  B2b: order 85 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  cart: items 17.97 +tax 1.98 | shipping 0.00 +tax 0.00 | total_tax 1.98 | total_price 19.95 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+ download 27 at 33.33
+  B0: order 86 completed total 37.00 total_tax 3.67 | line subtotal 33.33 total 33.33 total_tax 3.67 | tax_lines [('PPN', 11, '3.67', '0.00')] | against 33.33: differs
+  B1: order 87 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  B2a: order 88 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  B2b: order 89 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  cart: items 30.03 +tax 3.30 | shipping 0.00 +tax 0.00 | total_tax 3.30 | total_price 33.33 | tax_lines [('PPN', '11%', '3.30')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+ download 28 at 99.99
+  B0: order 90 completed total 110.99 total_tax 11.00 | line subtotal 99.99 total 99.99 total_tax 11.00 | tax_lines [('PPN', 11, '11.00', '0.00')] | against 99.99: differs
+  B1: order 91 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  B2a: order 92 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  B2b: order 93 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  cart: items 90.08 +tax 9.91 | shipping 0.00 +tax 0.00 | total_tax 9.91 | total_price 99.99 | tax_lines [('PPN', '11%', '9.91')]
+  cart line: prices.price 99.99 line_subtotal 90.08 line_subtotal_tax 9.91
+-- option woocommerce_tax_round_at_subtotal = yes
+== Q3 Indonesia downloads, round at subtotal yes
+ download 20 at 1.00
+  B0: order 94 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.00: differs
+  B1: order 95 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B2a: order 96 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B2b: order 97 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  cart: items 0.90 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 1.00 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 1.00 line_subtotal 0.90 line_subtotal_tax 0.10
+ download 21 at 2.00
+  B0: order 98 completed total 2.22 total_tax 0.22 | line subtotal 2.00 total 2.00 total_tax 0.22 | tax_lines [('PPN', 11, '0.22', '0.00')] | against 2.00: differs
+  B1: order 99 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  B2a: order 100 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  B2b: order 101 completed total 2.00 total_tax 0.20 | line subtotal 1.80 total 1.80 total_tax 0.20 | tax_lines [('PPN', 11, '0.20', '0.00')] | against 2.00: EQUAL
+  cart: items 1.80 +tax 0.20 | shipping 0.00 +tax 0.00 | total_tax 0.20 | total_price 2.00 | tax_lines [('PPN', '11%', '0.20')]
+  cart line: prices.price 2.00 line_subtotal 1.80 line_subtotal_tax 0.20
+ download 23 at 0.99
+  B0: order 102 completed total 1.10 total_tax 0.11 | line subtotal 0.99 total 0.99 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 0.99: differs
+  B1: order 103 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  B2a: order 104 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  B2b: order 105 completed total 0.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 0.99: EQUAL
+  cart: items 0.89 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 0.99 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+ download 29 at 1.03
+  B0: order 106 completed total 1.14 total_tax 0.11 | line subtotal 1.03 total 1.03 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.03: differs
+  B1: order 107 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  B2a: order 108 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  B2b: order 109 completed total 1.03 total_tax 0.10 | line subtotal 0.93 total 0.93 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.03: EQUAL
+  cart: items 0.93 +tax 0.10 | shipping 0.00 +tax 0.00 | total_tax 0.10 | total_price 1.03 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 1.03 line_subtotal 0.93 line_subtotal_tax 0.10
+ download 30 at 1.06
+  B0: order 110 completed total 1.18 total_tax 0.12 | line subtotal 1.06 total 1.06 total_tax 0.12 | tax_lines [('PPN', 11, '0.12', '0.00')] | against 1.06: differs
+  B1: order 111 completed total 1.06 total_tax 0.11 | line subtotal 0.95 total 0.95 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.06: EQUAL
+  B2a: order 112 completed total 1.05 total_tax 0.10 | line subtotal 0.95 total 0.95 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.06: differs
+  B2b: order 113 completed total 1.06 total_tax 0.11 | line subtotal 0.95 total 0.95 total_tax 0.11 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 1.06: EQUAL
+  cart: items 0.95 +tax 0.11 | shipping 0.00 +tax 0.00 | total_tax 0.11 | total_price 1.06 | tax_lines [('PPN', '11%', '0.11')]
+  cart line: prices.price 1.06 line_subtotal 0.95 line_subtotal_tax 0.11
+ download 24 at 4.55
+  B0: order 114 completed total 5.05 total_tax 0.50 | line subtotal 4.55 total 4.55 total_tax 0.50 | tax_lines [('PPN', 11, '0.50', '0.00')] | against 4.55: differs
+  B1: order 115 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  B2a: order 116 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  B2b: order 117 completed total 4.55 total_tax 0.45 | line subtotal 4.10 total 4.10 total_tax 0.45 | tax_lines [('PPN', 11, '0.45', '0.00')] | against 4.55: EQUAL
+  cart: items 4.10 +tax 0.45 | shipping 0.00 +tax 0.00 | total_tax 0.45 | total_price 4.55 | tax_lines [('PPN', '11%', '0.45')]
+  cart line: prices.price 4.55 line_subtotal 4.10 line_subtotal_tax 0.45
+ download 25 at 9.99
+  B0: order 118 completed total 11.09 total_tax 1.10 | line subtotal 9.99 total 9.99 total_tax 1.10 | tax_lines [('PPN', 11, '1.10', '0.00')] | against 9.99: differs
+  B1: order 119 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  B2a: order 120 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  B2b: order 121 completed total 9.99 total_tax 0.99 | line subtotal 9.00 total 9.00 total_tax 0.99 | tax_lines [('PPN', 11, '0.99', '0.00')] | against 9.99: EQUAL
+  cart: items 9.00 +tax 0.99 | shipping 0.00 +tax 0.00 | total_tax 0.99 | total_price 9.99 | tax_lines [('PPN', '11%', '0.99')]
+  cart line: prices.price 9.99 line_subtotal 9.00 line_subtotal_tax 0.99
+ download 26 at 19.95
+  B0: order 122 completed total 22.14 total_tax 2.19 | line subtotal 19.95 total 19.95 total_tax 2.19 | tax_lines [('PPN', 11, '2.19', '0.00')] | against 19.95: differs
+  B1: order 123 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  B2a: order 124 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  B2b: order 125 completed total 19.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 19.95: EQUAL
+  cart: items 17.97 +tax 1.98 | shipping 0.00 +tax 0.00 | total_tax 1.98 | total_price 19.95 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+ download 27 at 33.33
+  B0: order 126 completed total 37.00 total_tax 3.67 | line subtotal 33.33 total 33.33 total_tax 3.67 | tax_lines [('PPN', 11, '3.67', '0.00')] | against 33.33: differs
+  B1: order 127 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  B2a: order 128 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  B2b: order 129 completed total 33.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 33.33: EQUAL
+  cart: items 30.03 +tax 3.30 | shipping 0.00 +tax 0.00 | total_tax 3.30 | total_price 33.33 | tax_lines [('PPN', '11%', '3.30')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+ download 28 at 99.99
+  B0: order 130 completed total 110.99 total_tax 11.00 | line subtotal 99.99 total 99.99 total_tax 11.00 | tax_lines [('PPN', 11, '11.00', '0.00')] | against 99.99: differs
+  B1: order 131 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  B2a: order 132 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  B2b: order 133 completed total 99.99 total_tax 9.91 | line subtotal 90.08 total 90.08 total_tax 9.91 | tax_lines [('PPN', 11, '9.91', '0.00')] | against 99.99: EQUAL
+  cart: items 90.08 +tax 9.91 | shipping 0.00 +tax 0.00 | total_tax 9.91 | total_price 99.99 | tax_lines [('PPN', '11%', '9.91')]
+  cart line: prices.price 99.99 line_subtotal 90.08 line_subtotal_tax 9.91
+-- option woocommerce_tax_round_at_subtotal = no
+== Q4 Indonesia, which location a download is taxed at
+-- option woocommerce_tax_based_on = shipping
+  B1, no address: order 134 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B1, billing US: order 135 completed total 0.90 total_tax 0.00 | line subtotal 0.90 total 0.90 total_tax 0.00 | tax_lines [] | against 1.00: differs
+-- option woocommerce_tax_based_on = billing
+  B1, no address: order 136 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B1, billing US: order 137 completed total 0.90 total_tax 0.00 | line subtotal 0.90 total 0.90 total_tax 0.00 | tax_lines [] | against 1.00: differs
+-- option woocommerce_tax_based_on = base
+  B1, no address: order 138 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+  B1, billing US: order 139 completed total 1.00 total_tax 0.10 | line subtotal 0.90 total 0.90 total_tax 0.10 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 1.00: EQUAL
+-- option woocommerce_tax_based_on = shipping
+== Q2/Q4 Indonesia parcels, shipping untaxed
+ parcel at 20.00 to ID BA Denpasar 80361
+  cart: items 18.02 +tax 1.98 | shipping 3.00 +tax 0.00 | total_tax 1.98 | total_price 23.00 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 20.00 line_subtotal 18.02 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.00
+  B0 against goods + rate: order 140 processing total 25.20 total_tax 2.20 | line subtotal 20.00 total 20.00 total_tax 2.20 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '2.20', '0.00')] | against 23.00: differs
+  B1 against the cart's total_price: order 141 processing total 23.00 total_tax 1.98 | line subtotal 18.02 total 18.02 total_tax 1.98 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 23.00: EQUAL
+ parcel at 0.99 to ID BA Denpasar 80361
+  cart: items 0.89 +tax 0.10 | shipping 3.00 +tax 0.00 | total_tax 0.10 | total_price 3.99 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.00
+  B0 against goods + rate: order 142 processing total 4.10 total_tax 0.11 | line subtotal 0.99 total 0.99 total_tax 0.11 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 3.99: differs
+  B1 against the cart's total_price: order 143 processing total 3.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 3.99: EQUAL
+ parcel at 19.95 to ID BA Denpasar 80361
+  cart: items 17.97 +tax 1.98 | shipping 3.00 +tax 0.00 | total_tax 1.98 | total_price 22.95 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.00
+  B0 against goods + rate: order 144 processing total 25.14 total_tax 2.19 | line subtotal 19.95 total 19.95 total_tax 2.19 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '2.19', '0.00')] | against 22.95: differs
+  B1 against the cart's total_price: order 145 processing total 22.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 22.95: EQUAL
+ parcel at 33.33 to ID BA Denpasar 80361
+  cart: items 30.03 +tax 3.30 | shipping 3.00 +tax 0.00 | total_tax 3.30 | total_price 36.33 | tax_lines [('PPN', '11%', '3.30')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.00
+  B0 against goods + rate: order 146 processing total 40.00 total_tax 3.67 | line subtotal 33.33 total 33.33 total_tax 3.67 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '3.67', '0.00')] | against 36.33: differs
+  B1 against the cart's total_price: order 147 processing total 36.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | shipping 3.00 tax 0.00 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 36.33: EQUAL
+ parcel at 20.00 to ID JK Jakarta 10110
+  cart: items 18.02 +tax 1.98 | shipping 5.00 +tax 0.00 | total_tax 1.98 | total_price 25.00 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 20.00 line_subtotal 18.02 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.00
+  B0 against goods + rate: order 148 processing total 27.20 total_tax 2.20 | line subtotal 20.00 total 20.00 total_tax 2.20 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '2.20', '0.00')] | against 25.00: differs
+  B1 against the cart's total_price: order 149 processing total 25.00 total_tax 1.98 | line subtotal 18.02 total 18.02 total_tax 1.98 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 25.00: EQUAL
+ parcel at 0.99 to ID JK Jakarta 10110
+  cart: items 0.89 +tax 0.10 | shipping 5.00 +tax 0.00 | total_tax 0.10 | total_price 5.99 | tax_lines [('PPN', '11%', '0.10')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.00
+  B0 against goods + rate: order 150 processing total 6.10 total_tax 0.11 | line subtotal 0.99 total 0.99 total_tax 0.11 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '0.11', '0.00')] | against 5.99: differs
+  B1 against the cart's total_price: order 151 processing total 5.99 total_tax 0.10 | line subtotal 0.89 total 0.89 total_tax 0.10 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '0.10', '0.00')] | against 5.99: EQUAL
+ parcel at 19.95 to ID JK Jakarta 10110
+  cart: items 17.97 +tax 1.98 | shipping 5.00 +tax 0.00 | total_tax 1.98 | total_price 24.95 | tax_lines [('PPN', '11%', '1.98')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.00
+  B0 against goods + rate: order 152 processing total 27.14 total_tax 2.19 | line subtotal 19.95 total 19.95 total_tax 2.19 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '2.19', '0.00')] | against 24.95: differs
+  B1 against the cart's total_price: order 153 processing total 24.95 total_tax 1.98 | line subtotal 17.97 total 17.97 total_tax 1.98 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '1.98', '0.00')] | against 24.95: EQUAL
+ parcel at 33.33 to ID JK Jakarta 10110
+  cart: items 30.03 +tax 3.30 | shipping 5.00 +tax 0.00 | total_tax 3.30 | total_price 38.33 | tax_lines [('PPN', '11%', '3.30')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.00
+  B0 against goods + rate: order 154 processing total 42.00 total_tax 3.67 | line subtotal 33.33 total 33.33 total_tax 3.67 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '3.67', '0.00')] | against 38.33: differs
+  B1 against the cart's total_price: order 155 processing total 38.33 total_tax 3.30 | line subtotal 30.03 total 30.03 total_tax 3.30 | shipping 5.00 tax 0.00 | tax_lines [('PPN', 11, '3.30', '0.00')] | against 38.33: EQUAL
+ parcel at 20.00 to US CA San Francisco 94105
+  cart: items 18.02 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 25.52 | tax_lines []
+  cart line: prices.price 18.02 line_subtotal 18.02 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 156 processing total 27.50 total_tax 0.00 | line subtotal 20.00 total 20.00 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.50: EQUAL
+  B1 against the cart's total_price: order 157 processing total 25.52 total_tax 0.00 | line subtotal 18.02 total 18.02 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 25.52: EQUAL
+ parcel at 0.99 to US CA San Francisco 94105
+  cart: items 0.89 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 8.39 | tax_lines []
+  cart line: prices.price 0.89 line_subtotal 0.89 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 158 processing total 8.49 total_tax 0.00 | line subtotal 0.99 total 0.99 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.49: EQUAL
+  B1 against the cart's total_price: order 159 processing total 8.39 total_tax 0.00 | line subtotal 0.89 total 0.89 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.39: EQUAL
+ parcel at 19.95 to US CA San Francisco 94105
+  cart: items 17.97 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 25.47 | tax_lines []
+  cart line: prices.price 17.97 line_subtotal 17.97 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 160 processing total 27.45 total_tax 0.00 | line subtotal 19.95 total 19.95 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.45: EQUAL
+  B1 against the cart's total_price: order 161 processing total 25.47 total_tax 0.00 | line subtotal 17.97 total 17.97 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 25.47: EQUAL
+ parcel at 33.33 to US CA San Francisco 94105
+  cart: items 30.03 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 37.53 | tax_lines []
+  cart line: prices.price 30.03 line_subtotal 30.03 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 162 processing total 40.83 total_tax 0.00 | line subtotal 33.33 total 33.33 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 40.83: EQUAL
+  B1 against the cart's total_price: order 163 processing total 37.53 total_tax 0.00 | line subtotal 30.03 total 30.03 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 37.53: EQUAL
+
+######## mode id taxable
+mode id: base ID:BA, calc_taxes yes, prices_include_tax yes, shipping taxable, flat no, rates 1
+== Q2/Q4 Indonesia parcels, shipping taxable
+ parcel at 20.00 to ID BA Denpasar 80361
+  cart: items 18.02 +tax 1.98 | shipping 3.00 +tax 0.33 | total_tax 2.31 | total_price 23.33 | tax_lines [('PPN', '11%', '2.31')]
+  cart line: prices.price 20.00 line_subtotal 18.02 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.33
+  B0 against goods + rate: order 164 processing total 25.53 total_tax 2.53 | line subtotal 20.00 total 20.00 total_tax 2.20 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '2.20', '0.33')] | against 23.00: differs
+  B1 against the cart's total_price: order 165 processing total 23.33 total_tax 2.31 | line subtotal 18.02 total 18.02 total_tax 1.98 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '1.98', '0.33')] | against 23.33: EQUAL
+ parcel at 0.99 to ID BA Denpasar 80361
+  cart: items 0.89 +tax 0.10 | shipping 3.00 +tax 0.33 | total_tax 0.43 | total_price 4.32 | tax_lines [('PPN', '11%', '0.43')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.33
+  B0 against goods + rate: order 166 processing total 4.43 total_tax 0.44 | line subtotal 0.99 total 0.99 total_tax 0.11 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '0.11', '0.33')] | against 3.99: differs
+  B1 against the cart's total_price: order 167 processing total 4.32 total_tax 0.43 | line subtotal 0.89 total 0.89 total_tax 0.10 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '0.10', '0.33')] | against 4.32: EQUAL
+ parcel at 19.95 to ID BA Denpasar 80361
+  cart: items 17.97 +tax 1.98 | shipping 3.00 +tax 0.33 | total_tax 2.31 | total_price 23.28 | tax_lines [('PPN', '11%', '2.31')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.33
+  B0 against goods + rate: order 168 processing total 25.47 total_tax 2.52 | line subtotal 19.95 total 19.95 total_tax 2.19 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '2.19', '0.33')] | against 22.95: differs
+  B1 against the cart's total_price: order 169 processing total 23.28 total_tax 2.31 | line subtotal 17.97 total 17.97 total_tax 1.98 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '1.98', '0.33')] | against 23.28: EQUAL
+ parcel at 33.33 to ID BA Denpasar 80361
+  cart: items 30.03 +tax 3.30 | shipping 3.00 +tax 0.33 | total_tax 3.63 | total_price 36.66 | tax_lines [('PPN', '11%', '3.63')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+  cheapest rate: flat_rate:1 Bali courier price 3.00 taxes 0.33
+  B0 against goods + rate: order 170 processing total 40.33 total_tax 4.00 | line subtotal 33.33 total 33.33 total_tax 3.67 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '3.67', '0.33')] | against 36.33: differs
+  B1 against the cart's total_price: order 171 processing total 36.66 total_tax 3.63 | line subtotal 30.03 total 30.03 total_tax 3.30 | shipping 3.00 tax 0.33 | tax_lines [('PPN', 11, '3.30', '0.33')] | against 36.66: EQUAL
+ parcel at 20.00 to ID JK Jakarta 10110
+  cart: items 18.02 +tax 1.98 | shipping 5.00 +tax 0.55 | total_tax 2.53 | total_price 25.55 | tax_lines [('PPN', '11%', '2.53')]
+  cart line: prices.price 20.00 line_subtotal 18.02 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.55
+  B0 against goods + rate: order 172 processing total 27.75 total_tax 2.75 | line subtotal 20.00 total 20.00 total_tax 2.20 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '2.20', '0.55')] | against 25.00: differs
+  B1 against the cart's total_price: order 173 processing total 25.55 total_tax 2.53 | line subtotal 18.02 total 18.02 total_tax 1.98 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '1.98', '0.55')] | against 25.55: EQUAL
+ parcel at 0.99 to ID JK Jakarta 10110
+  cart: items 0.89 +tax 0.10 | shipping 5.00 +tax 0.55 | total_tax 0.65 | total_price 6.54 | tax_lines [('PPN', '11%', '0.65')]
+  cart line: prices.price 0.99 line_subtotal 0.89 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.55
+  B0 against goods + rate: order 174 processing total 6.65 total_tax 0.66 | line subtotal 0.99 total 0.99 total_tax 0.11 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '0.11', '0.55')] | against 5.99: differs
+  B1 against the cart's total_price: order 175 processing total 6.54 total_tax 0.65 | line subtotal 0.89 total 0.89 total_tax 0.10 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '0.10', '0.55')] | against 6.54: EQUAL
+ parcel at 19.95 to ID JK Jakarta 10110
+  cart: items 17.97 +tax 1.98 | shipping 5.00 +tax 0.55 | total_tax 2.53 | total_price 25.50 | tax_lines [('PPN', '11%', '2.53')]
+  cart line: prices.price 19.95 line_subtotal 17.97 line_subtotal_tax 1.98
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.55
+  B0 against goods + rate: order 176 processing total 27.69 total_tax 2.74 | line subtotal 19.95 total 19.95 total_tax 2.19 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '2.19', '0.55')] | against 24.95: differs
+  B1 against the cart's total_price: order 177 processing total 25.50 total_tax 2.53 | line subtotal 17.97 total 17.97 total_tax 1.98 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '1.98', '0.55')] | against 25.50: EQUAL
+ parcel at 33.33 to ID JK Jakarta 10110
+  cart: items 30.03 +tax 3.30 | shipping 5.00 +tax 0.55 | total_tax 3.85 | total_price 38.88 | tax_lines [('PPN', '11%', '3.85')]
+  cart line: prices.price 33.33 line_subtotal 30.03 line_subtotal_tax 3.30
+  cheapest rate: flat_rate:3 Standard price 5.00 taxes 0.55
+  B0 against goods + rate: order 178 processing total 42.55 total_tax 4.22 | line subtotal 33.33 total 33.33 total_tax 3.67 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '3.67', '0.55')] | against 38.33: differs
+  B1 against the cart's total_price: order 179 processing total 38.88 total_tax 3.85 | line subtotal 30.03 total 30.03 total_tax 3.30 | shipping 5.00 tax 0.55 | tax_lines [('PPN', 11, '3.30', '0.55')] | against 38.88: EQUAL
+ parcel at 20.00 to US CA San Francisco 94105
+  cart: items 18.02 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 25.52 | tax_lines []
+  cart line: prices.price 18.02 line_subtotal 18.02 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 180 processing total 27.50 total_tax 0.00 | line subtotal 20.00 total 20.00 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.50: EQUAL
+  B1 against the cart's total_price: order 181 processing total 25.52 total_tax 0.00 | line subtotal 18.02 total 18.02 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 25.52: EQUAL
+ parcel at 0.99 to US CA San Francisco 94105
+  cart: items 0.89 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 8.39 | tax_lines []
+  cart line: prices.price 0.89 line_subtotal 0.89 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 182 processing total 8.49 total_tax 0.00 | line subtotal 0.99 total 0.99 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.49: EQUAL
+  B1 against the cart's total_price: order 183 processing total 8.39 total_tax 0.00 | line subtotal 0.89 total 0.89 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.39: EQUAL
+ parcel at 19.95 to US CA San Francisco 94105
+  cart: items 17.97 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 25.47 | tax_lines []
+  cart line: prices.price 17.97 line_subtotal 17.97 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 184 processing total 27.45 total_tax 0.00 | line subtotal 19.95 total 19.95 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.45: EQUAL
+  B1 against the cart's total_price: order 185 processing total 25.47 total_tax 0.00 | line subtotal 17.97 total 17.97 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 25.47: EQUAL
+ parcel at 33.33 to US CA San Francisco 94105
+  cart: items 30.03 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 37.53 | tax_lines []
+  cart line: prices.price 30.03 line_subtotal 30.03 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 186 processing total 40.83 total_tax 0.00 | line subtotal 33.33 total 33.33 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 40.83: EQUAL
+  B1 against the cart's total_price: order 187 processing total 37.53 total_tax 0.00 | line subtotal 30.03 total 30.03 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 37.53: EQUAL
+
+######## mode de taxable
+mode de: base DE:DE-BE, calc_taxes yes, prices_include_tax yes, shipping taxable, flat no, rates 2
+== Q1 Germany, prices include tax, display incl
+  price read without a cart token: wc/v3 price 1.00, store prices.price 1.00
+  cart: items 0.84 +tax 0.17 | shipping 0.00 +tax 0.00 | total_tax 0.17 | total_price 1.01 | tax_lines [('TVA', '20%', '0.17')]
+  cart line: prices.price 1.01 line_subtotal 0.84 line_subtotal_tax 0.17
+  price with a cart token placed in Paris: wc/v3 price 1.00, store prices.price 1.00
+== Q2/Q3 Germany downloads, round at subtotal no
+ download 20 at 1.00
+  B0: order 188 completed total 1.19 total_tax 0.19 | line subtotal 1.00 total 1.00 total_tax 0.19 | tax_lines [('MwSt.', 19, '0.19', '0.00')] | against 1.00: differs
+  B1: order 189 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B2a: order 190 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B2b: order 191 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  cart: items 0.84 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 1.00 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 1.00 line_subtotal 0.84 line_subtotal_tax 0.16
+ download 21 at 2.00
+  B0: order 192 completed total 2.38 total_tax 0.38 | line subtotal 2.00 total 2.00 total_tax 0.38 | tax_lines [('MwSt.', 19, '0.38', '0.00')] | against 2.00: differs
+  B1: order 193 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  B2a: order 194 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  B2b: order 195 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  cart: items 1.68 +tax 0.32 | shipping 0.00 +tax 0.00 | total_tax 0.32 | total_price 2.00 | tax_lines [('MwSt.', '19%', '0.32')]
+  cart line: prices.price 2.00 line_subtotal 1.68 line_subtotal_tax 0.32
+ download 23 at 0.99
+  B0: order 196 completed total 1.18 total_tax 0.19 | line subtotal 0.99 total 0.99 total_tax 0.19 | tax_lines [('MwSt.', 19, '0.19', '0.00')] | against 0.99: differs
+  B1: order 197 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  B2a: order 198 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  B2b: order 199 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  cart: items 0.83 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 0.99 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 0.99 line_subtotal 0.83 line_subtotal_tax 0.16
+ download 29 at 1.03
+  B0: order 200 completed total 1.23 total_tax 0.20 | line subtotal 1.03 total 1.03 total_tax 0.20 | tax_lines [('MwSt.', 19, '0.20', '0.00')] | against 1.03: differs
+  B1: order 201 completed total 1.03 total_tax 0.16 | line subtotal 0.87 total 0.87 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.03: EQUAL
+  B2a: order 202 completed total 1.04 total_tax 0.17 | line subtotal 0.87 total 0.87 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.03: differs
+  B2b: order 203 completed total 1.03 total_tax 0.16 | line subtotal 0.87 total 0.87 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.03: EQUAL
+  cart: items 0.87 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 1.03 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 1.03 line_subtotal 0.87 line_subtotal_tax 0.16
+ download 30 at 1.06
+  B0: order 204 completed total 1.26 total_tax 0.20 | line subtotal 1.06 total 1.06 total_tax 0.20 | tax_lines [('MwSt.', 19, '0.20', '0.00')] | against 1.06: differs
+  B1: order 205 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  B2a: order 206 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  B2b: order 207 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  cart: items 0.89 +tax 0.17 | shipping 0.00 +tax 0.00 | total_tax 0.17 | total_price 1.06 | tax_lines [('MwSt.', '19%', '0.17')]
+  cart line: prices.price 1.06 line_subtotal 0.89 line_subtotal_tax 0.17
+ download 24 at 4.55
+  B0: order 208 completed total 5.41 total_tax 0.86 | line subtotal 4.55 total 4.55 total_tax 0.86 | tax_lines [('MwSt.', 19, '0.86', '0.00')] | against 4.55: differs
+  B1: order 209 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  B2a: order 210 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  B2b: order 211 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  cart: items 3.82 +tax 0.73 | shipping 0.00 +tax 0.00 | total_tax 0.73 | total_price 4.55 | tax_lines [('MwSt.', '19%', '0.73')]
+  cart line: prices.price 4.55 line_subtotal 3.82 line_subtotal_tax 0.73
+ download 25 at 9.99
+  B0: order 212 completed total 11.89 total_tax 1.90 | line subtotal 9.99 total 9.99 total_tax 1.90 | tax_lines [('MwSt.', 19, '1.90', '0.00')] | against 9.99: differs
+  B1: order 213 completed total 9.99 total_tax 1.60 | line subtotal 8.39 total 8.39 total_tax 1.60 | tax_lines [('MwSt.', 19, '1.60', '0.00')] | against 9.99: EQUAL
+  B2a: order 214 completed total 9.98 total_tax 1.59 | line subtotal 8.39 total 8.39 total_tax 1.59 | tax_lines [('MwSt.', 19, '1.59', '0.00')] | against 9.99: differs
+  B2b: order 215 completed total 9.99 total_tax 1.60 | line subtotal 8.39 total 8.39 total_tax 1.60 | tax_lines [('MwSt.', 19, '1.60', '0.00')] | against 9.99: EQUAL
+  cart: items 8.39 +tax 1.60 | shipping 0.00 +tax 0.00 | total_tax 1.60 | total_price 9.99 | tax_lines [('MwSt.', '19%', '1.60')]
+  cart line: prices.price 9.99 line_subtotal 8.39 line_subtotal_tax 1.60
+ download 26 at 19.95
+  B0: order 216 completed total 23.74 total_tax 3.79 | line subtotal 19.95 total 19.95 total_tax 3.79 | tax_lines [('MwSt.', 19, '3.79', '0.00')] | against 19.95: differs
+  B1: order 217 completed total 19.95 total_tax 3.19 | line subtotal 16.76 total 16.76 total_tax 3.19 | tax_lines [('MwSt.', 19, '3.19', '0.00')] | against 19.95: EQUAL
+  B2a: order 218 completed total 19.94 total_tax 3.18 | line subtotal 16.76 total 16.76 total_tax 3.18 | tax_lines [('MwSt.', 19, '3.18', '0.00')] | against 19.95: differs
+  B2b: order 219 completed total 19.95 total_tax 3.19 | line subtotal 16.76 total 16.76 total_tax 3.19 | tax_lines [('MwSt.', 19, '3.19', '0.00')] | against 19.95: EQUAL
+  cart: items 16.76 +tax 3.19 | shipping 0.00 +tax 0.00 | total_tax 3.19 | total_price 19.95 | tax_lines [('MwSt.', '19%', '3.19')]
+  cart line: prices.price 19.95 line_subtotal 16.76 line_subtotal_tax 3.19
+ download 27 at 33.33
+  B0: order 220 completed total 39.66 total_tax 6.33 | line subtotal 33.33 total 33.33 total_tax 6.33 | tax_lines [('MwSt.', 19, '6.33', '0.00')] | against 33.33: differs
+  B1: order 221 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  B2a: order 222 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  B2b: order 223 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  cart: items 28.01 +tax 5.32 | shipping 0.00 +tax 0.00 | total_tax 5.32 | total_price 33.33 | tax_lines [('MwSt.', '19%', '5.32')]
+  cart line: prices.price 33.33 line_subtotal 28.01 line_subtotal_tax 5.32
+ download 28 at 99.99
+  B0: order 224 completed total 118.99 total_tax 19.00 | line subtotal 99.99 total 99.99 total_tax 19.00 | tax_lines [('MwSt.', 19, '19.00', '0.00')] | against 99.99: differs
+  B1: order 225 completed total 99.99 total_tax 15.96 | line subtotal 84.03 total 84.03 total_tax 15.96 | tax_lines [('MwSt.', 19, '15.96', '0.00')] | against 99.99: EQUAL
+  B2a: order 226 completed total 100.00 total_tax 15.97 | line subtotal 84.03 total 84.03 total_tax 15.97 | tax_lines [('MwSt.', 19, '15.97', '0.00')] | against 99.99: differs
+  B2b: order 227 completed total 99.99 total_tax 15.96 | line subtotal 84.03 total 84.03 total_tax 15.96 | tax_lines [('MwSt.', 19, '15.96', '0.00')] | against 99.99: EQUAL
+  cart: items 84.03 +tax 15.96 | shipping 0.00 +tax 0.00 | total_tax 15.96 | total_price 99.99 | tax_lines [('MwSt.', '19%', '15.96')]
+  cart line: prices.price 99.99 line_subtotal 84.03 line_subtotal_tax 15.96
+-- option woocommerce_tax_round_at_subtotal = yes
+== Q3 Germany downloads, round at subtotal yes
+ download 20 at 1.00
+  B0: order 228 completed total 1.19 total_tax 0.19 | line subtotal 1.00 total 1.00 total_tax 0.19 | tax_lines [('MwSt.', 19, '0.19', '0.00')] | against 1.00: differs
+  B1: order 229 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B2a: order 230 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B2b: order 231 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  cart: items 0.84 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 1.00 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 1.00 line_subtotal 0.84 line_subtotal_tax 0.16
+ download 21 at 2.00
+  B0: order 232 completed total 2.38 total_tax 0.38 | line subtotal 2.00 total 2.00 total_tax 0.38 | tax_lines [('MwSt.', 19, '0.38', '0.00')] | against 2.00: differs
+  B1: order 233 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  B2a: order 234 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  B2b: order 235 completed total 2.00 total_tax 0.32 | line subtotal 1.68 total 1.68 total_tax 0.32 | tax_lines [('MwSt.', 19, '0.32', '0.00')] | against 2.00: EQUAL
+  cart: items 1.68 +tax 0.32 | shipping 0.00 +tax 0.00 | total_tax 0.32 | total_price 2.00 | tax_lines [('MwSt.', '19%', '0.32')]
+  cart line: prices.price 2.00 line_subtotal 1.68 line_subtotal_tax 0.32
+ download 23 at 0.99
+  B0: order 236 completed total 1.18 total_tax 0.19 | line subtotal 0.99 total 0.99 total_tax 0.19 | tax_lines [('MwSt.', 19, '0.19', '0.00')] | against 0.99: differs
+  B1: order 237 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  B2a: order 238 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  B2b: order 239 completed total 0.99 total_tax 0.16 | line subtotal 0.83 total 0.83 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 0.99: EQUAL
+  cart: items 0.83 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 0.99 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 0.99 line_subtotal 0.83 line_subtotal_tax 0.16
+ download 29 at 1.03
+  B0: order 240 completed total 1.23 total_tax 0.20 | line subtotal 1.03 total 1.03 total_tax 0.20 | tax_lines [('MwSt.', 19, '0.20', '0.00')] | against 1.03: differs
+  B1: order 241 completed total 1.03 total_tax 0.16 | line subtotal 0.87 total 0.87 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.03: EQUAL
+  B2a: order 242 completed total 1.04 total_tax 0.17 | line subtotal 0.87 total 0.87 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.03: differs
+  B2b: order 243 completed total 1.03 total_tax 0.16 | line subtotal 0.87 total 0.87 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.03: EQUAL
+  cart: items 0.87 +tax 0.16 | shipping 0.00 +tax 0.00 | total_tax 0.16 | total_price 1.03 | tax_lines [('MwSt.', '19%', '0.16')]
+  cart line: prices.price 1.03 line_subtotal 0.87 line_subtotal_tax 0.16
+ download 30 at 1.06
+  B0: order 244 completed total 1.26 total_tax 0.20 | line subtotal 1.06 total 1.06 total_tax 0.20 | tax_lines [('MwSt.', 19, '0.20', '0.00')] | against 1.06: differs
+  B1: order 245 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  B2a: order 246 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  B2b: order 247 completed total 1.06 total_tax 0.17 | line subtotal 0.89 total 0.89 total_tax 0.17 | tax_lines [('MwSt.', 19, '0.17', '0.00')] | against 1.06: EQUAL
+  cart: items 0.89 +tax 0.17 | shipping 0.00 +tax 0.00 | total_tax 0.17 | total_price 1.06 | tax_lines [('MwSt.', '19%', '0.17')]
+  cart line: prices.price 1.06 line_subtotal 0.89 line_subtotal_tax 0.17
+ download 24 at 4.55
+  B0: order 248 completed total 5.41 total_tax 0.86 | line subtotal 4.55 total 4.55 total_tax 0.86 | tax_lines [('MwSt.', 19, '0.86', '0.00')] | against 4.55: differs
+  B1: order 249 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  B2a: order 250 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  B2b: order 251 completed total 4.55 total_tax 0.73 | line subtotal 3.82 total 3.82 total_tax 0.73 | tax_lines [('MwSt.', 19, '0.73', '0.00')] | against 4.55: EQUAL
+  cart: items 3.82 +tax 0.73 | shipping 0.00 +tax 0.00 | total_tax 0.73 | total_price 4.55 | tax_lines [('MwSt.', '19%', '0.73')]
+  cart line: prices.price 4.55 line_subtotal 3.82 line_subtotal_tax 0.73
+ download 25 at 9.99
+  B0: order 252 completed total 11.89 total_tax 1.90 | line subtotal 9.99 total 9.99 total_tax 1.90 | tax_lines [('MwSt.', 19, '1.90', '0.00')] | against 9.99: differs
+  B1: order 253 completed total 9.99 total_tax 1.60 | line subtotal 8.39 total 8.39 total_tax 1.60 | tax_lines [('MwSt.', 19, '1.60', '0.00')] | against 9.99: EQUAL
+  B2a: order 254 completed total 9.98 total_tax 1.59 | line subtotal 8.39 total 8.39 total_tax 1.59 | tax_lines [('MwSt.', 19, '1.59', '0.00')] | against 9.99: differs
+  B2b: order 255 completed total 9.99 total_tax 1.60 | line subtotal 8.39 total 8.39 total_tax 1.60 | tax_lines [('MwSt.', 19, '1.60', '0.00')] | against 9.99: EQUAL
+  cart: items 8.39 +tax 1.60 | shipping 0.00 +tax 0.00 | total_tax 1.60 | total_price 9.99 | tax_lines [('MwSt.', '19%', '1.60')]
+  cart line: prices.price 9.99 line_subtotal 8.39 line_subtotal_tax 1.60
+ download 26 at 19.95
+  B0: order 256 completed total 23.74 total_tax 3.79 | line subtotal 19.95 total 19.95 total_tax 3.79 | tax_lines [('MwSt.', 19, '3.79', '0.00')] | against 19.95: differs
+  B1: order 257 completed total 19.95 total_tax 3.19 | line subtotal 16.76 total 16.76 total_tax 3.19 | tax_lines [('MwSt.', 19, '3.19', '0.00')] | against 19.95: EQUAL
+  B2a: order 258 completed total 19.94 total_tax 3.18 | line subtotal 16.76 total 16.76 total_tax 3.18 | tax_lines [('MwSt.', 19, '3.18', '0.00')] | against 19.95: differs
+  B2b: order 259 completed total 19.95 total_tax 3.19 | line subtotal 16.76 total 16.76 total_tax 3.19 | tax_lines [('MwSt.', 19, '3.19', '0.00')] | against 19.95: EQUAL
+  cart: items 16.76 +tax 3.19 | shipping 0.00 +tax 0.00 | total_tax 3.19 | total_price 19.95 | tax_lines [('MwSt.', '19%', '3.19')]
+  cart line: prices.price 19.95 line_subtotal 16.76 line_subtotal_tax 3.19
+ download 27 at 33.33
+  B0: order 260 completed total 39.66 total_tax 6.33 | line subtotal 33.33 total 33.33 total_tax 6.33 | tax_lines [('MwSt.', 19, '6.33', '0.00')] | against 33.33: differs
+  B1: order 261 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  B2a: order 262 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  B2b: order 263 completed total 33.33 total_tax 5.32 | line subtotal 28.01 total 28.01 total_tax 5.32 | tax_lines [('MwSt.', 19, '5.32', '0.00')] | against 33.33: EQUAL
+  cart: items 28.01 +tax 5.32 | shipping 0.00 +tax 0.00 | total_tax 5.32 | total_price 33.33 | tax_lines [('MwSt.', '19%', '5.32')]
+  cart line: prices.price 33.33 line_subtotal 28.01 line_subtotal_tax 5.32
+ download 28 at 99.99
+  B0: order 264 completed total 118.99 total_tax 19.00 | line subtotal 99.99 total 99.99 total_tax 19.00 | tax_lines [('MwSt.', 19, '19.00', '0.00')] | against 99.99: differs
+  B1: order 265 completed total 99.99 total_tax 15.96 | line subtotal 84.03 total 84.03 total_tax 15.96 | tax_lines [('MwSt.', 19, '15.96', '0.00')] | against 99.99: EQUAL
+  B2a: order 266 completed total 100.00 total_tax 15.97 | line subtotal 84.03 total 84.03 total_tax 15.97 | tax_lines [('MwSt.', 19, '15.97', '0.00')] | against 99.99: differs
+  B2b: order 267 completed total 99.99 total_tax 15.96 | line subtotal 84.03 total 84.03 total_tax 15.96 | tax_lines [('MwSt.', 19, '15.96', '0.00')] | against 99.99: EQUAL
+  cart: items 84.03 +tax 15.96 | shipping 0.00 +tax 0.00 | total_tax 15.96 | total_price 99.99 | tax_lines [('MwSt.', '19%', '15.96')]
+  cart line: prices.price 99.99 line_subtotal 84.03 line_subtotal_tax 15.96
+-- option woocommerce_tax_round_at_subtotal = no
+== Q4 Germany, which location a download is taxed at
+-- option woocommerce_tax_based_on = shipping
+  B1, no address: order 268 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B1, billing FR: order 269 completed total 1.01 total_tax 0.17 | line subtotal 0.84 total 0.84 total_tax 0.17 | tax_lines [('TVA', 20, '0.17', '0.00')] | against 1.00: differs
+-- option woocommerce_tax_based_on = billing
+  B1, no address: order 270 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B1, billing FR: order 271 completed total 1.01 total_tax 0.17 | line subtotal 0.84 total 0.84 total_tax 0.17 | tax_lines [('TVA', 20, '0.17', '0.00')] | against 1.00: differs
+-- option woocommerce_tax_based_on = base
+  B1, no address: order 272 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+  B1, billing FR: order 273 completed total 1.00 total_tax 0.16 | line subtotal 0.84 total 0.84 total_tax 0.16 | tax_lines [('MwSt.', 19, '0.16', '0.00')] | against 1.00: EQUAL
+-- option woocommerce_tax_based_on = shipping
+== Q2/Q4 Germany parcels, shipping taxable
+ parcel at 20.00 to DE  Berlin 10115
+  cart: items 16.81 +tax 3.19 | shipping 4.90 +tax 0.93 | total_tax 4.12 | total_price 25.83 | tax_lines [('MwSt.', '19%', '4.12')]
+  cart line: prices.price 20.00 line_subtotal 16.81 line_subtotal_tax 3.19
+  cheapest rate: flat_rate:8 Paket price 4.90 taxes 0.93
+  B0 against goods + rate: order 274 processing total 29.63 total_tax 4.73 | line subtotal 20.00 total 20.00 total_tax 3.80 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '3.80', '0.93')] | against 24.90: differs
+  B1 against the cart's total_price: order 275 processing total 25.83 total_tax 4.12 | line subtotal 16.81 total 16.81 total_tax 3.19 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '3.19', '0.93')] | against 25.83: EQUAL
+ parcel at 0.99 to DE  Berlin 10115
+  cart: items 0.83 +tax 0.16 | shipping 4.90 +tax 0.93 | total_tax 1.09 | total_price 6.82 | tax_lines [('MwSt.', '19%', '1.09')]
+  cart line: prices.price 0.99 line_subtotal 0.83 line_subtotal_tax 0.16
+  cheapest rate: flat_rate:8 Paket price 4.90 taxes 0.93
+  B0 against goods + rate: order 276 processing total 7.01 total_tax 1.12 | line subtotal 0.99 total 0.99 total_tax 0.19 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '0.19', '0.93')] | against 5.89: differs
+  B1 against the cart's total_price: order 277 processing total 6.82 total_tax 1.09 | line subtotal 0.83 total 0.83 total_tax 0.16 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '0.16', '0.93')] | against 6.82: EQUAL
+ parcel at 19.95 to DE  Berlin 10115
+  cart: items 16.76 +tax 3.19 | shipping 4.90 +tax 0.93 | total_tax 4.12 | total_price 25.78 | tax_lines [('MwSt.', '19%', '4.12')]
+  cart line: prices.price 19.95 line_subtotal 16.76 line_subtotal_tax 3.19
+  cheapest rate: flat_rate:8 Paket price 4.90 taxes 0.93
+  B0 against goods + rate: order 278 processing total 29.57 total_tax 4.72 | line subtotal 19.95 total 19.95 total_tax 3.79 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '3.79', '0.93')] | against 24.85: differs
+  B1 against the cart's total_price: order 279 processing total 25.78 total_tax 4.12 | line subtotal 16.76 total 16.76 total_tax 3.19 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '3.19', '0.93')] | against 25.78: EQUAL
+ parcel at 33.33 to DE  Berlin 10115
+  cart: items 28.01 +tax 5.32 | shipping 4.90 +tax 0.93 | total_tax 6.25 | total_price 39.16 | tax_lines [('MwSt.', '19%', '6.25')]
+  cart line: prices.price 33.33 line_subtotal 28.01 line_subtotal_tax 5.32
+  cheapest rate: flat_rate:8 Paket price 4.90 taxes 0.93
+  B0 against goods + rate: order 280 processing total 45.49 total_tax 7.26 | line subtotal 33.33 total 33.33 total_tax 6.33 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '6.33', '0.93')] | against 38.23: differs
+  B1 against the cart's total_price: order 281 processing total 39.16 total_tax 6.25 | line subtotal 28.01 total 28.01 total_tax 5.32 | shipping 4.90 tax 0.93 | tax_lines [('MwSt.', 19, '5.32', '0.93')] | against 39.16: EQUAL
+ parcel at 20.00 to FR  Paris 75001
+  cart: items 16.81 +tax 3.36 | shipping 9.90 +tax 1.98 | total_tax 5.34 | total_price 32.05 | tax_lines [('TVA', '20%', '5.34')]
+  cart line: prices.price 20.17 line_subtotal 16.81 line_subtotal_tax 3.36
+  cheapest rate: flat_rate:9 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 282 processing total 35.88 total_tax 5.98 | line subtotal 20.00 total 20.00 total_tax 4.00 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '4.00', '1.98')] | against 29.90: differs
+  B1 against the cart's total_price: order 283 processing total 32.05 total_tax 5.34 | line subtotal 16.81 total 16.81 total_tax 3.36 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.36', '1.98')] | against 32.05: EQUAL
+ parcel at 0.99 to FR  Paris 75001
+  cart: items 0.83 +tax 0.17 | shipping 9.90 +tax 1.98 | total_tax 2.15 | total_price 12.88 | tax_lines [('TVA', '20%', '2.15')]
+  cart line: prices.price 1.00 line_subtotal 0.83 line_subtotal_tax 0.17
+  cheapest rate: flat_rate:9 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 284 processing total 13.07 total_tax 2.18 | line subtotal 0.99 total 0.99 total_tax 0.20 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '0.20', '1.98')] | against 10.89: differs
+  B1 against the cart's total_price: order 285 processing total 12.88 total_tax 2.15 | line subtotal 0.83 total 0.83 total_tax 0.17 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '0.17', '1.98')] | against 12.88: EQUAL
+ parcel at 19.95 to FR  Paris 75001
+  cart: items 16.76 +tax 3.35 | shipping 9.90 +tax 1.98 | total_tax 5.33 | total_price 31.99 | tax_lines [('TVA', '20%', '5.33')]
+  cart line: prices.price 20.11 line_subtotal 16.76 line_subtotal_tax 3.35
+  cheapest rate: flat_rate:9 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 286 processing total 35.82 total_tax 5.97 | line subtotal 19.95 total 19.95 total_tax 3.99 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.99', '1.98')] | against 29.85: differs
+  B1 against the cart's total_price: order 287 processing total 31.99 total_tax 5.33 | line subtotal 16.76 total 16.76 total_tax 3.35 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.35', '1.98')] | against 31.99: EQUAL
+ parcel at 33.33 to FR  Paris 75001
+  cart: items 28.01 +tax 5.60 | shipping 9.90 +tax 1.98 | total_tax 7.58 | total_price 45.49 | tax_lines [('TVA', '20%', '7.58')]
+  cart line: prices.price 33.61 line_subtotal 28.01 line_subtotal_tax 5.60
+  cheapest rate: flat_rate:9 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 288 processing total 51.88 total_tax 8.65 | line subtotal 33.33 total 33.33 total_tax 6.67 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '6.67', '1.98')] | against 43.23: differs
+  B1 against the cart's total_price: order 289 processing total 45.49 total_tax 7.58 | line subtotal 28.01 total 28.01 total_tax 5.60 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '5.60', '1.98')] | against 45.49: EQUAL
+
+######## mode de taxable flat
+mode de: base DE:DE-BE, calc_taxes yes, prices_include_tax yes, shipping taxable, flat yes, rates 2
+== Q4 Germany with the same gross price for every buyer
+  cart: items 0.83 +tax 0.17 | shipping 0.00 +tax 0.00 | total_tax 0.17 | total_price 1.00 | tax_lines [('TVA', '20%', '0.17')]
+  cart line: prices.price 1.00 line_subtotal 0.83 line_subtotal_tax 0.17
+  price with a cart token placed in Paris: wc/v3 price 1.00, store prices.price 1.00
+  B1, billing FR: order 290 completed total 1.01 total_tax 0.17 | line subtotal 0.84 total 0.84 total_tax 0.17 | tax_lines [('TVA', 20, '0.17', '0.00')] | against 1.00: differs
+ parcel at 20.00 to FR  Paris 75001
+  cart: items 16.67 +tax 3.33 | shipping 9.90 +tax 1.98 | total_tax 5.31 | total_price 31.88 | tax_lines [('TVA', '20%', '5.31')]
+  cart line: prices.price 20.00 line_subtotal 16.67 line_subtotal_tax 3.33
+  cheapest rate: flat_rate:11 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 291 processing total 35.88 total_tax 5.98 | line subtotal 20.00 total 20.00 total_tax 4.00 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '4.00', '1.98')] | against 29.90: differs
+  B1 against the cart's total_price: order 292 processing total 32.05 total_tax 5.34 | line subtotal 16.81 total 16.81 total_tax 3.36 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.36', '1.98')] | against 31.88: differs
+ parcel at 0.99 to FR  Paris 75001
+  cart: items 0.83 +tax 0.16 | shipping 9.90 +tax 1.98 | total_tax 2.14 | total_price 12.87 | tax_lines [('TVA', '20%', '2.14')]
+  cart line: prices.price 0.99 line_subtotal 0.83 line_subtotal_tax 0.16
+  cheapest rate: flat_rate:11 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 293 processing total 13.07 total_tax 2.18 | line subtotal 0.99 total 0.99 total_tax 0.20 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '0.20', '1.98')] | against 10.89: differs
+  B1 against the cart's total_price: order 294 processing total 12.88 total_tax 2.15 | line subtotal 0.83 total 0.83 total_tax 0.17 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '0.17', '1.98')] | against 12.87: differs
+ parcel at 19.95 to FR  Paris 75001
+  cart: items 16.63 +tax 3.32 | shipping 9.90 +tax 1.98 | total_tax 5.30 | total_price 31.83 | tax_lines [('TVA', '20%', '5.30')]
+  cart line: prices.price 19.95 line_subtotal 16.63 line_subtotal_tax 3.32
+  cheapest rate: flat_rate:11 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 295 processing total 35.82 total_tax 5.97 | line subtotal 19.95 total 19.95 total_tax 3.99 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.99', '1.98')] | against 29.85: differs
+  B1 against the cart's total_price: order 296 processing total 31.99 total_tax 5.33 | line subtotal 16.76 total 16.76 total_tax 3.35 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '3.35', '1.98')] | against 31.83: differs
+ parcel at 33.33 to FR  Paris 75001
+  cart: items 27.78 +tax 5.55 | shipping 9.90 +tax 1.98 | total_tax 7.53 | total_price 45.21 | tax_lines [('TVA', '20%', '7.53')]
+  cart line: prices.price 33.33 line_subtotal 27.78 line_subtotal_tax 5.55
+  cheapest rate: flat_rate:11 Standard price 9.90 taxes 1.98
+  B0 against goods + rate: order 297 processing total 51.88 total_tax 8.65 | line subtotal 33.33 total 33.33 total_tax 6.67 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '6.67', '1.98')] | against 43.23: differs
+  B1 against the cart's total_price: order 298 processing total 45.49 total_tax 7.58 | line subtotal 28.01 total 28.01 total_tax 5.60 | shipping 9.90 tax 1.98 | tax_lines [('TVA', 20, '5.60', '1.98')] | against 45.21: differs
+
+######## mode us taxable
+mode us: base US:WA, calc_taxes yes, prices_include_tax no, shipping taxable, flat no, rates 2
+== Q1 Seattle, prices exclude tax, display excl
+  price read without a cart token: wc/v3 price 1.00, store prices.price 1.00
+-- option woocommerce_tax_display_shop = incl
+  price with display incl: wc/v3 price 1.00, store prices.price 1.11
+  cart: items 1.00 +tax 0.00 | shipping 0.00 +tax 0.00 | total_tax 0.00 | total_price 1.00 | tax_lines []
+  cart line: prices.price 1.00 line_subtotal 1.00 line_subtotal_tax 0.00
+  price with display incl and a cart token placed in San Francisco: wc/v3 price 1.00, store prices.price 1.11
+-- option woocommerce_tax_display_shop = excl
+== Q2/Q6 Seattle downloads, round at subtotal no
+ download 20 at 1.00
+  B0: order 299 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  B1: order 300 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  cart: items 1.00 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.07 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.00 line_subtotal 1.00 line_subtotal_tax 0.07
+ download 21 at 2.00
+  B0: order 301 completed total 2.21 total_tax 0.21 | line subtotal 2.00 total 2.00 total_tax 0.21 | tax_lines [('WA State', 6.5, '0.13', '0.00'), ('Seattle', 4.05, '0.08', '0.00')] | against 2.00: differs
+  B1: order 302 completed total 2.21 total_tax 0.21 | line subtotal 2.00 total 2.00 total_tax 0.21 | tax_lines [('WA State', 6.5, '0.13', '0.00'), ('Seattle', 4.05, '0.08', '0.00')] | against 2.00: differs
+  cart: items 2.00 +tax 0.13 | shipping 0.00 +tax 0.00 | total_tax 0.13 | total_price 2.13 | tax_lines [('WA State', '6.5%', '0.13')]
+  cart line: prices.price 2.00 line_subtotal 2.00 line_subtotal_tax 0.13
+ download 23 at 0.99
+  B0: order 303 completed total 1.09 total_tax 0.10 | line subtotal 0.99 total 0.99 total_tax 0.10 | tax_lines [('WA State', 6.5, '0.06', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 0.99: differs
+  B1: order 304 completed total 1.09 total_tax 0.10 | line subtotal 0.99 total 0.99 total_tax 0.10 | tax_lines [('WA State', 6.5, '0.06', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 0.99: differs
+  cart: items 0.99 +tax 0.06 | shipping 0.00 +tax 0.00 | total_tax 0.06 | total_price 1.05 | tax_lines [('WA State', '6.5%', '0.06')]
+  cart line: prices.price 0.99 line_subtotal 0.99 line_subtotal_tax 0.06
+ download 29 at 1.03
+  B0: order 305 completed total 1.14 total_tax 0.11 | line subtotal 1.03 total 1.03 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.03: differs
+  B1: order 306 completed total 1.14 total_tax 0.11 | line subtotal 1.03 total 1.03 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.03: differs
+  cart: items 1.03 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.10 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.03 line_subtotal 1.03 line_subtotal_tax 0.07
+ download 30 at 1.06
+  B0: order 307 completed total 1.17 total_tax 0.11 | line subtotal 1.06 total 1.06 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.06: differs
+  B1: order 308 completed total 1.17 total_tax 0.11 | line subtotal 1.06 total 1.06 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.06: differs
+  cart: items 1.06 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.13 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.06 line_subtotal 1.06 line_subtotal_tax 0.07
+ download 24 at 4.55
+  B0: order 309 completed total 5.03 total_tax 0.48 | line subtotal 4.55 total 4.55 total_tax 0.48 | tax_lines [('WA State', 6.5, '0.30', '0.00'), ('Seattle', 4.05, '0.18', '0.00')] | against 4.55: differs
+  B1: order 310 completed total 5.03 total_tax 0.48 | line subtotal 4.55 total 4.55 total_tax 0.48 | tax_lines [('WA State', 6.5, '0.30', '0.00'), ('Seattle', 4.05, '0.18', '0.00')] | against 4.55: differs
+  cart: items 4.55 +tax 0.30 | shipping 0.00 +tax 0.00 | total_tax 0.30 | total_price 4.85 | tax_lines [('WA State', '6.5%', '0.30')]
+  cart line: prices.price 4.55 line_subtotal 4.55 line_subtotal_tax 0.30
+ download 25 at 9.99
+  B0: order 311 completed total 11.04 total_tax 1.05 | line subtotal 9.99 total 9.99 total_tax 1.05 | tax_lines [('WA State', 6.5, '0.65', '0.00'), ('Seattle', 4.05, '0.40', '0.00')] | against 9.99: differs
+  B1: order 312 completed total 11.04 total_tax 1.05 | line subtotal 9.99 total 9.99 total_tax 1.05 | tax_lines [('WA State', 6.5, '0.65', '0.00'), ('Seattle', 4.05, '0.40', '0.00')] | against 9.99: differs
+  cart: items 9.99 +tax 0.65 | shipping 0.00 +tax 0.00 | total_tax 0.65 | total_price 10.64 | tax_lines [('WA State', '6.5%', '0.65')]
+  cart line: prices.price 9.99 line_subtotal 9.99 line_subtotal_tax 0.65
+ download 26 at 19.95
+  B0: order 313 completed total 22.06 total_tax 2.11 | line subtotal 19.95 total 19.95 total_tax 2.11 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 19.95: differs
+  B1: order 314 completed total 22.06 total_tax 2.11 | line subtotal 19.95 total 19.95 total_tax 2.11 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 19.95: differs
+  cart: items 19.95 +tax 1.30 | shipping 0.00 +tax 0.00 | total_tax 1.30 | total_price 21.25 | tax_lines [('WA State', '6.5%', '1.30')]
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 1.30
+ download 27 at 33.33
+  B0: order 315 completed total 36.85 total_tax 3.52 | line subtotal 33.33 total 33.33 total_tax 3.52 | tax_lines [('WA State', 6.5, '2.17', '0.00'), ('Seattle', 4.05, '1.35', '0.00')] | against 33.33: differs
+  B1: order 316 completed total 36.85 total_tax 3.52 | line subtotal 33.33 total 33.33 total_tax 3.52 | tax_lines [('WA State', 6.5, '2.17', '0.00'), ('Seattle', 4.05, '1.35', '0.00')] | against 33.33: differs
+  cart: items 33.33 +tax 2.17 | shipping 0.00 +tax 0.00 | total_tax 2.17 | total_price 35.50 | tax_lines [('WA State', '6.5%', '2.17')]
+  cart line: prices.price 33.33 line_subtotal 33.33 line_subtotal_tax 2.17
+ download 28 at 99.99
+  B0: order 317 completed total 110.54 total_tax 10.55 | line subtotal 99.99 total 99.99 total_tax 10.55 | tax_lines [('WA State', 6.5, '6.50', '0.00'), ('Seattle', 4.05, '4.05', '0.00')] | against 99.99: differs
+  B1: order 318 completed total 110.54 total_tax 10.55 | line subtotal 99.99 total 99.99 total_tax 10.55 | tax_lines [('WA State', 6.5, '6.50', '0.00'), ('Seattle', 4.05, '4.05', '0.00')] | against 99.99: differs
+  cart: items 99.99 +tax 6.50 | shipping 0.00 +tax 0.00 | total_tax 6.50 | total_price 106.49 | tax_lines [('WA State', '6.5%', '6.50')]
+  cart line: prices.price 99.99 line_subtotal 99.99 line_subtotal_tax 6.50
+-- option woocommerce_tax_round_at_subtotal = yes
+== Q6 Seattle downloads, round at subtotal yes
+ download 20 at 1.00
+  B1: order 319 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  cart: items 1.00 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.07 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.00 line_subtotal 1.00 line_subtotal_tax 0.07
+ download 21 at 2.00
+  B1: order 320 completed total 2.21 total_tax 0.21 | line subtotal 2.00 total 2.00 total_tax 0.21 | tax_lines [('WA State', 6.5, '0.13', '0.00'), ('Seattle', 4.05, '0.08', '0.00')] | against 2.00: differs
+  cart: items 2.00 +tax 0.13 | shipping 0.00 +tax 0.00 | total_tax 0.13 | total_price 2.13 | tax_lines [('WA State', '6.5%', '0.13')]
+  cart line: prices.price 2.00 line_subtotal 2.00 line_subtotal_tax 0.13
+ download 23 at 0.99
+  B1: order 321 completed total 1.09 total_tax 0.10 | line subtotal 0.99 total 0.99 total_tax 0.10 | tax_lines [('WA State', 6.5, '0.06', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 0.99: differs
+  cart: items 0.99 +tax 0.06 | shipping 0.00 +tax 0.00 | total_tax 0.06 | total_price 1.05 | tax_lines [('WA State', '6.5%', '0.06')]
+  cart line: prices.price 0.99 line_subtotal 0.99 line_subtotal_tax 0.06
+ download 29 at 1.03
+  B1: order 322 completed total 1.14 total_tax 0.11 | line subtotal 1.03 total 1.03 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.03: differs
+  cart: items 1.03 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.10 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.03 line_subtotal 1.03 line_subtotal_tax 0.07
+ download 30 at 1.06
+  B1: order 323 completed total 1.17 total_tax 0.11 | line subtotal 1.06 total 1.06 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.06: differs
+  cart: items 1.06 +tax 0.07 | shipping 0.00 +tax 0.00 | total_tax 0.07 | total_price 1.13 | tax_lines [('WA State', '6.5%', '0.07')]
+  cart line: prices.price 1.06 line_subtotal 1.06 line_subtotal_tax 0.07
+ download 24 at 4.55
+  B1: order 324 completed total 5.03 total_tax 0.48 | line subtotal 4.55 total 4.55 total_tax 0.48 | tax_lines [('WA State', 6.5, '0.30', '0.00'), ('Seattle', 4.05, '0.18', '0.00')] | against 4.55: differs
+  cart: items 4.55 +tax 0.30 | shipping 0.00 +tax 0.00 | total_tax 0.30 | total_price 4.85 | tax_lines [('WA State', '6.5%', '0.30')]
+  cart line: prices.price 4.55 line_subtotal 4.55 line_subtotal_tax 0.30
+ download 25 at 9.99
+  B1: order 325 completed total 11.04 total_tax 1.05 | line subtotal 9.99 total 9.99 total_tax 1.05 | tax_lines [('WA State', 6.5, '0.65', '0.00'), ('Seattle', 4.05, '0.40', '0.00')] | against 9.99: differs
+  cart: items 9.99 +tax 0.65 | shipping 0.00 +tax 0.00 | total_tax 0.65 | total_price 10.64 | tax_lines [('WA State', '6.5%', '0.65')]
+  cart line: prices.price 9.99 line_subtotal 9.99 line_subtotal_tax 0.65
+ download 26 at 19.95
+  B1: order 326 completed total 22.05 total_tax 2.10 | line subtotal 19.95 total 19.95 total_tax 2.10 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 19.95: differs
+  cart: items 19.95 +tax 1.30 | shipping 0.00 +tax 0.00 | total_tax 1.30 | total_price 21.25 | tax_lines [('WA State', '6.5%', '1.30')]
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 1.30
+ download 27 at 33.33
+  B1: order 327 completed total 36.85 total_tax 3.52 | line subtotal 33.33 total 33.33 total_tax 3.52 | tax_lines [('WA State', 6.5, '2.17', '0.00'), ('Seattle', 4.05, '1.35', '0.00')] | against 33.33: differs
+  cart: items 33.33 +tax 2.17 | shipping 0.00 +tax 0.00 | total_tax 2.17 | total_price 35.50 | tax_lines [('WA State', '6.5%', '2.17')]
+  cart line: prices.price 33.33 line_subtotal 33.33 line_subtotal_tax 2.17
+ download 28 at 99.99
+  B1: order 328 completed total 110.54 total_tax 10.55 | line subtotal 99.99 total 99.99 total_tax 10.55 | tax_lines [('WA State', 6.5, '6.50', '0.00'), ('Seattle', 4.05, '4.05', '0.00')] | against 99.99: differs
+  cart: items 99.99 +tax 6.50 | shipping 0.00 +tax 0.00 | total_tax 6.50 | total_price 106.49 | tax_lines [('WA State', '6.5%', '6.50')]
+  cart line: prices.price 99.99 line_subtotal 99.99 line_subtotal_tax 6.50
+-- option woocommerce_tax_round_at_subtotal = no
+== Q6 Seattle, which location a download is taxed at
+-- option woocommerce_tax_based_on = shipping
+  B1, no address: order 329 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  B1, billing US: order 330 completed total 1.00 total_tax 0.00 | line subtotal 1.00 total 1.00 total_tax 0.00 | tax_lines [] | against 1.00: EQUAL
+-- option woocommerce_tax_based_on = billing
+  B1, no address: order 331 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  B1, billing US: order 332 completed total 1.00 total_tax 0.00 | line subtotal 1.00 total 1.00 total_tax 0.00 | tax_lines [] | against 1.00: EQUAL
+-- option woocommerce_tax_based_on = base
+  B1, no address: order 333 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+  B1, billing US: order 334 completed total 1.11 total_tax 0.11 | line subtotal 1.00 total 1.00 total_tax 0.11 | tax_lines [('WA State', 6.5, '0.07', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 1.00: differs
+-- option woocommerce_tax_based_on = shipping
+== Q5 Seattle parcels, shipping taxable
+ parcel at 20.00 to US WA Seattle 98101
+  cart: items 20.00 +tax 2.11 | shipping 6.00 +tax 0.63 | total_tax 2.74 | total_price 28.74 | tax_lines [('WA State', '6.5%', '1.69'), ('Seattle', '4.05%', '1.05')]
+  cart line: prices.price 20.00 line_subtotal 20.00 line_subtotal_tax 2.11
+  cheapest rate: flat_rate:12 Standard price 6.00 taxes 0.63
+  B0 against goods + rate: order 335 processing total 28.74 total_tax 2.74 | line subtotal 20.00 total 20.00 total_tax 2.11 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '1.30', '0.39'), ('Seattle', 4.05, '0.81', '0.24')] | against 26.00: differs
+  B1 against the cart's total_price: order 336 processing total 28.74 total_tax 2.74 | line subtotal 20.00 total 20.00 total_tax 2.11 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '1.30', '0.39'), ('Seattle', 4.05, '0.81', '0.24')] | against 28.74: EQUAL
+ parcel at 0.99 to US WA Seattle 98101
+  cart: items 0.99 +tax 0.10 | shipping 6.00 +tax 0.63 | total_tax 0.73 | total_price 7.72 | tax_lines [('WA State', '6.5%', '0.45'), ('Seattle', '4.05%', '0.28')]
+  cart line: prices.price 0.99 line_subtotal 0.99 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:12 Standard price 6.00 taxes 0.63
+  B0 against goods + rate: order 337 processing total 7.72 total_tax 0.73 | line subtotal 0.99 total 0.99 total_tax 0.10 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '0.06', '0.39'), ('Seattle', 4.05, '0.04', '0.24')] | against 6.99: differs
+  B1 against the cart's total_price: order 338 processing total 7.72 total_tax 0.73 | line subtotal 0.99 total 0.99 total_tax 0.10 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '0.06', '0.39'), ('Seattle', 4.05, '0.04', '0.24')] | against 7.72: EQUAL
+ parcel at 19.95 to US WA Seattle 98101
+  cart: items 19.95 +tax 2.11 | shipping 6.00 +tax 0.63 | total_tax 2.74 | total_price 28.69 | tax_lines [('WA State', '6.5%', '1.69'), ('Seattle', '4.05%', '1.05')]
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 2.11
+  cheapest rate: flat_rate:12 Standard price 6.00 taxes 0.63
+  B0 against goods + rate: order 339 processing total 28.69 total_tax 2.74 | line subtotal 19.95 total 19.95 total_tax 2.11 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '1.30', '0.39'), ('Seattle', 4.05, '0.81', '0.24')] | against 25.95: differs
+  B1 against the cart's total_price: order 340 processing total 28.69 total_tax 2.74 | line subtotal 19.95 total 19.95 total_tax 2.11 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '1.30', '0.39'), ('Seattle', 4.05, '0.81', '0.24')] | against 28.69: EQUAL
+ parcel at 33.33 to US WA Seattle 98101
+  cart: items 33.33 +tax 3.52 | shipping 6.00 +tax 0.63 | total_tax 4.15 | total_price 43.48 | tax_lines [('WA State', '6.5%', '2.56'), ('Seattle', '4.05%', '1.59')]
+  cart line: prices.price 33.33 line_subtotal 33.33 line_subtotal_tax 3.52
+  cheapest rate: flat_rate:12 Standard price 6.00 taxes 0.63
+  B0 against goods + rate: order 341 processing total 43.48 total_tax 4.15 | line subtotal 33.33 total 33.33 total_tax 3.52 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '2.17', '0.39'), ('Seattle', 4.05, '1.35', '0.24')] | against 39.33: differs
+  B1 against the cart's total_price: order 342 processing total 43.48 total_tax 4.15 | line subtotal 33.33 total 33.33 total_tax 3.52 | shipping 6.00 tax 0.63 | tax_lines [('WA State', 6.5, '2.17', '0.39'), ('Seattle', 4.05, '1.35', '0.24')] | against 43.48: EQUAL
+ parcel at 20.00 to US CA San Francisco 94105
+  cart: items 20.00 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 27.50 | tax_lines []
+  cart line: prices.price 20.00 line_subtotal 20.00 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 343 processing total 27.50 total_tax 0.00 | line subtotal 20.00 total 20.00 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.50: EQUAL
+  B1 against the cart's total_price: order 344 processing total 27.50 total_tax 0.00 | line subtotal 20.00 total 20.00 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.50: EQUAL
+ parcel at 0.99 to US CA San Francisco 94105
+  cart: items 0.99 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 8.49 | tax_lines []
+  cart line: prices.price 0.99 line_subtotal 0.99 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 345 processing total 8.49 total_tax 0.00 | line subtotal 0.99 total 0.99 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.49: EQUAL
+  B1 against the cart's total_price: order 346 processing total 8.49 total_tax 0.00 | line subtotal 0.99 total 0.99 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 8.49: EQUAL
+ parcel at 19.95 to US CA San Francisco 94105
+  cart: items 19.95 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 27.45 | tax_lines []
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 347 processing total 27.45 total_tax 0.00 | line subtotal 19.95 total 19.95 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.45: EQUAL
+  B1 against the cart's total_price: order 348 processing total 27.45 total_tax 0.00 | line subtotal 19.95 total 19.95 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 27.45: EQUAL
+ parcel at 33.33 to US CA San Francisco 94105
+  cart: items 33.33 +tax 0.00 | shipping 7.50 +tax 0.00 | total_tax 0.00 | total_price 40.83 | tax_lines []
+  cart line: prices.price 33.33 line_subtotal 33.33 line_subtotal_tax 0.00
+  cheapest rate: flat_rate:2 Standard price 7.50 taxes 0.00
+  B0 against goods + rate: order 349 processing total 40.83 total_tax 0.00 | line subtotal 33.33 total 33.33 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 40.83: EQUAL
+  B1 against the cart's total_price: order 350 processing total 40.83 total_tax 0.00 | line subtotal 33.33 total 33.33 total_tax 0.00 | shipping 7.50 tax 0.00 | tax_lines [] | against 40.83: EQUAL
+
+######## mode us none
+mode us: base US:WA, calc_taxes yes, prices_include_tax no, shipping none, flat no, rates 2
+== Q5 Seattle parcels, shipping untaxed
+ parcel at 20.00 to US WA Seattle 98101
+  cart: items 20.00 +tax 2.11 | shipping 6.00 +tax 0.00 | total_tax 2.11 | total_price 28.11 | tax_lines [('WA State', '6.5%', '1.30'), ('Seattle', '4.05%', '0.81')]
+  cart line: prices.price 20.00 line_subtotal 20.00 line_subtotal_tax 2.11
+  cheapest rate: flat_rate:13 Standard price 6.00 taxes 0.00
+  B0 against goods + rate: order 351 processing total 28.11 total_tax 2.11 | line subtotal 20.00 total 20.00 total_tax 2.11 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 26.00: differs
+  B1 against the cart's total_price: order 352 processing total 28.11 total_tax 2.11 | line subtotal 20.00 total 20.00 total_tax 2.11 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 28.11: EQUAL
+ parcel at 0.99 to US WA Seattle 98101
+  cart: items 0.99 +tax 0.10 | shipping 6.00 +tax 0.00 | total_tax 0.10 | total_price 7.09 | tax_lines [('WA State', '6.5%', '0.06'), ('Seattle', '4.05%', '0.04')]
+  cart line: prices.price 0.99 line_subtotal 0.99 line_subtotal_tax 0.10
+  cheapest rate: flat_rate:13 Standard price 6.00 taxes 0.00
+  B0 against goods + rate: order 353 processing total 7.09 total_tax 0.10 | line subtotal 0.99 total 0.99 total_tax 0.10 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '0.06', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 6.99: differs
+  B1 against the cart's total_price: order 354 processing total 7.09 total_tax 0.10 | line subtotal 0.99 total 0.99 total_tax 0.10 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '0.06', '0.00'), ('Seattle', 4.05, '0.04', '0.00')] | against 7.09: EQUAL
+ parcel at 19.95 to US WA Seattle 98101
+  cart: items 19.95 +tax 2.11 | shipping 6.00 +tax 0.00 | total_tax 2.11 | total_price 28.06 | tax_lines [('WA State', '6.5%', '1.30'), ('Seattle', '4.05%', '0.81')]
+  cart line: prices.price 19.95 line_subtotal 19.95 line_subtotal_tax 2.11
+  cheapest rate: flat_rate:13 Standard price 6.00 taxes 0.00
+  B0 against goods + rate: order 355 processing total 28.06 total_tax 2.11 | line subtotal 19.95 total 19.95 total_tax 2.11 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 25.95: differs
+  B1 against the cart's total_price: order 356 processing total 28.06 total_tax 2.11 | line subtotal 19.95 total 19.95 total_tax 2.11 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '1.30', '0.00'), ('Seattle', 4.05, '0.81', '0.00')] | against 28.06: EQUAL
+ parcel at 33.33 to US WA Seattle 98101
+  cart: items 33.33 +tax 3.52 | shipping 6.00 +tax 0.00 | total_tax 3.52 | total_price 42.85 | tax_lines [('WA State', '6.5%', '2.17'), ('Seattle', '4.05%', '1.35')]
+  cart line: prices.price 33.33 line_subtotal 33.33 line_subtotal_tax 3.52
+  cheapest rate: flat_rate:13 Standard price 6.00 taxes 0.00
+  B0 against goods + rate: order 357 processing total 42.85 total_tax 3.52 | line subtotal 33.33 total 33.33 total_tax 3.52 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '2.17', '0.00'), ('Seattle', 4.05, '1.35', '0.00')] | against 39.33: differs
+  B1 against the cart's total_price: order 358 processing total 42.85 total_tax 3.52 | line subtotal 33.33 total 33.33 total_tax 3.52 | shipping 6.00 tax 0.00 | tax_lines [('WA State', 6.5, '2.17', '0.00'), ('Seattle', 4.05, '1.35', '0.00')] | against 42.85: EQUAL
+
+######## mode off none
+mode off: base US:CA, calc_taxes no, prices_include_tax no, shipping none, flat no, rates 0

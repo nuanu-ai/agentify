@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import type { Delivery, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
+import { withinACent } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -229,6 +230,7 @@ const recover = async (
       permissionFor(connection, made, inspected.product, person.email),
       made.id,
       made.number,
+      made.total,
       parts,
       gateway,
     );
@@ -249,6 +251,7 @@ const recover = async (
   const differences = differencesOf(
     looked.order,
     record.facts,
+    inspected.product.tax,
     person.email,
     request.orderId,
     request.wooOrderId,
@@ -270,6 +273,7 @@ const recover = async (
     permission,
     looked.order.id,
     looked.order.number,
+    looked.order.total,
     parts,
     gateway,
   );
@@ -280,12 +284,13 @@ const bindAndDeliver = async (
   permission: WooPermission,
   wooOrderId: string,
   number: string,
+  total: string,
   parts: Omit<WooRecoveryParts, "identity">,
   gateway: RecoveryGateway,
 ): Promise<WooRecoveryOutcome> => {
   const bound = await parts.shops.recordOrder(
     orderId,
-    { id: wooOrderId, number, permission },
+    { id: wooOrderId, number, permission, total },
     parts.now(),
   );
   if (!bound) {
@@ -345,15 +350,26 @@ const sameProduct = (
   product.price.amount === facts.amount &&
   product.price.currency === facts.currency;
 
-/** What the merchant can check in their shop, one clause for each fact that differs. */
+/**
+ * What the merchant can check in their shop, one clause for each fact that
+ * differs. The tax is the one the sale was quoted under, which the accepted
+ * fingerprint holds: where prices hold their tax, the line holds the amount
+ * before it and the tax is the shop's record, so only the total is the price.
+ */
 const differencesOf = (
   order: WooOrderRead,
   facts: WooOrderFacts,
+  tax: SoldItem["tax"],
   email: string,
   orderId: string,
   wooOrderId: string,
 ): string[] => {
   const price = `${facts.amount} ${facts.currency}`;
+  const untaxed =
+    order.subtotal === facts.amount &&
+    order.lineTotal === facts.amount &&
+    order.totalTax === "0.00" &&
+    order.lineTax === "0.00";
   return [
     order.id !== wooOrderId || order.orderKey === ""
       ? "the shop answered with a different order"
@@ -361,14 +377,13 @@ const differencesOf = (
     ["processing", "completed"].includes(order.status)
       ? null
       : `its status is ${order.status}, not Processing or Completed`,
-    order.currency === facts.currency &&
-    order.total === facts.amount &&
-    order.subtotal === facts.amount &&
-    order.lineTotal === facts.amount &&
-    order.totalTax === "0.00" &&
-    order.lineTax === "0.00"
-      ? null
-      : `its total is not ${price} with no tax`,
+    tax.mode === "off"
+      ? order.currency === facts.currency && withinACent(order.total, facts.amount) && untaxed
+        ? null
+        : `its total is not ${price}, or within a cent of it, with no tax`
+      : order.currency === facts.currency && withinACent(order.total, facts.amount)
+        ? null
+        : `its total is not ${price}, or within a cent of it`,
     order.paymentMethod === "agentify" ? null : "it was not paid with Agentify",
     order.transactionId === orderId ? null : "its Transaction ID is not this Agentify order ID",
     order.billingEmail === email ? null : `its billing email is not ${email}`,
@@ -385,7 +400,7 @@ const soldItem = (
   orderId: string,
   email: string,
   facts: WooOrderFacts,
-  product: { downloadId: string; fileName: string },
+  product: { downloadId: string; fileName: string; tax: SoldItem["tax"] },
   paidInto: PaidIntoSplit | null,
 ): SoldItem => ({
   orderId,
@@ -394,6 +409,7 @@ const soldItem = (
   price: { amount: facts.amount, currency: facts.currency },
   download: { id: product.downloadId, name: product.fileName },
   paidInto,
+  tax: product.tax,
 });
 
 const permissionFor = (

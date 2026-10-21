@@ -1,5 +1,5 @@
 {
-  "id": "97474a7d-985f-4cf5-bcea-7cc622e10822",
+  "id": "1e86c71d-55bf-4fd0-862b-56480175838e",
   "prevId": "f70debcf-0ad4-4970-928e-1a5681f46a27",
   "version": "7",
   "dialect": "postgresql",
@@ -369,12 +369,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "client_hash": {
-          "name": "client_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "purpose": {
           "name": "purpose",
           "type": "text",
@@ -404,54 +398,6 @@
               "asc": true,
               "nulls": "last"
             },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "dashboard_link_sends_client_idx": {
-          "name": "dashboard_link_sends_client_idx",
-          "columns": [
-            {
-              "expression": "client_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "dashboard_link_sends_channel_idx": {
-          "name": "dashboard_link_sends_channel_idx",
-          "columns": [
             {
               "expression": "purpose",
               "isExpression": false,
@@ -865,6 +811,12 @@
         },
         "woo_order_number": {
           "name": "woo_order_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "woo_order_total": {
+          "name": "woo_order_total",
           "type": "text",
           "primaryKey": false,
           "notNull": false

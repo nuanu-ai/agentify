@@ -225,7 +225,7 @@ something fails, so the product decides it:
 | --- | --- | --- |
 | Your API hands it over within ten seconds of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
 | It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own or a day | at the moment of purchase |
-| A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping your price handler names |
+| A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping and any tax your price handler names |
 | A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
 | A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
 | Every order has to be confirmed by hand before the buyer pays | none: no mode lets you confirm an order before the buyer pays | — |
@@ -266,8 +266,9 @@ and on the order as the instant the parcel has to be shipped by. It declares no
 `result` and no `fulfill_deadline_seconds`, because what the agent receives is
 the record of the shipment rather than goods you describe. It asks for its
 price with your price handler (`price_check: 'handler'`), and that answer is
-the whole price with shipping, for the place the parcel goes: the price on the
-card is the goods without shipping. And it asks for no address among its
+the whole price with shipping and any tax, for the place the parcel goes: the
+price on the card is the goods without shipping or a tax that depends on the
+place. And it asks for no address among its
 `params`, because the purchase carries the address in a block of its own.
 
 Answering the price question with "not available" refuses the sale, and on a

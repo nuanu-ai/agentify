@@ -75,9 +75,10 @@ export function atomicUnits(amount: string, decimals: number): string {
 }
 
 const PARCEL_LISTED =
-  "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping included";
+  "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping and any tax for it included";
 
-const PARCEL_PRICED = "this is a parcel: the amount asked includes shipping to the address named";
+const PARCEL_PRICED =
+  "this is a parcel: the amount asked includes shipping to the address named and any tax for it";
 
 /**
  * Every reason a challenge gives for not returning the resource. A challenge

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { ClientRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
+import { request as httpsRequest, type RequestOptions } from "node:https";
 import { describe, expect, it, vi } from "vitest";
 import { wooRequest } from "./woo-request.js";
 
@@ -9,13 +9,19 @@ vi.mock("node:dns/promises", () => ({
 }));
 vi.mock("node:https", () => ({ request: vi.fn() }));
 
-const replyFromShop = async (status: number, body = "") => {
+type ShopStatus = number | ((sent: Record<string, string>) => number);
+
+const replyFromShop = async (shop: ShopStatus, body = "") => {
   const opened = Promise.withResolvers<void>();
   const outgoing = Object.assign(new EventEmitter(), {
     setTimeout: () => outgoing,
     end: () => {},
   });
-  vi.mocked(httpsRequest).mockImplementation(() => {
+  let status = typeof shop === "number" ? shop : 502;
+  vi.mocked(httpsRequest).mockImplementation((options) => {
+    if (typeof shop === "function") {
+      status = shop((options as RequestOptions).headers as Record<string, string>);
+    }
     opened.resolve();
     return outgoing as unknown as ClientRequest;
   });
@@ -56,6 +62,12 @@ describe("responses from the WooCommerce HTTPS transport", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("text/plain");
     expect(await response.text()).toBe('{"products":[]}');
+  });
+
+  it("is answered by a shop whose firewall refuses a request that names no client", async () => {
+    const reply = await replyFromShop((sent) => (sent["user-agent"] === undefined ? 403 : 200));
+    reply.finish();
+    expect((await reply.answer).status).toBe(200);
   });
 
   it("rejects the request when the shop's status cannot become a Response", async () => {

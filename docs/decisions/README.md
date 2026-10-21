@@ -50,6 +50,7 @@ written in; the rest are in English.
 | [0036](0036-a-merchant-sells-through-one-integration-at-a-time.md) | A merchant sells through one integration at a time, the SDK or one WooCommerce shop, and the other's cards are off sale. |
 | [0041](0041-the-purchase-door-refuses-before-any-charge.md) | At most twenty of a merchant's purchases wait for payment at once; a purchase charged before its goods is refused while the merchant's own code has not polled for ten minutes; an attempt that ended with nothing charged or held is deleted thirty days on. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
+| [0041](0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md) | A WooCommerce shop that calculates tax is sold from where its cart and its order agree: downloads only with prices entered including tax, parcels at the cart's total, tax rounded at the subtotal, and every shop's order taken on within one cent of the payment, the difference recorded. |
 
 ### Parcels
 

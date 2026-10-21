@@ -397,6 +397,11 @@ export const wooOrders = pgTable(
     wooOrderId: text("woo_order_id"),
     /** The number the merchant reads on their own screen. */
     wooOrderNumber: text("woo_order_number"),
+    /**
+     * What the shop's order totals, as it recorded it: what was paid or a cent
+     * either side, which the merchant's Orders screen names where it differs.
+     */
+    wooOrderTotal: text("woo_order_total"),
     /** Immutable sold facts and the connection revision that accepted them. */
     facts: jsonb("facts").$type<Record<string, unknown>>(),
     /** Permission ingredients only; never the full bearer URL or an email. */

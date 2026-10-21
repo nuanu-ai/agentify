@@ -1,12 +1,21 @@
 # WooCommerce integration lab
 
 This is the disposable WooCommerce merchant used to exercise the Agentify
-connection flow against a realistic self-hosted shop. It is served at
-`https://woo.nuanu.ai`; the title is the only prominent indication that it is
-a test store. No WooCommerce payment gateway is enabled.
+connection flow. It is served at `https://woo.nuanu.ai`; the title is the only
+prominent indication that it is a test store.
 
-The catalogue holds two groups of product, and the difference between them is
-what the lab is for. Five virtual gift cards, with ordinary descriptions,
+Its baseline shop, which a reset restores, is built to exactly what the
+connector demands, and that is what it is for: it shows the connector doing
+what it was designed to do. It prices in US dollars with tax calculation off,
+runs WooCommerce with no other plugin, holds a handful of products none of
+which counts its stock, enables no payment method a customer could use, and
+sends its mail to nobody who reads it. A real shop differs in each of those
+ways, so a pass on the baseline says nothing about one. The realistic profile,
+described in its own section below, lays a shop shaped like the real ones over
+the baseline for the stories that need it, and a reset takes it away again.
+
+The baseline catalogue holds two groups of product, and the difference
+between them is what the baseline exists to show. Five virtual gift cards, with ordinary descriptions,
 prices and dedicated product photography, promise a brunch, a dinner for two, a
 wellness day, a creative workshop and a weekend away. No file can deliver any of
 those, so the cards carry none, and when a merchant imports the catalogue the
@@ -120,3 +129,125 @@ the destructive acceptance check: it creates an extra product, performs a
 normal reset, and proves the mutation disappeared within one minute while
 Caddy's state remained. Administrator credentials are printed by the reset
 command and stored only in the server-owned `.env` file.
+
+## The realistic profile
+
+The realistic profile turns the restored baseline into a shop shaped like the
+Indonesian WooCommerce shops counted in the census of real shops
+([research note 55](../../docs/research/55-woo-shop-census.md)), whose
+decision rule fixed what the profile contains. It is applied on the fixture
+host after a reset, priced in rupiah by default or in US dollars when asked:
+
+```sh
+./reset-store.sh
+./realistic-profile.sh        # rupiah, written with no decimals
+./realistic-profile.sh USD    # US dollars, with cents
+```
+
+The connector refuses a shop that prices in rupiah when it is connected,
+because it sells in US dollars only. The rupiah shop is the one the census
+found, and it is the one for a story about that refusal; a story that must
+connect and sell uses the same shop priced in dollars. The script can be run
+again over a shop that already holds the profile, in either currency, and
+rebuilds the same catalogue. It is not part of the baseline: a reset returns
+the shop to the baseline, and unlike a reset the profile downloads its plugins
+from wordpress.org every time it is applied. `./verify.sh` checks the baseline
+and fails on the profile by design; the profile script ends with its own
+check, which reads the public catalogue's size, make-up and currency, the
+active plugins with their versions, and the enabled payment methods, and
+stops with the first one that is not what it set.
+
+The profile installs, from wordpress.org and at pinned versions, the plugins
+the census saw on at least a fifth of the Indonesian shops: Elementor 4.3.5,
+Contact Form 7 6.2.3, Xendit's plugin for Indonesian virtual accounts
+(`woo-xendit-virtual-accounts`) 8.0.0, Click to Chat for WhatsApp 4.45 and
+Google Site Kit 1.190.0. Elementor Pro, the sixth, is sold by its vendor and
+is not published on wordpress.org, so the profile does not reproduce it. The
+plugins are installed and active but not configured as a merchant would
+configure them: Site Kit is connected to no Google account, Click to Chat has
+no phone number, no page is built with Elementor, and Xendit's payment
+methods stay off, because they need the keys of a Xendit account the lab does
+not have. What the plugins change by being active, in the shop's settings, its
+pages and its Store API, is therefore present; what they change once a
+merchant has set them up is not.
+
+The catalogue replaces the baseline's: 113 products in eight categories, 84 of
+them simple and 29 variable with 124 variations between them. Of the simple
+products in stock, 24 count their stock, at quantities from 1 to 250; seven
+products are out of stock, fifteen are on sale at a third, two fifths or half
+off, five can be bought only one at a time, and four made-to-order pieces of
+furniture have no price, as a shop shows a piece whose price it gives on
+request. Every product is physical, has a SKU by which a story can find it,
+and carries a plain name and a short description written for the lab; none
+has a photograph or a weight. The shop ships to Indonesia only, through one
+shipping zone with one flat rate, Rp 24.000 or 1.50 US dollars, which is the
+least a customer's order for a physical product needs; the census did not
+measure shipping. Tax calculation stays off as in the baseline, because the
+census could not see whether the shops calculate tax, and a story that needs
+it on sets it itself, as the throwaway copies of the lab in the WooCommerce tax
+probe did ([research note 56](../../docs/research/56-woo-tax-probe.md)).
+
+That shape is the census's measure of the 2,292 products the 29 Indonesian
+shops listed through their public catalogue. Their median catalogue held 113
+products; 74% of the products listed were simple and the rest, but one
+bundle, variable, with a median of four or five variations each; stock was
+counted, by the census's inference, for 30% of the simple products in stock;
+6% of the products were out of stock, 13% on sale with a median discount of
+42%, and 4% sold one at a time. Products without a price made up 27% of all
+listed, but almost all of them sat in five shops that show no prices at all,
+so the profile keeps four. The prices follow the rupiah prices the shops
+showed, with each shop's prices given equal weight so that the largest
+catalogues do not set the shape alone: 109 evenly spaced points of that
+distribution, rounded to Rp 500 below Rp 100.000, to Rp 1.000 below
+Rp 1.000.000 and to Rp 50.000 above, are given in ascending order to a list
+of products ordered by what each plausibly costs. The catalogue's prices run
+from Rp 2.000 to Rp 40.500.000 with a median of Rp 170.000 and quartiles of
+Rp 76.000 and Rp 490.500, against Rp 175.000, Rp 77.000 and Rp 490.000 in the
+census. The categories span the kinds of goods the shops sold, food and
+drink, body care, phone accessories, clothing, bags, homeware and furniture.
+A real shop usually sells one or two of those kinds; the lab puts them in one
+shop so that its catalogue covers the whole range of prices and product types
+the census saw. Rupiah is written as most of those shops write it, with no
+decimals, a point between thousands and the symbol before the amount. The
+dollar shop takes every rupiah price at Rp 16.000 to the dollar, a round rate
+chosen for the lab rather than a market rate, so that both currencies hold
+the same catalogue and the dollar prices carry cents.
+
+A person can order in the profile as an ordinary customer: it enables
+WooCommerce's direct bank transfer, so an order placed through the storefront
+or the Store API checkout waits on hold for a payment nobody makes. The shop's
+mail goes to a mail catcher, Mailpit, which the profile starts as the
+`realistic` Compose profile's one service and which keeps mail only while it
+runs.
+The profile adds a must-use plugin to WordPress that hands every message to
+it, so the customer's mail and the administrator's, whatever address a story
+gives the customer, land there and reach no real mailbox; the notice
+WooCommerce sends when the profile enables bank transfer is the first message
+in it. Its web interface listens on port 8025 of the fixture host's loopback
+only and is read through a tunnel:
+
+```sh
+ssh -L 8025:127.0.0.1:8025 <fixture host>
+```
+
+A reset removes the must-use plugin with the rest of the profile but leaves
+the mail catcher running with the mail it holds. It is stopped, and its mail
+discarded, with:
+
+```sh
+sudo -n docker compose --profile realistic stop mailpit
+```
+
+Two hosting signals reached the census's threshold and are not reproduced,
+because a seed script cannot set them: Cloudflare in front of the shop, and
+LiteSpeed as its web server, each on 45% of the Indonesian shops. Putting
+Cloudflare in front means serving the shop's hostname, or a test hostname of
+its own, through a Cloudflare-proxied DNS record. Cloudflare then terminates
+TLS at its edge, so the shared ingress, which today passes TLS through to the
+lab's Caddy, and the way Caddy obtains its certificate change too, and
+Cloudflare's bot settings decide what the connector meets when it calls. Using
+LiteSpeed means replacing the WordPress image's Apache with a LiteSpeed server
+built for WordPress, usually together with its LiteSpeed Cache plugin, which
+caches pages and can change what a repeated request is answered with. Both
+change DNS, the shared ingress or the fixture host, and whether to make those
+changes is the operator's decision.
