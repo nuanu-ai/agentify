@@ -18,8 +18,8 @@
  * before the commit leaves the event pending, and it is posted again with the
  * same id and time.
  *
- * Switched off, the loop sends nothing and still gives up and deletes on the
- * same terms.
+ * Switched off, the loop sends nothing, gives up every event waiting, however
+ * recent, and deletes on the same terms.
  */
 
 import { createHmac } from "node:crypto";
@@ -34,7 +34,7 @@ type Target = NonNullable<DashboardConfig["nuanuAnalytics"]>;
 
 const DEADLINE_MS = 5_000;
 const IDLE_MS = 5_000;
-/** Switched off, how often what the time left is settled. */
+/** Switched off, how often what waits is given up and what settled long ago deleted. */
 const TIDY_IDLE_MS = 60_000;
 /** How long a refusal of the configuration holds every event back. */
 const PAUSE_MS = 5 * 60_000;
@@ -177,18 +177,27 @@ async function posted(post: typeof fetch, target: Target, body: string): Promise
 
 type Transaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];
 
+type Tidied = Readonly<{ givenUp: number; why: GivenUp; gone: number }>;
+
+/** Why waiting events were given up unsent. */
+type GivenUp = "older_than_7_days" | "switched_off";
+
 /**
- * Gives up what is too old to send and deletes what settled long enough ago.
- * A row another sender holds is skipped, and met again on a later turn.
+ * Gives up what will never be sent and deletes what settled long enough ago.
+ * Sending, that is what is too old; switched off, it is every waiting event,
+ * so switching on later never releases what was recorded while it was off. A
+ * row another sender holds is skipped, and met again on a later turn.
  */
-async function tidy(tx: Transaction, at: Date): Promise<Readonly<{ old: number; gone: number }>> {
-  const old = await tx.execute(sql`
+async function tidy(tx: Transaction, at: Date, why: GivenUp): Promise<Tidied> {
+  const unsendable =
+    why === "switched_off" ? sql`true` : sql`occurred_at < ${at}::timestamptz - ${span(OLDEST_MS)}`;
+  const givenUp = await tx.execute(sql`
     update commerce_analytics_events
        set state = 'given_up', next_attempt_at = null, settled_at = ${at}::timestamptz,
-           last_outcome = 'older_than_7_days'
+           last_outcome = ${why}
      where id in (
        select id from commerce_analytics_events
-        where state = 'pending' and occurred_at < ${at}::timestamptz - ${span(OLDEST_MS)}
+        where state = 'pending' and ${unsendable}
           for update skip locked
      )
   `);
@@ -200,15 +209,15 @@ async function tidy(tx: Transaction, at: Date): Promise<Readonly<{ old: number; 
           for update skip locked
      )
   `);
-  return { old: old.rowCount ?? 0, gone: gone.rowCount ?? 0 };
+  return { givenUp: givenUp.rowCount ?? 0, why, gone: gone.rowCount ?? 0 };
 }
 
 const counted = (count: number): string => (count === 1 ? "1 event" : `${count} events`);
 
-const tellTidied = ({ old, gone }: Readonly<{ old: number; gone: number }>): void => {
-  if (old > 0) {
+const tellTidied = ({ givenUp, why, gone }: Tidied): void => {
+  if (givenUp > 0) {
     console.log(
-      `[dashboard] ${counted(old)} more than 7 days old given up unsent to Nuanu Analytics`,
+      `[dashboard] ${counted(givenUp)} ${why === "switched_off" ? "recorded while analytics are switched off" : "more than 7 days old"} given up unsent to Nuanu Analytics`,
     );
   }
   if (gone > 0) console.log(`[dashboard] ${counted(gone)} settled 30 days ago deleted`);
@@ -220,9 +229,9 @@ const tellTidied = ({ old, gone }: Readonly<{ old: number; gone: number }>): voi
  */
 export async function deliverOnce(parts: LoopParts & Readonly<{ target: Target }>): Promise<Next> {
   const now = parts.now ?? (() => new Date());
-  type Turn = Readonly<{ tidied: { old: number; gone: number }; said: string | null; next: Next }>;
+  type Turn = Readonly<{ tidied: Tidied; said: string | null; next: Next }>;
   const turn = await drizzle(parts.pool).transaction(async (tx): Promise<Turn> => {
-    const tidied = await tidy(tx, now());
+    const tidied = await tidy(tx, now(), "older_than_7_days");
     const [due] = (
       await tx.execute<Record<string, unknown>>(sql`
         select e.id, e.sequence::text as sequence, e.name,
@@ -325,7 +334,9 @@ export async function deliverOnce(parts: LoopParts & Readonly<{ target: Target }
 
 async function tidyOnce(parts: LoopParts): Promise<void> {
   const now = parts.now ?? (() => new Date());
-  tellTidied(await drizzle(parts.pool).transaction(async (tx) => await tidy(tx, now())));
+  tellTidied(
+    await drizzle(parts.pool).transaction(async (tx) => await tidy(tx, now(), "switched_off")),
+  );
 }
 
 export interface NuanuAnalytics {
@@ -335,8 +346,8 @@ export interface NuanuAnalytics {
 
 /**
  * Started on every dashboard: with a target it sends, and with none, where
- * analytics are switched off, it only gives up and deletes what the time
- * left. A turn that fails, such as one the database did not answer, is
+ * analytics are switched off, it only gives up what waits and deletes what
+ * settled long ago. A turn that fails, such as one the database did not answer, is
  * logged and the loop goes on.
  */
 export function startNuanuAnalytics(

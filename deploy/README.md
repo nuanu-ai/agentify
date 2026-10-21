@@ -896,8 +896,10 @@ its arrival, and every event that settled, sent or not, is deleted 30 days
 later. A person who opted out in the cabinet's settings is never sent about,
 nor is the merchant their account names, whoever acted. Events from TEST are
 labelled `test.agentify.ad` and tagged internal; production's are labelled
-`agentify.ad`. Turning the switch off sends nothing more, and the waiting
-events are given up and deleted on the same terms.
+`agentify.ad`. Turning the switch off sends nothing more and keeps nothing for
+later: every event waiting, and every one recorded while the switch is off, is
+given up unsent within a minute, so turning it on again never releases that
+history. Settled events are deleted on the same 30-day terms.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
