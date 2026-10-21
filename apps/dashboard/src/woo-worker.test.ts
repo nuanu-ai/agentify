@@ -2370,6 +2370,34 @@ describe("a parcel from a shop that calculates tax", () => {
     });
   });
 
+  it("prices an inclusive shop's parcel whose cart rounds the goods' two halves a cent over the price, and no further", async () => {
+    // The review's Berlin shop at 20%, a product at 1.11 sold at the shop's
+    // own address: the cart holds the goods at 0.93 before tax and 0.19 of
+    // tax, 1.12 between them, and totals 6.99 with 4.90 of shipping and its
+    // 0.98, which is right for 1.11.
+    const at = (goods: string, total: string): RatesRead =>
+      cartPricing(total, ["0.93", goods], ["R1 20%"], rate("8", "Paket", "4.90", "0.98"));
+    const atBerlin = { country: "DE", city: "Berlin", postal_code: "10115" };
+    for (const [goods, total, answer] of [
+      ["1.12", "6.99", { available: true, price: { amount: "6.99", currency: "USD" } }],
+      ["1.13", "7.00", { available: false }],
+    ] as const) {
+      const shop = parts({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "28",
+          price: { amount: "1.11", currency: "USD" },
+          tax: { mode: "included", base: BERLIN },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      });
+      const filling: Filling = { ...shop.filling, shippingRates: async () => at(goods, total) };
+
+      expect(await quoted(filling, atBerlin), goods).toMatchObject(answer);
+    }
+  });
+
   it("names no price where the place's cart holds the goods at another price than the product's", async () => {
     // As a shop's plugin that changes prices in the cart alone makes it: the
     // order made through the admin interface would charge the product's own
