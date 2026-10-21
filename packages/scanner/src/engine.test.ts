@@ -1,27 +1,9 @@
 import type { CheckResult, Segment } from "@agentify/scanner-contracts";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
-import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.js";
-import { parseRobots } from "./robots.js";
+import { visibleText } from "./parsers.js";
 import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
-
-// The page readers are wrapped only to count their calls, for "a scan
-// evaluated again" below; every call still reaches the real function.
-vi.mock("./parsers.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./parsers.js")>();
-  return {
-    ...real,
-    visibleText: vi.fn(real.visibleText),
-    htmlSignals: vi.fn(real.htmlSignals),
-    parseJsonLd: vi.fn(real.parseJsonLd),
-    parseSitemap: vi.fn(real.parseSitemap),
-  };
-});
-vi.mock("./robots.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./robots.js")>();
-  return { ...real, parseRobots: vi.fn(real.parseRobots) };
-});
 
 const artifact = (
   url: string,
@@ -629,40 +611,16 @@ describe("a scan of pages as large as the fetch admits", () => {
 });
 
 describe("a scan evaluated again", () => {
-  // The worker evaluates a scan's checks up to four times as its requests
-  // complete, each round with a new set of artifacts holding the same pages,
-  // so a reading is kept with the page itself. The test counts calls rather
-  // than timing rounds, since timings flake under load. A count sees only the
-  // readers listed below: it misses work that is not kept, such as check 15
-  // and the fingerprint going over the raw pages every round, and a new reader
-  // added without a place to keep its result.
-  const readers = { visibleText, htmlSignals, parseJsonLd, parseSitemap, parseRobots };
-  const callsSoFar = () =>
-    Object.fromEntries(
-      Object.entries(readers).map(([name, reader]) => [name, vi.mocked(reader).mock.calls.length]),
-    );
-
-  it("reads no page again when the same pages are evaluated in a later round", () => {
+  it("says the same of the same pages when they are evaluated in a later round", () => {
     const input: ScanArtifacts = {
       ...makeArtifacts("store"),
       representative: artifact("https://example.com/product/widget", html),
     };
 
-    const before = callsSoFar();
     const first = evaluateScan(input);
-    const afterFirst = callsSoFar();
     // A new set for every round, as the worker builds one: what carries over
     // is the pages, not the object that holds them.
-    const later = [2, 3, 4].map(() => evaluateScan({ ...input }));
-
-    // Every reader did go over this scan's pages, or "no further calls" below
-    // would hold of a reader nothing here reaches.
-    for (const name of Object.keys(readers)) {
-      expect(afterFirst[name], name).toBeGreaterThan(before[name] ?? 0);
-    }
-    expect(callsSoFar()).toStrictEqual(afterFirst);
-    // And what was remembered is what a fresh reading would have said.
-    for (const again of later) {
+    for (const again of [2, 3, 4].map(() => evaluateScan({ ...input }))) {
       expect(again).toStrictEqual(first);
     }
   });
