@@ -32,6 +32,7 @@ import {
 } from "react-router";
 import { type Refusal, refusalOfPost } from "./form-post.js";
 import type { PageServices } from "./page-services.js";
+import { pressReads } from "./press-reads.js";
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORKSPACE = join(APP_ROOT, "..", "..");
@@ -52,6 +53,21 @@ const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
  * `Secure` wherever the session's cookie is.
  */
 const PRESSED = "agentify.dashboard_pressed";
+
+/** A prefetch says so in a header of its own, under one of these names by browser. */
+const prefetched = (headers: Request["headers"]): boolean =>
+  [headers["sec-purpose"], headers.purpose, headers["x-moz"]].some(
+    (said) => typeof said === "string" && said.includes("prefetch"),
+  );
+
+/** The value of the press's cookie a request carried, if it carried one. */
+const pressedIn = (cookie: string | undefined): string | undefined => {
+  for (const pair of (cookie ?? "").split(";")) {
+    const at = pair.indexOf("=");
+    if (at !== -1 && pair.slice(0, at).trim() === PRESSED) return pair.slice(at + 1).trim();
+  }
+  return undefined;
+};
 
 /**
  * The pages as one build: compiled ahead of time in a deployment, or compiled
@@ -305,6 +321,8 @@ export function pagesHandler(
   const basename = services.base === "" ? "/" : services.base;
   const mounted = new WeakMap<ServerBuild, Mounted>();
   const refusals = new WeakMap<Request, Refusal>();
+  const visits = new WeakSet<Request>();
+  const reads = pressReads();
 
   const mount = (compiled: ServerBuild): Mounted => {
     const known = mounted.get(compiled);
@@ -312,13 +330,14 @@ export function pagesHandler(
     const keys = compiled.entry.module as {
       services?: RouterContext<PageServices>;
       refused?: RouterContext<Refusal | null>;
+      visit?: RouterContext<boolean>;
     };
-    const { services: key, refused } = keys;
-    if (key === undefined || refused === undefined) {
+    const { services: key, refused, visit } = keys;
+    if (key === undefined || refused === undefined || visit === undefined) {
       throw new Error(
-        "The dashboard's pages do not export the keys their services and a refused post go" +
-          " under, `services` and `refused` in app/entry.server.tsx, so no page could reach the" +
-          " session or the gateway.",
+        "The dashboard's pages do not export the keys their services, a refused post and a" +
+          " visit go under, `services`, `refused` and `visit` in app/entry.server.tsx, so no" +
+          " page could reach the session or the gateway.",
       );
     }
     const build: ServerBuild = {
@@ -342,6 +361,7 @@ export function pagesHandler(
             new Map<RouterContext<unknown>, unknown>([
               [key, services],
               [refused, refusals.get(request) ?? null],
+              [visit, visits.has(request)],
             ]),
           ),
       }) as RequestHandler,
@@ -356,10 +376,14 @@ export function pagesHandler(
   return (request: Request, response: Response, next: NextFunction): void => {
     // A browser with no cookie at all keeps nothing of a page, and the shop's
     // callback is no browser.
-    if (request.method === "POST" && request.headers.cookie !== undefined) {
+    const pressed =
+      request.method === "POST" && request.headers.cookie !== undefined
+        ? randomBytes(12).toString("base64url")
+        : undefined;
+    if (pressed !== undefined) {
       response.append(
         "set-cookie",
-        `${PRESSED}=${randomBytes(12).toString("base64url")}; Path=${basename}; HttpOnly; SameSite=Lax${cookieSecure ? "; Secure" : ""}`,
+        `${PRESSED}=${pressed}; Path=${basename}; HttpOnly; SameSite=Lax${cookieSecure ? "; Secure" : ""}`,
       );
     }
     void (async () => {
@@ -422,6 +446,18 @@ export function pagesHandler(
       // is read after it. A page that keeps nothing says so for the pages
       // nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
+      if (pressed !== undefined && data) {
+        response.once("finish", () => {
+          if (response.statusCode < 400) reads.pressed(pressed, pageOf(url.pathname));
+        });
+      }
+      if (request.method === "GET" && !prefetched(request.headers)) {
+        const pressRead = reads.isPressRead(
+          pressedIn(request.headers.cookie),
+          pageOf(url.pathname),
+        );
+        if (!(pressRead && data)) visits.add(request);
+      }
       const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
       if (reading && data && keeps) {
         response.setHeader("cache-control", "private, max-age=10");

@@ -71,6 +71,7 @@ import type {
   ClockAtBirth,
   MerchantScope,
   OrderChange,
+  OrderLookup,
   PaymentAttempt,
   PaymentCompletion,
   PaymentWord,
@@ -78,6 +79,13 @@ import type {
   WithTheOrder,
 } from "../ports/store.js";
 import { statusUrlOf } from "./addresses.js";
+import {
+  type Channel,
+  channelOf,
+  type OrderActor,
+  orderChanged,
+  orderCreated,
+} from "./order-analytics.js";
 import type { Runtime } from "./runtime.js";
 import { purchaseOf, Waiting } from "./waiting.js";
 import type { WrittenOrderStatus } from "./written.js";
@@ -173,6 +181,14 @@ export type Applied =
 /** What a parked purchase is woken with: the order as it finally stands. */
 export type PurchaseSettled = StoredOrder;
 
+/**
+ * The merchant a change is held to, with how they made it where the caller
+ * can tell: through one of their keys, or signed in to the dashboard.
+ */
+export interface ActingMerchant extends MerchantScope {
+  readonly actor?: "merchant_worker" | "human";
+}
+
 /** What one run of the sweep repaired, and what it could not. */
 export interface Swept {
   /** Orders paid for that had reached nobody and were sent out again. */
@@ -238,10 +254,12 @@ function carriedOutAfterwards(effect: Effect): boolean {
 
 export class OrderRunner {
   readonly #runtime: Runtime;
+  readonly #channel: Channel;
   readonly purchases = new Waiting<PurchaseSettled>();
 
   constructor(runtime: Runtime) {
     this.#runtime = runtime;
+    this.#channel = channelOf(runtime.config);
   }
 
   /**
@@ -268,10 +286,14 @@ export class OrderRunner {
       );
     }
 
-    const born = await this.#runtime.store.addOrder(record, {
-      ...birth,
-      clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
-    });
+    const born = await this.#runtime.store.addOrder(
+      record,
+      {
+        ...birth,
+        clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
+      },
+      orderCreated(record, birth.through, this.#channel),
+    );
     if (born !== "written") {
       return born;
     }
@@ -297,11 +319,11 @@ export class OrderRunner {
     orderId: string,
     event: OrderEvent,
     facts: OrderFacts = {},
-    scope?: MerchantScope,
+    scope?: ActingMerchant,
     whileWaitingOn?: string,
     completion?: { readonly attemptId: string; readonly result: PaymentCompletion },
   ): Promise<Applied> {
-    const decided = await this.#runtime.store.withOrder(
+    const decided = await this.#withOrder(
       orderId,
       async (found): Promise<OrderChange<Decided>> => {
         if (
@@ -469,7 +491,7 @@ export class OrderRunner {
   ): Promise<PresentResult> {
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
-    const decided = await this.#runtime.store.withOrder(
+    const decided = await this.#withOrder(
       orderId,
       async (found): Promise<OrderChange<PresentDecided>> => {
         if (found.paidBy !== null && found.paidBy !== owner) {
@@ -706,7 +728,7 @@ export class OrderRunner {
     envelopeOf: (found: StoredOrder) => WorkerEnvelope | null,
     afterMs?: number,
   ): Promise<boolean> {
-    const decided = await this.#runtime.store.withOrder(orderId, (found): OrderChange<boolean> => {
+    const decided = await this.#withOrder(orderId, (found): OrderChange<boolean> => {
       const envelope = holdsShipTo(found.order) ? envelopeOf(found) : null;
       if (envelope === null) {
         return { result: false };
@@ -751,6 +773,35 @@ export class OrderRunner {
       rearmed += 1;
     }
     return rearmed;
+  }
+
+  /**
+   * The store's hold on one order, recording what each saved change amounts
+   * to for product analytics in the same write. Working that out never fails
+   * the change: a defect in it is one line in the log and no event.
+   */
+  #withOrder<T>(
+    orderId: string,
+    change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
+    scope?: ActingMerchant,
+  ): Promise<OrderLookup<T>> {
+    const actor: OrderActor = scope === undefined ? "system" : (scope.actor ?? "unknown");
+    return this.#runtime.store.withOrder(
+      orderId,
+      change,
+      scope === undefined ? undefined : { merchantId: scope.merchantId },
+      (before, after) => {
+        try {
+          const at = this.#runtime.clock();
+          return orderChanged(before, after, this.#channel, actor).map((event) => ({ event, at }));
+        } catch (thrown) {
+          console.error(
+            `[analytics] what a change to an order amounts to could not be worked out: ${failureNamed(thrown)}`,
+          );
+          return [];
+        }
+      },
+    );
   }
 
   /**
@@ -982,38 +1033,35 @@ export class OrderRunner {
     at = this.#runtime.clock(),
   ): Promise<Applied> {
     if (outcome.settled === "unknown") {
-      const recorded = await this.#runtime.store.withOrder(
-        orderId,
-        (found): OrderChange<boolean> => {
-          const attempt = found.paymentAttempt;
-          if (attempt?.id !== attemptId || attempt.completion !== null) return { result: false };
-          const progressed = "nextBlock" in outcome ? outcome.nextBlock : undefined;
-          const nextBlock =
-            progressed !== undefined && /^\d+$/.test(progressed)
-              ? attempt.nextBlock === undefined || BigInt(progressed) > BigInt(attempt.nextBlock)
-                ? progressed
-                : attempt.nextBlock
-              : attempt.nextBlock;
-          const transaction = "transaction" in outcome ? outcome.transaction : undefined;
-          // Recovery polls every minute; repeating its words would push out
-          // what the facilitator said, which is said once.
-          const repeated = source === "chain" && found.paymentWords.at(-1)?.said === outcome.reason;
-          return {
-            save: {
-              ...found,
-              paymentAttempt: {
-                ...attempt,
-                ...(nextBlock === undefined ? {} : { nextBlock }),
-                ...(transaction === undefined ? {} : { transaction }),
-              },
-              ...(repeated
-                ? {}
-                : this.#alsoSaid(found, { at, about: "settle", said: outcome.reason })),
+      const recorded = await this.#withOrder(orderId, (found): OrderChange<boolean> => {
+        const attempt = found.paymentAttempt;
+        if (attempt?.id !== attemptId || attempt.completion !== null) return { result: false };
+        const progressed = "nextBlock" in outcome ? outcome.nextBlock : undefined;
+        const nextBlock =
+          progressed !== undefined && /^\d+$/.test(progressed)
+            ? attempt.nextBlock === undefined || BigInt(progressed) > BigInt(attempt.nextBlock)
+              ? progressed
+              : attempt.nextBlock
+            : attempt.nextBlock;
+        const transaction = "transaction" in outcome ? outcome.transaction : undefined;
+        // Recovery polls every minute; repeating its words would push out
+        // what the facilitator said, which is said once.
+        const repeated = source === "chain" && found.paymentWords.at(-1)?.said === outcome.reason;
+        return {
+          save: {
+            ...found,
+            paymentAttempt: {
+              ...attempt,
+              ...(nextBlock === undefined ? {} : { nextBlock }),
+              ...(transaction === undefined ? {} : { transaction }),
             },
-            result: true,
-          };
-        },
-      );
+            ...(repeated
+              ? {}
+              : this.#alsoSaid(found, { at, about: "settle", said: outcome.reason })),
+          },
+          result: true,
+        };
+      });
       if (recorded.found && recorded.result && source === "facilitator") {
         console.error(
           `[gateway] ${orderFingerprint(orderId)}: the payment layer left the settle unanswered; its words are kept on the order`,
@@ -1166,7 +1214,7 @@ export class OrderRunner {
       return undefined;
     const claim = await this.#runtime.store.claimPayment(fingerprint, record.order.id);
     if (!claim.claimed) return undefined;
-    const recovered = await this.#runtime.store.withOrder(
+    const recovered = await this.#withOrder(
       record.order.id,
       (found): OrderChange<PaymentAttempt | undefined> => {
         if (found.paymentAttempt !== undefined) return { result: found.paymentAttempt };

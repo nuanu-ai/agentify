@@ -1,5 +1,5 @@
 {
-  "id": "bbb0ecfe-7806-4cd1-8716-76383e1bb98f",
+  "id": "be810812-e661-44da-b490-6fa13f505504",
   "prevId": "1e86c71d-55bf-4fd0-862b-56480175838e",
   "version": "7",
   "dialect": "postgresql",
@@ -54,6 +54,13 @@
         },
         "operator": {
           "name": "operator",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "analytics_opt_out": {
+          "name": "analytics_opt_out",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -369,12 +376,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "client_hash": {
-          "name": "client_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "purpose": {
           "name": "purpose",
           "type": "text",
@@ -404,54 +405,6 @@
               "asc": true,
               "nulls": "last"
             },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "dashboard_link_sends_client_idx": {
-          "name": "dashboard_link_sends_client_idx",
-          "columns": [
-            {
-              "expression": "client_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "purpose",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "sent_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "dashboard_link_sends_channel_idx": {
-          "name": "dashboard_link_sends_channel_idx",
-          "columns": [
             {
               "expression": "purpose",
               "isExpression": false,

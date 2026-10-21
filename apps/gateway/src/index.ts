@@ -17,6 +17,7 @@ export {
   Gateway,
   type IssuedMerchantKey,
   type MerchantKey,
+  publishRefusalReason,
   type WalletChangeRefusal,
 } from "./app/gateway.js";
 export {

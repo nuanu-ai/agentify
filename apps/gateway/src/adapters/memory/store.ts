@@ -9,9 +9,12 @@
 
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type { AnalyticsEvent } from "../../analytics/events.js";
 import type { Clock, Ids } from "../../ports/clock.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
+  type AnalyticsOf,
+  analyticsEventOf,
   type Birth,
   type Born,
   type CatalogEntry,
@@ -21,6 +24,7 @@ import {
   lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
+  type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
   type PaymentClaim,
@@ -127,6 +131,8 @@ export class MemoryStore implements Store {
   readonly #ids: Ids;
   readonly #now: Clock;
   readonly #envelopes: Envelopes;
+  /** Every analytics event recorded, in the order recorded. */
+  readonly #analytics: { readonly event: AnalyticsEvent; readonly at: Date }[] = [];
 
   constructor(
     network: string,
@@ -142,6 +148,27 @@ export class MemoryStore implements Store {
 
   get network(): string {
     return this.#network;
+  }
+
+  // --- product analytics ----------------------------------------------------
+
+  /** What a test reads back: every analytics event recorded, in recording order. */
+  get recordedAnalytics(): readonly { readonly event: AnalyticsEvent; readonly at: Date }[] {
+    return [...this.#analytics];
+  }
+
+  async recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void> {
+    this.#analytics.push({ event, at: new Date(at) });
+  }
+
+  /** Records what a committing write's `analytics` makes of what it committed. */
+  async #recordWith<R>(
+    analytics: AnalyticsOf<R> | undefined,
+    committed: R,
+    at: number,
+  ): Promise<void> {
+    const event = analyticsEventOf(analytics, committed);
+    if (event !== null) await this.recordAnalytics(event, at);
   }
 
   // --- merchants and their keys ---------------------------------------------
@@ -176,6 +203,7 @@ export class MemoryStore implements Store {
   async grantLiveApproval(
     id: string,
     at: number,
+    analytics?: AnalyticsOf<{ merchant: StoredMerchant; changed: boolean }>,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
@@ -183,7 +211,9 @@ export class MemoryStore implements Store {
     }
     const changed = row.liveApprovedAt === null;
     row.liveApprovedAt ??= at;
-    return { merchant: this.#storedMerchantOf(row), changed };
+    const granted = { merchant: this.#storedMerchantOf(row), changed };
+    if (changed) await this.#recordWith(analytics, granted, at);
+    return granted;
   }
 
   async withdrawLiveApproval(
@@ -205,23 +235,35 @@ export class MemoryStore implements Store {
   async setServiceName(
     id: string,
     serviceName: string | null,
-    _at: number,
+    at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
   ): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
+    const changed = row.serviceName !== serviceName;
     row.serviceName = serviceName;
-    return this.#storedMerchantOf(row);
+    const merchant = this.#storedMerchantOf(row);
+    if (changed) await this.#recordWith(analytics, merchant, at);
+    return merchant;
   }
 
-  async setSellerSite(id: string, sellerSite: string, _at: number): Promise<StoredMerchant | null> {
+  async setSellerSite(
+    id: string,
+    sellerSite: string,
+    at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
+  ): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
+    const changed = row.sellerSite !== sellerSite;
     row.sellerSite = sellerSite;
-    return this.#storedMerchantOf(row);
+    const merchant = this.#storedMerchantOf(row);
+    if (changed) await this.#recordWith(analytics, merchant, at);
+    return merchant;
   }
 
   async setPayoutWallet(
@@ -229,6 +271,7 @@ export class MemoryStore implements Store {
     expected: PayoutWalletRead,
     next: PayoutWalletWrite,
     at: number,
+    analytics?: AnalyticsOf<WalletWritten>,
   ): Promise<WalletWritten | "moved" | null> {
     const splits = splitsOfTheWrite(id, this.#network, next);
     const row = this.#merchants.get(id);
@@ -250,7 +293,9 @@ export class MemoryStore implements Store {
           : { address: next.pending.address, takesEffectAt: next.pending.takesEffectAt },
     };
     const recorded = this.#record(fresh, at);
-    return { merchant: this.#storedMerchantOf(row), recorded };
+    const written = { merchant: this.#storedMerchantOf(row), recorded };
+    await this.#recordWith(analytics, written, at);
+    return written;
   }
 
   /**
@@ -369,6 +414,7 @@ export class MemoryStore implements Store {
       readonly digest: string;
     },
     at: number,
+    analytics?: AnalyticsOf<StoredKey>,
   ): Promise<StoredKey> {
     if (!this.#merchants.has(key.merchantId)) {
       // The database refuses this with a foreign key; written down here, it
@@ -394,6 +440,7 @@ export class MemoryStore implements Store {
     });
     this.#keys.set(stored.id, stored);
     this.#keysByDigest.set(key.digest, stored.id);
+    await this.#recordWith(analytics, stored, at);
     return stored;
   }
 
@@ -468,6 +515,7 @@ export class MemoryStore implements Store {
     card: Card,
     at: number,
     integration: Integration = "api",
+    analytics?: AnalyticsOf<StoredCard>,
   ): Promise<StoredCard> {
     const owned = catalogKey(merchantId, card.merchant_item_id);
     const existing = this.#cardIdByMerchantKey.get(owned);
@@ -491,6 +539,7 @@ export class MemoryStore implements Store {
 
     this.#cardIdByMerchantKey.set(owned, id);
     this.#cards.set(id, stored);
+    if (before === undefined) await this.#recordWith(analytics, stored, at);
     return stored;
   }
 
@@ -514,7 +563,12 @@ export class MemoryStore implements Store {
     }));
   }
 
-  async setCardPaused(merchantId: string, id: string, paused: boolean): Promise<StoredCard | null> {
+  async setCardPaused(
+    merchantId: string,
+    id: string,
+    paused: boolean,
+    analytics?: AnalyticsOf<StoredCard>,
+  ): Promise<StoredCard | null> {
     const found = this.#cards.get(id);
     // Another merchant's card is not found, the same answer as a card that is
     // not there, so pausing cannot discover what exists.
@@ -523,6 +577,7 @@ export class MemoryStore implements Store {
     }
     const stored: StoredCard = Object.freeze({ ...found, paused });
     this.#cards.set(id, stored);
+    if (found.paused !== paused) await this.#recordWith(analytics, stored, this.#now());
     return stored;
   }
 
@@ -530,15 +585,25 @@ export class MemoryStore implements Store {
     return this.#sellingOf(merchantId);
   }
 
-  async setSelling(merchantId: string, selling: MerchantSelling): Promise<void> {
+  async setSelling(
+    merchantId: string,
+    selling: MerchantSelling,
+    analytics?: AnalyticsEvent,
+  ): Promise<void> {
     const row = this.#merchants.get(merchantId);
     if (row === undefined) {
       throw new Error(`there is no merchant ${merchantId} to stop or start selling`);
     }
+    const changed = row.selling !== selling;
     row.selling = selling;
+    if (changed) await this.#recordWith(analytics, undefined, this.#now());
   }
 
-  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+  async switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch> {
     // No await between the reads and the write, so nothing interleaves with
     // it in the one process this map lives in, the birth of an order included.
     const row = this.#merchants.get(merchantId);
@@ -569,13 +634,14 @@ export class MemoryStore implements Store {
     row.integration = to;
     if (sellingPaused) {
       row.selling = "paused";
+      await this.#recordWith(analytics, undefined, this.#now());
     }
     return { switched: true, sellingPaused };
   }
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, birth?: Birth): Promise<Born> {
+  async addOrder(record: StoredOrder, birth?: Birth, analytics?: AnalyticsEvent): Promise<Born> {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
@@ -614,6 +680,9 @@ export class MemoryStore implements Store {
       this.#orders.delete(record.order.id);
       this.#written.delete(record.order.id);
       throw thrown;
+    }
+    if (analytics !== undefined) {
+      await this.recordAnalytics(analytics, record.order.timestamps.createdAt);
     }
     return "written";
   }
@@ -672,6 +741,7 @@ export class MemoryStore implements Store {
     id: string,
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
+    analytics?: OrderAnalytics,
   ): Promise<OrderLookup<T>> {
     // Each order's decisions run one after another. Only the tail of the chain
     // is kept, so an idle order costs one settled promise.
@@ -707,8 +777,13 @@ export class MemoryStore implements Store {
           // The merchant comes from the order that was read, not from the save,
           // as the Postgres adapter takes it from the row: no decision may change
           // whose sale it is.
-          this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
+          const saved = Object.freeze({ ...decided.save, merchantId: found.merchantId });
+          const observed = analytics?.(found, saved) ?? [];
+          this.#orders.set(id, saved);
           this.#written.set(id, this.#now());
+          for (const { event, at } of observed) {
+            await this.recordAnalytics(event, at);
+          }
         }
 
         // None of these can refuse, which is what makes the order safe to have

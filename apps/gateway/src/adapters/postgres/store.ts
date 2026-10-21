@@ -16,6 +16,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   inArray,
   isNotNull,
   isNull,
@@ -28,10 +29,13 @@ import {
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
+import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
+  type AnalyticsOf,
+  analyticsEventOf,
   type Birth,
   type Born,
   type CatalogEntry,
@@ -42,6 +46,7 @@ import {
   lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
+  type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
   type PaymentClaim,
@@ -123,8 +128,22 @@ const noEnvelopes: Envelopes = {
   },
 };
 
+/** A transaction on the pool. */
+type Transaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
+
 /** Somewhere a statement can be run: the pool, or a transaction on it. */
-type Queries = NodePgDatabase | Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
+type Queries = NodePgDatabase | Transaction;
+
+/** Records what `analytics` makes of a committed write in the write's own transaction. */
+async function recordWith<R>(
+  tx: Transaction,
+  analytics: AnalyticsOf<R> | undefined,
+  committed: R,
+  at: Date,
+): Promise<void> {
+  const event = analyticsEventOf(analytics, committed);
+  if (event !== null) await recordAlong(tx, event, at);
+}
 
 /**
  * The drizzle handle together with its pool. The pool is needed because a
@@ -162,6 +181,12 @@ export class PostgresStore implements Store {
 
   get network(): string {
     return this.#network;
+  }
+
+  // --- product analytics ----------------------------------------------------
+
+  async recordAnalytics(event: AnalyticsEvent, at: number | Date): Promise<void> {
+    await recordObserved(this.#db, event, new Date(at));
   }
 
   // --- merchants and their keys ---------------------------------------------
@@ -212,23 +237,27 @@ export class PostgresStore implements Store {
   async grantLiveApproval(
     id: string,
     at: number,
+    analytics?: AnalyticsOf<{ merchant: StoredMerchant; changed: boolean }>,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
-    // One statement, so two operators granting at once cannot both replace
-    // the instant.
-    const [granted] = await this.#db
-      .update(merchants)
-      .set({ liveApprovedAt: new Date(at) })
-      .where(and(eq(merchants.id, id), isNull(merchants.liveApprovedAt)))
-      .returning({ id: merchants.id });
-    const merchant = granted === undefined ? null : await this.merchantById(id);
-    if (merchant !== null) {
-      return { merchant, changed: true };
-    }
-
-    // Tells a repeat from a missing merchant. `updated_at` is deliberately not
-    // written: the grant has its own instant and changes no merchant setting.
-    const existing = await this.merchantById(id);
-    return existing === null ? null : { merchant: existing, changed: false };
+    return await this.#db.transaction(async (tx) => {
+      // One statement, so two operators granting at once cannot both replace
+      // the instant. `updated_at` is deliberately not written: the grant has
+      // its own instant and changes no merchant setting.
+      const [granted] = await tx
+        .update(merchants)
+        .set({ liveApprovedAt: new Date(at) })
+        .where(and(eq(merchants.id, id), isNull(merchants.liveApprovedAt)))
+        .returning({ id: merchants.id });
+      // Read after the write either way, which tells a repeat from a missing
+      // merchant.
+      const [merchant] = await this.#merchantsWhere(tx, eq(merchants.id, id));
+      if (merchant === undefined) {
+        return null;
+      }
+      const answer = { merchant, changed: granted !== undefined };
+      if (answer.changed) await recordWith(tx, analytics, answer, new Date(at));
+      return answer;
+    });
   }
 
   async withdrawLiveApproval(
@@ -253,22 +282,55 @@ export class PostgresStore implements Store {
     id: string,
     serviceName: string | null,
     at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
   ): Promise<StoredMerchant | null> {
-    const [row] = await this.#db
-      .update(merchants)
-      .set({ serviceName, updatedAt: new Date(at) })
-      .where(eq(merchants.id, id))
-      .returning({ id: merchants.id });
-    return row === undefined ? null : this.merchantById(id);
+    return this.#setListing(id, { serviceName }, at, analytics);
   }
 
-  async setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null> {
-    const [row] = await this.#db
-      .update(merchants)
-      .set({ sellerSite, updatedAt: new Date(at) })
-      .where(eq(merchants.id, id))
-      .returning({ id: merchants.id });
-    return row === undefined ? null : this.merchantById(id);
+  async setSellerSite(
+    id: string,
+    sellerSite: string,
+    at: number,
+    analytics?: AnalyticsOf<StoredMerchant>,
+  ): Promise<StoredMerchant | null> {
+    return this.#setListing(id, { sellerSite }, at, analytics);
+  }
+
+  /**
+   * Writes the merchant's listing name or shop's site, recording `analytics`
+   * only where the row held another value. The row is held from the read to
+   * the write, so of two saves of one new value only the first records it.
+   */
+  async #setListing(
+    id: string,
+    listing: { readonly serviceName: string | null } | { readonly sellerSite: string },
+    at: number,
+    analytics: AnalyticsOf<StoredMerchant> | undefined,
+  ): Promise<StoredMerchant | null> {
+    return await this.#db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ serviceName: merchants.serviceName, sellerSite: merchants.sellerSite })
+        .from(merchants)
+        .where(eq(merchants.id, id))
+        .for("no key update");
+      if (before === undefined) {
+        return null;
+      }
+      await tx
+        .update(merchants)
+        .set({ ...listing, updatedAt: new Date(at) })
+        .where(eq(merchants.id, id));
+      const [merchant] = await this.#merchantsWhere(tx, eq(merchants.id, id));
+      if (merchant === undefined) {
+        return null;
+      }
+      const changed =
+        "serviceName" in listing
+          ? before.serviceName !== listing.serviceName
+          : before.sellerSite !== listing.sellerSite;
+      if (changed) await recordWith(tx, analytics, merchant, new Date(at));
+      return merchant;
+    });
   }
 
   async setPayoutWallet(
@@ -276,6 +338,7 @@ export class PostgresStore implements Store {
     expected: PayoutWalletRead,
     next: PayoutWalletWrite,
     at: number,
+    analytics?: AnalyticsOf<WalletWritten>,
   ): Promise<WalletWritten | "moved" | null> {
     const splits = splitsOfTheWrite(id, this.#network, next);
     // The wallet and its splits in one transaction: a split that cannot be
@@ -319,7 +382,9 @@ export class PostgresStore implements Store {
       if (merchant === undefined) {
         throw new Error(`the wallet of ${id} was written and the merchant could not be read back`);
       }
-      return { merchant, recorded };
+      const written = { merchant, recorded };
+      await recordWith(tx, analytics, written, new Date(at));
+      return written;
     });
   }
 
@@ -419,6 +484,7 @@ export class PostgresStore implements Store {
       readonly digest: string;
     },
     at: number,
+    analytics?: AnalyticsOf<StoredKey>,
   ): Promise<StoredKey> {
     // The two uniqueness rules are told apart by name: a taken identifier is
     // our generator colliding, a taken digest is the same secret written
@@ -428,16 +494,23 @@ export class PostgresStore implements Store {
     // its parameters and its detail line.
     let row: typeof merchantKeys.$inferSelect | undefined;
     try {
-      [row] = await this.#db
-        .insert(merchantKeys)
-        .values({
-          id: key.id,
-          merchantId: key.merchantId,
-          label: key.label,
-          digest: key.digest,
-          createdAt: new Date(at),
-        })
-        .returning();
+      [row] = await this.#db.transaction(async (tx) => {
+        const written = await tx
+          .insert(merchantKeys)
+          .values({
+            id: key.id,
+            merchantId: key.merchantId,
+            label: key.label,
+            digest: key.digest,
+            createdAt: new Date(at),
+          })
+          .returning();
+        const [issued] = written;
+        if (issued !== undefined) {
+          await recordWith(tx, analytics, storedKeyOf(issued), new Date(at));
+        }
+        return written;
+      });
     } catch (thrown) {
       const refused = uniquenessRefused(thrown);
       if (refused === null) {
@@ -551,46 +624,56 @@ export class PostgresStore implements Store {
     card: Card,
     at: number,
     integration: Integration = "api",
+    analytics?: AnalyticsOf<StoredCard>,
   ): Promise<StoredCard> {
-    // Republishing keeps the existing card's identifier, so the address agents
-    // hold does not change.
-    const [row] = await this.#db
-      .insert(cards)
-      .values({
-        id: this.#ids("item"),
-        merchantId,
-        merchantItemId: card.merchant_item_id,
-        card,
-        asOf: new Date(at),
-        publishedAt: new Date(at),
-        integration,
-      })
-      .onConflictDoUpdate({
-        // The merchant is half of the target, or a second merchant's "sku-1"
-        // would overwrite the first merchant's card.
-        target: [cards.merchantId, cards.merchantItemId],
-        // `paused` is deliberately not reset: republishing must not put a
-        // product the merchant took off sale back on it.
-        set: { card, asOf: new Date(at) },
-        // A card keeps the integration that first published it: through the
-        // other one the conflict updates nothing and returns no row, in the
-        // same statement, so racing publishes cannot move it either.
-        setWhere: eq(cards.integration, integration),
-      })
-      .returning();
-    if (row !== undefined) {
-      return storedCardOf(row);
-    }
+    return await this.#db.transaction(async (tx) => {
+      // Republishing keeps the existing card's identifier, so the address
+      // agents hold does not change.
+      const [row] = await tx
+        .insert(cards)
+        .values({
+          id: this.#ids("item"),
+          merchantId,
+          merchantItemId: card.merchant_item_id,
+          card,
+          asOf: new Date(at),
+          publishedAt: new Date(at),
+          integration,
+        })
+        .onConflictDoUpdate({
+          // The merchant is half of the target, or a second merchant's "sku-1"
+          // would overwrite the first merchant's card.
+          target: [cards.merchantId, cards.merchantItemId],
+          // `paused` is deliberately not reset: republishing must not put a
+          // product the merchant took off sale back on it.
+          set: { card, asOf: new Date(at) },
+          // A card keeps the integration that first published it: through the
+          // other one the conflict updates nothing and returns no row, in the
+          // same statement, so racing publishes cannot move it either.
+          setWhere: eq(cards.integration, integration),
+        })
+        // A row this statement inserted carries no xmax, and one it updated
+        // carries the lock its conflict took: the statement itself, and no read
+        // beside it, says whether the card is new.
+        .returning({ ...getTableColumns(cards), made: sql<boolean>`(xmax = 0)` });
+      if (row !== undefined) {
+        const stored = storedCardOf(row);
+        if (row.made) await recordWith(tx, analytics, stored, new Date(at));
+        return stored;
+      }
 
-    const [standing] = await this.#db
-      .select()
-      .from(cards)
-      .where(and(eq(cards.merchantId, merchantId), eq(cards.merchantItemId, card.merchant_item_id)))
-      .limit(1);
-    if (standing === undefined) {
-      throw new Error(`publishing ${card.merchant_item_id} wrote no row and found none`);
-    }
-    return storedCardOf(standing);
+      const [standing] = await tx
+        .select()
+        .from(cards)
+        .where(
+          and(eq(cards.merchantId, merchantId), eq(cards.merchantItemId, card.merchant_item_id)),
+        )
+        .limit(1);
+      if (standing === undefined) {
+        throw new Error(`publishing ${card.merchant_item_id} wrote no row and found none`);
+      }
+      return storedCardOf(standing);
+    });
   }
 
   async cardById(id: string): Promise<StoredCard | null> {
@@ -638,14 +721,33 @@ export class PostgresStore implements Store {
     }));
   }
 
-  async setCardPaused(merchantId: string, id: string, paused: boolean): Promise<StoredCard | null> {
-    const [row] = await this.#db
-      .update(cards)
-      .set({ paused })
-      // Another merchant's card is answered as missing.
-      .where(and(eq(cards.id, id), eq(cards.merchantId, merchantId)))
-      .returning();
-    return row === undefined ? null : storedCardOf(row);
+  async setCardPaused(
+    merchantId: string,
+    id: string,
+    paused: boolean,
+    analytics?: AnalyticsOf<StoredCard>,
+  ): Promise<StoredCard | null> {
+    // Another merchant's card is answered as missing.
+    const theirs = and(eq(cards.id, id), eq(cards.merchantId, merchantId));
+    return await this.#db.transaction(async (tx) => {
+      // Held from the read to the write, so of two pauses at once only the
+      // first finds the card on sale.
+      const [before] = await tx
+        .select({ paused: cards.paused })
+        .from(cards)
+        .where(theirs)
+        .for("no key update");
+      if (before === undefined) {
+        return null;
+      }
+      const [row] = await tx.update(cards).set({ paused }).where(theirs).returning();
+      if (row === undefined) {
+        return null;
+      }
+      const stored = storedCardOf(row);
+      if (before.paused !== paused) await recordWith(tx, analytics, stored, new Date());
+      return stored;
+    });
   }
 
   async selling(merchantId: string): Promise<MerchantSelling> {
@@ -664,19 +766,35 @@ export class PostgresStore implements Store {
     return row.selling;
   }
 
-  async setSelling(merchantId: string, selling: MerchantSelling): Promise<void> {
-    const changed = await this.#db
-      .update(merchants)
-      .set({ selling, updatedAt: sql`now()` })
-      .where(eq(merchants.id, merchantId))
-      .returning({ id: merchants.id });
-
-    if (changed.length === 0) {
-      throw new Error(`there is no merchant ${merchantId} to stop or start selling`);
-    }
+  async setSelling(
+    merchantId: string,
+    selling: MerchantSelling,
+    analytics?: AnalyticsEvent,
+  ): Promise<void> {
+    await this.#db.transaction(async (tx) => {
+      // Held from the read to the write, so of two stops at once only the
+      // first finds the merchant selling.
+      const [before] = await tx
+        .select({ selling: merchants.selling })
+        .from(merchants)
+        .where(eq(merchants.id, merchantId))
+        .for("no key update");
+      if (before === undefined) {
+        throw new Error(`there is no merchant ${merchantId} to stop or start selling`);
+      }
+      await tx
+        .update(merchants)
+        .set({ selling, updatedAt: sql`now()` })
+        .where(eq(merchants.id, merchantId));
+      if (before.selling !== selling) await recordWith(tx, analytics, undefined, new Date());
+    });
   }
 
-  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+  async switchIntegration(
+    merchantId: string,
+    to: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<IntegrationSwitch> {
     return await this.#db.transaction(async (tx): Promise<IntegrationSwitch> => {
       // Held for update, so the birth of an order, which holds the same row
       // while it writes (`addOrder`), waits for this or finishes first — and
@@ -732,44 +850,52 @@ export class PostgresStore implements Store {
           updatedAt: sql`now()`,
         })
         .where(eq(merchants.id, merchantId));
+      if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });
   }
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, birth?: Birth): Promise<Born> {
+  async addOrder(record: StoredOrder, birth?: Birth, analytics?: AnalyticsEvent): Promise<Born> {
     try {
-      if (birth === undefined) {
+      if (birth === undefined && analytics === undefined) {
         await this.#db.insert(orders).values(rowFor(record));
         return "written";
       }
       return await this.#db.transaction(async (tx): Promise<Born> => {
-        // Held against every other birth for this merchant, or two of them
-        // would count the same waiting purchases and both be written, and
-        // against a switch (`switchIntegration`). Not `for update`: that would
-        // also hold up the key-share lock every receipt written for this
-        // merchant takes meanwhile.
-        const [merchant] = await tx
-          .select({ integration: merchants.integration })
-          .from(merchants)
-          .where(eq(merchants.id, record.merchantId))
-          .limit(1)
-          .for("no key update");
-        if (merchant === undefined || integrationOf(merchant.integration) !== birth.through) {
-          return "switched_away";
+        if (birth !== undefined) {
+          // Held against every other birth for this merchant, or two of them
+          // would count the same waiting purchases and both be written, and
+          // against a switch (`switchIntegration`). Not `for update`: that
+          // would also hold up the key-share lock every receipt written for
+          // this merchant takes meanwhile.
+          const [merchant] = await tx
+            .select({ integration: merchants.integration })
+            .from(merchants)
+            .where(eq(merchants.id, record.merchantId))
+            .limit(1)
+            .for("no key update");
+          if (merchant === undefined || integrationOf(merchant.integration) !== birth.through) {
+            return "switched_away";
+          }
+          const waiting = await this.#waiting(
+            tx,
+            record.merchantId,
+            record.order.timestamps.createdAt,
+            birth.waitingAtMost,
+          );
+          if (waiting >= birth.waitingAtMost) {
+            return "too_many_waiting";
+          }
         }
-        const waiting = await this.#waiting(
-          tx,
-          record.merchantId,
-          record.order.timestamps.createdAt,
-          birth.waitingAtMost,
-        );
-        if (waiting >= birth.waitingAtMost) {
-          return "too_many_waiting";
+        // Recorded ahead of the insert, so an insert refused as a duplicate
+        // takes the event back with it.
+        if (analytics !== undefined) {
+          await recordAlong(tx, analytics, new Date(record.order.timestamps.createdAt));
         }
         await tx.insert(orders).values(rowFor(record));
-        for (const clock of birth.clocks ?? []) {
+        for (const clock of birth?.clocks ?? []) {
           await this.#envelopes.remindWithin(tx, clock.reminder, clock.afterMs);
         }
         return "written";
@@ -1033,6 +1159,7 @@ export class PostgresStore implements Store {
     id: string,
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
+    analytics?: OrderAnalytics,
   ): Promise<OrderLookup<T>> {
     // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
@@ -1056,6 +1183,18 @@ export class PostgresStore implements Store {
       }
 
       const decided = await change(row.record);
+      // The merchant always comes from the row, never from the save: an
+      // order's merchant never changes, and a document disagreeing with the
+      // column would list an order under one merchant while its envelopes
+      // went to another.
+      const saved =
+        decided.save === undefined ? undefined : { ...decided.save, merchantId: row.merchantId };
+      // Recorded ahead of the writes below, so any of them refusing takes the
+      // events back with it.
+      const observed = saved === undefined ? [] : (analytics?.(row.record, saved) ?? []);
+      for (const { event, at } of observed) {
+        await recordAlong(tx, event, new Date(at));
+      }
 
       // The writes that must not be lost go in this transaction, so a process
       // that dies mid-flight did all of them or none, the queue's job inserts
@@ -1095,12 +1234,8 @@ export class PostgresStore implements Store {
         }
       }
 
-      if (decided.save !== undefined) {
-        // The merchant always comes from the row, never from the save: an
-        // order's merchant never changes, and a document disagreeing with the
-        // column would list an order under one merchant while its envelopes
-        // went to another.
-        const next = rowFor({ ...decided.save, merchantId: row.merchantId });
+      if (saved !== undefined) {
+        const next = rowFor(saved);
         await tx
           .update(orders)
           .set({

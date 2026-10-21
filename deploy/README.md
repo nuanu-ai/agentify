@@ -863,6 +863,44 @@ the host's file says, and the application itself refuses to start with the
 switch on that channel, because the tracker would count a test registration as
 a real one.
 
+Either channel may name `NUANU_ANALYTICS_ENABLED=true` to send the product
+analytics events the server records to Nuanu Analytics, at
+`https://analytics.nuanu.ai/api/track`. Each channel has a site of its own
+there, so each file names its own `NUANU_ANALYTICS_SITE_ID`, letters and
+digits as Nuanu shows it, and `NUANU_ANALYTICS_API_KEY`, the site's ingest key
+of at least 16 visible ASCII characters, sent as a bearer token.
+`NUANU_ANALYTICS_INGEST_TOKEN` is the site's separate ingest token where Nuanu
+asks for one, and is sent only when it is set. `NUANU_ANALYTICS_REF_KEY`, at
+least 32 characters made with `openssl rand -base64 32`, is what every
+identifier an event concerns is hashed with before it leaves, so the analytics
+team can join events about one merchant or one order without ever seeing its
+identifier; a new key makes every reference after it a stranger to every one
+before, so it is set once per channel and kept, and the two channels' keys
+differ. With the switch on and the site, the key or the reference key missing
+or malformed, the application refuses to start and names the variable; with it
+off none of them is read, so they can go into the file first.
+
+An event is written in the same transaction as the fact it records, and a
+loop in the application sends one event at a time, each request abandoned
+after five seconds, so Nuanu being slow or away never delays or fails a page
+or a sale; events wait in the database instead. A 200 means the event was
+taken. A redirect (any answer from 300 to 399, which is never followed) or an
+answer of 401, 403 or 404 means the endpoint, the site id, the key or the
+token is wrong: the event stays, sending pauses for five minutes, and the log
+names the three variables. A 429, a 5xx, a timeout or a network failure is
+tried again later with the same event id and time. Every other answer, a 400
+and a 413 among them, drops that event for good. An event that does not keep the
+contract is never sent and its row records the field that broke it. An event
+more than 7 days old is given up unsent, because Nuanu dates an older one by
+its arrival, and every event that settled, sent or not, is deleted 30 days
+later. A person who opted out in the cabinet's settings is never sent about,
+nor is the merchant their account names, whoever acted. Events from TEST are
+labelled `test.agentify.ad` and tagged internal; production's are labelled
+`agentify.ad`. Turning the switch off sends nothing more and keeps nothing for
+later: every event waiting, and every one recorded while the switch is off, is
+given up unsent within a minute, so turning it on again never releases that
+history. Settled events are deleted on the same 30-day terms.
+
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`
 and `APIFY_*` settings, `REGISTRATION_ENABLED`,

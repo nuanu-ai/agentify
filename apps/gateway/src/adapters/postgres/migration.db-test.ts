@@ -1537,7 +1537,7 @@ if (databaseUrl === null) {
       const journal = JSON.parse(
         await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
       ) as { entries: { idx: number; tag: string }[] };
-      for (const entry of journal.entries.filter((entry) => entry.idx < 26)) {
+      for (const entry of journal.entries.filter((entry) => entry.idx < 27)) {
         for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
       }
       await pool.query(
@@ -1581,7 +1581,7 @@ if (databaseUrl === null) {
         );
       }
 
-      for (const statement of await statementsOf("0026_order_lapsed_attempts.sql")) {
+      for (const statement of await statementsOf("0027_order_lapsed_attempts.sql")) {
         await pool.query(statement);
       }
 

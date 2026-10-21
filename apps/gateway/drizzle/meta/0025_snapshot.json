@@ -1,6 +1,6 @@
 {
-  "id": "f7d137a5-32fa-4a6b-86ef-f5d12cf6f433",
-  "prevId": "23d45794-d508-44b4-99c6-3cc33936c1f3",
+  "id": "23d45794-d508-44b4-99c6-3cc33936c1f3",
+  "prevId": "72f59f1e-c698-4dc3-8492-b7001bc33c88",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -111,43 +111,192 @@
       },
       "isRLSEnabled": false
     },
-    "public.merchant_contact": {
-      "name": "merchant_contact",
+    "public.commerce_analytics_events": {
+      "name": "commerce_analytics_events",
       "schema": "",
       "columns": {
-        "merchant_id": {
-          "name": "merchant_id",
-          "type": "text",
+        "id": {
+          "name": "id",
+          "type": "uuid",
           "primaryKey": true,
           "notNull": true
         },
-        "polled_at": {
-          "name": "polled_at",
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "commerce_analytics_events_sequence_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "properties": {
+          "name": "properties",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refs": {
+          "name": "refs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_outcome": {
+          "name": "last_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "merchant_contact_merchant_id_merchants_id_fk": {
-          "name": "merchant_contact_merchant_id_merchants_id_fk",
-          "tableFrom": "merchant_contact",
-          "tableTo": "merchants",
-          "columnsFrom": [
-            "merchant_id"
+      "indexes": {
+        "commerce_analytics_events_due_idx": {
+          "name": "commerce_analytics_events_due_idx",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "columnsTo": [
-            "id"
+          "isUnique": false,
+          "where": "\"commerce_analytics_events\".\"state\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "commerce_analytics_events_pending_age_idx": {
+          "name": "commerce_analytics_events_pending_age_idx",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "isUnique": false,
+          "where": "\"commerce_analytics_events\".\"state\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "commerce_analytics_events_settled_idx": {
+          "name": "commerce_analytics_events_settled_idx",
+          "columns": [
+            {
+              "expression": "settled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"commerce_analytics_events\".\"state\" <> 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "commerce_analytics_events_sequence_unique": {
+          "name": "commerce_analytics_events_sequence_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "sequence"
+          ]
+        }
+      },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "commerce_analytics_events_state": {
+          "name": "commerce_analytics_events_state",
+          "value": "\"commerce_analytics_events\".\"state\" in ('pending', 'sent', 'dead', 'given_up', 'suppressed')"
+        },
+        "commerce_analytics_events_attempts": {
+          "name": "commerce_analytics_events_attempts",
+          "value": "\"commerce_analytics_events\".\"attempts\" >= 0"
+        },
+        "commerce_analytics_events_pending_scheduled": {
+          "name": "commerce_analytics_events_pending_scheduled",
+          "value": "(\"commerce_analytics_events\".\"state\" = 'pending') = (\"commerce_analytics_events\".\"next_attempt_at\" is not null)"
+        },
+        "commerce_analytics_events_settled_dated": {
+          "name": "commerce_analytics_events_settled_dated",
+          "value": "(\"commerce_analytics_events\".\"state\" = 'pending') = (\"commerce_analytics_events\".\"settled_at\" is null)"
+        },
+        "commerce_analytics_events_sent_dated": {
+          "name": "commerce_analytics_events_sent_dated",
+          "value": "(\"commerce_analytics_events\".\"state\" = 'sent') = (\"commerce_analytics_events\".\"sent_at\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.merchant_keys": {
@@ -468,22 +617,6 @@
           ],
           "isUnique": false,
           "where": "\"orders\".\"record\" -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "orders_waiting_idx": {
-          "name": "orders_waiting_idx",
-          "columns": [
-            {
-              "expression": "merchant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"orders\".\"state\" in ('created', 'quoted')",
           "concurrently": false,
           "method": "btree",
           "with": {}

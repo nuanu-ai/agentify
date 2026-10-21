@@ -10,6 +10,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { migrateAccounts } from "./database.js";
@@ -29,6 +31,7 @@ const databaseUrl = await readyDatabase(wanted);
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
+const gatewayMigrationsIn = join(here, "..", "..", "gateway", "drizzle");
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
@@ -41,25 +44,17 @@ if (databaseUrl === null) {
 } else {
   const pool = new Pool({ connectionString: databaseUrl });
 
-  // Drops whatever tables exist rather than a list of names, since a list falls
-  // behind the next migration. The migrator's journal schema goes too: it is
-  // not in `public`, and left behind it would say everything is applied while
-  // the tables are gone.
-  await pool.query(`
-    do $$
-    declare
-      present text;
-    begin
-      select string_agg(format('%I.%I', schemaname, tablename), ', ')
-        into present
-        from pg_tables
-       where schemaname = 'public';
-      if present is not null then
-        execute 'drop table ' || present || ' cascade';
-      end if;
-    end $$;
-  `);
+  // Drops whatever exists rather than a list of names, since a list falls
+  // behind the next migration; the gateway's functions and triggers go with
+  // its tables. The migrator's journal schema goes too: it is not in `public`,
+  // and left behind it would say everything is applied while the tables are
+  // gone.
+  await pool.query("drop schema public cascade");
+  await pool.query("create schema public");
   await pool.query("drop schema if exists drizzle cascade");
+  // The gateway's tables too: a connection's analytics event is written to the
+  // gateway's outbox, in the transaction that writes the connection.
+  await migrate(drizzle(pool), { migrationsFolder: gatewayMigrationsIn });
   await migrateAccounts(pool, migrationsIn);
 
   afterAll(async () => {
@@ -113,5 +108,69 @@ if (databaseUrl === null) {
       accounts: { one: await anAccount(), other: await anAccount() },
       close: async () => {},
     };
+  });
+
+  describe("the analytics of a shop's connection, on postgres", () => {
+    const keys = { consumerKey: "ck_abc", consumerSecret: "cs_def", permissions: "read_write" };
+    const START = new Date("2026-10-21T12:00:00.000Z");
+    const LATER = new Date("2026-10-21T12:30:00.000Z");
+
+    const accountOf = async (merchantId: string): Promise<string> => {
+      const id = await anAccount();
+      await pool.query("update dashboard_accounts set merchant_id = $1 where id = $2", [
+        merchantId,
+        id,
+      ]);
+      return id;
+    };
+    const recorded = async () =>
+      (
+        await pool.query<{ actor_type: string; source: string; refs: object; properties: object }>(
+          "select actor_type, source, refs, properties from commerce_analytics_events order by sequence",
+        )
+      ).rows;
+
+    it("records the connection with the merchant the account names, and a late callback as blocked", async () => {
+      await pool.query("delete from commerce_analytics_events");
+      const shops = postgresWooShops(pool);
+      const prompt = await accountOf("mch_woo_prompt");
+      const late = await accountOf("mch_woo_late");
+      for (const [token, accountId] of [
+        ["prompt-token", prompt],
+        ["late-token", late],
+      ] as const) {
+        await shops.beginGrant({
+          token,
+          accountId,
+          shopUrl: "https://shop.example.com",
+          startedAt: START,
+          expiresAt: new Date(START.getTime() + 15 * 60_000),
+        });
+      }
+
+      expect(await shops.connectFromGrant("prompt-token", keys, START)).not.toBeNull();
+      expect(await shops.connectFromGrant("late-token", keys, LATER)).toBeNull();
+      expect(await shops.connectFromGrant("nobody's-token", keys, START)).toBeNull();
+
+      expect(await recorded()).toStrictEqual([
+        {
+          actor_type: "human",
+          source: "woocommerce",
+          refs: { merchant: "mch_woo_prompt", person: prompt },
+          properties: { step: "woo_connection", integration: "woocommerce", outcome: "completed" },
+        },
+        {
+          actor_type: "human",
+          source: "woocommerce",
+          refs: { merchant: "mch_woo_late", person: late },
+          properties: {
+            step: "woo_connection",
+            integration: "woocommerce",
+            outcome: "blocked",
+            reason_code: "session_expired",
+          },
+        },
+      ]);
+    });
   });
 }

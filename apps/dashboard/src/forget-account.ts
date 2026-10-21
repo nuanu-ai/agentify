@@ -4,7 +4,9 @@
  * takes its sessions, credentials, WooCommerce rows and reports to the ad
  * tracker by cascade; the merchant's cards are deleted first, because the
  * gateway's schema does not let a merchant with cards go; the link-send
- * counters are cleared so the next link can be asked for at once.
+ * counters are cleared so the next link can be asked for at once; the product
+ * analytics events naming the account or the merchant go from the outbox,
+ * sent or not, and what Nuanu Analytics already received stays there.
  *
  * It refuses before writing anything when the merchant has an order or a
  * receipt (money history is never deleted to make a test repeatable) or when
@@ -39,6 +41,7 @@ type Outcome =
       } | null;
       readonly shop: string | null;
       readonly operator: boolean;
+      readonly analytics: number;
     };
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -107,6 +110,14 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
         [account.id],
       )
     ).rows[0]?.shopUrl ?? null;
+  const analytics =
+    (
+      await client.query(
+        `delete from commerce_analytics_events
+          where refs ->> 'person' = $1 or refs ->> 'merchant' = $2`,
+        [account.id, account.merchantId],
+      )
+    ).rowCount ?? 0;
   await client.query("delete from dashboard_accounts where id = $1", [account.id]);
 
   // Sign-in sends are keyed with the dashboard's secret and report-link sends
@@ -121,7 +132,7 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
     [authSecret, ...digestKeys].map((secret) => rateKey(secret, email)),
   ]);
 
-  return { kind: "forgotten", merchant, shop, operator: account.operator };
+  return { kind: "forgotten", merchant, shop, operator: account.operator, analytics };
 }
 
 /**
@@ -197,6 +208,9 @@ export async function runForget(
           ? "WooCommerce connection: none"
           : `WooCommerce connection: dropped for ${shop}; its key stays valid in that shop` +
               " until it is revoked in the shop's WooCommerce settings",
+      );
+      say(
+        `Analytics events removed: ${outcome.analytics}; those already sent stay in Nuanu Analytics`,
       );
       if (outcome.operator) {
         say(

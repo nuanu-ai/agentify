@@ -4,6 +4,8 @@
  * internal route is on `Identity` in `identity.ts` and does not widen this.
  */
 
+import type { AnalyticsEvent } from "@agentify/gateway/analytics";
+
 interface AccountMerchant {
   readonly id: string;
 }
@@ -68,7 +70,7 @@ export type LinkRequestResult =
  * first verified account; a click id not of the tracker's form throws, and
  * nothing is sent or counted.
  */
-type LinkAsker = Readonly<{ client: string; clickId?: string }>;
+export type LinkAsker = Readonly<{ client: string; clickId?: string }>;
 
 /** What the page a link lands on draws: the address the link signs in. */
 type LinkLanding = Readonly<{ email: string }>;
@@ -196,4 +198,18 @@ export interface DashboardIdentity {
    * somebody else's, and its sessions are not this person's to end.
    */
   endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
+
+  /**
+   * Records a product analytics observation that has no transaction of its
+   * own, such as a screen shown or a press refused, in the database the
+   * identity holds. It never rejects, and a page need not wait for it.
+   */
+  observe(event: AnalyticsEvent): Promise<void>;
+  /** Whether this one account opted out of product analytics. */
+  analyticsOptedOut(personId: string): Promise<boolean>;
+  /**
+   * Sets that choice on this one account; another account naming the same
+   * merchant keeps its own.
+   */
+  setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
 }

@@ -17,6 +17,7 @@ import {
   payoutSplitNetworkOf,
   randomIds,
 } from "@agentify/gateway";
+import { record } from "@agentify/gateway/analytics";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -400,6 +401,47 @@ if (databaseUrl === null) {
       expect(failed.output).not.toMatch(/detail that must stay/i);
       expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
+    });
+
+    it("deletes the analytics events naming the account or its merchant, and keeps everybody else's", async () => {
+      const { person, merchantId } = await merchantAccount(EMAIL, ["room-101"]);
+      const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
+      // As the gateway records a fact about a merchant that names no person.
+      await record(
+        drizzle(pool),
+        {
+          name: "agc_selling_changed",
+          actor: "merchant_worker",
+          source: "gateway",
+          refs: { merchant: merchantId },
+          fields: { entity: "merchant", change: "paused" },
+        },
+        new Date(),
+      );
+      const naming = async (id: string, kind: "person" | "merchant") =>
+        (
+          await pool.query<{ count: number }>(
+            "select count(*)::int as count from commerce_analytics_events where refs ->> $2 = $1",
+            [id, kind],
+          )
+        ).rows[0]?.count ?? -1;
+      expect(await naming(person.id, "person")).toBeGreaterThan(0);
+      expect(await naming(merchantId, "merchant")).toBeGreaterThan(0);
+      const theirs =
+        (await naming(bystander.person.id, "person")) +
+        (await naming(bystander.merchantId, "merchant"));
+      expect(theirs).toBeGreaterThan(0);
+
+      const forgotten = await forget(EMAIL);
+
+      expect(forgotten.code, forgotten.output).toBe(0);
+      expect(forgotten.output).toMatch(/analytics/i);
+      expect(await naming(person.id, "person")).toBe(0);
+      expect(await naming(merchantId, "merchant")).toBe(0);
+      expect(
+        (await naming(bystander.person.id, "person")) +
+          (await naming(bystander.merchantId, "merchant")),
+      ).toBe(theirs);
     });
 
     it("says a failure at the commit leaves the outcome unknown and safe to run again", async () => {

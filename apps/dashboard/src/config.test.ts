@@ -501,6 +501,151 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
   });
 });
 
+describe("sending product analytics to Nuanu Analytics", () => {
+  const API_KEY = ["qa", "synthetic", "nuanu", "api", "key"].join("-");
+  const INGEST_TOKEN = ["qa", "synthetic", "ingest", "token"].join("-");
+  const REFERENCE_KEY = ["qa", "synthetic", "reference", "key"].join("-").padEnd(40, "x");
+  const RECEIVER = "http://127.0.0.1:4020";
+  const SWITCHED_ON = {
+    NUANU_ANALYTICS_ENABLED: "true",
+    NUANU_ANALYTICS_SITE_ID: "123",
+    NUANU_ANALYTICS_API_KEY: API_KEY,
+    NUANU_ANALYTICS_REF_KEY: REFERENCE_KEY,
+  };
+  const ON_TEST = { FACILITATOR_URL: "https://x402.org/facilitator" };
+  const ON_LIVE = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+
+  const thrownBy = (environment: Record<string, string>): string => {
+    try {
+      loadConfig(given(environment));
+      return "";
+    } catch (error) {
+      return String(error);
+    }
+  };
+
+  it("sends nothing unless a deployment switches it on, whatever else its file holds", () => {
+    expect(loadConfig(given()).nuanuAnalytics).toBeNull();
+    for (const surface of [{}, ON_TEST, ON_LIVE]) {
+      expect(
+        loadConfig(
+          given({
+            ...surface,
+            NUANU_ANALYTICS_ENABLED: "false",
+            NUANU_ANALYTICS_SITE_ID: "not a site",
+            NUANU_ANALYTICS_API_KEY: "short",
+            NUANU_ANALYTICS_REF_KEY: "short",
+            NUANU_ANALYTICS_URL: "not an address",
+          }),
+        ).nuanuAnalytics,
+      ).toBeNull();
+    }
+  });
+
+  it("sends from the live channel to Nuanu's own address as the live site", () => {
+    expect(loadConfig(given({ ...ON_LIVE, ...SWITCHED_ON })).nuanuAnalytics).toStrictEqual({
+      endpoint: "https://analytics.nuanu.ai/api/track",
+      siteId: "123",
+      apiKey: API_KEY,
+      ingestToken: null,
+      referenceKey: REFERENCE_KEY,
+      hostname: "agentify.ad",
+      env: "prod",
+      internal: false,
+    });
+  });
+
+  it("sends from the test channel, which has a site of its own, marked internal", () => {
+    expect(
+      loadConfig(given({ ...ON_TEST, ...SWITCHED_ON, NUANU_ANALYTICS_INGEST_TOKEN: INGEST_TOKEN }))
+        .nuanuAnalytics,
+    ).toStrictEqual({
+      endpoint: "https://analytics.nuanu.ai/api/track",
+      siteId: "123",
+      apiKey: API_KEY,
+      ingestToken: INGEST_TOKEN,
+      referenceKey: REFERENCE_KEY,
+      hostname: "test.agentify.ad",
+      env: "test",
+      internal: true,
+    });
+  });
+
+  it("sends from a sandbox only to a receiver of its own, never to Nuanu", () => {
+    expect(
+      loadConfig(given({ ...SWITCHED_ON, NUANU_ANALYTICS_URL: `${RECEIVER}/` })).nuanuAnalytics
+        ?.endpoint,
+    ).toBe(`${RECEIVER}/api/track`);
+    expect(
+      loadConfig(given({ ...SWITCHED_ON, NUANU_ANALYTICS_URL: RECEIVER })).nuanuAnalytics?.env,
+    ).toBe("dev");
+    expect(() => loadConfig(given(SWITCHED_ON))).toThrow(/NUANU_ANALYTICS_URL/);
+    for (const elsewhere of [
+      "ftp://127.0.0.1/",
+      "127.0.0.1:4020",
+      "https://analytics.nuanu.ai",
+      "https://ANALYTICS.NUANU.AI/",
+      "https://analytics.nuanu.ai./",
+    ]) {
+      expect(
+        () => loadConfig(given({ ...SWITCHED_ON, NUANU_ANALYTICS_URL: elsewhere })),
+        elsewhere,
+      ).toThrow(/NUANU_ANALYTICS_URL/);
+    }
+  });
+
+  it("refuses a sandbox's receiver on the test and the live channel, which send only to Nuanu", () => {
+    for (const surface of [ON_TEST, ON_LIVE]) {
+      expect(() =>
+        loadConfig(given({ ...surface, ...SWITCHED_ON, NUANU_ANALYTICS_URL: RECEIVER })),
+      ).toThrow(/NUANU_ANALYTICS_URL/);
+    }
+  });
+
+  it("refuses to start switched on without a site, a key or a reference key of the right form, naming each", () => {
+    const refused: readonly [string, string | undefined][] = [
+      ["NUANU_ANALYTICS_SITE_ID", undefined],
+      ["NUANU_ANALYTICS_SITE_ID", ""],
+      ["NUANU_ANALYTICS_SITE_ID", "site 123"],
+      ["NUANU_ANALYTICS_API_KEY", undefined],
+      ["NUANU_ANALYTICS_API_KEY", "fifteen-chars-x"],
+      ["NUANU_ANALYTICS_API_KEY", `${API_KEY} `],
+      ["NUANU_ANALYTICS_API_KEY", API_KEY.replace("-", "–")],
+      ["NUANU_ANALYTICS_INGEST_TOKEN", "fifteen-chars-x"],
+      ["NUANU_ANALYTICS_INGEST_TOKEN", `${INGEST_TOKEN}\n`],
+      ["NUANU_ANALYTICS_REF_KEY", undefined],
+      ["NUANU_ANALYTICS_REF_KEY", "shorter-than-thirty-two-chars"],
+    ];
+    for (const [variable, value] of refused) {
+      const environment: Record<string, string> = { ...ON_LIVE, ...SWITCHED_ON };
+      delete environment[variable];
+      if (value !== undefined) environment[variable] = value;
+      const said = thrownBy(environment);
+      expect(said, `${variable}=${JSON.stringify(value)}`).toContain(variable);
+      expect(said).not.toContain(API_KEY);
+      expect(said).not.toContain(REFERENCE_KEY);
+      expect(said).not.toContain(INGEST_TOKEN);
+    }
+  });
+
+  it("names every problem with the analytics at once", () => {
+    const said = thrownBy({ ...ON_LIVE, NUANU_ANALYTICS_ENABLED: "true" });
+
+    expect(said).toContain("NUANU_ANALYTICS_SITE_ID");
+    expect(said).toContain("NUANU_ANALYTICS_API_KEY");
+    expect(said).toContain("NUANU_ANALYTICS_REF_KEY");
+  });
+
+  it("refuses a switch that is neither true nor false", () => {
+    expect(() => loadConfig(given({ NUANU_ANALYTICS_ENABLED: "yes" }))).toThrow(
+      /NUANU_ANALYTICS_ENABLED/,
+    );
+  });
+});
+
 describe("what the configuration says about itself", () => {
   it("does not put the database password into the sentence it throws", () => {
     // A startup failure goes to a log, so it names the variable and never the

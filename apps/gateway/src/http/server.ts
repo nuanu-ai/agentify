@@ -65,6 +65,12 @@ export interface MountedRoute {
    * with no document as the probe, not a mistake.
    */
   readonly checksItsOwnBody?: boolean;
+  /**
+   * Told of a body this route's schema refused as the refusal is answered,
+   * which waits for nothing it does and is the refusal whatever it does. The
+   * call carries the body as sent.
+   */
+  readonly refusedBody?: (call: RouteCall) => Promise<void>;
 }
 
 /** The most a request body may be. A card with a large schema is still small. */
@@ -300,6 +306,17 @@ async function answer(
   if (carriesBody && route.request !== undefined && handler.checksItsOwnBody !== true) {
     const held = hold(route.request, request.body);
     if (!held.ok) {
+      if (handler.refusedBody !== undefined) {
+        toldOfRefusal(handler.refusedBody, {
+          params: request.params as Record<string, string>,
+          body: request.body,
+          query: undefined,
+          merchantId: caller?.merchantId ?? null,
+          keyId: caller?.keyId ?? null,
+          request,
+          response,
+        });
+      }
       response
         .status(400)
         .json(
@@ -552,4 +569,16 @@ export function refusal(
   return {
     error: { ...rest, code, message, retryable: retryable ?? RETRYABLE[code] },
   };
+}
+
+/** Tells `hook` of a refused body without waiting for it; a failure of it is only logged. */
+function toldOfRefusal(hook: (call: RouteCall) => Promise<void>, call: RouteCall): void {
+  const logged = (thrown: unknown): void => {
+    console.error(`[gateway] telling of a refused body failed: ${failureNamed(thrown)}`);
+  };
+  try {
+    hook(call).catch(logged);
+  } catch (thrown) {
+    logged(thrown);
+  }
 }

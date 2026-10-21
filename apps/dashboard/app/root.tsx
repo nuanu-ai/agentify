@@ -21,9 +21,10 @@ import {
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
+import type { Screen } from "../src/page-services.js";
 import { type Chrome, chromeOf, type Trouble } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
-import { refused } from "./services.js";
+import { refused, services, signedInOrNobody, visit } from "./services.js";
 import stylesheet from "./styles.css?url";
 
 export const links = () => [
@@ -34,12 +35,48 @@ export const links = () => [
   { rel: "stylesheet", href: stylesheet },
 ];
 
+/** The screens product analytics counts a visit to, by the route that draws each. */
+const SCREENS: Readonly<Record<string, Screen>> = {
+  "sign-in": "sign_in",
+  merchant: "merchant",
+  "choose-name": "choose_name",
+  cards: "cards",
+  orders: "orders",
+  receipts: "receipts",
+  integrations: "integrations",
+  settings: "settings",
+  "settings/payout-wallet": "payout_wallet",
+  keys: "keys",
+  woocommerce: "woocommerce",
+};
+
 /**
+ * A visit that was answered with a screen, its problem page among them, is
+ * recorded once the answer is ready; one sent elsewhere showed nothing. A
+ * press is not recorded here: what it came to is recorded by whatever decided
+ * it, the identity, the gateway or the press's own server half.
+ *
  * A post the process refused, from another site or longer than any form here,
  * is answered here, before any route below reads it, the gate included, which
  * reads the mark a form carries.
  */
 export const middleware: MiddlewareFunction<Response>[] = [
+  async ({ context, pattern, request }, next) => {
+    const response = await next();
+    const screen = SCREENS[pattern];
+    const redirected = response.status >= 300 && response.status < 400;
+    if (screen !== undefined && !redirected && context.get(visit)) {
+      context
+        .get(services)
+        .shown(
+          screen,
+          signedInOrNobody(context),
+          response.status,
+          request.headers.get("user-agent"),
+        );
+    }
+    return response;
+  },
   ({ context }, next) => {
     const refusal = context.get(refused);
     if (refusal !== null) {
