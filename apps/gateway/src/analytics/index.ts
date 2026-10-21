@@ -59,10 +59,13 @@ export async function record(tx: Recorder, event: AnalyticsEvent, at: Date): Pro
 
 /**
  * A drizzle node-postgres transaction, which can open a savepoint inside
- * itself, whatever schema its database was made with.
+ * itself, whatever schema its database was made with. Only a transaction can
+ * be rolled back, which keeps the database handle itself out: an event
+ * recorded through it would commit on its own, outside the write it records.
  */
 export interface BusinessTransaction {
   transaction<T>(work: (savepoint: Recorder) => Promise<T>): Promise<T>;
+  rollback(): never;
 }
 
 /**
