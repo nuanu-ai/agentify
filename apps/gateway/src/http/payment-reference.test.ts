@@ -27,12 +27,14 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
 import { Gateway } from "../app/gateway.js";
 import { setPayoutWallet, setServiceName } from "../app/merchants.js";
+import { orderFingerprint } from "../order-fingerprint.js";
 import { nobodyAnnounces } from "../ports/announcer.js";
 import { randomIds } from "../ports/clock.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
 import {
   type Harness,
   harness,
+  loggedWhile,
   type Served,
   serve,
   testConfig,
@@ -983,6 +985,34 @@ describe("a payment the payment layer refuses", () => {
       expectNoOrderIn(afterTheSale.body, orderId);
       expect(JSON.stringify(afterTheSale.body)).not.toContain("SESAME");
       expect(harnessed.facilitator.settles).toHaveLength(1);
+    } finally {
+      await worker.stop();
+    }
+  });
+  it("is logged by its order's fingerprint, never by the identifier that opens the order", async () => {
+    // A stranger holding the public payment request can make this line be
+    // written as often as they like, about an order they cannot read.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, syncCard);
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    try {
+      const challenge = await challengeFor(served, itemId);
+      harnessed.facilitator.willVerify(
+        { verified: true, payer: BUYER, validUntil: null },
+        { verified: false, reason: "signature", message: "invalid_exact_evm_payload_signature" },
+      );
+      const bought = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+      expect(bought.status).toBe(200);
+      const orderId = (bought.body as { order_id: string }).order_id;
+      const madeUp = await paymentAgainst(challenge, STRANGER, "0x09", { forged: true });
+
+      const logged = await loggedWhile(() => present(served, itemId, madeUp));
+
+      expect(logged).toContain(orderFingerprint(orderId));
+      expect(logged).not.toContain(orderId);
+      expect(logged).not.toContain("/x402/orders/");
     } finally {
       await worker.stop();
     }
