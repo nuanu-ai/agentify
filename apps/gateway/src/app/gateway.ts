@@ -316,7 +316,7 @@ interface HowTheySell {
  * called a dozen times over, so without a limit anyone could load a seller's
  * shop through Agentify until its firewall turned Agentify away. The cost is
  * named here: whoever keeps twenty unpaid purchases open stops this seller's
- * sales through Agentify while they do, though no longer their shop. A
+ * sales through Agentify while they do, but not their shop. A
  * constant rather than a setting, since a knob here either lets that load
  * back through or stops a seller's every sale.
  */
@@ -1903,7 +1903,6 @@ export class Gateway {
       if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
-      await this.#noteContact(merchantId);
       // Asked once the poll is held, so a switch either came before this read
       // and is seen by it, or comes after and ends the poll (`sellThrough`).
       // Answered as a quiet stream is, after its window: answered at once, a
@@ -1911,6 +1910,12 @@ export class Gateway {
       if ((await this.sellsThrough(merchantId)) !== through) {
         await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
+      // Only the merchant's own code counts as in touch: the shop connector
+      // keeps drawing a merchant who moved back to their code, and is handed
+      // nothing above.
+      if (through === "api") {
+        await this.#noteContact(merchantId);
       }
       return await this.#drawFor(merchantId, waitMs, signal);
     } finally {
