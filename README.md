@@ -194,9 +194,10 @@ The merchant's side is one process standing beside their existing API: a
 handler. It listens on no port — it opens a single outgoing subscription and
 receives paid orders, price questions and order events on that one stream
 (ADR-0004). Everything it is written against is `@nuanu-ai/agentify`. The
-package and the gateway agree on a contract version — `"2"` today. The package
-ignores fields it does not know, reads a status word it does not know as
-`unknown` and skips an event it cannot read, so an addition leaves the version
+package and the gateway agree on a contract version — `"3"` today. The package
+ignores fields it does not know, reads a status, reason or result word it does
+not know as `unknown` and skips an event of a kind it does not know, so an
+addition leaves the version
 alone, while a rename, a removal or a changed meaning moves it (ADR-0006). For a WooCommerce shop, the connector inside Agentify plays the
 handler's part.
 

@@ -16,26 +16,26 @@ the hood. The storefront's reader is a stranger's agent no handshake reaches.
 
 1. The version promises a vocabulary: every field and word it names keeps its
    name and meaning. Readers ignore what they do not know. The SDK drops a field
-   it was not built with at any depth of any answer, reads an order's `status`
-   or `payment_status` it does not know as the reserved `unknown`, which is no
-   ending, and skips an event it cannot read with one non-fatal problem naming
-   its kind, handling the rest of the poll. An event may be lost under its own
+   it was not built with at any depth of any answer; reads an order's `status`
+   or `payment_status`, an event's `reason` or an order call's `result` it does
+   not know as the reserved `unknown`, which is none of the known words; and
+   skips an event of a kind it does not know with one non-fatal problem naming
+   it, handling the rest of the poll. An event may be lost under its own
    contract anyway; the list of open orders is the path a paid order cannot
    fall out of. The gateway writes closed: each answer is held to the closed
    schema before it is sent, so a leaked field fails on our side, not a shop's.
-2. The version is `"2"`, and moves only when a field or a word is renamed or
+2. The version is `"3"`, and moves only when a field or a word is renamed or
    removed, or a field's meaning changes; an older SDK then stops at the first
    poll answer it can read, with no order in flight, saying it is out of date,
    and reports each one it cannot read as a failed poll naming the version. An
-   added field, event kind or status word leaves it alone. A word added to a
-   list whose reader has no `unknown` (a call's result, an event's reason, a
-   card's mode or field type, a receipt's outcome, a selling state, a kind of
-   message on the stream) reads to an older SDK as a broken document, so
-   adding one moves the version until that list is read the same way. What no SDK worker reads moves nothing: the
-   payout wallet's pending fields (ADR-0019), and the routes and refusal codes
-   only the dashboard called (`docs/research/35-one-process.md`). Releases of
-   `@nuanu-ai/agentify` up to 0.7.1 read strictly while speaking `"2"`, so an
-   addition fails their polls rather than stopping them with words.
+   added field, event kind, status, reason or result word leaves it alone. A
+   word added to a list whose reader has no `unknown` (a card's mode or field
+   type, a receipt's outcome, a selling state, a kind of message on the
+   stream) names work or configuration an older SDK cannot do, so adding one
+   moves the version. What no SDK worker reads moves nothing: the payout
+   wallet's pending fields (ADR-0019), and the routes and refusal codes only
+   the dashboard called (`docs/research/35-one-process.md`). The version moved
+   once, from `"2"`, at the switch from strict to lenient reading.
 3. Every SDK call names its release in `user-agent` as `agentify-sdk/<version>`,
    and the gateway keeps the last one seen beside each key's last use, so the
    team sees who runs what. Nothing refuses a call on it.

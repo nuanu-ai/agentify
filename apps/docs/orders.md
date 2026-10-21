@@ -733,6 +733,11 @@ package you installed reads past what was added:
   not know still comes back from `orders.get` and `orders.list`, with that word
   as `unknown`. A loop over open orders that acts only on the words it knows
   leaves such an order alone, which is the right thing to do with it.
+- An event of a kind your package knows, with a `reason` it does not know,
+  reaches your event handler with the reason as `unknown`; the order behind it
+  is on the open list as ever.
+- A delivery, refusal or acceptance answered `ok: true` with a `result` word
+  your package does not know succeeded, and the word reads `unknown`.
 
 What your package cannot read past is a change to something it already knows:
 a field or a word renamed or removed, or a field that comes to mean something
@@ -741,9 +746,9 @@ the first poll answer it can read, with a `contract_version_mismatch` problem
 naming both versions, and until then reports each answer it cannot read as
 `poll_failed`, naming the version Agentify spoke; no order it cannot read
 reaches your handler, and your process stays up and sells nothing until you
-upgrade. A new word in a list with no `unknown`, such as the `result` a
-delivery answers with (`delivered`, `already_delivered` and the rest) or the
-`reason` an event gives, counts as that kind of change.
+upgrade. A new card mode, a new selling state or a new kind of message on the
+subscription counts as that kind of change, because each is work or
+configuration an older package cannot do.
 
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, so that we can see which releases
