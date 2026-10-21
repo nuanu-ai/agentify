@@ -872,7 +872,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // The sweep of old links runs in a transaction of its own, first: inside
     // the one that waits on the mail provider it would hold other requests up
     // behind a send, and a refused send would undo it.
-    async requestLink(rawEmail, destination, clickId) {
+    async requestLink(rawEmail, destination, { clickId }) {
       const email = emailAs(rawEmail);
       try {
         if (parts.pool === undefined) {

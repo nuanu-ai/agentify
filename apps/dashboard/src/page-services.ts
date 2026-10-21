@@ -176,7 +176,8 @@ export interface PageServices {
   readonly gate: Gate;
   readonly signIn: {
     page(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<SignInView>>;
-    ask(form: FormData): Promise<Outcome<SignInView>>;
+    /** `client` is the address the press came from, as `clientAddressOf` reads it. */
+    ask(form: FormData, client: string): Promise<Outcome<SignInView>>;
     landing(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<OpenLinkView>>;
     open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
     googleStart(form: FormData): Promise<Outcome<Extract<SignInView, { screen: "ask" }>>>;
@@ -798,7 +799,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         };
       },
 
-      async ask(form) {
+      async ask(form, client) {
         const typed = once(form.getAll("email"));
         const email = typeof typed === "string" ? typed.trim() : "";
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
@@ -816,7 +817,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             },
           };
         }
-        const requested = await identity.requestLink(email, destination, carried.clickId);
+        const requested = await identity.requestLink(email, destination, { client, ...carried });
         if (requested.status === "unavailable") {
           return { kind: "view", status: 503, view: { screen: "unavailable", ...carried } };
         }

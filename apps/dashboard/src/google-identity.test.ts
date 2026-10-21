@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { cookieHeader, type GoogleProfile, googleExchange } from "./testing/google.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const SETTINGS = {
@@ -105,7 +106,7 @@ describe("Google dashboard identity", () => {
 
   it("links the existing verified merchant and keeps the same person on repeat login without tokens", async () => {
     const { identity, login, rows, messages, google } = setup();
-    await identity.requestLink("person@gmail.com", "default");
+    await identity.requestLink("person@gmail.com", "default", ONE_CLIENT);
     const token = /token=([^\s]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
     const linked = await identity.openLink(token);
     if (linked.status !== "opened") throw new Error("mail link must open");
@@ -401,7 +402,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
       registrationPostback: reporting.registrationPostback,
     });
     // Verified by a mailed link, then linked to Google by its first Google sign-in.
-    await identity.requestLink("person@gmail.com", "default");
+    await identity.requestLink("person@gmail.com", "default", ONE_CLIENT);
     const token = /token=([^\s]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
     expect(await identity.openLink(token)).toMatchObject({ status: "opened" });
     expect(await login({}, CLICK)).toMatchObject({ status: "opened" });

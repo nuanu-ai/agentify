@@ -29,6 +29,7 @@ import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
 import { buildApp } from "./server.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const PERSON = "owner@example.com";
@@ -76,7 +77,7 @@ beforeAll(async () => {
     if (!published.ok) throw new Error("the test's card was not published");
     if (room === 101) await harnessed.gateway.beginPurchase(published.id, {});
   }
-  await identity.requestLink(PERSON, "default");
+  await identity.requestLink(PERSON, "default", ONE_CLIENT);
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
   const opened = await identity.openLink(link.searchParams.get("token") ?? "");
   if (opened.status !== "opened") throw new Error("the test's sign-in link did not open");

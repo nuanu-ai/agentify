@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { ONE_CLIENT } from "./testing/link-sends.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
@@ -118,7 +119,7 @@ if (databaseUrl === null) {
     messages: Message[],
   ): Promise<string> {
     await rewindSends();
-    const asked = await identity.requestLink(EMAIL, "default");
+    const asked = await identity.requestLink(EMAIL, "default", ONE_CLIENT);
     if (asked.status !== "accepted") throw new Error("the dashboard link was not accepted");
     return tokenIn(messages.at(-1) as Message);
   }

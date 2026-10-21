@@ -4,7 +4,7 @@ import { loadConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
-import { rewindLinkSends } from "./testing/link-sends.js";
+import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const SETTINGS = {
@@ -63,7 +63,7 @@ describe("dashboard magic links", () => {
   it("tells the person what the link does, how long it lasts, and carries it on a line of its own", async () => {
     const { identity, messages } = memoryIdentity();
 
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     const message = messages[0] as Message;
     expect(message.subject).toMatch(/sign in/i);
@@ -79,12 +79,16 @@ describe("dashboard magic links", () => {
   it("keeps two links independent and creates a person only when each is opened", async () => {
     const { identity, messages, rows } = memoryIdentity();
 
-    await expect(identity.requestLink(" Person@Example.com ", "default")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink(" Person@Example.com ", "default", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "accepted",
       retryAt: expect.any(Date),
     });
     rewindLinkSends(rows);
-    await expect(identity.requestLink("person@example.com", "settings")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink("person@example.com", "settings", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "accepted",
       retryAt: expect.any(Date),
     });
@@ -123,13 +127,15 @@ describe("dashboard magic links", () => {
 
   it("sends nothing and spends nothing when a second link is asked for inside the minute", async () => {
     const { identity, messages, rows } = memoryIdentity();
-    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink("person@example.com", "default", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "accepted",
       retryAt: expect.any(Date),
     });
     const sentAt = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
 
-    const refused = await identity.requestLink("person@example.com", "default");
+    const refused = await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     expect(refused).toStrictEqual({
       status: "cooldown",
@@ -145,7 +151,7 @@ describe("dashboard magic links", () => {
   it("answers an accepted link with the wait in front of the next one, which after the third is the hour", async () => {
     const { identity, rows } = memoryIdentity();
 
-    const first = await identity.requestLink("person@example.com", "default");
+    const first = await identity.requestLink("person@example.com", "default", ONE_CLIENT);
     const firstSentAt = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
     expect(first).toStrictEqual({
       status: "accepted",
@@ -153,9 +159,9 @@ describe("dashboard magic links", () => {
     });
 
     rewindLinkSends(rows);
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
     rewindLinkSends(rows);
-    const third = await identity.requestLink("person@example.com", "default");
+    const third = await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     // The third link spends the hour's allowance; an answer still saying "a
     // minute" would bring the person back in sixty seconds to a refusal for the
@@ -173,7 +179,9 @@ describe("dashboard magic links", () => {
     const { identity, messages, rows } = memoryIdentity();
 
     for (let sent = 0; sent < 3; sent += 1) {
-      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      await expect(
+        identity.requestLink("person@example.com", "default", ONE_CLIENT),
+      ).resolves.toStrictEqual({
         status: "accepted",
         retryAt: expect.any(Date),
       });
@@ -182,7 +190,9 @@ describe("dashboard magic links", () => {
 
     expect(messages).toHaveLength(3);
     const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
-    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink("person@example.com", "default", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "cooldown",
       wall: "hourly",
       retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
@@ -194,14 +204,14 @@ describe("dashboard magic links", () => {
   it("names the hourly wall, not the minute, when waiting out the minute would change nothing", async () => {
     const { identity, rows } = memoryIdentity();
     for (let sent = 0; sent < 3; sent += 1) {
-      await identity.requestLink("person@example.com", "default");
+      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
       if (sent < 2) rewindLinkSends(rows);
     }
 
     // Both limits stand, and the answer names the later one: told "forty
     // seconds", a person presses in forty seconds and is refused for another
     // hour.
-    const refused = await identity.requestLink("person@example.com", "default");
+    const refused = await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     expect(refused).toMatchObject({ status: "cooldown", wall: "hourly" });
     if (refused.status !== "cooldown") throw new Error("the fourth link should be refused");
@@ -210,7 +220,7 @@ describe("dashboard magic links", () => {
 
   it("keeps the Woo destination inside the one-time dashboard claim", async () => {
     const { identity, messages } = memoryIdentity();
-    await identity.requestLink("person@example.com", "woocommerce");
+    await identity.requestLink("person@example.com", "woocommerce", ONE_CLIENT);
 
     const opened = await identity.openLink(tokenIn(messages[0] as Message));
 
@@ -221,7 +231,7 @@ describe("dashboard magic links", () => {
     // A row naming a destination outside the closed set was not written by the
     // dashboard, and opens nothing rather than sending somebody where it says.
     const { identity, messages, rows } = memoryIdentity();
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
     const token = tokenIn(messages[0] as Message);
 
     for (const destination of [
@@ -263,7 +273,7 @@ describe("dashboard magic links", () => {
       unpressed("older", new Date(now - aWeek - 1)),
     ];
 
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     const kept = rows.dashboard_verifications?.map((row) => row.id) ?? [];
     expect(kept).toContain("younger");
@@ -290,7 +300,9 @@ describe("dashboard magic links", () => {
       unpressed("older", new Date(now - aWeek - 1)),
     ];
 
-    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink("person@example.com", "default", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "unavailable",
     });
 
@@ -300,7 +312,9 @@ describe("dashboard magic links", () => {
   it("keeps no token or rate event when the mail provider refuses the message", async () => {
     const { identity, rows } = memoryIdentity("refused");
 
-    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+    await expect(
+      identity.requestLink("person@example.com", "default", ONE_CLIENT),
+    ).resolves.toStrictEqual({
       status: "unavailable",
     });
     expect(rows.dashboard_verifications).toHaveLength(0);
@@ -342,7 +356,7 @@ const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
 describe("the registration a link asked for with an ad's click leaves for the tracker", () => {
   it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     const pressedAt = Date.now();
 
     const opened = await identity.openLink(tokenIn(messages[0] as Message));
@@ -372,7 +386,10 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     // Switched off, nothing about a click is kept past the press, whatever the
     // link was asked for with.
     const on = memoryIdentity("accepted", reporting);
-    await on.identity.requestLink("person@example.com", "default", CLICK);
+    await on.identity.requestLink("person@example.com", "default", {
+      ...ONE_CLIENT,
+      clickId: CLICK,
+    });
     const off = memoryIdentity("accepted", config, on.rows);
 
     const opened = await off.identity.openLink(tokenIn(on.messages[0] as Message));
@@ -387,7 +404,10 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
 
     await expect(
-      identity.requestLink("person@example.com", "default", "too-short"),
+      identity.requestLink("person@example.com", "default", {
+        ...ONE_CLIENT,
+        clickId: "too-short",
+      }),
     ).rejects.toThrow();
 
     expect(messages).toHaveLength(0);
@@ -397,7 +417,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("leaves no registration when the link was asked for without a click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
 
     await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
@@ -410,10 +430,10 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("writes no registration for an address that already has a verified account, even with a fresh click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default");
+    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
     await identity.openLink(tokenIn(messages[0] as Message));
     rewindLinkSends(rows);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
 
     await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
       status: "opened",
@@ -427,7 +447,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
     const made = await store.make("person@example.com", "mer_made");
     if (made === null) throw new Error("the account was not made");
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
 
     await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
@@ -440,7 +460,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("writes nothing for a token that opens nothing: malformed, unknown or expired", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     const verification = rows.dashboard_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
     verification.expiresAt = new Date(Date.now() - 1000);
@@ -456,7 +476,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("leaves one registration when the same link is opened twice", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     const token = tokenIn(messages[0] as Message);
 
     await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
@@ -467,7 +487,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("writes nothing when the landing page reads a link asked for with a click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
 
     expect(await identity.landingOf(tokenIn(messages[0] as Message))).toStrictEqual({
       email: "person@example.com",
@@ -498,7 +518,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     const opened = await identity.openLink(tokenIn(messages[0] as Message));
     if (opened.status !== "opened") throw new Error("the link did not open");
     const before = structuredClone(registrationsIn(rows));
@@ -513,9 +533,12 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
     const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     await identity.openLink(tokenIn(messages[0] as Message));
-    await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
+    await identity.requestLink("bystander@example.com", "default", {
+      ...ONE_CLIENT,
+      clickId: ANOTHER_CLICK,
+    });
     const bystander = await identity.openLink(tokenIn(messages[1] as Message));
     if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
     expect(registrationsIn(rows)).toHaveLength(2);
@@ -536,7 +559,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("still opens a link stored in the shape without a click, and writes no registration", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "settings", CLICK);
+    await identity.requestLink("person@example.com", "settings", { ...ONE_CLIENT, clickId: CLICK });
     const verification = rows.dashboard_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
     verification.value = JSON.stringify({
@@ -558,7 +581,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     // A row holding a click this file would not have written was not written by
     // it, and opens nothing rather than reporting somebody else's click.
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
     const token = tokenIn(messages[0] as Message);
     const dashboard = { email: "person@example.com", destination: "default", request: null };
 
@@ -610,7 +633,7 @@ describe("the registration a link asked for with an ad's click leaves for the tr
       settledAt: null,
     };
     rows.dashboard_registration_postbacks = [planted];
-    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
 
     await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
 

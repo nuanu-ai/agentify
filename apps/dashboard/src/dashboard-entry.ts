@@ -56,6 +56,15 @@ export type LinkRequestResult =
   | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
 
+/**
+ * Who asked for a link. `client` is the address the request came from, as the
+ * edge in front of the dashboard wrote it. `clickId` is kept with the link, as
+ * for `startGoogle`, and reported only if the link's press makes the address's
+ * first verified account; a click id not of the tracker's form throws, and
+ * nothing is sent or counted.
+ */
+export type LinkAsker = Readonly<{ client: string; clickId?: string }>;
+
 /** What the page a link lands on draws: the address the link signs in. */
 type LinkLanding = Readonly<{ email: string }>;
 
@@ -138,15 +147,10 @@ export interface DashboardIdentity {
   startGoogle(destination: DashboardDestination, clickId?: string): Promise<GoogleStartResult>;
   finishGoogle(query: URLSearchParams, cookie: string | undefined): Promise<GoogleFinishResult>;
 
-  /**
-   * `clickId` is kept with the link, as for `startGoogle`, and reported only if
-   * the link's press makes the address's first verified account. A click id not
-   * of the tracker's form throws, and nothing is sent or counted.
-   */
   requestLink(
     email: string,
     destination: DashboardDestination,
-    clickId?: string,
+    asker: LinkAsker,
   ): Promise<LinkRequestResult>;
   /**
    * Read without spending the link; null for a link that no longer opens
