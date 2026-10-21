@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 import {
+  API_ROUTES,
   MerchantCardListSchema,
   OrderCallResponseSchema,
   OrderListSchema,
@@ -213,6 +214,18 @@ describe("a reader of the merchant's answers", () => {
       poll.envelopes[1]?.payload,
       unfulfilled,
     ]);
+  });
+
+  it("reads no route's answer out of the gateway's refusal, so a refusal never passes for a success", () => {
+    // A reader that ignores unknown fields would take a document whose fields
+    // are all optional out of any object at all, the refusal included.
+    const refusal = {
+      error: { code: "no_such_order", message: "No such order.", retryable: false },
+    };
+
+    for (const [name, route] of Object.entries(API_ROUTES)) {
+      expect(readerOf(route.response.document).safeParse(refusal).success, name).toBe(false);
+    }
   });
 
   it("still refuses an answer missing a field it needs, or a status that is not a word", () => {

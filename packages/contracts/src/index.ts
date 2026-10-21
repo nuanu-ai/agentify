@@ -258,6 +258,8 @@ export {
 } from "./primitives.js";
 export type { QuotePurpose, QuoteRequest, QuoteResponse } from "./quote.js";
 export { QuotePurposeSchema, QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
+export type { Read, UnknownWord, UnreadEvent } from "./reading.js";
+export { readerOf, UNKNOWN_WORD } from "./reading.js";
 export type { Receipt, ReceiptOutcome } from "./receipt.js";
 export { ReceiptOutcomeSchema, ReceiptSchema } from "./receipt.js";
 export type {

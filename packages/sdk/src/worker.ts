@@ -13,7 +13,9 @@
  * unanswered order comes back because the gateway decides on another attempt,
  * and a second retry policy on this side would disagree with it. The same
  * holds for an answer the contract refuses and for a kind with no handler; the
- * merchant is told through the problem reporter. An event is not sent again,
+ * merchant is told through the problem reporter. An event this package cannot
+ * read, such as one of a kind added after it was released, is skipped with a
+ * warning and the rest of the batch is handled. An event is not sent again,
  * so a handler that throws on one has lost what it carried. The only retry
  * here is of a poll that failed, with the backoff in `backoff.ts`.
  */
@@ -28,6 +30,9 @@ import {
   type QuoteRequest,
   type QuoteResponse,
   QuoteResponseSchema,
+  type Read,
+  UNKNOWN_WORD,
+  type UnreadEvent,
   type WorkerEnvelope,
   type WorkerEnvelopeKind,
 } from "@nuanu-ai/agentify-contracts";
@@ -95,6 +100,11 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   HANDLER_ANSWER_REFUSED: "handler_answer_refused",
   /** Something arrived that nobody had registered a handler for. */
   NO_HANDLER: "no_handler",
+  /**
+   * An event this package cannot read, most often of a kind added after it was
+   * released, was skipped. The rest of the batch is handled.
+   */
+  EVENT_SKIPPED: "event_skipped",
   /** The answer was produced and could not be delivered to the gateway. */
   ANSWER_FAILED: "answer_failed",
   /** The gateway would not take the answer: it names an order it cannot close. */
@@ -518,7 +528,19 @@ export const startWorker = (
     }
   };
 
-  const handleEvent = async (event: OrderEvent, delivered: Delivered): Promise<void> => {
+  const handleEvent = async (
+    event: OrderEvent | UnreadEvent,
+    delivered: Delivered,
+  ): Promise<void> => {
+    if (event.type === UNKNOWN_WORD) {
+      report({
+        kind: WORKER_PROBLEM_KINDS.EVENT_SKIPPED,
+        fatal: false,
+        message: `an event this package cannot read, "${event.named}", arrived and was skipped; a newer release of @nuanu-ai/agentify handles it, and orders.list({ open: true }) still finds every paid order waiting on you`,
+      });
+      return;
+    }
+
     const handler = handlers.event;
 
     if (handler === undefined) {
@@ -547,7 +569,7 @@ export const startWorker = (
     }
   };
 
-  const dispatch = async (envelope: WorkerEnvelope): Promise<void> => {
+  const dispatch = async (envelope: Read<WorkerEnvelope>): Promise<void> => {
     switch (envelope.kind) {
       case "order":
         await handleOrder(envelope.payload);

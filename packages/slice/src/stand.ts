@@ -23,12 +23,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Environment, environmentOfKeyPrefix } from "@agentify/core";
+import type { OrderWithStatus } from "@nuanu-ai/agentify";
 import {
   type CardInput,
   type Delivery,
   MerchantCardListSchema,
   type Money,
-  type OrderWithStatus,
   type ParamSpec,
   type PublicCard,
   type Receipt,
