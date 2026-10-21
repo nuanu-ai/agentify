@@ -64,6 +64,12 @@ counts as a different shop.
 To revoke the keys in the shop yourself, open WooCommerce → Settings →
 Advanced → REST API.
 
+The connector works on up to four stream messages at once for your shop, so
+one slow order creation need not delay the next purchase or price question.
+If all four are busy, later questions wait and may expire. A repeat of an
+order already being created shares that attempt; the connector's durable
+record still prevents a second shop creation after a restart.
+
 ## Your shop or your code, one at a time
 
 You sell through the shop or through your own code with the Agentify SDK, never

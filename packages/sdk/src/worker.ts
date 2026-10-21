@@ -285,6 +285,9 @@ export const systemClock: WorkerClock = {
  */
 export const QUIET_POLL_FLOOR_MS = 1_000;
 
+// shortcut: four unfinished envelopes per process; revisit on measured saturation.
+const HANDLERS_AT_ONCE = 4;
+
 /**
  * The contract version named inside a body the SDK could not parse. It goes
  * into the merchant's sentence and no further: the body was held to no schema,
@@ -348,6 +351,11 @@ export const startWorker = (
   const controller = new AbortController();
   let stopping = false;
   let ended = false;
+  const active = new Set<Promise<void>>();
+  const orders = new Set<string>();
+  const tails = new Map<string, Promise<void>>();
+  let wakeRoom: (() => void) | undefined;
+  controller.signal.addEventListener("abort", () => wakeRoom?.(), { once: true });
 
   const report = (problem: WorkerProblem): void => reportSafely(handlers.problem, problem);
 
@@ -587,6 +595,51 @@ export const startWorker = (
     }
   };
 
+  const fail = (cause: unknown): void => {
+    if (stopping) return;
+    stopping = true;
+    controller.abort();
+    report({
+      kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
+      fatal: true,
+      cause,
+      message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${String(cause)}`,
+    });
+  };
+
+  const room = async (): Promise<void> => {
+    while (!stopping && active.size >= HANDLERS_AT_ONCE) {
+      await new Promise<void>((resolve) => {
+        wakeRoom = resolve;
+      });
+      wakeRoom = undefined;
+    }
+  };
+
+  const schedule = (envelope: Read<WorkerEnvelope>): void => {
+    const orderId =
+      envelope.kind === "order"
+        ? envelope.payload.id
+        : envelope.kind === "order_event" && envelope.payload.type !== UNKNOWN_WORD
+          ? envelope.payload.order_id
+          : undefined;
+    if (envelope.kind === "order" && orders.has(envelope.payload.id)) return;
+    if (envelope.kind === "order") orders.add(envelope.payload.id);
+    const predecessor = orderId === undefined ? undefined : tails.get(orderId);
+    // Same-order events follow fulfillment; unrelated work need not wait for it.
+    const work = Promise.resolve(predecessor)
+      .then(() => dispatch(envelope))
+      .catch(fail)
+      .finally(() => {
+        active.delete(work);
+        wakeRoom?.();
+        if (envelope.kind === "order") orders.delete(envelope.payload.id);
+        if (orderId !== undefined && tails.get(orderId) === work) tails.delete(orderId);
+      });
+    active.add(work);
+    if (orderId !== undefined) tails.set(orderId, work);
+  };
+
   const run = async (): Promise<void> => {
     // One turn before the first poll, so that a process which calls start()
     // without awaiting it and registers on the next line is ready first.
@@ -595,6 +648,8 @@ export const startWorker = (
     let failures = 0;
 
     while (!stopping) {
+      await room();
+      if (stopping) break;
       const startedAt = clock.now();
       const answer = await callRoute(gateway, "poll_worker", {
         body: { wait_seconds: POLL_WAIT_SECONDS },
@@ -642,14 +697,14 @@ export const startWorker = (
       let handled = 0;
 
       for (const envelope of batch) {
+        await room();
         if (stopping) break;
-        await dispatch(envelope);
+        schedule(envelope);
         handled += 1;
       }
 
       if (handled < batch.length) {
-        // Said rather than left silent: an order or price question left in the
-        // batch comes back on its own, but an event does not.
+        // An order may be retried; a price question expires and an event is lost.
         report({
           kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
           fatal: false,
@@ -658,7 +713,7 @@ export const startWorker = (
             .map((envelope) => envelope.kind)
             .join(
               ", ",
-            )}); orders and price questions come back on their own, and nothing here can ask for an event again`,
+            )}); unanswered orders may be sent again within their attempts and deadline, price questions expire, and nothing here can ask for an event again`,
         });
       }
 
@@ -669,21 +724,12 @@ export const startWorker = (
   };
 
   const finished = run()
-    .catch((cause: unknown) => {
-      // Reaching here means a defect in this SDK, not a failed poll: the
-      // merchant's worker is down until their process restarts.
-      report({
-        kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
-        fatal: true,
-        cause,
-        message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${String(cause)}`,
-      });
-    })
-    .finally(() => {
-      // However the loop ended, it is over, and the worker and its holder
-      // must agree.
-      ended = true;
+    .catch(fail)
+    .finally(async () => {
       stopping = true;
+      controller.abort();
+      await Promise.all(active);
+      ended = true;
     });
 
   return {

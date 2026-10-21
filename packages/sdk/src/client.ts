@@ -296,6 +296,11 @@ export interface AgentifyClient {
    * Opens the subscription and returns once it is running. It is outgoing, so
    * nothing of the merchant's has to be reachable from outside, and one
    * subscription carries orders, price questions and order events together.
+   * Up to four messages are unfinished at once: unrelated handlers may overlap
+   * and finish out of order. Events follow earlier handlers for the same order;
+   * an order already running shares its attempt with an in-flight repeat.
+   * Fulfillment must still be idempotent by order identifier across attempts
+   * and processes. When all four places are busy, polling waits for capacity.
    *
    * Throws a `TypeError` when no gateway address was given, when the client is
    * already started or still stopping, or when nothing is registered to
@@ -313,8 +318,9 @@ export interface AgentifyClient {
    * whether it arrived: the order may be closed by it or may come back. The
    * merchant's problem reporter is told which orders that happened to.
    *
-   * Stopping does not drain the queue, which would pull more work into a
-   * process that is going away.
+   * Waits for all started handlers, including events waiting for earlier work
+   * on their order. Stopping does not drain the queue, which would pull more
+   * work into a process that is going away.
    */
   stop(): Promise<void>;
 }

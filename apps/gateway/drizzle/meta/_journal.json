@@ -152,8 +152,15 @@
     {
       "idx": 21,
       "version": "7",
-      "when": 1792574893354,
-      "tag": "0021_key_last_user_agent",
+      "when": 1792567564323,
+      "tag": "0021_card_first_published",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792578243464,
+      "tag": "0022_key_last_user_agent",
       "breakpoints": true
     }
   ]

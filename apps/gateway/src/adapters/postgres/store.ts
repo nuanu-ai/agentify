@@ -502,6 +502,7 @@ export class PostgresStore implements Store {
         merchantItemId: card.merchant_item_id,
         card,
         asOf: new Date(at),
+        publishedAt: new Date(at),
         integration,
       })
       .onConflictDoUpdate({

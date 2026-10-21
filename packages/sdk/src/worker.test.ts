@@ -924,9 +924,10 @@ describe("an answer that could not be delivered", () => {
       },
     );
 
-    await waitUntil(() => problems.length > 0, "the problem to be reported");
-
-    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.ANSWER_FAILED);
+    await waitUntil(
+      () => problems.some((problem) => problem.kind === WORKER_PROBLEM_KINDS.ANSWER_FAILED),
+      "the failed answer to be reported",
+    );
 
     await running.stop();
     running = undefined;
@@ -1150,7 +1151,17 @@ describe("stopping", () => {
     gateway = await startFakeGateway({
       apiKey: API_KEY,
       routes: {
-        poll_worker: polling(batch(envelopes.order, envelopes.quote, envelopes.event)),
+        poll_worker: polling(
+          batch(
+            ...Array.from({ length: 4 }, (_, i) => ({
+              ...envelopes.order,
+              id: `env-${i}`,
+              payload: { ...order, id: `order-${i}` },
+            })),
+            envelopes.quote,
+            envelopes.event,
+          ),
+        ),
         // Held open, so the loop is certainly inside the first envelope when
         // the worker stops, whatever the machine's speed.
         answer_order: () => {
@@ -1175,7 +1186,7 @@ describe("stopping", () => {
       (problem) => problem.kind === WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
     );
 
-    expect(abandoned?.message).toMatch(/2 of this batch's 3/);
+    expect(abandoned?.message).toMatch(/2 of this batch's 6/);
     expect(abandoned?.message).toMatch(/quote_request, order_event/);
   });
 
@@ -1207,7 +1218,16 @@ describe("shutting down a subscription the merchant built", () => {
     gateway = await startFakeGateway({
       apiKey: API_KEY,
       routes: {
-        poll_worker: polling(batch(envelopes.order, envelopes.quote)),
+        poll_worker: polling(
+          batch(
+            ...Array.from({ length: 4 }, (_, i) => ({
+              ...envelopes.order,
+              id: `env-${i}`,
+              payload: { ...order, id: `order-${i}` },
+            })),
+            envelopes.quote,
+          ),
+        ),
         answer_order: () => {
           answering?.();
           return new Promise<never>(() => {});

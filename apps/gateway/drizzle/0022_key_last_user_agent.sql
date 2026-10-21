@@ -1,0 +1,1 @@
+ALTER TABLE "merchant_keys" ADD COLUMN "last_user_agent" text;

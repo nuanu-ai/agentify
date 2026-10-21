@@ -97,6 +97,14 @@ yours, so its `id` is also its idempotency key: pass it into your own delivery
 system and the second arrival hands back the first result instead of delivering
 again.
 
+Up to four messages can be unfinished at once. Handlers for different orders
+may overlap and finish out of order, so one slow order need not hold up the
+next purchase or price question. An event waits for earlier handlers for its
+order, and a repeat already running in this process shares that attempt.
+Once all four places are occupied, polling waits for one to finish; price
+questions can still expire under saturation. `stop()` waits for work already
+started, including events waiting on their order, and draws nothing more.
+
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings
 under `problems`. `deliver`, `refuse`, `accept` and `close` hand every failure back in

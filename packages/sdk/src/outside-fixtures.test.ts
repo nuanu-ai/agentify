@@ -16,7 +16,7 @@
  *
  * One merchant publishes two cards, answers a price question, delivers one
  * order inside the handler and another by a later call, refuses a third,
- * receives an event, and handles the same order twice without provisioning it
+ * receives an event, and accepts an order redelivery without provisioning it
  * twice, over one subscription against a gateway made of the route table.
  */
 
@@ -236,21 +236,21 @@ it("carries one merchant's two products from publishing to the last refusal", as
     as_of: AT,
   });
 
-  // The synchronous order answered by the handler's return; the asynchronous
-  // ones taken on, the redelivery as well.
+  // An in-flight redelivery can share its first attempt; a later one can call
+  // the idempotent handler again. Neither may provision a second profile.
   const answers = gateway.callsTo("answer_order");
-  expect(answers.map((call) => call.params.order_id)).toStrictEqual([
-    numberOrder.id,
-    esimOrder.id,
-    esimOrder.id,
-    soldOutOrder.id,
-  ]);
-  expect(answers[0]?.body).toStrictEqual({ delivered: { phone_number: "+31 970 1020 3040" } });
-  expect(answers[1]?.body).toStrictEqual({ accepted: {} });
-
-  // The handler ran on every delivery and the merchant's system issued one
-  // profile.
-  expect(accepted).toStrictEqual([esimOrder.id, esimOrder.id, soldOutOrder.id]);
+  expect(new Set(answers.map((call) => call.params.order_id))).toStrictEqual(
+    new Set([numberOrder.id, esimOrder.id, soldOutOrder.id]),
+  );
+  expect(answers.find((call) => call.params.order_id === numberOrder.id)?.body).toStrictEqual({
+    delivered: { phone_number: "+31 970 1020 3040" },
+  });
+  const esimAnswers = answers.filter((call) => call.params.order_id === esimOrder.id);
+  expect(esimAnswers.length).toBeGreaterThanOrEqual(1);
+  expect(esimAnswers.length).toBeLessThanOrEqual(2);
+  for (const answer of esimAnswers) expect(answer.body).toStrictEqual({ accepted: {} });
+  expect(accepted.filter((id) => id === esimOrder.id)).toHaveLength(esimAnswers.length);
+  expect(accepted.filter((id) => id === soldOutOrder.id)).toHaveLength(1);
   expect(provisioned.size).toBe(1);
   expect(profilesLeft).toBe(0);
 

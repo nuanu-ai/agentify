@@ -63,7 +63,7 @@ written in; the rest are in English.
 | --- | --- |
 | [0005](0005-web-surface.md) | One origin and one door: the scanner, the documentation, the dashboard and the gateway share one address and one route table, on a laptop and on both channels. |
 | [0026](0026-one-way-in.md) | One identity for the whole site: email links and Google, one session, live publication guarded by the operator's approval, and the operator flag for `/admin`. |
-| [0039](0039-a-first-registration-from-an-ad-is-reported-once.md) | A first registration that came from an ad is reported once to the ad's tracker, and only with the person's consent. |
+| [0039](0039-what-an-ad-brought-is-reported-to-its-tracker.md) | What a person our ad sent went on to do is reported to the ad's tracker by the click alone: their first registration once, and their merchant's first card within 30 days once, with the click kept no longer than that. |
 
 ### Data and operations
 

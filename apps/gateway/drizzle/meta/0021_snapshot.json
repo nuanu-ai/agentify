@@ -1,5 +1,5 @@
 {
-  "id": "b3258061-0c8f-434a-a04b-f9427c6a30f4",
+  "id": "fe7651e4-5cda-410a-a0ca-09f9b2025090",
   "prevId": "b7b5ef60-df17-4ce5-99c8-51a2ccd9a8ab",
   "version": "7",
   "dialect": "postgresql",
@@ -37,6 +37,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         },
         "paused": {
           "name": "paused",
@@ -147,12 +154,6 @@
         "last_used_at": {
           "name": "last_used_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_user_agent": {
-          "name": "last_user_agent",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
