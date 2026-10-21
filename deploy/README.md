@@ -1010,8 +1010,9 @@ asked for, their cards leave the live catalogue, and publishing lists
 what is new exactly where pausing all selling does: orders already opened keep
 their fulfilment, the merchant still delivers them, and nothing is refunded or
 closed. An order already priced can still be paid within what remains of its
-price window, at most thirty seconds. `pnpm approve <email>` admits the merchant again, with a new
-approval time, and their cards sell again without being republished. An
+price window: at most thirty seconds, or thirty-five for a card that asks the
+merchant for its price. `pnpm approve <email>` admits the merchant again, with
+a new approval time, and their cards sell again without being republished. An
 unknown address is refused with words and nothing is written. The command
 reaches only a revision deployed with it; an older one refuses it for want of
 the script and changes nothing.

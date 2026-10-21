@@ -35,8 +35,9 @@ A key is a row that names its merchant. Its secret is generated, shown once and
 stored as a SHA-256 digest, and a request is resolved by looking the digest up,
 which is constant-time by construction. A key carries a label, what it was made
 for (ADR-0014 §5), when it was created and disabled, and its last use, written
-at most once every few minutes. No key issues or disables keys. Disabling one is
-instant and touches no other key and no session.
+at most once every few minutes. No key issues, lists or disables keys; a
+signed-in dashboard session does. Disabling one is instant and touches no other
+key and no session.
 
 Every route a merchant's key reaches acts on that key's merchant alone: the card
 list, the orders, the receipts, the pause switches, the worker poll and the
