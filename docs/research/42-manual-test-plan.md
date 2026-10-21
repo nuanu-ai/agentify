@@ -777,9 +777,9 @@ one morning-after U-02/K-01 recovery; I-08 belongs to every release check
 because any change can add a log line. Add C-09 for changes to the payment
 window, D-08 for changes to the contracts or the SDK, J-09 and J-07's
 overnight variant for changes to the purchase door, B-07/B-08 for changes to
-what an agent reads at the door or on the test channel, U-06/U-07 for documentation and site-frame changes, F for parcel
-changes, I for scanner or identity changes, and L for
-discovery/declaration/payment-recipient changes.
+what an agent reads at the door or on the test channel, U-06/U-07 for
+documentation and site-frame changes, F for parcel changes, I for scanner or
+identity changes, and L for discovery/declaration/payment-recipient changes.
 Test and UX results from an earlier revision carry forward only with an
 explicit unchanged-promise rationale; never call them freshly run.
 
