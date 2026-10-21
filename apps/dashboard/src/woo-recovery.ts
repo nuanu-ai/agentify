@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import type { Delivery, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
+import { withinACent } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -374,12 +375,12 @@ const differencesOf = (
       ? null
       : `its status is ${order.status}, not Processing or Completed`,
     tax.mode === "off"
-      ? order.currency === facts.currency && order.total === facts.amount && untaxed
+      ? order.currency === facts.currency && withinACent(order.total, facts.amount) && untaxed
         ? null
-        : `its total is not ${price} with no tax`
-      : order.currency === facts.currency && order.total === facts.amount
+        : `its total is not ${price}, or within a cent of it, with no tax`
+      : order.currency === facts.currency && withinACent(order.total, facts.amount)
         ? null
-        : `its total is not ${price}`,
+        : `its total is not ${price}, or within a cent of it`,
     order.paymentMethod === "agentify" ? null : "it was not paid with Agentify",
     order.transactionId === orderId ? null : "its Transaction ID is not this Agentify order ID",
     order.billingEmail === email ? null : `its billing email is not ${email}`,

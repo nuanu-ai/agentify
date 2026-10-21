@@ -2733,7 +2733,7 @@ describe("creating a parcel's order", () => {
     },
   ] as const;
   const taxedParcel = (
-    rate: (typeof TAXED_ORDERS)[number]["rate"],
+    rate: { methodId: string; instanceId: string; title: string; cost: string },
     answer: {
       total: string;
       total_tax: string;

@@ -140,6 +140,7 @@ const aShopThatAccepts = () => {
         number: String(next),
         orderKey: `wc_order_${next}`,
         downloadId: sold.download.id,
+        total: sold.price.amount,
       };
     },
   };
@@ -1690,7 +1691,12 @@ describe("a parcel's paid order", () => {
       placed,
       place: async (_keys: ShopKeys, sold: ParcelSold): Promise<ParcelMade> => {
         placed.push(sold);
-        return { ok: true, id: String(29 + placed.length), number: String(29 + placed.length) };
+        return {
+          ok: true,
+          id: String(29 + placed.length),
+          number: String(29 + placed.length),
+          total: sold.paid.amount,
+        };
       },
     };
   };
@@ -2413,7 +2419,7 @@ describe("a parcel from a shop that calculates tax", () => {
       placed,
       place: async (_keys: ShopKeys, sold: ParcelSold): Promise<ParcelMade> => {
         placed.push(sold);
-        return { ok: true, id: "336", number: "336" };
+        return { ok: true, id: "336", number: "336", total: sold.paid.amount };
       },
     };
   };
@@ -2990,7 +2996,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
       }),
       placeParcel: async (_keys, sold) => {
         placed.push(sold);
-        return { ok: true, id: "30", number: "30" };
+        return { ok: true, id: "30", number: "30", total: sold.paid.amount };
       },
     };
 
@@ -3716,6 +3722,7 @@ describe("bounded work within one connected shop", () => {
     number: id,
     orderKey: `wc_${id}`,
     downloadId: "dl_guide",
+    total: "25.00",
   });
 
   it("answers the next purchase and price while one shop creation is held open", async () => {

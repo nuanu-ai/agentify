@@ -30,6 +30,7 @@ import {
   TYPED_PRICE,
   USD_SCALE,
   usdAmountOf,
+  withinACent,
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
@@ -781,6 +782,8 @@ export type OrderMade =
       readonly number: string;
       readonly orderKey: string;
       readonly downloadId: string;
+      /** What the shop's order totals, which may be a cent from what was paid. */
+      readonly total: string;
     }
   | {
       readonly ok: false;
@@ -1454,7 +1457,8 @@ export const createTheOrderInTheShop = async (
   if (
     !["processing", "completed"].includes(String(made.status)) ||
     made.currency !== sold.price.currency ||
-    made.total !== sold.price.amount ||
+    typeof made.total !== "string" ||
+    !withinACent(made.total, sold.price.amount) ||
     !untaxedAsSold ||
     lineItems.length !== 1 ||
     line?.product_id !== productId ||
@@ -1471,7 +1475,14 @@ export const createTheOrderInTheShop = async (
       again: true,
     };
   }
-  return { ok: true, id, number, orderKey: made.order_key, downloadId: sold.download.id };
+  return {
+    ok: true,
+    id,
+    number,
+    orderKey: made.order_key,
+    downloadId: sold.download.id,
+    total: made.total,
+  };
 };
 
 /**
@@ -1557,7 +1568,13 @@ export interface ParcelSold {
 }
 
 export type ParcelMade =
-  | { readonly ok: true; readonly id: string; readonly number: string }
+  | {
+      readonly ok: true;
+      readonly id: string;
+      readonly number: string;
+      /** What the shop's order totals, which may be a cent from what was paid. */
+      readonly total: string;
+    }
   | {
       readonly ok: false;
       readonly why: string;
@@ -1679,7 +1696,7 @@ export const createTheParcelInTheShop = async (
   if (
     !["processing", "completed"].includes(made.status) ||
     made.currency !== sold.paid.currency ||
-    made.total !== sold.paid.amount ||
+    !withinACent(made.total, sold.paid.amount) ||
     !untaxedAsSold ||
     line === undefined ||
     moreLines.length > 0 ||
@@ -1706,7 +1723,7 @@ export const createTheParcelInTheShop = async (
       id: String(made.id),
     };
   }
-  return { ok: true, id: String(made.id), number: String(made.number) };
+  return { ok: true, id: String(made.id), number: String(made.number), total: made.total };
 };
 
 const ParcelOrderSchema = z.looseObject({

@@ -155,6 +155,7 @@ const parts = (
     number: "WOO-13",
     orderKey: "wc_order_13",
     downloadId: PRODUCT.downloadId,
+    total: FACTS.amount,
   };
   const value: Parts = {
     shops,
