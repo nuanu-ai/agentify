@@ -591,6 +591,28 @@ describe("a scan of pages as large as the fetch admits", () => {
     expect(checkIn(unclosed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: false });
     expect(unclosed.ms).toBeLessThan(budgetMs);
   });
+
+  it("reads each page once, however many rounds evaluate the scan", () => {
+    const card = (index: number) =>
+      `<div class="product-card"><a href="/products/item-${index}"><img src="/files/item-${index}.jpg" alt="Item ${index}" width="360" height="360"><h3>Item ${index}</h3><span class="price">$${(index % 90) + 10}.00</span><p>Solid oak, oiled finish, ships in five working days.</p></a><button type="button">Add to cart</button></div>\n`;
+    const page = `${html.replace("</main></body></html>", "")}${fill(card(1), pageCap)}</main></body></html>`;
+    // Every page is its own fetch, as the worker makes them.
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", page),
+      agentProbes: {
+        chatgpt: artifact("https://example.com/", page),
+        claude: artifact("https://example.com/", page),
+      },
+      representative: artifact("https://example.com/product/widget", page),
+    };
+
+    const first = scan({ ...input }).ms;
+    const later = [2, 3, 4].reduce((sum) => sum + scan({ ...input }).ms, 0);
+    // Reading the pages again would cost each later round about what the
+    // first one cost.
+    expect(later).toBeLessThan(first);
+  });
 });
 
 describe("a scan evaluated again", () => {
