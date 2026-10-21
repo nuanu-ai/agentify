@@ -133,11 +133,7 @@ function started(
         now: () => new Date(),
       });
 
-  const reports = startAdReports({
-    pool,
-    target: config.registrationPostback,
-    storeConnected: config.storePostback,
-  });
+  const reports = startAdReports({ pool, target: config.registrationPostback });
 
   return {
     async closeListeners() {

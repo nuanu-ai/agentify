@@ -659,9 +659,19 @@ handler that takes longer than the three seconds we wait for an answer. In that
 second case the same order is in two processes at once, which is ordinary, and
 it is what the handler's idempotency by the order's identifier is for.
 
-Within one instance the orders are worked through one at a time: the instance
-is handed the next order or question only once it has answered the one before.
-Running more instances is how to get through more of them at once.
+Within one SDK instance, up to four messages can be unfinished at once. A slow
+order handler lets another order or price question run while there is room.
+When all four places are occupied, the instance asks for nothing more until
+one finishes, so a price question can still wait behind slow work. More
+instances divide the stream further.
+
+Handlers for different orders may overlap and finish in a different order.
+Within one instance, an order event waits for earlier handlers for the same
+order. A repeat of an order already running there shares that attempt; once
+it finishes, or in another instance, the order can call your handler again.
+Your fulfillment still needs idempotency by the order's identifier. `stop()`
+waits for handlers already taken on, including events waiting on that order;
+it does not fetch more work.
 
 ## Test orders
 
@@ -720,5 +730,3 @@ receives one transfer per payout instead.
 - Telling your code that a synchronous answer arrived after its deadline. The
   answer carries the word; the tools drop it, because they report only the
   answers we refuse.
-- Whether one instance of the handler will be able to work on several orders
-  at once.

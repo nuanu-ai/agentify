@@ -200,7 +200,8 @@ if (databaseUrl === null) {
       });
       await woo.recordQuote(person.id, "prc_one", "room-101", "fingerprint", now, now);
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
-      expect(await countOf("dashboard_ad_reports", "account_id", person.id)).toBe(1);
+      // The registration's report and the store report waiting beside it.
+      expect(await countOf("dashboard_ad_reports", "account_id", person.id)).toBe(2);
 
       const forgotten = forgetProcess("  Merchant@Example.COM", TEST_NETWORK);
 

@@ -453,6 +453,24 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
     );
   });
 
+  it("starts, and reports exactly as without it, with a store switch named in a host's file, whatever its value", () => {
+    // The store goes with the registration under this one switch, so a line
+    // naming another in a host's file must neither stop the process nor
+    // change what it reports.
+    for (const environment of [
+      {},
+      ON_TEST,
+      { ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER },
+    ]) {
+      for (const named of ["true", "false", "yes"]) {
+        expect(
+          loadConfig(given({ ...environment, STORE_POSTBACK_ENABLED: named })),
+          `${JSON.stringify(environment)} ${named}`,
+        ).toStrictEqual(loadConfig(given(environment)));
+      }
+    }
+  });
+
   it("names every problem with the report at once, beside the mail's", () => {
     const said = thrownBy({
       REGISTRATION_POSTBACK_ENABLED: "true",
@@ -480,74 +498,6 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
       expect(said).not.toContain(receiver);
       expect(said).not.toContain("aisamuraihub.com/x");
     }
-  });
-});
-
-describe("telling the ad tracker that a merchant it sent connected a store", () => {
-  const KEY = ["qa", "synthetic", "postback", "key"].join("-");
-  const RECEIVER = "http://127.0.0.1:4010/postback";
-  const REGISTRATION_ON = {
-    REGISTRATION_POSTBACK_ENABLED: "true",
-    REGISTRATION_POSTBACK_KEY: KEY,
-    REGISTRATION_POSTBACK_URL: RECEIVER,
-  };
-  const STORE_ON = { STORE_POSTBACK_ENABLED: "true" };
-  const ON_TEST = { FACILITATOR_URL: "https://x402.org/facilitator" };
-
-  const thrownBy = (environment: Record<string, string>): string => {
-    try {
-      loadConfig(given(environment));
-      return "";
-    } catch (error) {
-      return String(error);
-    }
-  };
-
-  it("reports no store unless a deployment switches that report on, even with registrations reported", () => {
-    expect(loadConfig(given()).storePostback).toBe(false);
-    expect(loadConfig(given(REGISTRATION_ON)).storePostback).toBe(false);
-    expect(
-      loadConfig(given({ ...REGISTRATION_ON, STORE_POSTBACK_ENABLED: "false" })).storePostback,
-    ).toBe(false);
-  });
-
-  it("reports a store, to the registration report's receiver with its key, once both are switched on", () => {
-    const config = loadConfig(given({ ...REGISTRATION_ON, ...STORE_ON }));
-
-    expect(config.storePostback).toBe(true);
-    expect(config.registrationPostback).toStrictEqual({ endpoint: RECEIVER, key: KEY });
-  });
-
-  it("refuses to start with the store report on and the registration report off, naming both switches", () => {
-    for (const environment of [
-      STORE_ON,
-      { ...STORE_ON, REGISTRATION_POSTBACK_ENABLED: "false", REGISTRATION_POSTBACK_KEY: KEY },
-    ]) {
-      const said = thrownBy(environment);
-
-      expect(said).toMatch(/cannot start/);
-      expect(said).toContain("STORE_POSTBACK_ENABLED");
-      expect(said).toContain("REGISTRATION_POSTBACK_ENABLED");
-      expect(said).not.toContain(KEY);
-    }
-  });
-
-  it("refuses to start with the store report on on the test channel, which never reports a store", () => {
-    for (const environment of [
-      { ...ON_TEST, ...STORE_ON },
-      { ...ON_TEST, ...REGISTRATION_ON, ...STORE_ON },
-    ]) {
-      const said = thrownBy(environment);
-
-      expect(said).toMatch(/STORE_POSTBACK_ENABLED is true on the test channel/);
-      expect(said).not.toContain(KEY);
-    }
-  });
-
-  it("refuses a store switch that is neither true nor false", () => {
-    expect(() => loadConfig(given({ ...REGISTRATION_ON, STORE_POSTBACK_ENABLED: "yes" }))).toThrow(
-      /STORE_POSTBACK_ENABLED/,
-    );
   });
 });
 

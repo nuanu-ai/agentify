@@ -1,8 +1,8 @@
 /**
  * Tells the ad tracker what a person its ad sent went on to do, by the click id
  * alone: that they signed up (`reg`), once per registration, and that the
- * merchant their account names published its first card (`store_connected`),
- * once per merchant.
+ * merchant their account names published its first card (`lead`, the
+ * tracker's word for a connected store), once per merchant.
  *
  * A turn is one transaction. It takes a lock every process and replica shares,
  * which spaces posts of both kinds across all of them at least 1.1 seconds
@@ -19,19 +19,18 @@
  * days after the registration.
  *
  * A process that stops after the tracker accepted a post and before the
- * commit leaves the row pending, and it is posted again. For `reg` that cannot
- * become a second conversion, since the tracker keeps one `reg` per click; for
- * `store_connected` it relies on the tracker keeping one per click too, which
- * the tracker has not confirmed.
+ * commit leaves the row pending, and it is posted again. The tracker keeps one
+ * `reg` per click and, its team says, one `lead`, so that is no second
+ * conversion; how it answers the repeated post is not confirmed.
  *
  * Switched off, the loop still runs and posts nothing: it gives up every
  * report still pending once its time is over and lapses every store report
  * that can no longer become due, so no click outlives them because the switch
- * went off. With only the store report off, registrations are still posted.
+ * went off.
  */
 
 import { failureNamed } from "@agentify/gateway/failure-named";
-import { and, asc, eq, inArray, lte, type SQL, type SQLWrapper, sql } from "drizzle-orm";
+import { and, asc, eq, lte, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
@@ -65,8 +64,6 @@ interface LoopParts {
 
 interface ReportParts extends LoopParts {
   readonly target: Target;
-  /** Whether a merchant's first card is reported as well as a registration. */
-  readonly storeConnected: boolean;
   readonly fetch?: typeof fetch;
 }
 
@@ -76,16 +73,14 @@ type Final = "delivered" | "refused" | "given_up";
 type Said = Readonly<{ event: Event; state: Final | "pending"; outcome: string }>;
 
 /**
- * What a turn did before it posted, counted for the log: the store reports that
+ * What settling the waiting store reports did, counted for the log: those that
  * became due, those given up because they would have become due only after
- * their time, those lapsed by the reason each recorded, and the pending
- * reports given up while switched off.
+ * their time, and those lapsed by the reason each recorded.
  */
 type Tidied = Readonly<{
   due: number;
   late: number;
   lapsed: Readonly<Record<string, number>>;
-  givenUp: number;
 }>;
 
 const pause = (ms: number): Promise<void> =>
@@ -116,13 +111,13 @@ const counted = (count: number, one: string, many: string): string =>
 const givenUp = (at: Date) =>
   ({ state: "given_up", clickId: null, nextAttemptAt: null, settledAt: at }) as const;
 
-/** What one report says, exactly; nothing about the person or the store. */
-const bodyOf = (event: Event, clickId: string, eventAt: Date): string =>
-  JSON.stringify(
-    event === "reg"
-      ? { clickid: clickId, event }
-      : { clickid: clickId, event, event_time: Math.floor(eventAt.getTime() / 1_000) },
-  );
+/**
+ * What one report says, exactly; nothing about the person or the store.
+ * `lead` is the tracker's word for a connected store, and the tracker dates
+ * each report by its arrival.
+ */
+const bodyOf = (event: Event, clickId: string): string =>
+  JSON.stringify({ clickid: clickId, event: event === "reg" ? "reg" : "lead" });
 
 /** The outcome of one post as the row records it, and what follows from it. */
 const posted = async (
@@ -178,11 +173,7 @@ type Transaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction
  * A row whose account is being deleted at that moment is skipped rather than
  * waited for, since the lock every process shares is held.
  */
-async function settleWaiting(
-  tx: Transaction,
-  at: Date,
-  promote: boolean,
-): Promise<Pick<Tidied, "due" | "late" | "lapsed">> {
+async function settleWaiting(tx: Transaction, at: Date, promote: boolean): Promise<Tidied> {
   const keptFor = span(KEPT_FOR_MS);
   const settled = await tx.execute<{ fate: string }>(sql`
     with waiting as (
@@ -261,15 +252,14 @@ async function settleWaiting(
   return tidied;
 }
 
-/** Gives up, without posting, every pending report of these events whose time ran out. */
-async function giveUpLate(tx: Transaction, at: Date, events: readonly Event[]): Promise<number> {
+/** Gives up, without posting, every pending report whose time ran out. */
+async function giveUpLate(tx: Transaction, at: Date): Promise<number> {
   const given = await tx
     .update(adReports)
     .set(givenUp(at))
     .where(
       and(
         eq(adReports.state, "pending"),
-        inArray(adReports.event, [...events]),
         sql`${lastTry(adReports.eventAt, adReports.createdAt)} <= ${at}::timestamptz`,
       ),
     )
@@ -277,7 +267,7 @@ async function giveUpLate(tx: Transaction, at: Date, events: readonly Event[]): 
   return given.length;
 }
 
-const tell = (tidied: Tidied, off: string): void => {
+const tell = (tidied: Tidied): void => {
   if (tidied.due > 0) {
     console.log(
       `[dashboard] ${counted(tidied.due, "store report", "store reports")} became due with a first card`,
@@ -293,12 +283,6 @@ const tell = (tidied: Tidied, off: string): void => {
       `[dashboard] ${counted(count, "waiting store report", "waiting store reports")} lapsed: ${reason}`,
     );
   }
-  if (tidied.givenUp > 0) {
-    console.log(
-      `[dashboard] ${off} reporting is switched off, so` +
-        ` ${counted(tidied.givenUp, "pending report past its time was", "pending reports past their time were")} given up`,
-    );
-  }
 };
 
 /**
@@ -307,15 +291,10 @@ const tell = (tidied: Tidied, off: string): void => {
  */
 export async function reportOnce(parts: ReportParts): Promise<boolean> {
   const now = parts.now ?? (() => new Date());
-  const reported: Event[] = parts.storeConnected ? ["reg", "store_connected"] : ["reg"];
   type Turn = Readonly<{ tidied: Tidied; said: Said | null }>;
   const turn = await drizzle(parts.pool).transaction(async (tx): Promise<Turn> => {
     await tx.execute(lockedForPosting);
-    const waiting = await settleWaiting(tx, now(), parts.storeConnected);
-    const tidied: Tidied = {
-      ...waiting,
-      givenUp: parts.storeConnected ? 0 : await giveUpLate(tx, now(), ["store_connected"]),
-    };
+    const tidied = await settleWaiting(tx, now(), true);
     const [due] = await tx
       .select({
         accountId: adReports.accountId,
@@ -326,13 +305,7 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
         eventAt: adReports.eventAt,
       })
       .from(adReports)
-      .where(
-        and(
-          eq(adReports.state, "pending"),
-          inArray(adReports.event, reported),
-          lte(adReports.nextAttemptAt, now()),
-        ),
-      )
+      .where(and(eq(adReports.state, "pending"), lte(adReports.nextAttemptAt, now())))
       .orderBy(asc(adReports.nextAttemptAt), asc(adReports.accountId), asc(adReports.event))
       .limit(1)
       .for("update", { skipLocked: true });
@@ -370,7 +343,7 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
       const { outcome, next } = await posted(
         parts.fetch ?? fetch,
         parts.target,
-        bodyOf(event, clickId, eventAt),
+        bodyOf(event, clickId),
       );
       const attempts = due.attempts + 1;
       if (next !== "retry") return { tidied, said: await settle(next, outcome, attempts) };
@@ -391,7 +364,7 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
       if (left > 0) await (parts.wait ?? pause)(left);
     }
   });
-  tell(turn.tidied, "store");
+  tell(turn.tidied);
   if (turn.said === null) return false;
   console.log(
     `[dashboard] ${nameOf(turn.said.event)} report ${turn.said.state}: ${turn.said.outcome}`,
@@ -408,14 +381,22 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
  */
 async function expireOnce(parts: LoopParts): Promise<void> {
   const now = parts.now ?? (() => new Date());
-  const tidied = await drizzle(parts.pool).transaction(async (tx) => {
+  const { expired, tidied } = await drizzle(parts.pool).transaction(async (tx) => {
     await tx.execute(lockedForPosting);
     // Registrations first, so a store report whose registration this gives up
     // lapses in the same turn.
-    const givenUp = await giveUpLate(tx, now(), ["reg", "store_connected"]);
-    return { ...(await settleWaiting(tx, now(), false)), givenUp };
+    return {
+      expired: await giveUpLate(tx, now()),
+      tidied: await settleWaiting(tx, now(), false),
+    };
   });
-  tell(tidied, "registration");
+  tell(tidied);
+  if (expired > 0) {
+    console.log(
+      "[dashboard] reporting to the ad tracker is switched off, so" +
+        ` ${counted(expired, "pending report past its time was", "pending reports past their time were")} given up`,
+    );
+  }
 }
 
 export interface AdReports {
@@ -434,7 +415,6 @@ export function startAdReports(
   parts: LoopParts &
     Readonly<{
       target: Target | null;
-      storeConnected: boolean;
       fetch?: typeof fetch;
       idleMs?: number;
     }>,

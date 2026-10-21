@@ -1188,8 +1188,10 @@ const openLatest = async (running: Running, browser: Browser = running.browser):
     .post(action.pathname, { token: action.searchParams.get("token") ?? "" });
 };
 
-const registrationsIn = (running: Running): Record<string, unknown>[] =>
+const adReportsIn = (running: Running): Record<string, unknown>[] =>
   running.rows.dashboard_ad_reports ?? [];
+const registrationsIn = (running: Running): Record<string, unknown>[] =>
+  adReportsIn(running).filter((row) => row.event === "reg");
 
 /**
  * Whether anything a sign-in keeps on the server until it is finished, a
@@ -1252,7 +1254,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     const opened = await openLatest(running);
     expect(opened.status).toBe(303);
     expect((await running.identity.byEmail(FRESH.email))?.confirmed).toBe(true);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("leaves one pending registration holding the click, and nothing else of the sign-in, once a link asked for with it is opened", async () => {
@@ -1265,7 +1267,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
       email: FRESH.email,
     });
     expect(asked.status).toBe(202);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
 
     const opened = await openLatest(running);
 
@@ -1335,7 +1337,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     const opened = await openLatest(running);
 
     expect(opened.status).toBe(303);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("keeps the click on the page that refuses an address", async () => {
@@ -1426,7 +1428,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     expect(page.to).toBe("/cards");
     expect(running.mails).toHaveLength(mailed);
     expect(running.rows.dashboard_link_sends).toHaveLength(sends ?? 0);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 });
 
@@ -1532,7 +1534,7 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     expect(keptWhileAway).toBe(false);
     expect(returned.status).toBe(303);
     expect((await running.identity.byEmail("person@gmail.com"))?.confirmed).toBe(true);
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 
   it("draws the Google page as it is for a visitor with no click, or one it cannot read", async () => {
@@ -1624,7 +1626,7 @@ describe("the link's page for a link asked for with an ad's click", () => {
       { name: undefined, value: undefined },
     ]);
     expect(await running.identity.byEmail(FRESH.email)).toBeNull();
-    expect(registrationsIn(running)).toStrictEqual([]);
+    expect(adReportsIn(running)).toStrictEqual([]);
   });
 });
 
