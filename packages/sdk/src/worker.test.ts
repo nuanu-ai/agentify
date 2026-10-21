@@ -661,6 +661,47 @@ describe("a gateway speaking another dialect", () => {
     expect(gateway?.callsTo("poll_worker")).toHaveLength(2);
   });
 
+  it("stops on another version even when a handler never returns, and says which order it left unanswered", async () => {
+    // Waiting for a stuck handler would hold the stop for ever; past the
+    // longest an answer should take, the worker gives up on it and says so.
+    const problems: WorkerProblem[] = [];
+    let inHand = false;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order), {
+          body: { contract_version: "99", envelopes: [] },
+        }),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => {
+          inHand = true;
+          return new Promise<HandlerAnswer>(() => {});
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      systemClock,
+      100,
+    );
+    running = worker;
+
+    await waitUntil(() => inHand, "the order to reach the handler");
+    await waitUntil(() => !worker.running(), "the worker to stop");
+
+    expect(problems.map((one) => [one.kind, one.fatal])).toStrictEqual([
+      [WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH, true],
+      [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, false],
+    ]);
+    expect(problems[1]?.message).toContain(order.id);
+    expect(gateway.callsTo("answer_order")).toStrictEqual([]);
+  });
+
   it("passes on the version it saw in an answer it could not read, and keeps going", async () => {
     // The version a body this SDK refuses names is worth telling the merchant,
     // but that body was held to no schema: acted on, a proxy's error page
