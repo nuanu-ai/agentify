@@ -710,7 +710,7 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         return orderCallAnswer(
           API_ROUTES.close_order,
-          await application.closeOrder(merchantId, orderId, asked.value),
+          await application.closeOrder(merchantId, orderId, asked.value, caller),
         );
       }),
     deliverOrder: (orderId, delivery) =>
