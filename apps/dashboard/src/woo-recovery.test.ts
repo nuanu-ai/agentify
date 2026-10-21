@@ -581,6 +581,28 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
   });
 
+  it("leaves a recovery unresolved when the shop's product answer broke off, without calling the shop silent", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: (keys) =>
+        inspectProductInTheShop(
+          keys,
+          merchantItemIdFor(keys.shopUrl, "22"),
+          async () =>
+            new Response(
+              new ReadableStream({ start: (controller) => controller.error(new Error("cut off")) }),
+              { status: 200 },
+            ),
+        ),
+    });
+
+    const recovered = await recoverWooOrder({ orderId: "ord_1" }, test.value);
+
+    expect(recovered).toMatchObject({ ok: false, state: "unresolved" });
+    expect(JSON.stringify(recovered)).not.toMatch(/did not answer/i);
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
   it("leaves a recovery unresolved when the shop's product answer could not be read, rather than saying the product changed", async () => {
     // A revoked key or a page in front of the shop said nothing about the
     // product. The merchant is to reconnect and ask again, not to go looking

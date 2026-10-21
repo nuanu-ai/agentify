@@ -1074,6 +1074,37 @@ describe("the protected product check", () => {
     });
   });
 
+  it("calls a downloadable file public only where it was served without an order permission", async () => {
+    // A missing file or a redirect to a login is not a file anyone can fetch;
+    // either still refuses the sale, which cannot rely on it being protected.
+    for (const [status, isPublic] of [
+      [200, true],
+      [404, false],
+      [302, false],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") {
+          const headers: Record<string, string> = status === 302 ? { location: "/login" } : {};
+          return { status, body: {}, headers };
+        }
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+        }
+        return { status: 200, body: productDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, `${status}`).toMatchObject({ ok: false, saidNo: true });
+      expect(!read.ok && /public/i.test(read.why), `${status}`).toBe(isPublic);
+      await stand.close();
+      stand = null;
+    }
+  });
+
   it("refuses a shop that calculates taxes and names the setting to repair", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
