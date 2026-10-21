@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { CardInput, Order } from "@nuanu-ai/agentify-contracts";
@@ -294,6 +295,25 @@ describe("reading orders back", () => {
     expect(read.id).toBe(order.id);
     expect(listed.map((one) => [one.id, one.status, one.payment_status])).toStrictEqual([
       [order.id, "unknown", "unknown"],
+    ]);
+  });
+
+  it("names this package and its version on every call it makes", async () => {
+    // So the gateway can tell which release each merchant runs.
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    const agentify = await gatewayServing({
+      get_order: () => ({ body: { ...order, status: "in_progress", payment_status: "paid" } }),
+      deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
+    });
+
+    await agentify.orders.get("order-1");
+    await agentify.orders.forId("order-1").deliver({ access_url: "https://a.example" });
+
+    expect(gateway?.calls.map((call) => call.userAgent)).toStrictEqual([
+      `agentify-sdk/${version}`,
+      `agentify-sdk/${version}`,
     ]);
   });
 

@@ -605,6 +605,28 @@ describe("the mark a call leaves on the key it was made with", () => {
     expect(await markOn(harnessed, ours.id, ours.keyId)).toBe(before);
   });
 
+  it("records what the caller says it runs beside the mark, so the team can see who runs which release", async () => {
+    // Read straight off the row: nothing a merchant reads carries it.
+    const { served, harnessed } = await started();
+    const { merchant } = harnessed;
+    const clientOn = async (): Promise<string | null | undefined> =>
+      (await harnessed.store.keysOf(merchant.id)).find((key) => key.id === merchant.keyId)
+        ?.lastUserAgent;
+    const callAs = async (userAgent: string): Promise<void> => {
+      const answered = await served.call("GET", "/v0/cards", {
+        headers: { ...bearer(merchant.key), "user-agent": userAgent },
+      });
+      expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    };
+
+    await callAs("agentify-sdk/0.7.1");
+    expect(await clientOn()).toBe("agentify-sdk/0.7.1");
+
+    harnessed.advance(60 * 60_000);
+    await callAs("agentify-sdk/0.8.0");
+    expect(await clientOn()).toBe("agentify-sdk/0.8.0");
+  });
+
   it("answers the call when the mark cannot be written, and says so in the log", async () => {
     // A mark that cannot be written must not fail the purchase behind it, and
     // must be logged, or the column goes stale with nothing saying why.

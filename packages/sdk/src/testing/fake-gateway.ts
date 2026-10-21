@@ -31,6 +31,8 @@ interface GatewayCall {
   readonly body: unknown;
   /** The key the caller presented, without the scheme word in front of it. */
   readonly apiKey: string | undefined;
+  /** What the caller said it is, in its `user-agent` header. */
+  readonly userAgent: string | undefined;
 }
 
 /**
@@ -227,7 +229,15 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
       }
     }
 
-    const call: GatewayCall = { route: candidate.name, method, params, query, body, apiKey };
+    const call: GatewayCall = {
+      route: candidate.name,
+      method,
+      params,
+      query,
+      body,
+      apiKey,
+      userAgent: request.headers["user-agent"],
+    };
     const index = calls.filter((earlier) => earlier.route === candidate.name).length;
     calls.push(call);
 
