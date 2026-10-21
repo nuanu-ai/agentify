@@ -180,6 +180,9 @@ export const inspectProductInTheShop = async (
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
   const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
+  /** Which check an answer was, and the status it came with, as a log names them. */
+  const checkAt = (index: number) => (index === 0 ? "product" : `${settingAsked(index)} setting`);
+  const statusAt = (index: number) => `HTTP ${answers[index]?.response.status}`;
   /** Null where the shop never answered; `body` is null where its answer broke off. */
   const answers = await Promise.all(
     endpoints.map(async (path) => {
@@ -215,27 +218,28 @@ export const inspectProductInTheShop = async (
         again: true,
       };
     }
-    if (indices.some((index) => worthAskingAgain(answers[index]?.response.status ?? 0))) {
+    const busyAt = indices.find((index) => worthAskingAgain(answers[index]?.response.status ?? 0));
+    if (busyAt !== undefined) {
       return {
         ok: false,
-        why: "The shop was too busy to answer the protected product check.",
+        why: `The shop was too busy to answer the protected ${checkAt(busyAt)} check (${statusAt(busyAt)}).`,
         again: true,
       };
     }
     const refusedAt = indices.find((index) => answers[index]?.response.ok !== true);
     if (refusedAt !== undefined) {
-      const check = refusedAt === 0 ? "product" : `${settingAsked(refusedAt)} setting`;
       return {
         ok: false,
-        why: `The shop refused the protected ${check} check (HTTP ${answers[refusedAt]?.response.status}).`,
+        why: `The shop refused the protected ${checkAt(refusedAt)} check (${statusAt(refusedAt)}).`,
         again: false,
         saidNo: false,
       };
     }
-    if (indices.some((index) => documentOf(index) === undefined)) {
+    const unreadAt = indices.find((index) => documentOf(index) === undefined);
+    if (unreadAt !== undefined) {
       return {
         ok: false,
-        why: "The shop's protected product check did not return readable JSON.",
+        why: `The shop's protected ${checkAt(unreadAt)} check did not return readable JSON (${statusAt(unreadAt)}).`,
         again: false,
         saidNo: false,
       };
@@ -261,7 +265,7 @@ export const inspectProductInTheShop = async (
   if (!parsed.success) {
     return {
       ok: false,
-      why: "The shop's protected product or settings document is incomplete.",
+      why: `The shop's protected product check returned an incomplete document (${statusAt(0)}).`,
       again: false,
       saidNo: false,
     };
@@ -275,7 +279,7 @@ export const inspectProductInTheShop = async (
       ok: false,
       why:
         `The shop answered the check of product ${productId} with product ${product.id}'s` +
-        " document, so nothing in it can be taken for this card.",
+        ` document (${statusAt(0)}), so nothing in it can be taken for this card.`,
       again: false,
       saidNo: false,
     };
@@ -290,15 +294,16 @@ export const inspectProductInTheShop = async (
   if (settings[2]?.success !== true) {
     return {
       ok: false,
-      why: "The shop's tax calculation setting is unreadable.",
+      why: `The shop's tax calculation setting is unreadable (${checkAt(2)} check, ${statusAt(2)}).`,
       again: false,
       saidNo: false,
     };
   }
-  if (BEARING[kind].slice(1).some((index) => settings[index]?.success !== true)) {
+  const incompleteAt = BEARING[kind].slice(1).find((index) => settings[index]?.success !== true);
+  if (incompleteAt !== undefined) {
     return {
       ok: false,
-      why: "The shop's protected product or settings document is incomplete.",
+      why: `The shop's protected ${checkAt(incompleteAt)} check returned an incomplete document (${statusAt(incompleteAt)}).`,
       again: false,
       saidNo: false,
     };
@@ -314,7 +319,7 @@ export const inspectProductInTheShop = async (
       ok: false,
       why:
         `The shop answered the check of its ${settingAsked(misnamed)} setting with another` +
-        " setting's document, so nothing in it can be taken for this card.",
+        ` setting's document (${statusAt(misnamed)}), so nothing in it can be taken for this card.`,
       again: false,
       saidNo: false,
     };
@@ -474,14 +479,14 @@ export const inspectProductInTheShop = async (
     if (worthAskingAgain(exposed.status)) {
       return {
         ok: false,
-        why: "The shop's raw download protection could not be verified.",
+        why: `The shop's raw download protection could not be verified: the shop was too busy to answer the keyless request for the file (HTTP ${exposed.status}).`,
         again: true,
       };
     }
     if (exposed.status !== 401 && exposed.status !== 403) {
       return {
         ok: false,
-        why: "The downloadable file is public without an order permission.",
+        why: `The downloadable file is public without an order permission: asked without one, it answered HTTP ${exposed.status}.`,
         again: false,
         saidNo: true,
       };
@@ -755,27 +760,32 @@ export const shippingRatesInTheShop = async (
       saidNo: true,
     };
   }
-  const cart = `${shopUrl}/wp-json/wc/store/v1/cart`;
+  const cart = "/wp-json/wc/store/v1/cart";
   const ask = async (
-    url: string,
+    path: string,
     init: RequestInit,
   ): Promise<
     { readonly ok: true; readonly response: Response; readonly body: string } | NotSellable
   > => {
     let response: Response;
-    let body: string;
     try {
-      response = await request(url, {
+      response = await request(`${shopUrl}${path}`, {
         ...init,
         redirect: "manual",
         signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
       });
+    } catch {
+      return { ok: false, why: `The shop's cart did not answer at ${path}.`, again: true };
+    }
+    const answered = `at ${path} (HTTP ${response.status})`;
+    let body: string;
+    try {
       body = await response.text();
     } catch {
-      return { ok: false, why: "The shop's cart did not answer.", again: true };
+      return { ok: false, why: `The shop's cart answer broke off ${answered}.`, again: true };
     }
     if (worthAskingAgain(response.status)) {
-      return { ok: false, why: "The shop's cart was too busy to answer.", again: true };
+      return { ok: false, why: `The shop's cart was too busy to answer ${answered}.`, again: true };
     }
     if (!response.ok) {
       // Add-item refuses a product it will not sell with a 400 under one of
@@ -792,7 +802,7 @@ export const shippingRatesInTheShop = async (
       }
       return {
         ok: false,
-        why: `The shop's cart refused the question (HTTP ${response.status}).`,
+        why: `The shop's cart refused the question ${answered}.`,
         again: false,
         saidNo:
           response.status === 400 &&
@@ -809,7 +819,9 @@ export const shippingRatesInTheShop = async (
   if (token === null || token === "") {
     return {
       ok: false,
-      why: "The shop's cart gave no cart token, and without one it takes no question from us.",
+      why:
+        `The shop's cart gave no cart token at ${cart} (HTTP ${opened.response.status}), and` +
+        " without one it takes no question from us.",
       again: false,
       saidNo: false,
     };
@@ -825,7 +837,8 @@ export const shippingRatesInTheShop = async (
     body: JSON.stringify({ id: product, quantity: 1 }),
   });
   if (!added.ok) return added;
-  const placed = await ask(`${cart}/update-customer`, {
+  const placing = `${cart}/update-customer`;
+  const placed = await ask(placing, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -845,7 +858,7 @@ export const shippingRatesInTheShop = async (
   } catch {
     return {
       ok: false,
-      why: "The shop's cart did not answer with JSON.",
+      why: `The shop's cart did not answer with JSON at ${placing} (HTTP ${placed.response.status}).`,
       again: false,
       saidNo: false,
     };
@@ -854,7 +867,7 @@ export const shippingRatesInTheShop = async (
   if (!read.success) {
     return {
       ok: false,
-      why: "The shop's cart answered without its shipping rates.",
+      why: `The shop's cart answered without its shipping rates at ${placing} (HTTP ${placed.response.status}).`,
       again: false,
       saidNo: false,
     };
