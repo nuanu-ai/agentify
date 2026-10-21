@@ -1921,10 +1921,12 @@ export class Gateway {
         await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
-      // Noted only past the question above: the shop connector keeps drawing
-      // a merchant who moved back to their code, and its polls are not that
-      // code being in touch.
-      await this.#noteContact(merchantId);
+      // Only the merchant's own code is noted: the shop connector's polls,
+      // made while the shop sells or after, are never that code being in
+      // touch, and a merchant may switch back to the code at any moment.
+      if (through === "api") {
+        await this.#noteContact(merchantId);
+      }
       return await this.#drawFor(merchantId, waitMs, signal);
     } finally {
       holding.delete(held);
