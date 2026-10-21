@@ -450,8 +450,7 @@ describe("initial database migration", () => {
       ).rejects.toMatchObject({ code: "23514" });
 
       // Snapshots the deployed channels hold also name card_signal, a category
-      // the policy does not; they are read by the categories the policy names,
-      // and the one more is passed over.
+      // the policy does not, as this one does.
       const consentSnapshotId = createUuidV7();
       await pool.query(
         "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
@@ -782,6 +781,8 @@ describe("initial database migration", () => {
         "select count(*)::text as count, string_agg(payload::text, '') as payload from delivery_outbox where event_id = $1",
         [runtimeAllowed?.eventId],
       );
+      // The snapshot that also names card_signal is read by the categories the
+      // policy names: both destinations it allows receive the event.
       expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
       expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
 
