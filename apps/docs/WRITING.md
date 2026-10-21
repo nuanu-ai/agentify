@@ -149,14 +149,17 @@ defect was "the code enters the conversation only on the first path"):
 
 ## What the build understands
 
-The pages are Markdown, drawn into HTML when the documentation is built by
-markdown-it, the parser VitePress is built on, so a table, inline HTML and a
-line break come out as markdown-it writes them. A few things plain Markdown
-does not have are understood because the pages use them, and nothing else is.
+The pages are Markdown, drawn into HTML by markdown-it when the documentation
+is built, so a table, inline HTML and a line break come out as markdown-it
+writes them. A few things plain Markdown does not have are understood because
+the pages use them, and nothing else is.
 
-A heading's anchor is made from its words the way VitePress makes it, so a link
-into a page keeps its target; a heading that begins with a digit gets an anchor
-that begins with an underscore (`_1-make-the-merchant-account-ready`). A heading
+A heading's anchor is made from its words: they are lowercased, accents are
+dropped, and every run of spaces and punctuation such as `.,:?()` becomes one
+hyphen, so `## Telling a repeat apart` is reached as `#telling-a-repeat-apart`.
+A heading that begins with a digit gets an anchor that begins with an
+underscore (`_1-make-the-merchant-account-ready`), and a second heading with
+the same words on one page gets `-1` after its anchor, a third `-2`. A heading
 can name its anchor itself with `{#id}` at its end, which the scanner's pages
 do so their old anchors keep working.
 
