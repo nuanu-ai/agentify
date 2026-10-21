@@ -15,6 +15,7 @@ import type {
   DashboardViewed,
   UiBlocked,
 } from "@agentify/gateway/analytics";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
@@ -697,7 +698,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           ? { ...envelope, fields: { step, ...blocked } }
           : { ...envelope, fields: { step, ...blocked } },
       );
-    })();
+    })().catch((thrown: unknown) => {
+      // Nobody waits for this, so a throw left uncaught would end the process.
+      console.error(`[dashboard] a refused setup step went unrecorded: ${failureNamed(thrown)}`);
+    });
   };
 
   /**
