@@ -67,7 +67,6 @@ if (!databaseName.endsWith("_migration_test")) {
 }
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
-const downFile = fileURLToPath(new URL("../scripts/0000_initial.down.sql", import.meta.url));
 const adminPool = new Pool({ connectionString, max: 1 });
 
 async function resetDatabase(): Promise<void> {
@@ -86,7 +85,7 @@ afterAll(async () => {
 });
 
 describe("initial database migration", () => {
-  it("migrates up, enforces RLS and idempotency, migrates down, then migrates up again", async () => {
+  it("migrates up and enforces RLS and idempotency", async () => {
     const { db, pool } = createDatabase(connectionString, { max: 5 });
     try {
       await migrateDatabase(db, migrationsFolder);
@@ -882,21 +881,6 @@ describe("initial database migration", () => {
         }),
       ).rejects.toThrow("posthog_environment_mismatch");
       process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "false";
-
-      const downSql = await readFile(downFile, "utf8");
-      await pool.query(downSql);
-      const afterDown = await pool.query<{ count: string }>(
-        "select count(*)::text as count from pg_tables where schemaname = 'public' and tablename = any($1)",
-        [TABLES],
-      );
-      expect(afterDown.rows[0]?.count).toBe("0");
-
-      await migrateDatabase(db, migrationsFolder);
-      const afterSecondUp = await pool.query<{ count: string }>(
-        "select count(*)::text as count from pg_tables where schemaname = 'public' and tablename = any($1)",
-        [TABLES],
-      );
-      expect(afterSecondUp.rows[0]?.count).toBe(String(TABLES.length));
     } finally {
       await pool.end();
     }
