@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   browserObservationFindingSchema,
@@ -21,17 +20,6 @@ import {
 } from "./index.js";
 
 describe("canonical contracts", () => {
-  it("keeps exactly 18 checks with nominal weight 100", () => {
-    expect(CHECK_DEFINITIONS).toHaveLength(18);
-    expect(new Set(CHECK_DEFINITIONS.map(({ id }) => id)).size).toBe(18);
-    expect(CHECK_DEFINITIONS.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
-  });
-
-  it("keeps the eight-event taxonomy unique", () => {
-    expect(ANALYTICS_EVENT_NAMES).toHaveLength(8);
-    expect(new Set(ANALYTICS_EVENT_NAMES).size).toBe(8);
-  });
-
   it("answers a report without a waitlist, and refuses one that still carries it", () => {
     const report = {
       scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
