@@ -8,6 +8,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  currencyOfTheShop,
   isTheGrantScreen as inspectGrantScreen,
   theStateToken,
   whatIsWrongWithTheShopUrl,
@@ -208,5 +209,77 @@ describe("the preflight", () => {
     }));
     const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
     expect(looked.ok).toBe(false);
+  });
+});
+
+describe("the currency a shop prices in, asked before Connect", () => {
+  // Only a clear answer counts: null is "not known", and Connect then goes on
+  // as before, so every case here that is not a product priced in a currency
+  // must come back null rather than as a guess.
+  const pricedIn = (url: string) => currencyOfTheShop(url, fetch);
+  const storeProduct = (currency: unknown) => ({
+    id: 7,
+    name: "Batik scarf",
+    prices: { price: "15000000", currency_code: currency, currency_minor_unit: 2 },
+  });
+
+  it("reads the currency of the shop's public catalogue", async () => {
+    for (const currency of ["IDR", "USD"]) {
+      shop = await shopAnswering(() => ({
+        status: 200,
+        type: "application/json",
+        body: JSON.stringify([storeProduct(currency)]),
+      }));
+      expect(await pricedIn(shop.url)).toBe(currency);
+      await shop.close();
+      shop = null;
+    }
+  });
+
+  it("does not know the currency of a shop that did not clearly say", async () => {
+    const unclear = [
+      { status: 200, type: "application/json", body: "[]" },
+      { status: 404, type: "application/json", body: '{"code":"rest_no_route"}' },
+      { status: 401, type: "application/json", body: '{"code":"rest_forbidden"}' },
+      { status: 200, body: "<html><body>Welcome to my shop</body></html>" },
+      { status: 200, type: "application/json", body: '{"products":[]}' },
+      { status: 200, type: "application/json", body: JSON.stringify([{ id: 7 }]) },
+      { status: 200, type: "application/json", body: JSON.stringify([storeProduct("")]) },
+      { status: 200, type: "application/json", body: JSON.stringify([storeProduct("Rp")]) },
+      { status: 200, type: "application/json", body: JSON.stringify([storeProduct(360)]) },
+      { status: 503, type: "application/json", body: JSON.stringify([storeProduct("IDR")]) },
+    ];
+    for (const answer of unclear) {
+      shop = await shopAnswering(() => answer);
+      expect(await pricedIn(shop.url), answer.body).toBeNull();
+      await shop.close();
+      shop = null;
+    }
+  });
+
+  it("does not follow a redirect off the shop, and does not know the currency", async () => {
+    let elsewhereAsked = 0;
+    const elsewhere = await shopAnswering(() => {
+      elsewhereAsked += 1;
+      return {
+        status: 200,
+        type: "application/json",
+        body: JSON.stringify([storeProduct("IDR")]),
+      };
+    });
+    shop = await shopAnswering((path) => ({ status: 302, location: `${elsewhere.url}${path}` }));
+
+    const read = await pricedIn(shop.url);
+    await elsewhere.close();
+
+    expect(read).toBeNull();
+    expect(elsewhereAsked).toBe(0);
+  });
+
+  it("does not know the currency of a shop that never answered, without throwing", async () => {
+    const failing = async (): Promise<Response> => {
+      throw new Error("the operation was aborted due to timeout");
+    };
+    expect(await currencyOfTheShop("https://shop.example.com", failing)).toBeNull();
   });
 });

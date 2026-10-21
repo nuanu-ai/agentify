@@ -126,6 +126,8 @@ afterEach(async () => {
 
 interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
+  /** US dollars where a test does not say. */
+  readonly currency?: (shopUrl: string) => Promise<string | null>;
   readonly catalogue?: (shopUrl: string) => Promise<CatalogueRead>;
   readonly inspectProduct?: (
     keys: Parameters<typeof inspectProductInTheShop>[0],
@@ -273,6 +275,8 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           ? { ok: true }
           : await standing.grantScreen(authorizeUrl);
       },
+      currency: async (shopUrl) =>
+        standing.currency === undefined ? "USD" : await standing.currency(shopUrl),
       catalogue: async (shopUrl) => {
         read.push(shopUrl);
         return standing.catalogue === undefined
@@ -2274,6 +2278,48 @@ describe("one integration at a time", () => {
     expect(pressed.status).toBe(303);
     expect(await onSale(running)).not.toContain(card);
     expect((await theCodePolls(running)).status).toBe(409);
+  });
+
+  it("refuses a shop priced in rupiah before sending the merchant to approve keys, and keeps the code's cards on sale", async () => {
+    // Every product of such a shop would be refused at import, so switching
+    // first would take the code's cards off sale for a shop that can sell
+    // nothing, and the shop would hand over write keys for nothing.
+    const running = await started({ currency: async () => "IDR" });
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    expect(pressed.to).toBeNull();
+    expect(readable(pressed.html)).toContain("IDR");
+    expect(readable(pressed.html)).toMatch(/US dollars/);
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
+  it("sends a shop priced in US dollars to approve keys as before", async () => {
+    const running = await started({ currency: async () => "USD" });
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    expect(pressed.status).toBe(303);
+    expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
+  });
+
+  it("sends a shop whose currency could not be read to approve keys, leaving the verdict to the import", async () => {
+    // Not knowing the currency is not knowing it is another one: a shop with
+    // no products yet, or its Store API turned off, connects as before.
+    const running = await started({ currency: async () => null });
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    expect(pressed.status).toBe(303);
+    expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
+    expect(await onSale(running)).not.toContain(card);
   });
 
   it("refuses Connect while an order still waits on the code, names it, and sends nobody to the shop", async () => {
