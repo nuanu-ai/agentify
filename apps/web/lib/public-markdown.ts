@@ -52,6 +52,12 @@ function renderEditorial(path: PublicEditorialPath): string {
   return output.join("\n");
 }
 
+/** The line that leads an agent sent to buy to where it starts. */
+function agentDoor(baseUrl: string): string {
+  const { lead, label, href, rest } = LANDING_SHARED_CONTENT.agentDoor;
+  return `${lead} [${label}](${new URL(href, baseUrl).toString()})${rest}`;
+}
+
 function renderLanding(config: LandingConfig): string {
   const app = getPublicAppConfig();
   const output = [
@@ -63,7 +69,7 @@ function renderLanding(config: LandingConfig): string {
     "",
     `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
     "",
-    `${LANDING_SHARED_CONTENT.agentDoor.lead} [${LANDING_SHARED_CONTENT.agentDoor.label}](${new URL(LANDING_SHARED_CONTENT.agentDoor.href, app.baseUrl).toString()})${LANDING_SHARED_CONTENT.agentDoor.rest}`,
+    agentDoor(app.baseUrl),
     "",
   ];
 
@@ -102,6 +108,8 @@ function renderAgenticShop(): string {
     `[${hero.action}](${signIn})`,
     "",
     words(hero.note),
+    "",
+    agentDoor(baseUrl),
     "",
     `${promise.lead} ${promise.strong} ${promise.items.join(" · ")}.`,
     "",

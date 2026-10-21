@@ -52,7 +52,7 @@ export const LANDING_SHARED_CONTENT = {
     lead: "An agent that buys starts at",
     label: "/llms.txt",
     href: "/llms.txt",
-    rest: ", which names the catalogue.",
+    rest: ", which names the catalog.",
   },
 } as const;
 

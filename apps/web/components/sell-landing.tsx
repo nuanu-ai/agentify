@@ -2,11 +2,13 @@ import "./sell-landing.css";
 
 import { BrandMark } from "@agentify/ui";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { LANDING_SHARED_CONTENT } from "../content/landing";
 import type { SellLanding } from "../content/sell";
 import { SiteFooter } from "./site-chrome";
 import { SiteLink } from "./site-link";
 
 const SIGN_IN = "/dashboard/sign-in";
+const { agentDoor } = LANDING_SHARED_CONTENT;
 
 /**
  * The merchant landing, drawn from its words with its own stylesheet and
@@ -321,6 +323,10 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               <p className="eyebrow">{closing.eyebrow}</p>
               <h2>{closing.title}</h2>
               <p>{closing.text}</p>
+              <p>
+                {agentDoor.lead} <a href={agentDoor.href}>{agentDoor.label}</a>
+                {agentDoor.rest}
+              </p>
             </div>
             <div>
               <a className="button button-primary" href={SIGN_IN}>
