@@ -18,8 +18,9 @@ A registration is reported whatever the person's privacy choices, with nothing
 asked on screen, on the product owner's word of 2026-10-19, resting on legal
 advice that stating it in the privacy policy is enough, on a lawful ground not
 recorded here. The store is reported too, on the product owner's word of
-2026-10-21: "report the merchant's first card; keep the click 30 days". The
-privacy page states both; whether the advice covered the second is not recorded.
+2026-10-21: "report the merchant's first card; keep the click 30 days", and in
+the same way: "like the registration, no boxes, only a line in the policy". The
+advice on record concerned the registration. The privacy page states both.
 
 A registration is an address's first verification in the identity of ADR-0026,
 by a mailed link's press or a Google sign-in's return; a returning verified
