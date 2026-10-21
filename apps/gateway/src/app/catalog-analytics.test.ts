@@ -9,7 +9,7 @@
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnalyticsEvent } from "../analytics/events.js";
 import { type Harness, harness, type Served, serve } from "../testing/harness.js";
 import { grantLiveApproval } from "./merchants.js";
@@ -233,25 +233,42 @@ describe("the result of publishing a card", () => {
 });
 
 describe("a refusal whose recording goes wrong", () => {
+  // Stand-ins rather than spies: a spy settles what its stand-in returns, so a
+  // rejection nobody else caught would never be seen as one.
+  const rejected: unknown[] = [];
+  const rejection = (reason: unknown) => rejected.push(reason);
+  /** Every rejection nothing caught, once what the test started has settled. */
+  const leftUncaught = async (): Promise<unknown[]> => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return rejected;
+  };
+  beforeEach(() => {
+    rejected.length = 0;
+    process.on("unhandledRejection", rejection);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    process.off("unhandledRejection", rejection);
+  });
+
   for (const [wrong, recording] of RECORDINGS_GONE_WRONG) {
     it(`answers a refused publication at once when recording it ${wrong}`, async () => {
       const { harnessed } = await started();
-      vi.spyOn(harnessed.store, "recordAnalytics").mockImplementation(recording);
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      harnessed.store.recordAnalytics = recording;
       const merchant = await harnessed.gateway.registerMerchant();
 
       const refused = await within(harnessed.gateway.publishCard(merchant, {}, "api"));
 
       expect(refused).toMatchObject({ ok: false });
+      expect(await leftUncaught()).toStrictEqual([]);
     });
 
     it(`throws a failed publication's own failure at once when recording it ${wrong}`, async () => {
       const { harnessed } = await started();
-      vi.spyOn(harnessed.store, "recordAnalytics").mockImplementation(recording);
+      harnessed.store.recordAnalytics = recording;
       vi.spyOn(harnessed.store, "publishCard").mockRejectedValueOnce(
         new Error("the database went away"),
       );
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
 
       const failed = await within(
         harnessed.gateway.publishCard(harnessed.merchant.id, cardFor("room-1")).then(
@@ -261,12 +278,12 @@ describe("a refusal whose recording goes wrong", () => {
       );
 
       expect(failed).toBe("the database went away");
+      expect(await leftUncaught()).toStrictEqual([]);
     });
 
     it(`answers a body the API refused with its 400 at once when recording it ${wrong}`, async () => {
       const { harnessed, served } = await started();
-      vi.spyOn(harnessed.gateway, "setupRefused").mockImplementation(recording);
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      harnessed.gateway.setupRefused = recording;
 
       const refused = await within(
         served.call("POST", "/v0/seller-name", {
@@ -276,6 +293,7 @@ describe("a refusal whose recording goes wrong", () => {
       );
 
       expect(refused).toMatchObject({ status: 400, body: { error: { code: "malformed_body" } } });
+      expect(await leftUncaught()).toStrictEqual([]);
     });
   }
 });
