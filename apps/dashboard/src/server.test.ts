@@ -6726,6 +6726,44 @@ describe("closing fulfillment from Orders", () => {
     },
   );
 
+  it("says in the dashboard that nothing changed when an explanation is refused and no list can be read", async () => {
+    // A refused explanation never reached the gateway, so the press changed
+    // nothing, which the page can say even where it cannot draw the lists.
+    let down = false;
+    const failed = async (): Promise<never> =>
+      Promise.reject(new Error("the list could not be read"));
+    const running = await started({
+      client: (real) => ({
+        ...real,
+        cards: async () => (down ? await failed() : await real.cards()),
+        orders: async (open) => (down ? await failed() : await real.orders(open)),
+        unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+        paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
+      }),
+    });
+    const id = await paid(running);
+    await running.browser.signIn();
+    down = true;
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const posted = await running.browser.post("/orders", {
+      order_id: id,
+      message: "The delivery deadline was missed.\rA refund was sent outside Agentify.",
+    });
+    error.mockRestore();
+
+    expect(posted.status).toBe(400);
+    expect(posted.html).toContain('aria-label="Dashboard sections"');
+    const main = readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(posted.html)?.[1] ?? "");
+    expect(main).toMatch(/changed nothing/i);
+    expect(
+      [...posted.html.matchAll(/<a\b[^>]*href="([^"]*)"/g)].some((link) =>
+        (link[1] ?? "").includes(`details=${id}`),
+      ),
+    ).toBe(true);
+    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+  });
+
   it("leads back to the list the closure was pressed on, with the order opened", async () => {
     const running = await started();
     const id = await paid(running);
