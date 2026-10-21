@@ -32,6 +32,7 @@ import {
 } from "react-router";
 import { type Refusal, refusalOfPost } from "./form-post.js";
 import type { PageServices } from "./page-services.js";
+import { pressReads } from "./press-reads.js";
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORKSPACE = join(APP_ROOT, "..", "..");
@@ -52,14 +53,6 @@ const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
  * `Secure` wherever the session's cookie is.
  */
 const PRESSED = "agentify.dashboard_pressed";
-
-/**
- * How long after a press the first read of its page is still the press's own,
- * and how many presses wait for that read at most: a press nothing read after,
- * such as one whose browser closed, is forgotten past either.
- */
-const REREAD_WITHIN_MS = 10_000;
-const REREADS_KEPT = 1_000;
 
 /** A prefetch says so in a header of its own, under one of these names by browser. */
 const prefetched = (headers: Request["headers"]): boolean =>
@@ -329,31 +322,7 @@ export function pagesHandler(
   const mounted = new WeakMap<ServerBuild, Mounted>();
   const refusals = new WeakMap<Request, Refusal>();
   const visits = new WeakSet<Request>();
-  /**
-   * Each press a script sent and that was answered without a problem, by the
-   * value of the cookie it was given: the page it was posted to, and the
-   * moment a read of that page stops being taken for the press's own. A press
-   * answered with a problem is read again by nothing.
-   */
-  const awaitingRead = new Map<string, Readonly<{ page: string; until: number }>>();
-  const awaitRead = (pressed: string, page: string): void => {
-    awaitingRead.set(pressed, { page, until: Date.now() + REREAD_WITHIN_MS });
-    for (const [oldest] of awaitingRead) {
-      if (awaitingRead.size <= REREADS_KEPT) break;
-      awaitingRead.delete(oldest);
-    }
-  };
-  /**
-   * Whether this read of `page` is the first since the press this cookie was
-   * given by, and of the page that press was posted to; a press that led to
-   * another screen leaves that screen's read a visit.
-   */
-  const readAfterPress = (pressed: string | undefined, page: string): boolean => {
-    if (pressed === undefined) return false;
-    const awaited = awaitingRead.get(pressed);
-    awaitingRead.delete(pressed);
-    return awaited !== undefined && awaited.page === page && awaited.until >= Date.now();
-  };
+  const reads = pressReads();
 
   const mount = (compiled: ServerBuild): Mounted => {
     const known = mounted.get(compiled);
@@ -477,16 +446,16 @@ export function pagesHandler(
       // is read after it. A page that keeps nothing says so for the pages
       // nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
-      // A press the script sent is followed at once by a read of the page that
-      // answers it, made by the same script with the cookie the press gave.
-      // That read is the press's own, and a person moving on is a visit.
       if (pressed !== undefined && data) {
         response.once("finish", () => {
-          if (response.statusCode < 400) awaitRead(pressed, pageOf(url.pathname));
+          if (response.statusCode < 400) reads.pressed(pressed, pageOf(url.pathname));
         });
       }
       if (request.method === "GET" && !prefetched(request.headers)) {
-        const pressRead = readAfterPress(pressedIn(request.headers.cookie), pageOf(url.pathname));
+        const pressRead = reads.isPressRead(
+          pressedIn(request.headers.cookie),
+          pageOf(url.pathname),
+        );
         if (!(pressRead && data)) visits.add(request);
       }
       const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
