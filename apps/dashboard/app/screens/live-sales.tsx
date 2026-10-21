@@ -128,8 +128,9 @@ export function LiveSalesScreen({ view }: Readonly<{ view: LiveSalesView }>) {
                         <span>Allow this merchant to sell for real money.</span>
                       </label>
                       <p className="quiet">
-                        This cannot be undone. Seller name, payout wallet and integration are still
-                        required before selling.
+                        It can be withdrawn later at the terminal with{" "}
+                        <code>pnpm approve --withdraw &lt;email&gt;</code>. Seller name, payout
+                        wallet and integration are still required before selling.
                       </p>
                       <Button pending={pending}>Approve live sales</Button>
                       {approvalRefused === null ? null : (
