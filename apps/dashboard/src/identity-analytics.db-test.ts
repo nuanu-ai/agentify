@@ -326,7 +326,7 @@ if (databaseUrl === null) {
         });
       const ordered = async (merchant: string) => {
         await pool.query(
-          "insert into commerce_analytics_events (id, name, occurred_at, actor_type, source, properties, refs, next_attempt_at) values (gen_random_uuid(), 'agc_order_created', now(), 'buyer_agent', 'gateway', $1, $2, now())",
+          "insert into commerce_analytics_events (id, name, occurred_at, actor_type, source, properties, refs, next_attempt_at) values (gen_random_uuid(), 'agc_order_created', now(), 'buyer_agent', 'gateway', $1, $2, now() - interval '1 minute')",
           [
             { integration: "api", money_mode: "test", network: "base_sepolia" },
             { merchant, order: "ord_1", item: "card_1" },
