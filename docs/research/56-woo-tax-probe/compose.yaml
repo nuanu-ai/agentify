@@ -1,0 +1,66 @@
+# A throwaway WooCommerce shop for docs/research/56-woo-tax-probe.md, on this
+# machine only: the integration lab's images and seed, no Caddy and no TLS,
+# published on a loopback port and kept in volumes of its own.
+name: woo-tax-probe
+
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD:?run setup.sh}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?run setup.sh}
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  wordpress:
+    image: wordpress:7.1-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PROBE_PORT:-18456}:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      # WooCommerce takes its REST keys as HTTP Basic only over HTTPS. The
+      # image's wp-config already treats X-Forwarded-Proto: https as HTTPS,
+      # which is the header probe.sh sends in place of a TLS proxy.
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', 'http://localhost:${PROBE_PORT:-18456}');
+        define('WP_SITEURL', 'http://localhost:${PROBE_PORT:-18456}');
+        define('WP_MEMORY_LIMIT', '512M');
+        define('WP_ENVIRONMENT_TYPE', 'staging');
+        define('DISALLOW_FILE_EDIT', true);
+    volumes:
+      - wordpress:/var/www/html
+
+  cli:
+    image: wordpress:cli-php8.3
+    profiles: [cli]
+    user: "33:33"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOME: /tmp
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+    volumes:
+      - wordpress:/var/www/html
+      - ../../../deploy/woocommerce-lab/seed:/seed:ro
+      - .:/probe:ro
+
+volumes:
+  db:
+  wordpress:
