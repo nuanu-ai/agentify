@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RETRY_MS, RETRY_CEILING_MS } from "./backoff.js";
 import { createClient, type QuoteHandler } from "./client.js";
 import { contractVersion } from "./contract.js";
+import type { OrderEvent as ReadEvent } from "./reading.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import { batch, polling } from "./testing/worker-stream.js";
@@ -85,7 +86,7 @@ afterEach(async () => {
 
 interface Subscribed {
   readonly problems: WorkerProblem[];
-  readonly events: OrderEvent[];
+  readonly events: ReadEvent[];
 }
 
 const workerOver = async (
@@ -98,7 +99,7 @@ const workerOver = async (
   gateway = await startFakeGateway({ apiKey: API_KEY, routes });
 
   const problems: WorkerProblem[] = [];
-  const events: OrderEvent[] = [];
+  const events: ReadEvent[] = [];
   const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
   const answering = handlers.order;

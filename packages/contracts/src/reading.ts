@@ -3,23 +3,30 @@
  * it. The schemas in this package are the writing contract and are closed, so
  * a field the gateway was never meant to send is refused on the gateway's side.
  * A reader made here from one of them ignores fields it does not know at any
- * depth, reads an order's status or payment word it does not know as
- * `unknown`, and reads an event of a kind it does not know as
+ * depth, reads an order's status or payment word, an event's reason or an
+ * order call's result word it does not know as `unknown`, and reads an event of a kind it does not know as
  * `{ type: "unknown", named }`, so a consumer can skip it and keep the rest of
  * the answer. Everything the closed schema requires, it still requires, and an
  * event of a known kind that does not fit is refused like any broken answer.
  */
 
 import { z } from "zod";
-import { ORDER_EVENT_TYPES, type OrderEvent, OrderEventSchema } from "./events.js";
+import {
+  ORDER_EVENT_TYPES,
+  type OrderEvent,
+  OrderEventSchema,
+  type UnfulfilledReason,
+  UnfulfilledReasonSchema,
+} from "./events.js";
 import {
   type OrderStatus,
   OrderStatusSchema,
   type PaymentStatus,
   PaymentStatusSchema,
 } from "./order-status.js";
+import { type OrderCallResult, OrderCallResultSchema } from "./results.js";
 
-/** The word a reader puts in place of a status or an event kind it was not built with. */
+/** The word a reader puts in place of a word or an event kind it was not built with. */
 export const UNKNOWN_WORD = "unknown";
 
 export type UnknownWord = typeof UNKNOWN_WORD;
@@ -32,19 +39,30 @@ export interface UnreadEvent {
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
+type Opened<T> =
+  Same<T, OrderStatus> extends true
+    ? true
+    : Same<T, PaymentStatus> extends true
+      ? true
+      : Same<T, UnfulfilledReason> extends true
+        ? true
+        : Same<T, OrderCallResult> extends true
+          ? true
+          : false;
+
+type ReadEach<T> = T extends readonly (infer Each)[]
+  ? Read<Each>[]
+  : T extends object
+    ? { [Key in keyof T]: Read<T[Key]> }
+    : T;
+
 /** The shape a reader gives a document whose closed shape is `T`. */
 export type Read<T> =
-  Same<T, OrderStatus> extends true
-    ? OrderStatus | UnknownWord
-    : Same<T, PaymentStatus> extends true
-      ? PaymentStatus | UnknownWord
-      : Same<T, OrderEvent> extends true
-        ? OrderEvent | UnreadEvent
-        : T extends readonly (infer Each)[]
-          ? Read<Each>[]
-          : T extends object
-            ? { [Key in keyof T]: Read<T[Key]> }
-            : T;
+  Opened<T> extends true
+    ? T | UnknownWord
+    : Same<T, OrderEvent> extends true
+      ? ReadEach<T> | UnreadEvent
+      : ReadEach<T>;
 
 const aWord = () => z.string().regex(/\S/, "a word is not blank");
 
@@ -59,6 +77,8 @@ const OPENED_ON_READING: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<
 >([
   [OrderStatusSchema, () => wordOrUnknown(OrderStatusSchema)],
   [PaymentStatusSchema, () => wordOrUnknown(PaymentStatusSchema)],
+  [UnfulfilledReasonSchema, () => wordOrUnknown(UnfulfilledReasonSchema)],
+  [OrderCallResultSchema, () => wordOrUnknown(OrderCallResultSchema)],
   [
     OrderEventSchema,
     () =>

@@ -24,7 +24,6 @@ import {
   type HandlerAnswer,
   HandlerAnswerSchema,
   type Order,
-  type OrderEvent,
   PROTOTYPE_KEY_IS_DROPPED,
   priceProblemsOf,
   type QuoteRequest,
@@ -38,6 +37,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { retryDelayMs } from "./backoff.js";
 import { contractVersion, speaksContract } from "./contract.js";
+import type { OrderEvent } from "./reading.js";
 import { describeProblems, problemsOf } from "./schema.js";
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 

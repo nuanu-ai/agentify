@@ -31,7 +31,6 @@ import type {
   Money,
   Order,
   OrderAcceptResponse,
-  OrderCallResponse,
   OrderCloseRequest,
   OrderCloseResponse,
   PublishResult,
@@ -39,7 +38,7 @@ import type {
   QuoteResponse,
   Refusal,
 } from "@nuanu-ai/agentify-contracts";
-import type { OrderWithStatus } from "./reading.js";
+import type { OrderCallResponse, OrderWithStatus } from "./reading.js";
 import {
   callRoute,
   type Gateway,
