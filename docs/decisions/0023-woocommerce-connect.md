@@ -7,7 +7,9 @@ product owner, 2026-10-11), a merchant sells through one of the two at a time
 end to end on the test channel: there the dashboard mounts none of its screens
 and runs no worker, so a connection made there earlier stays unused. Parcels were added
 on the product owner's word on 2026-10-09 and sell on the test channel only, as
-every parcel does (ADR-0033).
+every parcel does (ADR-0033). Shops that calculate tax are sold from wherever it
+is clear what to do (the product owner, 2026-10-21); where that is, research 56
+measured.
 
 ## Context
 
@@ -35,8 +37,8 @@ shop.
 
 Two product classes are imported, both published, purchasable, in-stock simple
 products in US dollars without managed stock and not sold individually, from a
-shop at its root address with tax calculation off; anything else is named and
-skipped at import. Every card is priced at purchase and keyed by shop origin and
+shop at its root address whose tax is off or calculated by WooCommerce itself;
+anything else is named and skipped at import. Every card is priced at purchase and keyed by shop origin and
 product id, and an accepted price answer durably binds its `price_id` to a
 fingerprint of the product and the settings it is sold under, which the product
 read at payment must match.
@@ -53,10 +55,23 @@ days to ship from one constant in the connector: Agentify's stand-in, stated on
 the import screen, until parcels sell on the live channel and the time comes
 from the merchant. Its price is the goods and the cheapest rate the shop's cart
 gives for the question's locality; no rate is no price. The rate is not
-bound: the order asks again, and ships at the rate costing what was paid above
-the goods or is refused before the shop is called. It is taken on only once the shop's answer shows the address as
-sent, and Completed in the shop is its shipment. The connector keeps and logs
+bound: the order asks again, and ships at the rate that makes up what was paid
+or is refused before the shop is called. It is taken on only once the shop's
+answer shows the address as sent, and Completed in the shop is its shipment. The connector keeps and logs
 nothing of the address; the mechanics are in research 41.
+
+Where WooCommerce calculates tax, the rule is research 56's
+(`docs/research/56-woo-tax-probe.md`): an order line that names the product
+alone lets the shop split the tax out of a gross price exactly, and the cart
+quotes what the order then charges, except where a shop keeps one gross price
+for every buyer by a filter no outside reader sees. So a download sells only
+where prices are entered with tax, at its price, taxed at the shop's own
+address because its order has none; a parcel sells at its cart's total for the
+locality, tax based on the shipping address, and from an inclusive shop only to
+a locality whose cart taxes the goods as a cart at the shop's own address does.
+Either order is taken on when its total is what was paid, its tax recorded. A
+catalogue shown otherwise than prices are entered, and tax from an outside
+service, are not sold from. With tax off an order's tax must be nothing.
 
 The dashboard fills the order as the merchant's worker, calling the gateway's
 application inside the shared process (`docs/research/35-one-process.md`): it
@@ -102,5 +117,8 @@ email, which buyers do not give; the raw file URL; the order number alone; a
 scan inferring an unknown order is absent, which risks a second order in
 somebody's shop; shop credentials in the gateway; the rate stored with the
 price, a new column for what asking again gives; zones matched by a matcher of ours,
-error-prone (research 37); and a time to ship stated per shop or none at all,
-which the product owner put after the test.
+error-prone (research 37); a time to ship stated per shop or none at all,
+which the product owner put after the test; order lines carrying amounts
+before tax we compute, which miss the price by a cent at two decimals; and a
+price without an address for a download whose prices are entered before tax,
+which would charge every buyer the tax of the shop's own city.
