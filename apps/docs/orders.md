@@ -746,8 +746,9 @@ package you installed reads past what was added:
 - A delivery, refusal or acceptance answered `ok: true` with a `result` word
   your package does not know succeeded, and the word reads `unknown`.
 - A price question for a `purpose` your package does not know is left
-  unanswered, with one `quote_skipped` problem, not fatal. An unanswered price
-  question ends the sale before any money, as a silent one does.
+  unanswered, with one `quote_skipped` problem, not fatal. It counts as a
+  silent price check: a synchronous card sells at its own card price, and in
+  the other modes the sale is refused ([What can go wrong](/failures)).
 
 What an order delivers is read exactly: its product, parameters, price,
 address and test flag, off the subscription or read back. A field or an address
@@ -758,12 +759,13 @@ it stays on the open list.
 
 Agentify therefore speaks a new contract version for a change your package
 cannot read past: a field or a word renamed or removed, a field that comes to
-mean something else, anything added to what an order delivers, and a new card
-mode, selling state or kind of message on the subscription, each of which is
-work or configuration an older package cannot do. Your subscription then stops
+mean something else, anything added to an order or to a price question, and a
+new card mode, selling state or kind of message on the subscription, each of
+which is work or configuration an older package cannot do. Your subscription then stops
 at the first poll answer it can read, with a `contract_version_mismatch`
-problem naming both versions, after the orders already in your handlers have
-sent their answers; until then it reports each answer it cannot read as
+problem naming both versions, once the orders already in your handlers have
+sent their answers, or after fifty seconds with a `batch_abandoned` problem
+naming those that did not; until then it reports each answer it cannot read as
 `poll_failed`, naming the version Agentify spoke. Your process stays up and
 sells nothing until you upgrade.
 

@@ -28,16 +28,17 @@ handshake reaches.
    or the read. The gateway writes closed, so a leaked field fails on our side.
 2. The version is `"3"`. It moves when a field or a word is renamed or removed,
    a field's meaning changes, or a field or shape is added to what the merchant
-   delivers, which changes the meaning of an order; and when a card mode, a
-   selling state or a kind of message on the stream is added, work or
-   configuration an older SDK cannot do. Only informational additions leave it
-   alone. An older SDK stops at the first poll answer it can read, after its
-   handlers already running have sent their answers, and until then reports
-   each unreadable one as a failed poll naming the version. What no SDK worker
-   reads moves nothing: the payout wallet's pending fields (ADR-0019), and the
-   routes and codes only the dashboard called
-   (`docs/research/35-one-process.md`). The version moved once, from `"2"`, at
-   the switch from strict to lenient reading.
+   delivers or prices: an order's core, anything at the top of an order read,
+   which is kept closed, and a price question's contents, where an older SDK
+   would drop the field. It moves too for a new card mode, selling state or kind
+   of message on the stream, work or configuration an older SDK cannot do.
+   Only informational additions leave it alone. An older SDK stops at the
+   first poll answer it can read, after its running handlers answer or a
+   poll's deadline passes, and until then reports each unreadable answer as a
+   failed poll naming the version. What no SDK worker reads moves nothing: the
+   payout wallet's pending fields (ADR-0019), and the routes and codes only
+   the dashboard called (`docs/research/35-one-process.md`). The version moved
+   once, from `"2"`, at the switch from strict to lenient reading.
 3. Every SDK call names its release in `user-agent` as `agentify-sdk/<version>`,
    and the gateway notes it beside a key's last use whenever it writes that
    down, so the team sees who runs what. Nothing refuses a call on it.

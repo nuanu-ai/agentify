@@ -12,7 +12,9 @@ poll is handled, and the problem reporter receives one non-fatal
 not know reads `unknown` in an order's `status` or `payment_status`, an
 event's `reason` and the `result` beside `ok: true`, where the call still
 succeeded. A price question for a `purpose` it does not know is left
-unanswered with one non-fatal `quote_skipped` problem. The SDK's
+unanswered with one non-fatal `quote_skipped` problem, which counts as a silent
+price check: a synchronous card sells at its card price, and other modes
+refuse the sale. The SDK's
 `OrderStatus`, `PaymentStatus`, `OrderWithStatus`, `OrderList`, `OrderEvent`,
 `OrderCallResult` and `OrderCallResponse` types carry that one extra word.
 
@@ -21,7 +23,8 @@ read back: an unknown field or address shape there fails the poll or the read
 rather than reach the merchant's code with part of the order missing.
 
 On a version mismatch the worker takes no new work, lets handlers already
-running send their answers, and then stops.
+running send their answers for as long as a poll may take, and then stops,
+reporting any order still in a handler as abandoned.
 
 The contracts package gains `readerOf(schema)`, which makes this reader out of
 any of the merchant's documents, with the `Read`, `UnreadEvent` and
