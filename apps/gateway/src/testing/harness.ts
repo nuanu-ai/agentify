@@ -168,6 +168,10 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     if (made === null) {
       throw new Error(`the harness could not make the merchant ${name}`);
     }
+    // As though their process had just polled: a seller whose process never
+    // has is refused every purchase that charges before its goods, and a test
+    // about that moves the clock past the guard.
+    await store.noteContact(made.id, now);
     await setServiceName(store, made.id, name, now);
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.

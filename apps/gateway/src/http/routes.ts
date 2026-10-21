@@ -33,6 +33,7 @@ import {
   OK,
   PAYMENT_REQUIRED,
   type Refused,
+  TOO_MANY_REQUESTS,
   UNPROCESSABLE,
 } from "./merchant-answers.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
@@ -46,6 +47,13 @@ import {
   paymentFingerprint,
   presentedPayment,
 } from "./x402.js";
+
+/**
+ * How long an agent refused for a seller's purchases waiting for payment is
+ * told to wait before trying again: long enough not to knock at once, short
+ * against the half minute a price holds.
+ */
+const SELLER_BUSY_RETRY_AFTER_SECONDS = 5;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -598,6 +606,29 @@ async function answerPurchase(
 
     case "not_selling":
       return written(response, CONFLICT, refusal("not_selling", attempt.message));
+
+    case "seller_not_taking_orders":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "seller_not_taking_orders",
+          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+        ),
+      );
+
+    case "seller_busy":
+      // A purchase waiting for payment lapses with its price, so a place comes
+      // free within a minute and usually much sooner.
+      response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
+      return written(
+        response,
+        TOO_MANY_REQUESTS,
+        refusal(
+          "seller_busy",
+          "this seller has too many purchases waiting for payment right now, so this one was not started and nothing was charged; try again in a few seconds",
+        ),
+      );
 
     case "payment_already_spent":
       // One authorisation may not buy two orders. Nothing is said of the other

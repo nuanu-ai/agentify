@@ -12,7 +12,13 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { formsIn, readable } from "../../src/testing/html.js";
-import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
+import {
+  CLOSURE_NOTES,
+  closedForGood,
+  drawnClosedForGood,
+  type LapsedAttempt,
+  ordersView,
+} from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
@@ -779,5 +785,162 @@ describe("a closure recorded", () => {
 
     expect(said.map(([read]) => read)).toStrictEqual([false, true, false, true]);
     expect(said.every(([read, drawn]) => read === drawn)).toBe(true);
+  });
+});
+
+describe("the purchases that lapsed unpaid", () => {
+  // As the gateway reads them apart: a page of them, newest first, and how
+  // many there are in all.
+  const page = (from: number): LapsedAttempt[] =>
+    Array.from({ length: 50 }, (_, at) => ({
+      id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
+      merchant_item_id: "vpn-1m",
+      status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
+      price: { amount: "5.00", currency: "USD" },
+      at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
+      test: false,
+    }));
+
+  it("are listed under their own segment a page at a time, and in no other", () => {
+    const second = page(50);
+
+    const there = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams("show=lapsed&page=2"),
+      {},
+      {},
+      { page: second, of: 120 },
+    );
+    const elsewhere = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams(),
+      {},
+      {},
+      {
+        page: null,
+        of: 120,
+      },
+    );
+
+    expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
+      second.map((attempt) => attempt.id),
+    );
+    expect(there.listing.cut).toStrictEqual({
+      from: 51,
+      to: 100,
+      of: 120,
+      previous: "/orders?show=lapsed",
+      next: "/orders?show=lapsed&page=3",
+    });
+    expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
+      ["All", 3, false],
+      ["Open", 3, false],
+      ["Needs you", 0, false],
+      ["Lapsed", 120, true],
+    ]);
+    expect(elsewhere.listing.rows.map((row) => row.id).sort()).toStrictEqual(
+      THREE.orders.map((order) => order.id).sort(),
+    );
+    const text = readable(served(() => <OrdersScreen view={there} />));
+    expect(text).toContain("Showing 51–100 of 120");
+    expect(text).toContain("Closed on time limit");
+  });
+
+  it("include one that ended before any price was named, shown without a price", () => {
+    const unpriced: LapsedAttempt = {
+      id: idOf("0aa0", "beef"),
+      merchant_item_id: "vpn-1m",
+      status: "rejected",
+      price: null,
+      at: "2026-10-11T23:00:00Z",
+      test: false,
+    };
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams("show=lapsed"),
+      {},
+      {},
+      { page: [unpriced], of: 1 },
+    );
+
+    expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
+      [unpriced.id, "No price"],
+    ]);
+    expect(readable(served(() => <OrdersScreen view={view} />))).toContain("VPN, one month");
+  });
+
+  it("are said, beside a search, to be left out of it and kept under Lapsed", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ q: "ord_ffff" }),
+      {},
+      {},
+      { page: null, of: 3 },
+    );
+
+    const text = readable(served(() => <OrdersScreen view={view} />));
+    expect(text).toContain("No order matches");
+    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed");
+  });
+
+  it("are not offered beside a search, which reads only the other orders", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ q: FIRST }),
+      {},
+      {},
+      { page: null, of: 120 },
+    );
+
+    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
+  });
+
+  it("are a segment only where there is one, so a list without them reads as before", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams(),
+      {},
+      {},
+      {
+        page: null,
+        of: 0,
+      },
+    );
+
+    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
+  });
+
+  it("are orders, so a merchant with no other is not told there are none", () => {
+    const view = ordersView(
+      "live",
+      CARDS,
+      ordersOf([]),
+      ordersOf([]),
+      new URLSearchParams(),
+      {},
+      {},
+      { page: null, of: 3 },
+    );
+
+    expect(view.none).toBe(false);
+    expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
   });
 });

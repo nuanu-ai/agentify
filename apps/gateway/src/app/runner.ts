@@ -64,9 +64,10 @@ import {
   RecoveryFailure,
   type SettleOutcome,
 } from "../ports/facilitator.js";
-import type { Reminder } from "../ports/queue.js";
 import type {
-  Integration,
+  Birth,
+  Born,
+  ClockAtBirth,
   MerchantScope,
   OrderChange,
   PaymentAttempt,
@@ -183,6 +184,23 @@ export interface Swept {
   refused: number;
 }
 
+/** A reminder for each deadline in `after` that was not already running in `before`. */
+function clocksFor(
+  before: readonly Deadline[],
+  after: readonly Deadline[],
+  orderId: string,
+  now: number,
+): ClockAtBirth[] {
+  return after
+    .filter(
+      (deadline) => !before.some((was) => was.kind === deadline.kind && was.at === deadline.at),
+    )
+    .map((deadline) => ({
+      reminder: { kind: "deadline", orderId, deadline: deadline.kind, at: deadline.at },
+      afterMs: Math.max(deadline.at - now, 0),
+    }));
+}
+
 /**
  * Whether this effect runs after the order is written rather than being
  * written with it. An effect belongs with the write when nothing can re-drive
@@ -229,23 +247,18 @@ export class OrderRunner {
 
   /**
    * Writes down a new order and carries out the effects its creation asked
-   * for; the machine has already decided that the order exists. `through` is
-   * the integration its card was sold through: if the merchant has stopped
-   * selling through it by the time the order would be written, nothing is
-   * written or carried out and null comes back.
+   * for; the machine has already decided that the order exists. `birth` is
+   * what the store holds the write to (`Birth`): where the order is not
+   * written, nothing is carried out either, and the answer says why.
    */
   async create(
     record: StoredOrder,
     effects: readonly Effect[],
     at: number,
-    through: Integration,
-  ): Promise<StoredOrder | null> {
+    birth: Birth,
+  ): Promise<Born> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
-    // The clock is started before the order is written: a reminder for an order
-    // never written finds nothing, while an order written with no clock on it is
-    // one nothing will ever close.
-    await this.#arm([], deadlines(record.order), record.order.id);
 
     // `addOrder` takes nothing to write alongside the order, so an effect that
     // must be written with it is refused here, before the order exists.
@@ -256,11 +269,15 @@ export class OrderRunner {
       );
     }
 
-    if (!(await this.#runtime.store.addOrder(record, through))) {
-      return null;
+    const born = await this.#runtime.store.addOrder(record, {
+      ...birth,
+      clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
+    });
+    if (born !== "written") {
+      return born;
     }
     await this.#run(record, effects);
-    return record;
+    return born;
   }
 
   /**
@@ -749,21 +766,8 @@ export class OrderRunner {
     after: readonly Deadline[],
     orderId: string,
   ): Promise<void> {
-    const now = this.#runtime.clock();
-    for (const deadline of after) {
-      const alreadyRunning = before.some(
-        (was) => was.kind === deadline.kind && was.at === deadline.at,
-      );
-      if (alreadyRunning) {
-        continue;
-      }
-      const reminder: Reminder = {
-        kind: "deadline",
-        orderId,
-        deadline: deadline.kind,
-        at: deadline.at,
-      };
-      await this.#runtime.queue.remind(reminder, Math.max(deadline.at - now, 0));
+    for (const clock of clocksFor(before, after, orderId, this.#runtime.clock())) {
+      await this.#runtime.queue.remind(clock.reminder, clock.afterMs);
     }
   }
 

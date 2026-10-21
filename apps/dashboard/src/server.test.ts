@@ -3763,6 +3763,45 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("play out as usual");
   });
 
+  it("is told over Cards and Orders when its integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    const since = "2026-08-26 12:00:00 UTC";
+
+    harnessed.advance(11 * 60_000);
+    const cards = (await browser.get("/cards")).html;
+    const orders = (await browser.get("/orders")).html;
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const after = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
+    expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
+    expect(reasonsIn(after)).toStrictEqual([]);
+  });
+
+  it("is told over its pages while twenty purchases wait for payment and new ones are refused", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    for (let one = 0; one < 20; one += 1) {
+      await harnessed.gateway.beginPurchase(itemId, {});
+    }
+    await browser.signIn();
+
+    expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
+  });
+
+  it("is not told prepaid purchases are refused while it sells only goods made in the answer", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    harnessed.advance(11 * 60_000);
+
+    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
+  });
+
   it("is offered no switch on a card, not even one they paused before they left", async () => {
     // A card's own switch puts nothing back on sale once its merchant has
     // left, so a Resume beside it would promise what nothing here does.
@@ -3872,6 +3911,32 @@ describe("the orders screen", () => {
     expect(all).toContain("In progress");
     expect(openOnly).toContain("Nothing is open");
     expect(openOnly).not.toMatch(/finished/i);
+  });
+
+  it("lists a purchase that lapsed unpaid under Lapsed alone, and the other orders as before", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(offered.order.order.id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    await browser.signIn();
+
+    const all = readable((await browser.get("/orders")).html);
+    const lapsed = readable((await browser.get("/orders?show=lapsed")).html);
+
+    expect(all).toContain("Delivered");
+    expect(all).toContain("Lapsed 1");
+    expect(all).not.toContain("Closed on time limit");
+    expect(lapsed).toContain("Closed on time limit");
+    expect(lapsed).not.toContain("Delivered");
   });
 
   it("does not tell a merchant nothing is owed while an order is still running", async () => {

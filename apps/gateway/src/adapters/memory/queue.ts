@@ -104,6 +104,7 @@ export class MemoryQueue implements Queue {
       forget: async (merchantId, orderId, priceQuestion) => () => {
         this.forget(merchantId, orderId, priceQuestion);
       },
+      remind: (reminder, afterMs) => this.remind(reminder, afterMs),
     };
   }
 

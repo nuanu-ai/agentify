@@ -562,13 +562,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
         await store.switchIntegration(A, "woocommerce");
 
-        expect(await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), "api")).toBe(
-          false,
-        );
+        expect(
+          await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), {
+            through: "api",
+            waitingAtMost: 20,
+          }),
+        ).toBe("switched_away");
         expect(await store.orderById("ord_1")).toBeNull();
         expect(
-          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), "woocommerce"),
-        ).toBe(true);
+          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), {
+            through: "woocommerce",
+            waitingAtMost: 20,
+          }),
+        ).toBe("written");
         expect(await store.orderById("ord_2")).not.toBeNull();
       });
 
@@ -576,6 +582,22 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
 
         await expect(store.switchIntegration("mch_nobody", "api")).rejects.toThrow(/mch_nobody/);
+      });
+    });
+
+    describe("a merchant's last poll", () => {
+      it("is the latest instant written, never moved back by an older one, and nobody else's", async () => {
+        // Two gateway processes write it from two clocks without serialising.
+        const store = await twoMerchants();
+
+        expect(await store.lastContact(A)).toBeNull();
+        await store.noteContact(A, 5_000);
+        await store.noteContact(A, 3_000);
+
+        expect(await store.lastContact(A)).toBe(5_000);
+        expect(await store.lastContact(B)).toBeNull();
+        await store.noteContact(A, 8_000);
+        expect(await store.lastContact(A)).toBe(8_000);
       });
     });
 
@@ -1543,6 +1565,248 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.disableKey("mk_1", 7_000))?.lastUsedAt).toBe(5_000);
         expect((await store.keysOf(A))[0]?.lastUsedAt).toBe(5_000);
+      });
+    });
+
+    describe("a purchase waiting for payment", () => {
+      /**
+       * A purchase being priced or priced and not paid, at `createdAt`, with
+       * the deployment's windows: five seconds for a price question, thirty
+       * for a price to hold.
+       */
+      const pending = (
+        id: string,
+        state: "created" | "quoted",
+        createdAt: number,
+        merchantId = A,
+      ): StoredOrder => {
+        const base = anOrder(id, state, { merchantId, createdAt });
+        return {
+          ...base,
+          order: {
+            ...base.order,
+            policy: {
+              ...base.order.policy,
+              deadlines: {
+                ...base.order.policy.deadlines,
+                quoteResponseMs: 5_000,
+                quoteTtlMs: 30_000,
+              },
+            },
+            timestamps: {
+              ...base.order.timestamps,
+              quotedAt: state === "quoted" ? createdAt : null,
+            },
+          },
+        };
+      };
+
+      /** A purchase priced and not paid, as `addOrder` is given one at its birth. */
+      const waiting = (id: string, merchantId = A) =>
+        pending(id, "quoted", Number(id.replace(/\D/g, "")) || 1, merchantId);
+
+      it("is written while fewer of its seller's purchases wait, and refused once as many do as allowed", async () => {
+        // Only a seller's own purchases still waiting for payment count: one
+        // paid, one charging, one that ended and another seller's hold no place.
+        const store = await twoMerchants();
+        await store.addOrder(pending("ord_1", "created", 1));
+        await store.addOrder(waiting("ord_2"));
+        await store.addOrder(anOrder("ord_3", "paid", { createdAt: 3 }));
+        await store.addOrder(anOrder("ord_4", "expired", { createdAt: 4 }));
+        const charging = anOrder("ord_5", "quoted", { createdAt: 5 });
+        await store.addOrder({ ...charging, order: { ...charging.order, payment: "settling" } });
+        await store.addOrder(waiting("ord_6", B));
+        await store.addOrder(waiting("ord_7", B));
+
+        expect(await store.addOrder(waiting("ord_8"), { through: "api", waitingAtMost: 2 })).toBe(
+          "too_many_waiting",
+        );
+        expect(await store.orderById("ord_8")).toBeNull();
+        expect(await store.addOrder(waiting("ord_9"), { through: "api", waitingAtMost: 3 })).toBe(
+          "written",
+        );
+        expect(await store.orderById("ord_9")).not.toBeNull();
+      });
+
+      it("holds no place once its price has run out, though nothing has closed it yet", async () => {
+        // A reminder that fires late, or never, must not keep a seller's
+        // places taken: the price is gone, and no payment will be taken at it.
+        const store = await twoMerchants();
+        await store.addOrder(pending("ord_1", "quoted", 1_000));
+        await store.addOrder(pending("ord_2", "created", 1_000));
+
+        expect(await store.waitingForPayment(A, 20_000, 20)).toBe(2);
+        expect(
+          await store.addOrder(pending("ord_3", "quoted", 20_000), {
+            through: "api",
+            waitingAtMost: 2,
+          }),
+        ).toBe("too_many_waiting");
+        // The price named at 1s holds until 31s; the question asked at 1s may
+        // name one until 6s, which then holds until 36s.
+        expect(await store.waitingForPayment(A, 32_000, 20)).toBe(1);
+        expect(await store.waitingForPayment(A, 37_000, 20)).toBe(0);
+        expect(
+          await store.addOrder(pending("ord_4", "quoted", 37_000), {
+            through: "api",
+            waitingAtMost: 1,
+          }),
+        ).toBe("written");
+      });
+
+      it("is held to the limit however many purchases of one seller arrive at once", async () => {
+        // Counted and written apart, every one of them would count the same
+        // nineteen and all of them would be written.
+        const store = await twoMerchants();
+
+        const born = await Promise.all(
+          Array.from({ length: 30 }, (_, at) =>
+            store.addOrder(waiting(`ord_${at + 1}`), { through: "api", waitingAtMost: 20 }),
+          ),
+        );
+
+        expect(born.filter((one) => one === "written")).toHaveLength(20);
+        expect(born.filter((one) => one === "too_many_waiting")).toHaveLength(10);
+        expect(await store.orders(A)).toHaveLength(20);
+      });
+    });
+
+    describe("an attempt that lapsed unpaid", () => {
+      const DAY = 86_400_000;
+
+      /** An order as it ended, with some of its facts changed. */
+      const ended = (
+        id: string,
+        state: Order["state"],
+        changed: { readonly order?: Partial<Order>; readonly merchantId?: string } = {},
+        more: Partial<StoredOrder> = {},
+      ): StoredOrder => {
+        const base = anOrder(id, state, { merchantId: changed.merchantId ?? A });
+        return { ...base, ...more, order: { ...base.order, ...changed.order } };
+      };
+
+      it("is forgotten a batch at a time once last written before the instant, and nothing with money, a claim, a receipt, an event or goods goes with it", async () => {
+        const store = await twoMerchants();
+        const forgotten = ["ord_refused", "ord_lapsed", "ord_lapsed_too", "ord_theirs"];
+        await store.addOrder(
+          ended("ord_refused", "rejected", { order: { closure: { cause: "unavailable" } } }),
+        );
+        await store.addOrder(ended("ord_lapsed", "expired"));
+        await store.addOrder(ended("ord_lapsed_too", "expired"));
+        await store.addOrder(ended("ord_theirs", "expired", { merchantId: B }));
+        // Goods made after the deadline, held for a repeat purchase.
+        await store.addOrder(
+          ended("ord_goods_held", "expired", { order: { heldFulfillment: true } }),
+        );
+        // A charge that was sent and failed, and one nobody answered.
+        await store.addOrder(
+          ended(
+            "ord_charge_failed",
+            "rejected",
+            { order: { payment: "settle_failed" } },
+            {
+              payment: "PAYMENT",
+              paidBy: "0x00000000000000000000000000000000000000aa",
+            },
+          ),
+        );
+        await store.addOrder(
+          ended("ord_charge_unknown", "rejected", { order: { payment: "outcome_unknown" } }),
+        );
+        // A merchant asked to confirm is told when the buyer never pays.
+        await store.addOrder(
+          ended("ord_confirmation_asked", "expired", {
+            order: {
+              timestamps: {
+                ...anOrder("x", "expired").order.timestamps,
+                confirmationRequestedAt: 500,
+              },
+            },
+          }),
+        );
+        await store.addOrder(ended("ord_claimed", "expired"));
+        await store.claimPayment("fp_claimed", "ord_claimed");
+        await store.addOrder(ended("ord_receipted", "expired"));
+        await store.putReceipt(A, aReceipt("rcp_1", "ord_receipted", "delivered"));
+        await store.addOrder(
+          ended("ord_delivered", "delivered", { order: { payment: "settled" } }),
+        );
+        await store.addOrder(ended("ord_cancelled", "cancelled"));
+        await store.addOrder(ended("ord_waiting", "quoted"));
+        const everyOrder = async () => [
+          ...(await idsOf(store.orders(A))),
+          ...(await idsOf(store.orders(B))),
+        ];
+        const before = await everyOrder();
+
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(3);
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(1);
+        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(0);
+
+        expect(await everyOrder()).toStrictEqual(before.filter((id) => !forgotten.includes(id)));
+        for (const id of forgotten) {
+          expect(await store.orderById(id)).toBeNull();
+        }
+        expect(await store.receiptForOrder("ord_receipted")).not.toBeNull();
+      });
+
+      it("is left out of a merchant's orders when asked, and read apart a page at a time, newest first, with how many there are", async () => {
+        // One that ended before it had a price is read here too, the one place
+        // a merchant can find it.
+        const store = await twoMerchants();
+        const price = { amount: "5.00", currency: "USD", asOf: 0 };
+        const priced = (id: string, state: Order["state"], createdAt: number, merchantId = A) => {
+          const base = anOrder(id, state, { merchantId, createdAt });
+          return { ...base, order: { ...base.order, price } };
+        };
+        await store.addOrder(priced("ord_1", "delivered", 1));
+        await store.addOrder(priced("ord_2", "expired", 2));
+        await store.addOrder(anOrder("ord_3", "rejected", { createdAt: 3 }));
+        await store.addOrder(priced("ord_4", "rejected", 4));
+        await store.addOrder(priced("ord_5", "quoted", 5));
+        await store.addOrder(priced("ord_6", "expired", 6, B));
+
+        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([
+          "ord_1",
+          "ord_5",
+        ]);
+        expect(await idsOf(store.orders(A))).toHaveLength(5);
+        const first = await store.lapsedAttempts(A, { offset: 0, limit: 2 });
+        const second = await store.lapsedAttempts(A, { offset: 2, limit: 2 });
+        expect(first.orders.map((one) => one.order.id)).toStrictEqual(["ord_4", "ord_3"]);
+        expect(second.orders.map((one) => one.order.id)).toStrictEqual(["ord_2"]);
+        expect(first.of).toBe(3);
+        expect(await store.lapsedAttempts(A, { offset: 0, limit: 0 })).toStrictEqual({
+          orders: [],
+          of: 3,
+        });
+      });
+
+      it("is marked as it ends, so an order born waiting and closed later leaves the default reads and is forgotten", async () => {
+        const store = await twoMerchants();
+        const born = anOrder("ord_born", "quoted");
+        await store.addOrder({
+          ...born,
+          order: { ...born.order, price: { amount: "5.00", currency: "USD", asOf: 0 } },
+        });
+
+        await store.withOrder("ord_born", (found) => ({
+          save: { ...found, order: { ...found.order, state: "expired" as const } },
+          result: null,
+        }));
+
+        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([]);
+        expect((await store.lapsedAttempts(A, { offset: 0, limit: 10 })).of).toBe(1);
+        expect(await store.forgetLapsedBefore(Date.now() + 31 * DAY, 10)).toBe(1);
+        expect(await store.orderById("ord_born")).toBeNull();
+      });
+
+      it("is kept while it was last written after the instant", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(ended("ord_lapsed", "expired"));
+
+        expect(await store.forgetLapsedBefore(Date.now() - DAY, 10)).toBe(0);
+        expect(await store.orderById("ord_lapsed")).not.toBeNull();
       });
     });
 

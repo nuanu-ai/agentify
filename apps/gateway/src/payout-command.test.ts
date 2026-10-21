@@ -290,6 +290,9 @@ describe("a payout over a split that would hand a share to an address no wallet 
     const merchant = await aMerchantPaidAt(database, "mch_a", T1_TEST.multicall3);
     const gateway = aGatewayOver(database);
     const stored = await database.store.publishCard(merchant, lateGoods, NOW);
+    // Its goods come later and it is charged first, which only a seller whose
+    // process has just polled is sold.
+    await gateway.poll(merchant, 0);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");

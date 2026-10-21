@@ -264,7 +264,8 @@ const OrderDetails = ({
 const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
   const { listing } = view;
   const here = listing.segments.find((one) => one.here);
-  const title = here?.key === "open" ? "Open orders" : "All orders";
+  const title =
+    here?.key === "open" ? "Open orders" : here?.key === "lapsed" ? "Lapsed unpaid" : "All orders";
   return (
     <Group title={title} count={here?.count ?? listing.rows.length}>
       {listing.rows.length === 0 ? (
@@ -381,7 +382,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   );
   const note = (
     <p className="note">
-      Purchases that closed before they had a price are not listed; nothing was charged for them.
+      Purchases that closed before they had a price are not listed with the others; nothing was
+      charged for them, and those refused or run out are under Lapsed.
     </p>
   );
   if (view.none) {
@@ -392,6 +394,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       </>
     );
   }
+  const lapsed = here?.key === "lapsed";
   return (
     <>
       <ListTools
@@ -399,6 +402,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         path="/orders"
         label="Search orders by ID or product"
         placeholder="Search by order ID or product"
+        searchable={!lapsed}
         {...(opening
           ? {}
           : {
@@ -406,6 +410,15 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                 `Only orders whose ID or product matches “${q}” are counted and shown.`,
             })}
       />
+      {view.lapsedApart === null ? null : (
+        <p className="search-cut">
+          {view.lapsedApart.says}{" "}
+          <Link to={view.lapsedApart.to} prefetch="intent">
+            Lapsed
+          </Link>
+          .
+        </p>
+      )}
       {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.closedElsewhere === null ? null : (
         <p className="quiet">
@@ -415,7 +428,15 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           </Link>
         </p>
       )}
-      {here?.key === "needs" ? (
+      {lapsed ? (
+        <>
+          <OrderList view={view} />
+          <p className="note">
+            Nothing was charged for these, and each is deleted thirty days after it was last
+            written.
+          </p>
+        </>
+      ) : here?.key === "needs" ? (
         <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>
           {listing.rows.length === 0 ? (
             <NothingHere listing={listing} />

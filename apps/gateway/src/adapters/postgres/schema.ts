@@ -23,7 +23,16 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { StoredOrder } from "../../ports/store.js";
+import { type StoredOrder, WAITING_FOR_PAYMENT } from "../../ports/store.js";
+
+/**
+ * The states a purchase waits for payment in, written into the SQL itself:
+ * the planner uses a partial index only for a predicate it can see is the
+ * index's own.
+ */
+export const WAITING_STATES = sql.raw(
+  `(${WAITING_FOR_PAYMENT.map((state) => `'${state}'`).join(", ")})`,
+);
 
 /**
  * One row per merchant, with whether they are taking new orders: the merchant
@@ -128,6 +137,18 @@ export const merchantKeys = pgTable(
   (table) => [index("merchant_keys_merchant_idx").on(table.merchantId)],
 );
 
+/**
+ * When one of a merchant's processes last polled their stream, a row apart
+ * from the merchant's own, which every birth of an order holds while it
+ * writes: a poll writing here waits for no purchase.
+ */
+export const merchantContact = pgTable("merchant_contact", {
+  merchantId: text("merchant_id")
+    .primaryKey()
+    .references(() => merchants.id, { onDelete: "cascade" }),
+  polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
 export const cards = pgTable(
   "cards",
   {
@@ -182,6 +203,11 @@ export const orders = pgTable(
     state: text("state").notNull(),
     /** Whether this order is still owed work or money. */
     open: boolean("open").notNull(),
+    /**
+     * Whether this order is an attempt that lapsed unpaid (`lapsedAttempt`),
+     * which the merchant's screens list apart and the daily work forgets.
+     */
+    lapsed: boolean("lapsed").notNull().default(false),
     /** Written from the document, like `state` and `open`. */
     merchantId: text("merchant_id")
       .notNull()
@@ -203,6 +229,17 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
+    // A merchant's orders without the attempts that lapsed unpaid, and those
+    // attempts a page at a time, newest first.
+    index("orders_lapsed_merchant_idx").on(table.merchantId, table.lapsed, table.createdAt),
+    // The attempts that lapsed unpaid, the oldest first, for the daily work
+    // that forgets them.
+    index("orders_lapsed_idx").on(table.updatedAt).where(sql`${table.lapsed}`),
+    // A merchant's purchases waiting for payment, counted at the birth of
+    // every purchase of theirs.
+    index("orders_waiting_idx")
+      .on(table.merchantId)
+      .where(sql`${table.state} in ${WAITING_STATES}`),
     // The order a payment is for, found by the reference its challenge
     // carried, and never two orders under one reference.
     uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),

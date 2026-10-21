@@ -63,6 +63,7 @@ import {
   closedForGood,
   drawnClosedForGood,
   type FrameView,
+  lapsedPageIn,
   type OrdersView,
   ordersPlace,
   ordersView,
@@ -722,20 +723,25 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     query: URLSearchParams,
   ): Promise<Outcome<OrdersView>> => {
     const gateway = gatewayAs(person);
+    // The purchases that lapsed unpaid are read only where their segment is
+    // asked for, a page of them; everywhere else they are only counted.
+    const lapsedPage = lapsedPageIn(query);
     // The open list is read beside the whole one, never after it, since
     // which orders are open is the gateway's to say.
-    const [cards, orders, open, owed, paidInto] = await Promise.all([
+    const [cards, orders, open, owed, paidInto, lapsed] = await Promise.all([
       gateway.cards(),
       gateway.orders(false),
       gateway.orders(true),
       gateway.unfulfilledOrders(),
       gateway.paidIntoSplits(),
+      lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage),
     ]);
     if (!cards.ok) return problemOf(cards);
     if (!orders.ok) return problemOf(orders);
     if (!open.ok) return problemOf(open);
     if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
+    if (!lapsed.ok) return problemOf(lapsed);
     const view = ordersView(
       viewing(person).mode,
       cards.document,
@@ -744,6 +750,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       query,
       owed.document,
       paidInto.document,
+      typeof lapsed.document === "number"
+        ? { page: null, of: lapsed.document }
+        : { page: lapsed.document.attempts, of: lapsed.document.of },
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
       const links = await parts.woo.recoveryLinks(
@@ -1204,7 +1213,21 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   payout: { wallet: standing.value.payoutWallet },
                   liveApproval: standing.value.liveApproved,
                 },
-                { selling: standing.value.selling, through: standing.value.through },
+                {
+                  selling: standing.value.selling,
+                  through: standing.value.through,
+                  busy: standing.value.busy,
+                  ...(standing.value.outOfTouch === null
+                    ? {}
+                    : {
+                        outOfTouch: {
+                          since:
+                            standing.value.outOfTouch.since === null
+                              ? null
+                              : new Date(standing.value.outOfTouch.since).toISOString(),
+                        },
+                      }),
+                },
               )
             : accountOf(viewing(person), { unread: true }),
         };

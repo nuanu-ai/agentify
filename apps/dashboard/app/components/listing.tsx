@@ -15,6 +15,7 @@ export function ListTools({
   label,
   placeholder,
   searched,
+  searchable = true,
 }: Readonly<{
   listing: Listing<unknown>;
   /** The list's page, without the dashboard's prefix. */
@@ -28,6 +29,8 @@ export function ListTools({
    * whole list follows it, unless the empty list under it offers that way.
    */
   searched?: (q: string) => string;
+  /** False on a segment whose rows are read a page at a time and not searched. */
+  searchable?: boolean;
 }>) {
   const going = useGoingTo();
   const goingTo =
@@ -37,23 +40,25 @@ export function ListTools({
     goingTo === null ? here : goingTo === key || (goingTo === "" && key === first);
   return (
     <div className="list-tools">
-      <Form method="get" action={path} role="search" className="search">
-        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" />
-        </svg>
-        <input
-          type="search"
-          name="q"
-          aria-label={label}
-          placeholder={placeholder}
-          defaultValue={listing.search.q}
-          key={listing.search.q}
-        />
-        {listing.search.show === null ? null : (
-          <input type="hidden" name="show" value={listing.search.show} />
-        )}
-      </Form>
+      {searchable ? (
+        <Form method="get" action={path} role="search" className="search">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            name="q"
+            aria-label={label}
+            placeholder={placeholder}
+            defaultValue={listing.search.q}
+            key={listing.search.q}
+          />
+          {listing.search.show === null ? null : (
+            <input type="hidden" name="show" value={listing.search.show} />
+          )}
+        </Form>
+      ) : null}
       <nav className="segments" aria-label="Show">
         {listing.segments.map((segment) =>
           marked(segment.key, segment.here) ? (

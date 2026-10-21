@@ -12,6 +12,7 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
+import { outcomeFor } from "@agentify/core";
 import type {
   Caller,
   Gateway,
@@ -20,6 +21,7 @@ import type {
   MerchantKey,
   PayoutTransaction,
   RecordedPayoutSplit,
+  StoredOrder,
   WalletChangeRefusal,
 } from "@agentify/gateway";
 import {
@@ -57,8 +59,10 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
+import type { LapsedAttempt } from "./views.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -134,7 +138,17 @@ export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
+  /** Every order but the purchases that lapsed unpaid, which are not read here. */
   orders(open: boolean): Promise<Answer<OrderList>>;
+  /**
+   * One page of the purchases that lapsed unpaid, newest first, counted from
+   * one, and how many there are; a page past the last is the last.
+   */
+  lapsedAttempts(
+    page: number,
+  ): Promise<Answer<{ readonly attempts: readonly LapsedAttempt[]; readonly of: number }>>;
+  /** How many purchases lapsed unpaid, with none of them read. */
+  lapsedCount(): Promise<Answer<number>>;
   /**
    * Why each paid order was left unfulfilled, by order, for Needs you.
    */
@@ -200,6 +214,14 @@ export interface GatewayClient {
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
       readonly liveApproved: boolean;
+      /**
+       * Present while the merchant's purchases that charge before their goods
+       * are refused because their process has not polled: when it last did,
+       * or null where it never has.
+       */
+      readonly outOfTouch: { readonly since: number | null } | null;
+      /** Whether as many purchases wait for payment as the door allows, so the next is refused. */
+      readonly busy: boolean;
     }>
   >;
   /**
@@ -444,6 +466,25 @@ export const switchRefused = (to: Integration, waiting: readonly string[]): Answ
 };
 
 /**
+ * One purchase that lapsed unpaid as the dashboard lists it. It is not the
+ * API's order document, which carries a sale price and so cannot describe an
+ * attempt that ended before anybody named one: such an attempt has no price,
+ * and its moment is when it was asked for.
+ */
+const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
+  const { order } = record;
+  return {
+    id: order.id,
+    merchant_item_id: record.merchantItemId,
+    status: outcomeFor(order),
+    price:
+      order.price === null ? null : { amount: order.price.amount, currency: order.price.currency },
+    at: new Date(order.timestamps.quotedAt ?? order.timestamps.createdAt).toISOString(),
+    test: order.test,
+  };
+};
+
+/**
  * Built per request from the signed-in person, so two people signed into one
  * dashboard are two merchants.
  */
@@ -489,8 +530,28 @@ export const gatewayFor = (
       call("reading the orders", async () =>
         answered(
           API_ROUTES.list_orders,
-          merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
+          merchantOrderList(
+            await application.orders(merchantId, open ? true : undefined, {
+              leaveOutLapsed: true,
+            }),
+          ),
         ),
+      ),
+    lapsedAttempts: (page) =>
+      call("reading the purchases that lapsed unpaid", async () => {
+        // Counted first, so an address naming any page reads at most the last
+        // one: an offset past every row of the table is one the database refuses.
+        const { of } = await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 });
+        const at = Math.min(page, Math.max(1, Math.ceil(of / PAGE_ROWS)));
+        const read = await application.lapsedAttempts(merchantId, {
+          offset: (at - 1) * PAGE_ROWS,
+          limit: PAGE_ROWS,
+        });
+        return done({ attempts: read.orders.map(lapsedAttemptOf), of: read.of });
+      }),
+    lapsedCount: () =>
+      call("counting the purchases that lapsed unpaid", async () =>
+        done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
       ),
     unfulfilledOrders: () =>
       call("reading why orders are unfulfilled", async () => {
@@ -531,7 +592,8 @@ export const gatewayFor = (
     // split the second read could miss.
     paidIntoSplits: () =>
       call("reading where the orders were paid", async () => {
-        const records = await application.orders(merchantId, undefined);
+        // A purchase that lapsed unpaid was paid into nothing, so it is not read.
+        const records = await application.orders(merchantId, undefined, { leaveOutLapsed: true });
         const splits = await application.payoutSplitsOf(merchantId);
         const into: Record<string, RecordedPayoutSplit> = {};
         for (const record of records) {

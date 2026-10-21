@@ -72,6 +72,9 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 const freshMerchant = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
   const merchantId = await harnessed.gateway.registerMerchant();
   const issued = await harnessed.gateway.issueMerchantKey(merchantId, "their worker", SIGNED_IN);
+  // Their worker is running from the start, as a seller whose goods are paid
+  // for before they are made needs it to be.
+  await harnessed.gateway.poll(merchantId, 0);
   return { merchantId, key: issued.secret };
 };
 

@@ -10,11 +10,15 @@
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
+import type { Reminder } from "../../ports/queue.js";
 import {
+  type Birth,
+  type Born,
   type CatalogEntry,
   type ClaimHolder,
   type Integration,
   type IntegrationSwitch,
+  lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderChange,
@@ -32,6 +36,7 @@ import {
   type StoredPayoutWallet,
   type WalletWritten,
   type WithTheOrder,
+  waitsForPayment,
 } from "../../ports/store.js";
 import { isSameAddress } from "../../split/address.js";
 import type { PayoutSplit } from "../../split/parameters.js";
@@ -54,6 +59,8 @@ export interface Envelopes {
    * takes them off the stream once the order recording the erasure is written.
    */
   forget(merchantId: string, orderId: string, priceQuestion: string | null): Promise<() => void>;
+  /** Sets a reminder an order's birth asked for, once the order is written. */
+  remind(reminder: Reminder, afterMs: number): Promise<void>;
 }
 
 /**
@@ -70,6 +77,11 @@ const noEnvelopes: Envelopes = {
   async forget(_merchantId, orderId) {
     throw new Error(
       `this store was built with no stream to take ${orderId}'s envelopes off: a store that writes orders is given a stream`,
+    );
+  },
+  async remind(reminder) {
+    throw new Error(
+      `this store was built with no queue to set the clock of ${reminder.orderId} on: a store that writes orders is given one`,
     );
   },
 };
@@ -98,6 +110,10 @@ export class MemoryStore implements Store {
    */
   readonly #cardIdByMerchantKey = new Map<string, string>();
   readonly #orders = new Map<string, StoredOrder>();
+  /** When each order was last written, by this store's clock, as Postgres stamps a row. */
+  readonly #written = new Map<string, number>();
+  /** The latest poll recorded for each merchant. */
+  readonly #contact = new Map<string, number>();
   readonly #receipts = new Map<string, { merchantId: string; receipt: Receipt }>();
   /** Which order owns which payment, so no payment is spent on two. */
   #paymentLock: Promise<unknown> = Promise.resolve();
@@ -395,6 +411,15 @@ export class MemoryStore implements Store {
     this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at, lastUserAgent: userAgent }));
   }
 
+  async noteContact(merchantId: string, at: number): Promise<void> {
+    if (!this.#merchants.has(merchantId)) return;
+    this.#contact.set(merchantId, Math.max(this.#contact.get(merchantId) ?? at, at));
+  }
+
+  async lastContact(merchantId: string): Promise<number | null> {
+    return this.#contact.get(merchantId) ?? null;
+  }
+
   async workingKey(digest: string): Promise<StoredKey | null> {
     const keyId = this.#keysByDigest.get(digest);
     const key = keyId === undefined ? undefined : this.#keys.get(keyId);
@@ -550,7 +575,7 @@ export class MemoryStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
+  async addOrder(record: StoredOrder, birth?: Birth): Promise<Born> {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
@@ -564,11 +589,44 @@ export class MemoryStore implements Store {
         `the order ${record.order.id} names a payment reference another order already has`,
       );
     }
-    if (through !== undefined && this.#merchants.get(record.merchantId)?.integration !== through) {
-      return false;
+    // No await from here to the write, so the count and the write are one step
+    // against every other birth in the one process this map lives in.
+    if (birth !== undefined) {
+      if (this.#merchants.get(record.merchantId)?.integration !== birth.through) {
+        return "switched_away";
+      }
+      if (
+        this.#waiting(record.merchantId, record.order.timestamps.createdAt, birth.waitingAtMost) >=
+        birth.waitingAtMost
+      ) {
+        return "too_many_waiting";
+      }
     }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
-    return true;
+    this.#written.set(record.order.id, this.#now());
+    // Set after the write and taken back with it where one is refused, as the
+    // transaction on Postgres rolls back the order with its clocks.
+    try {
+      for (const clock of birth?.clocks ?? []) {
+        await this.#envelopes.remind(clock.reminder, clock.afterMs);
+      }
+    } catch (thrown) {
+      this.#orders.delete(record.order.id);
+      this.#written.delete(record.order.id);
+      throw thrown;
+    }
+    return "written";
+  }
+
+  async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
+    return this.#waiting(merchantId, at, atMost);
+  }
+
+  #waiting(merchantId: string, at: number, atMost: number): number {
+    const waiting = [...this.#orders.values()].filter(
+      (held) => held.merchantId === merchantId && waitsForPayment(held, at),
+    ).length;
+    return Math.min(waiting, atMost);
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
@@ -586,10 +644,28 @@ export class MemoryStore implements Store {
 
   async orders(
     merchantId: string,
-    query?: { readonly open?: boolean },
+    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
   ): Promise<readonly StoredOrder[]> {
-    const mine = [...this.#orders.values()].filter((record) => record.merchantId === merchantId);
+    const mine = [...this.#orders.values()].filter(
+      (record) =>
+        record.merchantId === merchantId &&
+        (query?.leaveOutLapsed !== true || !lapsedAttempt(record)),
+    );
     return query?.open === true ? mine.filter((record) => listedAsOpen(record.order)) : mine;
+  }
+
+  async lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    const lapsed = [...this.#orders.values()]
+      .filter((record) => record.merchantId === merchantId && lapsedAttempt(record))
+      .sort(
+        (one, other) =>
+          other.order.timestamps.createdAt - one.order.timestamps.createdAt ||
+          (one.order.id < other.order.id ? 1 : -1),
+      );
+    return { orders: lapsed.slice(page.offset, page.offset + page.limit), of: lapsed.length };
   }
 
   async withOrder<T>(
@@ -632,6 +708,7 @@ export class MemoryStore implements Store {
           // as the Postgres adapter takes it from the row: no decision may change
           // whose sale it is.
           this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
+          this.#written.set(id, this.#now());
         }
 
         // None of these can refuse, which is what makes the order safe to have
@@ -689,6 +766,24 @@ export class MemoryStore implements Store {
     } finally {
       this.#running.delete(name);
     }
+  }
+
+  async forgetLapsedBefore(instant: number, limit: number): Promise<number> {
+    const claimed = new Set([...this.#paymentClaims.values()].map((claim) => claim.orderId));
+    const gone = [...this.#orders.values()]
+      .filter(
+        (record) =>
+          lapsedAttempt(record) &&
+          (this.#written.get(record.order.id) ?? instant) < instant &&
+          !this.#receipts.has(record.order.id) &&
+          !claimed.has(record.order.id),
+      )
+      .slice(0, limit);
+    for (const record of gone) {
+      this.#orders.delete(record.order.id);
+      this.#written.delete(record.order.id);
+    }
+    return gone.length;
   }
 
   async deliveredWithoutReceipt(): Promise<readonly StoredOrder[]> {

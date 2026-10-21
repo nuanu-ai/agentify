@@ -14,8 +14,11 @@ They are written into the order at the unpaid request and readable by the
 merchant from then on, copied into every envelope the queue keeps for a week,
 dumped with the database every ten minutes into snapshots kept for weeks
 (ADR-0029), and carried whole in a failed statement's error, which most paths
-log. Nothing deletes an order. For somebody's home address that is a store of
-personal data no process of ours reads once the merchant has it. The survey
+log. An order is kept for good, unless it ended rejected or expired with
+nothing charged or held and no confirmation asked of its merchant, which is
+deleted thirty days after it was last written (ADR-0041). For somebody's home
+address that is a store of personal data no process of ours reads once the
+merchant has it. The survey
 behind this decision is `docs/research/37-physical-goods.md`.
 
 ## Decision
@@ -62,8 +65,10 @@ asynchronous pattern, which keeps only our identifier, and its walk over
 `orders.list` after a restart change for parcels. What merchants write as free
 text is theirs, and the portal asks them to keep the address out of it. A
 snapshot keeps what it caught until it expires. A dispute over where a parcel
-went cannot be checked against us. The rest of `params` keeps its present
-retention.
+went cannot be checked against us. The rest of `params` stays with its order:
+for good on an order kept, and for thirty days after it was last written on
+one that ended rejected or expired with nothing charged or held and no
+confirmation asked (ADR-0041).
 
 Rejected: the address in merchant-declared `params` (no common shape, and no
 telling what to erase); a delivery token resolved outside the channel (no agent

@@ -1167,6 +1167,32 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-out-of-touch",
+      screen: "Cards",
+      when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
+      cause:
+        "The gateway refuses new purchases of their cards that charge before delivery until their integration polls again, so the banner says since when it has not connected; the cards themselves stay on sale.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    {
+      account: bannerOf(seenBy("live"), { outOfTouch: { since: "2026-10-12T14:02:07Z" } }),
+    },
+  ),
+  cards(
+    {
+      id: "dashboard-cards-busy",
+      screen: "Cards",
+      when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
+      cause:
+        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { busy: true }) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-many",
       screen: "Cards",
       when: "A merchant with a whole catalogue opens Cards.",
@@ -1504,11 +1530,13 @@ const ordersAt = (
     cards = CATALOGUE,
     open = openAmong(listed),
     owed = {},
+    lapsed,
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[5];
+    lapsed?: Parameters<typeof ordersView>[7];
   }> = {},
 ) =>
   ordersView(
@@ -1519,6 +1547,7 @@ const ordersAt = (
     new URL(path, ORIGIN[mode]).searchParams,
     owed,
     paidIntoSplit(mode, listed.orders),
+    lapsed,
   );
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
@@ -1909,6 +1938,38 @@ const ORDERS: GalleryState[] = [
     ]),
     "/orders",
     { cards: cardsOf("paused", ON_SALE) },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-lapsed",
+      screen: "Orders",
+      when: "A merchant opens Lapsed beside their orders to find a purchase a buyer says failed.",
+      cause:
+        "Purchases priced and never paid, or refused before payment, priced or not, are read apart from the other orders, a page at a time, and kept for thirty days.",
+    },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    "/orders?show=lapsed",
+    {
+      lapsed: {
+        page: ordersOf([
+          ["number", "expired"],
+          ["vpn", "expired"],
+          ["esimEurope", "rejected"],
+        ]).orders.map((order, at) => ({
+          id: order.id,
+          merchant_item_id: order.merchant_item_id,
+          status: order.status,
+          // The last was refused by the merchant's price check before any price.
+          price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
+          at: order.price.at,
+          test: order.test,
+        })),
+        of: 3,
+      },
+    },
   ),
   orders(
     {

@@ -48,6 +48,7 @@ written in; the rest are in English.
 | [0014](0014-registration.md) | An account comes into being only at a sign-in, and a merchant only when that person presses the dashboard's one control for it; no terminal command makes either. |
 | [0035](0035-agentify-is-not-the-store.md) | Agentify is not the store: a product comes from the merchant's own system, and Agentify holds no goods. |
 | [0036](0036-a-merchant-sells-through-one-integration-at-a-time.md) | A merchant sells through one integration at a time, the SDK or one WooCommerce shop, and the other's cards are off sale. |
+| [0041](0041-the-purchase-door-refuses-before-any-charge.md) | At most twenty of a merchant's purchases wait for payment at once; a purchase charged before its goods is refused while the merchant's own code has not polled for ten minutes; an attempt that ended with nothing charged or held is deleted thirty days on. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
 
 ### Parcels

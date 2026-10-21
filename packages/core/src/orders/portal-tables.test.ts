@@ -468,6 +468,16 @@ const FAILURES = [
   "Nobody knows whether the charge went through",
 ] as const;
 
+/**
+ * The rows about a purchase refused before any order exists, which this
+ * machine never sees: their scenarios are the gateway's, in
+ * `apps/gateway/src/http/purchase-door.test.ts`, which reads these rows too.
+ */
+const AT_THE_DOOR = [
+  "Twenty of your purchases already wait for payment",
+  "No process of yours has polled for ten minutes",
+] as const;
+
 function priceCheckedParcel(): Order {
   return newOrder("async", {
     mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
@@ -617,6 +627,9 @@ describe("the portal and this machine cannot drift apart quietly", () => {
   });
 
   it('has exactly the encoded rows in "Every failure, mode by mode"', () => {
-    expect(tableRows(FAILURES_PAGE, "Every failure, mode by mode")).toStrictEqual([...FAILURES]);
+    expect(tableRows(FAILURES_PAGE, "Every failure, mode by mode")).toStrictEqual([
+      ...FAILURES,
+      ...AT_THE_DOOR,
+    ]);
   });
 });

@@ -77,6 +77,7 @@ import type {
   RecordedPayoutSplit,
   StoredCard,
   StoredKey,
+  StoredMerchant,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
@@ -205,6 +206,22 @@ export interface IssuedMerchantKey {
 /** The queue's name for the daily sweep of claims on payments. */
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
+/** The queue's name for the daily work that forgets attempts that lapsed unpaid. */
+const FORGET_LAPSED = "agentify_forget_lapsed_attempts";
+
+/**
+ * How long an attempt that lapsed unpaid is kept after it ended: long enough
+ * for its buyer or merchant to ask about a failed purchase, after which
+ * nothing it records is anybody's money or goods.
+ */
+export const LAPSED_KEPT_MS = 30 * 24 * 60 * 60 * 1_000;
+
+/**
+ * How many lapsed attempts one statement forgets, so a run over a long
+ * backlog is many short statements rather than one that holds the table.
+ */
+const LAPSED_FORGOTTEN_AT_ONCE = 500;
+
 /**
  * The catalog as it stands after the selling switch, or a refusal. A merchant
  * who has left can still press the switch, so that is an ordinary refusal
@@ -265,6 +282,13 @@ export type PurchaseAttempt =
   /** A payment sent at another product's address, or with other parameters, than its order's. */
   | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
+  /** As many of the seller's purchases as the limit allows already wait for payment. */
+  | { readonly step: "seller_busy" }
+  /**
+   * The purchase charges before its goods, and the seller's own process has
+   * not polled for longer than `SILENT_AFTER_MS`; nothing was charged.
+   */
+  | { readonly step: "seller_not_taking_orders" }
   /** This payment has already been presented for a different order. */
   | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
@@ -287,6 +311,48 @@ interface HowTheySell {
   readonly sellable: boolean;
   readonly integration: Integration;
 }
+
+/**
+ * How many of one seller's purchases may be priced and waiting for payment at
+ * once, counted at the birth of each. Every unpaid purchase opens an order and
+ * can ask the seller's code or shop its price, and a shop asked a price is
+ * called a dozen times over, so without a limit anyone could load a seller's
+ * shop through Agentify until its firewall turned Agentify away. The cost is
+ * named here: whoever keeps twenty unpaid purchases open stops this seller's
+ * sales through Agentify while they do, but not their shop. A
+ * constant rather than a setting, since a knob here either lets that load
+ * back through or stops a seller's every sale.
+ */
+export const WAITING_FOR_PAYMENT_AT_MOST = 20;
+
+/**
+ * How long a seller's own process may go without polling before a purchase
+ * that charges before its goods is refused: past it, a buyer would pay for
+ * goods nothing is there to make. Nothing is paused and nothing has to be
+ * resumed; the first poll lets the next purchase through. A constant rather
+ * than a setting: a knob here could switch the guard off, or refuse every
+ * prepaid sale of a seller whose process is running.
+ */
+export const SILENT_AFTER_MS = 10 * 60_000;
+
+/**
+ * How stale a seller's recorded poll may get in one process before a poll
+ * writes it again, so a busy stream is not one more write per envelope. The
+ * guard above waits this long beyond its ten minutes, so no seller is refused
+ * before ten minutes without a poll, and every one is within half a minute
+ * after.
+ */
+const CONTACT_WRITTEN_EVERY_MS = 30_000;
+
+/**
+ * How seldom a seller turned away for their waiting purchases is said in the
+ * log, so a flood of refusals is one line a minute rather than one a request.
+ */
+const SELLER_BUSY_LOGGED_EVERY_MS = 60_000;
+
+/** Whether a seller whose process last polled at `polled` is silent at `at`. */
+const silentAt = (polled: number | null, at: number): boolean =>
+  polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
@@ -377,6 +443,10 @@ export class Gateway {
    * would take the next order.
    */
   readonly #held = new Map<string, Set<HeldPoll>>();
+  /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
+  readonly #contactWritten = new Map<string, number>();
+  /** When this process last logged each merchant's refusals for waiting purchases. */
+  readonly #busyLogged = new Map<string, number>();
   readonly #edge: PaymentEdge;
 
   constructor(runtime: Runtime) {
@@ -417,6 +487,9 @@ export class Gateway {
     // gateways run, and registering the name again replaces the schedule. A
     // job may still be handled more than once, which forgetting claims allows.
     await this.runtime.queue.everyDay(SWEEP_CLAIMS, () => this.forgetOldClaims());
+    // Forgetting is the same whichever run gets there, so a job handled twice
+    // is harmless.
+    await this.runtime.queue.everyDay(FORGET_LAPSED, () => this.forgetLapsedAttempts());
 
     // What the orders are still owed is swept the same way. Two gateways can
     // run it at once, because pg-boss re-offers a job that outlives its
@@ -467,6 +540,24 @@ export class Gateway {
     );
     if (gone > 0) {
       console.log(`[gateway] forgot ${gone} claims on payments older than the retention`);
+    }
+    return gone;
+  }
+
+  /**
+   * Forgets every attempt that lapsed unpaid more than thirty days ago, a batch
+   * at a time, and returns how many went.
+   */
+  async forgetLapsedAttempts(): Promise<number> {
+    const before = this.runtime.clock() - LAPSED_KEPT_MS;
+    let gone = 0;
+    for (;;) {
+      const batch = await this.runtime.store.forgetLapsedBefore(before, LAPSED_FORGOTTEN_AT_ONCE);
+      gone += batch;
+      if (batch < LAPSED_FORGOTTEN_AT_ONCE) break;
+    }
+    if (gone > 0) {
+      console.log(`[gateway] forgot ${gone} purchases that lapsed unpaid over thirty days ago`);
     }
     return gone;
   }
@@ -705,10 +796,14 @@ export class Gateway {
 
   /**
    * What the dashboard says over every page about a merchant, from one read of
-   * their row and none of their cards: whether they are selling and through
-   * which integration, the name they sell under, the wallet paid now, and
-   * whether the operator has approved them for live sales. Each answer is the
-   * one the call that reads it alone gives.
+   * their row, and of their cards only while their own process is silent:
+   * whether they are selling and through which integration, the name they
+   * sell under, the wallet paid now, whether the operator has approved them
+   * for live sales, and, while purchases of theirs that charge before their
+   * goods are refused for that silence, when their process last polled (null
+   * where it never has), and whether as many of their purchases wait for
+   * payment as the door allows, so that the next is refused. Each answer is
+   * the one the call that reads it alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -716,18 +811,60 @@ export class Gateway {
     readonly sellerName: string | null;
     readonly payoutWallet: string | null;
     readonly liveApproved: boolean;
+    readonly outOfTouch: { readonly since: number | null } | null;
+    readonly busy: boolean;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
+    const at = this.runtime.clock();
     return {
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
-      payoutWallet: payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
+      payoutWallet: payoutWalletAt(merchant.payoutWallet, at).address,
       liveApproved: merchant.liveApprovedAt !== null,
+      outOfTouch: await this.#refusedForSilence(merchant, at),
+      busy:
+        merchant.selling === "open" &&
+        (await this.runtime.store.waitingForPayment(
+          merchant.id,
+          at,
+          WAITING_FOR_PAYMENT_AT_MOST,
+        )) >= WAITING_FOR_PAYMENT_AT_MOST,
     };
+  }
+
+  /**
+   * When this merchant's process last polled, where the silence since is what
+   * refuses a purchase of theirs: they sell through their own code, nothing
+   * else holds their sales, and a card of theirs on sale charges before its
+   * goods. Null where nothing is refused for it.
+   */
+  async #refusedForSilence(
+    merchant: StoredMerchant,
+    at: number,
+  ): Promise<{ readonly since: number | null } | null> {
+    if (
+      merchant.selling !== "open" ||
+      merchant.integration !== "api" ||
+      !sellableBy(merchant, this.runtime.config, at)
+    ) {
+      return null;
+    }
+    const since = await this.runtime.store.lastContact(merchant.id);
+    if (!silentAt(since, at)) {
+      return null;
+    }
+    const cards = await this.runtime.store.cards(merchant.id);
+    const prepaid = cards.some(
+      (stored) =>
+        !stored.paused &&
+        stored.integration === "api" &&
+        modeForCard(stored.card).settle === "on_purchase",
+    );
+    return prepaid ? { since } : null;
   }
 
   /** The integration this merchant sells through now. */
@@ -1252,6 +1389,17 @@ export class Gateway {
       return { step: "not_selling", message: created.rejection.message };
     }
 
+    // Before the order is written or the price asked: a purchase charged
+    // before its goods would take the buyer's money with nothing running to
+    // make them. A synchronous one ends uncharged on its own when nobody
+    // answers.
+    if (
+      created.order.mode.settle === "on_purchase" &&
+      (await this.#outOfTouch(stored.merchantId, theirs.integration, at))
+    ) {
+      return { step: "seller_not_taking_orders" };
+    }
+
     // The price question is named before the order is written, because a
     // parcel's order keeps the name: the question carries where the parcel
     // goes, and it leaves the queue with the rest of the address.
@@ -1286,11 +1434,20 @@ export class Gateway {
       openDeliveryId: null,
     };
     // Written only while the merchant still sells through the card's
-    // integration: a switch landing between the word above and this write
-    // would otherwise leave an order nothing will draw.
-    const written = await this.runner.create(record, created.effects, at, stored.integration);
-    if (written === null) {
+    // integration, since a switch landing between the word above and this
+    // write would leave an order nothing will draw, and only while the
+    // seller's purchases waiting for payment are fewer than the limit. Both
+    // are decided before the price question below is asked.
+    const born = await this.runner.create(record, created.effects, at, {
+      through: stored.integration,
+      waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
+    });
+    if (born === "switched_away") {
       return { step: "not_selling", message: NOT_ON_SALE };
+    }
+    if (born === "too_many_waiting") {
+      await this.#sayBusy(stored.merchantId, at);
+      return { step: "seller_busy" };
     }
 
     if (priceQuestion !== null) {
@@ -1397,6 +1554,18 @@ export class Gateway {
     // Where that split is one the merchant has left, the payment is fit only
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+
+    // Asked again here, before the payment is verified, because a price named
+    // just before the seller went quiet holds on into the silence.
+    if (
+      payingMerchant !== null &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order) &&
+      (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
+    ) {
+      return { step: "seller_not_taking_orders" };
+    }
+
     const payeeNow =
       payingMerchant === null
         ? null
@@ -1770,6 +1939,12 @@ export class Gateway {
         await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
+      // Only the merchant's own code is noted: the shop connector's polls,
+      // made while the shop sells or after, are never that code being in
+      // touch, and a merchant may switch back to the code at any moment.
+      if (through === "api") {
+        await this.#noteContact(merchantId);
+      }
       return await this.#drawFor(merchantId, waitMs, signal);
     } finally {
       holding.delete(held);
@@ -1777,6 +1952,63 @@ export class Gateway {
         this.#held.delete(merchantId);
       }
     }
+  }
+
+  /**
+   * Logs that this merchant's purchases are being refused for those waiting,
+   * with how many wait, at most once a minute per merchant: anybody can hold
+   * a seller's places, and nothing else tells the operator it is happening.
+   * Nothing about the buyer goes in it.
+   */
+  async #sayBusy(merchantId: string, at: number): Promise<void> {
+    const said = this.#busyLogged.get(merchantId);
+    if (said !== undefined && at - said < SELLER_BUSY_LOGGED_EVERY_MS) {
+      return;
+    }
+    this.#busyLogged.set(merchantId, at);
+    const waiting = await this.runtime.store.waitingForPayment(
+      merchantId,
+      at,
+      WAITING_FOR_PAYMENT_AT_MOST,
+    );
+    console.warn(
+      `[gateway] ${merchantId} has ${waiting} purchases waiting for payment, so new purchases of theirs are refused as seller_busy`,
+    );
+  }
+
+  /**
+   * Writes down that this merchant's process polled, unless this process wrote
+   * it within `CONTACT_WRITTEN_EVERY_MS`. A failure is only logged, as for a
+   * key's last use: the poll goes on, and the next one writes it.
+   */
+  async #noteContact(merchantId: string): Promise<void> {
+    const at = this.runtime.clock();
+    const written = this.#contactWritten.get(merchantId);
+    if (written !== undefined && at - written < CONTACT_WRITTEN_EVERY_MS) {
+      return;
+    }
+    try {
+      await this.runtime.store.noteContact(merchantId, at);
+      this.#contactWritten.set(merchantId, at);
+    } catch (thrown) {
+      console.error(
+        `[gateway] the poll of ${merchantId} was not written down: ${failureNamed(thrown)}`,
+      );
+    }
+  }
+
+  /**
+   * Whether a seller selling through their own code has gone without a poll
+   * for longer than the guard allows. A shop's orders are filled by the
+   * connector inside Agentify, which runs whenever Agentify does, so a seller
+   * selling through it is never out of touch; a shop that fails answers its
+   * price question with the failure.
+   */
+  async #outOfTouch(merchantId: string, through: Integration, at: number): Promise<boolean> {
+    if (through !== "api") {
+      return false;
+    }
+    return silentAt(await this.runtime.store.lastContact(merchantId), at);
   }
 
   async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {
@@ -2161,17 +2393,35 @@ export class Gateway {
    * This merchant's orders, or with `open` only the ones a restarted worker
    * should walk. That list is narrower than the store's open flag: an unpaid
    * quote is not work the merchant owes, and listing it would have a restart
-   * deliver goods for a purchase that never happened.
+   * deliver goods for a purchase that never happened. With `leaveOutLapsed`,
+   * the purchases that lapsed unpaid are not read, for the screens that list
+   * them apart (`lapsedAttempts`); the merchant's API lists every order.
    */
-  async orders(merchantId: string, open: boolean | undefined): Promise<readonly StoredOrder[]> {
-    const records = await this.runtime.store.orders(
-      merchantId,
-      open === undefined ? undefined : { open },
-    );
+  async orders(
+    merchantId: string,
+    open: boolean | undefined,
+    { leaveOutLapsed = false }: { readonly leaveOutLapsed?: boolean } = {},
+  ): Promise<readonly StoredOrder[]> {
+    const records = await this.runtime.store.orders(merchantId, {
+      ...(open === undefined ? {} : { open }),
+      leaveOutLapsed,
+    });
     if (open !== true) {
       return records;
     }
     return records.filter((record) => onTheMerchantsOpenList(record.order));
+  }
+
+  /**
+   * One page of this merchant's purchases that lapsed unpaid, priced or not,
+   * newest first, and how many there are, for the screen that lists them
+   * apart from the rest.
+   */
+  async lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    return this.runtime.store.lapsedAttempts(merchantId, page);
   }
 
   // --- the parts the flows above lean on ------------------------------------
