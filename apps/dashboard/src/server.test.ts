@@ -7522,6 +7522,74 @@ describe("what the pages record for product analytics", () => {
     expect(await running.identity.analyticsOptedOut(otherPerson?.id ?? "")).toBe(false);
   });
 
+  const setupOf = (step: string, reason: string, refs: Record<string, string>) => ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "dashboard",
+    refs,
+    fields: { step, integration: "api", outcome: "blocked", reason_code: reason },
+  });
+
+  it("records a seller name refused before the gateway is asked as one blocked setup step, on both screens that take it", async () => {
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/choose-name");
+    await fromNow(running);
+
+    const chosen = await running.browser.post("/choose-name", { seller_name: "" });
+    await running.browser.get("/settings");
+    const renamed = await running.browser.post("/settings", { seller_name: "x".repeat(500) });
+    await settle();
+
+    expect([chosen.status, renamed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("seller_name", "profile_missing", owner),
+      setupOf("seller_name", "invalid_input", owner),
+    ]);
+  });
+
+  it("records a site refused before the gateway is asked as one blocked setup step", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/settings");
+    await fromNow(running);
+
+    const emptied = await running.browser.post("/settings/site", { seller_site: "" });
+    const malformed = await running.browser.post("/settings/site", {
+      seller_site: "http://freeland.example/shop",
+    });
+    await settle();
+
+    expect([emptied.status, malformed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("seller_site", "seller_site_missing", owner),
+      setupOf("seller_site", "invalid_input", owner),
+    ]);
+  });
+
+  it("records a payout wallet refused before the gateway is asked as one blocked setup step", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await running.browser.get("/settings");
+    await fromNow(running);
+
+    const emptied = await running.browser.post("/settings/payout-wallet", { payout_wallet: "" });
+    const malformed = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: "0x123",
+    });
+    await settle();
+
+    expect([emptied.status, malformed.status]).toStrictEqual([400, 400]);
+    expect(named(running, "agc_setup_result")).toStrictEqual([
+      setupOf("payout_wallet", "wallet_missing", owner),
+      setupOf("payout_wallet", "invalid_input", owner),
+    ]);
+  });
+
   it("signs a person in and draws every screen while no analytics event can be recorded", async () => {
     const running = await started({
       identity: (real) => ({
