@@ -21,6 +21,8 @@ import {
 import { z } from "zod";
 import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import {
+  amountOfCents,
+  centsOf,
   decimalOfMinorUnits,
   productIdFromMerchantItem,
   type StoreProduct,
@@ -873,10 +875,36 @@ export interface ShippingRate {
   readonly title: string;
   /** In US dollars at two decimals, as an order's shipping line carries it. */
   readonly cost: string;
+  /** The tax the cart adds to the rate, at two decimals; "0.00" where none. */
+  readonly tax: string;
+}
+
+/**
+ * What the shop's cart charges for the parcel sent at its cheapest rate, as
+ * the cart totals it. Where WooCommerce calculates tax this is the parcel's
+ * whole price for the place, and an order made for that place with that rate
+ * charges the same, with one exception the caller guards: a shop whose prices
+ * hold their tax may keep one gross price for every buyer, which its cart
+ * shows and its order does not.
+ */
+export interface CartPrice {
+  readonly ok: true;
+  /** Goods, shipping and the tax on both. */
+  readonly total: string;
+  /** The goods with the tax the cart charged on them for this place. */
+  readonly goods: string;
+  /** Each tax the cart charged, as its name and rate ("PPN 11%"), sorted. */
+  readonly taxes: readonly string[];
+  /** The cheapest rate, at which `total` is charged. */
+  readonly rate: ShippingRate;
 }
 
 export type RatesRead =
-  | { readonly ok: true; readonly rates: readonly ShippingRate[] }
+  | {
+      readonly ok: true;
+      readonly rates: readonly ShippingRate[];
+      readonly priced: CartPrice | NotSellable;
+    }
   | NotSellable;
 
 /** Usually the cheapest on offer, and a parcel nobody collects never leaves. */
@@ -909,6 +937,42 @@ const CartSchema = z.looseObject({
   ),
 });
 
+/** The parts of a cart its price is read from, which a read of its rates alone does not need. */
+const PricedCartSchema = z.looseObject({
+  errors: z.array(z.unknown()),
+  items: z.array(
+    z.looseObject({
+      id: z.number(),
+      quantity: z.number(),
+      totals: z.looseObject({ line_subtotal: z.string(), line_subtotal_tax: z.string() }),
+    }),
+  ),
+  shipping_rates: z.array(
+    z.looseObject({
+      package_id: z.union([z.number().int(), z.string()]),
+      shipping_rates: z.array(
+        CartRateSchema.extend({ rate_id: z.string(), selected: z.boolean() }),
+      ),
+    }),
+  ),
+  totals: z.looseObject({
+    total_items: z.string(),
+    total_tax: z.string(),
+    total_fees: z.string(),
+    total_discount: z.string(),
+    total_price: z.string(),
+    currency_code: z.string(),
+    currency_minor_unit: z.number().int(),
+    tax_lines: z.array(z.looseObject({ name: z.string(), rate: z.string() })),
+  }),
+});
+
+/** Cents of a Store API amount, written in minor units at two decimals. */
+const minorCents = (minor: string): bigint | null => {
+  const amount = decimalOfMinorUnits(minor, USD_SCALE);
+  return amount === null ? null : centsOf(amount);
+};
+
 /**
  * WooCommerce has no endpoint that calculates a rate, so this uses the Store
  * API cart as a browserless client can: a fresh cart whose token stands in for
@@ -921,6 +985,13 @@ const CartSchema = z.looseObject({
  * Rates come back in the shop's order with pickup left out. An empty list means
  * the shop does not ship there; a refusal is said apart, in our own words,
  * because the shop's message names the place.
+ *
+ * The cart's price for the cheapest rate comes back beside them. A cart totals
+ * the rate the shop chose, which is its first; where that is not the cheapest
+ * and the cart carries tax, the cheapest is chosen in the cart and the cart
+ * read again, because the tax on a rate is rounded with the rest and cannot be
+ * swapped by arithmetic. A cart with no tax at all is priced as its goods and
+ * the rate, which is what it would total.
  */
 export const shippingRatesInTheShop = async (
   shopUrl: string,
@@ -1103,23 +1174,20 @@ export const shippingRatesInTheShop = async (
     if (NOT_SHIPPING.has(rate.method_id)) continue;
     // Not dropped: a rate left out in silence could make another look
     // cheapest, and the shop would charge what we did not say.
-    if (
-      rate.currency_code !== "USD" ||
-      rate.currency_minor_unit !== USD_SCALE ||
-      rate.taxes !== "0"
-    ) {
+    if (rate.currency_code !== "USD" || rate.currency_minor_unit !== USD_SCALE) {
       return {
         ok: false,
-        why: "The shop's cart offered a shipping rate that is not an untaxed US dollar amount.",
+        why: "The shop's cart offered a shipping rate that is not a US dollar amount.",
         again: false,
         saidNo: true,
       };
     }
     const cost = decimalOfMinorUnits(rate.price, USD_SCALE);
-    if (cost === null) {
+    const tax = decimalOfMinorUnits(rate.taxes, USD_SCALE);
+    if (cost === null || tax === null) {
       return {
         ok: false,
-        why: "The shop's cart offered a shipping rate whose price is not an amount.",
+        why: "The shop's cart offered a shipping rate whose price or tax is not an amount.",
         again: false,
         saidNo: false,
       };
@@ -1129,9 +1197,130 @@ export const shippingRatesInTheShop = async (
       instanceId: String(rate.instance_id),
       title: rate.name,
       cost,
+      tax,
     });
   }
-  return { ok: true, rates };
+
+  const unread = (why: string): NotSellable => ({ ok: false, why, again: false, saidNo: false });
+  /**
+   * The price of a cart at its cheapest rate, or the rate to choose first
+   * where the cart totals another and carries tax.
+   */
+  const priceOf = (
+    document: unknown,
+  ): CartPrice | NotSellable | { readonly choose: Readonly<Record<string, unknown>> } => {
+    const read = PricedCartSchema.safeParse(document);
+    if (!read.success) return unread(`The shop's cart answered without its totals at ${placing}.`);
+    const { totals, items } = read.data;
+    const [packed] = read.data.shipping_rates;
+    const costOf = (one: { price: string; taxes: string }) =>
+      (minorCents(one.price) ?? 0n) + (minorCents(one.taxes) ?? 0n);
+    const offered = (packed?.shipping_rates ?? []).filter(
+      (one) => !NOT_SHIPPING.has(one.method_id),
+    );
+    // The first of equals, as the shop lists them.
+    const cheapest = offered.reduce<(typeof offered)[number] | undefined>(
+      (best, one) => (best === undefined || costOf(one) < costOf(best) ? one : best),
+      undefined,
+    );
+    if (cheapest === undefined) {
+      return {
+        ok: false,
+        why: "The shop's cart offered no rate to this place.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    if (totals.currency_code !== "USD" || totals.currency_minor_unit !== USD_SCALE) {
+      return {
+        ok: false,
+        why: "The shop's cart totals are not in US dollars at two decimals.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    // The order is made with the product and the rate alone, so a fee or a
+    // discount the cart adds would not be in it, and the order would not meet
+    // a check the cart raised.
+    if (totals.total_fees !== "0" || totals.total_discount !== "0" || read.data.errors.length > 0) {
+      return {
+        ok: false,
+        why: "The shop's cart adds a fee, a discount or an error of its own that an order made for this parcel would not carry.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    const [goods, ...more] = items;
+    const subtotal = minorCents(goods?.totals.line_subtotal ?? "");
+    const goodsTax = minorCents(goods?.totals.line_subtotal_tax ?? "");
+    const itemsTotal = minorCents(totals.total_items);
+    const shipping = minorCents(cheapest.price);
+    const shippingTax = minorCents(cheapest.taxes);
+    const totalTax = minorCents(totals.total_tax);
+    const total = minorCents(totals.total_price);
+    if (
+      goods === undefined ||
+      more.length > 0 ||
+      goods.id !== product ||
+      goods.quantity !== 1 ||
+      subtotal === null ||
+      goodsTax === null ||
+      itemsTotal === null ||
+      shipping === null ||
+      shippingTax === null ||
+      totalTax === null ||
+      total === null
+    ) {
+      return unread(`The shop's cart totals are not this parcel's amounts at ${placing}.`);
+    }
+    const untaxed = totalTax === 0n && offered.every((one) => minorCents(one.taxes) === 0n);
+    if (!cheapest.selected && !untaxed) {
+      return { choose: { package_id: packed?.package_id, rate_id: cheapest.rate_id } };
+    }
+    return {
+      ok: true,
+      total: amountOfCents(cheapest.selected ? total : itemsTotal + shipping),
+      goods: amountOfCents(subtotal + goodsTax),
+      taxes: totals.tax_lines.map((line) => `${line.name} ${line.rate}`).sort(),
+      rate: {
+        methodId: cheapest.method_id,
+        instanceId: String(cheapest.instance_id),
+        title: cheapest.name,
+        cost: amountOfCents(shipping),
+        tax: amountOfCents(shippingTax),
+      },
+    };
+  };
+  const asRead = priceOf(document);
+  if (!("choose" in asRead)) return { ok: true, rates, priced: asRead };
+
+  const choosing = `${cart}/select-shipping-rate`;
+  const chosen = await ask(choosing, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(asRead.choose),
+  });
+  if (!chosen.ok) return { ok: true, rates, priced: chosen };
+  let rechecked: unknown;
+  try {
+    rechecked = JSON.parse(chosen.body);
+  } catch {
+    rechecked = undefined;
+  }
+  const afterChoosing = priceOf(rechecked);
+  const nowChosen = PricedCartSchema.safeParse(
+    rechecked,
+  ).data?.shipping_rates[0]?.shipping_rates.find((one) => one.selected)?.rate_id;
+  // Still not totalling the cheapest, or totalling a rate other than the one
+  // chosen: the cart changed while it was asked.
+  if ("choose" in afterChoosing || (afterChoosing.ok && nowChosen !== asRead.choose.rate_id)) {
+    return {
+      ok: true,
+      rates,
+      priced: unread(`The shop's cart did not total the rate chosen at ${choosing}.`),
+    };
+  }
+  return { ok: true, rates, priced: afterChoosing };
 };
 
 /**

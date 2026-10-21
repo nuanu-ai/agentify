@@ -457,6 +457,12 @@ const fillParcelFromTheShop = async (
         " WooCommerce order was created.",
     );
   }
+  if (rates.rates.some((one) => one.tax !== "0.00")) {
+    return await refuse(
+      "The shop's cart offered no shipping to this place that this sale can be filled at, so no" +
+        " WooCommerce order was created.",
+    );
+  }
   const goods = centsOf(product.price.amount);
   const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
   const rate =
@@ -794,6 +800,10 @@ export const quoteFromTheShop = async (
   if (product.kind === "parcel") {
     if (rates === null) return unpriced("the question carries no place to ship to");
     if (!rates.ok) return rates.again || !rates.saidNo ? silent(rates.why) : unpriced(rates.why);
+    // Such a shop's order carries no tax, so no rate that does is a price.
+    if (rates.rates.some((one) => one.tax !== "0.00")) {
+      return unpriced("the shop calculates no tax, and its cart taxes the shipping rate");
+    }
     const goods = centsOf(product.price.amount);
     const carriage = cheapestCents(rates.rates);
     if (goods === null || carriage === null) {
