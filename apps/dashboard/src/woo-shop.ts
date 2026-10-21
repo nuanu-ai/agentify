@@ -460,18 +460,14 @@ export const inspectProductInTheShop = async (
           " charge",
       );
     }
-    // Rounding per line, such a shop's cart rounds a shipping tax that falls on
-    // half a cent up and its order rounds it down, by a compound rate as well,
-    // so its cart's total is not the price its order charges.
-    if (
-      kind === "parcel" &&
-      entered === "included" &&
-      taxSettings.value("woocommerce_tax_round_at_subtotal") !== "yes"
-    ) {
+    // Rounding per line, a cart and the order made for it can round a tax
+    // that falls on half a cent apart, a compound rate's included, so the
+    // order would not charge what was paid.
+    if (roundAtSubtotal !== "yes") {
       unsupported.push(
-        "the shop's prices are entered with tax and it rounds tax per line, where its order can" +
-          " round the tax on shipping a cent away from the price its cart quotes (WooCommerce →" +
-          ' Settings → Tax → "Round tax at subtotal level, instead of rounding per line")',
+        "the shop calculates tax and rounds it per line, where an order made for a sale can round" +
+          ' the tax a cent away from what the buyer paid (WooCommerce → Settings → Tax → "Round' +
+          ' tax at subtotal level, instead of rounding per line")',
       );
     }
     // Only the shipping address is known to price a parcel's cart and its
@@ -709,10 +705,9 @@ export const inspectProductInTheShop = async (
         product.downloadable,
         product.download_limit,
         product.download_expiry,
-        // A download's order is taxed where the shop is, whatever the rounding
-        // or the address tax is based on, and sells only where prices hold their
-        // tax, so whether tax is calculated is all that moves its price.
-        taxes,
+        // A download sells under tax only where prices hold their tax, and its
+        // order is taxed where the shop is whatever address tax is based on.
+        taxes === "no" ? taxes : [taxes, roundAtSubtotal],
         method,
         login,
         afterPayment,

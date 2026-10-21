@@ -2640,13 +2640,7 @@ describe("a parcel from a shop that calculates tax", () => {
         BALI_AT_SUBTOTAL,
         null,
       ],
-      [
-        "a download's rounding",
-        "11",
-        BALI_AT_SUBTOTAL,
-        BALI_SETTINGS,
-        null,
-      ],
+      ["a download's rounding", "11", BALI_AT_SUBTOTAL, BALI_SETTINGS, null],
     ] as const) {
       let settings: Readonly<Record<string, string>> = before;
       const shops = memoryWooShops();

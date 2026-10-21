@@ -1481,7 +1481,10 @@ describe("the protected product check", () => {
     for (const shop of [BALI, SEATTLE]) {
       stand = await shopTaxing(shop);
       for (const product of ["11", "28"] as const) {
-        expect(await readFrom(stand, product), `${shop.woocommerce_default_country} ${product}`).toMatchObject({
+        expect(
+          await readFrom(stand, product),
+          `${shop.woocommerce_default_country} ${product}`,
+        ).toMatchObject({
           ok: false,
           saidNo: true,
           why: expect.stringContaining("Round tax at subtotal level"),
