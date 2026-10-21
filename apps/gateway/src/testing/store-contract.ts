@@ -1782,6 +1782,25 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         });
       });
 
+      it("is marked as it ends, so an order born waiting and closed later leaves the default reads and is forgotten", async () => {
+        const store = await twoMerchants();
+        const born = anOrder("ord_born", "quoted");
+        await store.addOrder({
+          ...born,
+          order: { ...born.order, price: { amount: "5.00", currency: "USD", asOf: 0 } },
+        });
+
+        await store.withOrder("ord_born", (found) => ({
+          save: { ...found, order: { ...found.order, state: "expired" as const } },
+          result: null,
+        }));
+
+        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([]);
+        expect((await store.lapsedAttempts(A, { offset: 0, limit: 10 })).of).toBe(1);
+        expect(await store.forgetLapsedBefore(Date.now() + 31 * DAY, 10)).toBe(1);
+        expect(await store.orderById("ord_born")).toBeNull();
+      });
+
       it("is kept while it was last written after the instant", async () => {
         const store = await twoMerchants();
         await store.addOrder(ended("ord_lapsed", "expired"));

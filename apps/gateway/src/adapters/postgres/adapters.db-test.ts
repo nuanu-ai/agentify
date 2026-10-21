@@ -320,6 +320,7 @@ if (databaseUrl === null) {
           expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
         }
         const before = await clocksSet();
+        expect(before).toBeGreaterThan(0);
 
         const refused = await gateway.beginPurchase(card.id, {});
 
