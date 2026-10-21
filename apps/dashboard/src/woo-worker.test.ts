@@ -2545,6 +2545,45 @@ describe("a parcel from a shop that calculates tax", () => {
   } as const;
   const BALI_AT_SUBTOTAL = { ...BALI_SETTINGS, woocommerce_tax_round_at_subtotal: "yes" };
 
+  it("names no price for a download from a shop rounding tax per line, and prices it rounding at the subtotal", async () => {
+    // The Berlin shop with a 10% rate and a 5% compound one: its download at
+    // 1.00 was paid 1.00 and recorded at 1.01 rounding per line, and at 1.00
+    // rounding at the subtotal.
+    const inBerlin = {
+      ...BALI_SETTINGS,
+      woocommerce_default_country: "DE:DE-BE",
+      woocommerce_store_city: "Berlin",
+      woocommerce_store_postcode: "10115",
+    };
+    for (const [round, answer] of [
+      ["no", { available: false }],
+      ["yes", { available: true, price: { amount: "25.00", currency: "USD" } }],
+    ] as const) {
+      const filling: Filling = {
+        ...parts(IN_BERLIN).filling,
+        inspectProduct: (keys, itemId) =>
+          inspectProductInTheShop(
+            keys,
+            itemId,
+            aShopSetTo({ ...inBerlin, woocommerce_tax_round_at_subtotal: round }),
+          ),
+      };
+      const answered = await quoteFromTheShop(
+        connection(),
+        {
+          merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
+          price_id: `prc_download_${round}`,
+          purpose: "purchase",
+          expires_at: "2026-09-14T12:01:00.000Z",
+        },
+        new Date(NOW),
+        filling,
+      );
+
+      expect(answered, round).toMatchObject(answer);
+    }
+  });
+
   it("names no price before payment from an inclusive shop rounding tax per line, and prices it rounding at the subtotal", async () => {
     // The review's Berlin shop with a 10% rate and a 5% compound one on 3.00
     // of taxable shipping, sold at its own address. The compound rate's tax
@@ -2597,7 +2636,14 @@ describe("a parcel from a shop that calculates tax", () => {
       [
         "tax turned on under a download",
         "11",
-        { ...BALI_SETTINGS, woocommerce_calc_taxes: "no" },
+        { ...BALI_AT_SUBTOTAL, woocommerce_calc_taxes: "no" },
+        BALI_AT_SUBTOTAL,
+        null,
+      ],
+      [
+        "a download's rounding",
+        "11",
+        BALI_AT_SUBTOTAL,
         BALI_SETTINGS,
         null,
       ],

@@ -1235,8 +1235,9 @@ describe("the protected product check", () => {
     woocommerce_store_postcode: "98101",
   } as const;
   type TaxedShop = Readonly<Record<keyof typeof BALI, string>>;
-  /** The Bali shop rounding tax at the subtotal, as an inclusive shop's parcel needs. */
+  /** The two shops rounding tax at the subtotal, as every sale under tax needs. */
   const BALI_AT_SUBTOTAL: TaxedShop = { ...BALI, woocommerce_tax_round_at_subtotal: "yes" };
+  const SEATTLE_AT_SUBTOTAL: TaxedShop = { ...SEATTLE, woocommerce_tax_round_at_subtotal: "yes" };
 
   /**
    * A shop that calculates tax, answering its tax and general settings as
@@ -1318,7 +1319,7 @@ describe("the protected product check", () => {
     inspectProduct(connectionTo(shop.url), merchantItemIdFor(shop.url, product));
 
   it("sells a download from a shop whose prices are entered with tax inside them", async () => {
-    stand = await shopTaxing(BALI);
+    stand = await shopTaxing(BALI_AT_SUBTOTAL);
 
     expect(await readFrom(stand, "11")).toMatchObject({
       ok: true,
@@ -1329,7 +1330,7 @@ describe("the protected product check", () => {
   it("refuses a download from a shop that enters prices before tax, as the shop's no", async () => {
     // The tax is added for the buyer's address, which a download's buyer does
     // not give, so no price quoted beforehand is the one the order charges.
-    stand = await shopTaxing(SEATTLE);
+    stand = await shopTaxing(SEATTLE_AT_SUBTOTAL);
 
     expect(await readFrom(stand, "11")).toMatchObject({ ok: false, again: false, saidNo: true });
   });
@@ -1338,7 +1339,7 @@ describe("the protected product check", () => {
     stand = await shopTaxing(BALI_AT_SUBTOTAL);
     const inclusive = await readFrom(stand, "28");
     await stand.close();
-    stand = await shopTaxing(SEATTLE);
+    stand = await shopTaxing(SEATTLE_AT_SUBTOTAL);
     const exclusive = await readFrom(stand, "28");
 
     expect(inclusive).toMatchObject({
@@ -1470,28 +1471,28 @@ describe("the protected product check", () => {
       expect(await fingerprintIn(changed, "28"), JSON.stringify(changed)).not.toBe(accepted);
     }
     expect(await fingerprintIn({ ...BALI_AT_SUBTOTAL }, "28")).toBe(accepted);
-    // Prices entered before tax are sold under either rounding, which moves
-    // the total: the Seattle cart for 0.99 said 7.72 per line and 7.73 at the
-    // subtotal.
-    expect(await fingerprintIn(SEATTLE, "28")).not.toBe(
-      await fingerprintIn({ ...SEATTLE, woocommerce_tax_round_at_subtotal: "yes" }, "28"),
-    );
   });
 
-  it("refuses a parcel from a shop whose prices hold their tax and that rounds tax per line, naming the setting", async () => {
-    // Such a shop's cart and order round the shipping's tax apart: per line,
-    // a 10% rate and a 5% compound one on 3.00 of shipping made a cart of
-    // 23.47 and an order of 23.46. A download, and a parcel from a shop
-    // entering prices before tax, still sell rounding per line.
-    stand = await shopTaxing(BALI);
-    expect(await readFrom(stand, "28")).toMatchObject({
-      ok: false,
-      saidNo: true,
-      why: expect.stringContaining("Round tax at subtotal level"),
-    });
+  it("sells nothing from a shop that calculates tax unless it rounds tax at the subtotal, naming the setting", async () => {
+    // Rounding per line, the cart and the order can round a tax that falls on
+    // half a cent apart: a 10% rate and a 5% compound one made a parcel's cart
+    // of 23.47 and its order 23.46, and a download paid at 1.00 an order of
+    // 1.01. Rounding at the subtotal, every case measured agreed.
+    for (const shop of [BALI, SEATTLE]) {
+      stand = await shopTaxing(shop);
+      for (const product of ["11", "28"] as const) {
+        expect(await readFrom(stand, product), `${shop.woocommerce_default_country} ${product}`).toMatchObject({
+          ok: false,
+          saidNo: true,
+          why: expect.stringContaining("Round tax at subtotal level"),
+        });
+      }
+      await stand.close();
+      stand = null;
+    }
+    // With tax off the rounding bears on nothing, and is not asked for.
+    stand = await shopTaxing(BALI, "no");
     expect(await readFrom(stand, "11")).toMatchObject({ ok: true });
-    await stand.close();
-    stand = await shopTaxing(SEATTLE);
     expect(await readFrom(stand, "28")).toMatchObject({ ok: true });
   });
 
