@@ -77,6 +77,7 @@ import type {
   RecordedPayoutSplit,
   StoredCard,
   StoredKey,
+  StoredMerchant,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
@@ -339,6 +340,10 @@ const SILENT_AFTER_MS = 10 * 60_000;
  * after.
  */
 const CONTACT_WRITTEN_EVERY_MS = 30_000;
+
+/** Whether a seller whose process last polled at `polled` is silent at `at`. */
+const silentAt = (polled: number | null, at: number): boolean =>
+  polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
@@ -780,10 +785,13 @@ export class Gateway {
 
   /**
    * What the dashboard says over every page about a merchant, from one read of
-   * their row and none of their cards: whether they are selling and through
-   * which integration, the name they sell under, the wallet paid now, and
-   * whether the operator has approved them for live sales. Each answer is the
-   * one the call that reads it alone gives.
+   * their row, and of their cards only while their own process is silent:
+   * whether they are selling and through which integration, the name they
+   * sell under, the wallet paid now, whether the operator has approved them
+   * for live sales, and, while purchases of theirs that charge before their
+   * goods are refused for that silence, when their process last polled (null
+   * where it never has). Each answer is the one the call that reads it alone
+   * gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -791,18 +799,52 @@ export class Gateway {
     readonly sellerName: string | null;
     readonly payoutWallet: string | null;
     readonly liveApproved: boolean;
+    readonly outOfTouch: { readonly since: number | null } | null;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
+    const at = this.runtime.clock();
     return {
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
-      payoutWallet: payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
+      payoutWallet: payoutWalletAt(merchant.payoutWallet, at).address,
       liveApproved: merchant.liveApprovedAt !== null,
+      outOfTouch: await this.#refusedForSilence(merchant, at),
     };
+  }
+
+  /**
+   * When this merchant's process last polled, where the silence since is what
+   * refuses a purchase of theirs: they sell through their own code, nothing
+   * else holds their sales, and a card of theirs on sale charges before its
+   * goods. Null where nothing is refused for it.
+   */
+  async #refusedForSilence(
+    merchant: StoredMerchant,
+    at: number,
+  ): Promise<{ readonly since: number | null } | null> {
+    if (
+      merchant.selling !== "open" ||
+      merchant.integration !== "api" ||
+      !sellableBy(merchant, this.runtime.config, at)
+    ) {
+      return null;
+    }
+    const since = await this.runtime.store.lastContact(merchant.id);
+    if (!silentAt(since, at)) {
+      return null;
+    }
+    const cards = await this.runtime.store.cards(merchant.id);
+    const prepaid = cards.some(
+      (stored) =>
+        !stored.paused &&
+        stored.integration === "api" &&
+        modeForCard(stored.card).settle === "on_purchase",
+    );
+    return prepaid ? { since } : null;
   }
 
   /** The integration this merchant sells through now. */
@@ -1911,8 +1953,7 @@ export class Gateway {
     if (through !== "api") {
       return false;
     }
-    const polled = await this.runtime.store.lastContact(merchantId);
-    return polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
+    return silentAt(await this.runtime.store.lastContact(merchantId), at);
   }
 
   async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {

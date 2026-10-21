@@ -1213,7 +1213,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   payout: { wallet: standing.value.payoutWallet },
                   liveApproval: standing.value.liveApproved,
                 },
-                { selling: standing.value.selling, through: standing.value.through },
+                {
+                  selling: standing.value.selling,
+                  through: standing.value.through,
+                  ...(standing.value.outOfTouch === null
+                    ? {}
+                    : {
+                        outOfTouch: {
+                          since:
+                            standing.value.outOfTouch.since === null
+                              ? null
+                              : new Date(standing.value.outOfTouch.since).toISOString(),
+                        },
+                      }),
+                },
               )
             : accountOf(viewing(person), { unread: true }),
         };

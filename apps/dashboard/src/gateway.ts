@@ -211,6 +211,12 @@ export interface GatewayClient {
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
       readonly liveApproved: boolean;
+      /**
+       * Present while the merchant's purchases that charge before their goods
+       * are refused because their process has not polled: when it last did,
+       * or null where it never has.
+       */
+      readonly outOfTouch: { readonly since: number | null } | null;
     }>
   >;
   /**

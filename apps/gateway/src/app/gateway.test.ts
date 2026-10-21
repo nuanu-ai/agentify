@@ -2633,6 +2633,8 @@ describe("a merchant's standing in one read", () => {
       sellerName: (await harnessed.gateway.sellerName(id)).seller_name,
       payoutWallet: (await harnessed.gateway.payoutWallet(id)).payout_wallet,
       liveApproved: await harnessed.gateway.liveApproved(id),
+      // Nothing is refused for silence: the harness's merchant has just polled.
+      outOfTouch: null,
     };
   };
 
@@ -2656,7 +2658,7 @@ describe("a merchant's standing in one read", () => {
     });
   });
 
-  it("reads the merchant's own row and nothing else, however many cards they have", async () => {
+  it("reads the merchant's own row and last poll and none of their cards, however many they have, while their process is in touch", async () => {
     const harnessed = await started();
     await published(harnessed, syncCard);
     const read: string[] = [];
@@ -2672,7 +2674,7 @@ describe("a merchant's standing in one read", () => {
 
     await harnessed.gateway.standingOf(harnessed.merchant.id);
 
-    expect(read).toStrictEqual(["merchantById"]);
+    expect(read).toStrictEqual(["merchantById", "lastContact"]);
   });
 });
 

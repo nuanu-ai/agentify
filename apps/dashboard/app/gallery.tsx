@@ -1167,6 +1167,20 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-out-of-touch",
+      screen: "Cards",
+      when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
+      cause:
+        "The gateway refuses new purchases of their cards that charge before delivery until their integration polls again, so the banner says since when it has not connected; the cards themselves stay on sale.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    {
+      account: bannerOf(seenBy("live"), { outOfTouch: { since: "2026-10-12T14:02:07Z" } }),
+    },
+  ),
+  cards(
+    {
       id: "dashboard-cards-many",
       screen: "Cards",
       when: "A merchant with a whole catalogue opens Cards.",
