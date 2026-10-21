@@ -216,9 +216,14 @@ Additional equipment required for certain rows is named explicitly:
 | Payment adapter fault control | Distinguish verification failure, definite settlement failure, settlement with a lost answer, and a late success; report a fake transfer only as a local model | Missing |
 | Controlled Woo fault | Prove whether Woo committed the order, fail a chosen product/settings/cart request, and expose the remote order count | Missing |
 | Provider/browser fault control | Exercise rejected, malformed and lost wallet responses; read the actual rendered error and persisted state | Missing |
+| Shops in each tax mode | Isolated copies of the lab shop with its parcel setup and tax calculation on, a rate for the shop's own area and a different rate for another place the tote ships to, each copy set to one of: prices entered including tax with tax rounded at the subtotal; the same with tax rounded per line; prices entered excluding tax; prices shown in the shop or the cart differently from how they are entered; tax based on the billing or the shop's base address. One further copy prices in Indonesian rupiah. Each copy records the settings it differs in | Missing |
+| Human checkout and its mail | A payment method a person can complete in the shop as a customer without real money, such as one of WooCommerce's offline methods, and mailboxes the organiser reads for that customer and for the shop's administrator, so both receive what the shop sends | Missing: the lab's offline methods are off and its mail reaches nobody who reads it |
+| Shop settings snapshot | Read every WooCommerce setting and the WordPress settings a shop depends on, including permalinks, the site address and mail, before the owner first acts and after the last step, and show every difference between the two readings | Missing |
+| Shop request log | Show every request the connector sends to the shop, with its User-Agent, as the shop's own server recorded it | Missing as an instrument: the lab's Caddy keeps no access log of its own, and whether the WordPress container's web server log serves has not been checked |
+| Realistic lab profile | A shop resembling the real shops counted in research note 55, including the plugins and protection they run | Missing: being prepared from that census |
 
 These capabilities are requirements for the run. The first two exist as the
-third column names them; the other three do not. Mark the variants that need a
+third column names them; the other eight do not. Mark the variants that need a
 missing capability blocked and name the smallest capability that is missing.
 Killing curl after two seconds does not prove a server committed. An in-memory event permutation does not prove a Postgres
 interleaving.
