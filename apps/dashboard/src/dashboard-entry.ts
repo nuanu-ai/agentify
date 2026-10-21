@@ -67,7 +67,7 @@ export type LinkRequestResult =
  * first verified account; a click id not of the tracker's form throws, and
  * nothing is sent or counted.
  */
-export type LinkAsker = Readonly<{ client: string; clickId?: string }>;
+type LinkAsker = Readonly<{ client: string; clickId?: string }>;
 
 /** What the page a link lands on draws: the address the link signs in. */
 type LinkLanding = Readonly<{ email: string }>;
