@@ -3118,6 +3118,20 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
     });
 
+    it("asks for a rate again once the shop is disconnected and connected again", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      await running.get("/woocommerce");
+      await running.post("/woocommerce/disconnect");
+      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
+
+      const screen = await running.get("/woocommerce");
+
+      expect(readable(screen.html)).toContain("Nothing is published until you set one");
+    });
+
     it("is refused for a shop priced in US dollars", async () => {
       const running = await started();
       await connectedIn(running);
