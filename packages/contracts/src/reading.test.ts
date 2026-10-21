@@ -228,6 +228,44 @@ describe("a reader of the merchant's answers", () => {
     }
   });
 
+  it("never reads a full address that does not fit as the bare locality, dropping who receives the parcel", () => {
+    // Of the three shapes an address takes, the locality's fields are a part of
+    // the full address's. Ignoring unknown fields must not let an address that
+    // fails the full shape pass as the locality with the name and phone gone.
+    const { phone_number: _phone, ...phoneless } = parcel.ship_to;
+    const answer = { ...read, ship_to: phoneless };
+
+    expect(readerOf(OrderWithStatusSchema).safeParse(answer).success).toBe(false);
+    expect(
+      readerOf(OrderWithStatusSchema).parse({
+        ...read,
+        ship_to: { city: "Tabanan", country: "ID" },
+      }).ship_to,
+    ).toStrictEqual({ city: "Tabanan", country: "ID" });
+  });
+
+  it("still refuses an event of a kind it knows that does not fit, rather than skipping it as unknown", () => {
+    // Only a kind added later is skipped; a known notice that does not fit is
+    // a broken answer, and a merchant must not be told a newer release reads it.
+    const newer = (payload: unknown) => ({
+      ...poll,
+      envelopes: [{ kind: "order_event", id: "msg_0", sent_at: AT, payload }],
+    });
+
+    expect(
+      readerOf(WorkerPollResponseSchema).safeParse(newer({ ...unfulfilled, reason: "lost" }))
+        .success,
+    ).toBe(false);
+    expect(
+      readerOf(WorkerPollResponseSchema).safeParse(newer({ ...unfulfilled, at: "yesterday" }))
+        .success,
+    ).toBe(false);
+    expect(
+      readerOf(WorkerPollResponseSchema).safeParse(newer({ type: " ", order_id: "ord_1", at: AT }))
+        .success,
+    ).toBe(false);
+  });
+
   it("still refuses an answer missing a field it needs, or a status that is not a word", () => {
     // The negative control: ignoring what was added is not accepting anything.
     const { id: _id, ...nameless } = read;
@@ -235,6 +273,7 @@ describe("a reader of the merchant's answers", () => {
     const { status: _status, ...wordless } = read;
     expect(readerOf(OrderWithStatusSchema).safeParse(wordless).success).toBe(false);
     expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, status: 7 }).success).toBe(false);
+    expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, status: " " }).success).toBe(false);
     expect(
       readerOf(WorkerPollResponseSchema).safeParse({ ...poll, contract_version: "" }).success,
     ).toBe(false);

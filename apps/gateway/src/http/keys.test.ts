@@ -647,6 +647,14 @@ describe("the mark a call leaves on the key it was made with", () => {
       headers: { ...bearer(merchant.key), "user-agent": "   " },
     });
     expect(await clientOn()).toBeNull();
+
+    // Printed to an operator's terminal later, so nothing but printable text.
+    harnessed.advance(60 * 60_000);
+    await served.call("GET", "/v0/cards", {
+      headers: { ...bearer(merchant.key), "user-agent": "\u009b2Jagentify-sdk/0.8.0" },
+    });
+    expect(await clientOn()).toMatch(/^[\x20-\x7e]+$/);
+    expect(await clientOn()).toContain("agentify-sdk/0.8.0");
   });
 
   it("answers the call when the mark cannot be written, and says so in the log", async () => {
