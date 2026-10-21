@@ -25,6 +25,7 @@ import {
   type QuoteResponse,
   type ShipToLocality,
   ShipToSchema,
+  type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
@@ -619,7 +620,13 @@ const WAIT_SECONDS = 5;
  * to decide whether to come straight back: one envelope per poll, so a turn
  * that drew an event is not a quiet stream.
  */
-export const turnOnce = async (connection: WooConnection, parts: WorkingParts): Promise<number> => {
+type ScheduleEnvelope = (envelope: WorkerEnvelope, answer: () => Promise<void>) => Promise<void>;
+
+export const turnOnce = async (
+  connection: WooConnection,
+  parts: WorkingParts,
+  schedule: ScheduleEnvelope = async (_envelope, answer) => answer(),
+): Promise<number> => {
   const person = await parts.identity.byId(connection.accountId);
   if (person === null || person.merchant === null) {
     // The account is gone or has no merchant; nothing can be drawn as nobody.
@@ -638,38 +645,40 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
   }
 
   for (const envelope of drawn.document.envelopes) {
-    if (envelope.kind === "quote_request") {
-      const answer =
-        connection.permissions !== "read_write"
-          ? { available: false as const, as_of: parts.now().toISOString() }
-          : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
-      if (answer === null) {
-        // Saying nothing is how the gateway hears that the shop did not answer;
-        // the agent is told the price check went unanswered.
-        continue;
+    await schedule(envelope, async () => {
+      if (envelope.kind === "quote_request") {
+        const answer =
+          connection.permissions !== "read_write"
+            ? { available: false as const, as_of: parts.now().toISOString() }
+            : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
+        if (answer === null) {
+          // Saying nothing is how the gateway hears that the shop did not answer;
+          // the agent is told the price check went unanswered.
+          return;
+        }
+        const said = await gateway.answerQuote(envelope.payload.price_id, answer);
+        if (!said.ok) {
+          console.error(
+            `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
+          );
+        }
+        return;
       }
-      const said = await gateway.answerQuote(envelope.payload.price_id, answer);
+      // Events have no reply.
+      if (envelope.kind !== "order") {
+        return;
+      }
+      const answer = await filledAsPaid(gateway, envelope.payload, connection, person.email, parts);
+      if (answer === null) {
+        return;
+      }
+      const said = await gateway.answerOrder(envelope.payload.id, answer);
       if (!said.ok) {
         console.error(
-          `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
+          `[dashboard] the answer for ${envelope.payload.id} was not accepted: ${said.why}`,
         );
       }
-      continue;
-    }
-    // Events have no reply.
-    if (envelope.kind !== "order") {
-      continue;
-    }
-    const answer = await filledAsPaid(gateway, envelope.payload, connection, person.email, parts);
-    if (answer === null) {
-      continue;
-    }
-    const said = await gateway.answerOrder(envelope.payload.id, answer);
-    if (!said.ok) {
-      console.error(
-        `[dashboard] the answer for ${envelope.payload.id} was not accepted: ${said.why}`,
-      );
-    }
+    });
   }
   return drawn.document.envelopes.length;
 };
@@ -895,6 +904,8 @@ export interface WooWorker {
 }
 
 const BETWEEN_TURNS_MS = 1_000;
+// shortcut: four unfinished envelopes per shop; revisit on measured saturation.
+const HANDLERS_AT_ONCE = 4;
 
 /**
  * One loop per connected shop, because a poll holds its request open and a
@@ -908,15 +919,48 @@ const BETWEEN_TURNS_MS = 1_000;
 export const startWooWorker = (
   parts: WorkingParts & { readonly betweenTurnsMs?: number; readonly shipmentsEveryMs?: number },
 ): WooWorker => {
-  const turning = new Map<string, { stop: () => void; done: Promise<void> }>();
+  const turning = new Map<string, { stop: () => boolean; done: Promise<void> }>();
   let running = true;
 
   const loopFor = (accountId: string) => {
     let alive = true;
+    const active = new Set<Promise<void>>();
+    const orders = new Set<string>();
+    let wakeRoom: (() => void) | undefined;
+    const room = async () => {
+      while (alive && running && active.size >= HANDLERS_AT_ONCE) {
+        await new Promise<void>((resolve) => {
+          wakeRoom = resolve;
+        });
+        wakeRoom = undefined;
+      }
+    };
+    const schedule: ScheduleEnvelope = async (envelope, answer) => {
+      await room();
+      if (!alive || !running) return;
+      if (envelope.kind === "order" && orders.has(envelope.payload.id)) return;
+      if (envelope.kind === "order") orders.add(envelope.payload.id);
+      const work = Promise.resolve()
+        .then(answer)
+        .catch((thrown: unknown) => {
+          console.error(
+            `[dashboard] a WooCommerce turn failed for ${accountId}: ${failureNamed(thrown)}`,
+          );
+        })
+        .finally(() => {
+          active.delete(work);
+          wakeRoom?.();
+          if (envelope.kind === "order") orders.delete(envelope.payload.id);
+        });
+      active.add(work);
+    };
     const done = (async () => {
       while (alive && running) {
         try {
+          await room();
+          if (!alive || !running) break;
           const connection = await parts.shops.connectionOf(accountId);
+          if (!alive || !running) break;
           if (connection === null) {
             // Waited out rather than returned from: the watcher starts a loop
             // for an account whose entry is missing from this map, so a loop
@@ -928,7 +972,7 @@ export const startWooWorker = (
             );
             continue;
           }
-          const filled = await turnOnce(connection, parts);
+          const filled = await turnOnce(connection, parts, schedule);
           if (filled === 0) {
             // A turn that drew nothing waits, so a gateway answering polls at
             // once (refused, or a zero wait) is not hammered; a turn that
@@ -948,10 +992,14 @@ export const startWooWorker = (
           );
         }
       }
+      await Promise.all(active);
     })();
     return {
       stop: () => {
+        if (!alive) return false;
         alive = false;
+        wakeRoom?.();
+        return true;
       },
       done,
     };
@@ -968,9 +1016,11 @@ export const startWooWorker = (
           }
         }
         for (const [accountId, loop] of turning) {
-          if (!wanted.has(accountId)) {
-            loop.stop();
-            turning.delete(accountId);
+          if (!wanted.has(accountId) && loop.stop()) {
+            // Reconnect must wait for the old poll and accepted work to finish.
+            void loop.done.then(() => {
+              if (turning.get(accountId) === loop) turning.delete(accountId);
+            });
           }
         }
       } catch (thrown) {

@@ -400,9 +400,10 @@ We wait five seconds for an answer, and a question unanswered by then counts as
 silence, which costs different things in different modes ([What can go
 wrong](/failures)). The seconds run from the moment we ask, not from the moment
 your process takes the question, and the question shares the stream with
-everything else: while your process is busy with what is ahead of it — orders,
-other questions, events — the question waits, and more instances shorten that
-wait. Nothing on our side holds down how often these questions go out: one
+everything else. The SDK handles up to four unfinished messages at once, so
+one slow order need not delay a price question. When all four places are busy
+with orders, questions or events, the question waits; more instances divide
+that work further. A question that expires in the queue is still unanswered. Nothing on our side holds down how often these questions go out: one
 purchase asks one question and that question is put on your stream once, so the
 rate your price handler meets is the rate agents buy at, and that is the number
 to size it against. The thresholds that would hold the rate down are among what
