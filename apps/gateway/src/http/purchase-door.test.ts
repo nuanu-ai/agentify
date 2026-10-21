@@ -234,6 +234,24 @@ describe("a purchase that charges before its goods", () => {
     expect(answered.status).toBe(402);
   });
 
+  it("is taken until ten minutes after the seller's last poll, however seldom each poll is written down", async () => {
+    // A poll soon after another is not written again, so what is written can
+    // be older than the last poll by up to the write's own window.
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, prepaidCard);
+    harnessed.advance(1_000);
+    await workOnce(harnessed, {}, 0);
+    harnessed.advance(20_000);
+    await workOnce(harnessed, {}, 0);
+
+    harnessed.advance(9 * MINUTE + 50_000);
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(answered.status).toBe(402);
+  });
+
   it("is not charged at a price named before the seller went quiet and paid after", async () => {
     // A price that holds five minutes, so the payment arrives with its price
     // still standing and only the seller's silence between them.
