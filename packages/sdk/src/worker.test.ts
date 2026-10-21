@@ -519,7 +519,8 @@ describe("a gateway newer than this package", () => {
   });
 
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
-    // No price is the safe answer: a silent price check ends before any money.
+    // No answer is a silent price check, whose outcome per mode is already
+    // the contract's; a price guessed for an unknown purpose would not be.
     const asked: QuoteRequest[] = [];
 
     const { problems } = await workerOver(

@@ -107,7 +107,8 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   EVENT_SKIPPED: "event_skipped",
   /**
    * A price question for a purpose this package does not know was left
-   * unanswered, which ends it before any money, as a silent price check does.
+   * unanswered. It counts as a silent price check: a synchronous card sells at
+   * its own card price, and in the other modes the sale is refused.
    */
   QUOTE_SKIPPED: "quote_skipped",
   /** The answer was produced and could not be delivered to the gateway. */
@@ -116,7 +117,10 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   ANSWER_REFUSED: "answer_refused",
   /** A price answer arrived too late to price the purchase it was asked for. */
   QUOTE_ANSWER_UNUSED: "quote_answer_unused",
-  /** The worker stopped part-way through a batch and the rest went unread. */
+  /**
+   * The worker stopped with work unfinished: part of a batch unread, or a
+   * handler that had not answered when the stop could wait no longer.
+   */
   BATCH_ABANDONED: "batch_abandoned",
   /** The loop itself failed in a way nothing here anticipated. A defect in this SDK. */
   WORKER_FAILED: "worker_failed",
@@ -599,7 +603,7 @@ export const startWorker = (
             kind: WORKER_PROBLEM_KINDS.QUOTE_SKIPPED,
             fatal: false,
             subject: envelope.payload.price_id,
-            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which ends it as a silent price check does, before any money; a newer release of @nuanu-ai/agentify answers it`,
+            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused; a newer release of @nuanu-ai/agentify answers it`,
           });
         }
         return;
@@ -658,6 +662,33 @@ export const startWorker = (
     if (orderId !== undefined) tails.set(orderId, work);
   };
 
+  /** Whether the stop still waits for what is in the handlers. */
+  let waitsForHandlers = true;
+
+  /**
+   * What is already in a handler may have issued goods, so its answer goes out
+   * before the stop, which would otherwise abort it; but a handler that never
+   * returns must not hold the stop for ever, so the wait is as long as a poll
+   * may take and no longer.
+   */
+  const drainOrAbandon = async (): Promise<void> => {
+    const waited = new AbortController();
+    const drained = await Promise.race([
+      Promise.all(active).then(() => true),
+      clock.sleep(deadlineMs, waited.signal).then(() => false),
+    ]);
+    waited.abort();
+    if (drained) return;
+
+    waitsForHandlers = false;
+    const unanswered = [...orders];
+    report({
+      kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+      fatal: false,
+      message: `the worker stopped with ${active.size} messages still in a handler after ${deadlineMs} ms${unanswered.length === 0 ? "" : `, among them orders ${unanswered.join(", ")}`}; nothing was sent for them, so each order is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
+    });
+  };
+
   const run = async (): Promise<void> => {
     // One turn before the first poll, so that a process which calls start()
     // without awaiting it and registers on the next line is ready first.
@@ -708,10 +739,8 @@ export const startWorker = (
 
       if (!speaksContract(answer.document.contract_version)) {
         reportTheMismatch(answer.document.contract_version);
-        // What is already in a handler may have issued goods; its answer goes
-        // out before the stop, which would otherwise abort it.
         stopping = true;
-        await Promise.all(active);
+        await drainOrAbandon();
         return;
       }
 
@@ -750,7 +779,7 @@ export const startWorker = (
     .finally(async () => {
       stopping = true;
       controller.abort();
-      await Promise.all(active);
+      if (waitsForHandlers) await Promise.all(active);
       ended = true;
     });
 
