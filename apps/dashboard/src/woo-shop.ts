@@ -71,9 +71,14 @@ export type ShopTax =
   | { readonly mode: "off" }
   /**
    * Prices are entered with tax inside them, which WooCommerce splits out at
-   * the rates of `base`, the shop's own address.
+   * the rates of `base`, the shop's own address. `roundsAtSubtotal` says the
+   * shop rounds tax once for the order rather than on each line.
    */
-  | { readonly mode: "included"; readonly base: ShipToLocality }
+  | {
+      readonly mode: "included";
+      readonly base: ShipToLocality;
+      readonly roundsAtSubtotal: boolean;
+    }
   /** Prices are entered before tax, which is added for the buyer's address. */
   | { readonly mode: "excluded" };
 
@@ -575,6 +580,7 @@ export const inspectProductInTheShop = async (
           city: general.value("woocommerce_store_city"),
           ...(postcode === "" ? {} : { postal_code: postcode }),
         },
+        roundsAtSubtotal: roundAtSubtotal === "yes",
       };
     }
     // The class is hashed first, so a parcel's digest can never equal a
