@@ -10,11 +10,9 @@ import { getServerConfig } from "./config";
 import { decryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
-import { detachLeadCardSignalsForDeletion } from "./stripe-card-signal";
-import type { StripeCardSignalProvider } from "./stripe-card-signal-provider";
 
 const CLAIM_LEASE_MS = 2 * 60_000;
-const PROVIDER_LEASE_MS = 5 * 60_000;
+const ANONYMIZE_LEASE_MS = 5 * 60_000;
 const RETRY_BATCH_SIZE = 10;
 
 type DashboardResult = "deleted" | "already_absent" | "retained";
@@ -136,7 +134,7 @@ async function claimDeletionOperation(operationId?: string) {
 }
 
 export async function runScannerIdentityDeletionOperation(
-  input: { operationId?: string; provider?: StripeCardSignalProvider } = {},
+  input: { operationId?: string } = {},
 ): Promise<"completed" | "pending" | "not_found"> {
   const claimed = await claimDeletionOperation(input.operationId);
   if (!claimed?.leaseToken) return "not_found";
@@ -184,7 +182,7 @@ export async function runScannerIdentityDeletionOperation(
 
   const extended = await getDatabase()
     .db.update(scannerIdentityDeletionOperations)
-    .set({ leaseExpiresAt: new Date(Date.now() + PROVIDER_LEASE_MS) })
+    .set({ leaseExpiresAt: new Date(Date.now() + ANONYMIZE_LEASE_MS) })
     .where(
       and(
         eq(scannerIdentityDeletionOperations.operationId, claimed.operationId),
@@ -195,7 +193,6 @@ export async function runScannerIdentityDeletionOperation(
     .returning({ operationId: scannerIdentityDeletionOperations.operationId });
   if (!extended.length) return "pending";
 
-  await detachLeadCardSignalsForDeletion(claimed.leadId, input.provider);
   const now = new Date();
   const anonymized = await anonymizeLeadData(
     getDatabase().db,
@@ -248,14 +245,12 @@ export async function runScannerIdentityDeletionOperation(
 
 export async function requestScannerIdentityDeletion(input: {
   leadId: string;
-  provider?: StripeCardSignalProvider;
 }): Promise<"requested" | "completed"> {
   const operation = await beginScannerIdentityDeletion(input.leadId);
   if (operation.completedAt) return "completed";
   try {
     const result = await runScannerIdentityDeletionOperation({
       operationId: operation.operationId,
-      provider: input.provider,
     });
     return result === "completed" ? "completed" : "requested";
   } catch {

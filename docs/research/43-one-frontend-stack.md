@@ -481,8 +481,8 @@ landing's view is recorded only after consent, by script on the page. A page
 without script would show a banner whose choice cannot be made, or no banner,
 and would record no landing at all. What a page that hydrates costs is held
 instead by the speed budget below, and by loading the heavy parts behind an
-import when they are needed: the card form's Stripe, the registration form and
-the large panels of a report.
+import when they are needed: the registration form and the large panels of a
+report.
 
 The second is one script limit for every page. The budget is checked against
 each build in CI, as the brotli-compressed script a page asks for on its first

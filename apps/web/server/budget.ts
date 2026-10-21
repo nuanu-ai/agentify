@@ -2,8 +2,8 @@
  * The scanner's speed budget, checked against the build after
  * `pnpm --filter @agentify/web build` by the shared check in
  * `@agentify/ui/budget`: the brotli-compressed script of a page's first
- * visit, with what a page loads later, PostHog once a visitor allows it and
- * Stripe on the card step, printed beside it. Each file is fetched from the
+ * visit, with what a page loads later, PostHog once a visitor allows it,
+ * printed beside it. Each file is fetched from the
  * built scanner itself, so the header checked is the one a browser gets.
  */
 

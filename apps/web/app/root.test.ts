@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getCardSignalPublicConfig } from "../lib/server/stripe-card-signal-config";
 import { loader } from "./root";
 
 const originalEnv = { ...process.env };
@@ -59,15 +58,5 @@ describe("browser-visible runtime configuration", () => {
     });
 
     expect(() => loader()).toThrow("browser_posthog_requires_key_and_host");
-  });
-
-  it("reads the Stripe publishable key from the environment the process runs with", () => {
-    Object.assign(process.env, {
-      CARD_SIGNAL_ENABLED: "false",
-      STRIPE_ADAPTER: "local",
-      STRIPE_PUBLISHABLE_KEY: "pk_runtime_test",
-    });
-
-    expect(getCardSignalPublicConfig().publishableKey).toBe("pk_runtime_test");
   });
 });

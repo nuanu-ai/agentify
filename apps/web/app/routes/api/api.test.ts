@@ -19,7 +19,6 @@ beforeEach(() => {
   vi.stubEnv("REGISTRATION_ENABLED", "false");
   vi.stubEnv("POSTHOG_BROWSER_KEY", "");
   vi.stubEnv("POSTHOG_BROWSER_HOST", "");
-  vi.stubEnv("CARD_SIGNAL_ENABLED", "false");
 });
 
 afterEach(() => {
@@ -104,7 +103,6 @@ const choice = (categories: Record<string, boolean>) =>
       ads_measurement: false,
       marketing_email: false,
       dataset_reuse: false,
-      card_signal: false,
       ...categories,
     },
   });

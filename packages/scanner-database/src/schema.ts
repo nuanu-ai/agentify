@@ -47,13 +47,6 @@ export const diagnosticLevelEnum = pgEnum("diagnostic_level", [
   "incomplete",
 ]);
 export const shareStatusEnum = pgEnum("share_status", ["published", "revoked"]);
-export const paymentSignalStatusEnum = pgEnum("payment_signal_status", [
-  "not_started",
-  "setup_pending",
-  "attached",
-  "detached",
-  "failed",
-]);
 export const outboxStatusEnum = pgEnum("outbox_status", [
   "pending",
   "processing",
@@ -61,11 +54,6 @@ export const outboxStatusEnum = pgEnum("outbox_status", [
   "dead_letter",
 ]);
 export const deliveryDestinationEnum = pgEnum("delivery_destination", ["posthog", "meta"]);
-export const webhookReceiptStatusEnum = pgEnum("webhook_receipt_status", [
-  "received",
-  "processed",
-  "failed",
-]);
 export const browserObservationStatusEnum = pgEnum("browser_observation_status", [
   "queued",
   "starting",
@@ -481,30 +469,6 @@ export const scanShares = pgTable(
   ],
 );
 
-export const paymentSignals = pgTable(
-  "payment_signals",
-  {
-    id: uuid("id").primaryKey(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    stripeCustomerId: text("stripe_customer_id").notNull(),
-    setupIntentId: text("setup_intent_id").notNull(),
-    paymentMethodIdCiphertext: text("payment_method_id_ciphertext"),
-    status: paymentSignalStatusEnum("status").notNull().default("not_started"),
-    attachedAt: utcTimestamp("attached_at"),
-    detachedAt: utcTimestamp("detached_at"),
-    consentSnapshotId: uuid("consent_snapshot_id")
-      .notNull()
-      .references(() => consentSnapshots.id, { onDelete: "restrict" }),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    check("payment_signals_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("payment_signals_setup_intent_uidx").on(table.setupIntentId),
-  ],
-);
-
 export const analyticsEvents = pgTable(
   "analytics_events",
   {
@@ -567,19 +531,6 @@ export const deliveryOutbox = pgTable(
     uniqueIndex("delivery_outbox_event_destination_uidx").on(table.eventId, table.destination),
     index("delivery_outbox_status_next_attempt_idx").on(table.status, table.nextAttemptAt),
   ],
-);
-
-export const webhookReceipts = pgTable(
-  "webhook_receipts",
-  {
-    provider: text("provider").notNull(),
-    providerEventId: text("provider_event_id").notNull(),
-    payloadHash: text("payload_hash").notNull(),
-    receivedAt: utcTimestamp("received_at").notNull().defaultNow(),
-    processedAt: utcTimestamp("processed_at"),
-    status: webhookReceiptStatusEnum("status").notNull().default("received"),
-  },
-  (table) => [primaryKey({ columns: [table.provider, table.providerEventId] })],
 );
 
 export const rateWindows = pgTable(

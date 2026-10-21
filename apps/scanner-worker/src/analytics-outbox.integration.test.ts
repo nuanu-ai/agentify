@@ -51,7 +51,6 @@ async function seedOutbox(input: { attempts?: number } = {}): Promise<{
         ads_measurement: true,
         marketing_email: false,
         dataset_reuse: false,
-        card_signal: false,
       }),
     ],
   );

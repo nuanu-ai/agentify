@@ -38,7 +38,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   eyebrow: "Privacy · deployment policy",
   title: "Privacy and data controls",
   intro:
-    "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, marketing, and card signals.",
+    "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, and marketing.",
   sections: [
     {
       id: "controller",
@@ -89,7 +89,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, marketing email, and card signal are independent choices. Declining an optional category does not turn it into essential processing. If you allow neither product analytics nor ads measurement, no visit or funnel events and no campaign tags are recorded for you; the reports to the ad tracker of a registration from our ad and of its store's first product, described under processors, are apart from these choices.",
+            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, and marketing email are independent choices. Declining an optional category does not turn it into essential processing. If you allow neither product analytics nor ads measurement, no visit or funnel events and no campaign tags are recorded for you; the reports to the ad tracker of a registration from our ad and of its store's first product, described under processors, are apart from these choices.",
         },
       ],
     },
@@ -111,7 +111,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. AI Samurai passes both reports on to Meta, where our ads run, with what it recorded itself when the ad was clicked; we send it nothing but the identifier. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, and Cloudflare Turnstile for abuse challenges. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. AI Samurai passes both reports on to Meta, where our ads run, with what it recorded itself when the ad was clicked; we send it nothing but the identifier. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },
@@ -142,7 +142,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("Use the "),
             link("data-request route", "/data-request"),
             text(
-              " for access, correction, unsubscribe, or verified deletion. Deletion first detaches or cancels the optional card signal and verifies provider state; only then is report access closed, shares revoked, and lead, waitlist, analytics-delivery, and owned-scan identifiers removed or irreversibly anonymized. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
+              " for access, correction, unsubscribe, or verified deletion. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
             ),
           ],
         },

@@ -7,7 +7,6 @@ export const META_EVENT_MAPPING = {
   results_viewed: "ViewContent",
   registration_started: "RegistrationStart",
   registration_completed: "CompleteRegistration",
-  card_attached: "CardAttached",
   result_shared: "ResultShared",
 } as const;
 

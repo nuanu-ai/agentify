@@ -190,6 +190,13 @@
       "when": 1792577637522,
       "tag": "0026_the_scanner_keeps_no_merchant_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792578546043,
+      "tag": "0027_the_scanner_keeps_no_card_signal",
+      "breakpoints": true
     }
   ]
 }

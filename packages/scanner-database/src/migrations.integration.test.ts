@@ -31,7 +31,6 @@ const TABLES = [
   "delivery_outbox",
   "lead_scans",
   "leads",
-  "payment_signals",
   "rate_limit_events",
   "rate_windows",
   "registration_intents",
@@ -41,7 +40,6 @@ const TABLES = [
   "scans",
   "sessions",
   "waitlist_entries",
-  "webhook_receipts",
   "worker_heartbeats",
 ] as const;
 
@@ -451,6 +449,9 @@ describe("initial database migration", () => {
         ),
       ).rejects.toMatchObject({ code: "23514" });
 
+      // Snapshots the deployed channels hold also name card_signal, a category
+      // the policy does not; they are read by the categories the policy names,
+      // and the one more is passed over.
       const consentSnapshotId = createUuidV7();
       await pool.query(
         "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
@@ -796,7 +797,6 @@ describe("initial database migration", () => {
             ads_measurement: false,
             marketing_email: false,
             dataset_reuse: false,
-            card_signal: false,
           }),
         ],
       );
@@ -835,7 +835,6 @@ describe("initial database migration", () => {
             ads_measurement: true,
             marketing_email: false,
             dataset_reuse: false,
-            card_signal: false,
           }),
         ],
       );

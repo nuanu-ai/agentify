@@ -13,7 +13,6 @@ const categoriesSchema = z
     ads_measurement: z.boolean(),
     marketing_email: z.literal(false),
     dataset_reuse: z.literal(false),
-    card_signal: z.literal(false),
   })
   .strict();
 

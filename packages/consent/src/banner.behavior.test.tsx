@@ -47,6 +47,43 @@ describe("consent persistence", () => {
     );
   });
 
+  it("holds a kept choice that also names a category the policy does not, and shows it as it was made", async () => {
+    // Browsers on the deployed channels keep choices that still name card_signal.
+    window.localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify({
+        policyVersion: CONSENT_POLICY_VERSION,
+        categories: {
+          essential_processing: true,
+          product_analytics: true,
+          ads_measurement: false,
+          marketing_email: false,
+          dataset_reuse: false,
+          card_signal: false,
+        },
+        capturedAt: "2026-10-01T09:00:00.000Z",
+        source: "banner",
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <>
+        <PrivacyChoicesButton />
+        <ConsentBanner brand="Agentify" />
+      </>,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Privacy choices" })).toBeNull(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    const product = screen.getByRole("checkbox", { name: /product analytics/i });
+    const ads = screen.getByRole("checkbox", { name: /ads measurement/i });
+    expect((product as HTMLInputElement).checked).toBe(true);
+    expect((ads as HTMLInputElement).checked).toBe(false);
+  });
+
   it("goes when the visitor chooses in another tab, and comes back when that choice is gone", async () => {
     render(<ConsentBanner brand="Agentify" />);
     const banner = () => screen.queryByRole("complementary", { name: "Privacy choices" });
@@ -165,7 +202,6 @@ describe("consent persistence", () => {
       ads_measurement: false,
       marketing_email: false,
       dataset_reuse: false,
-      card_signal: false,
     });
   });
 });

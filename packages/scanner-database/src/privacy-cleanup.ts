@@ -9,7 +9,6 @@ import {
   deliveryOutbox,
   leadScans,
   leads,
-  paymentSignals,
   rateLimitEvents,
   rateWindows,
   registrationIntents,
@@ -134,8 +133,6 @@ export async function anonymizeLeadData(
           : eq(analyticsEvents.leadId, leadId),
       );
 
-    await tx.delete(paymentSignals).where(eq(paymentSignals.leadId, leadId));
-
     if (scanIds.length) {
       const observationIds = tx
         .select({ id: browserObservations.id })
@@ -205,7 +202,6 @@ export async function anonymizeLeadData(
 export async function runRetentionCleanup(
   db: Database,
   input: {
-    beforeLeadAnonymize: (leadId: string) => Promise<void>;
     now?: Date;
     batchSize?: number;
   },
@@ -219,7 +215,6 @@ export async function runRetentionCleanup(
   });
   let leadsAnonymized = 0;
   for (const candidate of candidates) {
-    await input.beforeLeadAnonymize(candidate.id);
     const result = await anonymizeLeadData(
       db,
       candidate.id,
