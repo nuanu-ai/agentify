@@ -1530,10 +1530,12 @@ export interface ParcelSold {
    * reaches the buyer.
    */
   readonly email: string;
-  /** The goods and the shipping together. */
+  /** The goods and the shipping together, with any tax on both. */
   readonly paid: Money;
-  /** The goods alone: the order's product line. */
+  /** The goods alone: the order's product line where the shop calculates no tax. */
   readonly goods: string;
+  /** How the shop calculates tax, as the parcel was priced under it. */
+  readonly tax: ShopTax["mode"];
   /** The order's shipping line. */
   readonly rate: ShippingRate;
   /** Read into the order and not kept anywhere of ours. */
@@ -1586,6 +1588,9 @@ const PARCEL_ORDER_FIELDS = [
 /**
  * The order's totals add up to what was paid; paying moves it to `processing`.
  * The billing address is the merchant's own, so no shop mail reaches the buyer.
+ * Where the shop calculates tax, the line names the product alone and the shop
+ * prices it and taxes it and the shipping for the address, as its cart did for
+ * the price paid; the order is held to that total, its tax the shop's record.
  *
  * The answer is read back with the address and held to what was sent, because
  * taking the order on erases Agentify's copy of the address: an order is not
@@ -1618,7 +1623,11 @@ export const createTheParcelInTheShop = async (
     // On what was paid, the goods and the shipping together: the split took
     // the whole of it.
     meta_data: metadataOf(sold.orderId, sold.paid, sold.paidInto),
-    line_items: [{ product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }],
+    line_items: [
+      sold.tax === "off"
+        ? { product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }
+        : { product_id: productId, quantity: 1 },
+    ],
     shipping_lines: [
       {
         method_id: sold.rate.methodId,
@@ -1648,18 +1657,21 @@ export const createTheParcelInTheShop = async (
   const heldWhereItGoes =
     made.shipping !== undefined &&
     Object.entries(shipping).every(([field, value]) => made.shipping?.[field] === value);
+  const untaxedAsSold =
+    sold.tax !== "off" ||
+    (made.total_tax === "0.00" &&
+      line?.subtotal === sold.goods &&
+      line.total === sold.goods &&
+      line.total_tax === "0.00");
   if (
     !["processing", "completed"].includes(made.status) ||
     made.currency !== sold.paid.currency ||
     made.total !== sold.paid.amount ||
-    made.total_tax !== "0.00" ||
+    !untaxedAsSold ||
     line === undefined ||
     moreLines.length > 0 ||
     line.product_id !== productId ||
     line.quantity !== 1 ||
-    line.subtotal !== sold.goods ||
-    line.total !== sold.goods ||
-    line.total_tax !== "0.00" ||
     carriage === undefined ||
     moreCarriage.length > 0 ||
     carriage.method_id !== sold.rate.methodId ||

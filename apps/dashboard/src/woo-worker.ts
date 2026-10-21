@@ -512,6 +512,7 @@ const fillParcelFromTheShop = async (
     rate,
     address: address.data,
     paidInto,
+    tax: product.tax.mode,
   });
   if (made.ok) {
     const bound = await parts.shops.recordOrder(
