@@ -1056,12 +1056,12 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           if (page?.kind !== "view") {
             return { kind: "view", status, view: { pressed, again: drawn } };
           }
-          // Lists that show the closure recorded say more than the doubt.
+          // Lists that show the closure recorded confirm it as a reread would.
           if (
             pressed.note === CLOSURE_NOTES.unconfirmed &&
             drawnClosedForGood(page.view, id.data)
           ) {
-            return { kind: "view", view: page.view };
+            return { kind: "redirect", location: drawn };
           }
           return { kind: "view", status, view: { ...page.view, pressed } };
         };
