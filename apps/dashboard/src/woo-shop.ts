@@ -429,12 +429,10 @@ export const inspectProductInTheShop = async (
   // Judged only where the shop calculates tax: with it off nothing they say
   // bears on the sale, so a shop that will not show them still sells.
   let entered: "included" | "excluded" | null = null;
-  let roundAtSubtotal = "";
   if (taxes === "yes") {
     const taxSettings = groupAt(10, TAX_SETTINGS);
     if (!taxSettings.ok) return taxSettings;
     const includesTax = taxSettings.value("woocommerce_prices_include_tax");
-    roundAtSubtotal = taxSettings.value("woocommerce_tax_round_at_subtotal");
     if (includesTax === "yes" || includesTax === "no") {
       entered = includesTax === "yes" ? "included" : "excluded";
       // The import reads the catalogue's price, which WooCommerce shows with
@@ -464,7 +462,7 @@ export const inspectProductInTheShop = async (
     // Rounding per line, a cart and the order made for it can round a tax
     // that falls on half a cent apart, a compound rate's included, so the
     // order would not charge what was paid.
-    if (roundAtSubtotal !== "yes") {
+    if (taxSettings.value("woocommerce_tax_round_at_subtotal") !== "yes") {
       unsupported.push(
         "the shop calculates tax and rounds it per line, where an order made for a sale can round" +
           ' the tax a cent away from what the buyer paid (WooCommerce → Settings → Tax → "Round' +
@@ -610,7 +608,6 @@ export const inspectProductInTheShop = async (
             ? taxes
             : [
                 tax.mode,
-                roundAtSubtotal,
                 ...(tax.mode === "included"
                   ? [tax.base.country, tax.base.state, tax.base.city, tax.base.postal_code]
                   : []),
@@ -706,9 +703,11 @@ export const inspectProductInTheShop = async (
         product.downloadable,
         product.download_limit,
         product.download_expiry,
-        // A download sells under tax only where prices hold their tax, and its
-        // order is taxed where the shop is whatever address tax is based on.
-        taxes === "no" ? taxes : [taxes, roundAtSubtotal],
+        // A download sells under tax only where prices hold their tax and tax
+        // is rounded at the subtotal, which the product check holds, and its
+        // order is taxed where the shop is, so whether tax is calculated is all
+        // that moves its price.
+        taxes,
         method,
         login,
         afterPayment,
