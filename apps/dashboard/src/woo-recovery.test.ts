@@ -118,7 +118,12 @@ const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACT
     "acc_1",
     facts.priceId,
     facts.merchantItemId,
-    facts.productFingerprint,
+    {
+      fingerprint: facts.productFingerprint,
+      inTheShop: { amount: facts.amount, currency: "USD" },
+      paid: { amount: facts.amount, currency: "USD" },
+      rateVersion: null,
+    },
     new Date("2026-09-18T11:00:00.000Z"),
     NOW,
   );
@@ -130,6 +135,7 @@ const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACT
     permissions: "read_write",
     revision: "grant_2",
     connectedAt: NOW,
+    currency: null,
   });
   if (phase === "precreate_refused") {
     await shops.recordPrecreateRefusal("acc_1", "ord_1", facts, NOW);
@@ -763,7 +769,9 @@ describe("exact Woo order recovery", () => {
     });
 
     expect(outcome).toMatchObject({ ok: true, state: "delivered" });
-    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "1.01" });
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({
+      ord_1: { total: "1.01", converted: null },
+    });
   });
 
   it("does not bind an inclusive shop's order whose total is more than a cent from the price paid", async () => {

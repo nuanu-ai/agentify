@@ -143,6 +143,7 @@ if (databaseUrl === null) {
           token,
           accountId,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: START,
           expiresAt: new Date(START.getTime() + 15 * 60_000),
         });

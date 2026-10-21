@@ -32,6 +32,7 @@ import {
 } from "./listing.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import type { Viewer } from "./viewer.js";
+import type { ShopTotal } from "./woo-shops.js";
 import {
   CARD_WORDS,
   dayOf,
@@ -604,7 +605,7 @@ export const ordersView = (
   owed: Readonly<Record<string, UnfulfilledCause>> = {},
   paidInto: PaidIntoSplits = {},
   lapsed: LapsedAttempts = NO_LAPSED,
-  shopTotals: Readonly<Record<string, string>> = {},
+  shopTotals: Readonly<Record<string, ShopTotal>> = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -641,9 +642,9 @@ export const ordersView = (
           },
     closing: reopened(order) ? "again" : closable(order) ? "first" : null,
     shopTotal:
-      shopTotals[order.id] === undefined || shopTotals[order.id] === order.price.amount
+      shopTotals[order.id] === undefined || shopTotals[order.id]?.total === order.price.amount
         ? null
-        : money({ amount: shopTotals[order.id] as string, currency: order.price.currency }),
+        : money({ amount: shopTotals[order.id]?.total ?? "", currency: order.price.currency }),
     priceSet: momentView(order.price.at),
     day: dayOf(order.price.at),
   });

@@ -9,10 +9,12 @@
 
 import type { SurfaceMode } from "@agentify/core";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
+import type { Money } from "@nuanu-ai/agentify-contracts";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js";
+import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
+import type { ShopDecimals } from "./woo-money.js";
 
 /**
  * Everywhere but live: the connector says it works in test mode only, and a
@@ -20,11 +22,19 @@ import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js
  */
 export const wooOfferedOn = (surface: SurfaceMode): boolean => surface !== "live";
 
+/** The currency a shop sells in, and the Number of decimals it writes its amounts at. */
+export interface ShopCurrency {
+  readonly code: string;
+  readonly decimals: ShopDecimals;
+}
+
 interface WooGrant {
   /** Unguessable and one-time; it travels as `user_id`. */
   readonly token: string;
   readonly accountId: string;
   readonly shopUrl: string;
+  /** As the shop's public catalogue answered at Connect; null where it did not clearly say. */
+  readonly currency: ShopCurrency | null;
   /**
    * Written by the caller rather than the store, so the two implementations
    * cannot disagree and a test can place a Connect in the past.
@@ -42,6 +52,70 @@ export interface WooConnection {
   readonly permissions: string;
   readonly revision: string;
   readonly connectedAt: Date;
+  /**
+   * As last read, at Connect or by an import, for the screens; null where never
+   * read. The purchase path reads the shop's own settings instead.
+   */
+  readonly currency: ShopCurrency | null;
+}
+
+/** A rate as a price is converted at: how many units of `currency` one US dollar buys. */
+export interface AppliedRate {
+  /** Rises with every rate saved, across every shop. */
+  readonly version: number;
+  readonly currency: string;
+  readonly rate: string;
+  readonly setAt: Date;
+}
+
+/** What the merchant was shown beside the rate they saved. */
+export interface ReferenceShown {
+  readonly rate: string;
+  readonly source: string;
+  readonly readAt: Date;
+}
+
+export interface RateEntry {
+  readonly currency: string;
+  readonly rate: string;
+  readonly setAt: Date;
+  /** The email of the session that saved it. */
+  readonly setBy: string;
+  /** Null where no reference could be read, so nothing was compared. */
+  readonly reference: ReferenceShown | null;
+  /** Typed a second time past the guard. */
+  readonly confirmed: boolean;
+}
+
+export type SavedRate = RateEntry & { readonly version: number };
+
+/** What an accepted price answer binds its `price_id` to. */
+export interface QuoteBinding {
+  readonly fingerprint: string;
+  /** What the shop's order is held to, in the shop's currency at its decimals. */
+  readonly inTheShop: Money;
+  /** The US dollars answered, which the buyer pays. */
+  readonly paid: Money;
+  /** Null where the shop sells in US dollars. */
+  readonly rate: AppliedRate | null;
+}
+
+type QuoteToBind = Omit<QuoteBinding, "rate"> & { readonly rateVersion: number | null };
+
+/**
+ * A sale from a shop in another currency, as its ledger keeps it beside the
+ * dollars paid: the amount the shop's order was held to and the rate the
+ * dollars were converted at.
+ */
+export interface ConvertedSale {
+  readonly inTheShop: Money;
+  readonly rate: { readonly version: number; readonly rate: string; readonly setAt: string };
+}
+
+/** What the shop's order for a placed sale totals, as the Orders screen reads it. */
+export interface ShopTotal {
+  readonly total: string;
+  readonly converted: ConvertedSale | null;
 }
 
 export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
@@ -53,8 +127,11 @@ export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
   readonly priceId: string;
   readonly productId: string;
   readonly productFingerprint: string;
+  /** What the buyer paid. */
   readonly amount: string;
   readonly currency: string;
+  /** Absent where the shop sells in US dollars, whose order records what was paid. */
+  readonly converted?: ConvertedSale;
 }
 
 export interface WooPermission extends Readonly<Record<string, unknown>> {
@@ -161,15 +238,28 @@ export interface WooShops {
   forget(accountId: string): Promise<string | null>;
   /** What the worker draws its work from. */
   connections(): Promise<readonly WooConnection[]>;
+  /** The shop's currency as an import read it from the shop's own settings. */
+  noteCurrency(accountId: string, currency: ShopCurrency): Promise<void>;
+  /** Added, never written over: the earlier versions stay for the prices bound to them. */
+  saveRate(accountId: string, shopOrigin: string, entry: RateEntry): Promise<SavedRate>;
+  currentRate(accountId: string, shopOrigin: string, currency: string): Promise<SavedRate | null>;
+  /**
+   * A price id already bound to anything else is not moved: the order is held
+   * to what it was first bound to.
+   */
   recordQuote(
     accountId: string,
     priceId: string,
     merchantItemId: string,
-    productFingerprint: string,
+    binding: QuoteToBind,
     expiresAt: Date,
     now: Date,
   ): Promise<boolean>;
-  quotedProduct(accountId: string, priceId: string, merchantItemId: string): Promise<string | null>;
+  quotedSale(
+    accountId: string,
+    priceId: string,
+    merchantItemId: string,
+  ): Promise<QuoteBinding | null>;
 
   /**
    * Writing the claim is the act, not a check before one: a redelivery arriving
@@ -217,7 +307,7 @@ export interface WooShops {
   shopTotals(
     accountId: string,
     orderIds: readonly string[],
-  ): Promise<Readonly<Record<string, string>>>;
+  ): Promise<Readonly<Record<string, ShopTotal>>>;
   /** Rows without an exact recovery state are not recoverable. */
   recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
   /** A bounded local lookup for links on this account's visible Orders rows. */
@@ -292,6 +382,75 @@ const claimOf = (row: {
   return { kind: "unknown", attemptedAt: row.attemptedAt };
 };
 
+const currencyOfRow = (row: {
+  readonly currency: string | null;
+  readonly currencyDecimals: number | null;
+}): ShopCurrency | null =>
+  row.currency !== null && (row.currencyDecimals === 0 || row.currencyDecimals === 2)
+    ? { code: row.currency, decimals: row.currencyDecimals }
+    : null;
+
+const connectionOfRow = (row: typeof wooShops.$inferSelect): WooConnection => ({
+  accountId: row.accountId,
+  shopUrl: row.shopUrl,
+  consumerKey: row.consumerKey,
+  consumerSecret: row.consumerSecret,
+  permissions: row.permissions,
+  revision: row.revision,
+  connectedAt: row.connectedAt,
+  currency: currencyOfRow(row),
+});
+
+const savedRateOfRow = (row: typeof wooRates.$inferSelect): SavedRate => ({
+  version: row.version,
+  currency: row.currency,
+  rate: row.rate,
+  setAt: row.setAt,
+  setBy: row.setBy,
+  reference:
+    row.referenceRate === null || row.referenceSource === null || row.referenceReadAt === null
+      ? null
+      : { rate: row.referenceRate, source: row.referenceSource, readAt: row.referenceReadAt },
+  confirmed: row.confirmed,
+});
+
+/**
+ * Null for a row that bound no amount, or whose rate version names no rate of
+ * this account: neither is anything an order can be held to.
+ */
+const bindingOf = (
+  quote: {
+    readonly productFingerprint: string;
+    readonly shopAmount: string | null;
+    readonly shopCurrency: string | null;
+    readonly dollars: string | null;
+    readonly rateVersion: number | null;
+  },
+  rate: AppliedRate | null,
+): QuoteBinding | null => {
+  if (quote.shopAmount === null || quote.shopCurrency === null || quote.dollars === null) {
+    return null;
+  }
+  if (
+    quote.rateVersion !== null &&
+    (rate?.version !== quote.rateVersion || rate.currency !== quote.shopCurrency)
+  ) {
+    return null;
+  }
+  return {
+    fingerprint: quote.productFingerprint,
+    inTheShop: { amount: quote.shopAmount, currency: quote.shopCurrency },
+    paid: { amount: quote.dollars, currency: "USD" },
+    rate:
+      quote.rateVersion === null || rate === null
+        ? null
+        : { version: rate.version, currency: rate.currency, rate: rate.rate, setAt: rate.setAt },
+  };
+};
+
+const sameMoney = (one: Money, other: Money): boolean =>
+  one.amount === other.amount && one.currency === other.currency;
+
 export const postgresWooShops = (pool: Pool): WooShops => {
   const db = drizzle(pool);
 
@@ -311,6 +470,8 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           token: grant.token,
           accountId: grant.accountId,
           shopUrl: grant.shopUrl,
+          currency: grant.currency?.code ?? null,
+          currencyDecimals: grant.currency?.decimals ?? null,
           expiresAt: grant.expiresAt,
           createdAt: grant.startedAt,
         });
@@ -383,21 +544,22 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           ...keys,
           revision: token,
           connectedAt: now,
+          currency: currencyOfRow(grant),
+        };
+        const written = {
+          shopUrl: connection.shopUrl,
+          consumerKey: connection.consumerKey,
+          consumerSecret: connection.consumerSecret,
+          permissions: connection.permissions,
+          revision: connection.revision,
+          connectedAt: connection.connectedAt,
+          currency: connection.currency?.code ?? null,
+          currencyDecimals: connection.currency?.decimals ?? null,
         };
         await tx
           .insert(wooShops)
-          .values(connection)
-          .onConflictDoUpdate({
-            target: wooShops.accountId,
-            set: {
-              shopUrl: connection.shopUrl,
-              consumerKey: connection.consumerKey,
-              consumerSecret: connection.consumerSecret,
-              permissions: connection.permissions,
-              revision: connection.revision,
-              connectedAt: connection.connectedAt,
-            },
-          });
+          .values({ accountId: connection.accountId, ...written })
+          .onConflictDoUpdate({ target: wooShops.accountId, set: written });
         await resulted({ outcome: "completed" });
         return connection;
       });
@@ -416,39 +578,32 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             token: row.token,
             accountId: row.accountId,
             shopUrl: row.shopUrl,
+            currency: currencyOfRow(row),
             startedAt: row.createdAt,
             expiresAt: row.expiresAt,
           };
     },
 
     async connect(connection) {
+      const written = {
+        shopUrl: connection.shopUrl,
+        consumerKey: connection.consumerKey,
+        consumerSecret: connection.consumerSecret,
+        permissions: connection.permissions,
+        revision: connection.revision,
+        connectedAt: connection.connectedAt,
+        currency: connection.currency?.code ?? null,
+        currencyDecimals: connection.currency?.decimals ?? null,
+      };
       await db
         .insert(wooShops)
-        .values({
-          accountId: connection.accountId,
-          shopUrl: connection.shopUrl,
-          consumerKey: connection.consumerKey,
-          consumerSecret: connection.consumerSecret,
-          permissions: connection.permissions,
-          revision: connection.revision,
-          connectedAt: connection.connectedAt,
-        })
-        .onConflictDoUpdate({
-          target: wooShops.accountId,
-          set: {
-            shopUrl: connection.shopUrl,
-            consumerKey: connection.consumerKey,
-            consumerSecret: connection.consumerSecret,
-            permissions: connection.permissions,
-            revision: connection.revision,
-            connectedAt: connection.connectedAt,
-          },
-        });
+        .values({ accountId: connection.accountId, ...written })
+        .onConflictDoUpdate({ target: wooShops.accountId, set: written });
     },
 
     async connectionOf(accountId) {
       const [row] = await db.select().from(wooShops).where(eq(wooShops.accountId, accountId));
-      return row === undefined ? null : row;
+      return row === undefined ? null : connectionOfRow(row);
     },
 
     async forget(accountId) {
@@ -469,17 +624,64 @@ export const postgresWooShops = (pool: Pool): WooShops => {
     },
 
     async connections() {
-      return await db.select().from(wooShops);
+      return (await db.select().from(wooShops)).map(connectionOfRow);
     },
 
-    async recordQuote(accountId, priceId, merchantItemId, productFingerprint, expiresAt, now) {
+    async noteCurrency(accountId, currency) {
+      await db
+        .update(wooShops)
+        .set({ currency: currency.code, currencyDecimals: currency.decimals })
+        .where(eq(wooShops.accountId, accountId));
+    },
+
+    async saveRate(accountId, shopOrigin, entry) {
+      const [row] = await db
+        .insert(wooRates)
+        .values({
+          accountId,
+          shopOrigin,
+          currency: entry.currency,
+          rate: entry.rate,
+          setAt: entry.setAt,
+          setBy: entry.setBy,
+          referenceRate: entry.reference?.rate ?? null,
+          referenceSource: entry.reference?.source ?? null,
+          referenceReadAt: entry.reference?.readAt ?? null,
+          confirmed: entry.confirmed,
+        })
+        .returning();
+      if (row === undefined) throw new Error("a saved rate came back with no row");
+      return savedRateOfRow(row);
+    },
+
+    async currentRate(accountId, shopOrigin, currency) {
+      const [row] = await db
+        .select()
+        .from(wooRates)
+        .where(
+          and(
+            eq(wooRates.accountId, accountId),
+            eq(wooRates.shopOrigin, shopOrigin),
+            eq(wooRates.currency, currency),
+          ),
+        )
+        .orderBy(desc(wooRates.version))
+        .limit(1);
+      return row === undefined ? null : savedRateOfRow(row);
+    },
+
+    async recordQuote(accountId, priceId, merchantItemId, binding, expiresAt, now) {
       await db
         .insert(wooQuotes)
         .values({
           accountId,
           priceId,
           merchantItemId,
-          productFingerprint,
+          productFingerprint: binding.fingerprint,
+          shopAmount: binding.inTheShop.amount,
+          shopCurrency: binding.inTheShop.currency,
+          dollars: binding.paid.amount,
+          rateVersion: binding.rateVersion,
           expiresAt,
           createdAt: now,
         })
@@ -488,14 +690,22 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return (
         row?.accountId === accountId &&
         row.merchantItemId === merchantItemId &&
-        row.productFingerprint === productFingerprint
+        row.productFingerprint === binding.fingerprint &&
+        row.shopAmount === binding.inTheShop.amount &&
+        row.shopCurrency === binding.inTheShop.currency &&
+        row.dollars === binding.paid.amount &&
+        row.rateVersion === binding.rateVersion
       );
     },
 
-    async quotedProduct(accountId, priceId, merchantItemId) {
+    async quotedSale(accountId, priceId, merchantItemId) {
       const [row] = await db
-        .select({ fingerprint: wooQuotes.productFingerprint })
+        .select({ quote: wooQuotes, rate: wooRates })
         .from(wooQuotes)
+        .leftJoin(
+          wooRates,
+          and(eq(wooRates.version, wooQuotes.rateVersion), eq(wooRates.accountId, accountId)),
+        )
         .where(
           and(
             eq(wooQuotes.priceId, priceId),
@@ -503,7 +713,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             eq(wooQuotes.merchantItemId, merchantItemId),
           ),
         );
-      return row?.fingerprint ?? null;
+      return row === undefined ? null : bindingOf(row.quote, row.rate);
     },
 
     async claimOrder(accountId, orderId, facts, now) {
@@ -591,7 +801,11 @@ export const postgresWooShops = (pool: Pool): WooShops => {
     async shopTotals(accountId, orderIds) {
       if (orderIds.length === 0) return {};
       const rows = await db
-        .select({ orderId: wooOrders.orderId, total: wooOrders.wooOrderTotal })
+        .select({
+          orderId: wooOrders.orderId,
+          total: wooOrders.wooOrderTotal,
+          converted: sql<ConvertedSale | null>`${wooOrders.facts} -> 'converted'`,
+        })
         .from(wooOrders)
         .where(
           and(
@@ -600,7 +814,9 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             isNotNull(wooOrders.wooOrderTotal),
           ),
         );
-      return Object.fromEntries(rows.map((row) => [row.orderId, row.total ?? ""]));
+      return Object.fromEntries(
+        rows.map((row) => [row.orderId, { total: row.total ?? "", converted: row.converted }]),
+      );
     },
 
     async recoverableOrders(accountId, orderIds) {
@@ -710,8 +926,9 @@ export const memoryWooShops = (): WooShops & {
   const shops = new Map<string, WooConnection>();
   const quotes = new Map<
     string,
-    { accountId: string; merchantItemId: string; productFingerprint: string }
+    { accountId: string; merchantItemId: string; binding: QuoteToBind }
   >();
+  const rates: (SavedRate & { accountId: string; shopOrigin: string })[] = [];
   const orders = new Map<
     string,
     {
@@ -788,6 +1005,7 @@ export const memoryWooShops = (): WooShops & {
         ...keys,
         revision: token,
         connectedAt: now,
+        currency: grant.currency,
       };
       shops.set(grant.accountId, connection);
       resulted({ outcome: "completed" });
@@ -829,24 +1047,59 @@ export const memoryWooShops = (): WooShops & {
       return [...shops.values()];
     },
 
-    async recordQuote(accountId, priceId, merchantItemId, productFingerprint) {
+    async noteCurrency(accountId, currency) {
+      const connection = shops.get(accountId);
+      if (connection !== undefined) shops.set(accountId, { ...connection, currency });
+    },
+
+    async saveRate(accountId, shopOrigin, entry) {
+      const saved = { ...entry, version: (rates.at(-1)?.version ?? 0) + 1 };
+      rates.push({ ...saved, accountId, shopOrigin });
+      return saved;
+    },
+
+    async currentRate(accountId, shopOrigin, currency) {
+      const found = rates.findLast(
+        (one) =>
+          one.accountId === accountId && one.shopOrigin === shopOrigin && one.currency === currency,
+      );
+      if (found === undefined) return null;
+      const { accountId: _account, shopOrigin: _origin, ...saved } = found;
+      return saved;
+    },
+
+    async recordQuote(accountId, priceId, merchantItemId, binding) {
       const found = quotes.get(priceId);
       if (found === undefined) {
-        quotes.set(priceId, { accountId, merchantItemId, productFingerprint });
+        quotes.set(priceId, { accountId, merchantItemId, binding });
         return true;
       }
       return (
         found.accountId === accountId &&
         found.merchantItemId === merchantItemId &&
-        found.productFingerprint === productFingerprint
+        found.binding.fingerprint === binding.fingerprint &&
+        sameMoney(found.binding.inTheShop, binding.inTheShop) &&
+        sameMoney(found.binding.paid, binding.paid) &&
+        found.binding.rateVersion === binding.rateVersion
       );
     },
 
-    async quotedProduct(accountId, priceId, merchantItemId) {
+    async quotedSale(accountId, priceId, merchantItemId) {
       const found = quotes.get(priceId);
-      return found?.accountId === accountId && found.merchantItemId === merchantItemId
-        ? found.productFingerprint
-        : null;
+      if (found?.accountId !== accountId || found.merchantItemId !== merchantItemId) return null;
+      const rate = rates.find(
+        (one) => one.version === found.binding.rateVersion && one.accountId === accountId,
+      );
+      return bindingOf(
+        {
+          productFingerprint: found.binding.fingerprint,
+          shopAmount: found.binding.inTheShop.amount,
+          shopCurrency: found.binding.inTheShop.currency,
+          dollars: found.binding.paid.amount,
+          rateVersion: found.binding.rateVersion,
+        },
+        rate ?? null,
+      );
     },
 
     async claimOrder(accountId, orderId, facts, now) {
@@ -906,7 +1159,7 @@ export const memoryWooShops = (): WooShops & {
       return Object.fromEntries(
         [...orders.entries()].flatMap(([orderId, found]) =>
           asked.has(orderId) && found.accountId === accountId && found.total !== undefined
-            ? [[orderId, found.total]]
+            ? [[orderId, { total: found.total, converted: found.facts.converted ?? null }]]
             : [],
         ),
       );

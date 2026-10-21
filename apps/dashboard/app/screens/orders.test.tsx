@@ -19,6 +19,7 @@ import {
   type LapsedAttempt,
   ordersView,
 } from "../../src/views.js";
+import type { ShopTotal } from "../../src/woo-shops.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
@@ -306,7 +307,7 @@ describe("the counts beside a search", () => {
 describe("a shop's order a cent from what the buyer paid", () => {
   it("says in the order's details what the shop's order totals, and says nothing where it is the same", () => {
     const orders = ordersOf([{ id: FIRST }]);
-    const details = (totals: Readonly<Record<string, string>>) =>
+    const details = (totals: Readonly<Record<string, ShopTotal>>) =>
       readable(
         served(() => (
           <OrdersScreen
@@ -325,8 +326,8 @@ describe("a shop's order a cent from what the buyer paid", () => {
         )),
       );
 
-    expect(details({ [FIRST]: "5.01" })).toContain("5.01 USD");
-    expect(details({ [FIRST]: "5.00" })).not.toContain("Shop's order");
+    expect(details({ [FIRST]: { total: "5.01", converted: null } })).toContain("5.01 USD");
+    expect(details({ [FIRST]: { total: "5.00", converted: null } })).not.toContain("Shop's order");
     expect(details({})).not.toContain("Shop's order");
   });
 });

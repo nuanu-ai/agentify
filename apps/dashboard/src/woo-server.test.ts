@@ -625,11 +625,13 @@ describe("the keys arriving from the shop", () => {
       permissions: "read_write",
       revision: "connected-token",
       connectedAt: new Date(),
+      currency: null,
     });
     await running.shops.beginGrant({
       token: "old-unanswered-token",
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt: new Date(Date.now() - 40 * 60_000),
       expiresAt: new Date(Date.now() - 25 * 60_000),
     });
@@ -687,6 +689,7 @@ describe("the keys arriving from the shop", () => {
       token: "newer-token",
       accountId: running.accountId,
       shopUrl: "https://second.example.com",
+      currency: null,
       startedAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60_000),
     });
@@ -1336,6 +1339,7 @@ describe("importing the catalogue", () => {
       token: "a-token-that-came-back",
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt,
       expiresAt: new Date(startedAt.getTime() + 15 * 60_000),
     });
@@ -1631,6 +1635,7 @@ describe("what the integrations screen says about a shop", () => {
       token: `token-from-${minutes}-minutes-ago`,
       accountId: running.accountId,
       shopUrl: SHOP,
+      currency: null,
       startedAt: new Date(began),
       expiresAt: new Date(began + 15 * 60_000),
     });
@@ -2093,7 +2098,12 @@ describe("merchant delivery recovery", () => {
       accountId,
       priceId,
       merchantItemId,
-      facts.productFingerprint,
+      {
+        fingerprint: facts.productFingerprint,
+        inTheShop: { amount: facts.amount, currency: "USD" },
+        paid: { amount: facts.amount, currency: "USD" },
+        rateVersion: null,
+      },
       new Date(now.getTime() + 3600000),
       now,
     );
@@ -2109,6 +2119,7 @@ describe("merchant delivery recovery", () => {
       // which the operator's command would create the order.
       revision: neverAsked ? "grant_again" : "grant_recovery",
       connectedAt: now,
+      currency: null,
     });
     if (placed)
       await running.shops.recordOrder(
@@ -2430,6 +2441,7 @@ describe("one integration at a time", () => {
       token: "stale-other-shop",
       accountId: running.accountId,
       shopUrl: "https://other.example.com",
+      currency: null,
       startedAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60_000),
     });

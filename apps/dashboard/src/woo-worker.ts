@@ -161,11 +161,13 @@ export const fillFromTheShop = async (
     order.price_id === undefined
       ? null
       : parts.quotedProduct === undefined
-        ? await parts.shops.quotedProduct(
-            connection.accountId,
-            order.price_id,
-            order.merchant_item_id,
-          )
+        ? ((
+            await parts.shops.quotedSale(
+              connection.accountId,
+              order.price_id,
+              order.merchant_item_id,
+            )
+          )?.fingerprint ?? null)
         : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
   const facts: WooOrderFacts = {
     shopOrigin: new URL(connection.shopUrl).origin,
@@ -451,11 +453,13 @@ const fillParcelFromTheShop = async (
     order.price_id === undefined
       ? null
       : parts.quotedProduct === undefined
-        ? await parts.shops.quotedProduct(
-            connection.accountId,
-            order.price_id,
-            order.merchant_item_id,
-          )
+        ? ((
+            await parts.shops.quotedSale(
+              connection.accountId,
+              order.price_id,
+              order.merchant_item_id,
+            )
+          )?.fingerprint ?? null)
         : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
   const facts: WooOrderFacts = {
     kind: "parcel",
@@ -930,7 +934,7 @@ export const quoteFromTheShop = async (
     connection.accountId,
     question.price_id,
     question.merchant_item_id,
-    product.fingerprint,
+    { fingerprint: product.fingerprint, inTheShop: price, paid: price, rateVersion: null },
     new Date(question.expires_at),
     at,
   );

@@ -49,7 +49,7 @@ import {
   type ShopKeys,
   type WooOrderLookup,
 } from "./woo-shop.js";
-import type { WooShops } from "./woo-shops.js";
+import type { ShopTotal, WooShops } from "./woo-shops.js";
 import {
   type ImportOutcome,
   type ShopAnswer,
@@ -82,7 +82,7 @@ export interface WooPages {
   shopTotals(
     person: Person,
     orderIds: readonly string[],
-  ): Promise<Readonly<Record<string, string>>>;
+  ): Promise<Readonly<Record<string, ShopTotal>>>;
   recoveryLinks(
     person: Person,
     orderIds: readonly string[],
@@ -423,6 +423,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         token,
         accountId: person.id,
         shopUrl,
+        currency: null,
         startedAt,
         expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
       });

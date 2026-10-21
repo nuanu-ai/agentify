@@ -76,6 +76,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -98,6 +99,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -125,6 +127,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -140,6 +143,7 @@ export const wooShopsContract = (
           token: "first",
           accountId: accounts.one,
           shopUrl: "https://first.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -147,6 +151,7 @@ export const wooShopsContract = (
           token: "other",
           accountId: accounts.other,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -154,6 +159,7 @@ export const wooShopsContract = (
           token: "second",
           accountId: accounts.one,
           shopUrl: "https://second.example.com",
+          currency: null,
           startedAt: LATER,
           expiresAt: MUCH_LATER,
         });
@@ -173,6 +179,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -190,6 +197,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -204,6 +212,7 @@ export const wooShopsContract = (
           token: "first",
           accountId: accounts.one,
           shopUrl: "https://first.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -211,6 +220,7 @@ export const wooShopsContract = (
           token: "second",
           accountId: accounts.one,
           shopUrl: "https://second.example.com",
+          currency: null,
           startedAt: LATER,
           expiresAt: MUCH_LATER,
         });
@@ -227,6 +237,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: LATER,
         });
@@ -349,6 +360,7 @@ export const wooShopsContract = (
       permissions: "read_write",
       revision: "grant_1",
       connectedAt: NOW,
+      currency: null,
     });
 
     it("reads back what was written", async () => {
@@ -376,6 +388,7 @@ export const wooShopsContract = (
             token: "pending-token",
             accountId: accounts.one,
             shopUrl,
+            currency: null,
             startedAt: NOW,
             expiresAt: MUCH_LATER,
           });
@@ -397,6 +410,7 @@ export const wooShopsContract = (
             token: "renewed-token",
             accountId: accounts.one,
             shopUrl,
+            currency: null,
             startedAt: NOW,
             expiresAt: MUCH_LATER,
           });
@@ -418,6 +432,7 @@ export const wooShopsContract = (
           token: "replacement-token",
           accountId: accounts.one,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -460,6 +475,7 @@ export const wooShopsContract = (
           token: "forgotten-token",
           accountId: accounts.one,
           shopUrl: "https://forgotten.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -467,6 +483,7 @@ export const wooShopsContract = (
           token: "other-token",
           accountId: accounts.other,
           shopUrl: "https://other.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
@@ -489,6 +506,7 @@ export const wooShopsContract = (
           token: "racing-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          currency: null,
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });

@@ -323,6 +323,12 @@ export const wooGrants = pgTable(
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
     shopUrl: text("shop_url").notNull(),
+    /**
+     * What the shop's public catalogue priced in when Connect was pressed, and
+     * its decimals; null where it gave no clear answer.
+     */
+    currency: text("currency"),
+    currencyDecimals: integer("currency_decimals"),
     expiresAt: moment("expires_at"),
     createdAt: moment("created_at"),
   },
@@ -356,7 +362,52 @@ export const wooShops = pgTable("dashboard_woo_shops", {
   /** Changes on every reconnect. */
   revision: text("revision").notNull(),
   connectedAt: moment("connected_at"),
+  /**
+   * The shop's currency and its decimals as last read, at Connect or by an
+   * import, for the screen that asks for its rate; null where never read. A
+   * price is never made from this: the shop's own settings are read at every
+   * purchase.
+   */
+  currency: text("currency"),
+  currencyDecimals: integer("currency_decimals"),
 });
+
+/**
+ * Every exchange rate a merchant saved for a shop priced in another currency,
+ * as units of that currency one US dollar buys. Rows are only ever added: a
+ * price bound to a version can always be traced to the rate it was converted
+ * at, and the current rate of a shop and a currency is its highest version.
+ */
+export const wooRates = pgTable(
+  "dashboard_woo_rates",
+  {
+    version: integer("version").primaryKey().generatedAlwaysAsIdentity(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    shopOrigin: text("shop_origin").notNull(),
+    currency: text("currency").notNull(),
+    /** A decimal string with at most six digits after the dot. */
+    rate: text("rate").notNull(),
+    setAt: moment("set_at"),
+    /** The email of the session that saved it. */
+    setBy: text("set_by").notNull(),
+    /** What the merchant was shown beside it; null where none could be read. */
+    referenceRate: text("reference_rate"),
+    referenceSource: text("reference_source"),
+    referenceReadAt: timestamp("reference_read_at", { withTimezone: true, mode: "date" }),
+    /** Typed a second time because it stood more than a tenth from the reference. */
+    confirmed: boolean("confirmed").notNull(),
+  },
+  (table) => [
+    index("dashboard_woo_rates_current_idx").on(
+      table.accountId,
+      table.shopOrigin,
+      table.currency,
+      table.version,
+    ),
+  ],
+);
 
 /**
  * Delivery-critical WooCommerce facts accepted under one gateway price
@@ -374,6 +425,16 @@ export const wooQuotes = pgTable(
      * Digest only: the protected source address itself is buyer-secret data.
      */
     productFingerprint: text("product_fingerprint").notNull(),
+    /**
+     * The amount the shop's order is held to, in the shop's currency at its
+     * decimals, and the US dollars answered for it. Null on a row that bound no
+     * amount, which no order can be filled against.
+     */
+    shopAmount: text("shop_amount"),
+    shopCurrency: text("shop_currency"),
+    dollars: text("dollars"),
+    /** The rate the dollars were converted at; null where the shop sells in US dollars. */
+    rateVersion: integer("rate_version"),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
     createdAt: moment("created_at"),
   },

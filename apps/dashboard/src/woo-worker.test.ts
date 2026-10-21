@@ -110,6 +110,7 @@ const connection = (accountId = "acc_1"): WooConnection => ({
   permissions: "read_write",
   revision: "grant_1",
   connectedAt: new Date("2026-09-14T12:00:00.000Z"),
+  currency: null,
 });
 
 const anOrder = (overrides: Partial<Order> = {}): Order => ({
@@ -335,7 +336,9 @@ describe("one paid order, in the merchant's own shop", () => {
       NO_SPLIT,
     );
 
-    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "25.01" });
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({
+      ord_1: { total: "25.01", converted: null },
+    });
   });
 
   it("refuses an order whose price is not the shop's price, and places nothing", async () => {
@@ -1218,9 +1221,9 @@ describe("a price question off the merchant's stream", () => {
       price: { amount: "25.00", currency: "USD" },
       as_of: NOW,
     });
-    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
-      "accepted-download-fingerprint",
-    );
+    expect(
+      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
+    ).toBe("accepted-download-fingerprint");
   });
 
   it("answers a download from a shop whose prices hold their tax at the price as entered", async () => {
@@ -1241,7 +1244,9 @@ describe("a price question off the merchant's stream", () => {
     const shops = memoryWooShops();
 
     expect(await answering(shops, null)).toStrictEqual({ available: false, as_of: NOW });
-    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBeNull();
+    expect(
+      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
+    ).toBeNull();
   });
 
   for (const { title, atTheOrder, delivered } of [
@@ -1343,7 +1348,9 @@ describe("a price question off the merchant's stream", () => {
       );
 
       expect(said, what).toBeNull();
-      expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBeNull();
+      expect(
+        (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
+      ).toBeNull();
     }
   });
 
@@ -1355,15 +1362,20 @@ describe("a price question off the merchant's stream", () => {
       "acc_1",
       "prc_1",
       question.merchant_item_id,
-      "an-earlier-download",
+      {
+        fingerprint: "an-earlier-download",
+        inTheShop: { amount: "25.00", currency: "USD" },
+        paid: { amount: "25.00", currency: "USD" },
+        rateVersion: null,
+      },
       new Date(question.expires_at),
       new Date(NOW),
     );
 
     expect(await answering(shops, inTheShop)).toStrictEqual({ available: false, as_of: NOW });
-    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
-      "an-earlier-download",
-    );
+    expect(
+      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
+    ).toBe("an-earlier-download");
   });
 });
 
@@ -1467,9 +1479,10 @@ describe("a parcel's price question", () => {
       as_of: NOW,
     });
     expect(asked).toStrictEqual(place);
-    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBe(
-      "accepted-parcel-fingerprint",
-    );
+    expect(
+      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
+        null,
+    ).toBe("accepted-parcel-fingerprint");
   });
 
   it("adds the rate to the goods in cents, not in floating point", async () => {
@@ -1499,7 +1512,8 @@ describe("a parcel's price question", () => {
         as_of: NOW,
       });
       expect(
-        await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id),
+        (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
+          null,
       ).toBeNull();
     }
   });
@@ -1554,7 +1568,10 @@ describe("a parcel's price question", () => {
     });
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
-    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+    expect(
+      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
+        null,
+    ).toBeNull();
   });
 
   it("names no price where a shop calculating no tax shows a rate carrying tax", async () => {
@@ -1620,7 +1637,10 @@ describe("a parcel's price question", () => {
     });
     // Not the seller's "not available": the cart said nothing about this parcel.
     expect(await answering(shops, fromTheCart(2))).toBeNull();
-    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+    expect(
+      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
+        null,
+    ).toBeNull();
   });
 
   it("names no price where the shop's own cart refuses the line", async () => {
@@ -1639,7 +1659,10 @@ describe("a parcel's price question", () => {
     );
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
-    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+    expect(
+      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
+        null,
+    ).toBeNull();
   });
 
   it("says nothing when the shop's cart could not answer just now", async () => {
@@ -1840,7 +1863,9 @@ describe("a parcel's paid order", () => {
       NO_SPLIT,
     );
 
-    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({ ord_1: "25.01" });
+    expect(await shops.shopTotals("acc_1", ["ord_1"])).toStrictEqual({
+      ord_1: { total: "25.01", converted: null },
+    });
   });
 
   it("refuses an order whose shipping no longer costs what was paid, and posts nothing", async () => {
@@ -2319,7 +2344,7 @@ describe("a parcel from a shop that calculates tax", () => {
       as_of: NOW,
     });
     expect(shop.asked).toStrictEqual(["Seattle"]);
-    expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item)).toBe(
+    expect((await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null).toBe(
       "accepted-parcel-fingerprint",
     );
   });
@@ -2348,7 +2373,10 @@ describe("a parcel from a shop that calculates tax", () => {
         available: false,
         as_of: NOW,
       });
-      expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item), place.city).toBeNull();
+      expect(
+        (await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null,
+        place.city,
+      ).toBeNull();
     }
   });
 
@@ -2454,7 +2482,9 @@ describe("a parcel from a shop that calculates tax", () => {
     };
 
     expect(await quoted(filling, JAKARTA)).toBeNull();
-    expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item)).toBeNull();
+    expect(
+      (await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null,
+    ).toBeNull();
   });
 
   const ADDRESS_IN = (place: ShipToLocality) => ({

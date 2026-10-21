@@ -154,12 +154,14 @@ const recover = async (
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
   }
 
-  const acceptedFingerprint = await parts.shops.quotedProduct(
-    record.accountId,
-    record.facts.priceId,
-    record.facts.merchantItemId,
-  );
-  if (acceptedFingerprint === null || acceptedFingerprint !== record.facts.productFingerprint) {
+  const acceptedFingerprint = (
+    await parts.shops.quotedSale(
+      record.accountId,
+      record.facts.priceId,
+      record.facts.merchantItemId,
+    )
+  )?.fingerprint;
+  if (acceptedFingerprint !== record.facts.productFingerprint) {
     return refused("The saved WooCommerce sale does not match its accepted price question.");
   }
 
