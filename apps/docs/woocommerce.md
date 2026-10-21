@@ -40,6 +40,12 @@ customer's, so the shop's customer emails — the confirmation, the download
 link — come to you and never to the buyer, and the shop's reports name you as
 the customer of every sale.
 
+An order your shop totals at what the buyer paid, or within a cent of it, is
+taken on: the order carries what the buyer paid among its Agentify lines
+(`agentify_paid`), and your Orders screen shows the shop's total beside it
+where the two differ, so your shop's books can differ by a cent from the
+USDC you received for that sale. An order further from it is not taken on.
+
 ## Shops that calculate tax
 
 Where WooCommerce calculates tax in your shop, nothing sells unless it rounds
