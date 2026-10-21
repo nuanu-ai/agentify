@@ -19,8 +19,8 @@ const publicOnly = (addresses: readonly string[]): void => {
 };
 
 /**
- * Some shops' firewalls answer 403 to a request that names no client, and a merchant allowlists
- * this exact string, so it is set after the caller's headers and no caller can replace it.
+ * Some shops' firewalls answer 403 to a request that names no client, and a merchant may
+ * allowlist this exact string, so it is set after the caller's headers and no caller can replace it.
  */
 const AGENTIFY_USER_AGENT = "Agentify/1 (+https://agentify.ad)";
 
