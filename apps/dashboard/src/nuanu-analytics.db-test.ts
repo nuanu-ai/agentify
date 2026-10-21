@@ -866,7 +866,7 @@ if (databaseUrl === null) {
   });
 
   describe("switched off", () => {
-    it("sends nothing, gives up what is more than seven days old and deletes what settled thirty days ago", async () => {
+    it("sends nothing, gives up every event waiting, however recent, and deletes what settled thirty days ago", async () => {
       await recorded(viewed, new Date(clock - 7 * DAY - MINUTE));
       await recorded(ordered, new Date(clock - DAY));
       await recorded(viewed, new Date(clock - 40 * DAY));
@@ -884,14 +884,33 @@ if (databaseUrl === null) {
 
       const running = startNuanuAnalytics({ pool, target: null, fetch: post, now, wait });
       const deadline = Date.now() + 10_000;
-      while ((await rows()).length !== 2 && Date.now() < deadline) await sleep(5);
+      const settledAll = async () =>
+        (await rows()).every((row) => row.state !== "pending" && row.state !== "sent");
+      while (!(await settledAll()) && Date.now() < deadline) await sleep(5);
       await running.stop();
 
       expect(received).toStrictEqual([]);
       expect((await rows()).map((row) => [row.name, row.state])).toStrictEqual([
         ["agc_dashboard_viewed", "given_up"],
-        ["agc_order_created", "pending"],
+        ["agc_order_created", "given_up"],
       ]);
+    });
+
+    it("leaves nothing recorded while it was off for the sender to release once switched on", async () => {
+      await recorded(ordered);
+      const { post, received } = nuanu();
+      const wait = async (ms: number): Promise<void> => {
+        await sleep(Math.min(ms, 5));
+      };
+      const off = startNuanuAnalytics({ pool, target: null, fetch: post, now, wait });
+      const deadline = Date.now() + 10_000;
+      while ((await onlyRow()).state === "pending" && Date.now() < deadline) await sleep(5);
+      await off.stop();
+
+      await drained(ON_TEST, post);
+
+      expect(received).toStrictEqual([]);
+      expect(await onlyRow()).toMatchObject({ state: "given_up" });
     });
   });
 }
