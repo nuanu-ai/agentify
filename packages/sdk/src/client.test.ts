@@ -271,6 +271,32 @@ describe("reading orders back", () => {
     expect(gateway?.callsTo("get_order")[0]?.params).toStrictEqual({ order_id: "order-1" });
   });
 
+  it("reads an order whose status this package does not know as unknown, never as an ending", async () => {
+    // A newer gateway may say a word, or a field, this package was not built
+    // with. The order still comes back, and the word it cannot read is the one
+    // reserved word, so no switch over the endings takes it for one of them.
+    const newer = {
+      ...order,
+      status: "on_hold",
+      payment_status: "partly_refunded",
+      held_until: "2026-08-27T10:00:00Z",
+    };
+    const agentify = await gatewayServing({
+      get_order: () => ({ text: JSON.stringify(newer) }),
+      list_orders: () => ({ text: JSON.stringify({ orders: [newer], next_page: null }) }),
+    });
+
+    const read = await agentify.orders.get("order-1");
+    const listed = await agentify.orders.list({ open: true });
+
+    expect(read.status).toBe("unknown");
+    expect(read.payment_status).toBe("unknown");
+    expect(read.id).toBe(order.id);
+    expect(listed.map((one) => [one.id, one.status, one.payment_status])).toStrictEqual([
+      [order.id, "unknown", "unknown"],
+    ]);
+  });
+
   it("encodes an identifier that carries a slash or a space", async () => {
     // "SKU 100/1" is a valid identifier; unencoded it is a different route.
     const agentify = await gatewayServing({

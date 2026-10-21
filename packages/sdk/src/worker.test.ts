@@ -437,6 +437,88 @@ describe("an event off the same stream", () => {
   });
 });
 
+describe("a gateway newer than this package", () => {
+  /**
+   * A poll answer as a newer gateway writes it, sent as text because the
+   * double holds every scripted body to this package's own contract.
+   */
+  const newerPoll = (...carried: unknown[]) => ({
+    text: JSON.stringify({
+      contract_version: contractVersion,
+      envelopes: carried,
+      next_wait_seconds: 25,
+    }),
+  });
+
+  it("hands an order carrying a field this package does not know to the handler, and delivers it", async () => {
+    // A field added on our side must not stop a merchant who has not upgraded.
+    const seen: Order[] = [];
+
+    await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({
+            ...envelopes.order,
+            attempt: 2,
+            payload: {
+              ...order,
+              gift_note: "Happy birthday",
+              price: { ...order.price, tax: "0.50" },
+            },
+          }),
+        ),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+      {
+        order: (given) => {
+          seen.push(given);
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+      },
+    );
+
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject(order);
+    expect(seen[0]).not.toHaveProperty("gift_note");
+    expect(seen[0]?.price).toStrictEqual(order.price);
+    expect(gateway?.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: order.id });
+  });
+
+  it("handles the rest of a poll that carries an event of a kind it does not know, and says so once without stopping", async () => {
+    // A new kind of event is news this package cannot act on. Skipping it
+    // loses nothing an event could not lose anyway, and the orders beside it
+    // in the same answer are still the merchant's to deliver.
+    const unknownEvent = {
+      kind: "order_event",
+      id: "env-9",
+      sent_at: AT,
+      payload: { type: "order.refunded", order_id: "order-1", at: AT },
+    };
+
+    const { problems, events } = await workerOver(
+      {
+        poll_worker: polling(newerPoll(unknownEvent, envelopes.order, envelopes.event)),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => events.length === 1, "the known event");
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+
+    expect(events).toStrictEqual([event]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.fatal).toBe(false);
+    expect(problems[0]?.kind).toBe("event_skipped");
+    expect(problems[0]?.message).toContain("order.refunded");
+    expect(problems[0]?.message).toMatch(/newer/);
+    // And the loop went on to ask for more.
+    await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "the next poll");
+  });
+});
+
 describe("a gateway speaking another dialect", () => {
   it("stops the worker and names both versions", async () => {
     // Failing at startup rather than on somebody's first order.
