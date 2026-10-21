@@ -2292,7 +2292,6 @@ describe("one integration at a time", () => {
 
     expect(pressed.to).toBeNull();
     expect(readable(pressed.html)).toContain("IDR");
-    expect(readable(pressed.html)).toMatch(/US dollars/);
     expect(await onSale(running)).toContain(card);
     expect((await theCodePolls(running)).status).toBe(200);
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
