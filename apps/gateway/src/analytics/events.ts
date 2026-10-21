@@ -26,7 +26,6 @@ const REASON_CODES = [
   "catalogue_unavailable",
   "payment_not_settled",
   "merchant_refused",
-  "merchant_unavailable",
   "deadline_expired",
   "operation_closed",
   "dependency_unavailable",

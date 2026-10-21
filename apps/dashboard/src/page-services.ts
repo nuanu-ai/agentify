@@ -134,22 +134,20 @@ const loadFailedAs = (status: number): Blocked =>
 /**
  * A press the gateway did not do, by its answer. Nothing answered in time may
  * still have been done, so its outcome is unknown; a refusal is named by its
- * code where the code says more than its status.
+ * status.
  */
 const refusedAs = (answer: Answer<unknown> & { ok: false }): Blocked =>
   answer.status === 0
     ? { outcome: "unknown", reason_code: "timeout" }
-    : answer.code === "merchant_departed"
-      ? { outcome: "blocked", reason_code: "merchant_unavailable" }
-      : answer.status === 400 || answer.status === 404
-        ? { outcome: "blocked", reason_code: "invalid_input" }
-        : answer.status === 409
-          ? { outcome: "blocked", reason_code: "operation_closed" }
-          : answer.status === 503
-            ? { outcome: "failed", reason_code: "dependency_unavailable" }
-            : answer.status >= 500
-              ? { outcome: "failed", reason_code: "internal_error" }
-              : { outcome: "blocked", reason_code: "unknown" };
+    : answer.status === 400 || answer.status === 404
+      ? { outcome: "blocked", reason_code: "invalid_input" }
+      : answer.status === 409
+        ? { outcome: "blocked", reason_code: "operation_closed" }
+        : answer.status === 503
+          ? { outcome: "failed", reason_code: "dependency_unavailable" }
+          : answer.status >= 500
+            ? { outcome: "failed", reason_code: "internal_error" }
+            : { outcome: "blocked", reason_code: "unknown" };
 
 const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input" };
 

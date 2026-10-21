@@ -7164,11 +7164,10 @@ describe("what the pages record for product analytics", () => {
     if (person === null) throw new Error("the owner has no account");
     return { person: person.id, merchant: running.theMerchant };
   };
-  const refused = (status: number, why: string, code?: string) => async () => ({
+  const refused = (status: number, why: string) => async () => ({
     ok: false as const,
     status,
     why,
-    ...(code === undefined ? {} : { code }),
   });
 
   it("records one view of the screen a document load or a navigation inside the application shows", async () => {
@@ -7378,7 +7377,7 @@ describe("what the pages record for product analytics", () => {
     const running = await started({
       client: (real) => ({
         ...real,
-        setSelling: refused(409, "the merchant has left Agentify", "merchant_departed"),
+        setSelling: refused(409, "selling cannot be changed now"),
       }),
     });
     await running.browser.signIn();
@@ -7391,7 +7390,7 @@ describe("what the pages record for product analytics", () => {
 
     expect(pressed.status).toBe(409);
     expect(named(running, "agc_ui_blocked")).toStrictEqual([
-      blockedOf("cards", "change_selling", "blocked", "merchant_unavailable", owner),
+      blockedOf("cards", "change_selling", "blocked", "operation_closed", owner),
     ]);
   });
 
