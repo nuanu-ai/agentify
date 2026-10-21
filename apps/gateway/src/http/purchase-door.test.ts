@@ -169,6 +169,23 @@ describe("purchases waiting for payment", () => {
     expect(answered.status).toBe(402);
   });
 
+  it("hold no place once their prices have run out, while the reminders that close them have not fired", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+
+    // No reminder is applied: in this harness they wait on real time.
+    harnessed.advance(31_000);
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+    await worker.stop();
+
+    expect(answered.status).toBe(402);
+  });
+
   it("are counted for each seller apart, so one seller's twenty hold up nobody else", async () => {
     const { harnessed, served } = await started();
     const busy = harnessed.merchant.id;

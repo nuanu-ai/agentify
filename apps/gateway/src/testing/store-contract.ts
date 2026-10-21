@@ -1569,15 +1569,47 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     });
 
     describe("a purchase waiting for payment", () => {
+      /**
+       * A purchase being priced or priced and not paid, at `createdAt`, with
+       * the deployment's windows: five seconds for a price question, thirty
+       * for a price to hold.
+       */
+      const pending = (
+        id: string,
+        state: "created" | "quoted",
+        createdAt: number,
+        merchantId = A,
+      ): StoredOrder => {
+        const base = anOrder(id, state, { merchantId, createdAt });
+        return {
+          ...base,
+          order: {
+            ...base.order,
+            policy: {
+              ...base.order.policy,
+              deadlines: {
+                ...base.order.policy.deadlines,
+                quoteResponseMs: 5_000,
+                quoteTtlMs: 30_000,
+              },
+            },
+            timestamps: {
+              ...base.order.timestamps,
+              quotedAt: state === "quoted" ? createdAt : null,
+            },
+          },
+        };
+      };
+
       /** A purchase priced and not paid, as `addOrder` is given one at its birth. */
       const waiting = (id: string, merchantId = A) =>
-        anOrder(id, "quoted", { merchantId, createdAt: Number(id.replace(/\D/g, "")) || 1 });
+        pending(id, "quoted", Number(id.replace(/\D/g, "")) || 1, merchantId);
 
       it("is written while fewer of its seller's purchases wait, and refused once as many do as allowed", async () => {
         // Only a seller's own purchases still waiting for payment count: one
         // paid, one charging, one that ended and another seller's hold no place.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created", { createdAt: 1 }));
+        await store.addOrder(pending("ord_1", "created", 1));
         await store.addOrder(waiting("ord_2"));
         await store.addOrder(anOrder("ord_3", "paid", { createdAt: 3 }));
         await store.addOrder(anOrder("ord_4", "expired", { createdAt: 4 }));
@@ -1594,6 +1626,32 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           "written",
         );
         expect(await store.orderById("ord_9")).not.toBeNull();
+      });
+
+      it("holds no place once its price has run out, though nothing has closed it yet", async () => {
+        // A reminder that fires late, or never, must not keep a seller's
+        // places taken: the price is gone, and no payment will be taken at it.
+        const store = await twoMerchants();
+        await store.addOrder(pending("ord_1", "quoted", 1_000));
+        await store.addOrder(pending("ord_2", "created", 1_000));
+
+        expect(await store.waitingForPayment(A, 20_000, 20)).toBe(2);
+        expect(
+          await store.addOrder(pending("ord_3", "quoted", 20_000), {
+            through: "api",
+            waitingAtMost: 2,
+          }),
+        ).toBe("too_many_waiting");
+        // The price named at 1s holds until 31s; the question asked at 1s may
+        // name one until 6s, which then holds until 36s.
+        expect(await store.waitingForPayment(A, 32_000, 20)).toBe(1);
+        expect(await store.waitingForPayment(A, 37_000, 20)).toBe(0);
+        expect(
+          await store.addOrder(pending("ord_4", "quoted", 37_000), {
+            through: "api",
+            waitingAtMost: 1,
+          }),
+        ).toBe("written");
       });
 
       it("is held to the limit however many purchases of one seller arrive at once", async () => {
