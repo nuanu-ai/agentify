@@ -1181,6 +1181,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-busy",
+      screen: "Cards",
+      when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
+      cause:
+        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { busy: true }) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-many",
       screen: "Cards",
       when: "A merchant with a whole catalogue opens Cards.",

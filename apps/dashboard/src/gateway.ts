@@ -217,6 +217,8 @@ export interface GatewayClient {
        * or null where it never has.
        */
       readonly outOfTouch: { readonly since: number | null } | null;
+      /** Whether as many purchases wait for payment as the door allows, so the next is refused. */
+      readonly busy: boolean;
     }>
   >;
   /**

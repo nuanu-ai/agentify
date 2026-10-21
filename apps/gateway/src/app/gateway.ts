@@ -344,6 +344,12 @@ export const SILENT_AFTER_MS = 10 * 60_000;
  */
 const CONTACT_WRITTEN_EVERY_MS = 30_000;
 
+/**
+ * How seldom a seller turned away for their waiting purchases is said in the
+ * log, so a flood of refusals is one line a minute rather than one a request.
+ */
+const SELLER_BUSY_LOGGED_EVERY_MS = 60_000;
+
 /** Whether a seller whose process last polled at `polled` is silent at `at`. */
 const silentAt = (polled: number | null, at: number): boolean =>
   polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
@@ -439,6 +445,8 @@ export class Gateway {
   readonly #held = new Map<string, Set<HeldPoll>>();
   /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
   readonly #contactWritten = new Map<string, number>();
+  /** When this process last logged each merchant's refusals for waiting purchases. */
+  readonly #busyLogged = new Map<string, number>();
   readonly #edge: PaymentEdge;
 
   constructor(runtime: Runtime) {
@@ -793,8 +801,9 @@ export class Gateway {
    * sell under, the wallet paid now, whether the operator has approved them
    * for live sales, and, while purchases of theirs that charge before their
    * goods are refused for that silence, when their process last polled (null
-   * where it never has). Each answer is the one the call that reads it alone
-   * gives.
+   * where it never has), and whether as many of their purchases wait for
+   * payment as the door allows, so that the next is refused. Each answer is
+   * the one the call that reads it alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -803,6 +812,7 @@ export class Gateway {
     readonly payoutWallet: string | null;
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
+    readonly busy: boolean;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
@@ -816,6 +826,13 @@ export class Gateway {
       payoutWallet: payoutWalletAt(merchant.payoutWallet, at).address,
       liveApproved: merchant.liveApprovedAt !== null,
       outOfTouch: await this.#refusedForSilence(merchant, at),
+      busy:
+        merchant.selling === "open" &&
+        (await this.runtime.store.waitingForPayment(
+          merchant.id,
+          at,
+          WAITING_FOR_PAYMENT_AT_MOST,
+        )) >= WAITING_FOR_PAYMENT_AT_MOST,
     };
   }
 
@@ -1429,6 +1446,7 @@ export class Gateway {
       return { step: "not_selling", message: NOT_ON_SALE };
     }
     if (born === "too_many_waiting") {
+      await this.#sayBusy(stored.merchantId, at);
       return { step: "seller_busy" };
     }
 
@@ -1934,6 +1952,28 @@ export class Gateway {
         this.#held.delete(merchantId);
       }
     }
+  }
+
+  /**
+   * Logs that this merchant's purchases are being refused for those waiting,
+   * with how many wait, at most once a minute per merchant: anybody can hold
+   * a seller's places, and nothing else tells the operator it is happening.
+   * Nothing about the buyer goes in it.
+   */
+  async #sayBusy(merchantId: string, at: number): Promise<void> {
+    const said = this.#busyLogged.get(merchantId);
+    if (said !== undefined && at - said < SELLER_BUSY_LOGGED_EVERY_MS) {
+      return;
+    }
+    this.#busyLogged.set(merchantId, at);
+    const waiting = await this.runtime.store.waitingForPayment(
+      merchantId,
+      at,
+      WAITING_FOR_PAYMENT_AT_MOST,
+    );
+    console.warn(
+      `[gateway] ${merchantId} has ${waiting} purchases waiting for payment, so new purchases of theirs are refused as seller_busy`,
+    );
   }
 
   /**

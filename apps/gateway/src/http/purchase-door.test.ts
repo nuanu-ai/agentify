@@ -193,10 +193,18 @@ describe("purchases waiting for payment", () => {
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
     await twentyWaiting(harnessed, served, itemId, merchantId, "api");
-    const refuse = () =>
-      served.call("POST", `/x402/${itemId}/purchase`, {
-        body: { params: { from: "a buyer's own words" } },
+    // Another card of the same seller's, which asks the buyer where to send it.
+    const mailed = await harnessed.store.publishCard(
+      merchantId,
+      { ...pricedCard, merchant_item_id: "esim-mailed", params: { email: { type: "string" } } },
+      harnessed.now(),
+    );
+    const refuse = async () => {
+      const refused = await served.call("POST", `/x402/${mailed.id}/purchase`, {
+        body: { params: { email: "buyer@example.com" } },
       });
+      expect(refused.status).toBe(429);
+    };
 
     const first = await loggedWhile(async () => {
       await refuse();
@@ -210,7 +218,7 @@ describe("purchases waiting for payment", () => {
     expect(lines(first)).toHaveLength(1);
     expect(lines(first)[0]).toContain("20 purchases");
     expect(lines(later)).toHaveLength(1);
-    expect(first + later).not.toContain("a buyer's own words");
+    expect(first + later).not.toContain("buyer@example.com");
   });
 
   it("are told to their seller, only while as many wait as the limit allows", async () => {

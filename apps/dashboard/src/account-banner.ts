@@ -30,6 +30,8 @@ export interface AccountRead {
    * instant, or null where it never has.
    */
   readonly outOfTouch?: { readonly since: string | null };
+  /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
+  readonly busy?: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ const ORDER: readonly AccountReason[] = [
   "no_seller_name",
   "no_payout_wallet",
   "out_of_touch",
+  "busy",
   "through_shop",
   "unread",
 ];
@@ -82,6 +85,7 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   if (selling !== null) found.add(selling);
   if (read.through === "woocommerce") found.add("through_shop");
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
+  if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");
   return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
 };
