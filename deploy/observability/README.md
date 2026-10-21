@@ -28,10 +28,13 @@ database connectivity without those values.
 
 Loki labels are `app`, `environment`, `job`, `service`, and JSON severity when
 present. Request and scan identifiers stay in the log body. An order's
-identifier does not, nor its status address or a WooCommerce download link,
-because whoever holds any of them can read the order and its goods, and these
-logs are read by more people than the database; how a line names an order
-instead is under [Finding an order a log line names](#finding-an-order-a-log-line-names). TEST's
+identifier does not, nor its status address, because whoever holds either can
+read the order and its goods, and these logs are read by more people than the
+database; how a line names an order instead is under
+[Finding an order a log line names](#finding-an-order-a-log-line-names).
+Neither does a WooCommerce order key (`wc_order_…`) or a download link: in a
+link, `order` and `uid` are that one buyer's secrets, while its `key` is the
+file's download identifier, which every buyer of the product shares. TEST's
 sandbox email is excluded: its first line is dropped explicitly, and commerce
 lines without the application's diagnostic prefix are dropped as well. This
 also excludes unprefixed commerce stack continuations; the source Docker logs
@@ -230,6 +233,15 @@ them apart. No row means no order in the database has it now: an attempt that
 lapsed unpaid is deleted thirty days after it ended. The identifier the query
 prints opens the order, so it stays out of anything shared, this log stack
 included.
+
+The other way round, from an order's identifier to its lines, the
+fingerprint is computed on the operator's own machine, so the identifier goes
+to no service, and the logs are searched for `order` followed by what this
+prints, `order a61ee826a3a0` for the example:
+
+```sh
+printf %s 'ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47' | shasum -a 256 | cut -c1-12
+```
 
 ## Local checks
 

@@ -72,13 +72,15 @@ missing data until those measurements arrive. Dashboard existence, a successful
 build or a running collector is not acceptance of live telemetry.
 
 Application instrumentation adds no user events or request payload logs.
-No log line carries an order's identifier, its status address or a
-WooCommerce download link, since each opens the order and its goods to whoever
-reads the shared stack. A line names an order by a fingerprint of its
-identifier instead, which an operator with the database turns back into the
-order with the query in the [producer runbook](../../deploy/observability/README.md#finding-an-order-a-log-line-names).
-Lines written before this rule stay in the shared stack until its retention
-removes them.
+No log line carries an order's identifier, its status address, a WooCommerce
+order key or a WooCommerce download link, since each opens an order or its
+goods to whoever reads the shared stack. A line names an order by a
+fingerprint of its identifier instead, which an operator with the database
+turns back into the order with the query in the [producer runbook](../../deploy/observability/README.md#finding-an-order-a-log-line-names).
+Lines written before this rule stay in the shared stack for as long as it
+keeps logs. This repository does not record that retention, so whether the
+stack still holds identifiers of orders whose goods can still be collected is
+not known here.
 Database snapshots use a separate read-only pool with bounded execution time.
 Commerce observes at most 1,000 matching orders; exceeding that limit marks
 coverage unavailable rather than reporting a truncated healthy count.
