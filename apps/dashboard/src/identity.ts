@@ -9,6 +9,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { namesAVisitor } from "@agentify/scanner/ip";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
@@ -883,7 +884,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // behind a send, and a refused send would undo it.
     async requestLink(rawEmail, destination, { client, clickId }) {
       const email = emailAs(rawEmail);
-      const clientHash = clientKey(config.authSecret, client);
+      const clientHash = namesAVisitor(client) ? clientKey(config.authSecret, client) : null;
       try {
         if (parts.pool === undefined) {
           await inMemoryTransaction(async (_bound, rows) => {
@@ -1455,8 +1456,8 @@ type LinkRate =
 
 /**
  * The sends of one purpose inside the rolling hour, oldest first: of this
- * address, of this client (null for a report link, which has none), and of the
- * whole channel. A list may stop at its limit's length, which is all a limit
+ * address, of this client (null for a report link, which has none, and for an
+ * address that names no visitor), and of the whole channel. A list may stop at its limit's length, which is all a limit
  * reads.
  */
 type CountedSends = Readonly<{

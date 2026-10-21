@@ -1,3 +1,4 @@
+import { namesAVisitor } from "@agentify/scanner/ip";
 import { registrationRequestSchema } from "@agentify/scanner-contracts";
 import type { Params } from "react-router";
 import { visitorOf } from "../../../../lib/server/auth";
@@ -137,15 +138,18 @@ async function register(request: Request, params: Params): Promise<Response> {
     }
     // Counts asks, not links sent, as the scan's own hour does: the address's
     // hour is the one given back when no link went out.
-    const fromClient = await consumeRateLimitsAtomically([
-      {
-        keyHash: hmacHex(getServerConfig().hmacSecret, "registration-ip", clientAddress(request)),
-        kind: "registration_ip_hour",
-        limit: REPORT_LINK_ASKS_PER_CLIENT_HOUR,
-      },
-    ]);
-    if (!fromClient.allowed)
-      return linkCooldownResponse(request, { retryAt: fromClient.retryAt, wall: "unspecified" });
+    const client = clientAddress(request);
+    if (namesAVisitor(client)) {
+      const fromClient = await consumeRateLimitsAtomically([
+        {
+          keyHash: hmacHex(getServerConfig().hmacSecret, "registration-ip", client),
+          kind: "registration_ip_hour",
+          limit: REPORT_LINK_ASKS_PER_CLIENT_HOUR,
+        },
+      ]);
+      if (!fromClient.allowed)
+        return linkCooldownResponse(request, { retryAt: fromClient.retryAt, wall: "unspecified" });
+    }
     const result = await createScannerRegistrationIntent(scan, {
       ...parsed.data,
       email: email ?? "",

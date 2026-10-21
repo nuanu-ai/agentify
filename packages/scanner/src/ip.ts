@@ -165,3 +165,24 @@ export const assertPublicAddresses = (addresses: readonly string[]): void => {
     if (!result.allowed) throw new Error(`ssrf_blocked:${result.reason}`);
   }
 };
+
+const NAMES_NO_VISITOR: ReadonlySet<IpBlockReason> = new Set([
+  "invalid_ip",
+  "unspecified",
+  "loopback",
+  "private",
+  "carrier_grade_nat",
+  "link_local",
+]);
+
+/**
+ * Whether a client address the edge wrote can stand for one visitor. A
+ * private, CGNAT, loopback or link-local address, in any of its IPv6 forms, is
+ * an ingress, a proxy or a shared network that many visitors arrive through,
+ * and so is a value that is no address at all; a limit per client must not
+ * count all of them as one.
+ */
+export const namesAVisitor = (address: string): boolean => {
+  const classified = classifyIp(address);
+  return classified.allowed || !NAMES_NO_VISITOR.has(classified.reason);
+};
