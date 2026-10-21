@@ -16,9 +16,8 @@ type PageSource = Readonly<{
   /** What a search result and a link's card say of the page, where it is not the documentation's. */
   description?: string;
   /**
-   * The scanner's pages were the scanner's own before they joined the
-   * documentation, and keep what the scanner's pages carry: the site's
-   * picture on a link's card and the site's description for a crawler.
+   * A scanner page carries the site's picture on a link's card and the site's
+   * description for a crawler.
    */
   site?: true;
 }>;

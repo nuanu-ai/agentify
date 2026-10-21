@@ -8,7 +8,7 @@ const envelope = (id: string): WorkerEnvelope => ({
   id,
   sent_at: "2026-08-26T00:00:00.000Z",
   payload: {
-    type: "order.unpaid_after_confirmation",
+    type: "order.payment_failed_after_delivery",
     order_id: "ord_1",
     at: "2026-08-26T00:00:00.000Z",
   },

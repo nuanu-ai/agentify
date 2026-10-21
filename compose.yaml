@@ -459,7 +459,6 @@ services:
       # Off here and off unless a deployment names them.
       BENCHMARK_ENABLED: "${BENCHMARK_ENABLED:-false}"
       PUBLIC_SHARE_ENABLED: "${PUBLIC_SHARE_ENABLED:-false}"
-      CARD_SIGNAL_ENABLED: "false"
       APIFY_BROWSER_MODE: "${APIFY_BROWSER_MODE:-off}"
       ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
       ANALYTICS_SERVER_DELIVERY_ENABLED: "false"
@@ -468,7 +467,6 @@ services:
       POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
       META_PIXEL_ID: "${META_PIXEL_ID:-}"
       META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
-      STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -495,11 +493,9 @@ services:
       APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"
-      # This job renders no page and takes no registration; the two names below
-      # are off so that it cannot, whatever the rest of the stack is set to.
+      # This job renders no page and takes no registration; the name below is
+      # off so that it cannot, whatever the rest of the stack is set to.
       REGISTRATION_ENABLED: "false"
-      CARD_SIGNAL_ENABLED: "false"
-      STRIPE_ADAPTER: local
       PRIVACY_CLEANUP_ACK: "yes"
       PRIVACY_CLEANUP_DRY_RUN: "false"
       PRIVACY_CLEANUP_BATCH_SIZE: "100"

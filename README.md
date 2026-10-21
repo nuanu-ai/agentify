@@ -219,10 +219,8 @@ it; Agentify looks for the transfer in the background, with no promise of
 when (ADR-0027). Nobody at Agentify staffs orders, payments or refunds; what
 the merchant does for themselves and what is still missing are in
 [`docs/research/54-self-service.md`](docs/research/54-self-service.md).
-Fulfillment against the merchant's confirmation is designed in the machine and
-refused at the door: a card asking for it is not published, because the
-message that would tell the agent it may now pay does not exist yet
-(`docs/research/40-confirmation-mode-seam.md`).
+There is no fulfillment against the merchant's confirmation; what bringing it
+back would take is in `docs/research/40-confirmation-mode-seam.md`.
 
 The documentation explains all of this with its diagrams, and this file draws
 none of them, so each picture has one copy: the purchase and the order's
@@ -281,7 +279,7 @@ so none of them mistakes another's entries for its own.
 
 ## Checks
 
-Five checks cost nothing and are the gate before a push:
+Six checks cost nothing and are the gate before a push:
 
 | Command | What it holds |
 | --- | --- |
@@ -290,9 +288,10 @@ Five checks cost nothing and are the gate before a push:
 | `pnpm deadcode` | no file, export or dependency that nothing uses |
 | `pnpm test` | every test that needs no database, browser or network: offline, free and deterministic |
 | `pnpm check:decisions` | every decision named and numbered once, and no code citing a decision or a note by number |
+| `pnpm check:retired` | no sentence the repository has found false and retired written back into it |
 
 CI, `.github/workflows/ci.yml`, runs on every pull request and every push to
-`main`. It runs those five, with Biome as `biome ci .` so its diagnostics are
+`main`. It runs those six, with Biome as `biome ci .` so its diagnostics are
 annotated in GitHub, and beyond them the database suite, the scanner's
 integration and migration tests, the build of every package and of the
 documentation, the speed budgets, the browser suites, the screen gallery and a

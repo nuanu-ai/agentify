@@ -40,10 +40,9 @@ built, so nothing reaches `refunded`. The agent learns any of this only by
 polling `status_url`, where holding the order identifier is the proof
 (ADR-0011).
 
-The confirmation mode, where the money moves only after the merchant's yes, is
-complete inside the machine and closed at the card door and in the gateway's
-executor (`docs/research/40-confirmation-mode-seam.md`). Its agent side — how the agent is told it may now pay — is
-not designed.
+There is no confirmation mode, where the money would move only after the
+merchant's yes: it was deleted with nothing reaching it, and what bringing it
+back would take is in `docs/research/40-confirmation-mode-seam.md`.
 
 ## Where a parcel does not fit
 

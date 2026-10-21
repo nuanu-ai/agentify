@@ -126,7 +126,7 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
   if (card.fulfill_deadline_seconds !== undefined) {
     return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
   }
-  return card.fulfillment === "async" || card.fulfillment === "confirm"
+  return card.fulfillment === "async"
     ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
     : { says: word, byDefault: null };
 };
@@ -153,9 +153,7 @@ export interface CardsIntegration {
 }
 
 /**
- * A merchant who has left sells through nothing, so their cards are offered
- * no switch and no reason. Every other card keeps its own switch whatever
- * holds the whole account, because those holds lift at once, the moment the
+ * Every card keeps its own switch whatever holds the whole account, because those holds lift at once, the moment the
  * approval lands or a name or a wallet is set: a card paused before then stays
  * paused, and a Resume pressed meanwhile can be taken back. A card published
  * by the integration not in use is offered none, and its word does not say
@@ -164,12 +162,7 @@ export interface CardsIntegration {
  * once (all sales come back paused here if any would sell), and going to the
  * shop puts the shop's cards on sale as they stand.
  */
-const cardControl = (
-  entry: MerchantCard,
-  selling: MerchantCardList["selling"],
-  integration: CardsIntegration,
-): CardControl => {
-  if (selling === "departed") return { kind: "none" };
+const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
     return integration.through === "woocommerce"
       ? { kind: "none" }
@@ -218,11 +211,8 @@ interface CardRow {
 }
 
 export interface CardsView {
-  /**
-   * The control that stops or restarts all selling; absent for a merchant who
-   * has left, who is offered no way back on sale here.
-   */
-  readonly allSelling: null | Readonly<{ verb: "pause" | "resume"; label: string }>;
+  /** The control that stops or restarts all selling. */
+  readonly allSelling: Readonly<{ verb: "pause" | "resume"; label: string }>;
   /**
    * The cards the address asked for, at most a page of them: what was searched
    * for, the segments with their counts, how much was cut, and why none is
@@ -231,11 +221,10 @@ export interface CardsView {
   readonly listing: Listing<CardRow>;
   /**
    * Present only when there are no cards: the sentence, and the ways to a
-   * first card, the shop beside the SDK where this dashboard offers it; none
-   * for a merchant who has left, whom nothing here puts back on sale. What
+   * first card, the shop beside the SDK where this dashboard offers it. What
    * the account lacks to publish is the banner's to say.
    */
-  readonly empty: null | Readonly<{ says: string; ways: null | Readonly<{ woo: boolean }> }>;
+  readonly empty: null | Readonly<{ says: string; ways: Readonly<{ woo: boolean }> }>;
   /** The line under the cards about what their switches do, and where the rest is. */
   readonly note: Readonly<{ says: string; rest: Rest }>;
   /** Over the rows, where the search was read as a whole product code, which it says. */
@@ -267,11 +256,6 @@ export const cardsView = (
   integration: CardsIntegration = ALL_THROUGH_THE_CODE,
   query: URLSearchParams = new URLSearchParams(),
 ): CardsView => {
-  // "Departed" is not folded into "stopped": that would offer a merchant who
-  // has left a button back on sale and a note saying accepted orders are
-  // playing out, when leaving stopped those orders and left paid orders unfulfilled
-  // (`selling.ts` explains).
-  const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
   const rows = cards.cards.map((entry): CardRow => {
     const state = cardWord(entry, integration);
@@ -285,7 +269,7 @@ export const cardsView = (
       price: money(entry.card.price),
       delivery: deliveryOf(entry.card),
       state,
-      control: cardControl(entry, cards.selling, integration),
+      control: cardControl(entry, integration),
     };
   });
   const asked = askedIn(query, CARD_SEGMENT_KEYS);
@@ -298,11 +282,9 @@ export const cardsView = (
   const byCode = code !== "" && coded > 0;
 
   return {
-    allSelling: gone
-      ? null
-      : stopped
-        ? { verb: "resume", label: RESUME_ALL_SELLING }
-        : { verb: "pause", label: STOP_ALL_SELLING },
+    allSelling: stopped
+      ? { verb: "resume", label: RESUME_ALL_SELLING }
+      : { verb: "pause", label: STOP_ALL_SELLING },
     listing: listingOf({
       rows,
       asked,
@@ -322,9 +304,7 @@ export const cardsView = (
     empty:
       cards.cards.length > 0
         ? null
-        : gone
-          ? { says: "You have no cards.", ways: null }
-          : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
+        : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
     note: switchesNote(cards.selling),
     byCode: byCode
       ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
@@ -339,19 +319,10 @@ const WHAT_A_PAUSE_DOES: Rest = {
 
 /**
  * A pause leaves accepted orders to play out, which the banner says while all
- * sales are paused, so then the line says what resuming leaves alone; leaving
- * closed the open orders, and nothing on this page starts selling again.
+ * sales are paused, so then the line says what resuming leaves alone.
  */
 const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] => {
   switch (selling) {
-    case "departed":
-      return {
-        says: "Selling does not start again from this page.",
-        rest: {
-          href: "/docs/faq#can-i-leave-altogether",
-          words: "What leaving settles and what it does not",
-        },
-      };
     case "paused":
       return {
         says: `Cards you paused yourself stay paused when you press ${RESUME_ALL_SELLING}.`,
@@ -792,7 +763,6 @@ const testOrders = (orders: OrderList, mode: SurfaceMode): string | null => {
 const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
   refused: "Paid, then your integration refused the order, so nothing was delivered.",
   deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
-  merchant_left: "Paid, and the order was left unfulfilled when you left Agentify.",
   charge_confirmed_late:
     "Paid, but the payment network confirmed the payment only after we had stopped waiting for it, so nothing was delivered.",
 };

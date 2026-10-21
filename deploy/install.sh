@@ -14,9 +14,9 @@
 # On PRODUCTION it also installs the off-host backup (deploy/README.md,
 # "Backups"): restic where the host has none, agentify-backup every ten
 # minutes, agentify-backup-check for a restore rehearsal a person runs, and
-# agentify-backup-credentials with their units, and removes any leftover
-# interim backup cron job. It refuses until /etc/agentify/backup.env is root's
-# with mode 600. TEST takes no backups, since its data is test data.
+# agentify-backup-credentials with their units. It refuses until
+# /etc/agentify/backup.env is root's with mode 600. TEST takes no backups,
+# since its data is test data.
 set -euo pipefail
 
 channel="${1:-}"
@@ -33,7 +33,7 @@ for command in docker flock curl git python3; do
 done
 aging="$(chage -l root)" || refuse "chage -l root did not say whether root's password must be changed."
 [[ ${aging,,} != *"password must be changed"* ]] \
-  || refuse "root has to change its password first: sudo refuses to switch accounts until it does, which stopped every production release on 2026-09-22."
+  || refuse "root has to change its password first: sudo refuses to switch accounts until it does."
 if [[ $channel == production ]]; then
   secrets=/etc/agentify/backup.env
   [[ -f $secrets ]] || refuse "$secrets does not exist; deploy/README.md, \"Backups\", says how deploy/backup-credentials.sh writes it."
@@ -62,7 +62,6 @@ else
   install -m 755 "$root/deploy/backup-check.sh" /usr/local/sbin/agentify-backup-check
   install -m 755 "$root/deploy/backup-credentials.sh" /usr/local/sbin/agentify-backup-credentials
   install -m 644 "$root"/deploy/agentify-backup.{service,timer} "$root/deploy/agentify-backup-check.service" "$root/deploy/agentify-backup-failed@.service" /etc/systemd/system/
-  rm -f /etc/cron.d/agentify-backup-interim /usr/local/sbin/agentify-backup-interim
 fi
 if [[ -d /etc/needrestart ]]; then
   perl -c "$root/deploy/needrestart-agentify-release.conf" 2>/dev/null

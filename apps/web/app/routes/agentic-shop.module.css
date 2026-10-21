@@ -594,31 +594,11 @@
   width: 100%;
   justify-content: space-between;
 }
-.entryFootnote,
-.privacyFootnote {
+.entryFootnote {
   font-size: 0.75rem !important;
   color: var(--muted) !important;
   margin-top: 15px !important;
   line-height: 1.6 !important;
-}
-.privacy {
-  max-width: 780px;
-  padding: 75px 0;
-}
-.privacy h1 {
-  font-size: 2.75rem;
-  line-height: 1.15;
-  letter-spacing: -0.04em;
-  font-weight: 500;
-  margin: 22px 0;
-}
-.privacy h2 {
-  font-size: 1.25rem;
-  margin: 32px 0 12px;
-}
-.privacy p {
-  margin: 16px 0;
-  color: var(--fg-2);
 }
 @media (min-width: 1600px) {
   .hero {
@@ -938,12 +918,6 @@
   }
   .entryCard h3 {
     font-size: 1.375rem;
-  }
-  .privacy {
-    padding: 40px 0;
-  }
-  .privacy h1 {
-    font-size: 2.25rem;
   }
 }
 @media (prefers-reduced-motion: reduce) {

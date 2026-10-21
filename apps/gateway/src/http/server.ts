@@ -532,7 +532,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   no_such_route: false,
   no_such_item: false,
   no_such_order: false,
-  merchant_departed: false,
 
   // The merchant may put it back, but that is not the retry working.
   not_selling: false,

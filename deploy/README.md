@@ -708,8 +708,8 @@ until `/etc/agentify/backup.env` exists, root's with mode 600. TEST takes no
 backups, since its data is test data.
 
 It refuses while root is in the "password must be changed" state, because in
-that state `sudo` refuses to switch accounts, and it stopped every production
-release on 2026-09-22. Check it yourself with:
+that state `sudo` refuses to switch accounts and a release cannot run. Check it
+yourself with:
 
 ```sh
 sudo chage -l root | grep -i 'password must be changed' && echo 'change root password first'
@@ -902,8 +902,8 @@ given up unsent within a minute, so turning it on again never releases that
 history. Settled events are deleted on the same 30-day terms.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
-`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
-`STRIPE_*` and `APIFY_*` settings, `REGISTRATION_ENABLED`,
+`ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`
+and `APIFY_*` settings, `REGISTRATION_ENABLED`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`

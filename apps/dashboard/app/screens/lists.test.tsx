@@ -465,7 +465,7 @@ describe("an order delivered and not paid", () => {
 describe("the state of each card", () => {
   const entry = cards.cards[0];
   if (entry === undefined) throw new Error("the example catalogue has no card");
-  const listOf = (selling: "open" | "paused" | "departed", ...more: Partial<typeof entry>[]) =>
+  const listOf = (selling: "open" | "paused", ...more: Partial<typeof entry>[]) =>
     MerchantCardListSchema.parse({
       selling,
       cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
@@ -503,24 +503,6 @@ describe("the state of each card", () => {
     const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
 
     expect(readable(row)).toMatch(/off sale while you sell through your own code/i);
-    expect(row).not.toContain("<form");
-  });
-
-  it("gives a shop's card of a merchant who has left no reason of its own: they sell through nothing", () => {
-    const list = listOf("departed", { selling: "departed", paused: false });
-    const html = served(() => (
-      <CardsScreen
-        view={cardsView(list, "https://agentify.ad", false, {
-          through: "api",
-          offSale: ["itm_0"],
-        })}
-        base=""
-      />
-    ));
-    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
-
-    expect(readable(row)).toContain("Off sale");
-    expect(readable(row)).not.toMatch(/own code/i);
     expect(row).not.toContain("<form");
   });
 
@@ -779,12 +761,12 @@ describe("a search over the cards", () => {
 });
 
 describe("an empty catalogue", () => {
-  const none = (selling: "open" | "departed") =>
+  const none = () =>
     readable(
       served(() => (
         <CardsScreen
           view={cardsView(
-            MerchantCardListSchema.parse({ selling, cards: [] }),
+            MerchantCardListSchema.parse({ selling: "open", cards: [] }),
             "https://agentify.ad",
             true,
           )}
@@ -794,17 +776,7 @@ describe("an empty catalogue", () => {
     );
 
   it("offers the ways to a first card to a merchant who sells", () => {
-    expect(none("open")).toContain("Publish a card through the SDK");
-    expect(none("open")).toContain("Connect a WooCommerce shop");
-  });
-
-  it("offers no way to sell to a merchant who has left", () => {
-    // Nothing on this page puts a merchant who left back on sale, so a way to
-    // publish would lead to a refusal.
-    const text = none("departed");
-
-    expect(text).not.toContain("Publish a card through the SDK");
-    expect(text).not.toContain("Connect a WooCommerce shop");
-    expect(text).toContain("You have no cards.");
+    expect(none()).toContain("Publish a card through the SDK");
+    expect(none()).toContain("Connect a WooCommerce shop");
   });
 });

@@ -30,20 +30,17 @@ import { ShipmentSchema } from "./shipment.js";
  *
  * `sync`: in the answer to the purchase, and the payment executes last, after
  * the merchant has delivered. `async`: later, by a separate call, with payment
- * at the moment of purchase. `confirm`: the merchant is asked first and the
- * payment follows their yes; a card cannot be published in this mode yet.
- * `ship`: a parcel the merchant hands to a carrier, with payment at the moment
+ * at the moment of purchase. `ship`: a parcel the merchant hands to a carrier, with payment at the moment
  * of purchase; the order carries the buyer's address until the merchant takes
  * it on, or it ends without them.
  */
 export const FulfillmentSchema = z
-  .enum(["sync", "async", "confirm", "ship"], {
-    error:
-      'fulfillment is "sync", "async" or "ship" — or left out, which is "sync"; "confirm" is not open during the pilot',
+  .enum(["sync", "async", "ship"], {
+    error: 'fulfillment is "sync", "async" or "ship" — or left out, which is "sync"',
   })
   .meta({
     description:
-      'When the product reaches the agent, and so when the money moves. "sync" — in the answer to the purchase, payment last. "async" — later, by a separate call, payment at the moment of purchase. "confirm" — the merchant is asked first and the payment follows their yes. "ship" — a parcel the merchant hands to a carrier, payment at the moment of purchase; the purchase carries the address it goes to. A card cannot be published as "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order.',
+      'When the product reaches the agent, and so when the money moves. "sync" — in the answer to the purchase, payment last. "async" — later, by a separate call, payment at the moment of purchase. "ship" — a parcel the merchant hands to a carrier, payment at the moment of purchase; the purchase carries the address it goes to.',
   });
 
 /** The longest a parcel's card may give its merchant to hand it to a carrier: thirty days. */
@@ -381,12 +378,6 @@ const CardFieldsSchema = z
 
     price_check: PriceCheckSchema.optional(),
 
-    /**
-     * How long the merchant may take to answer a confirmation request, in
-     * seconds. A card that names none is held to the gateway's default.
-     */
-    confirm_deadline_seconds: z.int().positive().optional(),
-
     /** How long the merchant may take to deliver an order it has accepted. */
     fulfill_deadline_seconds: z.int().positive().optional(),
 
@@ -400,12 +391,6 @@ const CardFieldsSchema = z
   .meta({
     // Refinements keep publication errors specific; metadata carries the same mode rules to JSON Schema.
     allOf: [
-      {
-        properties: {
-          fulfillment: { not: { const: "confirm" } },
-          confirm_deadline_seconds: false,
-        },
-      },
       {
         if: { properties: { fulfillment: { const: "ship" } }, required: ["fulfillment"] },
         // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
@@ -434,31 +419,6 @@ const CardFieldsSchema = z
  * product.
  */
 const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx): void => {
-  if (card.fulfillment === "confirm") {
-    // A confirmation request reaches the merchant before any money moves, but
-    // nothing on the wire marks it as one, so a handler could not tell it from
-    // a paid order. Until it has a shape, the mode is refused at publication.
-    ctx.addIssue({
-      code: "custom",
-      path: ["fulfillment"],
-      message:
-        'a card cannot be published as "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order',
-    });
-
-    // The deadline rules below still hold for this mode, but one complaint is
-    // enough for a card that cannot be published at all.
-    return;
-  }
-
-  // Past the gate no mode confirms, so any confirmation deadline is refused.
-  if (card.confirm_deadline_seconds !== undefined) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["confirm_deadline_seconds"],
-      message: `only a card with fulfillment "confirm" is asked to confirm; this one is "${card.fulfillment}"`,
-    });
-  }
-
   if (card.fulfillment === "ship") {
     parcelRules(card, ctx);
     return;
@@ -486,7 +446,7 @@ const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx
       code: "custom",
       path: ["fulfill_deadline_seconds"],
       message:
-        'a synchronous card delivers inside the system-wide response budget and sets no delivery deadline; "async" and "confirm" do',
+        'a synchronous card delivers inside the system-wide response budget and sets no delivery deadline; "async" does',
     });
   }
 };
@@ -544,7 +504,7 @@ const parcelRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementC
 
 // The mode conditions are also rendered structurally through CardFieldsSchema's metadata.
 const CARD_RULES_IN_WORDS =
-  'A card cannot be published as fulfillment "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order. confirm_deadline_seconds is only allowed when fulfillment is "confirm", and fulfill_deadline_seconds only when fulfillment is "async" or "confirm" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own. result is required on every card except one whose fulfillment is "ship". A "ship" card, a parcel, names ship_within_seconds and is the only card that may; it declares no result and no fulfill_deadline_seconds, its price_check is "handler", and it asks for no ship_to among its params, because the purchase carries the address in a block of its own.';
+  'fulfill_deadline_seconds is only allowed when fulfillment is "async" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own. result is required on every card except one whose fulfillment is "ship". A "ship" card, a parcel, names ship_within_seconds and is the only card that may; it declares no result and no fulfill_deadline_seconds, its price_check is "handler", and it asks for no ship_to among its params, because the purchase carries the address in a block of its own.';
 
 /**
  * One piece of a card's own words: where a finding about it points, what the
@@ -657,7 +617,6 @@ interface CardInputFields
     | "result"
     | "fulfillment"
     | "price_check"
-    | "confirm_deadline_seconds"
     | "fulfill_deadline_seconds"
     | "ship_within_seconds"
   > {
@@ -665,8 +624,6 @@ interface CardInputFields
   price: Money | string;
   /** Each field whole, or written as its type word alone: `email: 'string'`. */
   params?: ParamSpecInput;
-  /** No card that can be published is asked to confirm, so none names a time for it. */
-  confirm_deadline_seconds?: never;
 }
 
 /** A card whose goods are delivered to the agent, in the answer or later. */
@@ -719,8 +676,7 @@ interface SyncCardInput extends DeliveredCardInput {
  * what publishing would refuse between the mode and the other fields: a card
  * delivered to the agent declares a `result` and a parcel declares none, only
  * a parcel names `ship_within_seconds` and a parcel's `price_check` is
- * `"handler"`, only an `"async"` card names `fulfill_deadline_seconds`, and
- * `"confirm"` is not offered, since it cannot be published yet. What a type
+ * `"handler"`, and only an `"async"` card names `fulfill_deadline_seconds`. What a type
  * cannot say, such as the price rule, plain text, or a parcel asking for
  * `ship_to` among its parameters, is refused at publication and named in the
  * refusal.
@@ -824,11 +780,8 @@ export const PublicCardSchema = z
      */
     fulfillment: z.union([FulfillmentSchema, OpenWordSchema]),
 
-    /** On "async" and "confirm": how long the merchant has to deliver, in seconds. */
+    /** On "async": how long the merchant has to deliver, in seconds. */
     fulfill_deadline_seconds: z.int().positive().optional(),
-
-    /** On "confirm": how long the merchant has to say yes, in seconds. */
-    confirm_deadline_seconds: z.int().positive().optional(),
 
     /**
      * On "ship": how long the merchant has to hand the parcel to a carrier,
@@ -840,7 +793,7 @@ export const PublicCardSchema = z
     // `as_of` means something narrower here than the same name elsewhere in
     // this contract, so the description says so to readers of the export.
     description:
-      'A product an agent can buy, projected from the card its merchant published. purchase_url is the whole address it is bought at, the resource its payment challenge names: a POST there with the JSON document {"params": {...}}, holding what params declares, and on a parcel the address it goes to under ship_to beside it, is answered first with an x402 version 2 payment challenge in the PAYMENT-REQUIRED header and, sent again with the payment, with the order. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Three rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform; only a product whose merchant is asked to confirm names a confirmation deadline; and a parcel, fulfillment "ship", names ship_within_seconds — the time to hand it to a carrier counted from the charge, not the time it arrives — and no result, because what the agent receives is the record of its shipment, while every other product names a result. On a parcel the price shown is the goods without shipping, and the purchase goes through at the merchant\'s answer for the whole, shipping to the buyer\'s place included. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.',
+      'A product an agent can buy, projected from the card its merchant published. purchase_url is the whole address it is bought at, the resource its payment challenge names: a POST there with the JSON document {"params": {...}}, holding what params declares, and on a parcel the address it goes to under ship_to beside it, is answered first with an x402 version 2 payment challenge in the PAYMENT-REQUIRED header and, sent again with the payment, with the order. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform; and a parcel, fulfillment "ship", names ship_within_seconds — the time to hand it to a carrier counted from the charge, not the time it arrives — and no result, because what the agent receives is the record of its shipment, while every other product names a result. On a parcel the price shown is the goods without shipping, and the purchase goes through at the merchant\'s answer for the whole, shipping to the buyer\'s place included. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.',
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;
@@ -894,17 +847,6 @@ export const publicCardOf = (
       return {
         ...common,
         fulfillment: "async",
-        ...(card.fulfill_deadline_seconds === undefined
-          ? {}
-          : { fulfill_deadline_seconds: card.fulfill_deadline_seconds }),
-      };
-    case "confirm":
-      return {
-        ...common,
-        fulfillment: "confirm",
-        ...(card.confirm_deadline_seconds === undefined
-          ? {}
-          : { confirm_deadline_seconds: card.confirm_deadline_seconds }),
         ...(card.fulfill_deadline_seconds === undefined
           ? {}
           : { fulfill_deadline_seconds: card.fulfill_deadline_seconds }),
@@ -1047,7 +989,6 @@ const listedAnswerOf = (card: Card): Record<string, unknown> => {
         ship_by: LISTED_INSTANT,
       };
     case "async":
-    case "confirm":
       return { ...LISTED_ORDER, status: "in_progress", delivered: null };
   }
 };

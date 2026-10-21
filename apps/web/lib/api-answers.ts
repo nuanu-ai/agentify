@@ -120,7 +120,7 @@ export function scanStatusIn(answer: unknown): ScanStatusResponse | null {
     progress.total !== 18 ||
     !listOf(scan.checks, 18, progressCheck) ||
     !text(scan.updated_at) ||
-    !absentOr(scan.target_host, (host) => text(host)) ||
+    !text(scan.target_host) ||
     !absentOr(scan.blocked, (blocked) => blocked === true) ||
     !absentOr(scan.stop_reason, (reason) => oneOf(SCAN_STOP_REASONS, reason)) ||
     !absentOr(scan.teaser, teaser)

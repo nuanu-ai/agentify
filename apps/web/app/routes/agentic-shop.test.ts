@@ -1,7 +1,7 @@
 /**
- * The page about selling to agents and the notice for the retired merchant
- * application form, drawn by the whole process and read as the HTML a browser
- * or a link preview receives, or as the Markdown a client asks for.
+ * The page about selling to agents, drawn by the whole process and read as the
+ * HTML a browser or a link preview receives, or as the Markdown a client asks
+ * for.
  */
 
 import { existsSync } from "node:fs";
@@ -37,7 +37,7 @@ const drawn = async (path: string) => {
 };
 
 describe("the sell-to-agents page", () => {
-  it("carries one brand: the page, the privacy notice, their heads, the header, the card and llms.txt name no second one", async () => {
+  it("carries one brand: the page, its head, the header, the card and llms.txt name no second one", async () => {
     // Words are compared the way a reader meets them: tags stripped, spacing
     // collapsed, case ignored, so neither a capitalised nor a split rendering
     // of the second name slips through.
@@ -48,12 +48,9 @@ describe("the sell-to-agents page", () => {
         .toLowerCase();
 
     const page = await drawn("/agentic-shop");
-    const notice = await drawn("/agentic-shop/privacy");
     for (const surface of [
       page.html,
       page.headWords,
-      notice.html,
-      notice.headWords,
       SELL_TO_AGENTS_PICTURE.alt,
       SELL_TO_AGENTS_PICTURE.tag,
       buildLlmsText(),
@@ -61,14 +58,12 @@ describe("the sell-to-agents page", () => {
       expect(asRead(surface)).not.toContain("agentic shop");
   });
 
-  it("opens the dashboard directly instead of collecting a merchant application", async () => {
+  it("opens the dashboard directly and asks for nothing in a form of its own", async () => {
     const { html, links } = await drawn("/agentic-shop");
 
     expect(links).toContain("/dashboard/sign-in");
     expect(links).toContain("/docs/");
-    expect(links).not.toContain("#apply");
     expect(html).not.toMatch(/<form\b/);
-    expect(html).not.toContain("/api/v1/merchant-applications");
   });
 
   it("leads the owner to the owner's documentation and money, the engineer to the quickstart, and a first test to the test channel's own dashboard", async () => {
@@ -124,12 +119,10 @@ describe("the sell-to-agents page", () => {
     expect(paragraph.replace(/<[^>]+>/g, "")).not.toMatch(/[a-z][.!?][A-Z]/);
   });
 
-  it("links the site's privacy notice and invites no application", async () => {
-    const { links, meta } = await drawn("/agentic-shop");
+  it("links the site's privacy notice", async () => {
+    const { links } = await drawn("/agentic-shop");
 
     expect(links).toContain("/privacy");
-    expect(links).not.toContain("/agentic-shop/privacy");
-    expect(meta("description")).not.toMatch(/\bapply|application\b/i);
   });
 
   it("names the research its market numbers come from", async () => {
@@ -202,55 +195,5 @@ describe("the sell-to-agents page", () => {
     expect(markdown).toContain("](https://agentify.ad/dashboard/sign-in)");
     expect(markdown).toContain("](https://agentify.ad/docs/money)");
     expect(markdown).not.toContain("undefined");
-  });
-});
-
-describe("the notice for the retired merchant application form", () => {
-  it("says how long a submission is kept and under which notice version", async () => {
-    const { html } = await drawn("/agentic-shop/privacy");
-
-    expect(html).toMatch(/Applications expire after <!-- -->\d+<!-- --> days/);
-    expect(html).toMatch(/Notice version: <!-- -->\S+/);
-  });
-
-  it("names the privacy contact and the operator this deployment is configured with", async () => {
-    vi.stubEnv("PRIVACY_EMAIL", "privacy@test.agentify.ad");
-    vi.stubEnv("LEGAL_IDENTITY_CONFIRMED", "true");
-    vi.stubEnv("LEGAL_OPERATOR", "Example Operator Ltd");
-
-    const { html, links } = await drawn("/agentic-shop/privacy");
-    const notice = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
-
-    expect(links).toContain("mailto:privacy@test.agentify.ad");
-    expect(notice).toContain("Example Operator Ltd");
-    expect(notice).not.toContain("Registered operator details are pending confirmation");
-  });
-
-  it("says the operator is pending where the deployment has not confirmed one", async () => {
-    vi.stubEnv("LEGAL_IDENTITY_CONFIRMED", "false");
-    vi.stubEnv("LEGAL_OPERATOR", "Example Operator Ltd");
-
-    const { html } = await drawn("/agentic-shop/privacy");
-    const notice = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
-
-    expect(notice).toContain("Registered operator details are pending confirmation");
-    expect(notice).not.toContain("Example Operator Ltd");
-  });
-
-  it("leads back to the site's privacy policy and the sell-to-agents page", async () => {
-    const { links } = await drawn("/agentic-shop/privacy");
-
-    expect(links).toContain("/privacy");
-    expect(links).toContain("/agentic-shop");
-  });
-
-  it("unfurls into the sell-to-agents card under its own title, at no address of its own", async () => {
-    const page = await drawn("/agentic-shop/privacy");
-
-    expect(page.title).toBe("Historical application privacy · Agentify");
-    expect(page.canonical).toBe("https://agentify.ad/agentic-shop/privacy");
-    expect(page.meta("og:title")).toBe(page.title);
-    expect(page.meta("og:image")).toBe("https://agentify.ad/agentic-shop/opengraph-image");
-    expect(page.meta("og:url")).toBeUndefined();
   });
 });

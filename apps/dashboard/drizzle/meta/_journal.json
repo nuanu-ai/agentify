@@ -131,8 +131,15 @@
     {
       "idx": 18,
       "version": "7",
-      "when": 1792583232418,
-      "tag": "0018_analytics_opt_out",
+      "when": 1792579989814,
+      "tag": "0018_woo_shop_revision_has_no_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792592659507,
+      "tag": "0019_analytics_opt_out",
       "breakpoints": true
     }
   ]

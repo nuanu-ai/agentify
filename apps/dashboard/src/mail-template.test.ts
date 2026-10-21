@@ -44,8 +44,8 @@ describe("transactional email HTML", () => {
     expect(html).toContain("https://agentify.example/action?token=abc");
   });
 
-  it("uses a product-wide Agentify footer", () => {
-    const html = transactionalEmailHtml({
+  it("tells the reader why the message came, in the caller's words where the caller gives them", () => {
+    const message = {
       preview: "Preview",
       eyebrow: "Secure access",
       title: "Continue",
@@ -53,9 +53,22 @@ describe("transactional email HTML", () => {
       action: "Continue",
       link: "https://agentify.ad/action?token=abc",
       paragraphs: ["The link expires in an hour."],
-    });
+    };
+    const callers = "Sent to everybody who signs in to this dashboard.";
 
-    expect(html).toContain("This message was sent because this address was entered at Agentify.");
-    expect(html).not.toContain("commerce account");
+    const [before = "", after, ...again] = transactionalEmailHtml({
+      ...message,
+      reason: callers,
+    }).split(callers);
+    expect(after, "the caller's reason is in the message").toBeDefined();
+    expect(again).toStrictEqual([]);
+
+    // The message without one differs only where the caller's reason stood,
+    // and says something there.
+    const unstated = transactionalEmailHtml(message);
+    expect(unstated.startsWith(before)).toBe(true);
+    expect(unstated.endsWith(after ?? "")).toBe(true);
+    const ownReason = unstated.slice(before.length, unstated.length - (after ?? "").length);
+    expect(ownReason.trim()).not.toBe("");
   });
 });

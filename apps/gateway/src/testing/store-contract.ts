@@ -119,15 +119,13 @@ export const anOrder = (
   order: {
     id,
     state,
-    mode: { needsConfirmation: false, settle: "after_fulfillment" },
+    mode: { settle: "after_fulfillment" },
     policy: {
       deadlines: {
         quoteResponseMs: 1,
         quoteTtlMs: 1,
         settleResponseMs: 1,
         syncResponseMs: 1,
-        paymentAfterConfirmationMs: 1,
-        confirmationResponseMs: 1,
         asyncFulfillmentMs: 1,
       },
       redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
@@ -143,8 +141,6 @@ export const anOrder = (
     timestamps: {
       createdAt: at.createdAt ?? 1_000,
       quotedAt: null,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -1634,7 +1630,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addOrder(anOrder("ord_1", "created"));
 
         await store.withOrder("ord_1", (found) => ({
-          result: { ...found, order: { ...found.order, state: "cancelled" as const } },
+          result: { ...found, order: { ...found.order, state: "expired" as const } },
         }));
 
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
@@ -1652,7 +1648,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const asA = await store.withOrder(
           "ord_1",
           (found) => ({
-            save: { ...found, order: { ...found.order, state: "cancelled" as const } },
+            save: { ...found, order: { ...found.order, state: "expired" as const } },
             result: "moved it",
           }),
           { merchantId: A },

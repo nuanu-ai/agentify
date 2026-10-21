@@ -13,7 +13,6 @@ const categoriesSchema = z
     ads_measurement: z.boolean(),
     marketing_email: z.literal(false),
     dataset_reuse: z.literal(false),
-    card_signal: z.literal(false),
   })
   .strict();
 
@@ -39,13 +38,10 @@ async function consent(request: Request): Promise<Response> {
   if (!parsed.success) {
     return errorResponse(request, 400, "invalid_consent", "Consent preferences are invalid.");
   }
-  const countryHeader = request.headers.get("x-vercel-ip-country");
-  const country = countryHeader && /^[A-Z]{2}$/i.test(countryHeader) ? countryHeader : undefined;
   try {
     const result = await persistConsentSnapshot({
       anonymousToken: readCookie(request, CONSENT_COOKIE),
       decisions: parsed.data.categories,
-      ...(country ? { country } : {}),
     });
     const response = Response.json(
       { status: "saved", policy_version: CONSENT_POLICY_VERSION },

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getServerConfig } from "./config";
-import { getStripeCardSignalConfig } from "./stripe-card-signal-config";
 
 const keys = [
   "APP_BASE_URL",
@@ -17,11 +16,6 @@ const keys = [
   "REPORT_IDENTITY_SECRET",
   "BENCHMARK_ENABLED",
   "PUBLIC_SHARE_ENABLED",
-  "CARD_SIGNAL_ENABLED",
-  "STRIPE_ADAPTER",
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "STRIPE_PUBLISHABLE_KEY",
 ] as const;
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 
@@ -50,11 +44,6 @@ describe("clean-clone environment", () => {
       REPORT_IDENTITY_SECRET: "",
       BENCHMARK_ENABLED: "false",
       PUBLIC_SHARE_ENABLED: "false",
-      CARD_SIGNAL_ENABLED: "false",
-      STRIPE_ADAPTER: "local",
-      STRIPE_SECRET_KEY: "",
-      STRIPE_WEBHOOK_SECRET: "",
-      STRIPE_PUBLISHABLE_KEY: "",
     });
     const server = getServerConfig();
     expect(server.APP_BASE_URL).toBeUndefined();
@@ -62,10 +51,6 @@ describe("clean-clone environment", () => {
     expect(server.appBaseUrl).toBe("http://localhost:3000");
     expect(server.encryptionKey).toHaveLength(32);
     expect(server.SCAN_ACCEPTANCE_ENABLED).toBe(true);
-
-    const stripe = getStripeCardSignalConfig();
-    expect(stripe.STRIPE_SECRET_KEY).toBeUndefined();
-    expect(stripe.STRIPE_PUBLISHABLE_KEY).toBeUndefined();
   });
 
   it("allows an honest registration-off local deployment without dashboard credentials", () => {

@@ -31,19 +31,15 @@ const TABLES = [
   "delivery_outbox",
   "lead_scans",
   "leads",
-  "merchant_applications",
-  "payment_signals",
   "rate_limit_events",
   "rate_windows",
   "registration_intents",
   "scanner_identity_deletion_operations",
   "scan_checks",
-  "scan_fingerprints",
   "scan_shares",
   "scans",
   "sessions",
   "waitlist_entries",
-  "webhook_receipts",
   "worker_heartbeats",
 ] as const;
 
@@ -67,7 +63,6 @@ if (!databaseName.endsWith("_migration_test")) {
 }
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
-const downFile = fileURLToPath(new URL("../scripts/0000_initial.down.sql", import.meta.url));
 const adminPool = new Pool({ connectionString, max: 1 });
 
 async function resetDatabase(): Promise<void> {
@@ -86,7 +81,7 @@ afterAll(async () => {
 });
 
 describe("initial database migration", () => {
-  it("migrates up, enforces RLS and idempotency, migrates down, then migrates up again", async () => {
+  it("migrates up and enforces RLS and idempotency", async () => {
     const { db, pool } = createDatabase(connectionString, { max: 5 });
     try {
       await migrateDatabase(db, migrationsFolder);
@@ -107,7 +102,11 @@ describe("initial database migration", () => {
              or (table_name = 'browser_observations'
                  and column_name in ('signals', 'request_count', 'transferred_bytes'))
              or (table_name = 'registration_intents'
-                 and column_name = 'partner_click_id_ciphertext'))`,
+                 and column_name = 'partner_click_id_ciphertext')
+             or (table_name = 'leads'
+                 and column_name in ('supabase_user_id', 'name', 'volume_bucket'))
+             or (table_name = 'sessions' and column_name = 'geo_country')
+             or (table_name = 'consent_snapshots' and column_name = 'country'))`,
       );
       expect(deletedColumns.rows).toEqual([]);
       // A delivery goes to PostHog or to Meta; the scanner has no other destination.
@@ -450,6 +449,8 @@ describe("initial database migration", () => {
         ),
       ).rejects.toMatchObject({ code: "23514" });
 
+      // Snapshots the deployed channels hold also name card_signal, a category
+      // the policy does not, as this one does.
       const consentSnapshotId = createUuidV7();
       await pool.query(
         "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
@@ -519,12 +520,6 @@ describe("initial database migration", () => {
             assessedWeight: 5,
             earnedWeight: 5,
           },
-          fingerprint: {
-            detectorVersion: "scanner-fingerprint-v1",
-            platform: { value: "unknown", confidence: "low", signals: [] },
-            wafCdn: [],
-            pspMarkers: [],
-          },
           findings: { negativeCheckIds: [] },
         },
         finishedAt: new Date(),
@@ -534,11 +529,9 @@ describe("initial database migration", () => {
         status: string;
         attempt_no: number;
         summary_code: string;
-        fingerprints: string;
         completed_events: string;
       }>(
         `select s.status, s.attempt_no, c.summary_code,
-           (select count(*) from scan_fingerprints where scan_id = s.id)::text as fingerprints,
            (select count(*) from analytics_events where name = 'scan_completed' and scan_id = s.id)::text as completed_events
          from scans s
          join scan_checks c on c.scan_id = s.id and c.check_id = 1
@@ -549,7 +542,6 @@ describe("initial database migration", () => {
         status: "running",
         attempt_no: 2,
         summary_code: "fresh_attempt_check",
-        fingerprints: "0",
         completed_events: "0",
       });
 
@@ -789,6 +781,8 @@ describe("initial database migration", () => {
         "select count(*)::text as count, string_agg(payload::text, '') as payload from delivery_outbox where event_id = $1",
         [runtimeAllowed?.eventId],
       );
+      // The snapshot that also names card_signal is read by the categories the
+      // policy names: both destinations it allows receive the event.
       expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
       expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
 
@@ -804,7 +798,6 @@ describe("initial database migration", () => {
             ads_measurement: false,
             marketing_email: false,
             dataset_reuse: false,
-            card_signal: false,
           }),
         ],
       );
@@ -843,7 +836,6 @@ describe("initial database migration", () => {
             ads_measurement: true,
             marketing_email: false,
             dataset_reuse: false,
-            card_signal: false,
           }),
         ],
       );
@@ -882,21 +874,6 @@ describe("initial database migration", () => {
         }),
       ).rejects.toThrow("posthog_environment_mismatch");
       process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "false";
-
-      const downSql = await readFile(downFile, "utf8");
-      await pool.query(downSql);
-      const afterDown = await pool.query<{ count: string }>(
-        "select count(*)::text as count from pg_tables where schemaname = 'public' and tablename = any($1)",
-        [TABLES],
-      );
-      expect(afterDown.rows[0]?.count).toBe("0");
-
-      await migrateDatabase(db, migrationsFolder);
-      const afterSecondUp = await pool.query<{ count: string }>(
-        "select count(*)::text as count from pg_tables where schemaname = 'public' and tablename = any($1)",
-        [TABLES],
-      );
-      expect(afterSecondUp.rows[0]?.count).toBe(String(TABLES.length));
     } finally {
       await pool.end();
     }

@@ -53,21 +53,9 @@ export type ScanScore = {
   earnedWeight: number;
 };
 
-export type FingerprintSignal = {
-  value: string;
-  confidence: "high" | "medium" | "low";
-  signals: string[];
-};
-
 export type ScanEvaluation = {
   checks: CheckResult[];
   score: ScanScore;
-  fingerprint: {
-    detectorVersion: string;
-    platform: FingerprintSignal;
-    wafCdn: FingerprintSignal[];
-    pspMarkers: FingerprintSignal[];
-  };
   findings: {
     negativeCheckIds: number[];
     positiveCheckId?: number;

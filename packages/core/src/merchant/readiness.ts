@@ -25,7 +25,7 @@ import type { SurfaceMode } from "../deployment/environment.js";
  * than a word, since a seller could be named "unknown".
  */
 export const UNKNOWN: unique symbol = Symbol("unknown");
-export type Unknown = typeof UNKNOWN;
+type Unknown = typeof UNKNOWN;
 
 /** What a caller knows about one merchant. */
 export interface MerchantFacts {

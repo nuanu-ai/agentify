@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   browserObservationFindingSchema,
@@ -21,18 +20,7 @@ import {
 } from "./index.js";
 
 describe("canonical contracts", () => {
-  it("keeps exactly 18 checks with nominal weight 100", () => {
-    expect(CHECK_DEFINITIONS).toHaveLength(18);
-    expect(new Set(CHECK_DEFINITIONS.map(({ id }) => id)).size).toBe(18);
-    expect(CHECK_DEFINITIONS.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
-  });
-
-  it("keeps the eight-event taxonomy unique", () => {
-    expect(ANALYTICS_EVENT_NAMES).toHaveLength(8);
-    expect(new Set(ANALYTICS_EVENT_NAMES).size).toBe(8);
-  });
-
-  it("answers a report without a waitlist, and refuses one that still carries it", () => {
+  it("answers a report, and refuses one carrying a field the contract does not name", () => {
     const report = {
       scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
       host: "bloomandco.com",
@@ -58,7 +46,7 @@ describe("canonical contracts", () => {
     expect(
       reportResponseSchema.safeParse({
         ...report,
-        waitlist: { entry_id: report.scan_id, position: "7", answer: null },
+        unnamed_field: "anything",
       }).success,
     ).toBe(false);
   });
@@ -111,7 +99,7 @@ describe("canonical contracts", () => {
         target_host: "example.com",
       }).success,
     ).toBe(true);
-    expect(scanStatusResponseSchema.safeParse(base).success).toBe(true);
+    expect(scanStatusResponseSchema.safeParse(base).success).toBe(false);
     expect(scanStatusResponseSchema.safeParse({ ...base, target_host: "" }).success).toBe(false);
   });
 
@@ -121,6 +109,7 @@ describe("canonical contracts", () => {
       progress: { completed: 18, total: 18 },
       checks: [],
       updated_at: "2026-07-13T12:00:00.000Z",
+      target_host: "example.com",
     };
     for (const stop_reason of ["no_public_site", "forbidden_redirect", "certificate_invalid"])
       expect(scanStatusResponseSchema.safeParse({ ...failed, stop_reason }).success).toBe(true);

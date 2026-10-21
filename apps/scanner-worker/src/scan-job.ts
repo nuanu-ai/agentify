@@ -29,7 +29,7 @@ export interface ScanJobRepository {
   claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress">;
   heartbeat(scanId: string, attemptNo: number, at: Date): Promise<void>;
   upsertCheck(scanId: string, attemptNo: number, check: CheckResult, at: Date): Promise<boolean>;
-  /** One transaction: score/fingerprint/terminal status/scan_completed unique business event. */
+  /** One transaction: score/terminal status/scan_completed unique business event. */
   commitTerminal(input: TerminalCommit): Promise<"committed" | "already_terminal">;
   markSystemFailure(
     scanId: string,

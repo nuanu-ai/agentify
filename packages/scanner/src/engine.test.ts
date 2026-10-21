@@ -1,27 +1,9 @@
 import type { CheckResult, Segment } from "@agentify/scanner-contracts";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
-import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.js";
-import { parseRobots } from "./robots.js";
+import { visibleText } from "./parsers.js";
 import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
-
-// The page readers are wrapped only to count their calls, for "a scan
-// evaluated again" below; every call still reaches the real function.
-vi.mock("./parsers.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./parsers.js")>();
-  return {
-    ...real,
-    visibleText: vi.fn(real.visibleText),
-    htmlSignals: vi.fn(real.htmlSignals),
-    parseJsonLd: vi.fn(real.parseJsonLd),
-    parseSitemap: vi.fn(real.parseSitemap),
-  };
-});
-vi.mock("./robots.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./robots.js")>();
-  return { ...real, parseRobots: vi.fn(real.parseRobots) };
-});
 
 const artifact = (
   url: string,
@@ -276,13 +258,6 @@ describe("what the checks read from the markup real sites write", () => {
     expect(check(withLlms(plain), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
     const untitled = "# Example\n\n- [](https://example.com/catalog.md)\n";
     expect(check(withLlms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
-  });
-
-  it("recognizes Adyen by the checkout script a page loads", () => {
-    const page = `<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
-    expect(evaluateScan(withBase(page)).fingerprint.pspMarkers).toMatchObject([
-      { value: "Adyen", confidence: "high" },
-    ]);
   });
 });
 
@@ -565,10 +540,9 @@ describe("a scan of a truncated HTML response", () => {
 });
 
 describe("a scan of pages as large as the fetch admits", () => {
-  // What the checks and the fingerprint read themselves, at the sizes the
-  // fetch admits: a feed link and an Open Graph type in a page of up to 2 MiB,
-  // a link in an llms.txt of up to 512 KiB, and the Adyen script in the first
-  // 512 KiB of a page, which is as far as the fingerprint reads.
+  // What the checks read themselves, at the sizes the fetch admits: a feed
+  // link and an Open Graph type in a page of up to 2 MiB, and a link in an
+  // llms.txt of up to 512 KiB.
   const pageCap = 2 * 1024 * 1024;
   const textCap = 512 * 1024;
   const budgetMs = 500;
@@ -618,51 +592,40 @@ describe("a scan of pages as large as the fetch admits", () => {
     expect(unclosed.ms).toBeLessThan(budgetMs);
   });
 
-  it("recognizes Adyen after a line of checkout names that never reaches its address", () => {
-    const page = `${fill("checkoutshopper-", textCap)}\n<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
-    const { evaluation, ms } = scan(withBase(page));
-    expect(evaluation.fingerprint.pspMarkers).toMatchObject([
-      { value: "Adyen", confidence: "high" },
-    ]);
-    expect(ms).toBeLessThan(budgetMs);
+  it("reads each page once, however many rounds evaluate the scan", () => {
+    const card = (index: number) =>
+      `<div class="product-card"><a href="/products/item-${index}"><img src="/files/item-${index}.jpg" alt="Item ${index}" width="360" height="360"><h3>Item ${index}</h3><span class="price">$${(index % 90) + 10}.00</span><p>Solid oak, oiled finish, ships in five working days.</p></a><button type="button">Add to cart</button></div>\n`;
+    const page = `${html.replace("</main></body></html>", "")}${fill(card(1), pageCap)}</main></body></html>`;
+    // Every page is its own fetch, as the worker makes them.
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", page),
+      agentProbes: {
+        chatgpt: artifact("https://example.com/", page),
+        claude: artifact("https://example.com/", page),
+      },
+      representative: artifact("https://example.com/product/widget", page),
+    };
+
+    const first = scan({ ...input }).ms;
+    const later = [2, 3, 4].reduce((sum) => sum + scan({ ...input }).ms, 0);
+    // Reading the pages again would cost each later round about what the
+    // first one cost.
+    expect(later).toBeLessThan(first);
   });
 });
 
 describe("a scan evaluated again", () => {
-  // The worker evaluates a scan's checks up to four times as its requests
-  // complete, each round with a new set of artifacts holding the same pages,
-  // so a reading is kept with the page itself. The test counts calls rather
-  // than timing rounds, since timings flake under load. A count sees only the
-  // readers listed below: it misses work that is not kept, such as check 15
-  // and the fingerprint going over the raw pages every round, and a new reader
-  // added without a place to keep its result.
-  const readers = { visibleText, htmlSignals, parseJsonLd, parseSitemap, parseRobots };
-  const callsSoFar = () =>
-    Object.fromEntries(
-      Object.entries(readers).map(([name, reader]) => [name, vi.mocked(reader).mock.calls.length]),
-    );
-
-  it("reads no page again when the same pages are evaluated in a later round", () => {
+  it("says the same of the same pages when they are evaluated in a later round", () => {
     const input: ScanArtifacts = {
       ...makeArtifacts("store"),
       representative: artifact("https://example.com/product/widget", html),
     };
 
-    const before = callsSoFar();
     const first = evaluateScan(input);
-    const afterFirst = callsSoFar();
     // A new set for every round, as the worker builds one: what carries over
     // is the pages, not the object that holds them.
-    const later = [2, 3, 4].map(() => evaluateScan({ ...input }));
-
-    // Every reader did go over this scan's pages, or "no further calls" below
-    // would hold of a reader nothing here reaches.
-    for (const name of Object.keys(readers)) {
-      expect(afterFirst[name], name).toBeGreaterThan(before[name] ?? 0);
-    }
-    expect(callsSoFar()).toStrictEqual(afterFirst);
-    // And what was remembered is what a fresh reading would have said.
-    for (const again of later) {
+    for (const again of [2, 3, 4].map(() => evaluateScan({ ...input }))) {
       expect(again).toStrictEqual(first);
     }
   });
@@ -676,7 +639,6 @@ describe("18-check engine", () => {
     );
     expect(evaluation.checks.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
     expect(evaluation.score.nominalWeight).toBe(100);
-    expect(evaluation.fingerprint.platform).toMatchObject({ value: "Shopify" });
   });
 
   it("does not penalize non-store, no-auth, missing optional files or single locale", () => {

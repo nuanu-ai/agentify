@@ -4,12 +4,12 @@ import {
   buildMetaPayload,
   buildOutboxInserts,
   buildPosthogPayload,
-  type ConsentCategories,
   type ConsentEnvironment,
   consentAllowsMeasurement,
   createAnalyticsEvent,
   DEFAULT_CONSENT,
   eventOnceKey,
+  storedConsentCategories,
 } from "@agentify/analytics";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
 import { eq } from "drizzle-orm";
@@ -57,7 +57,6 @@ export async function emitStoredBusinessEvent(
       .select({
         categories: consentSnapshots.categories,
         policyVersion: consentSnapshots.policyVersion,
-        country: consentSnapshots.country,
       })
       .from(consentSnapshots)
       .where(eq(consentSnapshots.id, input.consentSnapshotId))
@@ -68,7 +67,7 @@ export async function emitStoredBusinessEvent(
 
   const categories = {
     ...DEFAULT_CONSENT,
-    ...(consentRow.categories as Partial<ConsentCategories>),
+    ...storedConsentCategories(consentRow.categories),
   };
   if (!consentAllowsMeasurement(categories)) return undefined;
   const runtimeEnvironment = environment(process.env.ANALYTICS_RUNTIME_ENV);
@@ -105,7 +104,6 @@ export async function emitStoredBusinessEvent(
   });
   const effectiveConsent = {
     policyVersion: consentRow.policyVersion,
-    ...(consentRow.country ? { country: consentRow.country } : {}),
     capturedAt: event.occurredAt,
     source: "api" as const,
     categories: {

@@ -33,7 +33,7 @@ const reportWith = (statusOf: (id: number) => CheckStatus): ReportResponse => ({
   })),
 });
 
-const SITE = { brand: "Agentify", promptEnabled: false, shareEnabled: false, cardSignal: null };
+const SITE = { brand: "Agentify", promptEnabled: false, shareEnabled: false };
 
 describe("the report's tally of its checks", () => {
   it("counts every state apart, an unavailable check never among the failures", () => {

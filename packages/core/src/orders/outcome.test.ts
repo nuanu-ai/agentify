@@ -19,8 +19,6 @@ describe("what the agent is told an order came to", () => {
     const inFlight: readonly OrderState[] = [
       "created",
       "quoted",
-      "awaiting_confirmation",
-      "confirmed",
       "paid",
       "dispatched",
       "fulfilled",
@@ -37,11 +35,10 @@ describe("what the agent is told an order came to", () => {
     }
   });
 
-  it("tells a refusal apart from a deadline, and both from a confirmation refused", () => {
+  it("tells a refusal apart from a deadline", () => {
     expect(outcomeFor(reach("failed"))).toBe("rejected");
     expect(outcomeFor(reach("rejected"))).toBe("rejected");
     expect(outcomeFor(reach("expired"))).toBe("expired");
-    expect(outcomeFor(reach("declined"))).toBe("declined");
   });
 
   it("does not tell the agent a purchase failed when it does not know", () => {
@@ -139,8 +136,6 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(takenOn)).toBe("in_progress");
     expect(onTheMerchantsOpenList(unpaid)).toBe(false);
     expect(onTheMerchantsOpenList(reach("created"))).toBe(false);
-    expect(onTheMerchantsOpenList(reach("awaiting_confirmation"))).toBe(false);
-    expect(onTheMerchantsOpenList(reach("confirmed"))).toBe(false);
     expect(onTheMerchantsOpenList(takenOn)).toBe(true);
     expect(onTheMerchantsOpenList(handed)).toBe(true);
     expect(onTheMerchantsOpenList(reach("dispatched"))).toBe(true);
@@ -163,10 +158,6 @@ describe("what the agent is told an order came to", () => {
 
     expect(outcomeFor(delivered)).toBe("delivered");
     expect(delivered.payment).toBe("settled");
-  });
-
-  it("does not call a purchase closed by the merchant's departure a refusal", () => {
-    expect(outcomeFor(reach("cancelled"))).toBe("cancelled");
   });
 
   it("changes its answer the moment a late delivery reaches an unfulfilled order", () => {

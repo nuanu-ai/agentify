@@ -1,7 +1,6 @@
 import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ReportView } from "../lib/report-view";
 import { BrowserObservations } from "./browser-observations";
-import { CardSignal } from "./card-signal";
 import { CheckRow } from "./check-row";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { ReportActionPanel } from "./report-action-panel";
@@ -126,17 +125,6 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
               </p>
               <ReportDashboardControl />
             </section>
-            {view.cardSignal ? (
-              <CardSignal
-                adapter={view.cardSignal.adapter}
-                className={layout.panel}
-                enabled
-                initialSignal={view.cardSignal.initialSignal}
-                publishableKey={view.cardSignal.publishableKey}
-                scanId={view.scanId}
-                signedInAs={view.cardSignal.signedInAs}
-              />
-            ) : null}
           </div>
         </div>
       </main>

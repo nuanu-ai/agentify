@@ -1,5 +1,5 @@
 {
-  "id": "ebfb5395-c9e5-48a3-9b15-2db31df5047f",
+  "id": "f70debcf-0ad4-4970-928e-1a5681f46a27",
   "prevId": "17d45c0f-e781-40d7-b258-5f65715a1b8d",
   "version": "7",
   "dialect": "postgresql",
@@ -54,13 +54,6 @@
         },
         "operator": {
           "name": "operator",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "analytics_opt_out": {
-          "name": "analytics_opt_out",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -994,8 +987,7 @@
           "name": "revision",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'legacy'"
+          "notNull": true
         },
         "connected_at": {
           "name": "connected_at",

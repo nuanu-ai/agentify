@@ -1,5 +1,15 @@
 # The confirmation mode: built inside, closed at the door
 
+Historical: the product owner had the mode deleted on 2026-10-21, since nothing
+reached it, and the code this note describes is in git at commit `83187eff`.
+
+The `confirm` fulfillment, the `awaiting_confirmation`, `confirmed` and
+`declined` states, their two deadlines, the `order.unpaid_after_confirmation`
+event and `confirm_deadline_seconds` are gone from the machine, the gateway and
+the wire. Whoever opens the mode for a merchant who answers by hand starts by
+bringing that code back; the list of what opening it touches below still
+holds.
+
 A card names one of four fulfillment modes. In three of them the merchant is
 handed the order itself, and the money moves at the moment the mode fixes,
 before the goods or after them. The fourth, `fulfillment: "confirm"`, asks the

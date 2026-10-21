@@ -29,11 +29,9 @@
 		~^/api/v1/scans/[^/]+/.*$ api_v1_scan_action
 		~^/api/v1/reports/[^/]+(?:/.*)?$ api_v1_report
 		~^/api/v1/shares/[^/]+$ api_v1_share
-		~^/api/v1/card-signals(?:/.*)?$ api_v1_card_signal
 		~^/api/v1/(attribution|consent|events)$ api_v1_analytics
 		~^/api/v1/account/.*$ api_v1_account
 		~^/api/v1/auth/verify$ api_v1_auth
-		~^/api/v1/webhooks/stripe$ api_v1_stripe_webhook
 		~^/api/v2/session$ api_v2_session
 		~^/api/v2/scans/[^/]+/.*$ api_v2_scan_action
 		~^/assets/ asset

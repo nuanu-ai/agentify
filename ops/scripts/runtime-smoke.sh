@@ -52,7 +52,7 @@ check_asset() {
   [[ -s "$body" ]] || { echo "$path returned an empty body" >&2; exit 1; }
 }
 
-for path in / /store /owner /local /scanner /methodology /privacy /terms /data-request /agentic-shop /agentic-shop/privacy; do
+for path in / /store /owner /local /scanner /methodology /privacy /terms /data-request /agentic-shop; do
   check_200 "$path"
 done
 

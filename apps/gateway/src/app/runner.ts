@@ -223,8 +223,6 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "request_quote":
     case "verify_payment":
     case "execute_payment":
-    case "invite_payment":
-    case "dispatch_confirmation_request":
     case "release_goods_to_agent":
     case "hold_fulfillment":
     case "mark_unfulfilled":
@@ -963,16 +961,6 @@ export class OrderRunner {
           // machine's own flag.
           break;
 
-        case "invite_payment":
-        case "dispatch_confirmation_request":
-          // Both belong to the mode that asks the merchant before the money
-          // moves, which has no shape on the wire, so no card can be published
-          // in it; inventing a message here would put a document on the
-          // merchant's stream that no contract describes.
-          throw new Error(
-            `${effect.kind} belongs to the confirmation mode, which has no shape on the wire yet`,
-          );
-
         default:
           throw new Error(`unhandled effect: ${JSON.stringify(effect)}`);
       }
@@ -1375,7 +1363,6 @@ export class OrderRunner {
           },
         };
       }
-      case "order.unpaid_after_confirmation":
       case "order.payment_failed_after_delivery":
         return {
           kind: "order_event",
@@ -1473,9 +1460,8 @@ export function agentOrderStatusOf(
     seller,
     // The merchant's own code and sentence for why they would not sell, copied
     // and not rephrased. The condition is the closure, not the status word: one
-    // refusal reaches the agent as `rejected`, `declined` or `unfulfilled`
-    // depending on when it arrived, and the merchant's sentence belongs in all
-    // three. Nothing else fills it; an ending this gateway decided is said in
+    // refusal reaches the agent as `rejected` or `unfulfilled` depending on
+    // when it arrived, and the merchant's sentence belongs in both. Nothing else fills it; an ending this gateway decided is said in
     // its own voice under `reason`.
     ...(closure?.cause === "merchant_refused"
       ? { refusal: { code: closure.code, message: closure.message } }
@@ -1558,8 +1544,6 @@ const UNFULFILLED_WORDS: Readonly<
       : order.mode.parcel === true
         ? "This paid parcel has no shipment recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds."
         : "This paid order has no delivery recorded by its deadline. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
-  merchant_left: () =>
-    "The seller stopped selling through Agentify before this paid order was fulfilled. Contact the seller about fulfillment or any agreement; Agentify does not confirm refunds.",
 };
 
 /**
@@ -1675,8 +1659,6 @@ function unfulfilledReasonOf(order: Order): UnfulfilledReason {
   switch (closure.cause) {
     case "merchant_refused":
       return "refused";
-    case "merchant_departed":
-      return "merchant_left";
     case "deadline_expired":
     case "payment_outcome_unknown":
       return "deadline_passed";
@@ -1798,7 +1780,6 @@ export const takesANewPayment = (order: Order): boolean =>
 function eventsForVerifiedPayment(order: Order, at: number): StateEvent[] {
   switch (order.state) {
     case "quoted":
-    case "confirmed":
       return [{ kind: "payment_verified", at }];
     case "delivered_unpaid":
       return [

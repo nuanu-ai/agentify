@@ -1,10 +1,10 @@
 /**
- * The full report, for the person it is filed under. Who is visiting, the
- * report and any card they saved are read from the dashboard and the
- * database, which a test does not have, so those are stubbed and the loader
- * is asked directly; the page is drawn from what the loader returned, as the
- * browser draws it. A stranger and a dashboard that does not answer are asked
- * of the whole process in `report.test.ts`.
+ * The full report, for the person it is filed under. Who is visiting and the
+ * report are read from the dashboard and the database, which a test does not
+ * have, so those are stubbed and the loader is asked directly; the page is
+ * drawn from what the loader returned, as the browser draws it. A stranger and
+ * a dashboard that does not answer are asked of the whole process in
+ * `report.test.ts`.
  */
 
 import { CHECK_DEFINITIONS, type ReportResponse } from "@agentify/scanner-contracts";
@@ -28,15 +28,10 @@ const person = {
 
 const world = vi.hoisted(() => ({
   page: { kind: "stranger" } as Record<string, unknown>,
-  card: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("../../lib/server/reporting", () => ({
   loadReportPage: async () => world.page,
-}));
-
-vi.mock("../../lib/server/stripe-card-signal", () => ({
-  getOwnedCardSignalForReport: async () => world.card,
 }));
 
 import { loader } from "./report.scanId";
@@ -89,10 +84,7 @@ beforeEach(() => {
   vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
   vi.stubEnv("REMEDIATION_PROMPT_ENABLED", "true");
   vi.stubEnv("PUBLIC_SHARE_ENABLED", "true");
-  vi.stubEnv("CARD_SIGNAL_ENABLED", "false");
-  vi.stubEnv("STRIPE_ADAPTER", "local");
   world.page = { kind: "report", visitor: person, report, browserObservation: undefined };
-  world.card = undefined;
 });
 
 afterEach(() => {
@@ -177,51 +169,4 @@ describe("a report's page", () => {
       expect(page.match(/Copy this fix/g) ?? []).toHaveLength(offered);
     },
   );
-
-  it("offers the card signal only where it is on, or its owner already gave one", async () => {
-    const off = await drawn();
-    vi.stubEnv("CARD_SIGNAL_ENABLED", "true");
-    const on = await drawn();
-    vi.stubEnv("CARD_SIGNAL_ENABLED", "false");
-    world.card = {
-      signalId: "0190f4c5-0000-7000-8000-00000000e001",
-      status: "attached",
-      clientSecret: null,
-      adapter: "local",
-    };
-    const given = await drawn();
-
-    expect(off).not.toContain('id="card-signal"');
-    expect(on).toContain('id="card-signal"');
-    expect(given).toContain("Card saved");
-  });
-
-  it("hands the browser a saved card's id, state and pending setup secret, and nothing else of it", async () => {
-    // The pending setup's secret restores the provider's form after a reload;
-    // nothing else the stored signal holds is the browser's business.
-    world.card = {
-      signalId: "0190f4c5-0000-7000-8000-00000000e001",
-      status: "setup_pending",
-      clientSecret: "the-setup-secret-the-provider-gave",
-      adapter: "local",
-      leadId: "0190f4c5-0000-7000-8000-00000000d001",
-      setupIntentId: "the-provider-s-own-setup-id",
-    };
-
-    const handed = await load();
-
-    expect(handed.kind === "report" ? handed.view.cardSignal : null).toEqual({
-      adapter: "local",
-      publishableKey: null,
-      // The address the page is drawn for, which a setup names back.
-      signedInAs: "owner@shop.example",
-      initialSignal: {
-        signalId: "0190f4c5-0000-7000-8000-00000000e001",
-        status: "setup_pending",
-        clientSecret: "the-setup-secret-the-provider-gave",
-      },
-    });
-    expect(JSON.stringify(handed)).not.toContain("the-provider-s-own-setup-id");
-    expect(JSON.stringify(handed)).not.toContain("00000000d001");
-  });
 });

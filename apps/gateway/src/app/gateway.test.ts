@@ -1430,7 +1430,7 @@ describe("a price's life", () => {
   });
 
   it("checks nothing for a payment on an order that ended with nothing taken", async () => {
-    // Here the merchant left while the price still held: the order is over,
+    // Here the price ran out before anything was paid: the order is over,
     // nothing was taken and nothing is held, so a payment has nothing to buy.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
@@ -1438,10 +1438,11 @@ describe("a price's life", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
     await harnessed.gateway.runner.apply(orderId, {
-      kind: "merchant_departed",
-      at: harnessed.now(),
+      kind: "deadline_expired",
+      at: harnessed.now() + 1_000_000_000,
+      deadline: "quote_expiry",
     });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("cancelled");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
 
     const paid = await harnessed.gateway.payPurchase(orderId, "AFTER", "AFTER");
 

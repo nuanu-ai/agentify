@@ -627,17 +627,3 @@ describe("the mark a call leaves on the key it was made with", () => {
     );
   });
 });
-
-describe("the merchant every ordinary test sells as", () => {
-  it("still reaches its own keys, which is what the seeded merchant is for", async () => {
-    // The harness writes its merchant straight into the store, as the sandbox
-    // seed does, with no registration. Its key must still resolve to a key row
-    // that the list names.
-    const { served, harnessed } = await started();
-
-    const listed = await keysWith(served, harnessed.merchant.key);
-
-    expect(listed.this_call).toBe(harnessed.merchant.keyId);
-    expect(listed.keys.map((key) => key.id)).toStrictEqual([harnessed.merchant.keyId]);
-  });
-});

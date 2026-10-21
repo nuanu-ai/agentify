@@ -18,6 +18,5 @@ const consentCategorySchema = z.enum([
   "ads_measurement",
   "marketing_email",
   "dataset_reuse",
-  "card_signal",
 ]);
 export type ConsentCategory = z.infer<typeof consentCategorySchema>;
