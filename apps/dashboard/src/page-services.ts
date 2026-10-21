@@ -60,6 +60,8 @@ import {
   cardsPlace,
   cardsView,
   closable,
+  closedForGood,
+  drawnClosedForGood,
   type FrameView,
   type OrdersView,
   ordersPlace,
@@ -285,12 +287,12 @@ export interface PageParts {
  * refusal keeps the gateway's status, and nothing is claimed beyond what it
  * said.
  */
+const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
+  `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
+
 export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
   kind: "problem",
-  problem: {
-    status: answer.status === 0 ? 504 : answer.status,
-    said: `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`,
-  },
+  problem: { status: answer.status === 0 ? 504 : answer.status, said: saidOf(answer) },
 });
 
 /**
@@ -1054,6 +1056,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           if (page?.kind !== "view") {
             return { kind: "view", status, view: { pressed, again: drawn } };
           }
+          // Lists that show the closure recorded say more than the doubt.
+          if (
+            pressed.note === CLOSURE_NOTES.unconfirmed &&
+            drawnClosedForGood(page.view, id.data)
+          ) {
+            return { kind: "view", view: page.view };
+          }
           return { kind: "view", status, view: { ...page.view, pressed } };
         };
         if (!request.success) {
@@ -1075,16 +1084,28 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const refused = closed.status !== 0 && closed.status < 500;
         if (refused && closed.status !== 409) return problemOf(closed);
         // A timed-out write may have committed, and a refused one may have
-        // lost to a delivery or an ending: only a fresh read says which.
-        const read = await gateway.getOrder(id.data);
-        if (read.ok && read.document.merchant_closure !== undefined) {
+        // lost to a delivery or an ending: only a fresh read says which. A read
+        // that throws knows no more than one that was not answered.
+        const read = await gateway.getOrder(id.data).catch(() => {
+          console.error("[dashboard] the order a closure was pressed on could not be read");
+          return null;
+        });
+        const order = read?.ok === true ? read.document : null;
+        const open =
+          order?.merchant_closure === undefined
+            ? null
+            : await gateway.orders(true).catch(() => null);
+        if (order !== null && open?.ok === true && closedForGood(order, open.document)) {
           return { kind: "redirect", location: drawn };
         }
-        if (refused && (!read.ok || closable(read.document))) return problemOf(closed);
         return await answered(
           {
             id: id.data,
-            note: refused ? CLOSURE_NOTES.ended : CLOSURE_NOTES.unconfirmed,
+            note: !refused
+              ? CLOSURE_NOTES.unconfirmed
+              : order !== null && !closable(order)
+                ? CLOSURE_NOTES.ended
+                : saidOf(closed),
             refusal: null,
             typed: said,
           },

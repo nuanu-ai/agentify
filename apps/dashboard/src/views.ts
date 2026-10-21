@@ -713,6 +713,23 @@ export const CLOSURE_NOTES = {
 } as const;
 
 /**
+ * A closure is recorded where the order is closed by its merchant and no
+ * longer open: an order paid after its closure still carries that closure,
+ * and is open again until it is closed a second time.
+ */
+export const closedForGood = (
+  order: Pick<OrderList["orders"][number], "id" | "status" | "merchant_closure">,
+  open: OrderList,
+): boolean =>
+  order.status === "fulfillment_closed" &&
+  order.merchant_closure !== undefined &&
+  !open.orders.some((one) => one.id === order.id);
+
+/** Whether the orders drawn show this one closed for good, by the rule above. */
+export const drawnClosedForGood = (view: OrdersView, id: string): boolean =>
+  view.listing.rows.some((row) => row.id === id && row.closure !== null && row.closing === null);
+
+/**
  * Closure stops what Agentify would still deliver, so it is offered only where
  * something is left to stop: a paid or possibly paid order that has not ended,
  * and goods held for a payment the buyer may still make. An order that ended
