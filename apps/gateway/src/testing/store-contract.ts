@@ -1533,6 +1533,51 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
+    describe("a purchase waiting for payment", () => {
+      /** A purchase priced and not paid, as `addOrder` is given one at its birth. */
+      const waiting = (id: string, merchantId = A) =>
+        anOrder(id, "quoted", { merchantId, createdAt: Number(id.replace(/\D/g, "")) || 1 });
+
+      it("is written while fewer of its seller's purchases wait, and refused once as many do as allowed", async () => {
+        // Only a seller's own purchases still waiting for payment count: one
+        // paid, one charging, one that ended and another seller's hold no place.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "created", { createdAt: 1 }));
+        await store.addOrder(waiting("ord_2"));
+        await store.addOrder(anOrder("ord_3", "paid", { createdAt: 3 }));
+        await store.addOrder(anOrder("ord_4", "expired", { createdAt: 4 }));
+        const charging = anOrder("ord_5", "quoted", { createdAt: 5 });
+        await store.addOrder({ ...charging, order: { ...charging.order, payment: "settling" } });
+        await store.addOrder(waiting("ord_6", B));
+        await store.addOrder(waiting("ord_7", B));
+
+        expect(await store.addOrder(waiting("ord_8"), { through: "api", waitingAtMost: 2 })).toBe(
+          "too_many_waiting",
+        );
+        expect(await store.orderById("ord_8")).toBeNull();
+        expect(await store.addOrder(waiting("ord_9"), { through: "api", waitingAtMost: 3 })).toBe(
+          "written",
+        );
+        expect(await store.orderById("ord_9")).not.toBeNull();
+      });
+
+      it("is held to the limit however many purchases of one seller arrive at once", async () => {
+        // Counted and written apart, every one of them would count the same
+        // nineteen and all of them would be written.
+        const store = await twoMerchants();
+
+        const born = await Promise.all(
+          Array.from({ length: 30 }, (_, at) =>
+            store.addOrder(waiting(`ord_${at + 1}`), { through: "api", waitingAtMost: 20 }),
+          ),
+        );
+
+        expect(born.filter((one) => one === "written")).toHaveLength(20);
+        expect(born.filter((one) => one === "too_many_waiting")).toHaveLength(10);
+        expect(await store.orders(A)).toHaveLength(20);
+      });
+    });
+
     describe("an order", () => {
       it("is written once under one identifier, and a second attempt is refused", async () => {
         // A second write would replace the order an agent holds an identifier
