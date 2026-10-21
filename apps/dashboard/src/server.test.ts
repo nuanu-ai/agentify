@@ -3763,6 +3763,34 @@ describe("a merchant who has left", () => {
     expect(text).not.toContain("play out as usual");
   });
 
+  it("is told over Cards and Orders when its integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    const since = "2026-08-26 12:00:00 UTC";
+
+    harnessed.advance(11 * 60_000);
+    const cards = (await browser.get("/cards")).html;
+    const orders = (await browser.get("/orders")).html;
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const after = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
+    expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
+    expect(reasonsIn(after)).toStrictEqual([]);
+  });
+
+  it("is not told prepaid purchases are refused while it sells only goods made in the answer", async () => {
+    const { browser, gateway, harnessed } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    harnessed.advance(11 * 60_000);
+
+    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
+  });
+
   it("is offered no switch on a card, not even one they paused before they left", async () => {
     // A card's own switch puts nothing back on sale once its merchant has
     // left, so a Resume beside it would promise what nothing here does.

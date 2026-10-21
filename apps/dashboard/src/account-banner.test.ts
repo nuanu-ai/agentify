@@ -54,6 +54,23 @@ describe("the account banner", () => {
     expect(note?.says).toMatch(/until you switch back/);
   });
 
+  it("says when a merchant's integration last connected while purchases that charge first are refused for it", () => {
+    const [since] = accountOf(READY, {
+      selling: "open",
+      through: "api",
+      outOfTouch: { since: "2026-10-21T14:02:07.000Z" },
+    });
+    const [never] = accountOf(READY, { outOfTouch: { since: null } });
+
+    expect(since?.reason).toBe("out_of_touch");
+    expect(since?.says).toBe(
+      "Your integration has not connected since 2026-10-21 14:02:07 UTC, so new purchases that charge before delivery are refused until it connects again.",
+    );
+    expect(never?.says).toBe(
+      "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
+    );
+  });
+
   it("names every reason that holds at once, broadest first", () => {
     const viewer: Viewer = { ...READY, sellerName: null, payout: { wallet: null } };
 

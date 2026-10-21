@@ -269,6 +269,34 @@ describe("a purchase that charges before its goods", () => {
   });
 });
 
+describe("a seller's standing", () => {
+  it("says since when prepaid purchases are refused for silence, only while they are", async () => {
+    const { harnessed } = await started();
+    const merchantId = harnessed.merchant.id;
+    const seeded = harnessed.now();
+    await selling(harnessed, prepaidCard);
+
+    const inTouch = await harnessed.gateway.standingOf(merchantId);
+    harnessed.advance(11 * MINUTE);
+    const silent = await harnessed.gateway.standingOf(merchantId);
+    await harnessed.store.setSelling(merchantId, "paused");
+    const paused = await harnessed.gateway.standingOf(merchantId);
+
+    expect(inTouch.outOfTouch).toBeNull();
+    expect(silent.outOfTouch).toStrictEqual({ since: seeded });
+    expect(paused.outOfTouch).toBeNull();
+  });
+
+  it("says nothing of silence to a seller with no card that charges before its goods", async () => {
+    const { harnessed } = await started();
+    await selling(harnessed, syncCard);
+
+    harnessed.advance(11 * MINUTE);
+
+    expect((await harnessed.gateway.standingOf(harnessed.merchant.id)).outOfTouch).toBeNull();
+  });
+});
+
 describe("a synchronous purchase", () => {
   it("is priced for a seller who has not polled for ten minutes, since nothing is charged before their answer", async () => {
     const { harnessed, served } = await started();
