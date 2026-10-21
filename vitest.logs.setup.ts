@@ -12,12 +12,14 @@
  * collects the console with a spy is watched as well. The record is checked
  * after each test and after each file, where nothing under test can catch it.
  *
- * An identifier is recognised by the shape the gateway issues, checked here
- * against a freshly issued one. A made-up short identifier (`ord_1`, as the
- * test harness counts them) is left alone, as is a text that spells an
- * identifier some other way, a write straight to `process.stdout` or
- * `process.stderr`, and a console imported from `node:console`. A status
- * address is recognised whatever identifier it carries.
+ * An identifier is any token of the shape the gateway gives one: `ord_` and
+ * identifier characters, not preceded by a letter or digit. That takes in the
+ * short ones fixtures make up (`ord_1`), since code that logs those logs the
+ * real ones too; a freshly issued identifier is checked to fit. A status
+ * address is recognised whatever identifier it carries. Left alone: an
+ * identifier spelled some other way (encoded, split), a write straight to
+ * `process.stdout` or `process.stderr`, a console imported from
+ * `node:console`, and what a spawned process prints.
  */
 
 import { format } from "node:util";
@@ -25,7 +27,7 @@ import { afterAll, afterEach } from "vitest";
 import { randomIds } from "./apps/gateway/src/ports/clock.js";
 import { API_ROUTES } from "./packages/contracts/src/api.js";
 
-const ORDER_ID = /ord_[0-9a-f]{32}/;
+const ORDER_ID = /(?<![A-Za-z0-9])ord_[A-Za-z0-9][A-Za-z0-9_-]*/;
 
 if (!ORDER_ID.test(randomIds("ord"))) {
   throw new Error(
