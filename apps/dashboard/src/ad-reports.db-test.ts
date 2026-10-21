@@ -1225,6 +1225,35 @@ if (databaseUrl === null) {
       });
     });
 
+    it("never posts a store report 30 days or more after the registration, however long the tracker fails, and has given it up with no click by then", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant);
+      const registeredAt = clock;
+      clock = registeredAt + 30 * DAY - HOUR;
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(...Array<Answer>(20).fill(503));
+
+      for (let turn = 0; turn < 20; turn += 1) {
+        await report(post);
+        const row = await storeRowOf(account);
+        if (row.state !== "pending" || row.next_attempt_at === null) break;
+        clock = row.next_attempt_at.getTime();
+      }
+
+      // Failures at 0, 1m, 6m and 36m after the first card; the fifth try
+      // would be at 2h36m, past the 30 days.
+      expect(received).toHaveLength(4);
+      for (const request of received) expect(request.at).toBeLessThan(registeredAt + 30 * DAY);
+      const row = await storeRowOf(account);
+      expect(row).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 4,
+        last_outcome: "http_503",
+      });
+      expect(row.settled_at?.getTime()).toBeLessThan(registeredAt + 30 * DAY);
+    });
+
     it("refuses for good a store report the tracker answered 400, and erases the click", async () => {
       const merchant = await aMerchant();
       const account = await fromAnAd(CLICK, merchant);
@@ -1383,6 +1412,32 @@ if (databaseUrl === null) {
       expect(await report(post, false)).toBe(false);
       expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
       clock = firstCardAt + DAY;
+      expect(await report(post, false)).toBe(false);
+
+      expect(received).toHaveLength(1);
+      expect(await storeRowOf(account)).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 1,
+        last_outcome: "http_503",
+        settled_at: new Date(clock),
+      });
+    });
+
+    it("gives up a store report already pending the moment 30 days from the registration end, though its first card is not a day old, without posting it", async () => {
+      const merchant = await aMerchant();
+      const account = await fromAnAd(CLICK, merchant);
+      const registeredAt = clock;
+      clock = registeredAt + 30 * DAY - HOUR;
+      await publish(merchant, "room-1");
+      const { post, received } = tracker(503);
+      await report(post);
+      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
+
+      clock = registeredAt + 30 * DAY - 1;
+      expect(await report(post, false)).toBe(false);
+      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
+      clock = registeredAt + 30 * DAY;
       expect(await report(post, false)).toBe(false);
 
       expect(received).toHaveLength(1);
