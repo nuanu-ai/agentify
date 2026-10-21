@@ -38,6 +38,7 @@ import {
   type Refused,
   SPLITS_PER_PAYOUT,
 } from "@agentify/gateway";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   API_ROUTES,
   type CardInput,
@@ -380,7 +381,9 @@ const within = async <T>(
   const worked = work();
   worked.catch((thrown: unknown) => {
     if (gaveUp) {
-      console.error(`[dashboard] ${name} failed after the page stopped waiting`, thrown);
+      console.error(
+        `[dashboard] ${name} failed after the page stopped waiting: ${failureNamed(thrown)}`,
+      );
     }
   });
   try {
