@@ -12,11 +12,9 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
   type AnalyticsEvent,
   type AuthResult,
-  type Recorder,
-  record,
+  recordAlong,
   recordObserved,
 } from "@agentify/gateway/analytics";
-import { failureNamed } from "@agentify/gateway/failure-named";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
@@ -246,25 +244,6 @@ function recordInMemory(rows: MemoryRows, event: AnalyticsEvent): void {
   const kept = rows[ANALYTICS_ROWS] ?? [];
   rows[ANALYTICS_ROWS] = kept;
   kept.push({ ...event, occurredAt: new Date() });
-}
-
-/** A drizzle transaction, which opens a savepoint inside itself. */
-interface Savepoints {
-  transaction<T>(work: (savepoint: Recorder) => Promise<T>): Promise<T>;
-}
-
-/**
- * Records `event` in the caller's transaction under a savepoint of its own: it
- * commits with the sign-in or the merchant it records and goes with them if
- * they roll back, and an outbox that cannot be written costs the event, never
- * the fact.
- */
-async function recordWithin(tx: Savepoints, event: AnalyticsEvent): Promise<void> {
-  try {
-    await tx.transaction(async (savepoint) => await record(savepoint, event, new Date()));
-  } catch (thrown) {
-    console.error(`[analytics] an analytics event could not be recorded: ${failureNamed(thrown)}`);
-  }
 }
 
 class DeliveryRefused extends Error {}
@@ -958,7 +937,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             register: async (reports) => {
               await tx.insert(adReports).values([...reports]);
             },
-            record: async (event) => await recordWithin(tx, event),
+            record: async (event) => await recordAlong(tx, event, new Date()),
             refused,
           },
         );
@@ -1148,7 +1127,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             register: async (reports) => {
               await tx.insert(adReports).values([...reports]);
             },
-            record: async (event) => await recordWithin(tx, event),
+            record: async (event) => await recordAlong(tx, event, new Date()),
           });
         });
       } catch (thrown) {
@@ -1335,7 +1314,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           .where(and(eq(accounts.id, personId), isNull(accounts.merchantId)))
           .returning({ id: accounts.id });
         if (written.length !== 1) throw new Error("dashboard_merchant_attachment_lost_lock");
-        await recordWithin(tx, merchantCreated(merchantId, personId));
+        await recordAlong(tx, merchantCreated(merchantId, personId), new Date());
         return {
           status: "attached",
           person: asMerchantPerson({ ...person, merchant: { id: merchantId } }),

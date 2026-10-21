@@ -57,8 +57,13 @@ export async function record(tx: Recorder, event: AnalyticsEvent, at: Date): Pro
   });
 }
 
-/** A drizzle node-postgres transaction, which can open a savepoint inside itself. */
-export type BusinessTransaction = Pick<NodePgDatabase, "transaction">;
+/**
+ * A drizzle node-postgres transaction, which can open a savepoint inside
+ * itself, whatever schema its database was made with.
+ */
+export interface BusinessTransaction {
+  transaction<T>(work: (savepoint: Recorder) => Promise<T>): Promise<T>;
+}
 
 /**
  * The way to record an event inside a business transaction: in `tx`, under a
