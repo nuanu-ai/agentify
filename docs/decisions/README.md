@@ -49,6 +49,7 @@ written in; the rest are in English.
 | [0035](0035-agentify-is-not-the-store.md) | Agentify is not the store: a product comes from the merchant's own system, and Agentify holds no goods. |
 | [0036](0036-a-merchant-sells-through-one-integration-at-a-time.md) | A merchant sells through one integration at a time, the SDK or one WooCommerce shop, and the other's cards are off sale. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
+| [0041](0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md) | A WooCommerce shop that calculates tax is sold from where its cart and its order agree: downloads only with prices entered including tax, parcels at the cart's total, tax rounded at the subtotal, and every shop's order taken on within one cent of the payment, the difference recorded. |
 
 ### Parcels
 

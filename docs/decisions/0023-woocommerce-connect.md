@@ -49,21 +49,8 @@ the shop is called. It is taken on only once the shop's answer shows the address
 as sent, Completed in the shop is its shipment, and the connector keeps and logs
 nothing of the address.
 
-Tax is off or calculated by WooCommerce itself, and a shop that calculates it
-sells where it is clear what to do (the product owner, 2026-10-21): an order
-line naming only the product is taxed exactly, and the cart quotes what that
-order charges unless a filter no outside reader sees keeps one gross price for
-every buyer ([research 56](../research/56-woo-tax-probe.md)). So a download
-sells only where prices are entered with tax, at its price, taxed at the shop's
-address since its order has none; a parcel sells at its cart's total, with tax
-based on the shipping address, and where prices include tax only to a locality
-whose cart taxes the goods as one at the shop's address does. Either needs tax
-rounded at the subtotal, since rounded per line a cart and its order can round a
-half cent of tax apart, and a catalogue shown otherwise than its prices are
-entered is not sold from. An order from any shop is taken on when its total is
-what was paid or within one cent of it, the difference recorded (the product
-owner, 2026-10-21); a taxed order's tax is recorded as the shop wrote it, and
-with tax off it must be nothing.
+What a sale from a shop that calculates tax means, and the one-cent match of
+every shop's order to its payment, are ADR-0041.
 
 The dashboard fills orders as the merchant's worker in the process it shares
 with the gateway ([research 35](../research/35-one-process.md)), recording one
@@ -93,8 +80,5 @@ email, which buyers do not give; the raw file URL; the order number alone; a
 scan inferring an unknown order is absent, which risks a second order in
 somebody's shop; shop credentials in the gateway; the rate stored with the
 price, a new column for what asking again gives; zones matched by a matcher of
-ours, error-prone (research 37); a time to ship per shop or none, which the
-product owner put after the test; order lines carrying amounts before tax we
-compute, which miss the price by a cent at two decimals; and a price without an
-address for a download whose prices are entered before tax, which would charge
-every buyer the tax of the shop's own city.
+ours, error-prone (research 37); and a time to ship per shop or none, which the
+product owner put after the test.
