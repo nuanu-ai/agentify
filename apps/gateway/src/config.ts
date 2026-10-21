@@ -177,6 +177,14 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
  */
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
+/**
+ * How long an order may sit paid before the sweep decides its envelope reached
+ * nobody and sends it out again. Too short and a busy merchant who is merely
+ * between polls gets duplicates; too long and a paid order reaches nobody until
+ * its fulfillment deadline marks it unfulfilled.
+ */
+const SWEEP_DISPATCH_GRACE_MS = 5 * 60 * 1_000;
+
 /** The chain a gateway takes payments on where `PAYMENT_NETWORK` names none. */
 export const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
 
@@ -301,13 +309,6 @@ const environmentSchema = z.object({
    * reuse after closure or a delayed payment outcome.
    */
   CLAIM_RETENTION_MS: durationMs(30 * 24 * 60 * 60 * 1_000),
-  /**
-   * How long an order may sit paid before the sweep decides its envelope
-   * reached nobody and sends it out again. Too short and a busy merchant who is
-   * merely between polls gets duplicates; too long and a paid order reaches
-   * nobody until its fulfillment deadline marks it unfulfilled.
-   */
-  SWEEP_DISPATCH_GRACE_MS: durationMs(5 * 60 * 1_000),
   /**
    * How many of the payment layer's own words one order keeps, which is what
    * an operator reads to learn what the facilitator and chain recovery said
@@ -722,7 +723,7 @@ export function loadConfig(
     reminderRetryDelayMs: environmentValues.REMINDER_RETRY_DELAY_MS,
     settleInFlightRetryMs: environmentValues.SETTLE_IN_FLIGHT_RETRY_MS,
     claimRetentionMs: environmentValues.CLAIM_RETENTION_MS,
-    sweepDispatchGraceMs: environmentValues.SWEEP_DISPATCH_GRACE_MS,
+    sweepDispatchGraceMs: SWEEP_DISPATCH_GRACE_MS,
     paymentWordsKept: environmentValues.PAYMENT_WORDS_KEPT,
     deadlines,
     redelivery: {
