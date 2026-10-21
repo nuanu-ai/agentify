@@ -70,8 +70,13 @@ whether yours does; the cart then shows that one price while the order created
 for the parcel still moves it to the buyer's rate. So a parcel from such a
 shop sells only to a place your shop taxes at the same rates as its own
 address, and a buyer elsewhere is told before paying that the parcel is not
-available there. A parcel also needs tax to be calculated on the customer's
-shipping address (Calculate tax based on), which is WooCommerce's default.
+available there. Where such a shop rounds tax on each line, WooCommerce's default, a
+shipping cost whose tax at one of your rates comes to exactly half a cent (19%
+of 1.50 is 0.285) is rounded up in your cart and down in the order, so a
+parcel shipped at that cost is not available; rounding tax at the subtotal
+(Round tax at subtotal level) does not have this difference. A parcel also
+needs tax to be calculated on the customer's shipping address (Calculate tax
+based on), which is WooCommerce's default.
 Its price question also asks your cart about your own address, within the same
 four seconds.
 
