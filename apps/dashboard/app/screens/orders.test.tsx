@@ -12,7 +12,7 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { formsIn, readable } from "../../src/testing/html.js";
-import { ordersView } from "../../src/views.js";
+import { CLOSURE_NOTES, ordersView } from "../../src/views.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
 
@@ -710,6 +710,17 @@ describe("an order's details", () => {
     expect(detailsOf(html, FIRST)).toContain("wide");
     expect(detailsOf(html, SAME_HEAD)).not.toBe("");
     expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
+  });
+
+  it("are drawn under a wide row where a press made on the order is said", () => {
+    // An order that ended before its closure arrived has nothing else to
+    // read there, and the merchant must still see what became of the press.
+    const orders = ordersOf([{ id: SAME_HEAD, status: "delivered" }]);
+    const view = ordersView("live", CARDS, orders, orders);
+    const pressed = { id: SAME_HEAD, note: CLOSURE_NOTES.ended, refusal: null, typed: "" };
+    const html = served(() => <OrdersScreen view={{ ...view, pressed }} />);
+
+    expect(detailsOf(html, SAME_HEAD)).toContain("wide");
   });
 
   it("are reached from Needs you without searching for an order already on the page", () => {
