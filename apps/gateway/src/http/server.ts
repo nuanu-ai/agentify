@@ -404,7 +404,7 @@ async function callerBehind(
         return OTHER_ENVIRONMENT_PREFIX;
       }
 
-      const key = await gateway.keyBehind(presented);
+      const key = await gateway.keyBehind(presented, request.header("user-agent"));
       return key === null ? REFUSED : { merchantId: key.merchantId, keyId: key.id };
     }
 

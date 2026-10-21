@@ -220,7 +220,9 @@ function standingOf(key: StoredKey): string {
  * mark is written every few minutes at best.
  */
 function lastCallOf(key: StoredKey): string {
-  return key.lastUsedAt === null ? "no calls recorded" : `called ${dayOf(key.lastUsedAt)}`;
+  if (key.lastUsedAt === null) return "no calls recorded";
+  const by = key.lastUserAgent === null ? "" : ` by ${key.lastUserAgent}`;
+  return `called ${dayOf(key.lastUsedAt)}${by}`;
 }
 
 const dayOf = (instant: number): string => new Date(instant).toISOString().slice(0, 10);

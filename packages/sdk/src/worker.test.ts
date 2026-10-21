@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RETRY_MS, RETRY_CEILING_MS } from "./backoff.js";
 import { createClient, type QuoteHandler } from "./client.js";
 import { contractVersion } from "./contract.js";
+import type { OrderEvent as ReadEvent } from "./reading.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import { batch, polling } from "./testing/worker-stream.js";
@@ -85,7 +86,7 @@ afterEach(async () => {
 
 interface Subscribed {
   readonly problems: WorkerProblem[];
-  readonly events: OrderEvent[];
+  readonly events: ReadEvent[];
 }
 
 const workerOver = async (
@@ -98,7 +99,7 @@ const workerOver = async (
   gateway = await startFakeGateway({ apiKey: API_KEY, routes });
 
   const problems: WorkerProblem[] = [];
-  const events: OrderEvent[] = [];
+  const events: ReadEvent[] = [];
   const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
   const answering = handlers.order;
@@ -437,6 +438,153 @@ describe("an event off the same stream", () => {
   });
 });
 
+describe("a gateway newer than this package", () => {
+  /**
+   * A poll answer as a newer gateway writes it, sent as text because the
+   * double holds every scripted body to this package's own contract.
+   */
+  const newerPoll = (...carried: unknown[]) => ({
+    text: JSON.stringify({
+      contract_version: contractVersion,
+      envelopes: carried,
+      next_wait_seconds: 25,
+    }),
+  });
+
+  it("hands an event of a kind it knows with a reason it does not know to the handler, the reason read as unknown", async () => {
+    // A new reason on a known notice is still the notice; only the word is
+    // news, so the merchant gets the event and no problem.
+    const { problems, events } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.event, payload: { ...event, reason: "carrier_lost" } }),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => events.length === 1, "the event");
+
+    expect(events).toStrictEqual([{ ...event, reason: "unknown" }]);
+    expect(problems).toStrictEqual([]);
+  });
+
+  it("hands an order over when only the envelope and the answer around it carry fields this package does not know", async () => {
+    // What travels around an order only informs, so a field added there must
+    // not stop a merchant who has not upgraded.
+    const seen: Order[] = [];
+
+    await workerOver(
+      {
+        poll_worker: polling(newerPoll({ ...envelopes.order, attempt: 2 })),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+      {
+        order: (given) => {
+          seen.push(given);
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+      },
+    );
+
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject(order);
+    expect(gateway?.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: order.id });
+  });
+
+  it("fails the poll loudly rather than hand over an order carrying a field this package does not know", async () => {
+    // A quantity dropped would be delivered once without a word. A failed poll
+    // is a loud stop, and the order comes again within its attempts.
+    const seen: Order[] = [];
+
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(newerPoll({ ...envelopes.order, payload: { ...order, quantity: 3 } })),
+      },
+      {
+        order: (given) => {
+          seen.push(given);
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the failed poll");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(seen).toStrictEqual([]);
+    expect(gateway?.callsTo("answer_order")).toStrictEqual([]);
+  });
+
+  it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
+    // No answer is a silent price check, whose outcome per mode is already
+    // the contract's; a price guessed for an unknown purpose would not be.
+    const asked: QuoteRequest[] = [];
+
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.quote, payload: { ...question, purpose: "reservation" } }),
+        ),
+      },
+      {
+        order: () => ({ delivered: { access_url: "https://example.com/a" } }),
+        quote: (given) => {
+          asked.push(given);
+          return given.unavailable();
+        },
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the skipped question");
+    await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "the next poll");
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: "quote_skipped",
+      fatal: false,
+      subject: question.price_id,
+    });
+    expect(asked).toStrictEqual([]);
+    expect(gateway?.callsTo("answer_quote")).toStrictEqual([]);
+  });
+
+  it("handles the rest of a poll that carries an event of a kind it does not know, and says so once without stopping", async () => {
+    // A new kind of event is news this package cannot act on. Skipping it
+    // loses nothing an event could not lose anyway, and the orders beside it
+    // in the same answer are still the merchant's to deliver.
+    const unknownEvent = {
+      kind: "order_event",
+      id: "env-9",
+      sent_at: AT,
+      payload: { type: "order.refunded", order_id: "order-1", at: AT },
+    };
+
+    const { problems, events } = await workerOver(
+      {
+        poll_worker: polling(newerPoll(unknownEvent, envelopes.order, envelopes.event)),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => events.length === 1, "the known event");
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+
+    expect(events).toStrictEqual([event]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.fatal).toBe(false);
+    expect(problems[0]?.kind).toBe("event_skipped");
+    expect(problems[0]?.subject).toBe("order-1");
+    expect(problems[0]?.message).toContain("order.refunded");
+    expect(problems[0]?.message).toMatch(/newer/);
+    // And the loop went on to ask for more.
+    await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "the next poll");
+  });
+});
+
 describe("a gateway speaking another dialect", () => {
   it("stops the worker and names both versions", async () => {
     // Failing at startup rather than on somebody's first order.
@@ -464,6 +612,95 @@ describe("a gateway speaking another dialect", () => {
     const pollsWhenItStopped = gateway.callsTo("poll_worker").length;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(gateway.callsTo("poll_worker")).toHaveLength(pollsWhenItStopped);
+  });
+
+  it("sends the answer for an order already in the handler before it stops on another version", async () => {
+    // The goods may already be issued; dropping the answer would leave a
+    // delivered order unanswered. Only new work stops at the mismatch.
+    const problems: WorkerProblem[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let inHand = false;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order), {
+          body: { contract_version: "99", envelopes: [] },
+        }),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: async () => {
+          inHand = true;
+          await held;
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+        problem: (problem) => problems.push(problem),
+      },
+    );
+    running = worker;
+
+    await waitUntil(() => inHand, "the order to reach the handler");
+    await waitUntil(
+      () => problems.some((one) => one.kind === WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH),
+      "the mismatch to be reported",
+    );
+    release();
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+    await waitUntil(() => !worker.running(), "the worker to stop");
+
+    expect(problems.map((one) => one.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH,
+    ]);
+    expect(gateway?.callsTo("poll_worker")).toHaveLength(2);
+  });
+
+  it("stops on another version even when a handler never returns, and says which order it left unanswered", async () => {
+    // Waiting for a stuck handler would hold the stop for ever; past the
+    // longest an answer should take, the worker gives up on it and says so.
+    const problems: WorkerProblem[] = [];
+    let inHand = false;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order), {
+          body: { contract_version: "99", envelopes: [] },
+        }),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => {
+          inHand = true;
+          return new Promise<HandlerAnswer>(() => {});
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      systemClock,
+      100,
+    );
+    running = worker;
+
+    await waitUntil(() => inHand, "the order to reach the handler");
+    await waitUntil(() => !worker.running(), "the worker to stop");
+
+    expect(problems.map((one) => [one.kind, one.fatal])).toStrictEqual([
+      [WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH, true],
+      [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, false],
+    ]);
+    expect(problems[1]?.message).toContain(order.id);
+    expect(gateway.callsTo("answer_order")).toStrictEqual([]);
   });
 
   it("passes on the version it saw in an answer it could not read, and keeps going", async () => {

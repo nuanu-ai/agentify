@@ -444,13 +444,13 @@ export class PostgresStore implements Store {
     return storedKeyOf(row);
   }
 
-  async noteKeyUse(id: string, at: number): Promise<void> {
+  async noteKeyUse(id: string, at: number, userAgent: string | null): Promise<void> {
     // Never-backwards is in the predicate, not a read then a write: two
     // gateways with two clocks write this without waiting for each other. A
     // key that is gone matches nothing, which is fine.
     await this.#db
       .update(merchantKeys)
-      .set({ lastUsedAt: new Date(at) })
+      .set({ lastUsedAt: new Date(at), lastUserAgent: userAgent })
       .where(
         and(
           eq(merchantKeys.id, id),
@@ -1340,6 +1340,7 @@ function storedKeyOf(row: {
   createdAt: Date;
   disabledAt: Date | null;
   lastUsedAt: Date | null;
+  lastUserAgent: string | null;
 }): StoredKey {
   return {
     id: row.id,
@@ -1348,6 +1349,7 @@ function storedKeyOf(row: {
     createdAt: row.createdAt.getTime(),
     disabledAt: row.disabledAt === null ? null : row.disabledAt.getTime(),
     lastUsedAt: row.lastUsedAt === null ? null : row.lastUsedAt.getTime(),
+    lastUserAgent: row.lastUserAgent,
   };
 }
 

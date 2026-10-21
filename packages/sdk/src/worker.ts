@@ -13,7 +13,9 @@
  * unanswered order comes back because the gateway decides on another attempt,
  * and a second retry policy on this side would disagree with it. The same
  * holds for an answer the contract refuses and for a kind with no handler; the
- * merchant is told through the problem reporter. An event is not sent again,
+ * merchant is told through the problem reporter. An event this package cannot
+ * read, such as one of a kind added after it was released, is skipped with a
+ * warning and the rest of the batch is handled. An event is not sent again,
  * so a handler that throws on one has lost what it carried. The only retry
  * here is of a poll that failed, with the backoff in `backoff.ts`.
  */
@@ -22,17 +24,20 @@ import {
   type HandlerAnswer,
   HandlerAnswerSchema,
   type Order,
-  type OrderEvent,
   PROTOTYPE_KEY_IS_DROPPED,
   priceProblemsOf,
   type QuoteRequest,
   type QuoteResponse,
   QuoteResponseSchema,
+  type Read,
+  UNKNOWN_WORD,
+  type UnreadEvent,
   type WorkerEnvelope,
   type WorkerEnvelopeKind,
 } from "@nuanu-ai/agentify-contracts";
 import { retryDelayMs } from "./backoff.js";
 import { contractVersion, speaksContract } from "./contract.js";
+import type { OrderEvent } from "./reading.js";
 import { describeProblems, problemsOf } from "./schema.js";
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 
@@ -95,13 +100,27 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   HANDLER_ANSWER_REFUSED: "handler_answer_refused",
   /** Something arrived that nobody had registered a handler for. */
   NO_HANDLER: "no_handler",
+  /**
+   * An event this package cannot read, most often of a kind added after it was
+   * released, was skipped. The rest of the batch is handled.
+   */
+  EVENT_SKIPPED: "event_skipped",
+  /**
+   * A price question for a purpose this package does not know was left
+   * unanswered. It counts as a silent price check: a synchronous card sells at
+   * its own card price, and in the other modes the sale is refused.
+   */
+  QUOTE_SKIPPED: "quote_skipped",
   /** The answer was produced and could not be delivered to the gateway. */
   ANSWER_FAILED: "answer_failed",
   /** The gateway would not take the answer: it names an order it cannot close. */
   ANSWER_REFUSED: "answer_refused",
   /** A price answer arrived too late to price the purchase it was asked for. */
   QUOTE_ANSWER_UNUSED: "quote_answer_unused",
-  /** The worker stopped part-way through a batch and the rest went unread. */
+  /**
+   * The worker stopped with work unfinished: part of a batch unread, or a
+   * handler that had not answered when the stop could wait no longer.
+   */
   BATCH_ABANDONED: "batch_abandoned",
   /** The loop itself failed in a way nothing here anticipated. A defect in this SDK. */
   WORKER_FAILED: "worker_failed",
@@ -291,6 +310,9 @@ const versionSpokenIn = (body: unknown): string | undefined => {
   return typeof named === "string" && named !== "" ? named : undefined;
 };
 
+const askedForAKnownPurpose = (question: Read<QuoteRequest>): question is QuoteRequest =>
+  question.purpose !== UNKNOWN_WORD;
+
 /** Refuses to compile if a kind is added to the contract and not handled here. */
 const assertEveryKindIsHandled = (envelope: never): never => {
   throw new TypeError(
@@ -359,7 +381,7 @@ export const startWorker = (
       fatal: true,
       // Both versions are in the sentence, so the merchant can tell which end
       // needs upgrading.
-      message: `the gateway speaks contract version ${spoken} and this SDK speaks ${contractVersion}; the worker stopped rather than handle orders in a dialect it may be reading wrong`,
+      message: `the gateway speaks contract version ${spoken} and this SDK speaks ${contractVersion}; the worker takes no more work, finishes what it already holds and stops, rather than handle orders in a dialect it may be reading wrong`,
     });
   };
 
@@ -526,7 +548,20 @@ export const startWorker = (
     }
   };
 
-  const handleEvent = async (event: OrderEvent, delivered: Delivered): Promise<void> => {
+  const handleEvent = async (
+    event: OrderEvent | UnreadEvent,
+    delivered: Delivered,
+  ): Promise<void> => {
+    if (event.type === UNKNOWN_WORD) {
+      report({
+        kind: WORKER_PROBLEM_KINDS.EVENT_SKIPPED,
+        fatal: false,
+        ...(event.order_id === undefined ? {} : { subject: event.order_id }),
+        message: `an event this package cannot read, "${event.named}", arrived and was skipped; a newer release of @nuanu-ai/agentify handles it, and orders.list({ open: true }) still finds every paid order waiting on you`,
+      });
+      return;
+    }
+
     const handler = handlers.event;
 
     if (handler === undefined) {
@@ -555,13 +590,22 @@ export const startWorker = (
     }
   };
 
-  const dispatch = async (envelope: WorkerEnvelope): Promise<void> => {
+  const dispatch = async (envelope: Read<WorkerEnvelope>): Promise<void> => {
     switch (envelope.kind) {
       case "order":
         await handleOrder(envelope.payload);
         return;
       case "quote_request":
-        await handleQuote(envelope.payload);
+        if (askedForAKnownPurpose(envelope.payload)) {
+          await handleQuote(envelope.payload);
+        } else {
+          report({
+            kind: WORKER_PROBLEM_KINDS.QUOTE_SKIPPED,
+            fatal: false,
+            subject: envelope.payload.price_id,
+            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused; a newer release of @nuanu-ai/agentify answers it`,
+          });
+        }
         return;
       case "order_event":
         await handleEvent(envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
@@ -594,11 +638,11 @@ export const startWorker = (
     }
   };
 
-  const schedule = (envelope: WorkerEnvelope): void => {
+  const schedule = (envelope: Read<WorkerEnvelope>): void => {
     const orderId =
       envelope.kind === "order"
         ? envelope.payload.id
-        : envelope.kind === "order_event"
+        : envelope.kind === "order_event" && envelope.payload.type !== UNKNOWN_WORD
           ? envelope.payload.order_id
           : undefined;
     if (envelope.kind === "order" && orders.has(envelope.payload.id)) return;
@@ -616,6 +660,33 @@ export const startWorker = (
       });
     active.add(work);
     if (orderId !== undefined) tails.set(orderId, work);
+  };
+
+  /** Whether the stop still waits for what is in the handlers. */
+  let waitsForHandlers = true;
+
+  /**
+   * What is already in a handler may have issued goods, so its answer goes out
+   * before the stop, which would otherwise abort it; but a handler that never
+   * returns must not hold the stop for ever, so the wait is as long as a poll
+   * may take and no longer.
+   */
+  const drainOrAbandon = async (): Promise<void> => {
+    const waited = new AbortController();
+    const drained = await Promise.race([
+      Promise.all(active).then(() => true),
+      clock.sleep(deadlineMs, waited.signal).then(() => false),
+    ]);
+    waited.abort();
+    if (drained) return;
+
+    waitsForHandlers = false;
+    const unanswered = [...orders];
+    report({
+      kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+      fatal: false,
+      message: `the worker stopped with ${active.size} messages still in a handler after ${deadlineMs} ms${unanswered.length === 0 ? "" : `, among them orders ${unanswered.join(", ")}`}; nothing was sent for them, so each order is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
+    });
   };
 
   const run = async (): Promise<void> => {
@@ -668,6 +739,8 @@ export const startWorker = (
 
       if (!speaksContract(answer.document.contract_version)) {
         reportTheMismatch(answer.document.contract_version);
+        stopping = true;
+        await drainOrAbandon();
         return;
       }
 
@@ -706,7 +779,7 @@ export const startWorker = (
     .finally(async () => {
       stopping = true;
       controller.abort();
-      await Promise.all(active);
+      if (waitsForHandlers) await Promise.all(active);
       ended = true;
     });
 

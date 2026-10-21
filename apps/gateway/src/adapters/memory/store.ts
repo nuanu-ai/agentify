@@ -374,13 +374,14 @@ export class MemoryStore implements Store {
       createdAt: at,
       disabledAt: null,
       lastUsedAt: null,
+      lastUserAgent: null,
     });
     this.#keys.set(stored.id, stored);
     this.#keysByDigest.set(key.digest, stored.id);
     return stored;
   }
 
-  async noteKeyUse(id: string, at: number): Promise<void> {
+  async noteKeyUse(id: string, at: number, userAgent: string | null): Promise<void> {
     const found = this.#keys.get(id);
     if (found === undefined) {
       // Removed with its merchant after the door read it; nothing to write.
@@ -391,7 +392,7 @@ export class MemoryStore implements Store {
       // one; the mark only moves forwards.
       return;
     }
-    this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at }));
+    this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at, lastUserAgent: userAgent }));
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {

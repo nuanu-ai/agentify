@@ -1503,7 +1503,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
 
-        await store.noteKeyUse("mk_1", 5_000);
+        await store.noteKeyUse("mk_1", 5_000, null);
 
         expect((await store.workingKey("digest-1"))?.lastUsedAt).toBe(5_000);
         expect((await store.workingKey("digest-2"))?.lastUsedAt).toBeNull();
@@ -1515,10 +1515,23 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
-        await store.noteKeyUse("mk_1", 9_000);
-        await store.noteKeyUse("mk_1", 5_000);
+        await store.noteKeyUse("mk_1", 9_000, null);
+        await store.noteKeyUse("mk_1", 5_000, null);
 
         expect((await store.workingKey("digest-1"))?.lastUsedAt).toBe(9_000);
+      });
+
+      it("carries what the last call said it runs, and keeps the later call's word when two arrive out of order", async () => {
+        // Written beside the instant and under the same never-backwards rule,
+        // so the release named is the one the latest recorded call ran.
+        const store = await twoMerchants();
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
+
+        await store.noteKeyUse("mk_1", 9_000, "agentify-sdk/0.8.0");
+        await store.noteKeyUse("mk_1", 5_000, "agentify-sdk/0.7.1");
+
+        expect((await store.workingKey("digest-1"))?.lastUserAgent).toBe("agentify-sdk/0.8.0");
+        expect((await store.keysOf(A))[0]?.lastUserAgent).toBe("agentify-sdk/0.8.0");
       });
 
       it("keeps the call it last carried when it is revoked", async () => {
@@ -1526,7 +1539,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // revocation was decided on.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
-        await store.noteKeyUse("mk_1", 5_000);
+        await store.noteKeyUse("mk_1", 5_000, null);
 
         expect((await store.disableKey("mk_1", 7_000))?.lastUsedAt).toBe(5_000);
         expect((await store.keysOf(A))[0]?.lastUsedAt).toBe(5_000);

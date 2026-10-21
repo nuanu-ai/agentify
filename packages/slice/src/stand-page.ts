@@ -15,14 +15,13 @@
  */
 
 import { type Environment, SITES } from "@agentify/core";
+import type { OrderStatus, OrderWithStatus } from "@nuanu-ai/agentify";
 import {
   API_ROUTES,
   type Card,
   expandPath,
   type MerchantCard,
   type Money,
-  type OrderStatus,
-  type OrderWithStatus,
   type PublicCard,
   RECOMMENDED_REFUSAL_CODES,
   type Receipt,
@@ -500,10 +499,10 @@ const pausedPanel = (state: PageState): string => `<section class="panel">
 /**
  * What an order's own word means, in the tone a screen paints it.
  *
- * The words are the order machine's and are printed as they arrive: a status
- * this console has never met still reads as itself rather than as a shrug, and
- * a second vocabulary beside the gateway's is exactly what a merchant should
- * not have to learn.
+ * The words are the order machine's and are printed as they arrive, because a
+ * second vocabulary beside the gateway's is exactly what a merchant should not
+ * have to learn. A word the SDK underneath was not built with arrives as
+ * `unknown` and is printed as that.
  */
 const orderTone = (status: OrderStatus): string =>
   status === "delivered" ? "ok" : status === "in_progress" ? "busy" : "warn";

@@ -243,6 +243,8 @@ export {
 } from "./primitives.js";
 export type { QuotePurpose, QuoteRequest, QuoteResponse } from "./quote.js";
 export { QuotePurposeSchema, QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
+export type { Read, UnknownWord, UnreadEvent } from "./reading.js";
+export { readerOf, UNKNOWN_WORD } from "./reading.js";
 export type { Receipt, ReceiptOutcome } from "./receipt.js";
 export { ReceiptOutcomeSchema, ReceiptSchema } from "./receipt.js";
 export type {
@@ -280,7 +282,7 @@ export { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
  * changes, not when a schema is added: a consumer uses it to decide whether it
  * understands the other side.
  */
-export const CONTRACT_VERSION = "2";
+export const CONTRACT_VERSION = "3";
 
 /**
  * Every schema of the public contract, under the name it is known by outside

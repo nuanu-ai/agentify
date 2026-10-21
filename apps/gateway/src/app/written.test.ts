@@ -16,6 +16,7 @@ import {
   type Card,
   CardSchema,
   CatalogPageSchema,
+  CONTRACT_VERSION,
   publicCardOf,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -323,6 +324,46 @@ describe("what this gateway checks before it sends a document", () => {
       const places = objectsIn(written);
       expect(places.length, name).toBeGreaterThan(3);
       for (const path of places) {
+        expect(sendable(document, leakedAt(written, path)), `${name} at ${path.join(".")}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("refuses to send a merchant's answer carrying a field nobody was promised, wherever it is", () => {
+    // The merchant's package ignores a field it does not know, so nothing on
+    // their side would notice one that leaked; this check is where it stops.
+    const AT = "2026-10-07T09:01:00Z";
+    const order = {
+      id: "ord_7c1e05",
+      merchant_item_id: "coffee-brunch",
+      params: { email: "buyer@example.com" },
+      price: { amount: "25.00", currency: "USD", at: AT, as_of: AT },
+      test: true,
+    };
+    const read = { ...order, status: "in_progress", payment_status: "paid" };
+    const poll = {
+      contract_version: CONTRACT_VERSION,
+      envelopes: [
+        { kind: "order", id: "msg_1", sent_at: AT, payload: order },
+        {
+          kind: "order_event",
+          id: "msg_2",
+          sent_at: AT,
+          payload: { type: "order.payment_failed_after_delivery", order_id: order.id, at: AT },
+        },
+      ],
+    };
+    for (const [name, document, written] of [
+      ["an order read back", API_ROUTES.get_order.response.document, read],
+      ["the order list", API_ROUTES.list_orders.response.document, { orders: [read] }],
+      ["a poll answer", API_ROUTES.poll_worker.response.document, poll],
+    ] as const) {
+      expect(sendable(document, written), name).toBe(true);
+      // An order's parameters are named by its card and are the merchant's to
+      // read, so a name added there is not a leak.
+      for (const path of objectsIn(written).filter((at) => !at.includes("params"))) {
         expect(sendable(document, leakedAt(written, path)), `${name} at ${path.join(".")}`).toBe(
           false,
         );

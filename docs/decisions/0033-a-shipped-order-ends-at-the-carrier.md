@@ -40,8 +40,8 @@ Agentify has about it. The agent's status carries the shipment beside a
 
 The discovery listing's example purchase ships to Agentify's own office, a real
 place and nobody's home. `ship` and `shipped` join the storefront's open
-vocabularies (ADR-0006 §5), and the contract version does not move, as no
-merchant outside our control runs a published SDK yet (ADR-0006 §2).
+vocabularies (ADR-0006 §5), and the contract version did not move, as no
+merchant outside our control ran a published SDK then.
 
 A lost parcel and any refund or agreement remain the merchant's (ADR-0028),
 who can close fulfillment until the shipment is recorded; a shipped parcel
