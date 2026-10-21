@@ -14,6 +14,7 @@ const ORIGIN = "https://agentify.ad";
 
 beforeEach(() => {
   vi.stubEnv("APP_BASE_URL", ORIGIN);
+  vi.stubEnv("AGENTIFY_SURFACE_MODE", "live");
 });
 
 afterEach(() => {
