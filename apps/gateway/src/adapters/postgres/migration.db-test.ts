@@ -1415,7 +1415,7 @@ if (databaseUrl === null) {
       await pool.end();
     });
 
-    it("dates every card already published by the moment it holds, and refuses a card without that date afterwards", async () => {
+    it("dates every card already published by the moment it holds, a card written afterwards without that date by the moment it is written, and refuses one whose date is null", async () => {
       const first = new Date("2026-10-01T08:00:00.000Z");
       const second = new Date("2026-10-02T08:00:00.000Z");
       await pool.query(
@@ -1435,10 +1435,19 @@ if (databaseUrl === null) {
         { id: "item_first", as_of: first, published_at: first },
         { id: "item_second", as_of: second, published_at: second },
       ]);
+      const [undated] = (
+        await pool.query<{ published_at: Date; written_at: Date }>(
+          `insert into cards (id, merchant_id, merchant_item_id, card, as_of, integration)
+           values ('item_undated', 'mch_dated', 'sku-3', '{}', now(), 'api')
+           returning published_at, now() as written_at`,
+        )
+      ).rows;
+      expect(undated?.published_at).toStrictEqual(undated?.written_at);
       await expect(
         pool.query(
-          `insert into cards (id, merchant_id, merchant_item_id, card, as_of, integration)
-           values ('item_undated', 'mch_dated', 'sku-3', '{}', now(), 'api')`,
+          `insert into cards
+             (id, merchant_id, merchant_item_id, card, as_of, published_at, integration)
+           values ('item_null', 'mch_dated', 'sku-4', '{}', now(), null, 'api')`,
         ),
       ).rejects.toMatchObject({ code: "23502" });
     });
