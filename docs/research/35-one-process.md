@@ -604,6 +604,18 @@ keep is the one the SDK's own tests already give. If the connector ever leaves
 the process, as a plugin in the shop for instance, it becomes an ordinary
 client of the SDK with an ordinary key.
 
+The connection itself is the dashboard's. Connect writes a grant, a random
+token bound for fifteen minutes to the account and the shop's root origin,
+which the account's next Connect replaces. The shop's own server posts the keys
+to the listener, and that callback spends the token in the same transaction,
+under the account's lock, that writes the connection; the shop's address is
+taken from the grant, never from the callback. A token nobody issued, one
+already spent and one expired are refused alike, and an expired grant is kept
+so that its owner's WooCommerce page can say the attempt ended. Where the
+connector is not offered, on the live channel today, the dashboard mounts none
+of its pages and starts no worker, so a connection made there before stays
+unused.
+
 `woo:recover` reads one order and delivers late goods for it with the
 account's cabinet key. Once the key is gone it builds the application in its
 own process on the one database, with a writer-only queue, the way the payment

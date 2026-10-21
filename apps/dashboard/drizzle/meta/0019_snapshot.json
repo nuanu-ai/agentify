@@ -1,5 +1,5 @@
 {
-  "id": "cd1dd7c5-8f55-4178-ba8e-5745c67ee5b1",
+  "id": "1e86c71d-55bf-4fd0-862b-56480175838e",
   "prevId": "f70debcf-0ad4-4970-928e-1a5681f46a27",
   "version": "7",
   "dialect": "postgresql",
@@ -54,13 +54,6 @@
         },
         "operator": {
           "name": "operator",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "analytics_opt_out": {
-          "name": "analytics_opt_out",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -818,6 +811,12 @@
         },
         "woo_order_number": {
           "name": "woo_order_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "woo_order_total": {
+          "name": "woo_order_total",
           "type": "text",
           "primaryKey": false,
           "notNull": false

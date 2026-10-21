@@ -271,6 +271,7 @@ describe("creating the order", () => {
     download: { id: "dl_guide", name: "Guide" },
     // Checked against the wallet itself, before payments went to splits.
     paidInto: null,
+    tax: { mode: "off" as const },
   };
   const madeOrder = (overrides: Record<string, unknown> = {}) => ({
     id: 13,
@@ -304,6 +305,7 @@ describe("creating the order", () => {
       number: "13",
       orderKey: "wc_order_13",
       downloadId: "dl_guide",
+      total: "25.00",
     });
     const asked = stand.asked[0];
     expect(asked?.method).toBe("POST");
@@ -320,7 +322,10 @@ describe("creating the order", () => {
     expect(sent.payment_method_title).toBe("Agentify");
     // Paid to the wallet itself, before payments went to splits: no commission
     // was taken, so the order says none.
-    expect(sent.meta_data).toEqual([{ key: "agentify_order_id", value: "ord_7" }]);
+    expect(sent.meta_data).toEqual([
+      { key: "agentify_order_id", value: "ord_7" },
+      { key: "agentify_paid", value: "25.00 USD" },
+    ]);
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
     ]);
@@ -335,6 +340,7 @@ describe("creating the order", () => {
     // so there is no new way to fail between creating the order and noting it.
     const lines = [
       { key: "agentify_order_id", value: "ord_7" },
+      { key: "agentify_paid", value: "25.00 USD" },
       { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
       { key: "agentify_payout_contract", value: PAID_INTO.address },
     ];
@@ -355,6 +361,20 @@ describe("creating the order", () => {
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
     ]);
+  });
+
+  it("writes what the buyer paid on the shop's order, beside the total the shop makes of it", async () => {
+    // A shop's total may be a cent from the payment, so the order says what
+    // was paid in the request that makes it, with no second call to note it.
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.01" }) }));
+
+    await createOrder(connectionTo(stand.url), order);
+
+    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toContainEqual({
+      key: "agentify_paid",
+      value: "25.00 USD",
+    });
+    expect(stand.asked).toHaveLength(1);
   });
 
   it("writes the commission at the rate of the split the payment went to", async () => {
@@ -480,6 +500,149 @@ describe("creating the order", () => {
       await stand.close();
       stand = null;
     }
+  });
+
+  /**
+   * The tax probe's answers for a download left to WooCommerce to price, as
+   * the shop in Bali gave them: the gross price paid, the tax inside it.
+   */
+  const ANSWERED_IN_BALI = [
+    {
+      productId: 20,
+      paid: "1.00",
+      answer: { total: "1.00", total_tax: "0.10", subtotal: "0.90", line: "0.90", lineTax: "0.10" },
+    },
+    {
+      productId: 28,
+      paid: "99.99",
+      answer: {
+        total: "99.99",
+        total_tax: "9.91",
+        subtotal: "90.08",
+        line: "90.08",
+        lineTax: "9.91",
+      },
+    },
+  ] as const;
+  const answeredWith = (
+    productId: number,
+    answer: {
+      total: string;
+      total_tax: string;
+      subtotal: string;
+      line: string;
+      lineTax: string;
+    },
+  ) =>
+    madeOrder({
+      total: answer.total,
+      total_tax: answer.total_tax,
+      line_items: [
+        {
+          product_id: productId,
+          quantity: 1,
+          subtotal: answer.subtotal,
+          total: answer.line,
+          total_tax: answer.lineTax,
+        },
+      ],
+    });
+
+  it("leaves an inclusive shop to price its download, and takes the order on at the price paid with the tax inside", async () => {
+    for (const { productId, paid, answer } of ANSWERED_IN_BALI) {
+      stand = await shopAnswering(() => ({ status: 201, body: answeredWith(productId, answer) }));
+
+      const made = await createOrder(connectionTo(stand.url), {
+        ...order,
+        productId: String(productId),
+        price: { amount: paid, currency: "USD" },
+        tax: { mode: "included" },
+      });
+
+      expect(made, paid).toMatchObject({ ok: true, id: "13" });
+      // Totals sent on the line are read as amounts before tax and taxed on
+      // top, so the line names the product and lets the shop price it.
+      expect(JSON.parse(stand.asked[0]?.body ?? "{}").line_items, paid).toEqual([
+        { product_id: productId, quantity: 1 },
+      ]);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("takes on an inclusive shop's order totalled within a cent of what was paid, and says what the shop recorded", async () => {
+    // The German shop with a 10% rate and a 5% compound one, rounding per
+    // line: paid 1.00, its order totalled 1.01 with 0.14 of tax.
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: answeredWith(20, {
+        total: "1.01",
+        total_tax: "0.14",
+        subtotal: "0.87",
+        line: "0.87",
+        lineTax: "0.14",
+      }),
+    }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: "20",
+      price: { amount: "1.00", currency: "USD" },
+      tax: { mode: "included" },
+    });
+
+    expect(made).toMatchObject({ ok: true, total: "1.01" });
+  });
+
+  it("does not take on an inclusive shop's order whose total is more than a cent from what was paid", async () => {
+    // The Bali shop's order with the totals sent on its line, taxed on top:
+    // 1.11 for a price of 1.00.
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: answeredWith(20, {
+        total: "1.11",
+        total_tax: "0.11",
+        subtotal: "1.00",
+        line: "1.00",
+        lineTax: "0.11",
+      }),
+    }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: "20",
+      price: { amount: "1.00", currency: "USD" },
+      tax: { mode: "included" },
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
+  });
+
+  it("takes on a download's order a cent from what was paid from a shop calculating no tax too, and no more", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.01" }) }));
+    expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
+      ok: true,
+      total: "25.01",
+    });
+    await stand.close();
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.02" }) }));
+    expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+  });
+
+  it("does not take on the order of a shop sold as calculating no tax when the order carries tax", async () => {
+    const [{ productId, paid, answer }] = ANSWERED_IN_BALI;
+    stand = await shopAnswering(() => ({ status: 201, body: answeredWith(productId, answer) }));
+
+    const made = await createOrder(connectionTo(stand.url), {
+      ...order,
+      productId: String(productId),
+      price: { amount: paid, currency: "USD" },
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
   });
 
   it("says a shop that would not answer is worth asking again", async () => {
@@ -1105,9 +1268,226 @@ describe("the protected product check", () => {
     }
   });
 
-  it("refuses a shop that calculates taxes and names the setting to repair", async () => {
+  /**
+   * The two shops of the tax probe: one in Bali entering prices with
+   * Indonesia's VAT inside them, one in Seattle entering them before
+   * Washington's sales tax, each showing its catalogue the way it enters it.
+   */
+  const BALI = {
+    woocommerce_prices_include_tax: "yes",
+    woocommerce_tax_display_shop: "incl",
+    woocommerce_tax_based_on: "shipping",
+    woocommerce_tax_round_at_subtotal: "no",
+    woocommerce_default_country: "ID:BA",
+    woocommerce_store_city: "Denpasar",
+    woocommerce_store_postcode: "80361",
+  } as const;
+  const SEATTLE = {
+    woocommerce_prices_include_tax: "no",
+    woocommerce_tax_display_shop: "excl",
+    woocommerce_tax_based_on: "shipping",
+    woocommerce_tax_round_at_subtotal: "no",
+    woocommerce_default_country: "US:WA",
+    woocommerce_store_city: "Seattle",
+    woocommerce_store_postcode: "98101",
+  } as const;
+  type TaxedShop = Readonly<Record<keyof typeof BALI, string>>;
+  /** The two shops rounding tax at the subtotal, as every sale under tax needs. */
+  const BALI_AT_SUBTOTAL: TaxedShop = { ...BALI, woocommerce_tax_round_at_subtotal: "yes" };
+  const SEATTLE_AT_SUBTOTAL: TaxedShop = { ...SEATTLE, woocommerce_tax_round_at_subtotal: "yes" };
+
+  /**
+   * A shop that calculates tax, answering its tax and general settings as
+   * `wc/v3` answers a settings group: every setting of the group in one list.
+   */
+  const taxingAnswer =
+    (shop: TaxedShop, calcTaxes: string, origin?: string) =>
+    (path: string): { status: number; body: unknown } => {
+      if (path === "/protected/guide.txt") return { status: 403, body: {} };
+      const group = (ids: readonly (keyof TaxedShop)[]) => ({
+        status: 200,
+        body: ids.map((id) => ({ id, value: shop[id] })),
+      });
+      if (path === "/wp-json/wc/v3/settings/tax") {
+        return group([
+          "woocommerce_prices_include_tax",
+          "woocommerce_tax_display_shop",
+          "woocommerce_tax_based_on",
+          "woocommerce_tax_round_at_subtotal",
+        ]);
+      }
+      if (path === "/wp-json/wc/v3/settings/general") {
+        return group([
+          "woocommerce_default_country",
+          "woocommerce_store_city",
+          "woocommerce_store_postcode",
+        ]);
+      }
+      if (path.includes("woocommerce_calc_taxes")) {
+        return { status: 200, body: settingAt(path, calcTaxes) };
+      }
+      if (path.includes("/settings/")) {
+        return { status: 200, body: settingAt(path, parcelSettingFor(path)) };
+      }
+      if (path.endsWith("/28")) return { status: 200, body: parcelDocument() };
+      return {
+        status: 200,
+        body:
+          origin === undefined
+            ? productDocument()
+            : productDocument({
+                downloads: [
+                  {
+                    id: "dl_guide",
+                    name: "Agentify guide.txt",
+                    file: `${origin}/protected/guide.txt`,
+                  },
+                ],
+              }),
+      };
+    };
+
+  /**
+   * A shop that calculates tax, answering its tax and general settings as
+   * `wc/v3` answers a settings group: every setting of the group in one list.
+   */
+  const shopTaxing = (shop: TaxedShop, calcTaxes = "yes") =>
+    shopAnswering((asked) => taxingAnswer(shop, calcTaxes)(asked.url));
+
+  /**
+   * The same shop answered in process at one fixed address, because the
+   * address is part of a fingerprint.
+   */
+  const TAXING_SHOP = "https://shop.example.com";
+  const fingerprintIn = async (shop: TaxedShop, product: "11" | "28", calcTaxes = "yes") => {
+    const read = await inspectProductInTheShop(
+      connectionTo(TAXING_SHOP),
+      merchantItemIdFor(TAXING_SHOP, product),
+      async (url) => {
+        const said = taxingAnswer(shop, calcTaxes, TAXING_SHOP)(new URL(url).pathname);
+        return Response.json(said.body, { status: said.status });
+      },
+    );
+    if (!read.ok) throw new Error(`the product check refused: ${read.why}`);
+    return read.product.fingerprint;
+  };
+
+  const readFrom = (shop: Stand, product: "11" | "28") =>
+    inspectProduct(connectionTo(shop.url), merchantItemIdFor(shop.url, product));
+
+  it("sells a download from a shop whose prices are entered with tax inside them", async () => {
+    stand = await shopTaxing(BALI_AT_SUBTOTAL);
+
+    expect(await readFrom(stand, "11")).toMatchObject({
+      ok: true,
+      product: { kind: "download", tax: { mode: "included" } },
+    });
+  });
+
+  it("refuses a download from a shop that enters prices before tax, as the shop's no", async () => {
+    // The tax is added for the buyer's address, which a download's buyer does
+    // not give, so no price quoted beforehand is the one the order charges.
+    stand = await shopTaxing(SEATTLE_AT_SUBTOTAL);
+
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: false, again: false, saidNo: true });
+  });
+
+  it("sells a parcel from a shop that calculates tax either way, and knows where an inclusive shop is based", async () => {
+    stand = await shopTaxing(BALI_AT_SUBTOTAL);
+    const inclusive = await readFrom(stand, "28");
+    await stand.close();
+    stand = await shopTaxing(SEATTLE_AT_SUBTOTAL);
+    const exclusive = await readFrom(stand, "28");
+
+    expect(inclusive).toMatchObject({
+      ok: true,
+      product: {
+        kind: "parcel",
+        tax: {
+          mode: "included",
+          base: { country: "ID", state: "BA", city: "Denpasar", postal_code: "80361" },
+        },
+      },
+    });
+    expect(exclusive).toMatchObject({
+      ok: true,
+      product: { kind: "parcel", tax: { mode: "excluded" } },
+    });
+  });
+
+  it("refuses a shop whose catalogue shows prices otherwise than they are entered, naming the setting", async () => {
+    // The import reads the catalogue's price, and these shops show 0.90 and
+    // 1.11 there for a product entered at 1.00, which is not what is charged.
+    for (const shop of [
+      { ...BALI, woocommerce_tax_display_shop: "excl" },
+      { ...SEATTLE, woocommerce_tax_display_shop: "incl" },
+    ]) {
+      stand = await shopTaxing(shop);
+      for (const product of ["11", "28"] as const) {
+        expect(
+          await readFrom(stand, product),
+          `${shop.woocommerce_default_country} ${product}`,
+        ).toMatchObject({
+          ok: false,
+          saidNo: true,
+          why: expect.stringContaining("Display prices in the shop"),
+        });
+      }
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses a parcel from a shop that calculates tax on an address other than the shipping one", async () => {
+    for (const basedOn of ["billing", "base"]) {
+      stand = await shopTaxing({ ...BALI_AT_SUBTOTAL, woocommerce_tax_based_on: basedOn });
+
+      expect(await readFrom(stand, "28"), basedOn).toMatchObject({
+        ok: false,
+        saidNo: true,
+        why: expect.stringContaining("Calculate tax based on"),
+      });
+      // A download's order carries no address, so it is taxed where the shop
+      // is whichever address the setting names.
+      expect(await readFrom(stand, "11"), basedOn).toMatchObject({ ok: true });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not ask for a shop's tax settings to judge a product while tax calculation is off", async () => {
+    // Nothing the tax settings say bears on a shop with tax off, so a shop
+    // that will not show them still sells.
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.endsWith("/settings/tax") || asked.url.endsWith("/settings/general")) {
+        return { status: 404, body: { code: "rest_setting_setting_group_invalid" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      }
+      return {
+        status: 200,
+        body: asked.url.endsWith("/28") ? parcelDocument() : productDocument(),
+      };
+    });
+
+    expect(await readFrom(stand, "11")).toMatchObject({
+      ok: true,
+      product: { tax: { mode: "off" } },
+    });
+    expect(await readFrom(stand, "28")).toMatchObject({
+      ok: true,
+      product: { tax: { mode: "off" } },
+    });
+  });
+
+  it("says it could not read the tax settings of a shop that calculates tax, not that the shop said no", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.endsWith("/settings/tax")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
       if (asked.url.includes("woocommerce_calc_taxes")) {
         return { status: 200, body: settingAt(asked.url, "yes") };
       }
@@ -1117,12 +1497,63 @@ describe("the protected product check", () => {
       return { status: 200, body: productDocument() };
     });
 
-    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: false, again: false, saidNo: false });
+  });
 
-    expect(read).toMatchObject({
-      ok: false,
-      why: expect.stringContaining("tax calculation"),
-    });
+  it("gives a product a new fingerprint when its shop turns tax calculation on", async () => {
+    // A quote accepted before the change is then refused before an order is
+    // made, rather than filled under tax it was not priced with.
+    for (const product of ["11", "28"] as const) {
+      expect(await fingerprintIn(BALI_AT_SUBTOTAL, product, "yes"), product).not.toBe(
+        await fingerprintIn(BALI_AT_SUBTOTAL, product, "no"),
+      );
+    }
+  });
+
+  it("gives a parcel a new fingerprint when any tax setting that moves its price changes", async () => {
+    const accepted = await fingerprintIn(BALI_AT_SUBTOTAL, "28");
+    for (const changed of [
+      {
+        ...BALI_AT_SUBTOTAL,
+        woocommerce_prices_include_tax: "no",
+        woocommerce_tax_display_shop: "excl",
+      },
+      {
+        ...BALI_AT_SUBTOTAL,
+        woocommerce_default_country: "ID:JK",
+        woocommerce_store_city: "Jakarta",
+      },
+      { ...BALI_AT_SUBTOTAL, woocommerce_store_postcode: "80111" },
+    ]) {
+      expect(await fingerprintIn(changed, "28"), JSON.stringify(changed)).not.toBe(accepted);
+    }
+    expect(await fingerprintIn({ ...BALI_AT_SUBTOTAL }, "28")).toBe(accepted);
+  });
+
+  it("sells nothing from a shop that calculates tax unless it rounds tax at the subtotal, naming the setting", async () => {
+    // Rounding per line, the cart and the order can round a tax that falls on
+    // half a cent apart: a 10% rate and a 5% compound one made a parcel's cart
+    // of 23.47 and its order 23.46, and a download paid at 1.00 an order of
+    // 1.01. Rounding at the subtotal, every case measured agreed.
+    for (const shop of [BALI, SEATTLE]) {
+      stand = await shopTaxing(shop);
+      for (const product of ["11", "28"] as const) {
+        expect(
+          await readFrom(stand, product),
+          `${shop.woocommerce_default_country} ${product}`,
+        ).toMatchObject({
+          ok: false,
+          saidNo: true,
+          why: expect.stringContaining("Round tax at subtotal level"),
+        });
+      }
+      await stand.close();
+      stand = null;
+    }
+    // With tax off the rounding bears on nothing, and is not asked for.
+    stand = await shopTaxing(BALI, "no");
+    expect(await readFrom(stand, "11")).toMatchObject({ ok: true });
+    expect(await readFrom(stand, "28")).toMatchObject({ ok: true });
   });
 
   it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {
@@ -1447,6 +1878,7 @@ describe("the protected product check", () => {
       price: read.product.price,
       download: { id: read.product.downloadId, name: read.product.fileName },
       paidInto: null,
+      tax: read.product.tax,
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
@@ -1506,10 +1938,9 @@ describe("the shop's own shipping rate for a parcel's place", () => {
 
     const read = await ratesFor(stand.url, "28", JAKARTA);
 
-    expect(read).toStrictEqual({
-      ok: true,
-      rates: [{ methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" }],
-    });
+    expect(read.ok && read.rates).toStrictEqual([
+      { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00", tax: "0.00" },
+    ]);
     expect(stand.asked.map((asked) => `${asked.method} ${asked.url}`)).toStrictEqual([
       "GET /wp-json/wc/store/v1/cart",
       "POST /wp-json/wc/store/v1/cart/add-item",
@@ -1545,18 +1976,15 @@ describe("the shop's own shipping rate for a parcel's place", () => {
 
     const read = await ratesFor(stand.url, "28", JAKARTA);
 
-    expect(read).toStrictEqual({
-      ok: true,
-      rates: [
-        { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00" },
-        { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" },
-      ],
-    });
+    expect(read.ok && read.rates).toStrictEqual([
+      { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00", tax: "0.00" },
+      { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00", tax: "0.00" },
+    ]);
   });
 
   it("tells a place the shop does not ship to from a shop that refused or did not answer", async () => {
     stand = await shopWithRates(() => ({ status: 200, body: cart([]) }));
-    expect(await ratesFor(stand.url, "28", JAKARTA)).toStrictEqual({ ok: true, rates: [] });
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: true, rates: [] });
     await stand.close();
 
     // The shop's refusal names the place, so none of it is carried on.
@@ -1796,13 +2224,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   });
 
   it("refuses rates it could not sell at, rather than choosing among them", async () => {
-    // Another currency or scale, an added tax, or two packages: none is the
-    // price of shipping this parcel in dollars, and choosing among them would
-    // be a guess.
+    // Another currency or scale, or two packages: none is the price of
+    // shipping this parcel in dollars, and choosing among them would be a
+    // guess.
     for (const body of [
       cart([rate({ currency_code: "EUR" })]),
       cart([rate({ currency_minor_unit: 0, price: "5" })]),
-      cart([rate({ taxes: "50" })]),
       cart([rate({ price: "five" })]),
       cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
       cart([rate()], { needs_shipping: false }),
@@ -1812,6 +2239,234 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
         ok: false,
         again: false,
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  /**
+   * A Store API cart as the tax probe's shops answered it, in minor units: the
+   * line with the goods' tax, the rates with theirs, and the totals.
+   */
+  const taxedCart = (
+    goods: { subtotal: string; tax: string },
+    rates: unknown[],
+    totals: {
+      items: string;
+      tax: string;
+      price: string;
+      lines: { name: string; rate: string }[];
+      fees?: string;
+      discount?: string;
+    },
+  ) =>
+    cart(rates, {
+      items: [{ ...LINE, totals: { line_subtotal: goods.subtotal, line_subtotal_tax: goods.tax } }],
+      totals: {
+        total_items: totals.items,
+        total_tax: totals.tax,
+        total_fees: totals.fees ?? "0",
+        total_discount: totals.discount ?? "0",
+        total_price: totals.price,
+        currency_code: "USD",
+        currency_minor_unit: 2,
+        tax_lines: totals.lines,
+      },
+    });
+  /** The Seattle shop's cart for the tote bag at 20.00, shipping taxable. */
+  const SEATTLE_CART = taxedCart(
+    { subtotal: "2000", tax: "211" },
+    [rate({ rate_id: "flat_rate:12", instance_id: 12, price: "600", taxes: "63" })],
+    {
+      items: "2000",
+      tax: "274",
+      price: "2874",
+      lines: [
+        { name: "WA State", rate: "6.5%" },
+        { name: "Seattle", rate: "4.05%" },
+      ],
+    },
+  );
+  const SEATTLE: ShipToLocality = {
+    country: "US",
+    state: "WA",
+    city: "Seattle",
+    postal_code: "98101",
+  };
+
+  it("reads a cart that calculates tax at its whole price, with the goods and the taxes inside it", async () => {
+    stand = await shopWithRates(() => ({ status: 200, body: SEATTLE_CART }));
+
+    const read = await ratesFor(stand.url, "28", SEATTLE);
+
+    const standard = {
+      methodId: "flat_rate",
+      instanceId: "12",
+      title: "Standard",
+      cost: "6.00",
+      tax: "0.63",
+    };
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [standard],
+      priced: {
+        ok: true,
+        total: "28.74",
+        goodsBeforeTax: "20.00",
+        goods: "22.11",
+        taxes: ["Seattle 4.05%", "WA State 6.5%"],
+        rate: standard,
+      },
+    });
+  });
+
+  it("chooses the cheapest rate in a taxed cart where the shop chose another, and prices the cart with it", async () => {
+    // The Bali shop's Jakarta cart at 20.00 with shipping taxable, Standard
+    // 5.00 with 0.55 of tax. Express at 12.00 is listed first and chosen,
+    // with its 1.32 of tax and the total that makes.
+    const express = rate({
+      rate_id: "flat_rate:4",
+      name: "Express",
+      instance_id: 4,
+      price: "1200",
+      taxes: "132",
+    });
+    const standard = rate({ price: "500", taxes: "55" });
+    const goods = { subtotal: "1802", tax: "198" };
+    const lines = [{ name: "PPN", rate: "11%" }];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/select-shipping-rate")) {
+        return {
+          status: 200,
+          body: taxedCart(goods, [{ ...express, selected: false }, standard], {
+            items: "1802",
+            tax: "253",
+            price: "2555",
+            lines,
+          }),
+        };
+      }
+      return {
+        status: 200,
+        body: taxedCart(goods, [express, { ...standard, selected: false }], {
+          items: "1802",
+          tax: "330",
+          price: "3332",
+          lines,
+        }),
+      };
+    });
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toMatchObject({
+      ok: true,
+      priced: { ok: true, total: "25.55", goods: "20.00", rate: { instanceId: "3", tax: "0.55" } },
+    });
+    const chose = stand.asked.find((asked) => asked.url.endsWith("/select-shipping-rate"));
+    expect(chose?.cartToken).toBe(TOKEN);
+    expect(JSON.parse(chose?.body ?? "{}")).toStrictEqual({
+      package_id: 0,
+      rate_id: "flat_rate:3",
+    });
+  });
+
+  it("names no price from a cart that raises an error of its own once the cheapest rate is chosen", async () => {
+    // As a shop's plugin does that will not send this parcel by that method.
+    const express = rate({
+      rate_id: "flat_rate:4",
+      name: "Express",
+      instance_id: 4,
+      price: "1200",
+      taxes: "132",
+    });
+    const standard = rate({ price: "500", taxes: "55" });
+    const goods = { subtotal: "1802", tax: "198" };
+    const lines = [{ name: "PPN", rate: "11%" }];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/select-shipping-rate")) {
+        return {
+          status: 200,
+          body: {
+            ...taxedCart(goods, [{ ...express, selected: false }, standard], {
+              items: "1802",
+              tax: "253",
+              price: "2555",
+              lines,
+            }),
+            errors: [{ code: "woocommerce_rest_cart_item_error", message: "Not by this method." }],
+          },
+        };
+      }
+      return {
+        status: 200,
+        body: taxedCart(goods, [express, { ...standard, selected: false }], {
+          items: "1802",
+          tax: "330",
+          price: "3332",
+          lines,
+        }),
+      };
+    });
+
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({
+      ok: true,
+      priced: { ok: false, saidNo: true },
+    });
+  });
+
+  it("prices a cart that carries no tax at the goods and the cheapest rate, without choosing in it", async () => {
+    // The Seattle shop's San Francisco cart at 20.00 with no tax there, its
+    // order 27.50; a dearer rate listed first is the shop's choice.
+    stand = await shopWithRates(() => ({
+      status: 200,
+      body: taxedCart(
+        { subtotal: "2000", tax: "0" },
+        [
+          rate({ rate_id: "flat_rate:5", name: "Express", instance_id: 5, price: "1500" }),
+          rate({ rate_id: "flat_rate:2", instance_id: 2, price: "750", selected: false }),
+        ],
+        { items: "2000", tax: "0", price: "3500", lines: [] },
+      ),
+    }));
+
+    const read = await ratesFor(stand.url, "28", {
+      country: "US",
+      state: "CA",
+      city: "San Francisco",
+      postal_code: "94105",
+    });
+
+    expect(read).toMatchObject({
+      ok: true,
+      priced: { ok: true, total: "27.50", goods: "20.00", taxes: [], rate: { instanceId: "2" } },
+    });
+    expect(stand.asked.some((asked) => asked.url.endsWith("/select-shipping-rate"))).toBe(false);
+  });
+
+  it("names no price from a cart that adds a fee or takes a discount an order would not carry", async () => {
+    for (const extra of [{ fees: "100" }, { discount: "200" }]) {
+      stand = await shopWithRates(() => ({
+        status: 200,
+        body: taxedCart(
+          { subtotal: "2000", tax: "211" },
+          [rate({ rate_id: "flat_rate:12", instance_id: 12, price: "600", taxes: "63" })],
+          { items: "2000", tax: "274", price: "2874", lines: [], ...extra },
+        ),
+      }));
+
+      expect(await ratesFor(stand.url, "28", SEATTLE), JSON.stringify(extra)).toMatchObject({
+        ok: true,
+        priced: { ok: false, saidNo: true },
       });
       await stand.close();
       stand = null;
@@ -1895,9 +2550,16 @@ describe("creating a parcel's order", () => {
     email: "merchant@example.com",
     paid: { amount: "23.00", currency: "USD" },
     goods: "20.00",
-    rate: { methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" },
+    rate: {
+      methodId: "flat_rate",
+      instanceId: "1",
+      title: "Bali courier",
+      cost: "3.00",
+      tax: "0.00",
+    },
     address: ADDRESS,
     paidInto: null,
+    tax: "off" as const,
   };
   const shipping = {
     first_name: "Nuanu Reception",
@@ -1956,7 +2618,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), sold);
 
-    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
     const asked = stand.asked[0];
     expect(asked?.method).toBe("POST");
     expect(asked?.authorization).toMatch(/^Basic /);
@@ -1993,6 +2655,7 @@ describe("creating a parcel's order", () => {
     // is 0.023, where the goods alone would make it 0.02.
     const lines = [
       { key: "agentify_order_id", value: "ord_9" },
+      { key: "agentify_paid", value: "23.00 USD" },
       { key: "agentify_commission", value: "≈ 0.023 USD (0.1%)" },
       { key: "agentify_payout_contract", value: PAID_INTO.address },
     ];
@@ -2000,7 +2663,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), { ...sold, paidInto: PAID_INTO });
 
-    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
     expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toStrictEqual(lines);
   });
 
@@ -2045,6 +2708,233 @@ describe("creating a parcel's order", () => {
       await stand.close();
       stand = null;
     }
+  });
+
+  /**
+   * The tax probe's parcel orders for the tote bag at 20.00 with taxable
+   * shipping, made with a line naming the product alone: from the Bali shop to
+   * Denpasar by its courier, and from the Seattle shop to Seattle.
+   */
+  const TAXED_ORDERS = [
+    {
+      tax: "included",
+      rate: {
+        methodId: "flat_rate",
+        instanceId: "1",
+        title: "Bali courier",
+        cost: "3.00",
+        tax: "0.33",
+      },
+      answer: {
+        total: "23.33",
+        total_tax: "2.31",
+        line: "18.02",
+        lineTax: "1.98",
+        shippingTax: "0.33",
+      },
+    },
+    {
+      tax: "excluded",
+      rate: {
+        methodId: "flat_rate",
+        instanceId: "12",
+        title: "Standard",
+        cost: "6.00",
+        tax: "0.63",
+      },
+      answer: {
+        total: "28.74",
+        total_tax: "2.74",
+        line: "20.00",
+        lineTax: "2.11",
+        shippingTax: "0.63",
+      },
+    },
+  ] as const;
+  const taxedParcel = (
+    rate: { methodId: string; instanceId: string; title: string; cost: string },
+    answer: {
+      total: string;
+      total_tax: string;
+      line: string;
+      lineTax: string;
+      shippingTax: string;
+    },
+  ) =>
+    madeParcel({
+      total: answer.total,
+      total_tax: answer.total_tax,
+      line_items: [
+        {
+          product_id: 28,
+          quantity: 1,
+          subtotal: answer.line,
+          total: answer.line,
+          total_tax: answer.lineTax,
+        },
+      ],
+      shipping_lines: [
+        {
+          id: 6,
+          method_title: rate.title,
+          method_id: rate.methodId,
+          instance_id: rate.instanceId,
+          total: rate.cost,
+          total_tax: answer.shippingTax,
+        },
+      ],
+    });
+
+  it("leaves a shop that calculates tax to price the goods, and takes the order on at the total paid", async () => {
+    for (const { tax, rate, answer } of TAXED_ORDERS) {
+      stand = await shopAnswering(() => ({ status: 201, body: taxedParcel(rate, answer) }));
+
+      const made = await createParcel(connectionTo(stand.url), {
+        ...sold,
+        paid: { amount: answer.total, currency: "USD" },
+        rate,
+        tax,
+      });
+
+      expect(made, tax).toStrictEqual({ ok: true, id: "30", number: "30", total: answer.total });
+      const body = JSON.parse(stand.asked[0]?.body ?? "{}");
+      // Totals sent on the line would be taxed on top in a shop whose prices
+      // hold their tax, and are the shop's own price in the other.
+      expect(body.line_items, tax).toStrictEqual([{ product_id: 28, quantity: 1 }]);
+      expect(body.shipping_lines, tax).toStrictEqual([
+        {
+          method_id: rate.methodId,
+          instance_id: rate.instanceId,
+          method_title: rate.title,
+          total: rate.cost,
+        },
+      ]);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not take on a taxed parcel's order whose total is not what was paid", async () => {
+    // The Bali shop's order with the goods' totals sent on its line: 25.53
+    // against the cart's 23.33.
+    const [{ rate }] = TAXED_ORDERS;
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: taxedParcel(rate, {
+        total: "25.53",
+        total_tax: "2.53",
+        line: "20.00",
+        lineTax: "2.20",
+        shippingTax: "0.33",
+      }),
+    }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: "23.33", currency: "USD" },
+      rate,
+      tax: "included",
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true, id: "30" });
+  });
+
+  it("takes on a taxed parcel's order within a cent of what was paid either way, and says what the shop recorded", async () => {
+    // The review's German shop entering 10.0756 of net shipping: the cart
+    // taxed that cost and quoted 31.99, the order taxed the 10.08 it was sent
+    // and totalled 32.00; and the same a cent the other way.
+    const paket = {
+      methodId: "flat_rate",
+      instanceId: "8",
+      title: "Paket",
+      cost: "10.08",
+      tax: "1.91",
+    } as const;
+    for (const [paid, recorded] of [
+      ["31.99", "32.00"],
+      ["32.00", "31.99"],
+    ] as const) {
+      stand = await shopAnswering(() => ({
+        status: 201,
+        body: taxedParcel(paket, {
+          total: recorded,
+          total_tax: "5.11",
+          line: "16.81",
+          lineTax: "3.19",
+          shippingTax: "1.92",
+        }),
+      }));
+
+      const made = await createParcel(connectionTo(stand.url), {
+        ...sold,
+        paid: { amount: paid, currency: "USD" },
+        rate: paket,
+        tax: "included",
+      });
+
+      expect(made, paid).toStrictEqual({ ok: true, id: "30", number: "30", total: recorded });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not take on a taxed parcel's order that moved the goods to another rate", async () => {
+    // Paris from the German shop keeping one gross price: paid 31.88 at its
+    // cart, the order totalled 32.05.
+    const standard = {
+      methodId: "flat_rate",
+      instanceId: "11",
+      title: "Standard",
+      cost: "9.90",
+      tax: "1.98",
+    } as const;
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: taxedParcel(standard, {
+        total: "32.05",
+        total_tax: "5.34",
+        line: "16.81",
+        lineTax: "3.36",
+        shippingTax: "1.98",
+      }),
+    }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: "31.88", currency: "USD" },
+      rate: standard,
+      tax: "included",
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true, id: "30" });
+  });
+
+  it("takes on a parcel's order a cent from what was paid from a shop calculating no tax too, and no more", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ total: "23.01" }) }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: true,
+      total: "23.01",
+    });
+    await stand.close();
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ total: "23.02" }) }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+  });
+
+  it("does not take on the order of a parcel sold as untaxed when the order carries tax", async () => {
+    const [{ rate, answer }] = TAXED_ORDERS;
+    stand = await shopAnswering(() => ({ status: 201, body: taxedParcel(rate, answer) }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: answer.total, currency: "USD" },
+      goods: "20.33",
+      rate,
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
   });
 
   it("carries none of the address into a refusal, and says whether to ask again", async () => {

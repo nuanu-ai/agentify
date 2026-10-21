@@ -887,6 +887,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     if (!open.ok) return problemOf(open);
     if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
+    const shopTotals =
+      parts.woo === null
+        ? {}
+        : await parts.woo.shopTotals(
+            person,
+            orders.document.orders.map((order) => order.id),
+          );
     const view = ordersView(
       viewing(person).mode,
       cards.document,
@@ -895,6 +902,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       query,
       owed.document,
       paidInto.document,
+      shopTotals,
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
       const links = await parts.woo.recoveryLinks(

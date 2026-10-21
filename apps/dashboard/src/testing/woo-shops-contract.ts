@@ -234,7 +234,7 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
         await shops.recordOrder(
           "ord_placed",
-          { id: "13", number: "WOO-13", permission: PERMISSION },
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
         await shops.claimOrder(accounts.one, "ord_hidden", FACTS, NOW);
@@ -253,6 +253,48 @@ export const wooShopsContract = (
           ]),
         ).toEqual(["ord_placed", "ord_unknown"]);
         expect(await shops.recoverableOrders(accounts.one, [])).toEqual([]);
+      });
+    });
+  });
+
+  describe(`${name}: what the shop's orders total`, () => {
+    it("keeps the total each placed order recorded in the shop, for its own account alone", async () => {
+      await using(async (shops, accounts) => {
+        await shops.claimOrder(
+          accounts.one,
+          "ord_cent",
+          { ...FACTS, kind: "parcel", amount: "31.99" },
+          NOW,
+        );
+        await shops.recordOrder(
+          "ord_cent",
+          { id: "211", number: "211", permission: null, total: "32.00" },
+          NOW,
+        );
+        await shops.claimOrder(accounts.one, "ord_even", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_even",
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
+          NOW,
+        );
+        await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_foreign",
+          { id: "14", number: "WOO-14", permission: PERMISSION, total: "25.01" },
+          NOW,
+        );
+        await shops.claimOrder(accounts.one, "ord_unknown", FACTS, NOW);
+
+        expect(
+          await shops.shopTotals(accounts.one, [
+            "ord_cent",
+            "ord_even",
+            "ord_foreign",
+            "ord_unknown",
+            "ord_missing",
+          ]),
+        ).toEqual({ ord_cent: "32.00", ord_even: "25.00" });
+        expect(await shops.shopTotals(accounts.one, [])).toEqual({});
       });
     });
   });
@@ -486,7 +528,7 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", permission: PERMISSION },
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
         expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
@@ -505,7 +547,11 @@ export const wooShopsContract = (
         const parcel = { ...FACTS, kind: "parcel" as const };
         await shops.claimOrder(accounts.one, "ord_1", parcel, NOW);
         expect(
-          await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW),
+          await shops.recordOrder(
+            "ord_1",
+            { id: "30", number: "30", permission: null, total: "25.00" },
+            NOW,
+          ),
         ).toBe(true);
         const placed = { kind: "placed_parcel", id: "30", number: "30" };
         expect(await shops.claimOrder(accounts.one, "ord_1", parcel, LATER)).toEqual(placed);
@@ -521,12 +567,16 @@ export const wooShopsContract = (
           await shops.claimOrder(accounts.one, orderId, parcel, NOW);
           await shops.recordOrder(
             orderId,
-            { id: `w_${orderId}`, number: "30", permission: null },
+            { id: `w_${orderId}`, number: "30", permission: null, total: "25.00" },
             NOW,
           );
         }
         await shops.claimOrder(accounts.other, "ord_3", parcel, NOW);
-        await shops.recordOrder("ord_3", { id: "w_ord_3", number: "31", permission: null }, NOW);
+        await shops.recordOrder(
+          "ord_3",
+          { id: "w_ord_3", number: "31", permission: null, total: "25.00" },
+          NOW,
+        );
 
         // Where and when it was sold decide whether it is still read: in the
         // shop connected now, and not for ever.
@@ -574,7 +624,7 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", permission: PERMISSION },
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
         await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, LATER);
@@ -592,7 +642,7 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", permission: PERMISSION },
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
         expect(await shops.claimOrder(accounts.one, "ord_2", FACTS, NOW)).toEqual({
@@ -606,7 +656,7 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", permission: PERMISSION },
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
         await shops.recordOrder(
@@ -615,6 +665,7 @@ export const wooShopsContract = (
             id: "14",
             number: "WOO-14",
             permission: { ...PERMISSION, orderKey: "wc_order_14", orderNumber: "WOO-14" },
+            total: "25.00",
           },
           LATER,
         );

@@ -297,6 +297,33 @@ describe("the counts beside a search", () => {
   });
 });
 
+describe("a shop's order a cent from what the buyer paid", () => {
+  it("says in the order's details what the shop's order totals, and says nothing where it is the same", () => {
+    const orders = ordersOf([{ id: FIRST }]);
+    const details = (totals: Readonly<Record<string, string>>) =>
+      readable(
+        served(() => (
+          <OrdersScreen
+            view={ordersView(
+              "live",
+              CARDS,
+              orders,
+              orders,
+              new URLSearchParams({ details: FIRST }),
+              {},
+              {},
+              totals,
+            )}
+          />
+        )),
+      );
+
+    expect(details({ [FIRST]: "5.01" })).toContain("5.01 USD");
+    expect(details({ [FIRST]: "5.00" })).not.toContain("Shop's order");
+    expect(details({})).not.toContain("Shop's order");
+  });
+});
+
 describe("an unfulfilled test purchase", () => {
   it("marks the original amount as a test", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);

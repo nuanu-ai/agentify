@@ -21,6 +21,8 @@ import {
 import { z } from "zod";
 import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import {
+  amountOfCents,
+  centsOf,
   decimalOfMinorUnits,
   productIdFromMerchantItem,
   type StoreProduct,
@@ -28,6 +30,7 @@ import {
   TYPED_PRICE,
   USD_SCALE,
   usdAmountOf,
+  withinACent,
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
@@ -60,13 +63,31 @@ export interface ShopKeys {
   readonly consumerSecret: string;
 }
 
+/**
+ * How WooCommerce taxes a sale from the shop, as far as the price and the
+ * order depend on it.
+ */
+export type ShopTax =
+  /** Tax calculation is off, and an order carries no tax. */
+  | { readonly mode: "off" }
+  /**
+   * Prices are entered with tax inside them, which WooCommerce splits out at
+   * the rates of `base`, the shop's own address.
+   */
+  | { readonly mode: "included"; readonly base: ShipToLocality }
+  /** Prices are entered before tax, which is added for the buyer's address. */
+  | { readonly mode: "excluded" };
+
 /** One protected file handed to the agent. */
 interface EligibleDownload {
   readonly kind: "download";
   readonly productId: string;
   readonly downloadId: string;
   readonly fileName: string;
+  /** What the buyer pays: the price as entered, with any tax inside it. */
   readonly price: Money;
+  /** No download is sold from a shop whose prices are entered before tax. */
+  readonly tax: { readonly mode: "off" | "included" };
   /** Digest of the delivery-critical product, settings and protected source. */
   readonly fingerprint: string;
 }
@@ -75,8 +96,12 @@ interface EligibleDownload {
 interface EligibleParcel {
   readonly kind: "parcel";
   readonly productId: string;
-  /** The goods alone; shipping is the shop's rate for the buyer's place. */
+  /**
+   * The goods as entered, without shipping, and without the tax the buyer's
+   * place adds where prices are entered before tax.
+   */
   readonly price: Money;
+  readonly tax: ShopTax;
   /** Digest of the product and the shop settings a parcel is sold under. */
   readonly fingerprint: string;
 }
@@ -90,7 +115,7 @@ export type EligibleWooProduct = EligibleDownload | EligibleParcel;
  * shop said nothing that could be read or trusted, which is not to be told as
  * the seller's no.
  */
-type NotSellable =
+export type NotSellable =
   | {
       readonly ok: false;
       readonly why: string;
@@ -146,6 +171,24 @@ const ProductSchema = z.looseObject({
 /** WooCommerce writes the setting's own id beside its value, matched to the address asked. */
 const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string(), z.boolean()]) });
 
+/** A settings group as `wc/v3` writes one: every setting of the group in one list. */
+const SettingsGroupSchema = z.array(SettingSchema);
+
+/** Judged from the tax group only where the shop calculates tax. */
+const TAX_SETTINGS = [
+  "woocommerce_prices_include_tax",
+  "woocommerce_tax_display_shop",
+  "woocommerce_tax_based_on",
+  "woocommerce_tax_round_at_subtotal",
+] as const;
+
+/** The shop's own address, read from the general group for an inclusive shop's parcel. */
+const BASE_SETTINGS = [
+  "woocommerce_default_country",
+  "woocommerce_store_city",
+  "woocommerce_store_postcode",
+] as const;
+
 /**
  * Download and shipping settings are asked for in one batch, one round trip
  * whichever class the product is, and only the answers bearing on its class
@@ -179,15 +222,22 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
     "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
     "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
+    "/wp-json/wc/v3/settings/tax",
+    "/wp-json/wc/v3/settings/general",
   ] as const;
   /** The product first. */
   const BEARING = {
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
   } as const;
+  /** Asked as a whole group rather than one setting. */
+  const GROUPS = [10, 11];
   const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
   /** Which check an answer was, and the status it came with, as a log names them. */
-  const checkAt = (index: number) => (index === 0 ? "product" : `${settingAsked(index)} setting`);
+  const checkAt = (index: number) =>
+    index === 0
+      ? "product"
+      : `${settingAsked(index)} ${GROUPS.includes(index) ? "settings" : "setting"}`;
   const statusAt = (index: number) => `HTTP ${answers[index]?.response.status}`;
   /** Null where the shop never answered; `body` is null where its answer broke off. */
   const answers = await Promise.all(
@@ -216,7 +266,7 @@ export const inspectProductInTheShop = async (
       return undefined;
     }
   };
-  const unanswered = (indices: readonly number[]): ProductInspection | null => {
+  const unanswered = (indices: readonly number[]): NotSellable | null => {
     const lostAt = indices.find((index) => answers[index] === null);
     if (lostAt !== undefined) {
       return {
@@ -353,7 +403,84 @@ export const inspectProductInTheShop = async (
     shipTo,
     destination,
   ] = settings.map((setting) => (setting.success ? setting.data.value : ""));
+  /** The named settings of a group, or why the group cannot be taken for them. */
+  const groupAt = (
+    index: number,
+    ids: readonly string[],
+  ): { readonly ok: true; readonly value: (id: string) => string } | NotSellable => {
+    const lost = unanswered([index]);
+    if (lost !== null) return lost;
+    const listed = SettingsGroupSchema.safeParse(documentOf(index));
+    const found = new Map(
+      listed.success ? listed.data.map((one) => [one.id, String(one.value)] as const) : [],
+    );
+    const missing = ids.find((id) => !found.has(id));
+    if (missing !== undefined) {
+      return {
+        ok: false,
+        why: `The shop's protected ${checkAt(index)} check returned no ${missing} setting (${statusAt(index)}).`,
+        again: false,
+        saidNo: false,
+      };
+    }
+    return { ok: true, value: (id) => found.get(id) ?? "" };
+  };
   const unsupported: string[] = [];
+  // Judged only where the shop calculates tax: with it off nothing they say
+  // bears on the sale, so a shop that will not show them still sells.
+  let entered: "included" | "excluded" | null = null;
+  if (taxes === "yes") {
+    const taxSettings = groupAt(10, TAX_SETTINGS);
+    if (!taxSettings.ok) return taxSettings;
+    const includesTax = taxSettings.value("woocommerce_prices_include_tax");
+    if (includesTax === "yes" || includesTax === "no") {
+      entered = includesTax === "yes" ? "included" : "excluded";
+      // The import reads the catalogue's price, which WooCommerce shows with
+      // tax added or taken off when the display differs from the entry, while
+      // the price check and the order go by the price as entered.
+      if (
+        taxSettings.value("woocommerce_tax_display_shop") !==
+        (entered === "included" ? "incl" : "excl")
+      ) {
+        unsupported.push(
+          `the shop's catalogue shows prices ${entered === "included" ? "without" : "with"} tax while` +
+            ` they are entered ${entered === "included" ? "with" : "without"} it, so the price it shows` +
+            " is not the price a card would sell at (WooCommerce → Settings → Tax → Display prices in" +
+            " the shop)",
+        );
+      }
+    } else {
+      unsupported.push("the shop's setting for whether prices are entered with tax is unreadable");
+    }
+    if (kind === "download" && entered === "excluded") {
+      unsupported.push(
+        "the shop's prices are entered before tax, which WooCommerce adds for the buyer's address," +
+          " and the buyer of a download gives none, so no price can be quoted that the order would" +
+          " charge",
+      );
+    }
+    // Rounding per line, a cart and the order made for it can round a tax
+    // that falls on half a cent apart, a compound rate's included, so the
+    // order would not charge what was paid.
+    if (taxSettings.value("woocommerce_tax_round_at_subtotal") !== "yes") {
+      unsupported.push(
+        "the shop calculates tax and rounds it per line, where an order made for a sale can round" +
+          ' the tax a cent away from what the buyer paid (WooCommerce → Settings → Tax → "Round' +
+          ' tax at subtotal level, instead of rounding per line")',
+      );
+    }
+    // Only the shipping address is known to price a parcel's cart and its
+    // order alike; the order carries no billing address to tax by.
+    if (kind === "parcel" && taxSettings.value("woocommerce_tax_based_on") !== "shipping") {
+      unsupported.push(
+        "WooCommerce calculates tax in this shop on an address other than the customer's shipping" +
+          " address, and this connector sells a parcel only where it is calculated on the shipping" +
+          " address (WooCommerce → Settings → Tax → Calculate tax based on)",
+      );
+    }
+  } else if (taxes !== "no") {
+    unsupported.push("the shop's tax calculation setting is neither on nor off");
+  }
   if (product.type !== "simple") unsupported.push("it is not a simple product");
   if (product.status !== "publish") unsupported.push("it is not published");
   if (!product.purchasable) unsupported.push("WooCommerce does not mark it purchasable");
@@ -368,7 +495,6 @@ export const inspectProductInTheShop = async (
     if (product.download_expiry !== -1) unsupported.push("its download access expires");
   }
   if (currency !== "USD") unsupported.push("the shop currency is not USD");
-  if (taxes !== "no") unsupported.push("WooCommerce tax calculation is not disabled");
   if (kind === "download") {
     if (method !== "force") unsupported.push("the download method is not Force Downloads");
     if (login !== "no") unsupported.push("downloads require a WooCommerce login");
@@ -436,8 +562,33 @@ export const inspectProductInTheShop = async (
     };
   }
   if (kind === "parcel") {
+    let tax: ShopTax = { mode: entered === "excluded" ? "excluded" : "off" };
+    if (entered === "included") {
+      const general = groupAt(11, BASE_SETTINGS);
+      if (!general.ok) return general;
+      const [country = "", state] = general.value("woocommerce_default_country").split(":");
+      if (country === "") {
+        return {
+          ok: false,
+          why: "The shop's general settings name no country it is based in.",
+          again: false,
+          saidNo: false,
+        };
+      }
+      const postcode = general.value("woocommerce_store_postcode");
+      tax = {
+        mode: "included",
+        base: {
+          country,
+          ...(state === undefined || state === "" ? {} : { state }),
+          city: general.value("woocommerce_store_city"),
+          ...(postcode === "" ? {} : { postal_code: postcode }),
+        },
+      };
+    }
     // The class is hashed first, so a parcel's digest can never equal a
     // download's: a product that changed class after its quote has changed.
+    // With tax off the digest is the one it always was.
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify([
@@ -453,7 +604,14 @@ export const inspectProductInTheShop = async (
           product.sold_individually,
           product.virtual,
           product.downloadable,
-          taxes,
+          tax.mode === "off"
+            ? taxes
+            : [
+                tax.mode,
+                ...(tax.mode === "included"
+                  ? [tax.base.country, tax.base.state, tax.base.city, tax.base.postal_code]
+                  : []),
+              ],
           shipTo,
           destination,
         ]),
@@ -461,7 +619,7 @@ export const inspectProductInTheShop = async (
       .digest("hex");
     return {
       ok: true,
-      product: { kind, productId, price: { amount, currency: "USD" }, fingerprint },
+      product: { kind, productId, price: { amount, currency: "USD" }, tax, fingerprint },
     };
   }
   const download = product.downloads[0];
@@ -545,6 +703,10 @@ export const inspectProductInTheShop = async (
         product.downloadable,
         product.download_limit,
         product.download_expiry,
+        // A download sells under tax only where prices hold their tax and tax
+        // is rounded at the subtotal, which the product check holds, and its
+        // order is taxed where the shop is, so whether tax is calculated is all
+        // that moves its price.
         taxes,
         method,
         login,
@@ -561,6 +723,7 @@ export const inspectProductInTheShop = async (
       downloadId: download.id,
       fileName: download.name,
       price: { amount, currency: "USD" },
+      tax: { mode: entered === "included" ? "included" : "off" },
       fingerprint,
     },
   };
@@ -583,12 +746,15 @@ export interface SoldItem {
   readonly price: Money;
   readonly download: { readonly id: string; readonly name: string };
   readonly paidInto: PaidIntoSplit | null;
+  /** As the product was sold under; it decides how the order's line is priced. */
+  readonly tax: { readonly mode: "off" | "included" };
 }
 
 /**
- * The shop order's metadata: our order identifier, and for a payment into a
- * split two lines the merchant reads beside the order, the commission on what
- * was paid and the split it went to. No key begins with an underscore, which
+ * The shop order's metadata: our order identifier, what the buyer paid, which
+ * the shop's total may differ from by a cent, and for a payment into a split
+ * two lines the merchant reads beside the order, the commission on what was
+ * paid and the split it went to. No key begins with an underscore, which
  * WooCommerce hides. The answer check reads only the identifier, so the lines
  * neither break nor weaken it.
  */
@@ -598,6 +764,7 @@ const metadataOf = (
   into: PaidIntoSplit | null,
 ): readonly { readonly key: string; readonly value: string }[] => [
   { key: "agentify_order_id", value: orderId },
+  { key: "agentify_paid", value: `${paid.amount} ${paid.currency}` },
   ...(into === null
     ? []
     : [
@@ -616,6 +783,8 @@ export type OrderMade =
       readonly number: string;
       readonly orderKey: string;
       readonly downloadId: string;
+      /** What the shop's order totals, which may be a cent from what was paid. */
+      readonly total: string;
     }
   | {
       readonly ok: false;
@@ -720,10 +889,38 @@ export interface ShippingRate {
   readonly title: string;
   /** In US dollars at two decimals, as an order's shipping line carries it. */
   readonly cost: string;
+  /** The tax the cart adds to the rate, at two decimals; "0.00" where none. */
+  readonly tax: string;
+}
+
+/**
+ * What the shop's cart charges for the parcel sent at its cheapest rate, as
+ * the cart totals it. Where WooCommerce calculates tax this is the parcel's
+ * whole price for the place, and an order made for that place with that rate
+ * charges the same, with one exception the caller guards: a shop whose prices
+ * hold their tax may keep one gross price for every buyer, which its cart
+ * shows and its order does not.
+ */
+export interface CartPrice {
+  readonly ok: true;
+  /** Goods, shipping and the tax on both. */
+  readonly total: string;
+  /** The goods as the cart holds them, before the tax it charged on them. */
+  readonly goodsBeforeTax: string;
+  /** The goods with the tax the cart charged on them for this place. */
+  readonly goods: string;
+  /** Each tax the cart charged, as its name and rate ("PPN 11%"), sorted. */
+  readonly taxes: readonly string[];
+  /** The cheapest rate, at which `total` is charged. */
+  readonly rate: ShippingRate;
 }
 
 export type RatesRead =
-  | { readonly ok: true; readonly rates: readonly ShippingRate[] }
+  | {
+      readonly ok: true;
+      readonly rates: readonly ShippingRate[];
+      readonly priced: CartPrice | NotSellable;
+    }
   | NotSellable;
 
 /** Usually the cheapest on offer, and a parcel nobody collects never leaves. */
@@ -756,6 +953,42 @@ const CartSchema = z.looseObject({
   ),
 });
 
+/** The parts of a cart its price is read from, which a read of its rates alone does not need. */
+const PricedCartSchema = z.looseObject({
+  errors: z.array(z.unknown()),
+  items: z.array(
+    z.looseObject({
+      id: z.number(),
+      quantity: z.number(),
+      totals: z.looseObject({ line_subtotal: z.string(), line_subtotal_tax: z.string() }),
+    }),
+  ),
+  shipping_rates: z.array(
+    z.looseObject({
+      package_id: z.union([z.number().int(), z.string()]),
+      shipping_rates: z.array(
+        CartRateSchema.extend({ rate_id: z.string(), selected: z.boolean() }),
+      ),
+    }),
+  ),
+  totals: z.looseObject({
+    total_items: z.string(),
+    total_tax: z.string(),
+    total_fees: z.string(),
+    total_discount: z.string(),
+    total_price: z.string(),
+    currency_code: z.string(),
+    currency_minor_unit: z.number().int(),
+    tax_lines: z.array(z.looseObject({ name: z.string(), rate: z.string() })),
+  }),
+});
+
+/** Cents of a Store API amount, written in minor units at two decimals. */
+const minorCents = (minor: string): bigint | null => {
+  const amount = decimalOfMinorUnits(minor, USD_SCALE);
+  return amount === null ? null : centsOf(amount);
+};
+
 /**
  * WooCommerce has no endpoint that calculates a rate, so this uses the Store
  * API cart as a browserless client can: a fresh cart whose token stands in for
@@ -768,6 +1001,13 @@ const CartSchema = z.looseObject({
  * Rates come back in the shop's order with pickup left out. An empty list means
  * the shop does not ship there; a refusal is said apart, in our own words,
  * because the shop's message names the place.
+ *
+ * The cart's price for the cheapest rate comes back beside them. A cart totals
+ * the rate the shop chose, which is its first; where that is not the cheapest
+ * and the cart carries tax, the cheapest is chosen in the cart and the cart
+ * read again, because the tax on a rate is rounded with the rest and cannot be
+ * swapped by arithmetic. A cart with no tax at all is priced as its goods and
+ * the rate, which is what it would total.
  */
 export const shippingRatesInTheShop = async (
   shopUrl: string,
@@ -950,23 +1190,20 @@ export const shippingRatesInTheShop = async (
     if (NOT_SHIPPING.has(rate.method_id)) continue;
     // Not dropped: a rate left out in silence could make another look
     // cheapest, and the shop would charge what we did not say.
-    if (
-      rate.currency_code !== "USD" ||
-      rate.currency_minor_unit !== USD_SCALE ||
-      rate.taxes !== "0"
-    ) {
+    if (rate.currency_code !== "USD" || rate.currency_minor_unit !== USD_SCALE) {
       return {
         ok: false,
-        why: "The shop's cart offered a shipping rate that is not an untaxed US dollar amount.",
+        why: "The shop's cart offered a shipping rate that is not a US dollar amount.",
         again: false,
         saidNo: true,
       };
     }
     const cost = decimalOfMinorUnits(rate.price, USD_SCALE);
-    if (cost === null) {
+    const tax = decimalOfMinorUnits(rate.taxes, USD_SCALE);
+    if (cost === null || tax === null) {
       return {
         ok: false,
-        why: "The shop's cart offered a shipping rate whose price is not an amount.",
+        why: "The shop's cart offered a shipping rate whose price or tax is not an amount.",
         again: false,
         saidNo: false,
       };
@@ -976,9 +1213,131 @@ export const shippingRatesInTheShop = async (
       instanceId: String(rate.instance_id),
       title: rate.name,
       cost,
+      tax,
     });
   }
-  return { ok: true, rates };
+
+  const unread = (why: string): NotSellable => ({ ok: false, why, again: false, saidNo: false });
+  /**
+   * The price of a cart at its cheapest rate, or the rate to choose first
+   * where the cart totals another and carries tax.
+   */
+  const priceOf = (
+    document: unknown,
+  ): CartPrice | NotSellable | { readonly choose: Readonly<Record<string, unknown>> } => {
+    const read = PricedCartSchema.safeParse(document);
+    if (!read.success) return unread(`The shop's cart answered without its totals at ${placing}.`);
+    const { totals, items } = read.data;
+    const [packed] = read.data.shipping_rates;
+    const costOf = (one: { price: string; taxes: string }) =>
+      (minorCents(one.price) ?? 0n) + (minorCents(one.taxes) ?? 0n);
+    const offered = (packed?.shipping_rates ?? []).filter(
+      (one) => !NOT_SHIPPING.has(one.method_id),
+    );
+    // The first of equals, as the shop lists them.
+    const cheapest = offered.reduce<(typeof offered)[number] | undefined>(
+      (best, one) => (best === undefined || costOf(one) < costOf(best) ? one : best),
+      undefined,
+    );
+    if (cheapest === undefined) {
+      return {
+        ok: false,
+        why: "The shop's cart offered no rate to this place.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    if (totals.currency_code !== "USD" || totals.currency_minor_unit !== USD_SCALE) {
+      return {
+        ok: false,
+        why: "The shop's cart totals are not in US dollars at two decimals.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    // The order is made with the product and the rate alone, so a fee or a
+    // discount the cart adds would not be in it, and the order would not meet
+    // a check the cart raised.
+    if (totals.total_fees !== "0" || totals.total_discount !== "0" || read.data.errors.length > 0) {
+      return {
+        ok: false,
+        why: "The shop's cart adds a fee, a discount or an error of its own that an order made for this parcel would not carry.",
+        again: false,
+        saidNo: true,
+      };
+    }
+    const [goods, ...more] = items;
+    const subtotal = minorCents(goods?.totals.line_subtotal ?? "");
+    const goodsTax = minorCents(goods?.totals.line_subtotal_tax ?? "");
+    const itemsTotal = minorCents(totals.total_items);
+    const shipping = minorCents(cheapest.price);
+    const shippingTax = minorCents(cheapest.taxes);
+    const totalTax = minorCents(totals.total_tax);
+    const total = minorCents(totals.total_price);
+    if (
+      goods === undefined ||
+      more.length > 0 ||
+      goods.id !== product ||
+      goods.quantity !== 1 ||
+      subtotal === null ||
+      goodsTax === null ||
+      itemsTotal === null ||
+      shipping === null ||
+      shippingTax === null ||
+      totalTax === null ||
+      total === null
+    ) {
+      return unread(`The shop's cart totals are not this parcel's amounts at ${placing}.`);
+    }
+    const untaxed = totalTax === 0n && offered.every((one) => minorCents(one.taxes) === 0n);
+    if (!cheapest.selected && !untaxed) {
+      return { choose: { package_id: packed?.package_id, rate_id: cheapest.rate_id } };
+    }
+    return {
+      ok: true,
+      total: amountOfCents(cheapest.selected ? total : itemsTotal + shipping),
+      goodsBeforeTax: amountOfCents(subtotal),
+      goods: amountOfCents(subtotal + goodsTax),
+      taxes: totals.tax_lines.map((line) => `${line.name} ${line.rate}`).sort(),
+      rate: {
+        methodId: cheapest.method_id,
+        instanceId: String(cheapest.instance_id),
+        title: cheapest.name,
+        cost: amountOfCents(shipping),
+        tax: amountOfCents(shippingTax),
+      },
+    };
+  };
+  const asRead = priceOf(document);
+  if (!("choose" in asRead)) return { ok: true, rates, priced: asRead };
+
+  const choosing = `${cart}/select-shipping-rate`;
+  const chosen = await ask(choosing, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(asRead.choose),
+  });
+  if (!chosen.ok) return { ok: true, rates, priced: chosen };
+  let rechecked: unknown;
+  try {
+    rechecked = JSON.parse(chosen.body);
+  } catch {
+    rechecked = undefined;
+  }
+  const afterChoosing = priceOf(rechecked);
+  const nowChosen = PricedCartSchema.safeParse(
+    rechecked,
+  ).data?.shipping_rates[0]?.shipping_rates.find((one) => one.selected)?.rate_id;
+  // Still not totalling the cheapest, or totalling a rate other than the one
+  // chosen: the cart changed while it was asked.
+  if ("choose" in afterChoosing || (afterChoosing.ok && nowChosen !== asRead.choose.rate_id)) {
+    return {
+      ok: true,
+      rates,
+      priced: unread(`The shop's cart did not total the rate chosen at ${choosing}.`),
+    };
+  }
+  return { ok: true, rates, priced: afterChoosing };
 };
 
 /**
@@ -986,8 +1345,12 @@ export const shippingRatesInTheShop = async (
  * stamps, so the merchant ships it; without it the order sits pending although
  * the buyer paid. It also makes the shop send two emails, one to the address on
  * the order, which nothing can suppress, so the order carries the merchant's
- * own address and the buyer receives no shop mail. The price sent is what the
- * buyer paid, not what the shop charges today.
+ * own address and the buyer receives no shop mail. Where the shop calculates no
+ * tax, the price sent is what the buyer paid, not what the shop charges today.
+ * Where prices are entered with tax inside them, the line names only the
+ * product: WooCommerce reads a line's totals as amounts before tax and would
+ * tax them again, so it is left to price the line from the product and split
+ * the tax out, and the order is held to the total paid.
  */
 export const createTheOrderInTheShop = async (
   keys: ShopKeys,
@@ -1016,12 +1379,14 @@ export const createTheOrderInTheShop = async (
     billing: { email: sold.email },
     meta_data: metadataOf(sold.orderId, sold.price, sold.paidInto),
     line_items: [
-      {
-        product_id: productId,
-        quantity: 1,
-        subtotal: sold.price.amount,
-        total: sold.price.amount,
-      },
+      sold.tax.mode === "off"
+        ? {
+            product_id: productId,
+            quantity: 1,
+            subtotal: sold.price.amount,
+            total: sold.price.amount,
+          }
+        : { product_id: productId, quantity: 1 },
     ],
   };
 
@@ -1082,17 +1447,23 @@ export const createTheOrderInTheShop = async (
         total_tax?: unknown;
       }
     | undefined;
+  // With tax inside the price the line holds the amount before tax, and the
+  // tax is the shop's to record; the total is still what was paid.
+  const untaxedAsSold =
+    sold.tax.mode !== "off" ||
+    (made.total_tax === "0.00" &&
+      line?.subtotal === sold.price.amount &&
+      line.total === sold.price.amount &&
+      line.total_tax === "0.00");
   if (
     !["processing", "completed"].includes(String(made.status)) ||
     made.currency !== sold.price.currency ||
-    made.total !== sold.price.amount ||
-    made.total_tax !== "0.00" ||
+    typeof made.total !== "string" ||
+    !withinACent(made.total, sold.price.amount) ||
+    !untaxedAsSold ||
     lineItems.length !== 1 ||
     line?.product_id !== productId ||
     line.quantity !== 1 ||
-    line.subtotal !== sold.price.amount ||
-    line.total !== sold.price.amount ||
-    line.total_tax !== "0.00" ||
     made.payment_method !== "agentify" ||
     made.transaction_id !== sold.orderId ||
     billing?.email !== sold.email ||
@@ -1105,7 +1476,14 @@ export const createTheOrderInTheShop = async (
       again: true,
     };
   }
-  return { ok: true, id, number, orderKey: made.order_key, downloadId: sold.download.id };
+  return {
+    ok: true,
+    id,
+    number,
+    orderKey: made.order_key,
+    downloadId: sold.download.id,
+    total: made.total,
+  };
 };
 
 /**
@@ -1177,10 +1555,12 @@ export interface ParcelSold {
    * reaches the buyer.
    */
   readonly email: string;
-  /** The goods and the shipping together. */
+  /** The goods and the shipping together, with any tax on both. */
   readonly paid: Money;
-  /** The goods alone: the order's product line. */
+  /** The goods alone: the order's product line where the shop calculates no tax. */
   readonly goods: string;
+  /** How the shop calculates tax, as the parcel was priced under it. */
+  readonly tax: ShopTax["mode"];
   /** The order's shipping line. */
   readonly rate: ShippingRate;
   /** Read into the order and not kept anywhere of ours. */
@@ -1189,7 +1569,13 @@ export interface ParcelSold {
 }
 
 export type ParcelMade =
-  | { readonly ok: true; readonly id: string; readonly number: string }
+  | {
+      readonly ok: true;
+      readonly id: string;
+      readonly number: string;
+      /** What the shop's order totals, which may be a cent from what was paid. */
+      readonly total: string;
+    }
   | {
       readonly ok: false;
       readonly why: string;
@@ -1233,6 +1619,9 @@ const PARCEL_ORDER_FIELDS = [
 /**
  * The order's totals add up to what was paid; paying moves it to `processing`.
  * The billing address is the merchant's own, so no shop mail reaches the buyer.
+ * Where the shop calculates tax, the line names the product alone and the shop
+ * prices it and taxes it and the shipping for the address, as its cart did for
+ * the price paid; the order is held to that total, its tax the shop's record.
  *
  * The answer is read back with the address and held to what was sent, because
  * taking the order on erases Agentify's copy of the address: an order is not
@@ -1265,7 +1654,11 @@ export const createTheParcelInTheShop = async (
     // On what was paid, the goods and the shipping together: the split took
     // the whole of it.
     meta_data: metadataOf(sold.orderId, sold.paid, sold.paidInto),
-    line_items: [{ product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }],
+    line_items: [
+      sold.tax === "off"
+        ? { product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }
+        : { product_id: productId, quantity: 1 },
+    ],
     shipping_lines: [
       {
         method_id: sold.rate.methodId,
@@ -1295,18 +1688,21 @@ export const createTheParcelInTheShop = async (
   const heldWhereItGoes =
     made.shipping !== undefined &&
     Object.entries(shipping).every(([field, value]) => made.shipping?.[field] === value);
+  const untaxedAsSold =
+    sold.tax !== "off" ||
+    (made.total_tax === "0.00" &&
+      line?.subtotal === sold.goods &&
+      line.total === sold.goods &&
+      line.total_tax === "0.00");
   if (
     !["processing", "completed"].includes(made.status) ||
     made.currency !== sold.paid.currency ||
-    made.total !== sold.paid.amount ||
-    made.total_tax !== "0.00" ||
+    !withinACent(made.total, sold.paid.amount) ||
+    !untaxedAsSold ||
     line === undefined ||
     moreLines.length > 0 ||
     line.product_id !== productId ||
     line.quantity !== 1 ||
-    line.subtotal !== sold.goods ||
-    line.total !== sold.goods ||
-    line.total_tax !== "0.00" ||
     carriage === undefined ||
     moreCarriage.length > 0 ||
     carriage.method_id !== sold.rate.methodId ||
@@ -1328,7 +1724,7 @@ export const createTheParcelInTheShop = async (
       id: String(made.id),
     };
   }
-  return { ok: true, id: String(made.id), number: String(made.number) };
+  return { ok: true, id: String(made.id), number: String(made.number), total: made.total };
 };
 
 const ParcelOrderSchema = z.looseObject({

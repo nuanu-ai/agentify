@@ -9,18 +9,18 @@ channel for now, where the money is not real.
 
 ## What can be imported
 
-The connector imports a product only when it is a published simple product,
-priced in US dollars, whose stock is not counted. The shop as a whole needs
-WooCommerce's tax calculation turned off, prices written with two decimals
-(WooCommerce → Settings → General → Number of decimals), and permalinks set to
-anything other than Plain.
+The connector imports a product only when it is a published simple product
+that WooCommerce marks purchasable and in stock, priced in US dollars, whose
+stock is not counted and which is not limited to one in an order (Sold
+individually). The shop's own settings have to allow it too, as
+[Settings of your whole shop](#settings-of-your-whole-shop) describes.
 
 Such a product becomes one of two kinds of card:
 
 | The product in your shop | What the buyer gets | What your shop gets |
 | --- | --- | --- |
 | A virtual download with exactly one protected file, unlimited downloads and no expiry | the download, once it is paid for | a paid order |
-| A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place | a paid order carrying the buyer's shipping address |
+| A physical product, neither virtual nor downloadable | a parcel: it pays the price plus your shop's cheapest shipping rate to the buyer's place, and any tax your shop charges there | a paid order carrying the buyer's shipping address |
 
 Every other product stays in your shop untouched, and the import names it with
 the reason. A product also needs a name and a description in plain text,
@@ -41,6 +41,138 @@ customer's, so the shop's customer emails — the confirmation, the download
 link — come to you and never to the buyer, and the shop's reports name you as
 the customer of every sale.
 
+An order your shop totals at what the buyer paid, or within a cent of it, is
+taken on: the order carries what the buyer paid among its Agentify lines
+(`agentify_paid`), and your Orders screen shows the shop's total beside it
+where the two differ, so your shop's books can differ by a cent from the
+USDC you received for that sale. An order further from it is not taken on.
+
+## Settings of your whole shop
+
+A few of the things the connector needs are settings of the whole shop rather
+than of one product, so changing one to sell through Agentify changes it for
+every customer of the shop, not only for Agentify's buyers. Most of them are
+WooCommerce's or WordPress's defaults, and a shop that never changed them has
+nothing to change; the import names any setting that stands in a product's
+way, and where to find it. What a shop that calculates tax needs is in
+[the next section](#shops-that-calculate-tax).
+
+Prices have to be written with two decimals (WooCommerce → Settings → General
+→ Number of decimals), which is WooCommerce's default. That setting is how many
+decimals every price in the shop is shown with, to every customer.
+
+Permalinks have to be anything other than Plain (Settings → Permalinks, in
+WordPress), because a site with Plain permalinks does not serve the addresses
+the connector reaches WooCommerce at, its approval screen among them. Plain is
+WordPress's own default, so a shop may well still use it. Switching to another
+structure changes the address of every page, post and product on the site,
+from the form `?p=123` to the structure you choose. WordPress sends a visitor
+who follows the old address of a page or a post on to its new one, but neither
+WordPress nor WooCommerce does so for a product's old address, written
+`?product=` and the product's name, so check where such a link now leads
+before you count on links already shared, printed or found through a search
+engine.
+
+A download needs four settings under WooCommerce → Settings → Products →
+Downloadable products to stand at WooCommerce's defaults: the file download
+method set to Force downloads, redirect mode not allowed as a last resort,
+Downloads require login off, and access granted to downloadable products after
+payment. Together they keep the file behind its download link and hand it to a
+buyer, who has no account in your shop, as soon as the order is paid. Each of
+them applies to every downloadable product in the shop. Force downloads sends
+every customer's files through your site itself and keeps their address
+hidden, and WooCommerce warns that some servers deliver large files unreliably
+that way. With redirect mode not allowed, a file the chosen method cannot
+deliver is no longer handed to the customer by its open address, so that
+download fails instead. With login not required, a registered customer's
+download link works without signing in, as a guest customer's always does, for
+whoever holds the link. Granting access after payment gives every customer
+their files once an order is paid and Processing, rather than only once you
+mark it Completed.
+
+A parcel needs the shop's shipping switched on (WooCommerce → Settings →
+General → Shipping location(s), anything but disabling shipping) and not forced
+to the billing address (WooCommerce → Settings → Shipping → Shipping
+destination), both WooCommerce's defaults. Switching shipping on brings it into
+every customer's cart and checkout: a physical product then asks where it goes,
+is charged the rates of your shipping zones, and can be ordered only to a place
+one of your zones has a shipping method for. Moving the shipping destination
+off "Force shipping to the customer billing address" lets every customer enter
+a shipping address other than their billing one at checkout; the connector
+needs it because an Agentify order carries the buyer's address as its
+shipping address.
+
+## Shops that calculate tax
+
+Where WooCommerce calculates tax in your shop, nothing sells unless it rounds
+tax at the subtotal (WooCommerce → Settings → Tax → "Round tax at subtotal
+level, instead of rounding per line"), and the import leaves every product
+in your shop otherwise. Rounding on each line, WooCommerce's default, a tax
+that comes to exactly half a cent can be rounded up in your cart and down in
+the order made for the sale, so the order would record a cent other than what
+the buyer paid; rounding at the subtotal, the cart and the order agreed in
+every case measured. Switching it on changes how WooCommerce rounds the tax
+of every order your shop takes, not only Agentify's: on the one-item orders
+measured the tax moved by a cent at most, as when a 20.00 parcel with 1.50 of
+shipping at 19% came to 21.78 rounding per line and 21.79 at the subtotal,
+and orders of several lines were not measured.
+
+What sells then depends on how your prices are entered (WooCommerce →
+Settings → Tax → Prices entered with tax):
+
+| Your shop | A download | A parcel |
+| --- | --- | --- |
+| Tax calculation off | sells at its price, and the order carries no tax | sells at its price plus your cheapest shipping rate to the buyer's place |
+| Prices entered with tax inside them | sells at its price, and the order records the tax inside it at the rate of your shop's own address | sells at what your shop's cart charges for the buyer's place, but only to a place your shop taxes at the same rates as its own address |
+| Prices entered before tax | not imported | sells at what your shop's cart charges for the buyer's place: the goods, your cheapest shipping rate and the tax on both there |
+
+A buyer of a download gives no address, so its order is created without one,
+and WooCommerce then taxes it at your shop's own address. Where your prices
+hold their tax, the buyer pays the price on your card wherever they are, and
+the order shows the tax of your own address inside that price. Where your
+prices are entered before tax, the tax would be added for your own city on
+every buyer's price, whoever and wherever the buyer is, so such a download is
+left in your shop.
+
+A parcel's price is asked of your shop's own cart for the buyer's place at
+every purchase, so the buyer pays what your cart charges there at your
+cheapest shipping rate, tax included, and the order your shop then records
+charges the same. Where your
+prices hold their tax, WooCommerce takes the tax of your own address out of
+the price and adds the tax of the buyer's place. Code added to a shop can keep
+one price for every buyer instead, and the connector cannot tell from outside
+whether yours does; the cart then shows that one price while the order created
+for the parcel still moves it to the buyer's rate. So a parcel from such a
+shop sells only to a place your shop taxes at the same rates as its own
+address, and a buyer elsewhere is told before paying that the parcel is not
+available there. A parcel also needs tax to be calculated on the customer's
+shipping address (Calculate tax based on), which is WooCommerce's default. A
+shop that set it to the billing address or to the shop's own address and sets
+it back taxes every shipped order by the place it goes to, so a customer whose
+order goes somewhere taxed otherwise than that address pays the tax of where
+it goes.
+Its price question also asks your cart about your own address, within the same
+four seconds.
+
+The import also leaves in your shop every product of a shop whose catalogue
+shows prices otherwise than they are entered (Display prices in the shop),
+because the import reads the catalogue's price while a buyer pays the price
+as entered. Changing that setting changes whether every visitor to your
+catalogue sees its prices with tax or without it.
+
+Tax calculated by an outside service, such as WooCommerce Tax, TaxJar or
+Avalara, is not supported. The connector cannot see such a service from
+outside, and nothing has measured what it does to an order made through the
+connector. If the order your shop records then charges something other than
+what the buyer paid, the connector does not take that order on: the sale ends
+unfulfilled on your Orders screen, your shop holds a paid order you should not
+fulfil, and you settle it by your own policy.
+
+Each of these settings applies to your whole shop, so changing one to sell
+through Agentify changes what every customer of the shop is charged. Whether a
+sale owes tax, and whether the treatment above is the right one for your shop,
+are yours to settle; this page does not answer them.
+
 ## Connecting your shop
 
 You type the public https address at the root of your shop, and your browser
@@ -48,6 +180,21 @@ goes there next so that WooCommerce can ask you to approve access. Approve read
 and write: with read alone, every purchase is refused before payment, because
 Agentify cannot create the order in your shop. Agentify never asks for your
 shop password.
+
+Before your browser leaves for the shop, Agentify reads one product from your
+shop's public catalogue to learn the currency it is priced in. A shop whose
+catalogue answers in a currency other than US dollars is refused there, before
+you approve anything, and nothing changes in how you sell. When
+the catalogue gives no clear answer, because the shop has no products yet or
+does not serve its public catalogue, Connect goes ahead and the import names
+each product it cannot sell.
+
+Every request the connector makes to your shop names itself with the User-Agent
+`Agentify/1 (+https://agentify.ad)`, so if a firewall or security plugin in
+front of your shop blocks visitors it does not recognise, let that one through:
+a shop that refuses it cannot be connected, imported or sold from. A paid
+download is fetched from your shop's private download address by the buyer,
+not by Agentify, so that address has to stay open to any visitor.
 
 Your shop sends the keys to Agentify in a request of its own, separate from
 your browser coming back. The dashboard waits fifteen minutes for them. If none
@@ -114,7 +261,11 @@ The result lists every product it read under one of these headings:
 
 A product deleted from the shop, sold out, or no longer supported keeps its
 card, but the price check refuses its purchase before payment. Pause the cards
-you no longer want buyers to see.
+you no longer want buyers to see. A change that lands after a buyer was quoted
+and before the order is placed, such as a new price, or for a parcel a
+different shipping rate, leaves that paid sale unfulfilled on your Orders
+screen, because the connector checks the product and the rate again before it
+creates the order and refuses what no longer matches what was paid.
 
 ## Parcels
 
@@ -198,3 +349,8 @@ WooCommerce → Settings → Advanced → REST API.
 - Parcels on the live channel. A parcel sells on the test channel only, and
   how a live parcel's time to ship is set is not decided.
 - How a buyer reaches your support to arrange a remedy outside Agentify.
+- Downloads from a shop whose prices are entered before tax, which would need
+  the buyer's address at the moment the price is asked; parcels from a shop
+  whose prices hold their tax to a place taxed otherwise than the shop's own
+  address; and tax calculated by an outside service. See
+  [Shops that calculate tax](#shops-that-calculate-tax).
