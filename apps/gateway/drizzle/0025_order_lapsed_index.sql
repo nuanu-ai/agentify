@@ -1,0 +1,1 @@
+CREATE INDEX "orders_lapsed_merchant_idx" ON "orders" USING btree ("merchant_id","lapsed","created_at");

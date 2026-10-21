@@ -613,10 +613,31 @@ export class MemoryStore implements Store {
 
   async orders(
     merchantId: string,
-    query?: { readonly open?: boolean },
+    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
   ): Promise<readonly StoredOrder[]> {
-    const mine = [...this.#orders.values()].filter((record) => record.merchantId === merchantId);
+    const mine = [...this.#orders.values()].filter(
+      (record) =>
+        record.merchantId === merchantId &&
+        (query?.leaveOutLapsed !== true || !lapsedAttempt(record)),
+    );
     return query?.open === true ? mine.filter((record) => listedAsOpen(record.order)) : mine;
+  }
+
+  async lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    const lapsed = [...this.#orders.values()]
+      .filter(
+        (record) =>
+          record.merchantId === merchantId && lapsedAttempt(record) && record.order.price !== null,
+      )
+      .sort(
+        (one, other) =>
+          other.order.timestamps.createdAt - one.order.timestamps.createdAt ||
+          (one.order.id < other.order.id ? 1 : -1),
+      );
+    return { orders: lapsed.slice(page.offset, page.offset + page.limit), of: lapsed.length };
   }
 
   async withOrder<T>(

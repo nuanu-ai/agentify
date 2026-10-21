@@ -33,6 +33,12 @@ export interface SegmentRule<Row> {
   readonly label: string;
   readonly holds: (row: Row) => boolean;
   readonly none: string;
+  /**
+   * How many rows a segment holds whose rows are read apart, a page at a
+   * time, rather than found among the list's own (`pagedListingOf`); such a
+   * segment holds none of them.
+   */
+  readonly counted?: number;
 }
 
 /** A segment as the filter draws it, with how many rows it holds under the search. */
@@ -191,7 +197,7 @@ export const listingOf = <Row>({
     segments: segments.map((one) => ({
       key: one.key,
       label: one.label,
-      count: found.filter(one.holds).length,
+      count: one.counted ?? found.filter(one.holds).length,
       to: at({ show: one.key, page: 1 }),
       here: one.key === segment?.key,
     })),
@@ -207,5 +213,57 @@ export const listingOf = <Row>({
           },
     nothing: nothing(),
     place: Object.fromEntries(fieldsOf({ ...asked, page }, first)),
+  };
+};
+
+/**
+ * The listing of a segment whose rows are read apart a page at a time: `rows`
+ * is the page the address asks for, read already, and `of` how many the
+ * segment holds in all. It is not searched, and a page past the last is the
+ * last, as the reader of the rows is held to. `listing` is the list's own
+ * listing for the same address, whose segments it keeps.
+ */
+export const pagedListingOf = <Row>({
+  listing,
+  rows,
+  of,
+  asked,
+  path,
+  first,
+  none,
+  showAll,
+}: Readonly<{
+  listing: Listing<Row>;
+  rows: readonly Row[];
+  of: number;
+  asked: Asked;
+  path: string;
+  /** The key of the list's first segment, which an address leaves out. */
+  first: string;
+  none: string;
+  showAll: string;
+}>): Listing<Row> => {
+  const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
+  const page = Math.min(asked.page, pages);
+  const start = (page - 1) * PAGE_ROWS;
+  const here = { ...asked, q: "", cut: false, page };
+  const at = (moved: Partial<Asked>) => addressOf(path, { ...here, ...moved }, first);
+  return {
+    rows,
+    search: { q: "", show: asked.show === first ? null : asked.show, cutAt: null },
+    segments: listing.segments,
+    cut:
+      of <= PAGE_ROWS
+        ? null
+        : {
+            from: start + 1,
+            to: Math.min(start + PAGE_ROWS, of),
+            of,
+            previous: page === 1 ? null : at({ page: page - 1 }),
+            next: page === pages ? null : at({ page: page + 1 }),
+          },
+    nothing:
+      of > 0 ? null : { says: none, way: { to: at({ show: first, page: 1 }), words: showAll } },
+    place: Object.fromEntries(fieldsOf(here, first)),
   };
 };

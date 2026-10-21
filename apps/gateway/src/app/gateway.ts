@@ -2297,17 +2297,35 @@ export class Gateway {
    * This merchant's orders, or with `open` only the ones a restarted worker
    * should walk. That list is narrower than the store's open flag: an unpaid
    * quote is not work the merchant owes, and listing it would have a restart
-   * deliver goods for a purchase that never happened.
+   * deliver goods for a purchase that never happened. With `leaveOutLapsed`,
+   * the purchases that lapsed unpaid are not read, for the screens that list
+   * them apart (`lapsedAttempts`); the merchant's API lists every order.
    */
-  async orders(merchantId: string, open: boolean | undefined): Promise<readonly StoredOrder[]> {
-    const records = await this.runtime.store.orders(
-      merchantId,
-      open === undefined ? undefined : { open },
-    );
+  async orders(
+    merchantId: string,
+    open: boolean | undefined,
+    { leaveOutLapsed = false }: { readonly leaveOutLapsed?: boolean } = {},
+  ): Promise<readonly StoredOrder[]> {
+    const records = await this.runtime.store.orders(merchantId, {
+      ...(open === undefined ? {} : { open }),
+      leaveOutLapsed,
+    });
     if (open !== true) {
       return records;
     }
     return records.filter((record) => onTheMerchantsOpenList(record.order));
+  }
+
+  /**
+   * One page of this merchant's purchases that lapsed unpaid and carry a
+   * price, newest first, and how many there are, for the screen that lists
+   * them apart from the rest.
+   */
+  async lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    return this.runtime.store.lapsedAttempts(merchantId, page);
   }
 
   // --- the parts the flows above lean on ------------------------------------

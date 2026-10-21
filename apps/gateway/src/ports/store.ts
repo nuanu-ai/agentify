@@ -824,9 +824,24 @@ export interface Store {
 
   /**
    * This merchant's orders, or with `open` only the ones still owed work or
-   * money and the closed ones whose payment completed after the closure.
+   * money and the closed ones whose payment completed after the closure. With
+   * `leaveOutLapsed`, the attempts that lapsed unpaid (`lapsedAttempt`) are
+   * not read at all.
    */
-  orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
+  orders(
+    merchantId: string,
+    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
+  ): Promise<readonly StoredOrder[]>;
+
+  /**
+   * One page of this merchant's attempts that lapsed unpaid and carry a price,
+   * the newest first, and how many such attempts they have in all. A `limit`
+   * of nothing reads only the count.
+   */
+  lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }>;
 
   /**
    * Every order still owed work or money, whoever it belongs to, for the

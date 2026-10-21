@@ -13,6 +13,7 @@ import { listedAsOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import {
   and,
+  desc,
   eq,
   exists,
   inArray,
@@ -823,15 +824,46 @@ export class PostgresStore implements Store {
 
   async orders(
     merchantId: string,
-    query?: { readonly open?: boolean },
+    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
   ): Promise<readonly StoredOrder[]> {
-    const mine = eq(orders.merchantId, merchantId);
     const rows = await this.#db
       .select({ record: orders.record })
       .from(orders)
-      .where(query?.open === true ? and(mine, eq(orders.open, true)) : mine)
+      .where(
+        and(
+          eq(orders.merchantId, merchantId),
+          query?.open === true ? eq(orders.open, true) : undefined,
+          query?.leaveOutLapsed === true ? eq(orders.lapsed, false) : undefined,
+        ),
+      )
       .orderBy(orders.createdAt);
     return rows.map((row) => row.record);
+  }
+
+  async lapsedAttempts(
+    merchantId: string,
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    const theirs = and(
+      eq(orders.merchantId, merchantId),
+      eq(orders.lapsed, true),
+      sql`${orders.record} -> 'order' ->> 'price' is not null`,
+    );
+    const [counted] = await this.#db
+      .select({ of: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(theirs);
+    const rows =
+      page.limit === 0
+        ? []
+        : await this.#db
+            .select({ record: orders.record })
+            .from(orders)
+            .where(theirs)
+            .orderBy(desc(orders.createdAt), desc(orders.id))
+            .limit(page.limit)
+            .offset(page.offset);
+    return { orders: rows.map((row) => row.record), of: counted?.of ?? 0 };
   }
 
   async openOrders(): Promise<readonly StoredOrder[]> {

@@ -227,6 +227,9 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
+    // A merchant's orders without the attempts that lapsed unpaid, and those
+    // attempts a page at a time, newest first.
+    index("orders_lapsed_merchant_idx").on(table.merchantId, table.lapsed, table.createdAt),
     // The attempts that lapsed unpaid, the oldest first, for the daily work
     // that forgets them.
     index("orders_lapsed_idx").on(table.updatedAt).where(sql`${table.lapsed}`),

@@ -57,6 +57,7 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
 
@@ -134,7 +135,17 @@ export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
+  /** Every order but the purchases that lapsed unpaid, which are not read here. */
   orders(open: boolean): Promise<Answer<OrderList>>;
+  /**
+   * One page of the purchases that lapsed unpaid, newest first, counted from
+   * one, and how many there are; a page past the last is the last.
+   */
+  lapsedAttempts(
+    page: number,
+  ): Promise<Answer<{ readonly orders: OrderList; readonly of: number }>>;
+  /** How many purchases lapsed unpaid, with none of them read. */
+  lapsedCount(): Promise<Answer<number>>;
   /**
    * Why each paid order was left unfulfilled, by order, for Needs you.
    */
@@ -489,8 +500,29 @@ export const gatewayFor = (
       call("reading the orders", async () =>
         answered(
           API_ROUTES.list_orders,
-          merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
+          merchantOrderList(
+            await application.orders(merchantId, open ? true : undefined, {
+              leaveOutLapsed: true,
+            }),
+          ),
         ),
+      ),
+    lapsedAttempts: (page) =>
+      call("reading the purchases that lapsed unpaid", async () => {
+        const pageAt = (at: number) =>
+          application.lapsedAttempts(merchantId, {
+            offset: (at - 1) * PAGE_ROWS,
+            limit: PAGE_ROWS,
+          });
+        const asked = await pageAt(page);
+        const last = Math.max(1, Math.ceil(asked.of / PAGE_ROWS));
+        const read = asked.orders.length === 0 && page > last ? await pageAt(last) : asked;
+        const listed = answered(API_ROUTES.list_orders, merchantOrderList(read.orders));
+        return listed.ok ? done({ orders: listed.document, of: read.of }) : listed;
+      }),
+    lapsedCount: () =>
+      call("counting the purchases that lapsed unpaid", async () =>
+        done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
       ),
     unfulfilledOrders: () =>
       call("reading why orders are unfulfilled", async () => {
@@ -531,7 +563,8 @@ export const gatewayFor = (
     // split the second read could miss.
     paidIntoSplits: () =>
       call("reading where the orders were paid", async () => {
-        const records = await application.orders(merchantId, undefined);
+        // A purchase that lapsed unpaid was paid into nothing, so it is not read.
+        const records = await application.orders(merchantId, undefined, { leaveOutLapsed: true });
         const splits = await application.payoutSplitsOf(merchantId);
         const into: Record<string, RecordedPayoutSplit> = {};
         for (const record of records) {

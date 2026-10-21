@@ -1504,11 +1504,13 @@ const ordersAt = (
     cards = CATALOGUE,
     open = openAmong(listed),
     owed = {},
+    lapsed,
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[5];
+    lapsed?: Parameters<typeof ordersView>[7];
   }> = {},
 ) =>
   ordersView(
@@ -1519,6 +1521,7 @@ const ordersAt = (
     new URL(path, ORIGIN[mode]).searchParams,
     owed,
     paidIntoSplit(mode, listed.orders),
+    lapsed,
   );
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
@@ -1909,6 +1912,30 @@ const ORDERS: GalleryState[] = [
     ]),
     "/orders",
     { cards: cardsOf("paused", ON_SALE) },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-lapsed",
+      screen: "Orders",
+      when: "A merchant opens Lapsed beside their orders to find a purchase a buyer says failed.",
+      cause:
+        "Purchases priced and never paid, or refused before payment, are read apart from the other orders, a page at a time, and kept for thirty days.",
+    },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    "/orders?show=lapsed",
+    {
+      lapsed: {
+        page: ordersOf([
+          ["number", "expired"],
+          ["vpn", "expired"],
+          ["esimEurope", "rejected"],
+        ]),
+        of: 3,
+      },
+    },
   ),
   orders(
     {
