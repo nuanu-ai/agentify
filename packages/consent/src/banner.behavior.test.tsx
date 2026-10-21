@@ -187,6 +187,7 @@ describe("the preferences, from the keyboard", () => {
     render(<ConsentBanner brand="Agentify" />);
     await user.click(screen.getByRole("button", { name: "Preferences" }));
     const dialog = screen.getByRole("dialog", { name: "Privacy choices" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
 
     for (let press = 0; press < 6; press += 1) {
       await user.tab();

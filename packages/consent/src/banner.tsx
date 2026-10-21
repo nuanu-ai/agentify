@@ -78,7 +78,7 @@ const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> =
   ads_measurement: ads,
 });
 
-export function ConsentPreferencesPanel(props: {
+function ConsentPreferencesPanel(props: {
   productAnalytics: boolean;
   adsMeasurement: boolean;
   saving: boolean;
