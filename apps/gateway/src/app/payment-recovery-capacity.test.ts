@@ -1,11 +1,20 @@
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EUROPE_ESIM } from "../../../../packages/slice/src/cards.js";
 import { RecoveryFailure } from "../ports/facilitator.js";
 import type { StoredOrder } from "../ports/store.js";
 import { type Harness, harness } from "../testing/harness.js";
 
 const PAYER = "0x0000000000000000000000000000000000000008";
 const TRANSACTION = `0x${"a".repeat(64)}`;
+const ESIM: Card = {
+  merchant_item_id: "esim-eu-5gb-30d",
+  title: "eSIM, Europe, 5 GB, 30 days",
+  description: "A data-only eSIM for Europe, delivered as an activation code.",
+  price: { amount: "8.00", currency: "USD" },
+  params: { email: { type: "string", required: true } },
+  result: { activation_code: { type: "string" } },
+  fulfillment: "async",
+};
 let open: Harness | null = null;
 
 afterEach(async () => {
@@ -22,7 +31,7 @@ async function unanswered(count: number) {
   const merchants = [h.merchant, await h.addMerchant("Another shop")];
   const items: string[] = [];
   for (const merchant of merchants) {
-    const published = await h.gateway.publishCard(merchant.id, EUROPE_ESIM);
+    const published = await h.gateway.publishCard(merchant.id, ESIM);
     if (!published.ok) throw new Error("the eSIM was refused");
     items.push(published.id);
   }
