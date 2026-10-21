@@ -337,7 +337,7 @@ const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
 const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 
 const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
-  rows.dashboard_registration_postbacks ?? [];
+  rows.dashboard_ad_reports ?? [];
 
 describe("the registration a link asked for with an ad's click leaves for the tracker", () => {
   it("leaves one pending registration holding the click, and nothing else of the sign-in, when the link makes a new address's account", async () => {
@@ -358,6 +358,8 @@ describe("the registration a link asked for with an ad's click leaves for the tr
         nextAttemptAt: expect.any(Date),
         lastOutcome: null,
         createdAt: expect.any(Date),
+        event: "reg",
+        eventAt: expect.any(Date),
         settledAt: null,
       },
     ]);
@@ -366,6 +368,37 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     const due = new Date(registration?.nextAttemptAt as Date).getTime();
     expect(due).toBeGreaterThanOrEqual(pressedAt);
     expect(due).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("leaves the store report waiting with its own copy of the click beside the registration where that report is switched on", async () => {
+    const storeReporting = loadConfig({
+      ...SETTINGS,
+      REGISTRATION_POSTBACK_ENABLED: "true",
+      REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+      REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
+      STORE_POSTBACK_ENABLED: "true",
+    });
+    const { identity, messages, rows } = memoryIdentity("accepted", storeReporting);
+    await identity.requestLink("person@example.com", "default", CLICK);
+
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+
+    if (opened.status !== "opened") throw new Error("the link did not open");
+    const [registration, store] = registrationsIn(rows);
+    expect(registrationsIn(rows)).toHaveLength(2);
+    expect(registration).toMatchObject({ event: "reg", clickId: CLICK, state: "pending" });
+    expect(store).toStrictEqual({
+      accountId: opened.person.id,
+      clickId: CLICK,
+      state: "waiting",
+      attempts: 0,
+      nextAttemptAt: null,
+      lastOutcome: null,
+      createdAt: registration?.createdAt,
+      event: "store_connected",
+      eventAt: null,
+      settledAt: null,
+    });
   });
 
   it("writes no registration when the link asked for while reporting was on is opened after it went off", async () => {
@@ -607,9 +640,11 @@ describe("the registration a link asked for with an ad's click leaves for the tr
       nextAttemptAt: new Date(),
       lastOutcome: null,
       createdAt: new Date(),
+      event: "reg",
+      eventAt: new Date(),
       settledAt: null,
     };
-    rows.dashboard_registration_postbacks = [planted];
+    rows.dashboard_ad_reports = [planted];
     await identity.requestLink("person@example.com", "default", CLICK);
 
     await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();

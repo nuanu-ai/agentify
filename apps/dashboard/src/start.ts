@@ -2,10 +2,10 @@
  * Starts the dashboard inside the process it shares with the gateway: its
  * listeners, the scanner's route where its secret is set, the WooCommerce
  * worker, which fills paid orders for merchants who connected a shop instead of
- * writing code, and the loop that reports registrations from ads to the ad
- * tracker. The worker does not start on the live channel, where the connector
- * is not offered. The reports' loop starts everywhere: switched on it reports,
- * and switched off it only gives up what is left pending a day on.
+ * writing code, and the loop that reports to the ad tracker what a person its
+ * ad sent went on to do. The worker does not start on the live channel, where
+ * the connector is not offered. The reports' loop starts everywhere: switched
+ * on it reports, and switched off it only settles what the time left.
  *
  * Migrations are not run here: a process that migrates on boot migrates once
  * per replica and races itself.
@@ -14,6 +14,7 @@
 import type { Server } from "node:http";
 import type { Gateway } from "@agentify/gateway";
 import type { Pool } from "pg";
+import { startAdReports } from "./ad-reports.js";
 import { PostgresApprovalDirectory } from "./approval-directory.js";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
@@ -22,7 +23,6 @@ import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import type { Pages } from "./pages.js";
-import { startRegistrationReports } from "./registration-postbacks.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import type { CommissionRate } from "./shares.js";
@@ -133,7 +133,11 @@ function started(
         now: () => new Date(),
       });
 
-  const reports = startRegistrationReports({ pool, target: config.registrationPostback });
+  const reports = startAdReports({
+    pool,
+    target: config.registrationPostback,
+    storeConnected: config.storePostback,
+  });
 
   return {
     async closeListeners() {

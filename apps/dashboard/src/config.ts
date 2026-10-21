@@ -155,6 +155,15 @@ const environmentSchema = z.object({
   REGISTRATION_POSTBACK_KEY: emptyIsAbsent(z.string()),
   /** A laptop's own receiver; a deployment posts only to the tracker. */
   REGISTRATION_POSTBACK_URL: emptyIsAbsent(z.string()),
+  /**
+   * Whether the first card of a merchant whose account an ad brought is
+   * reported too, to the registration report's receiver with its key, so only
+   * beside it.
+   */
+  STORE_POSTBACK_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 /**
@@ -207,6 +216,11 @@ export interface DashboardConfig {
    * with, or null where nothing is reported. The key is never printed.
    */
   readonly registrationPostback: Readonly<{ endpoint: string; key: string }> | null;
+  /**
+   * Whether a merchant's first card is reported as well, to the same place
+   * with the same key; never true without `registrationPostback`.
+   */
+  readonly storePostback: boolean;
 }
 
 /** The only address a deployment reports a registration to. */
@@ -342,6 +356,22 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     ? registrationPostbackOf(surfaceMode, values, problems)
     : null;
 
+  if (values.STORE_POSTBACK_ENABLED && surfaceMode === "test") {
+    problems.push(
+      "STORE_POSTBACK_ENABLED is true on the test channel, which never reports a store to the" +
+        " ad tracker",
+    );
+  }
+  if (values.STORE_POSTBACK_ENABLED && !values.REGISTRATION_POSTBACK_ENABLED) {
+    // A store report goes only after its registration's report was
+    // delivered, to that report's receiver with its key; with registrations
+    // not reported, none ever would.
+    problems.push(
+      "STORE_POSTBACK_ENABLED is true and REGISTRATION_POSTBACK_ENABLED is not, and a store is" +
+        " reported only after its registration's report was delivered",
+    );
+  }
+
   if (problems.length > 0) {
     throw new Error(
       `The dashboard cannot start, the configuration does not hold together — ${problems.join("; ")}`,
@@ -368,6 +398,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     mailApiKey: values.MAIL_API_KEY ?? null,
     mailFrom: values.MAIL_FROM ?? NOBODY_READS_THIS,
     registrationPostback: postback,
+    storePostback: values.STORE_POSTBACK_ENABLED,
   };
 }
 

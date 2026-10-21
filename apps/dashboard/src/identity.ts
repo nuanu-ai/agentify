@@ -49,9 +49,9 @@ import { transactionalEmailHtml } from "./mail-template.js";
 import { reportLinkMessage } from "./report-mail.js";
 import {
   accounts,
+  adReports,
   credentials,
   linkSends,
-  registrationPostbacks,
   reportDeletionTombstones,
   reportIdentitySecrets,
   sessions,
@@ -134,15 +134,16 @@ type LinkClaim = Readonly<{
   clickId?: string;
 }>;
 
-type Registration = typeof registrationPostbacks.$inferInsert;
+type AdReport = typeof adReports.$inferInsert;
 
 /**
  * What an opening transaction does that the component cannot: take the
- * address's lock, and write the registration in the same transaction.
+ * address's lock, and write the registration's reports in the same
+ * transaction.
  */
 type OpeningTransaction = Readonly<{
   lockEmail?: (email: string) => Promise<void>;
-  register: (registration: Registration) => Promise<void>;
+  register: (reports: readonly AdReport[]) => Promise<void>;
 }>;
 
 type LinkSend = {
@@ -181,12 +182,12 @@ type GoogleAdmission = {
 
 /**
  * What a Google callback's transaction does that the component cannot: take
- * the subject's and the address's locks, and write the registration in the
- * same transaction.
+ * the subject's and the address's locks, and write the registration's reports
+ * in the same transaction.
  */
 type GoogleTransaction = Readonly<{
   lockIdentity?: (subject: string, email: string) => Promise<void>;
-  register: (registration: Registration) => Promise<void>;
+  register: (reports: readonly AdReport[]) => Promise<void>;
 }>;
 
 const hostedDomain = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
@@ -208,6 +209,8 @@ const tokenHash = (token: string): string => createHash("sha256").update(token).
 export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
   const postman = parts.postman ?? postmanFor(config);
   const reporting = config.registrationPostback !== null;
+  const reportsOf = (accountId: string, clickId: string): AdReport[] =>
+    adReportsOf(accountId, clickId, config.storePostback);
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
   const sending = new AsyncLocalStorage<LinkSend>();
@@ -224,7 +227,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       dashboard_link_sends: [],
       dashboard_report_identity_secrets: [],
       dashboard_report_deletion_tombstones: [],
-      dashboard_registration_postbacks: [],
+      dashboard_ad_reports: [],
     } satisfies MemoryRows);
 
   const validateGoogleInfo: NonNullable<
@@ -520,7 +523,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       // A plain insert on both sides: an account verified for the first time
       // cannot have a registration yet, and one already there is a broken
       // invariant that fails the press rather than being skipped.
-      await register(registrationOf(opened.response.user.id, registering));
+      await register(reportsOf(opened.response.user.id, registering));
     }
     return {
       status: "opened",
@@ -651,7 +654,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         throw new GoogleTransactionRefused();
       }
       if (clickId !== undefined && active.firstVerification === true) {
-        await register(registrationOf(opened.user.id, clickId));
+        await register(reportsOf(opened.user.id, clickId));
       }
       return { status: "opened", person: personFrom(opened.user), destination, setCookies };
     });
@@ -820,7 +823,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           return await inMemoryTransaction(
             async (bound, rows) =>
               await finishGoogleWith(bound, proof, cookie, {
-                register: async (registration) => registerInMemory(rows, registration),
+                register: async (reports) => registerInMemory(rows, reports),
               }),
             true,
           );
@@ -852,8 +855,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
                 );
                 await lockEmail(tx, email);
               },
-              register: async (registration) => {
-                await tx.insert(registrationPostbacks).values(registration);
+              register: async (reports) => {
+                await tx.insert(adReports).values([...reports]);
               },
             },
           );
@@ -973,7 +976,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           return await inMemoryTransaction(
             async (bound, rows) =>
               await openWith(bound, token, {
-                register: async (registration) => registerInMemory(rows, registration),
+                register: async (reports) => registerInMemory(rows, reports),
               }),
           );
         }
@@ -982,8 +985,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
           return await openWith(bound, token, {
             lockEmail: async (email) => await lockEmail(tx, email),
-            register: async (registration) => {
-              await tx.insert(registrationPostbacks).values(registration);
+            register: async (reports) => {
+              await tx.insert(adReports).values([...reports]);
             },
           });
         });
@@ -1378,17 +1381,38 @@ function clickIdIn(callback: URL): string | undefined {
   return clickIdOf(callback.searchParams.get("clickid")) ?? undefined;
 }
 
-/** Due at once: nothing about a new registration is worth waiting for. */
-function registrationOf(accountId: string, clickId: string): Registration {
+/**
+ * The registration's report, due at once since nothing about a new
+ * registration is worth waiting for, and, where the store report is switched
+ * on, that report waiting for the merchant's first card with its own copy of
+ * the click.
+ */
+function adReportsOf(accountId: string, clickId: string, storeReported: boolean): AdReport[] {
   const now = new Date();
-  return {
+  const registration: AdReport = {
     accountId,
+    event: "reg",
     clickId,
     state: "pending",
     attempts: 0,
     nextAttemptAt: now,
     createdAt: now,
+    eventAt: now,
   };
+  if (!storeReported) return [registration];
+  return [
+    registration,
+    {
+      accountId,
+      event: "store_connected",
+      clickId,
+      state: "waiting",
+      attempts: 0,
+      nextAttemptAt: null,
+      createdAt: now,
+      eventAt: null,
+    },
+  ];
 }
 
 function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
@@ -1650,21 +1674,25 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
     rows.dashboard_woo_shops = (rows.dashboard_woo_shops ?? []).filter(
       (row) => row.accountId !== personId,
     );
-    rows.dashboard_registration_postbacks = (rows.dashboard_registration_postbacks ?? []).filter(
+    rows.dashboard_ad_reports = (rows.dashboard_ad_reports ?? []).filter(
       (row) => row.accountId !== personId,
     );
   }
   return result;
 }
 
-/** Refuses a second row for one account, as the table's primary key does. */
-function registerInMemory(rows: MemoryRows, registration: Registration): void {
-  const registered = rows.dashboard_registration_postbacks ?? [];
-  rows.dashboard_registration_postbacks = registered;
-  if (registered.some((row) => row.accountId === registration.accountId)) {
-    throw new Error("dashboard_registration_postback_duplicate");
+/** Refuses a second row for one account and event, as the table's primary key does. */
+function registerInMemory(rows: MemoryRows, reports: readonly AdReport[]): void {
+  const registered = rows.dashboard_ad_reports ?? [];
+  rows.dashboard_ad_reports = registered;
+  for (const report of reports) {
+    if (
+      registered.some((row) => row.accountId === report.accountId && row.event === report.event)
+    ) {
+      throw new Error("dashboard_ad_report_duplicate");
+    }
   }
-  registered.push({ lastOutcome: null, settledAt: null, ...registration });
+  for (const report of reports) registered.push({ lastOutcome: null, settledAt: null, ...report });
 }
 
 function dashboardLinkMessage(to: string, link: string): Message {
