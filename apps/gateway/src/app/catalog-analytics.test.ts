@@ -278,6 +278,27 @@ describe("a card or a merchant taken off sale and put back", () => {
     ]);
   });
 
+  it("records the pause a switch back to the merchant's code makes, so their resume follows a pause", async () => {
+    const { harnessed } = await started();
+    const merchant = harnessed.merchant.id;
+    await harnessed.gateway.publishCard(merchant, cardFor("room-1"));
+    await harnessed.gateway.sellThrough(merchant, "woocommerce", SIGNED_IN);
+
+    const switched = await harnessed.gateway.sellThrough(merchant, "api", SIGNED_IN);
+    await harnessed.gateway.setSelling(merchant, "open", SIGNED_IN);
+
+    expect(switched).toStrictEqual({ switched: true, sellingPaused: true });
+    expect(recorded(harnessed, "agc_selling_changed")).toStrictEqual(
+      (["paused", "resumed"] as const).map((change) => ({
+        name: "agc_selling_changed",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant },
+        fields: { entity: "merchant", change },
+      })),
+    );
+  });
+
   it("records nothing for a departed merchant's refused resume", async () => {
     const { harnessed } = await started();
     await harnessed.store.setSelling(harnessed.merchant.id, "departed");

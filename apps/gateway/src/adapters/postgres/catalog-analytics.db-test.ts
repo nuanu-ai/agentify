@@ -220,6 +220,23 @@ if (databaseUrl === null) {
       ]);
     });
 
+    it("records the pause a switch back to the merchant's code makes, in the switch", async () => {
+      await gateway.publishCard(A, cardFor("room-707"));
+      await gateway.sellThrough(A, "woocommerce", SIGNED_IN);
+      await pool.query("delete from commerce_analytics_events");
+
+      const switched = await gateway.sellThrough(A, "api", SIGNED_IN);
+
+      expect(switched).toStrictEqual({ switched: true, sellingPaused: true });
+      expect(await recorded()).toStrictEqual([
+        {
+          name: "agc_selling_changed",
+          refs: { merchant: A },
+          properties: { entity: "merchant", change: "paused" },
+        },
+      ]);
+    });
+
     it("records one change when the same pause and the same stop race", async () => {
       const published = await gateway.publishCard(A, cardFor("room-606"));
       const item = published.ok ? published.id : "";
