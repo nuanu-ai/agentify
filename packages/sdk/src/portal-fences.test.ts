@@ -19,13 +19,15 @@
  * their own card; it is compiled against the same release of that client the
  * repository's own test buyer uses. The count of fences per page is asserted,
  * so a new example cannot slip past: when it fails, decide how the new fence is
- * compiled.
+ * compiled. The compiler's own list of the files it read is held against the
+ * examples too, since a pass that reads none of them is as green as one that
+ * reads them all.
  */
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -153,7 +155,26 @@ const examplesOf = (page: Page): Example[] => {
 interface Compilation {
   readonly ok: boolean;
   readonly output: string;
+  /** The examples the compiler read, by name, as it listed its files. */
+  readonly read: readonly string[];
 }
+
+/**
+ * The compiler's printout taken apart: `--listFiles` prints each file it read
+ * as a bare absolute path on a line of its own, which an error line never is,
+ * and those lines are kept out of the output a failure shows.
+ */
+const compilationOf = (ok: boolean, printed: string, directory: string): Compilation => {
+  const lines = printed.split("\n");
+  const isListed = (line: string): boolean => line.startsWith("/") && !line.includes(" ");
+  const read = lines
+    .filter((line) => isListed(line) && line.includes(`/${basename(directory)}/`))
+    .map((line) => basename(line))
+    .filter((file) => file.endsWith(".ts") && !file.endsWith(".d.ts"))
+    .map((file) => file.slice(0, -".ts".length));
+
+  return { ok, output: lines.filter((line) => !isListed(line)).join("\n"), read };
+};
 
 /**
  * Writes the examples out beside a harness and a configuration and compiles
@@ -197,18 +218,17 @@ const compile = (examples: readonly Example[]): Compilation => {
     try {
       const output = execFileSync(join(repoRoot, "node_modules", ".bin", "tsc"), [
         "--noEmit",
+        "--listFiles",
         "-p",
         join(directory, "tsconfig.json"),
       ]);
 
-      return { ok: true, output: output.toString() };
+      return compilationOf(true, output.toString(), directory);
     } catch (failure) {
       const reported = failure as { stdout?: Buffer; stderr?: Buffer };
+      const printed = `${reported.stdout?.toString() ?? ""}${reported.stderr?.toString() ?? ""}`;
 
-      return {
-        ok: false,
-        output: `${reported.stdout?.toString() ?? ""}${reported.stderr?.toString() ?? ""}`,
-      };
+      return compilationOf(false, printed, directory);
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -221,9 +241,13 @@ describe("the portal's TypeScript examples", () => {
     // compiler pass for all pages, since starting `tsc` is most of the cost;
     // each file is named for its page and fence, so the output says which
     // example broke.
-    const compiled = compile(PAGES.flatMap(examplesOf));
+    const examples = PAGES.flatMap(examplesOf);
+    const compiled = compile(examples);
 
     expect(compiled.ok, compiled.output).toBe(true);
+    // A pass that read no example passes too, so the compiler has to have
+    // read every one of them as a program of its own.
+    expect([...compiled.read].sort()).toEqual(examples.map((example) => example.name).sort());
   });
 
   it.each(PAGES)("has the examples this harness knows about on $file", (page) => {
