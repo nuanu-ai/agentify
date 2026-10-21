@@ -68,7 +68,7 @@ export interface AppliedRate {
   readonly setAt: Date;
 }
 
-/** What the merchant was shown beside the rate they saved. */
+/** Coinbase's rate as read while a rate was saved, which the guard compared it with. */
 export interface ReferenceShown {
   readonly rate: string;
   readonly source: string;
