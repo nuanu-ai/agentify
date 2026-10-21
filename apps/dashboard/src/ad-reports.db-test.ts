@@ -251,9 +251,7 @@ if (databaseUrl === null) {
       await registered(CLICK);
       const { post, received } = tracker(200);
 
-      expect(
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-      ).toBe(true);
+      expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(true);
 
       expect(received).toHaveLength(1);
       const [request] = received;
@@ -273,7 +271,7 @@ if (databaseUrl === null) {
       const account = await registered(CLICK);
       const { post } = tracker(200);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(await onlyRow()).toMatchObject({
         account_id: account,
@@ -288,9 +286,7 @@ if (databaseUrl === null) {
     it("takes nothing when no report is due, and posts nothing", async () => {
       const { post, received } = tracker();
 
-      expect(
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-      ).toBe(false);
+      expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(false);
 
       expect(received).toStrictEqual([]);
     });
@@ -306,7 +302,7 @@ if (databaseUrl === null) {
         await registered(CLICK);
         const { post, received } = tracker(failure, 200);
 
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+        await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
         const waiting = await onlyRow();
         expect(waiting).toMatchObject({
           click_id: CLICK,
@@ -319,14 +315,12 @@ if (databaseUrl === null) {
 
         // Not yet due: nothing is posted before the minute is up.
         clock = START.getTime() + MINUTE - 1;
-        expect(
-          await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-        ).toBe(false);
+        expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(false);
         expect(received).toHaveLength(1);
 
         await untilDue();
         const recovered = clock;
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+        await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
         expect(received).toHaveLength(2);
         expect(received[1]?.body).toBe(received[0]?.body);
@@ -337,9 +331,7 @@ if (databaseUrl === null) {
           last_outcome: "http_200",
           settled_at: new Date(recovered),
         });
-        expect(
-          await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-        ).toBe(false);
+        expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(false);
         expect(received).toHaveLength(2);
       });
     }
@@ -349,7 +341,7 @@ if (databaseUrl === null) {
       const { post } = tracker("silence");
       const began = performance.now();
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       const took = performance.now() - began;
       expect(took).toBeGreaterThanOrEqual(4_900);
@@ -367,7 +359,7 @@ if (databaseUrl === null) {
       const waits: number[] = [];
 
       for (let attempt = 0; attempt < 7; attempt += 1) {
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+        await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
         const row = await onlyRow();
         waits.push((row.next_attempt_at?.getTime() ?? 0) - (received.at(-1)?.at ?? 0));
         await untilDue();
@@ -389,7 +381,7 @@ if (databaseUrl === null) {
       const { post, received } = tracker(...Array<Answer>(20).fill(503));
 
       for (let turn = 0; turn < 20 && (await onlyRow()).state === "pending"; turn += 1) {
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+        await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
         if ((await onlyRow()).state === "pending") await untilDue();
       }
 
@@ -415,7 +407,7 @@ if (databaseUrl === null) {
       ]);
       const { post } = tracker(503);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(await onlyRow()).toMatchObject({
         click_id: null,
@@ -429,9 +421,7 @@ if (databaseUrl === null) {
       await registered(CLICK, 24 * HOUR);
       const { post, received } = tracker(200);
 
-      expect(
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-      ).toBe(true);
+      expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(true);
 
       expect(received).toStrictEqual([]);
       expect(await onlyRow()).toMatchObject({
@@ -453,7 +443,7 @@ if (databaseUrl === null) {
       );
       const { post, received } = tracker(200);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(received).toStrictEqual([]);
       expect(await onlyRow()).toMatchObject({
@@ -469,7 +459,7 @@ if (databaseUrl === null) {
       await registered(CLICK, 24 * HOUR - 1);
       const { post, received } = tracker(200);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(received).toHaveLength(1);
       expect((await onlyRow()).state).toBe("delivered");
@@ -480,11 +470,9 @@ if (databaseUrl === null) {
         await registered(CLICK);
         const { post, received } = tracker(status);
 
-        await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+        await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
         clock += 48 * HOUR;
-        expect(
-          await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
-        ).toBe(false);
+        expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(false);
 
         expect(received).toHaveLength(1);
         expect(await onlyRow()).toMatchObject({
@@ -502,8 +490,8 @@ if (databaseUrl === null) {
       await registered(CLICKS[1]);
       const { post, received } = tracker(200, 200);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(received.map((request) => request.body)).toStrictEqual([
         `{"clickid":"${CLICKS[0]}","event":"reg"}`,
@@ -527,14 +515,14 @@ if (databaseUrl === null) {
       const { post, received } = tracker(200, 200);
       try {
         await expect(
-          reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
+          reportOnce({ pool, target: TARGET, fetch: post, now, wait }),
         ).rejects.toThrow();
       } finally {
         await pool.query("drop trigger fail_registration_update on dashboard_ad_reports");
         await pool.query("drop function fail_registration_update()");
       }
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(received).toHaveLength(2);
       expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
@@ -554,7 +542,7 @@ if (databaseUrl === null) {
       );
       const { post, received } = tracker(200, 200);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(received.map((request) => request.body)).toStrictEqual([
         `{"clickid":"${CLICKS[1]}","event":"reg"}`,
@@ -572,7 +560,7 @@ if (databaseUrl === null) {
         await deleting.query("delete from dashboard_accounts where id = $1", [account]);
 
         const took = await Promise.race([
-          reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait }),
+          reportOnce({ pool, target: TARGET, fetch: post, now, wait }),
           sleep(3_000).then(() => "still waiting"),
         ]);
 
@@ -590,7 +578,7 @@ if (databaseUrl === null) {
     it("never posts one report twice from two processes running at once, and spaces their posts too", async () => {
       for (const click of CLICKS) await registered(click);
       const { post, received } = tracker();
-      const parts = { target: TARGET, storeConnected: true, fetch: post, now, wait, idleMs: 50 };
+      const parts = { target: TARGET, fetch: post, now, wait, idleMs: 50 };
 
       const one = startAdReports({ ...parts, pool });
       const other = startAdReports({ ...parts, pool: otherPool });
@@ -624,7 +612,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: TARGET,
-        storeConnected: true,
         fetch: post,
         now,
         wait,
@@ -646,10 +633,10 @@ if (databaseUrl === null) {
       await registered(CLICKS[1], 24 * HOUR);
       const { post } = tracker(503, 403);
 
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
       clock += 2 * MINUTE;
-      await reportOnce({ pool, target: TARGET, storeConnected: true, fetch: post, now, wait });
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
       expect(told).toHaveLength(3);
       expect(told.filter((line) => line.includes("retry_window_exhausted"))).toHaveLength(1);
@@ -661,7 +648,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: TARGET,
-        storeConnected: true,
         fetch: tracker().post,
         idleMs: 60_000,
       });
@@ -690,7 +676,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: TARGET,
-        storeConnected: true,
         fetch: post,
         now,
         wait,
@@ -731,7 +716,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: null,
-        storeConnected: false,
         fetch: post,
         now,
         wait,
@@ -792,7 +776,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: null,
-        storeConnected: false,
         fetch: tracker().post,
         now,
         wait: () => sleep(5),
@@ -871,9 +854,9 @@ if (databaseUrl === null) {
   let storeAccounts = 0;
   /**
    * An account of `merchantId` an ad brought, registered `createdAgoMs` before
-   * the test clock, with its store report waiting as a sign-in with that
-   * report switched on leaves it. Its registration's report is already
-   * delivered unless `registration` says it is still pending.
+   * the test clock, with its store report waiting as a sign-in from the ad
+   * leaves it. Its registration's report is already delivered unless
+   * `registration` says it is still pending.
    */
   const fromAnAd = async (
     click: string,
@@ -937,8 +920,8 @@ if (databaseUrl === null) {
   /** The whole body of a store report, as the tracker asked for it. */
   const storeReport = (click: string): string => `{"clickid":"${click}","event":"lead"}`;
 
-  const report = async (post: typeof fetch, storeConnected = true): Promise<boolean> =>
-    await reportOnce({ pool, target: TARGET, storeConnected, fetch: post, now, wait });
+  const report = async (post: typeof fetch): Promise<boolean> =>
+    await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
 
   describe("reporting a merchant's first card to the ad tracker", () => {
     for (const [integration, through] of [
@@ -1073,6 +1056,25 @@ if (databaseUrl === null) {
         event_at: null,
         settled_at: new Date(clock),
       });
+    });
+
+    it("says in the log why waiting store reports lapsed, in one line for each reason", async () => {
+      const merchant = await aMerchant();
+      await publish(merchant, "room-1");
+      clock += MINUTE;
+      const registeredAt = clock;
+      await fromAnAd(CLICKS[0], merchant);
+      await fromAnAd(CLICKS[1], null);
+      await fromAnAd(CLICKS[2], null);
+      clock = registeredAt + 30 * DAY;
+
+      expect(await report(tracker().post)).toBe(false);
+
+      expect(told.filter((line) => line.includes("lapsed"))).toHaveLength(2);
+      expect(told.filter((line) => line.includes("first_card_before_registration"))).toHaveLength(
+        1,
+      );
+      expect(told.filter((line) => line.includes("no_first_card_in_30_days"))).toHaveLength(1);
     });
 
     it("keeps the click while it waits and erases it, posting nothing, once 30 days pass without a first card", async () => {
@@ -1356,7 +1358,7 @@ if (databaseUrl === null) {
         await publish(merchant, "room-1");
       }
       const { post, received } = tracker();
-      const parts = { target: TARGET, storeConnected: true, fetch: post, now, wait, idleMs: 50 };
+      const parts = { target: TARGET, fetch: post, now, wait, idleMs: 50 };
 
       const one = startAdReports({ ...parts, pool });
       const other = startAdReports({ ...parts, pool: otherPool });
@@ -1541,7 +1543,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: null,
-        storeConnected: false,
         fetch: tracker().post,
         now,
         idleMs: 60_000,
@@ -1565,98 +1566,88 @@ if (databaseUrl === null) {
     });
   });
 
-  describe("a store report while that report is switched off", () => {
-    it("posts registrations only, and keeps a store report waiting until its 30 days end, then erases its click", async () => {
-      const merchant = await aMerchant();
-      const account = await fromAnAd(CLICK, merchant, 0, "pending");
+  describe("a store report while reporting is switched off", () => {
+    it("keeps a store report whose first card came waiting with its click, and lapses it, posting nothing, the moment its 30 days end", async () => {
+      const ending = await aMerchant();
+      const later = await aMerchant();
       const registeredAt = clock;
-      clock += HOUR;
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(200, 200);
+      // A moment apart, so one turn finds one report's 30 days over and the
+      // other's not.
+      const ended = await fromAnAd(CLICKS[0], ending, 1);
+      const almost = await fromAnAd(CLICKS[1], later);
+      clock = registeredAt + HOUR;
+      await publish(ending, "room-1");
+      await publish(later, "room-1");
+      clock = registeredAt + 30 * DAY - 1;
+      const { post, received } = tracker();
 
-      await report(post, false);
-      expect(await report(post, false)).toBe(false);
-      expect(await storeRowOf(account)).toMatchObject({ click_id: CLICK, state: "waiting" });
+      // The clock stands still, so only the turn's own reading of it decides.
+      const running = startAdReports({
+        pool,
+        target: null,
+        fetch: post,
+        now,
+        wait: () => sleep(5),
+        idleMs: 20,
+      });
+      try {
+        await eventually(async () => (await storeRowOf(ended)).state === "lapsed", 5_000);
+        await sleep(100);
+      } finally {
+        await running.stop();
+      }
 
-      clock = registeredAt + 30 * DAY;
-      expect(await report(post, false)).toBe(false);
-
-      expect(received.map((request) => request.body)).toStrictEqual([
-        `{"clickid":"${CLICK}","event":"reg"}`,
-      ]);
-      expect(await storeRowOf(account)).toMatchObject({
+      expect(received).toStrictEqual([]);
+      expect(await storeRowOf(ended)).toMatchObject({
         click_id: null,
         state: "lapsed",
         last_outcome: "switched_off_past_30_days",
-      });
-    });
-
-    it("says in the log why waiting store reports lapsed, in one line for each reason", async () => {
-      const merchant = await aMerchant();
-      const registeredAt = clock;
-      await fromAnAd(CLICKS[0], merchant);
-      await fromAnAd(CLICKS[1], null);
-      await fromAnAd(CLICKS[2], null);
-      clock = registeredAt + HOUR;
-      await publish(merchant, "room-1");
-      clock = registeredAt + 30 * DAY;
-
-      expect(await report(tracker().post, false)).toBe(false);
-
-      expect(told.filter((line) => line.includes("lapsed"))).toHaveLength(2);
-      expect(told.filter((line) => line.includes("switched_off_past_30_days"))).toHaveLength(1);
-      expect(told.filter((line) => line.includes("no_first_card_in_30_days"))).toHaveLength(1);
-    });
-
-    it("gives up a store report already pending once a day has passed since the first card, without posting it", async () => {
-      const merchant = await aMerchant();
-      const account = await fromAnAd(CLICK, merchant);
-      const firstCardAt = clock;
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(503);
-      await report(post);
-      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
-
-      clock = firstCardAt + DAY - 1;
-      expect(await report(post, false)).toBe(false);
-      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
-      clock = firstCardAt + DAY;
-      expect(await report(post, false)).toBe(false);
-
-      expect(received).toHaveLength(1);
-      expect(await storeRowOf(account)).toMatchObject({
-        click_id: null,
-        state: "given_up",
-        attempts: 1,
-        last_outcome: "http_503",
+        event_at: null,
         settled_at: new Date(clock),
       });
+      expect(await storeRowOf(almost)).toMatchObject({ click_id: CLICKS[1], state: "waiting" });
     });
 
-    it("gives up a store report already pending the moment 30 days from the registration end, though its first card is not a day old, without posting it", async () => {
-      const merchant = await aMerchant();
-      const account = await fromAnAd(CLICK, merchant);
+    it("gives up a pending store report, posting nothing, the moment 30 days from its registration end, though its first card is not a day old", async () => {
+      const ending = await aMerchant();
+      const later = await aMerchant();
       const registeredAt = clock;
+      const ended = await fromAnAd(CLICKS[0], ending, 1);
+      const almost = await fromAnAd(CLICKS[1], later);
       clock = registeredAt + 30 * DAY - HOUR;
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(503);
+      await publish(ending, "room-1");
+      await publish(later, "room-1");
+      const { post, received } = tracker(503, 503);
       await report(post);
-      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
-
+      await report(post);
+      expect(await storeRowOf(ended)).toMatchObject({ state: "pending", click_id: CLICKS[0] });
+      expect(await storeRowOf(almost)).toMatchObject({ state: "pending", click_id: CLICKS[1] });
       clock = registeredAt + 30 * DAY - 1;
-      expect(await report(post, false)).toBe(false);
-      expect(await storeRowOf(account)).toMatchObject({ state: "pending", click_id: CLICK });
-      clock = registeredAt + 30 * DAY;
-      expect(await report(post, false)).toBe(false);
 
-      expect(received).toHaveLength(1);
-      expect(await storeRowOf(account)).toMatchObject({
+      const running = startAdReports({
+        pool,
+        target: null,
+        fetch: post,
+        now,
+        wait: () => sleep(5),
+        idleMs: 20,
+      });
+      try {
+        await eventually(async () => (await storeRowOf(ended)).state === "given_up", 5_000);
+        await sleep(100);
+      } finally {
+        await running.stop();
+      }
+
+      expect(received).toHaveLength(2);
+      expect(await storeRowOf(ended)).toMatchObject({
         click_id: null,
         state: "given_up",
         attempts: 1,
         last_outcome: "http_503",
         settled_at: new Date(clock),
       });
+      expect(await storeRowOf(almost)).toMatchObject({ click_id: CLICKS[1], state: "pending" });
     });
 
     it("with every report switched off, posts nothing, gives up a pending store report after its day and lapses a waiting one at 30 days", async () => {
@@ -1673,7 +1664,6 @@ if (databaseUrl === null) {
       const running = startAdReports({
         pool,
         target: null,
-        storeConnected: false,
         fetch: post,
         now,
         wait,
