@@ -16,8 +16,6 @@ export const ORDER_EVENT_TYPES = Object.freeze({
    * completed after the merchant closed fulfillment.
    */
   UNFULFILLED: "order.unfulfilled",
-  /** The merchant said they would deliver and the agent never paid. */
-  UNPAID_AFTER_CONFIRMATION: "order.unpaid_after_confirmation",
   /** The merchant delivered synchronously and the payment did not execute. */
   PAYMENT_FAILED_AFTER_DELIVERY: "order.payment_failed_after_delivery",
 } as const);
@@ -50,12 +48,6 @@ export const OrderEventSchema = z.discriminatedUnion("type", [
      */
     price: MoneySchema,
     reason: UnfulfilledReasonSchema,
-  }),
-
-  z.strictObject({
-    type: z.literal(ORDER_EVENT_TYPES.UNPAID_AFTER_CONFIRMATION),
-    order_id: IdentifierSchema,
-    at: TimestampSchema,
   }),
 
   z.strictObject({

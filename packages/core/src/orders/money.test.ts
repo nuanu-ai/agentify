@@ -130,7 +130,6 @@ describe("the invariants of the order's money", () => {
 describe("a refusal before the charge never leaves a paid order unfulfilled", () => {
   const refusalsBeforeMoney: readonly [string, Order][] = [
     ["a handler refusing a synchronous order", reach("failed")],
-    ["a merchant declining a confirmation", reach("declined")],
     ["a price check saying the goods are gone", reach("rejected")],
   ];
 

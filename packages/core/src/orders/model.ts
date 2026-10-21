@@ -17,16 +17,12 @@ import { assertNever } from "../index.js";
  * Every state an order can be in.
  *
  * The backbone is one for all three fulfillment modes; the mode switches
- * decide which gates are passed automatically.
+ * decide when the money moves.
  *
  * - `created` — the intent to buy: the card was found and the purchase
  *   parameters passed the card's schema. No price yet.
  * - `quoted` — the price is fixed, either by the merchant's answer or by the
  *   card's snapshot, and the payment question is next.
- * - `awaiting_confirmation` — the merchant was asked "will you fulfill this?"
- *   and no money has moved. Only reachable when the card needs confirmation.
- * - `confirmed` — the merchant answered "I will", and the agent now has a
- *   deadline to pay.
  * - `paid` — the payment question is settled as far as this mode requires
  *   before the order reaches the merchant. With the settle on purchase that
  *   means the money moved; with the settle after fulfillment it means the
@@ -50,8 +46,6 @@ import { assertNever } from "../index.js";
  * - `rejected` — closed before the merchant's handler ever saw the order: no
  *   stock, a payment that did not pass verification, a silent price check on a
  *   card whose money moves on purchase.
- * - `declined` — the merchant answered "I will not" to a confirmation request.
- *   Free for the agent.
  * - `expired` — a deadline ran out. Free for the agent in every case it can
  *   reach, because every deadline whose expiry would leave money taken sends
  *   the order to `unfulfilled` instead.
@@ -59,8 +53,6 @@ import { assertNever } from "../index.js";
 export const ORDER_STATES = [
   "created",
   "quoted",
-  "awaiting_confirmation",
-  "confirmed",
   "paid",
   "dispatched",
   "fulfilled",
@@ -70,7 +62,6 @@ export const ORDER_STATES = [
   "fulfillment_closed",
   "failed",
   "rejected",
-  "declined",
   "expired",
 ] as const;
 
@@ -83,8 +74,6 @@ export type OrderState = (typeof ORDER_STATES)[number];
 export const OPEN_ORDER_STATES = [
   "created",
   "quoted",
-  "awaiting_confirmation",
-  "confirmed",
   "paid",
   "dispatched",
   "fulfilled",
@@ -98,7 +87,6 @@ export const CLOSED_ORDER_STATES = [
   "fulfillment_closed",
   "failed",
   "rejected",
-  "declined",
   "expired",
 ] as const;
 
@@ -116,7 +104,6 @@ export function endedWithNothingHeld(order: Order): boolean {
   switch (order.state) {
     case "failed":
     case "rejected":
-    case "declined":
       return true;
     case "expired":
       return !order.heldFulfillment;
@@ -126,8 +113,8 @@ export function endedWithNothingHeld(order: Order): boolean {
 }
 
 /**
- * When the payment is executed. This is one of the two switches that turn the
- * three published modes into one machine.
+ * When the payment is executed. This is the switch that turns the three modes
+ * into one machine.
  *
  * `after_fulfillment` is the literal reading of "refusal before the charge":
  * the payment is verified, the order goes to the merchant, the goods come
@@ -139,11 +126,8 @@ const SETTLE_TIMINGS = ["on_purchase", "after_fulfillment"] as const;
 type SettleTiming = (typeof SETTLE_TIMINGS)[number];
 
 /**
- * The two switches of a card. The fourth combination, confirmation with the
- * settle after fulfillment, is not forbidden by the machine and is not
- * published either, because no product has been found that needs it.
- *
- * A parcel the merchant hands to a carrier is a third switch, recorded at
+ * The switches of a card. When the money moves is the first. A parcel the
+ * merchant hands to a carrier is the second, recorded at
  * purchase so a card republished in another mode changes no order in flight. It
  * adds the buyer's address, which the order holds only until the merchant has
  * it (`holdsShipTo`). Its money moves as the asynchronous mode's does, and the
@@ -153,35 +137,25 @@ type SettleTiming = (typeof SETTLE_TIMINGS)[number];
  * stored order without it reads as not a parcel.
  */
 export type OrderMode =
-  | {
-      readonly needsConfirmation: boolean;
-      readonly settle: SettleTiming;
-      readonly parcel?: never;
-    }
-  | {
-      readonly needsConfirmation: false;
-      readonly settle: "on_purchase";
-      readonly parcel: true;
-    };
+  | { readonly settle: SettleTiming; readonly parcel?: never }
+  | { readonly settle: "on_purchase"; readonly parcel: true };
 
 /** The modes a card can declare. */
-export const FULFILLMENT_MODES = ["sync", "async", "confirm", "ship"] as const;
+export const FULFILLMENT_MODES = ["sync", "async", "ship"] as const;
 
 export type FulfillmentMode = (typeof FULFILLMENT_MODES)[number];
 
 export function modeOf(fulfillment: FulfillmentMode): OrderMode {
   switch (fulfillment) {
     case "sync":
-      return { needsConfirmation: false, settle: "after_fulfillment" };
+      return { settle: "after_fulfillment" };
     case "async":
-      return { needsConfirmation: false, settle: "on_purchase" };
-    case "confirm":
-      return { needsConfirmation: true, settle: "on_purchase" };
+      return { settle: "on_purchase" };
     case "ship":
       // Goods handed to a carrier: the money moves as the asynchronous mode's
       // does, and the order holds the buyer's address until the merchant has
       // it.
-      return { needsConfirmation: false, settle: "on_purchase", parcel: true };
+      return { settle: "on_purchase", parcel: true };
     default:
       return assertNever(fulfillment, "fulfillment mode");
   }
@@ -262,10 +236,10 @@ export const RECOMMENDED_REFUSAL_CODES = [
 /**
  * Every waiting has a deadline and an owner of that deadline.
  *
- * `quote_response`, `quote_expiry`, `settle_response`, `sync_response` and
- * `payment_after_confirmation` are ours, one number each for the whole system.
- * `confirmation_response` and `async_fulfillment` are the merchant's, declared
- * on the card and visible to the agent before the purchase.
+ * `quote_response`, `quote_expiry`, `settle_response` and `sync_response` are
+ * ours, one number each for the whole system. `async_fulfillment` is the
+ * merchant's, declared on the card and visible to the agent before the
+ * purchase.
  *
  * The two about the price are not the same waiting. `quote_response` bounds
  * how long we wait for the merchant to say what the goods cost; running out of
@@ -276,8 +250,6 @@ export const DEADLINE_KINDS = [
   "quote_response",
   "quote_expiry",
   "settle_response",
-  "confirmation_response",
-  "payment_after_confirmation",
   "sync_response",
   "async_fulfillment",
 ] as const;
@@ -311,10 +283,6 @@ type DeadlinePolicy = {
    * `settleResponseMs` for the sum the two of them have to stay under.
    */
   readonly syncResponseMs: number;
-  /** Ours: how long a confirmed order waits for the agent's payment. */
-  readonly paymentAfterConfirmationMs: number;
-  /** The merchant's, from the card: how long he may take to confirm. */
-  readonly confirmationResponseMs: number;
   /** The merchant's, from the card: how long he may take to fulfill. */
   readonly asyncFulfillmentMs: number;
 };
@@ -366,7 +334,6 @@ export type Closure =
  */
 export const MERCHANT_EVENTS = [
   "order.unfulfilled",
-  "order.unpaid_after_confirmation",
   "order.payment_failed_after_delivery",
 ] as const;
 
@@ -416,8 +383,6 @@ export type Effect =
   | { readonly kind: "request_quote" }
   | { readonly kind: "verify_payment" }
   | { readonly kind: "execute_payment" }
-  | { readonly kind: "invite_payment" }
-  | { readonly kind: "dispatch_confirmation_request" }
   | { readonly kind: "dispatch_order" }
   | { readonly kind: "redeliver_order"; readonly attempt: number; readonly delayMs: number }
   | { readonly kind: "release_goods_to_agent" }
@@ -455,19 +420,6 @@ export function holdsShipTo(order: Order): boolean {
 }
 
 /**
- * What the gateway is asked to do the moment an order has a price.
- *
- * A card that needs confirmation sends the question to the merchant before any
- * money touches the buyer; every other card already has the agent's payment in
- * hand and only has to verify it.
- */
-export function effectsOnQuoted(mode: OrderMode): readonly Effect[] {
-  return mode.needsConfirmation
-    ? [{ kind: "dispatch_confirmation_request" }]
-    : [{ kind: "verify_payment" }];
-}
-
-/**
  * Everything that can happen to an order from outside the core: the agent's
  * moves, the payment layer's outcomes, the merchant handler's answers, his
  * separate calls, and the expiry of a deadline.
@@ -496,7 +448,6 @@ export type OrderEvent =
   | { readonly kind: "payment_settled"; readonly at: number }
   | { readonly kind: "payment_settle_failed"; readonly at: number }
   | { readonly kind: "purchase_repeated"; readonly at: number }
-  | { readonly kind: "confirmation_dispatched"; readonly at: number }
   | { readonly kind: "order_dispatched"; readonly at: number }
   | { readonly kind: "handler_accepted"; readonly at: number }
   | { readonly kind: "handler_delivered"; readonly at: number }
@@ -532,7 +483,6 @@ const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
   payment_settled: true,
   payment_settle_failed: true,
   purchase_repeated: true,
-  confirmation_dispatched: true,
   order_dispatched: true,
   handler_accepted: true,
   handler_delivered: true,
@@ -558,8 +508,6 @@ export type StateEvent = Exclude<OrderEvent, { kind: "deadline_expired" | "close
 type OrderTimestamps = {
   readonly createdAt: number;
   readonly quotedAt: number | null;
-  readonly confirmationRequestedAt: number | null;
-  readonly confirmedAt: number | null;
   /** When the payment was last sent for execution. */
   readonly settleStartedAt: number | null;
   /**
@@ -597,8 +545,8 @@ export type Order = {
    * Only the asynchronous mode takes an order on, with the goods following
    * through the `deliver` call; a synchronous handler that does is refused for
    * its mode, so the flag is never set on a synchronous order. It is written
-   * false on the way into each round (the confirmation, the order once paid,
-   * the order once handed over from `paid`) and set only by an acceptance in
+   * false on the way into each round (the order once paid, the order once
+   * handed over from `paid`) and set only by an acceptance in
    * `dispatched`, so it stays true for the rest of the order's life there.
    */
   readonly dispatch: { readonly attempts: number; readonly accepted: boolean };
@@ -633,8 +581,6 @@ export type Order = {
  *   The list to schedule from is `deadlines(order)`.
  * - `deadline_not_yet_due` — a timer fired early, or fired twice. Rescheduling
  *   off `deadlines(order)` is the fix; re-sending the same expiry is not.
- * - `delivery_before_payment` — goods offered against a confirmation request,
- *   which nothing has been charged for.
  * - `settle_in_flight` — a charge is being executed, or the outcome of one
  *   that was is still unknown. Either way the machine will not spend the
  *   buyer's money again on top of it, and this is the one rejection that means
@@ -648,7 +594,6 @@ const TRANSITION_REJECTION_CODES = [
   "event_not_applicable",
   "deadline_not_armed",
   "deadline_not_yet_due",
-  "delivery_before_payment",
   "settle_in_flight",
   "currency_changed",
 ] as const;

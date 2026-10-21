@@ -39,7 +39,7 @@ const writtenCardFields = PublicCardSchema.extend({
   params: ParamSpecSchema.optional(),
   result: ParamSpecSchema,
   seller: SellerSchema,
-}).omit({ fulfillment: true, fulfill_deadline_seconds: true, confirm_deadline_seconds: true });
+}).omit({ fulfillment: true, fulfill_deadline_seconds: true });
 
 const deadline = z.int().positive().optional();
 
@@ -53,13 +53,6 @@ const WrittenCardSchema = z
     writtenCardFields.extend({ fulfillment: z.literal("sync") }).strict(),
     writtenCardFields
       .extend({ fulfillment: z.literal("async"), fulfill_deadline_seconds: deadline })
-      .strict(),
-    writtenCardFields
-      .extend({
-        fulfillment: z.literal("confirm"),
-        confirm_deadline_seconds: deadline,
-        fulfill_deadline_seconds: deadline,
-      })
       .strict(),
     // A parcel names its time to ship and no result: what its buyer receives
     // is the record of its shipment.

@@ -127,7 +127,7 @@ const statusOf = (ending: (typeof ENDINGS)[number]): readonly string[] =>
 function paidParcel(): Order {
   return walk(
     newOrder("async", {
-      mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+      mode: { settle: "on_purchase", parcel: true },
       priceCheck: "merchant",
     }),
     [
@@ -311,7 +311,7 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     const async = silent(newOrder("async", { priceCheck: "merchant" }));
     const parcel = silent(
       newOrder("async", {
-        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        mode: { settle: "on_purchase", parcel: true },
         priceCheck: "merchant",
       }),
     );
@@ -449,7 +449,7 @@ const FAILURES = [
 
 function priceCheckedParcel(): Order {
   return newOrder("async", {
-    mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+    mode: { settle: "on_purchase", parcel: true },
     priceCheck: "merchant",
   });
 }

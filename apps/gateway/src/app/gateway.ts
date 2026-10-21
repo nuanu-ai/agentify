@@ -1334,9 +1334,7 @@ export class Gateway {
     // the timer can close that order first.
     const arrivedAt = this.runtime.clock();
     const lapsed = deadlines(before.order).find(
-      (deadline) =>
-        (deadline.kind === "quote_expiry" || deadline.kind === "payment_after_confirmation") &&
-        deadline.at <= arrivedAt,
+      (deadline) => deadline.kind === "quote_expiry" && deadline.at <= arrivedAt,
     );
     if (lapsed !== undefined) {
       await this.runner.apply(orderId, {

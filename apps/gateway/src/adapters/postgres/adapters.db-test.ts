@@ -611,7 +611,7 @@ if (databaseUrl === null) {
         id: "env_db_1",
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_db_1",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -682,7 +682,7 @@ if (databaseUrl === null) {
             id: `env_${BUYER}_${MARKER}`,
             sent_at: "2026-08-26T12:00:00.000Z",
             payload: {
-              type: "order.unpaid_after_confirmation",
+              type: "order.payment_failed_after_delivery",
               order_id: "ord_db_refused",
               at: "2026-08-26T12:00:00.000Z",
             },
@@ -893,7 +893,7 @@ if (databaseUrl === null) {
         id,
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_written_with_the_state",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -1033,7 +1033,7 @@ if (databaseUrl === null) {
           id: `env_${randomUUID()}`,
           sent_at: "2026-08-26T12:00:00.000Z",
           payload: {
-            type: "order.unpaid_after_confirmation",
+            type: "order.payment_failed_after_delivery",
             order_id: order.id,
             at: "2026-08-26T12:00:00.000Z",
           },

@@ -29,8 +29,6 @@ export const TEST_POLICY: OrderPolicy = {
     quoteTtlMs: 60_000,
     settleResponseMs: 30_000,
     syncResponseMs: 10_000,
-    paymentAfterConfirmationMs: 300_000,
-    confirmationResponseMs: 600_000,
     asyncFulfillmentMs: 900_000,
   },
   redelivery: {
@@ -143,13 +141,6 @@ export function reach(state: OrderState): Order {
       return newOrder("sync", { priceCheck: "merchant" });
     case "quoted":
       return newOrder("sync");
-    case "awaiting_confirmation":
-      return walk(newOrder("confirm"), [{ kind: "confirmation_dispatched", at: T0 + 1 }]);
-    case "confirmed":
-      return walk(newOrder("confirm"), [
-        { kind: "confirmation_dispatched", at: T0 + 1 },
-        { kind: "handler_accepted", at: T0 + 2 },
-      ]);
     case "paid":
       return walk(newOrder("sync"), PAID_SYNC);
     case "dispatched":
@@ -181,11 +172,6 @@ export function reach(state: OrderState): Order {
     case "rejected":
       return walk(newOrder("sync", { priceCheck: "merchant" }), [
         { kind: "quote_answered", at: T0 + 1, available: false },
-      ]);
-    case "declined":
-      return walk(newOrder("confirm"), [
-        { kind: "confirmation_dispatched", at: T0 + 1 },
-        { kind: "handler_refused", at: T0 + 2, code: "cannot_fulfill", message: "not this week" },
       ]);
     case "expired":
       return walk(newOrder("sync"), [

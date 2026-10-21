@@ -149,13 +149,6 @@ const shipped = {
   ship_by: "2026-10-09T09:01:00Z",
 };
 
-const confirmed = {
-  ...shown,
-  fulfillment: "confirm",
-  confirm_deadline_seconds: 600,
-  fulfill_deadline_seconds: 3600,
-};
-
 describe("what this gateway checks before it sends a document", () => {
   for (const [name, route] of Object.entries(API_ROUTES)) {
     const document = route.response.document;
@@ -190,7 +183,6 @@ describe("what this gateway checks before it sends a document", () => {
 
   it("sends the documents it writes as they stand", () => {
     expect(sendable(CatalogPageSchema, page)).toBe(true);
-    expect(sendable(CatalogPageSchema, { items: [confirmed] })).toBe(true);
     expect(sendable(AgentOrderStatusSchema, status)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, collected)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, shipped)).toBe(true);
@@ -345,10 +337,6 @@ describe("what this gateway checks before it sends a document", () => {
         { ...shown, result: { code: { type: "string", required: false } } },
       ],
       ["a delivery deadline on a synchronous card", { ...shown, fulfill_deadline_seconds: 900 }],
-      [
-        "a confirmation deadline on an asynchronous card",
-        { ...shown, fulfillment: "async", confirm_deadline_seconds: 60 },
-      ],
     ] as const) {
       expect(sendable(CatalogPageSchema, { items: [wrong] }), why).toBe(false);
     }

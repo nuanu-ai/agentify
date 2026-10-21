@@ -17,12 +17,11 @@ describe("the order vocabulary", () => {
     expect(open.size + closed.size).toBe(ORDER_STATES.length);
   });
 
-  it("reads each published fulfillment mode as a pair of switches", () => {
+  it("reads each published fulfillment mode as the moment its money moves", () => {
     // If this drifts, a card sold as `sync` starts taking money before the
     // goods exist.
-    expect(modeOf("sync")).toStrictEqual({ needsConfirmation: false, settle: "after_fulfillment" });
-    expect(modeOf("async")).toStrictEqual({ needsConfirmation: false, settle: "on_purchase" });
-    expect(modeOf("confirm")).toStrictEqual({ needsConfirmation: true, settle: "on_purchase" });
+    expect(modeOf("sync")).toStrictEqual({ settle: "after_fulfillment" });
+    expect(modeOf("async")).toStrictEqual({ settle: "on_purchase" });
   });
 
   it("keeps every state that is not a resting place of the purchase open", () => {
@@ -53,15 +52,6 @@ describe("creating an order", () => {
     expect(created.order.price).toStrictEqual(TEST_PRICE);
     expect(created.order.quoteSource).toBe("card_snapshot");
     expect(created.effects).toStrictEqual([{ kind: "verify_payment" }]);
-  });
-
-  it("asks the merchant to confirm before any money when the card needs it", () => {
-    const created = createOrder(createInput("confirm"));
-
-    expect(created.ok).toBe(true);
-    if (!created.ok) return;
-    expect(created.order.state).toBe("quoted");
-    expect(created.effects).toStrictEqual([{ kind: "dispatch_confirmation_request" }]);
   });
 
   it("carries the test flag through to the order", () => {

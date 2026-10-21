@@ -30,8 +30,6 @@ const POLICY: OrderPolicy = {
     quoteTtlMs: 2 * MINUTE,
     settleResponseMs: 30 * SECOND,
     syncResponseMs: 10 * SECOND,
-    paymentAfterConfirmationMs: 5 * MINUTE,
-    confirmationResponseMs: 30 * MINUTE,
     asyncFulfillmentMs: 4 * HOUR,
   },
   redelivery: { baseDelayMs: 2 * SECOND, factor: 4, maxDelayMs: 5 * MINUTE, maxAttempts: 6 },

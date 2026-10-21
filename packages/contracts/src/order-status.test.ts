@@ -16,7 +16,6 @@ describe("the status an order can be in", () => {
         "shipped",
         "rejected",
         "payment_unresolved",
-        "declined",
         "expired",
         "unfulfilled",
         "fulfillment_closed",

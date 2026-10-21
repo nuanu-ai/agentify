@@ -126,7 +126,7 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
   if (card.fulfill_deadline_seconds !== undefined) {
     return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
   }
-  return card.fulfillment === "async" || card.fulfillment === "confirm"
+  return card.fulfillment === "async"
     ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
     : { says: word, byDefault: null };
 };

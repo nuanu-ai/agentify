@@ -600,7 +600,7 @@ const gatewayEndingAnOrderItself = async (): Promise<{
                 id: "envelope-carrying-the-event",
                 sent_at: "2026-09-04T00:00:10Z",
                 payload: {
-                  type: "order.unpaid_after_confirmation",
+                  type: "order.payment_failed_after_delivery",
                   order_id: OWED_ORDER.id,
                   at: "2026-09-04T00:00:10Z",
                 },

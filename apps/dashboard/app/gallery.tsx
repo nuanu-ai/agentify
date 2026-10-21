@@ -444,7 +444,6 @@ type Status =
   | "shipped"
   | "rejected"
   | "payment_unresolved"
-  | "declined"
   | "expired"
   | "unfulfilled"
   | "fulfillment_closed"
@@ -1737,7 +1736,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
       cause:
-        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown and Declined at confirmation.",
+        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown.",
     },
     ordersOf([
       ["vpn", "delivered"],
@@ -1746,7 +1745,6 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "unfulfilled"],
       ["number", "delivered_unpaid"],
       ["vpn", "rejected"],
-      ["esimEurope", "declined"],
       ["number", "expired"],
       ["esimEurope", "fulfillment_closed"],
       ["esimWeek", "delivered"],

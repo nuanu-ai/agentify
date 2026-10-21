@@ -39,7 +39,6 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   shipped: { text: "Shipped", tone: "ok" },
   rejected: { text: "Refused", tone: "quiet" },
   payment_unresolved: { text: "Payment outcome unknown", tone: "warn" },
-  declined: { text: "Declined at confirmation", tone: "quiet" },
   expired: { text: "Closed on time limit", tone: "quiet" },
   unfulfilled: { text: "Unfulfilled", tone: "warn" },
   fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
@@ -53,7 +52,6 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
 export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.freeze({
   sync: "Immediate",
   async: "Later",
-  confirm: "After you confirm",
   ship: "By parcel",
 });
 

@@ -40,8 +40,6 @@ export const ORDER_OUTCOMES = [
    * arrives.
    */
   "payment_unresolved",
-  /** The merchant answered a confirmation request with "I will not". */
-  "declined",
   /** A deadline ran out. Nothing was charged. */
   "expired",
   /** The original payment settled and no delivery is recorded. */
@@ -79,8 +77,6 @@ export function outcomeFor(order: Order): OrderOutcome {
   switch (order.state) {
     case "created":
     case "quoted":
-    case "awaiting_confirmation":
-    case "confirmed":
     case "paid":
     case "dispatched":
     case "fulfilled":
@@ -100,8 +96,6 @@ export function outcomeFor(order: Order): OrderOutcome {
       return "rejected";
     case "rejected":
       return "rejected";
-    case "declined":
-      return "declined";
     case "expired":
       return "expired";
     default:
@@ -186,8 +180,7 @@ export function endingReasonFor(order: Order): EndingReason | null {
  * merchant's to finish, and listing it is how goods get made for a purchase
  * that never happened (the buyer still reads `in_progress`). A charge nobody
  * heard back from is listed even so, with a status saying the outcome is
- * unknown. An order waiting on the buyer's payment after a confirmation is not
- * listed: nothing there is the merchant's to deliver. A closed order whose
+ * unknown. A closed order whose
  * payment completed after the closure is listed until the merchant closes it
  * again, since the buyer paid and nothing was delivered.
  */
@@ -208,13 +201,10 @@ export function onTheMerchantsOpenList(order: Order): boolean {
       return true;
     case "created":
     case "quoted":
-    case "awaiting_confirmation":
-    case "confirmed":
     case "delivered":
     case "fulfillment_closed":
     case "failed":
     case "rejected":
-    case "declined":
     case "expired":
       return false;
     default:

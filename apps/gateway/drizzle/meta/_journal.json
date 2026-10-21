@@ -162,6 +162,13 @@
       "when": 1792578062271,
       "tag": "0022_merchant_selling_known",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792579658120,
+      "tag": "0023_order_drops_confirmation",
+      "breakpoints": true
     }
   ]
 }

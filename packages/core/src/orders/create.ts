@@ -6,7 +6,6 @@
 
 import { assertNever } from "../index.js";
 import type { Effect, Order, OrderMode, OrderPolicy, Price } from "./model.js";
-import { effectsOnQuoted } from "./model.js";
 
 /** Whether the merchant is taking new orders. */
 export const MERCHANT_SELLING = ["open", "paused"] as const;
@@ -80,8 +79,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
     timestamps: {
       createdAt: input.at,
       quotedAt: null,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -93,7 +90,8 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
   }
 
   // A card without a price check is sold off its own snapshot, so the order is
-  // born already quoted and the price carries the card's own `as_of`.
+  // born already quoted and the price carries the card's own `as_of`. The
+  // agent's payment is already in hand, so all that is left is to verify it.
   return {
     ok: true,
     order: {
@@ -103,6 +101,6 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
       quoteSource: "card_snapshot",
       timestamps: { ...base.timestamps, quotedAt: input.at },
     },
-    effects: effectsOnQuoted(input.mode),
+    effects: [{ kind: "verify_payment" }],
   };
 }

@@ -621,7 +621,6 @@ describe("merchant fulfillment closure", () => {
       ["in_progress", "paid", true],
       ["in_progress", "not_paid", false],
       ["rejected", "not_paid", false],
-      ["declined", "not_paid", false],
       ["expired", "not_paid", false],
       ["delivered", "paid", false],
       ["shipped", "paid", false],

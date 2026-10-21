@@ -18,9 +18,8 @@ in one table on [What can go wrong](/failures).
 | A parcel, `'ship'` | at the moment of purchase, before your shipment | with a carrier, once you record the shipment | as in the asynchronous mode |
 
 The mode is declared in the card under `fulfillment`, and the agent knows it
-before it pays. Three modes can be published today: synchronous,
-asynchronous, and a parcel on the test channel only. A fourth, confirmation,
-is designed and cannot be published. The product decides the mode; which one
+before it pays. There are three: synchronous, asynchronous, and a parcel, which
+is published on the test channel only. The product decides the mode; which one
 yours takes is worked out on [The product card](/cards#goods-that-leave-later-than-the-answer),
 and what the moment of charging means for the owner of the business is on
 [Money](/money).
@@ -354,8 +353,7 @@ the list.
 
 Every order carries a `status`, which `orders.get` and `orders.list` return
 and which the agent reads too. The drawings show how the words follow one
-another, and the table after them is the one to write a `switch` from. The
-drawings leave out `declined`, which no order reaches today.
+another, and the table after them is the one to write a `switch` from.
 
 ```mermaid
 flowchart TB
@@ -409,7 +407,6 @@ flowchart LR
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
 | `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
 | `fulfillment_closed` | you closed fulfillment; `payment_status` says what became of the payment | only when a payment went through after you closed, until you close it again | skips delivering, which is refused; closes it again once you have settled with the buyer |
-| `declined` | the confirmation mode's "I will not deliver", which no order reaches while that mode cannot be published | no | — |
 
 Where we rather than you ended an order and the word alone would leave the
 agent guessing its next step, the status carries a `reason`. `rejected` comes
@@ -720,10 +717,6 @@ receives one transfer per payout instead.
 - What other events we send. The two named here are a minimum, and we add to
   the catalogue as cases turn up where your side would otherwise learn of
   something only by reconciling by hand.
-- The confirmation mode, in which you are asked whether you will deliver and
-  the buyer is charged after your yes. Its request has no shape on the wire
-  yet and the agent's side of it is not designed, so a card in that mode is
-  refused at publication.
 - Telling your code that a synchronous answer arrived after its deadline. The
   answer carries the word; the tools drop it, because they report only the
   answers we refuse.

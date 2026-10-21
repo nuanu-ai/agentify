@@ -259,10 +259,6 @@ const environmentSchema = z.object({
    * the merchant's answer and then the charge.
    */
   SYNC_BUDGET_MS: durationMs(20_000),
-  /** How long a confirmed order waits for the agent's payment. */
-  PAYMENT_AFTER_CONFIRMATION_MS: durationMs(300_000),
-  /** What a card that names no confirmation deadline of its own is held to. */
-  DEFAULT_CONFIRMATION_RESPONSE_MS: durationMs(3_600_000),
   /** What a card that names no delivery deadline of its own is held to. */
   DEFAULT_ASYNC_FULFILLMENT_MS: durationMs(86_400_000),
 
@@ -423,8 +419,6 @@ interface DeadlineConfig {
   readonly syncResponseMs: number;
   /** The promised ceiling the two synchronous waits have to fit inside. */
   readonly syncBudgetMs: number;
-  readonly paymentAfterConfirmationMs: number;
-  readonly defaultConfirmationResponseMs: number;
   readonly defaultAsyncFulfillmentMs: number;
   readonly handlerAnswerMs: number;
 }
@@ -584,8 +578,6 @@ export function loadConfig(
     settleBeforeGoodsMs: environmentValues.SETTLE_BEFORE_GOODS_MS,
     syncResponseMs: environmentValues.SYNC_RESPONSE_MS,
     syncBudgetMs: environmentValues.SYNC_BUDGET_MS,
-    paymentAfterConfirmationMs: environmentValues.PAYMENT_AFTER_CONFIRMATION_MS,
-    defaultConfirmationResponseMs: environmentValues.DEFAULT_CONFIRMATION_RESPONSE_MS,
     defaultAsyncFulfillmentMs: environmentValues.DEFAULT_ASYNC_FULFILLMENT_MS,
     handlerAnswerMs: environmentValues.HANDLER_ANSWER_MS,
   };

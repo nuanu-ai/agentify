@@ -48,11 +48,9 @@ export const ORDER_STATUSES = Object.freeze([
    * looking at its wallet.
    */
   "payment_unresolved",
-  /** The merchant answered a confirmation request with "I will not deliver". */
-  "declined",
   /**
-   * A deadline passed with nobody at fault: the confirmation, the payment that
-   * was to follow it, or the synchronous delivery.
+   * A deadline passed with nothing charged: the price lapsed before the
+   * payment, or the synchronous delivery did not arrive in time.
    */
   "expired",
   /**

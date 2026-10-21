@@ -6,7 +6,7 @@ import { ORDER_STATES, type OrderState } from "./model.js";
 import { moneyInvariantViolations } from "./money.js";
 import { onTheMerchantsOpenList, outcomeFor, paidAfterClosure } from "./outcome.js";
 
-const ENDED_WITHOUT_A_CHARGE: readonly OrderState[] = ["failed", "rejected", "declined", "expired"];
+const ENDED_WITHOUT_A_CHARGE: readonly OrderState[] = ["failed", "rejected", "expired"];
 
 describe("the merchant closes Agentify fulfillment without deciding the money", () => {
   it("records the first merchant action and preserves the original payment and reason", () => {

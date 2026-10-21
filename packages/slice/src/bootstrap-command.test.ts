@@ -367,7 +367,7 @@ describe("what a paid call came to", () => {
   });
 
   it("reads an order that closed with nothing charged as a refusal", () => {
-    for (const word of ["rejected", "declined", "expired", "delivered_unpaid"]) {
+    for (const word of ["rejected", "expired", "delivered_unpaid"]) {
       const payment = whatBecameOfThePayment(
         {
           kind: "answered",

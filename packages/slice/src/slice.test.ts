@@ -208,7 +208,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The happy asynchronous path carries no wire event: the event channel is
     // for the things a merchant would otherwise only find by reconciling by
-    // hand — unfulfilled delivery, a confirmation left unpaid — and none of those
+    // hand — unfulfilled delivery, a payment that failed after delivery — and none of those
     // happened here.
     expect(merchant.events).toStrictEqual([]);
 

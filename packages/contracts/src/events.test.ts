@@ -10,12 +10,6 @@ const unfulfilled = {
   reason: "deadline_passed",
 };
 
-const unpaid = {
-  type: "order.unpaid_after_confirmation",
-  order_id: "ord_7c1e05",
-  at: "2026-08-26T11:20:00Z",
-};
-
 const paymentFailed = {
   type: "order.payment_failed_after_delivery",
   order_id: "ord_7c1e05",
@@ -26,20 +20,15 @@ describe("the events a merchant hears without asking", () => {
   // The promise: what happens to an order without the merchant's doing
   // arrives on the same subscription as the orders.
 
-  it("names the three", () => {
+  it("names the two", () => {
     expect(Object.values(ORDER_EVENT_TYPES)).toStrictEqual([
       "order.unfulfilled",
-      "order.unpaid_after_confirmation",
       "order.payment_failed_after_delivery",
     ]);
   });
 
   it("accepts an order marked as unfulfilled", () => {
     expect(OrderEventSchema.parse(unfulfilled)).toStrictEqual(unfulfilled);
-  });
-
-  it("accepts a confirmed order the agent never paid for", () => {
-    expect(OrderEventSchema.parse(unpaid)).toStrictEqual(unpaid);
   });
 
   it("accepts a payment that did not execute after a synchronous delivery", () => {
@@ -57,19 +46,20 @@ describe("the events a merchant hears without asking", () => {
       "order.delivered",
       "",
     ]) {
-      expect(OrderEventSchema.safeParse({ ...unpaid, type }).success, JSON.stringify(type)).toBe(
-        false,
-      );
+      expect(
+        OrderEventSchema.safeParse({ ...paymentFailed, type }).success,
+        JSON.stringify(type),
+      ).toBe(false);
     }
   });
 
   it("refuses an event that does not say which kind it is", () => {
-    expectMissingFieldRejected(OrderEventSchema, unpaid, "type");
+    expectMissingFieldRejected(OrderEventSchema, paymentFailed, "type");
   });
 
   for (const field of ["order_id", "at"]) {
     it(`refuses an event without ${field} and names it`, () => {
-      expectMissingFieldRejected(OrderEventSchema, unpaid, field);
+      expectMissingFieldRejected(OrderEventSchema, paymentFailed, field);
       expectMissingFieldRejected(OrderEventSchema, unfulfilled, field);
     });
   }
@@ -106,9 +96,6 @@ describe("an unfulfilled paid order", () => {
 
   it("carries the original price only on the unfulfilled paid event", () => {
     // These events establish no paid sale and therefore carry no purchase price.
-    expect(
-      OrderEventSchema.safeParse({ ...unpaid, price: { amount: "5.00", currency: "USD" } }).success,
-    ).toBe(false);
     expect(
       OrderEventSchema.safeParse({ ...paymentFailed, price: { amount: "5.00", currency: "USD" } })
         .success,

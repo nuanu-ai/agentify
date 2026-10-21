@@ -452,12 +452,12 @@ describe("what a call may carry", () => {
     const { served } = await started();
 
     const answered = await served.call("POST", "/v0/catalog/publish", {
-      body: { ...syncCard, fulfillment: "confirm" },
+      body: { ...syncCard, fulfill_deadline_seconds: 900 },
       headers: asMerchant,
     });
 
     expect(answered.status).toBe(422);
-    expect(JSON.stringify(answered.body)).toContain("no shape on the wire yet");
+    expect(JSON.stringify(answered.body)).toContain("sets no delivery deadline");
   });
 
   it("carries an identifier with a slash in it through the address unharmed", async () => {
