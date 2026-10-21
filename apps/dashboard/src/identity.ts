@@ -9,6 +9,14 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import {
+  type AnalyticsEvent,
+  type AuthResult,
+  type Recorder,
+  record,
+  recordObserved,
+} from "@agentify/gateway/analytics";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
@@ -138,12 +146,13 @@ type AdReport = typeof adReports.$inferInsert;
 
 /**
  * What an opening transaction does that the component cannot: take the
- * address's lock, and write the registration's reports in the same
- * transaction.
+ * address's lock, and write the registration's reports and the sign-in's
+ * analytics event in the same transaction.
  */
 type OpeningTransaction = Readonly<{
   lockEmail?: (email: string) => Promise<void>;
   register: (reports: readonly AdReport[]) => Promise<void>;
+  record: (event: AnalyticsEvent) => Promise<void>;
 }>;
 
 type LinkSend = {
@@ -169,9 +178,106 @@ const schema = {
   dashboard_verifications: verifications,
 };
 
+/** Why a sign-in was refused, as product analytics counts it. */
+type Refused = Pick<
+  Extract<AuthResult["fields"], { readonly reason_code: string }>,
+  "outcome" | "reason_code"
+>;
+
+const A_SPENT_LINK: Refused = { outcome: "blocked", reason_code: "invalid_link" };
+const NOT_THE_SAME_PERSON: Refused = { outcome: "blocked", reason_code: "identity_mismatch" };
+const UNAVAILABLE: Refused = { outcome: "failed", reason_code: "dependency_unavailable" };
+/** A failure whose cause this side cannot tell: Google's, the database's, or a defect. */
+const FAILED_UNTOLD: Refused = { outcome: "failed", reason_code: "unknown" };
+
+/**
+ * What each error Google's return can carry counts as. A cancel is the person's
+ * own choice and is no refusal; an error not listed here is refused as a
+ * failure nobody can tell the cause of.
+ */
+const GOOGLE_ERRORS: Readonly<Record<string, Refused | null>> = {
+  google_email_unverified: NOT_THE_SAME_PERSON,
+  google_email_changed: NOT_THE_SAME_PERSON,
+  email_not_found: NOT_THE_SAME_PERSON,
+  account_not_linked: NOT_THE_SAME_PERSON,
+  access_denied: null,
+  invalid_code: UNAVAILABLE,
+  unable_to_get_user_info: UNAVAILABLE,
+  state_not_found: A_SPENT_LINK,
+  state_mismatch: A_SPENT_LINK,
+  state_invalid: A_SPENT_LINK,
+  no_code: A_SPENT_LINK,
+};
+
+const signInConfirmed = (
+  person: string,
+  method: AuthResult["fields"]["method"],
+  firstVerification: boolean,
+): AuthResult => ({
+  name: "agc_auth_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { person },
+  fields: { method, stage: "verify", outcome: "confirmed", first_verification: firstVerification },
+});
+
+const signInRefused = (
+  method: AuthResult["fields"]["method"],
+  stage: "start" | "verify",
+  why: Refused,
+): AuthResult => ({
+  name: "agc_auth_result",
+  actor: "human",
+  source: "dashboard",
+  fields: { method, stage, ...why },
+});
+
+const merchantCreated = (merchant: string, person: string): AnalyticsEvent => ({
+  name: "agc_merchant_created",
+  actor: "human",
+  source: "dashboard",
+  refs: { merchant, person },
+});
+
+const ANALYTICS_ROWS = "commerce_analytics_events";
+
+/** As the memory store keeps an event: beside the rows of the fact it records. */
+function recordInMemory(rows: MemoryRows, event: AnalyticsEvent): void {
+  const kept = rows[ANALYTICS_ROWS] ?? [];
+  rows[ANALYTICS_ROWS] = kept;
+  kept.push({ ...event, occurredAt: new Date() });
+}
+
+/** A drizzle transaction, which opens a savepoint inside itself. */
+interface Savepoints {
+  transaction<T>(work: (savepoint: Recorder) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Records `event` in the caller's transaction under a savepoint of its own: it
+ * commits with the sign-in or the merchant it records and goes with them if
+ * they roll back, and an outbox that cannot be written costs the event, never
+ * the fact.
+ */
+async function recordWithin(tx: Savepoints, event: AnalyticsEvent): Promise<void> {
+  try {
+    await tx.transaction(async (savepoint) => await record(savepoint, event, new Date()));
+  } catch (thrown) {
+    console.error(`[dashboard] an analytics event could not be recorded: ${failureNamed(thrown)}`);
+  }
+}
+
 class DeliveryRefused extends Error {}
-class VerificationRefused extends Error {}
-class GoogleTransactionRefused extends Error {}
+class VerificationRefused extends Error {
+  constructor(readonly why: Refused) {
+    super("dashboard_link_refused");
+  }
+}
+class GoogleTransactionRefused extends Error {
+  constructor(readonly why: Refused = FAILED_UNTOLD) {
+    super("dashboard_google_refused");
+  }
+}
 
 type GoogleAdmission = {
   email: string | null;
@@ -183,11 +289,14 @@ type GoogleAdmission = {
 /**
  * What a Google callback's transaction does that the component cannot: take
  * the subject's and the address's locks, and write the registration's reports
- * in the same transaction.
+ * and the sign-in's analytics event in the same transaction. `refused` is told
+ * why a refusal it answers with was refused.
  */
 type GoogleTransaction = Readonly<{
   lockIdentity?: (subject: string, email: string) => Promise<void>;
   register: (reports: readonly AdReport[]) => Promise<void>;
+  record: (event: AnalyticsEvent) => Promise<void>;
+  refused: (why: Refused) => void;
 }>;
 
 const hostedDomain = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
@@ -280,6 +389,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           merchantId: { type: "string", required: false, input: false },
           // Closed to input: only the terminal command writes it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
+          // Closed to input: only the settings' own press writes it.
+          analyticsOptOut: {
+            type: "boolean",
+            required: false,
+            defaultValue: false,
+            input: false,
+          },
         },
       },
       session: {
@@ -395,23 +511,26 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
    * address's first verified account. A click asked for while reporting was on
    * goes unreported once it is off.
    */
-  const clickToReport = async (
-    context: Awaited<typeof auth.$context>,
-    claim: LinkClaim,
-  ): Promise<string | undefined> =>
-    reporting && claim.clickId !== undefined && (await isFirstVerification(context, claim.email))
-      ? claim.clickId
-      : undefined;
+  const clickToReport = (claim: LinkClaim, firstVerification: boolean): string | undefined =>
+    reporting && claim.clickId !== undefined && firstVerification ? claim.clickId : undefined;
 
   // The memory adapter is for deterministic tests and local work. Queueing its
   // transaction copies gives it all-or-nothing behaviour; PostgreSQL remains
   // the authority for concurrent row locking.
   let memoryTail: Promise<void> = Promise.resolve();
+  const inMemoryTurn = async <T>(run: () => Promise<T>): Promise<T> => {
+    const result = memoryTail.then(run, run);
+    memoryTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await result;
+  };
   const inMemoryTransaction = async <T>(
     work: (bound: typeof auth, rows: MemoryRows) => Promise<T>,
     forGoogle = false,
-  ): Promise<T> => {
-    const run = async (): Promise<T> => {
+  ): Promise<T> =>
+    await inMemoryTurn(async () => {
       const cloned = structuredClone(memoryRows);
       const result = await work(authFor(memoryAdapter(cloned), forGoogle), cloned);
       for (const key of new Set([...Object.keys(memoryRows), ...Object.keys(cloned)])) {
@@ -419,13 +538,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         else memoryRows[key] = cloned[key];
       }
       return result;
-    };
-    const result = memoryTail.then(run, run);
-    memoryTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return await result;
+    });
+
+  // Queued behind the transactions, whose copies would otherwise write over
+  // an event recorded while one of them ran.
+  const observe = async (event: AnalyticsEvent): Promise<void> => {
+    if (parts.pool !== undefined) {
+      await recordObserved(drizzle(parts.pool), event, new Date());
+      return;
+    }
+    await inMemoryTurn(async () => recordInMemory(memoryRows, event));
   };
 
   const requestWith = async (
@@ -472,24 +594,25 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const openWith = async (
     bound: typeof auth,
     token: string,
-    { lockEmail, register }: OpeningTransaction,
+    { lockEmail, register, record }: OpeningTransaction,
   ): Promise<DashboardLinkResult> => {
-    if (!RAW_TOKEN.test(token)) return { status: "refused" };
+    if (!RAW_TOKEN.test(token)) throw new VerificationRefused(A_SPENT_LINK);
     const context = await bound.$context;
     const stored = await context.adapter.findOne<StoredVerification>({
       model: "verification",
       where: [{ field: "identifier", value: tokenHash(token) }],
     });
     if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) {
-      return { status: "refused" };
+      throw new VerificationRefused(A_SPENT_LINK);
     }
     const claim = claimFrom(stored.value);
-    if (claim === null) return { status: "refused" };
+    if (claim === null) throw new VerificationRefused(A_SPENT_LINK);
     await lockEmail?.(claim.email);
     // Whether this press makes the address's first verified account has to be
     // read before the component verifies it. Under the address's lock, a second
     // press waits here and then finds the account the first one verified.
-    const registering = await clickToReport(context, claim);
+    const firstVerification = await isFirstVerification(context, claim.email);
+    const registering = clickToReport(claim, firstVerification);
 
     const verify = async () =>
       await bound.api.magicLinkVerify({
@@ -503,12 +626,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     } catch (thrown) {
       // The component refuses a spent or expired link by throwing a redirect,
       // which is not an instance of the error class it exports.
-      if (isAPIError(thrown)) throw new VerificationRefused();
+      if (isAPIError(thrown)) throw new VerificationRefused(A_SPENT_LINK);
       throw thrown;
     }
     if (opened.response.user.email !== claim.email || opened.response.user.emailVerified !== true) {
-      throw new VerificationRefused();
+      throw new VerificationRefused(NOT_THE_SAME_PERSON);
     }
+    await record(signInConfirmed(opened.response.user.id, "email_link", firstVerification));
     if (claim.request !== null) {
       // In the same transaction as the session: a session opened without its
       // request would leave that request waiting for a visit that can never
@@ -567,7 +691,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     bound: typeof auth,
     query: URLSearchParams,
     cookie: string | undefined,
-    { lockIdentity, register }: GoogleTransaction,
+    { lockIdentity, register, record, refused }: GoogleTransaction,
   ): Promise<GoogleFinishResult> => {
     const context = await bound.$context;
     const active: GoogleAdmission = {
@@ -610,23 +734,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
                 : error === "invalid_code"
                   ? "unavailable"
                   : "invalid";
-        if (
-          ![
-            "google_email_unverified",
-            "google_email_changed",
-            "access_denied",
-            "invalid_code",
-            "state_not_found",
-            "state_mismatch",
-            "state_invalid",
-            "no_code",
-            "email_not_found",
-            "unable_to_get_user_info",
-            "account_not_linked",
-          ].includes(error)
-        ) {
-          throw new GoogleTransactionRefused();
-        }
+        const why = Object.hasOwn(GOOGLE_ERRORS, error) ? GOOGLE_ERRORS[error] : undefined;
+        if (why === undefined) throw new GoogleTransactionRefused();
+        if (why !== null) refused(why);
         // A refusal of the state itself may come with another browser's
         // sign-in, so only a state held to this browser's cookie gives back
         // the click this browser's own press kept.
@@ -649,8 +759,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         opened.user.emailVerified !== true ||
         opened.user.email !== active.email
       ) {
-        throw new GoogleTransactionRefused();
+        throw new GoogleTransactionRefused(NOT_THE_SAME_PERSON);
       }
+      await record(signInConfirmed(opened.user.id, "google", active.firstVerification === true));
       if (clickId !== undefined && active.firstVerification === true) {
         await register(adReportsOf(opened.user.id, clickId));
       }
@@ -753,6 +864,117 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     }
   };
 
+  const linkRequested = async (
+    rawEmail: string,
+    destination: DashboardDestination,
+    clickId: string | undefined,
+  ): Promise<LinkRequestResult> => {
+    const email = emailAs(rawEmail);
+    try {
+      if (parts.pool === undefined) {
+        await inMemoryTransaction(async (_bound, rows) => {
+          cleanupOldLinksInMemory(rows, new Date());
+        });
+        return await inMemoryTransaction(async (bound, rows) => {
+          const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
+          if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
+          return await requestWith(bound, email, destination, clickId, rated.retryAt);
+        });
+      }
+      const db = drizzle(parts.pool, {
+        schema: { accounts, credentials, linkSends, sessions, verifications },
+      });
+      await db.transaction(async (tx) => {
+        await cleanupOldLinksInPostgres(tx, new Date());
+      });
+      return await db.transaction(async (tx) => {
+        await lockEmail(tx, email);
+        const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
+        if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
+        return await requestWith(
+          authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+          email,
+          destination,
+          clickId,
+          rated.retryAt,
+        );
+      });
+    } catch (thrown) {
+      if (thrown instanceof DeliveryRefused) return { status: "unavailable" };
+      throw thrown;
+    }
+  };
+
+  /**
+   * Google's return in a transaction of its own. Why a refusal it answers with
+   * was refused is told to `refused`, a failure's included.
+   */
+  const finishedGoogle = async (
+    proof: URLSearchParams,
+    cookie: string | undefined,
+    refused: (why: Refused) => void,
+  ): Promise<GoogleFinishResult> => {
+    try {
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(
+          async (bound, rows) =>
+            await finishGoogleWith(bound, proof, cookie, {
+              register: async (reports) => registerInMemory(rows, reports),
+              record: async (event) => recordInMemory(rows, event),
+              refused,
+            }),
+          true,
+        );
+      }
+      return await drizzle(parts.pool).transaction(async (tx) => {
+        const state = proof.get("state");
+        if (state !== null) {
+          // A replay must not occupy another connection while its owner waits for Google.
+          const lock = await tx.execute<{ acquired: boolean }>(
+            sql`select pg_try_advisory_xact_lock(hashtextextended(${`dashboard-google-state:${state}`}, 0)) as acquired`,
+          );
+          if (lock.rows[0]?.acquired !== true) {
+            refused(A_SPENT_LINK);
+            return {
+              status: "refused",
+              reason: "invalid",
+              email: null,
+              destination: "default",
+              setCookies: [],
+            };
+          }
+        }
+        return await finishGoogleWith(
+          authFor(drizzleAdapter(tx, { provider: "pg", schema }), true),
+          proof,
+          cookie,
+          {
+            lockIdentity: async (subject, email) => {
+              await tx.execute(
+                sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-sub:${subject}`}, 0))`,
+              );
+              await lockEmail(tx, email);
+            },
+            register: async (reports) => {
+              await tx.insert(adReports).values([...reports]);
+            },
+            record: async (event) => await recordWithin(tx, event),
+            refused,
+          },
+        );
+      });
+    } catch (thrown) {
+      refused(thrown instanceof GoogleTransactionRefused ? thrown.why : FAILED_UNTOLD);
+      return {
+        status: "refused",
+        reason: "unavailable",
+        email: null,
+        destination: "default",
+        setCookies: [],
+      };
+    }
+  };
+
   return {
     cookieNames: [
       cookies.sessionToken.name,
@@ -763,6 +985,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     googleEnabled: config.google !== null,
 
     async startGoogle(destination, clickId) {
+      // Nothing is offered where Google is not configured, so nothing was tried.
       if (config.google === null) return { status: "unavailable" };
       try {
         if (parts.pool === undefined) {
@@ -779,11 +1002,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             ),
         );
       } catch {
+        void observe(signInRefused("google", "start", UNAVAILABLE));
         return { status: "unavailable" };
       }
     },
 
     async finishGoogle(query, cookie) {
+      // Nothing is offered where Google is not configured, so nothing was tried.
       if (config.google === null)
         return {
           status: "refused",
@@ -795,7 +1020,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const proof = new URLSearchParams();
       for (const key of ["state", "code", "error", "error_description", "iss"]) {
         const values = query.getAll(key);
-        if (values.length > 1)
+        if (values.length > 1) {
+          void observe(signInRefused("google", "verify", A_SPENT_LINK));
           return {
             status: "refused",
             reason: "invalid",
@@ -803,11 +1029,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             destination: "default",
             setCookies: [],
           };
+        }
         if (values[0] !== undefined) proof.set(key, values[0]);
       }
       // The lock and the OAuth component must consume one identical proof.
       // Choosing different occurrences of a repeated state bypasses serialization.
       if (!proof.get("state") || Boolean(proof.get("code")) === Boolean(proof.get("error"))) {
+        void observe(signInRefused("google", "verify", A_SPENT_LINK));
         return {
           status: "refused",
           reason: "invalid",
@@ -816,99 +1044,32 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           setCookies: [],
         };
       }
-      try {
-        if (parts.pool === undefined) {
-          return await inMemoryTransaction(
-            async (bound, rows) =>
-              await finishGoogleWith(bound, proof, cookie, {
-                register: async (reports) => registerInMemory(rows, reports),
-              }),
-            true,
-          );
-        }
-        return await drizzle(parts.pool).transaction(async (tx) => {
-          const state = proof.get("state");
-          if (state !== null) {
-            // A replay must not occupy another connection while its owner waits for Google.
-            const lock = await tx.execute<{ acquired: boolean }>(
-              sql`select pg_try_advisory_xact_lock(hashtextextended(${`dashboard-google-state:${state}`}, 0)) as acquired`,
-            );
-            if (lock.rows[0]?.acquired !== true)
-              return {
-                status: "refused",
-                reason: "invalid",
-                email: null,
-                destination: "default",
-                setCookies: [],
-              };
-          }
-          return await finishGoogleWith(
-            authFor(drizzleAdapter(tx, { provider: "pg", schema }), true),
-            proof,
-            cookie,
-            {
-              lockIdentity: async (subject, email) => {
-                await tx.execute(
-                  sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-sub:${subject}`}, 0))`,
-                );
-                await lockEmail(tx, email);
-              },
-              register: async (reports) => {
-                await tx.insert(adReports).values([...reports]);
-              },
-            },
-          );
-        });
-      } catch {
-        return {
-          status: "refused",
-          reason: "unavailable",
-          email: null,
-          destination: "default",
-          setCookies: [],
-        };
+      // Told inside the transaction and recorded once it is over, so a
+      // refusal is recorded whichever way the transaction ended.
+      const told: { why: Refused | null } = { why: null };
+      const finished = await finishedGoogle(proof, cookie, (why) => {
+        told.why = why;
+      });
+      if (finished.status === "refused" && told.why !== null) {
+        void observe(signInRefused("google", "verify", told.why));
       }
+      return finished;
     },
 
     // The sweep of old links runs in a transaction of its own, first: inside
     // the one that waits on the mail provider it would hold other requests up
     // behind a send, and a refused send would undo it.
     async requestLink(rawEmail, destination, clickId) {
-      const email = emailAs(rawEmail);
-      try {
-        if (parts.pool === undefined) {
-          await inMemoryTransaction(async (_bound, rows) => {
-            cleanupOldLinksInMemory(rows, new Date());
-          });
-          return await inMemoryTransaction(async (bound, rows) => {
-            const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
-            if (!rated.sent)
-              return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-            return await requestWith(bound, email, destination, clickId, rated.retryAt);
-          });
-        }
-        const db = drizzle(parts.pool, {
-          schema: { accounts, credentials, linkSends, sessions, verifications },
-        });
-        await db.transaction(async (tx) => {
-          await cleanupOldLinksInPostgres(tx, new Date());
-        });
-        return await db.transaction(async (tx) => {
-          await lockEmail(tx, email);
-          const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
-          if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-          return await requestWith(
-            authFor(drizzleAdapter(tx, { provider: "pg", schema })),
-            email,
-            destination,
-            clickId,
-            rated.retryAt,
-          );
-        });
-      } catch (thrown) {
-        if (thrown instanceof DeliveryRefused) return { status: "unavailable" };
-        throw thrown;
+      const requested = await linkRequested(rawEmail, destination, clickId);
+      if (requested.status === "cooldown") {
+        void observe(
+          signInRefused("email_link", "start", { outcome: "blocked", reason_code: "rate_limited" }),
+        );
       }
+      if (requested.status === "unavailable") {
+        void observe(signInRefused("email_link", "start", UNAVAILABLE));
+      }
+      return requested;
     },
 
     async sendReportLink(request) {
@@ -975,6 +1136,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             async (bound, rows) =>
               await openWith(bound, token, {
                 register: async (reports) => registerInMemory(rows, reports),
+                record: async (event) => recordInMemory(rows, event),
               }),
           );
         }
@@ -986,10 +1148,14 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             register: async (reports) => {
               await tx.insert(adReports).values([...reports]);
             },
+            record: async (event) => await recordWithin(tx, event),
           });
         });
       } catch (thrown) {
-        if (thrown instanceof VerificationRefused) return { status: "refused" };
+        if (thrown instanceof VerificationRefused) {
+          void observe(signInRefused("email_link", "verify", thrown.why));
+          return { status: "refused" };
+        }
         throw thrown;
       }
     },
@@ -1135,6 +1301,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           }
           row.merchantId = merchantId;
           row.updatedAt = new Date();
+          recordInMemory(rows, merchantCreated(merchantId, personId));
           return {
             status: "attached",
             person: asMerchantPerson({ ...person, merchant: { id: merchantId } }),
@@ -1168,6 +1335,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           .where(and(eq(accounts.id, personId), isNull(accounts.merchantId)))
           .returning({ id: accounts.id });
         if (written.length !== 1) throw new Error("dashboard_merchant_attachment_lost_lock");
+        await recordWithin(tx, merchantCreated(merchantId, personId));
         return {
           status: "attached",
           person: asMerchantPerson({ ...person, merchant: { id: merchantId } }),
@@ -1268,6 +1436,21 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
       }
       return rows.sort((one, other) => one.email.localeCompare(other.email));
+    },
+
+    observe,
+
+    async analyticsOptedOut(personId) {
+      const found = await (await contextOf()).internalAdapter.findUserById(personId);
+      return (found as { analyticsOptOut?: unknown } | null)?.analyticsOptOut === true;
+    },
+
+    async setAnalyticsOptOut(personId, optedOut) {
+      await (await contextOf()).adapter.update({
+        model: "user",
+        where: [{ field: "id", value: personId }],
+        update: { analyticsOptOut: optedOut },
+      });
     },
 
     async close() {
