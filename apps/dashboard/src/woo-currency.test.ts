@@ -10,6 +10,7 @@
 import type { Order } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
+import { recoverWooOrder } from "./woo-recovery.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   createTheOrderInTheShop,
@@ -604,5 +605,191 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
         converted: { paid: { amount: "14.67", currency: "USD" } },
       },
     ]);
+  });
+});
+
+describe("the protected product check of a parcel from a shop priced in rupiah", () => {
+  it("is another product once the shop's currency changes, at the same digits", async () => {
+    const inRupiah = await inspectProductInTheShop(KEYS, ITEM, aShopIn("IDR", "0", "240000", true));
+    const inYen = await inspectProductInTheShop(KEYS, ITEM, aShopIn("JPY", "0", "240000", true));
+
+    expect(inRupiah).toMatchObject({ ok: true, product: { kind: "parcel" } });
+    expect(inRupiah.ok && inYen.ok && inRupiah.product.fingerprint).not.toBe(
+      inYen.ok && inYen.product.fingerprint,
+    );
+  });
+});
+
+describe("a parcel's paid order whose payment is not the dollars bound to its price", () => {
+  it("is refused before the shop is asked", async () => {
+    const shops = memoryWooShops();
+    await shops.saveRate("acc_1", SHOP, RATE);
+    const sarong: EligibleWooProduct = {
+      kind: "parcel",
+      productId: "41",
+      price: { amount: "240000", currency: "IDR" },
+      tax: { mode: "off" },
+      fingerprint: "sarong-parcel-in-rupiah",
+    };
+    const place = { country: "ID", state: "BA", city: "Tabanan", postal_code: "82121" };
+    const placed: ParcelSold[] = [];
+    const filling: Filling = {
+      ...parts(shops, sarong),
+      shippingRates: async () => ({
+        ok: true,
+        currency: "IDR",
+        rates: [
+          { methodId: "flat_rate", instanceId: "1", title: "Flat rate", cost: "24000", tax: "0" },
+        ],
+        priced: { ok: false, why: "untaxed", again: false, saidNo: false },
+      }),
+      placeParcel: async (_keys, sold): Promise<ParcelMade> => {
+        placed.push(sold);
+        return { ok: true, id: "78", number: "78", total: sold.total.amount };
+      },
+    };
+    await quoteFromTheShop(CONNECTION, { ...QUESTION, ship_to: place }, NOW, filling);
+
+    const answer = await fillFromTheShop(
+      anOrder({
+        price: { ...anOrder().price, amount: "14.66" },
+        ship_to: {
+          name: "Nuanu Reception",
+          line_one: "Jl. Raya Kediri, Beraban",
+          phone_number: "+62 000 0000 0000",
+          ...place,
+        },
+      }),
+      CONNECTION,
+      EMAIL,
+      filling,
+      null,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(placed).toEqual([]);
+  });
+});
+
+describe("a price bound to a rate of another currency than the shop's amount", () => {
+  it("binds no order", async () => {
+    const shops = memoryWooShops();
+    const rupiah = await shops.saveRate("acc_1", SHOP, RATE);
+    await shops.recordQuote(
+      "acc_1",
+      "prc_mixed",
+      ITEM,
+      {
+        fingerprint: "sarong-in-rupiah",
+        inTheShop: { amount: "14.50", currency: "EUR" },
+        paid: { amount: "0.01", currency: "USD" },
+        rateVersion: rupiah.version,
+      },
+      NOW,
+      NOW,
+    );
+
+    expect(await shops.quotedSale("acc_1", "prc_mixed", ITEM)).toBeNull();
+  });
+});
+
+describe("recovering a converted download refused before its order was made", () => {
+  it("makes the shop's order at the rupiah amount and the rate the price was bound to", async () => {
+    const shops = memoryWooShops();
+    await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
+    await shops.saveRate("acc_1", SHOP, RATE);
+    await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
+    const refusedFirst = await fillFromTheShop(
+      anOrder(),
+      { ...CONNECTION, permissions: "read" },
+      EMAIL,
+      parts(shops),
+      null,
+    );
+    expect(refusedFirst).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    await shops.connect({ ...CONNECTION, revision: "grant_2" });
+    const made: SoldItem[] = [];
+
+    const recovered = await recoverWooOrder(
+      { orderId: "ord_idr" },
+      {
+        shops,
+        identity: {
+          byId: async () => ({
+            id: "acc_1",
+            email: EMAIL,
+            confirmed: true,
+            merchant: { id: "m_1" },
+          }),
+        },
+        gatewayFor: () => ({
+          getOrder: async () => ({
+            ok: true as const,
+            document: {
+              ...anOrder(),
+              payment_status: "paid" as const,
+              status: "unfulfilled" as const,
+            },
+          }),
+          deliverOrder: async () => ({
+            ok: true as const,
+            document: { ok: true as const, result: "delivered_late" as const },
+          }),
+          paidInto: async () => ({ ok: true as const, document: null }),
+        }),
+        inspectProduct: async () => ({ ok: true, product: A_DOWNLOAD }),
+        createOrder: async (_keys, sold): Promise<OrderMade> => {
+          made.push(sold);
+          return {
+            ok: true,
+            id: "79",
+            number: "79",
+            orderKey: "wc_order_79",
+            downloadId: sold.download.id,
+            total: sold.price.amount,
+          };
+        },
+        now: () => NOW,
+      },
+    );
+
+    expect(recovered.ok === false && recovered.why).not.toContain("does not match");
+    expect(made).toMatchObject([
+      {
+        price: { amount: "240000", currency: "IDR" },
+        converted: { paid: { amount: "13.34", currency: "USD" }, rate: { rate: "18000" } },
+      },
+    ]);
+  });
+});
+
+describe("a paid order whose price bound a rupiah amount to no rate", () => {
+  it("is refused before the shop is asked, since nothing converted its dollars", async () => {
+    const shops = memoryWooShops();
+    await shops.recordQuote(
+      "acc_1",
+      "prc_idr",
+      ITEM,
+      {
+        fingerprint: "sarong-in-rupiah",
+        inTheShop: { amount: "240000", currency: "IDR" },
+        paid: { amount: "13.34", currency: "USD" },
+        rateVersion: null,
+      },
+      NOW,
+      NOW,
+    );
+    const placed: SoldItem[] = [];
+
+    const answer = await fillFromTheShop(
+      anOrder(),
+      CONNECTION,
+      EMAIL,
+      parts(shops, A_DOWNLOAD, placed),
+      null,
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(placed).toEqual([]);
   });
 });
