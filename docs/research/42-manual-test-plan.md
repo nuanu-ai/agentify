@@ -669,6 +669,7 @@ over static data does not cover them.
 | I-05 / P0 | Request deletion as a report-only person and as a merchant owner. Cancel once, confirm once, switch accounts in another tab, and lose the accepted request's response. After cleanup check old private/report/share/image links and sign in again. | Intentional identity is preserved; requested versus completed deletion is clear. Reports and shares are inaccessible after completion, while merchant business records survive their documented boundary. Do not claim immediate backup erasure or that a merchant's account is deleted with scanner data. |
 | I-06 / P1 | Choose essential-only consent, run a scan/register, then allow and withdraw measurement, including another tab. Inspect browser traffic and authorised server records. | Product analytics and ads measurement stay off until allowed and stop after withdrawal, in every open tab. Necessary consent, identity and scan records are not mistaken for prohibited analytics. Browser-only evidence leaves server behavior unmeasured. The privacy explanation matches what the person just chose. The report of a registration to the ad tracker does not follow this choice; I-07 checks it. |
 | I-07 / P0 | With essential-only consent, open sign-in through an address carrying the ad tracker's click identifier and register a new address by emailed link; repeat with Google. Then sign in again, create a merchant, arrive from the ad with an address that already has a verified account, refuse a Google return, and sign in without a click. Run the dashboard locally with its own receiver: the test channel never reports. | Nothing is asked on screen. Each new account is reported once whatever the privacy choices; a repeated delivery of that same report is allowed. The report carries the click identifier and the event alone, never the address or anything else about the person. The other attempts report nothing. The click identifier is gone from authorised server records after delivery, or after a day without it. The privacy page says the report goes whatever the choices and keeps it apart from the banner's categories. Delivery to the real tracker needs its own logs and the marketing team's agreement; never register from a real ad click on the live channel as a rehearsal, since it counts as a paid registration. |
+| I-08 / P0 | After the run, search every log line it produced, on the host and in the shared log stack the channel ships its logs to ([research note 53](53-self-hosted-observability.md)), for each of the run's order identifiers, for status addresses (`/x402/orders/…/status`), for WooCommerce order keys (`wc_order_…`), for the order, uid and key values of WooCommerce download links and for the parcel's delivery address. The run includes a sale through the SDK, a WooCommerce download, a parcel, a merchant handler that throws, a WooCommerce refusal and a payment recovery; any of these the run lacks is made for this story. | None of them appears in any line. Each order's lines are found by its fingerprint (What must agree after a sale), from the gateway and the WooCommerce worker alike. A hit is a P0 privacy finding, reported with its line's source, time and wording and with the value itself masked. Lines shipped before the release under test are not part of the run. How long the shared stack keeps lines is not recorded, so a clean search there says nothing about lines older than the run. |
 
 ## L. A buyer actually finds the product in an external catalogue
 
@@ -771,10 +772,12 @@ handover to a fresh reader. Scanner identity/privacy is required when that
 entry path is offered. G is separately authorised.
 
 A release check is a selected subset, not full readiness: A-03/A-04, B-02,
-J-01/J-02, D-04/D-06/D-07, E-02/E-03, H-01/H-03/H-08, M-01/M-02 and one
-morning-after U-02/K-01 recovery. Add C-09 for changes to the payment window,
-B-07/B-08 for changes to what an agent reads at the door or on the test
-channel, U-06/U-07 for documentation and site-frame changes, F for parcel
+J-01/J-02, D-04/D-06/D-07, E-02/E-03, H-01/H-03/H-08, I-08, M-01/M-02 and
+one morning-after U-02/K-01 recovery; I-08 belongs to every release check
+because any change can add a log line. Add C-09 for changes to the payment
+window, D-08 for changes to the contracts or the SDK, J-09 and J-07's
+overnight variant for changes to the purchase door, B-07/B-08 for changes to
+what an agent reads at the door or on the test channel, U-06/U-07 for documentation and site-frame changes, F for parcel
 changes, I for scanner or identity changes, and L for
 discovery/declaration/payment-recipient changes.
 Test and UX results from an earlier revision carry forward only with an
@@ -896,7 +899,9 @@ The decisions defining acceptance boundaries are
 [original payment recovery](../decisions/0027-recording-a-silent-charge.md),
 [wallet changes](../decisions/0019-non-custodial-payout-wallet.md),
 [payout splits](../decisions/0037-every-payment-goes-to-the-merchants-split.md),
-[registry persistence](../decisions/0038-the-registry-of-payout-splits-is-never-rewritten.md)
+[registry persistence](../decisions/0038-the-registry-of-payout-splits-is-never-rewritten.md),
+[the purchase door](../decisions/0043-the-purchase-door-refuses-before-any-charge.md),
+[the contract version](../decisions/0006-wire-version.md)
 and [discovery declarations](../decisions/0012-discovery-declaration.md).
 
 Implementation evidence for the organiser lives in the
@@ -905,6 +910,7 @@ Implementation evidence for the organiser lives in the
 [gateway](../../apps/gateway/src/app/gateway.ts),
 [payment edge](../../apps/gateway/src/http/x402.ts),
 [authorisation window](../../apps/gateway/src/app/payment-window.ts),
+[returning payments](../../apps/gateway/src/app/returning-payment.ts),
 [payment recovery](../../apps/gateway/src/adapters/x402/recovery.ts),
 [Postgres store](../../apps/gateway/src/adapters/postgres/store.ts),
 [Woo worker](../../apps/dashboard/src/woo-worker.ts),
