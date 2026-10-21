@@ -173,7 +173,7 @@ const SettingSchema = z.looseObject({ id: z.string(), value: z.union([z.string()
 /** A settings group as `wc/v3` writes one: every setting of the group in one list. */
 const SettingsGroupSchema = z.array(SettingSchema);
 
-/** Read from the tax group only where the shop calculates tax. */
+/** Judged from the tax group only where the shop calculates tax. */
 const TAX_SETTINGS = [
   "woocommerce_prices_include_tax",
   "woocommerce_tax_display_shop",
@@ -425,8 +425,8 @@ export const inspectProductInTheShop = async (
     return { ok: true, value: (id) => found.get(id) ?? "" };
   };
   const unsupported: string[] = [];
-  // Asked for only where the shop calculates tax: with it off WooCommerce need
-  // not serve them, and nothing they say bears on the sale.
+  // Judged only where the shop calculates tax: with it off nothing they say
+  // bears on the sale, so a shop that will not show them still sells.
   let entered: "included" | "excluded" | null = null;
   let roundAtSubtotal = "";
   if (taxes === "yes") {

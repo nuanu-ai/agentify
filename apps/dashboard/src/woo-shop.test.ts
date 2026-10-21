@@ -1396,7 +1396,8 @@ describe("the protected product check", () => {
   });
 
   it("does not ask for a shop's tax settings to judge a product while tax calculation is off", async () => {
-    // WooCommerce may not serve its tax settings at all with tax off.
+    // Nothing the tax settings say bears on a shop with tax off, so a shop
+    // that will not show them still sells.
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
       if (asked.url.endsWith("/settings/tax") || asked.url.endsWith("/settings/general")) {
