@@ -2416,6 +2416,7 @@ describe("creating a parcel's order", () => {
     },
     address: ADDRESS,
     paidInto: null,
+    tax: "off" as const,
   };
   const shipping = {
     first_name: "Nuanu Reception",
@@ -2563,6 +2564,149 @@ describe("creating a parcel's order", () => {
       await stand.close();
       stand = null;
     }
+  });
+
+  /**
+   * The tax probe's parcel orders for the tote bag at 20.00 with taxable
+   * shipping, made with a line naming the product alone: from the Bali shop to
+   * Denpasar by its courier, and from the Seattle shop to Seattle.
+   */
+  const TAXED_ORDERS = [
+    {
+      tax: "included",
+      rate: {
+        methodId: "flat_rate",
+        instanceId: "1",
+        title: "Bali courier",
+        cost: "3.00",
+        tax: "0.33",
+      },
+      answer: {
+        total: "23.33",
+        total_tax: "2.31",
+        line: "18.02",
+        lineTax: "1.98",
+        shippingTax: "0.33",
+      },
+    },
+    {
+      tax: "excluded",
+      rate: {
+        methodId: "flat_rate",
+        instanceId: "12",
+        title: "Standard",
+        cost: "6.00",
+        tax: "0.63",
+      },
+      answer: {
+        total: "28.74",
+        total_tax: "2.74",
+        line: "20.00",
+        lineTax: "2.11",
+        shippingTax: "0.63",
+      },
+    },
+  ] as const;
+  const taxedParcel = (
+    rate: (typeof TAXED_ORDERS)[number]["rate"],
+    answer: {
+      total: string;
+      total_tax: string;
+      line: string;
+      lineTax: string;
+      shippingTax: string;
+    },
+  ) =>
+    madeParcel({
+      total: answer.total,
+      total_tax: answer.total_tax,
+      line_items: [
+        {
+          product_id: 28,
+          quantity: 1,
+          subtotal: answer.line,
+          total: answer.line,
+          total_tax: answer.lineTax,
+        },
+      ],
+      shipping_lines: [
+        {
+          id: 6,
+          method_title: rate.title,
+          method_id: rate.methodId,
+          instance_id: rate.instanceId,
+          total: rate.cost,
+          total_tax: answer.shippingTax,
+        },
+      ],
+    });
+
+  it("leaves a shop that calculates tax to price the goods, and takes the order on at the total paid", async () => {
+    for (const { tax, rate, answer } of TAXED_ORDERS) {
+      stand = await shopAnswering(() => ({ status: 201, body: taxedParcel(rate, answer) }));
+
+      const made = await createParcel(connectionTo(stand.url), {
+        ...sold,
+        paid: { amount: answer.total, currency: "USD" },
+        rate,
+        tax,
+      });
+
+      expect(made, tax).toStrictEqual({ ok: true, id: "30", number: "30" });
+      const body = JSON.parse(stand.asked[0]?.body ?? "{}");
+      // Totals sent on the line would be taxed on top in a shop whose prices
+      // hold their tax, and are the shop's own price in the other.
+      expect(body.line_items, tax).toStrictEqual([{ product_id: 28, quantity: 1 }]);
+      expect(body.shipping_lines, tax).toStrictEqual([
+        {
+          method_id: rate.methodId,
+          instance_id: rate.instanceId,
+          method_title: rate.title,
+          total: rate.cost,
+        },
+      ]);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not take on a taxed parcel's order whose total is not what was paid", async () => {
+    // The Bali shop's order with the goods' totals sent on its line: 25.53
+    // against the cart's 23.33.
+    const [{ rate }] = TAXED_ORDERS;
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: taxedParcel(rate, {
+        total: "25.53",
+        total_tax: "2.53",
+        line: "20.00",
+        lineTax: "2.20",
+        shippingTax: "0.33",
+      }),
+    }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: "23.33", currency: "USD" },
+      rate,
+      tax: "included",
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true, id: "30" });
+  });
+
+  it("does not take on the order of a parcel sold as untaxed when the order carries tax", async () => {
+    const [{ rate, answer }] = TAXED_ORDERS;
+    stand = await shopAnswering(() => ({ status: 201, body: taxedParcel(rate, answer) }));
+
+    const made = await createParcel(connectionTo(stand.url), {
+      ...sold,
+      paid: { amount: answer.total, currency: "USD" },
+      goods: "20.33",
+      rate,
+    });
+
+    expect(made).toMatchObject({ ok: false, again: true });
   });
 
   it("carries none of the address into a refusal, and says whether to ask again", async () => {
