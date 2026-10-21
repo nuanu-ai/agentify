@@ -162,6 +162,13 @@
       "when": 1792580218457,
       "tag": "0022_order_waiting_index",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792580692107,
+      "tag": "0023_merchant_contact",
+      "breakpoints": true
     }
   ]
 }

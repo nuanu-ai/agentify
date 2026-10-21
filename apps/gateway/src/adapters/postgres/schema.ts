@@ -135,6 +135,18 @@ export const merchantKeys = pgTable(
   (table) => [index("merchant_keys_merchant_idx").on(table.merchantId)],
 );
 
+/**
+ * When one of a merchant's processes last polled their stream, a row apart
+ * from the merchant's own, which every birth of an order holds while it
+ * writes: a poll writing here waits for no purchase.
+ */
+export const merchantContact = pgTable("merchant_contact", {
+  merchantId: text("merchant_id")
+    .primaryKey()
+    .references(() => merchants.id, { onDelete: "cascade" }),
+  polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
 export const cards = pgTable(
   "cards",
   {

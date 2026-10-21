@@ -101,6 +101,8 @@ export class MemoryStore implements Store {
    */
   readonly #cardIdByMerchantKey = new Map<string, string>();
   readonly #orders = new Map<string, StoredOrder>();
+  /** The latest poll recorded for each merchant. */
+  readonly #contact = new Map<string, number>();
   readonly #receipts = new Map<string, { merchantId: string; receipt: Receipt }>();
   /** Which order owns which payment, so no payment is spent on two. */
   #paymentLock: Promise<unknown> = Promise.resolve();
@@ -395,6 +397,15 @@ export class MemoryStore implements Store {
       return;
     }
     this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at }));
+  }
+
+  async noteContact(merchantId: string, at: number): Promise<void> {
+    if (!this.#merchants.has(merchantId)) return;
+    this.#contact.set(merchantId, Math.max(this.#contact.get(merchantId) ?? at, at));
+  }
+
+  async lastContact(merchantId: string): Promise<number | null> {
+    return this.#contact.get(merchantId) ?? null;
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {

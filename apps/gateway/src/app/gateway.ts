@@ -264,6 +264,11 @@ export type PurchaseAttempt =
   | { readonly step: "not_selling"; readonly message: string }
   /** As many of the seller's purchases as the limit allows already wait for payment. */
   | { readonly step: "seller_busy" }
+  /**
+   * The purchase charges before its goods, and the seller's own process has
+   * not polled for longer than `SILENT_AFTER_MS`; nothing was charged.
+   */
+  | { readonly step: "seller_not_taking_orders" }
   /** This payment has already been presented for a different order. */
   | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
@@ -299,6 +304,25 @@ interface HowTheySell {
  * back through or stops a seller's every sale.
  */
 const WAITING_FOR_PAYMENT_AT_MOST = 20;
+
+/**
+ * How long a seller's own process may go without polling before a purchase
+ * that charges before its goods is refused: past it, a buyer would pay for
+ * goods nothing is there to make. Nothing is paused and nothing has to be
+ * resumed; the first poll lets the next purchase through. A constant rather
+ * than a setting: a knob here could switch the guard off, or refuse every
+ * prepaid sale of a seller whose process is running.
+ */
+const SILENT_AFTER_MS = 10 * 60_000;
+
+/**
+ * How stale a seller's recorded poll may get in one process before a poll
+ * writes it again, so a busy stream is not one more write per envelope. The
+ * guard above waits this long beyond its ten minutes, so no seller is refused
+ * before ten minutes without a poll, and every one is within half a minute
+ * after.
+ */
+const CONTACT_WRITTEN_EVERY_MS = 30_000;
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
@@ -389,6 +413,8 @@ export class Gateway {
    * would take the next order.
    */
   readonly #held = new Map<string, Set<HeldPoll>>();
+  /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
+  readonly #contactWritten = new Map<string, number>();
   readonly #edge: PaymentEdge;
 
   constructor(runtime: Runtime) {
@@ -1264,6 +1290,17 @@ export class Gateway {
       return { step: "not_selling", message: created.rejection.message };
     }
 
+    // Before the order is written or the price asked: a purchase charged
+    // before its goods would take the buyer's money with nothing running to
+    // make them. A synchronous one ends uncharged on its own when nobody
+    // answers.
+    if (
+      created.order.mode.settle === "on_purchase" &&
+      (await this.#outOfTouch(stored.merchantId, theirs.integration, at))
+    ) {
+      return { step: "seller_not_taking_orders" };
+    }
+
     // The price question is named before the order is written, because a
     // parcel's order keeps the name: the question carries where the parcel
     // goes, and it leaves the queue with the rest of the address.
@@ -1417,6 +1454,18 @@ export class Gateway {
     // Where that split is one the merchant has left, the payment is fit only
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+
+    // Asked again here, before the payment is verified, because a price named
+    // just before the seller went quiet holds on into the silence.
+    if (
+      payingMerchant !== null &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order) &&
+      (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
+    ) {
+      return { step: "seller_not_taking_orders" };
+    }
+
     const payeeNow =
       payingMerchant === null
         ? null
@@ -1775,6 +1824,7 @@ export class Gateway {
       if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
+      await this.#noteContact(merchantId);
       // Asked once the poll is held, so a switch either came before this read
       // and is seen by it, or comes after and ends the poll (`sellThrough`).
       // Answered as a quiet stream is, after its window: answered at once, a
@@ -1790,6 +1840,42 @@ export class Gateway {
         this.#held.delete(merchantId);
       }
     }
+  }
+
+  /**
+   * Writes down that this merchant's process polled, unless this process wrote
+   * it within `CONTACT_WRITTEN_EVERY_MS`. A failure is only logged, as for a
+   * key's last use: the poll goes on, and the next one writes it.
+   */
+  async #noteContact(merchantId: string): Promise<void> {
+    const at = this.runtime.clock();
+    const written = this.#contactWritten.get(merchantId);
+    if (written !== undefined && at - written < CONTACT_WRITTEN_EVERY_MS) {
+      return;
+    }
+    try {
+      await this.runtime.store.noteContact(merchantId, at);
+      this.#contactWritten.set(merchantId, at);
+    } catch (thrown) {
+      console.error(
+        `[gateway] the poll of ${merchantId} was not written down: ${failureNamed(thrown)}`,
+      );
+    }
+  }
+
+  /**
+   * Whether a seller selling through their own code has gone without a poll
+   * for longer than the guard allows. A shop's orders are filled by the
+   * connector inside Agentify, which runs whenever Agentify does, so a seller
+   * selling through it is never out of touch; a shop that fails answers its
+   * price question with the failure.
+   */
+  async #outOfTouch(merchantId: string, through: Integration, at: number): Promise<boolean> {
+    if (through !== "api") {
+      return false;
+    }
+    const polled = await this.runtime.store.lastContact(merchantId);
+    return polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
   }
 
   async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {

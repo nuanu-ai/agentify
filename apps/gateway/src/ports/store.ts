@@ -647,6 +647,19 @@ export interface Store {
   noteKeyUse(id: string, at: number): Promise<void>;
 
   /**
+   * Records that one of this merchant's processes polled their stream at this
+   * instant. The mark never goes backwards, since two gateway processes write
+   * it from two clocks without serialising, and it outlives a restart: a
+   * restarted gateway that knew of no poll would refuse every prepaid sale
+   * until each merchant's process polled again. A merchant that is not there
+   * is not an error, and nothing is written.
+   */
+  noteContact(merchantId: string, at: number): Promise<void>;
+
+  /** The latest poll recorded for this merchant, or null where none ever was. */
+  lastContact(merchantId: string): Promise<number | null>;
+
+  /**
    * The key a request presented, found by its digest, or null where there is no
    * such key or it is disabled; the two answers must stay the same, so the door
    * never confirms which guesses were once real keys. Looking a digest up by

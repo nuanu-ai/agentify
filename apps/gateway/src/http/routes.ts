@@ -607,6 +607,16 @@ async function answerPurchase(
     case "not_selling":
       return written(response, CONFLICT, refusal("not_selling", attempt.message));
 
+    case "seller_not_taking_orders":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "seller_not_taking_orders",
+          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+        ),
+      );
+
     case "seller_busy":
       // A purchase waiting for payment lapses with its price, so a place comes
       // free within a minute and usually much sooner.

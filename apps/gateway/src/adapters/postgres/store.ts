@@ -59,6 +59,7 @@ import { failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 import {
   cards,
+  merchantContact,
   merchantKeys,
   merchants,
   orders,
@@ -460,6 +461,25 @@ export class PostgresStore implements Store {
           or(isNull(merchantKeys.lastUsedAt), lt(merchantKeys.lastUsedAt, new Date(at))),
         ),
       );
+  }
+
+  async noteContact(merchantId: string, at: number): Promise<void> {
+    // Selected rather than inserted as values, so a merchant who is not there
+    // writes nothing instead of failing the foreign key.
+    await this.#db.execute(sql`
+      insert into ${merchantContact} (merchant_id, polled_at)
+      select ${merchants.id}, ${new Date(at)} from ${merchants} where ${merchants.id} = ${merchantId}
+      on conflict (merchant_id)
+      do update set polled_at = greatest(${merchantContact.polledAt}, excluded.polled_at)`);
+  }
+
+  async lastContact(merchantId: string): Promise<number | null> {
+    const [row] = await this.#db
+      .select({ polledAt: merchantContact.polledAt })
+      .from(merchantContact)
+      .where(eq(merchantContact.merchantId, merchantId))
+      .limit(1);
+    return row?.polledAt.getTime() ?? null;
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {

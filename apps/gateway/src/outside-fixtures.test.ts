@@ -302,6 +302,12 @@ describe("a purchase from the outside", () => {
           .items[0],
       ).toMatchObject({ fulfillment: "async", fulfill_deadline_seconds: 86_400 });
 
+      // The merchant's worker is running before the sale, as a seller paid
+      // before the goods are made needs it to be.
+      await gateway.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0 },
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
       const challenged = await gateway.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
       });
