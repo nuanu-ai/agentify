@@ -18,7 +18,13 @@ const publicOnly = (addresses: readonly string[]): void => {
   }
 };
 
-/** Injectable only so the security boundary has a zero-socket negative control. */
+/**
+ * Some shops' firewalls answer 403 to a request that names no client, and a merchant allowlists
+ * this exact string, so it is set after the caller's headers and no caller can replace it.
+ */
+const AGENTIFY_USER_AGENT = "Agentify/1 (+https://agentify.ad)";
+
+/** Injectable only so the boundary and the identity it sends are tested without a socket. */
 export const wooRequestWith =
   (parts: RequestParts): WooRequest =>
   async (url, init = {}) => {
@@ -33,7 +39,9 @@ export const wooRequestWith =
     if (address === undefined) {
       throw new Error("The WooCommerce shop address did not resolve.");
     }
-    return await parts.open(target, address, init);
+    const headers = new Headers(init.headers);
+    headers.set("user-agent", AGENTIFY_USER_AGENT);
+    return await parts.open(target, address, { ...init, headers });
   };
 
 const resolvePublic = async (host: string): Promise<readonly string[]> =>
