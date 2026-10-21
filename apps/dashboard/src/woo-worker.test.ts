@@ -2231,8 +2231,8 @@ describe("a parcel from a shop that calculates tax", () => {
       fingerprint,
     },
   });
-  const IN_BALI = theTote({ mode: "included", base: DENPASAR });
-  const IN_BERLIN = theTote({ mode: "included", base: BERLIN });
+  const IN_BALI = theTote({ mode: "included", base: DENPASAR, roundsAtSubtotal: false });
+  const IN_BERLIN = theTote({ mode: "included", base: BERLIN, roundsAtSubtotal: false });
   const IN_SEATTLE = theTote({ mode: "excluded" });
   const NOW = "2026-09-14T12:00:00.000Z";
   const item = merchantItemIdFor("https://shop.example.com", "28");
@@ -2311,6 +2311,55 @@ describe("a parcel from a shop that calculates tax", () => {
         as_of: NOW,
       });
       expect(await shop.shops.quotedProduct("acc_1", "prc_parcel", item), place.city).toBeNull();
+    }
+  });
+
+  it("names no price where an inclusive shop's cart taxes the goods otherwise than at its own address, whatever its tax lines say", async () => {
+    // The German shop keeping one gross price, with its tax totals shown as a
+    // single line, so that its carts carry none: the Paris cart charged 31.88
+    // and the order made for it 32.05. It rounds at the subtotal, where its
+    // own address sells without the tax lines.
+    const single = (cart: RatesRead): RatesRead =>
+      cart.ok && cart.priced.ok ? { ...cart, priced: { ...cart.priced, taxes: [] } } : cart;
+    const shop = parts(theTote({ mode: "included", base: BERLIN, roundsAtSubtotal: true }));
+    const filling: Filling = {
+      ...shop.filling,
+      shippingRates: async (_connection, _productId, where) =>
+        single(CARTS[where.city] ?? { ok: true, rates: [], priced: NOT_PRICED }),
+    };
+
+    expect(await quoted(filling, PARIS)).toStrictEqual({ available: false, as_of: NOW });
+    expect(
+      await quoted(filling, { country: "DE", city: "Berlin", postal_code: "10115" }),
+    ).toMatchObject({
+      available: true,
+    });
+  });
+
+  it("names no price where an inclusive shop rounding per line would tax the shipping half a cent apart from its cart", async () => {
+    // The German shop at its own address with shipping at 1.50: 19% of it is
+    // 0.285, which the cart rounds up to 0.29 and the order down to 0.28, so
+    // the cart said 21.79 and the order made for it 21.78. Rounding at the
+    // subtotal, both said 21.79.
+    const halfCent: RatesRead = cartPricing(
+      "21.79",
+      ["16.81", "20.00"],
+      ["MwSt. 19%"],
+      rate("8", "Paket", "1.50", "0.29"),
+    );
+    for (const [roundsAtSubtotal, available] of [
+      [false, false],
+      [true, true],
+    ] as const) {
+      const shop = parts(theTote({ mode: "included", base: BERLIN, roundsAtSubtotal }));
+      const filling: Filling = { ...shop.filling, shippingRates: async () => halfCent };
+
+      expect(
+        await quoted(filling, { country: "DE", city: "Berlin", postal_code: "10115" }),
+        `${roundsAtSubtotal}`,
+      ).toMatchObject({
+        available,
+      });
     }
   });
 

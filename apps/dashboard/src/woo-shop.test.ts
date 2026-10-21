@@ -1346,6 +1346,7 @@ describe("the protected product check", () => {
         tax: {
           mode: "included",
           base: { country: "ID", state: "BA", city: "Denpasar", postal_code: "80361" },
+          roundsAtSubtotal: false,
         },
       },
     });
