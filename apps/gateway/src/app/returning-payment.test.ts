@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { PaymentEdge } from "../http/x402.js";
-import type { SignatureReader } from "../ports/signatures.js";
+import type { PaymentChain } from "../ports/payment-chain.js";
 import { testConfig } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { returningPayment } from "./returning-payment.js";
@@ -32,14 +32,21 @@ const signed = (signature?: `0x${string}`) =>
     ...(signature === undefined ? {} : { signature }),
   });
 
-/** A chain that answers `verdict` for every signature, and counts what it is asked. */
-const aChain = (verdict: boolean | Error) => {
+/**
+ * A chain that answers `verdict` for every signature and `used` for every
+ * authorization, and counts the signatures it is asked about.
+ */
+const aChain = (verdict: boolean | Error, used: boolean | Error = false) => {
   const asked: string[] = [];
-  const reader: SignatureReader = {
+  const reader: PaymentChain = {
     async accepts(wallet) {
       asked.push(wallet);
       if (verdict instanceof Error) throw verdict;
       return verdict;
+    },
+    async used() {
+      if (used instanceof Error) throw used;
+      return used;
     },
   };
   return { reader, asked };
@@ -84,12 +91,36 @@ describe("a contract wallet's signature for a paid purchase", () => {
 });
 
 describe("a key's signature for a paid purchase", () => {
-  it("is read here without asking the chain", async () => {
+  it("is read here without asking the chain to judge it", async () => {
     const chain = aChain(new Error("the chain was asked"));
 
     const checked = await returningPayment(await signed(), paid, edge, NOW, chain.reader);
 
     expect(checked).toMatchObject({ verified: true, payer: WALLET.address });
     expect(chain.asked).toStrictEqual([]);
+  });
+
+  it("is refused when the chain says its authorization was used", async () => {
+    const checked = await returningPayment(
+      await signed(),
+      paid,
+      edge,
+      NOW,
+      aChain(new Error("the chain was asked"), true).reader,
+    );
+
+    expect(checked).toMatchObject({ verified: false, reason: "signature" });
+  });
+
+  it("is left to the payment layer where the chain cannot say whether it was used", async () => {
+    const checked = await returningPayment(
+      await signed(),
+      paid,
+      edge,
+      NOW,
+      aChain(new Error("the chain was asked"), new Error("the endpoint did not answer")).reader,
+    );
+
+    expect(checked).toBeNull();
   });
 });

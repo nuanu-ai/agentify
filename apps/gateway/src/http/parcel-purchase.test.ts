@@ -16,7 +16,12 @@ import {
   type QuoteResponse,
   type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
-import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentSignatureHeader,
+  encodePaymentSignatureHeader,
+} from "@x402/core/http";
+import type { PaymentRequirements } from "@x402/core/types";
 import type { LocalAccount } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -318,6 +323,59 @@ describe("buying a parcel", () => {
       code: "not_this_purchase",
     });
     expect(await tried("0x03", address)).toStrictEqual({ status: 409, code: "not_this_purchase" });
+  });
+
+  it("does not let one parcel's payment, pointed at another's reference, test addresses against it", async () => {
+    // One wallet bought two parcels at one price, so the signed terms of the
+    // first fit the second, and the reference in a payment is not signed.
+    const { harnessed, served, itemId } = await started();
+    const buyer = aWallet("the parcel's buyer");
+    const priceOne = async () => {
+      const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+      const challenge = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {}, ship_to: address },
+      });
+      await worker.stop();
+      const accepted = decodePaymentRequiredHeader(
+        challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      ).accepts[0];
+      if (accepted === undefined) throw new Error("no payment was offered");
+      return accepted;
+    };
+    const send = (payment: string, shipTo: ShipTo) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {}, ship_to: shipTo },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    const sign = (accepted: PaymentRequirements, nonce: string) =>
+      signedPayment(buyer, accepted, {
+        nonce,
+        validBefore: harnessed.now() + accepted.maxTimeoutSeconds * 1_000,
+      });
+    const first = await priceOne();
+    const firstPayment = await sign(first, "0x01");
+    const firstBought = await send(firstPayment, address);
+    expect(firstBought.status).toBeLessThan(300);
+    const second = await priceOne();
+    const secondBought = await send(await sign(second, "0x02"), address);
+    expect(secondBought.status).toBeLessThan(300);
+    const decoded = decodePaymentSignatureHeader(firstPayment);
+    const pointedAtTheSecond = encodePaymentSignatureHeader({
+      ...decoded,
+      accepted: { ...decoded.accepted, extra: second.extra },
+    });
+
+    const guessed = await send(pointedAtTheSecond, { ...address, line_one: "Jl. Pantai Nyanyi" });
+    const matching = await send(pointedAtTheSecond, address);
+
+    expect(guessed.status).toBe(409);
+    expect((guessed.body as Refused).error.code).toBe("payment_not_verified");
+    expect(guessed.body).toStrictEqual(matching.body);
+    for (const bought of [firstBought, secondBought]) {
+      expect(JSON.stringify(guessed.body)).not.toContain(
+        (bought.body as { order_id: string }).order_id,
+      );
+    }
   });
 
   it("does not disclose a paid parcel or its address to a replay of its public used authorization", async () => {

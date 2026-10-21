@@ -1,5 +1,6 @@
 /**
- * A contract wallet's signature judged through a chain endpoint. The endpoint
+ * A contract wallet's signature, and whether an authorization was used,
+ * judged through a chain endpoint. The endpoint
  * here is a JSON-RPC server on the loopback that answers as a node would, so
  * what is checked is how its answers, and its silences, are read.
  */
@@ -7,7 +8,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { signaturesOn } from "./signatures.js";
+import { paymentChainOn } from "./payment-chain.js";
 
 const SEPOLIA = "eip155:84532";
 const WALLET = "0x00000000000000000000000000000000000000c1";
@@ -56,19 +57,19 @@ const reverted = { error: { code: 3, message: "execution reverted" } };
 
 describe("a contract wallet's signature on the chain", () => {
   it("is accepted where the chain accepts it", async () => {
-    const reader = signaturesOn(SEPOLIA, await anEndpoint(84532, accepted));
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, accepted));
 
     expect(await reader?.accepts(WALLET, DIGEST, SIGNATURE)).toBe(true);
   });
 
   it("is refused where the chain reverts", async () => {
-    const reader = signaturesOn(SEPOLIA, await anEndpoint(84532, reverted));
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, reverted));
 
     expect(await reader?.accepts(WALLET, DIGEST, SIGNATURE)).toBe(false);
   });
 
   it("is not judged by an endpoint serving another chain", async () => {
-    const reader = signaturesOn(SEPOLIA, await anEndpoint(8453, accepted));
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(8453, accepted));
 
     await expect(reader?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow(/does not answer/);
   });
@@ -78,16 +79,45 @@ describe("a contract wallet's signature on the chain", () => {
     await new Promise<void>((resolve) => running?.close(() => resolve()));
     running = null;
 
-    await expect(signaturesOn(SEPOLIA, url)?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow();
+    await expect(paymentChainOn(SEPOLIA, url)?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow();
   });
 
   it("is not judged by an endpoint that fails the call itself", async () => {
-    const reader = signaturesOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
 
     await expect(reader?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow(/did not answer/);
   });
 
   it("is not judged at all where no endpoint is configured", () => {
-    expect(signaturesOn(SEPOLIA)).toBeUndefined();
+    expect(paymentChainOn(SEPOLIA)).toBeUndefined();
+  });
+
+  it("is not judged by an endpoint that refuses with an error of its own, such as a rate limit", async () => {
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, { error: { code: 429, message: "too many requests" } }),
+    );
+
+    await expect(reader?.accepts(WALLET, DIGEST, SIGNATURE)).rejects.toThrow(/did not answer/);
+  });
+});
+
+describe("whether an authorization was used, on the chain", () => {
+  const TOKEN = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  const NONCE = `0x${"22".repeat(32)}`;
+
+  it.each([
+    ["used", `0x${"0".repeat(63)}1`, true],
+    ["unused", `0x${"0".repeat(64)}`, false],
+  ])("is read as the token answers: %s", async (_what, result, used) => {
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, { result }));
+
+    expect(await reader?.used(TOKEN, WALLET, NONCE)).toBe(used);
+  });
+
+  it("is not read from an endpoint that does not answer it", async () => {
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
+
+    await expect(reader?.used(TOKEN, WALLET, NONCE)).rejects.toThrow();
   });
 });

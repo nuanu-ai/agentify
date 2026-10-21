@@ -7,7 +7,11 @@
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { decodePaymentRequiredHeader } from "@x402/core/http";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentSignatureHeader,
+  encodePaymentSignatureHeader,
+} from "@x402/core/http";
 import type { PaymentRequirements } from "@x402/core/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, harness, type Served, serve, workUntilStopped } from "../testing/harness.js";
@@ -78,8 +82,37 @@ async function aPaidSale() {
   const orderId = (paid.body as { order_id: string }).order_id;
   harnessed.facilitator.willRefuseVerification("insufficient_funds", "insufficient_funds");
 
-  return { harnessed, requirements, fresh, present, paying, orderId };
+  /** A second order of the same product, priced and not paid for. */
+  const anotherOrder = async () => {
+    const repriced = await served.call("POST", purchase, { body: { params: {} } });
+    return decodePaymentRequiredHeader(repriced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
+      .accepts[0] as PaymentRequirements;
+  };
+  /** A second order of the same product, paid by the same wallet with its own nonce. */
+  const anotherSale = async (nonce: string) => {
+    harnessed.facilitator.willVerify();
+    const theirs = await anotherOrder();
+    const bought = await present(await signedPayment(BUYER, theirs, fresh(nonce)));
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    harnessed.facilitator.willRefuseVerification("insufficient_funds", "insufficient_funds");
+    return { requirements: theirs, orderId: (bought.body as { order_id: string }).order_id };
+  };
+
+  return { harnessed, requirements, fresh, present, paying, orderId, anotherOrder, anotherSale };
 }
+
+/**
+ * The same payment with its unsigned copy of the offer pointed at another
+ * order's reference, as anyone who read the payment off the chain and the
+ * reference off a listing could send it.
+ */
+const relabelled = (payment: string, requirements: PaymentRequirements): string => {
+  const decoded = decodePaymentSignatureHeader(payment);
+  return encodePaymentSignatureHeader({
+    ...decoded,
+    accepted: { ...decoded.accepted, extra: requirements.extra },
+  });
+};
 
 /** How many times the payment layer was asked to verify, and to charge. */
 const askedOf = (harnessed: Harness) => ({
@@ -150,13 +183,17 @@ describe("a purchase already paid for", () => {
   it.each([
     ["has run out", (now: number) => ({ validBefore: now - 1_000 })],
     ["is not valid yet", (now: number) => ({ validAfter: now + 60_000 })],
+    [
+      "stays valid for an hour longer than the offer asks",
+      (now: number, asked: number) => ({ validBefore: now + (asked + 3_600) * 1_000 }),
+    ],
   ])("is not returned to an authorization that %s", async (_when, window) => {
     const sale = await aPaidSale();
 
     const stale = await sale.present(
       await signedPayment(BUYER, sale.requirements, {
         ...sale.fresh("0x02"),
-        ...window(sale.harnessed.now()),
+        ...window(sale.harnessed.now(), sale.requirements.maxTimeoutSeconds),
       }),
     );
 
@@ -193,6 +230,39 @@ describe("a purchase already paid for", () => {
 
     expect(codeOf(forged.body)).toBe("payment_not_verified");
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+  });
+});
+
+describe("a payment that paid one order, presented for another", () => {
+  it("is refused as used, names neither order, and hands over nothing", async () => {
+    // One wallet paid for two orders of one price at one merchant, so the
+    // signed terms of the first fit the second; only the unsigned reference
+    // says which order a payment is for.
+    const sale = await aPaidSale();
+    const second = await sale.anotherSale("0x02");
+
+    const answered = await sale.present(relabelled(sale.paying, second.requirements));
+
+    expect(answered.status).toBe(409);
+    expect(codeOf(answered.body)).toBe("payment_not_verified");
+    const said = JSON.stringify(answered.body);
+    for (const orderId of [sale.orderId, second.orderId]) expect(said).not.toContain(orderId);
+    expect(said).not.toContain("SESAME");
+    expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 2, charged: 2 });
+  });
+
+  it("is refused for an order not paid yet without naming the order it paid", async () => {
+    // Before its charge the payment layer still passes the first order's
+    // authorization, and only its claim on the first order turns it away.
+    const sale = await aPaidSale();
+    const unpaid = await sale.anotherOrder();
+    sale.harnessed.facilitator.willVerify();
+
+    const answered = await sale.present(relabelled(sale.paying, unpaid));
+
+    expect(answered.status).toBe(409);
+    expect(codeOf(answered.body)).toBe("payment_already_spent");
+    expect(JSON.stringify(answered.body)).not.toContain(sale.orderId);
   });
 });
 
