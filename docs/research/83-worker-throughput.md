@@ -54,7 +54,13 @@ because the test observes only the start of the retry; an assertion after the
 original attempt's event closes that gap before the final run.
 
 Independent technical and merchant-documentation reviews find no runtime
-blocker; the documentation review's price-queue correction is applied. Full
-repository checks and CI are pending. No test-channel or production deployment
-is part of this change; these checks establish neither live shop capacity nor
-a price deadline.
+blocker; the documentation review's price-queue correction is applied. The
+final technical review independently passes all 233 SDK/WooCommerce tests.
+
+On Node 24.21.0, the full offline suite passes 5,794 tests in 324 files;
+scanner operations checks pass 14 Node and 14 Python cases. Repository-wide
+Biome, type checking, dead-code analysis, build and `git diff --check` pass.
+The local run does not include database or browser suites; their per-revision
+CI results are attached to the pull request. No test-channel or production
+deployment is part of this change; these checks establish neither live shop
+capacity nor a price deadline.
