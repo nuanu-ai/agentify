@@ -477,11 +477,7 @@ export const gatewayFor = (
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {
-        const cards = await application.setSelling(
-          merchantId,
-          selling ? "open" : "paused",
-          caller,
-        );
+        const cards = await application.setSelling(merchantId, selling ? "open" : "paused", caller);
         return answered(API_ROUTES.pause_selling, cards);
       }),
     orders: (open) =>

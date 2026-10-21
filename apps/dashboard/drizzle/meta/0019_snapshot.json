@@ -74,9 +74,7 @@
         "dashboard_accounts_email_unique": {
           "name": "dashboard_accounts_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -193,12 +191,8 @@
           "name": "dashboard_ad_reports_account_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_ad_reports",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -206,10 +200,7 @@
       "compositePrimaryKeys": {
         "dashboard_ad_reports_account_id_event_pk": {
           "name": "dashboard_ad_reports_account_id_event_pk",
-          "columns": [
-            "account_id",
-            "event"
-          ]
+          "columns": ["account_id", "event"]
         }
       },
       "uniqueConstraints": {},
@@ -357,12 +348,8 @@
           "name": "dashboard_credentials_user_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_credentials",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -648,12 +635,8 @@
           "name": "dashboard_sessions_user_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_sessions",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -663,9 +646,7 @@
         "dashboard_sessions_token_unique": {
           "name": "dashboard_sessions_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -794,12 +775,8 @@
           "name": "dashboard_woo_grants_account_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_woo_grants",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -892,12 +869,8 @@
           "name": "dashboard_woo_orders_account_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_woo_orders",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -971,12 +944,8 @@
           "name": "dashboard_woo_quotes_account_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_woo_quotes",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1040,12 +1009,8 @@
           "name": "dashboard_woo_shops_account_id_dashboard_accounts_id_fk",
           "tableFrom": "dashboard_woo_shops",
           "tableTo": "dashboard_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
