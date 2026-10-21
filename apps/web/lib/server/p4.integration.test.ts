@@ -1399,6 +1399,29 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
+  it("does not limit strangers' report link asks arriving through one private ingress address together", async () => {
+    const throughTheIngress = { "x-forwarded-for": "::ffff:10.20.10.11" };
+    const sentBefore = sentLinks.length;
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      for (const label of ["ingress-a", "ingress-b"]) {
+        const { scan, accessToken } = await createFreshCompletedScan(label);
+        for (let asked = 0; asked < 6; asked += 1) {
+          const answer = await registrationRequest(
+            scan.id,
+            accessToken,
+            registrationBody(`${label}-${asked}@example.com`),
+            throughTheIngress,
+          );
+          expect(answer.status).toBe(202);
+        }
+      }
+      expect(sentLinks).toHaveLength(sentBefore + 12);
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
   it("refuses a signed-in ask past the scan's hour as asks, not as links", async () => {
     const { scan, accessToken } = await createFreshCompletedScan("signed-in-cooldown");
     const cookie = signedInAs("signed-in-cooldown@example.com");

@@ -424,6 +424,70 @@ describe("sign-in links counted per client and across the channel", () => {
     ).resolves.toMatchObject({ status: "accepted" });
   });
 
+  /**
+   * What an ingress in front of the edge, a proxy on the way or an unreadable
+   * header leaves in place of a visitor's address.
+   */
+  const NOT_A_VISITOR = [
+    "10.20.10.11",
+    "::ffff:10.20.10.11",
+    "172.16.4.2",
+    "192.168.1.20",
+    "100.64.0.9",
+    "127.0.0.1",
+    "::1",
+    "169.254.10.1",
+    "fe80::1",
+    "fd00::5",
+    "unknown",
+  ];
+
+  it.each(NOT_A_VISITOR)(
+    "does not limit visitors arriving through %s together as one client",
+    async (client) => {
+      const { identity, messages } = memoryIdentity();
+
+      for (let sent = 0; sent <= LINK_CLIENT_LIMIT; sent += 1) {
+        await expect(
+          identity.requestLink(`visitor-${sent}@example.com`, "default", { client }),
+        ).resolves.toMatchObject({ status: "accepted" });
+      }
+
+      expect(messages).toHaveLength(LINK_CLIENT_LIMIT + 1);
+    },
+  );
+
+  it("still stops visitors arriving through one private proxy address at the channel's ceiling", async () => {
+    const { identity, messages } = memoryIdentity();
+    const proxy = { client: "::ffff:10.20.10.11" };
+    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
+      await identity.requestLink(`visitor-${sent}@example.com`, "default", proxy);
+    }
+    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
+
+    await expect(
+      identity.requestLink("one-more@example.com", "default", proxy),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "ceiling" });
+    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
+  });
+
+  it("keeps an address to one link a minute and three an hour behind a private proxy address too", async () => {
+    const { identity, rows } = memoryIdentity();
+    const proxy = { client: "10.20.10.11" };
+    await identity.requestLink("person@example.com", "default", proxy);
+    await expect(
+      identity.requestLink("person@example.com", "default", proxy),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "interval" });
+    for (let sent = 0; sent < 2; sent += 1) {
+      rewindLinkSends(rows);
+      await identity.requestLink("person@example.com", "default", proxy);
+    }
+    rewindLinkSends(rows);
+    await expect(
+      identity.requestLink("person@example.com", "default", proxy),
+    ).resolves.toMatchObject({ status: "cooldown", wall: "hourly" });
+  });
+
   it("keeps an address to one link a minute and three an hour whichever client asks", async () => {
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default", { client: "192.0.2.1" });

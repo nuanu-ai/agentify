@@ -919,6 +919,20 @@ describe("the passwordless dashboard door", () => {
     expect(mails).toHaveLength(LINK_CLIENT_LIMIT);
   });
 
+  it("does not count two visitors arriving through one private ingress address as one client", async () => {
+    const { browser, mails } = await started();
+    const throughTheIngress = browser.sending({ "x-forwarded-for": "::ffff:10.20.10.11" });
+
+    for (let sent = 0; sent <= LINK_CLIENT_LIMIT; sent += 1) {
+      const page = await throughTheIngress.post("/sign-in", {
+        email: `visitor-${sent}@example.com`,
+      });
+      expect(readable(page.html)).toContain("is on its way");
+    }
+
+    expect(mails).toHaveLength(LINK_CLIENT_LIMIT + 1);
+  });
+
   it("counts a client by the address the edge added, not by one a browser put in front of it", async () => {
     const { browser, mails } = await started();
     await spendTheClientsHour(browser);
