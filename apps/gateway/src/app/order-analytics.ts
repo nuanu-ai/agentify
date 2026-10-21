@@ -154,13 +154,15 @@ function outcomeChanged(
 }
 
 /**
- * The buyer's outcome with an unknown payment read as still in progress: the
- * order has not ended for the buyer, and the unknown is the payment result's
- * to say.
+ * The buyer's outcome with an unknown payment read as still in progress, the
+ * unknown being the payment result's to say, unless the order's fulfillment is
+ * closed: a closure is final, so it is the outcome from the moment it is made,
+ * by whoever made it, whatever the payment turns out to be.
  */
 function buyerOutcomeOf(order: Order): BuyerOutcome {
   const outcome = outcomeFor(order);
-  return outcome === "payment_unresolved" ? "in_progress" : outcome;
+  if (outcome !== "payment_unresolved") return outcome;
+  return order.state === "fulfillment_closed" ? "fulfillment_closed" : "in_progress";
 }
 
 function paymentStateOf(record: StoredOrder): PaymentState {
