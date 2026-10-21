@@ -98,6 +98,37 @@ const shopAnswering = async (
 
 let stand: Stand | null = null;
 
+/**
+ * An answer a check fails on: one the shop gives, one whose body breaks off
+ * after its status, or none at all.
+ */
+interface Failure {
+  readonly status: number;
+  readonly body?: unknown;
+  readonly raw?: string;
+  readonly kind?: "broken" | "unanswered";
+}
+
+/**
+ * The real request, except for the address a failure is made at: `exact`
+ * where the address must be the whole of it, since one cart address begins
+ * the others.
+ */
+const failing =
+  (where: string, failure: Failure, exact = false): WooRequest =>
+  async (url, init) => {
+    const href = String(url);
+    const here = exact ? href === where : href.includes(where);
+    if (here && failure.kind === "unanswered") throw new TypeError("fetch failed");
+    if (here && failure.kind === "broken") {
+      const cut = new ReadableStream({
+        start: (controller) => controller.error(new Error("the answer broke off")),
+      });
+      return new Response(cut, { status: failure.status });
+    }
+    return await fetch(url, init);
+  };
+
 /** The split a merchant's payment goes to on the test channel, by the gateway's own rule. */
 const PAID_INTO = payoutSplitFor(
   payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
@@ -832,8 +863,9 @@ describe("the protected product check", () => {
 
   it("names in the reason for every failed answer which check it was and the status it came with", async () => {
     // The reason is what the operator's log says of the shop; the status and
-    // the address it came from are what they take to the merchant's host.
-    const failures = [
+    // the address it came from are what they take to the merchant's host. An
+    // answer that broke off is asked again, as one never given is.
+    const failures: readonly Failure[] = [
       { status: 503, body: { message: "later" } },
       { status: 429, body: { message: "later" } },
       { status: 408, body: { message: "later" } },
@@ -841,45 +873,52 @@ describe("the protected product check", () => {
       { status: 404, body: { code: "rest_no_route" } },
       { status: 200, raw: "not-json" },
       { status: 200, body: { id: 28 } },
-    ] as const;
+      { status: 200, body: productDocument({ id: 99 }) },
+      { status: 200, kind: "broken" },
+      { status: 0, kind: "unanswered" },
+    ];
     const file = "/protected/guide.txt";
     const checks = [
       ["/wc/v3/products/", productDocument],
       ["woocommerce_downloads_require_login", productDocument],
+      ["woocommerce_calc_taxes", productDocument],
       ["woocommerce_ship_to_destination", parcelDocument],
       [file, productDocument],
     ] as const;
     for (const failure of failures) {
       const reasons = new Set<string>();
-      for (const [where, product] of checks) {
-        // Every answer from the raw file is a verdict except a refusal.
-        if (where === file && failure.status === 401) continue;
-        stand = await shopAnswering((asked) => {
-          if (asked.url.includes(where)) return failure;
-          if (asked.url === file) return { status: 403, body: {} };
-          if (asked.url.includes("/settings/")) {
+      // Every answer from the raw file is a verdict except a refusal.
+      const asked = checks.filter(([where]) => where !== file || failure.status !== 401);
+      for (const [where, product] of asked) {
+        stand = await shopAnswering((one) => {
+          if (one.url.includes(where)) return failure;
+          if (one.url === file) return { status: 403, body: {} };
+          if (one.url.includes("/settings/")) {
             const setting = product === parcelDocument ? parcelSettingFor : settingFor;
-            return { status: 200, body: settingAt(asked.url, setting(asked.url)) };
+            return { status: 200, body: settingAt(one.url, setting(one.url)) };
           }
           return { status: 200, body: product() };
         });
 
-        const read = await inspectProduct(
+        const read = await inspectProductInTheShop(
           connectionTo(stand.url),
           merchantItemIdFor(stand.url, product === parcelDocument ? "28" : "11"),
+          failing(where, failure),
         );
 
-        const said = `${where} ${failure.status}`;
+        const said = `${where} ${failure.kind ?? failure.status}`;
         expect(read.ok, said).toBe(false);
         if (!read.ok) {
-          expect(read.why, said).toContain(String(failure.status));
+          if (failure.kind !== "unanswered") {
+            expect(read.why, said).toContain(String(failure.status));
+          }
+          if (failure.kind === "broken" && where !== file) expect(read.again, said).toBe(true);
           reasons.add(read.why);
         }
         await stand.close();
         stand = null;
       }
-      const asked = checks.filter(([where]) => where !== file || failure.status !== 401);
-      expect(reasons.size, `${failure.status}`).toBe(asked.length);
+      expect(reasons.size, `${failure.kind ?? failure.status}`).toBe(asked.length);
     }
   });
 
@@ -1646,14 +1685,18 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       "/wp-json/wc/store/v1/cart/add-item",
       "/wp-json/wc/store/v1/cart/update-customer",
     ] as const;
-    const failures = [
+    const failures: readonly (readonly [readonly string[], Failure])[] = [
       [steps, { status: 503, body: { message: "later" } }],
       [steps, { status: 429, body: { message: "later" } }],
       [steps, { status: 408, body: { message: "later" } }],
       [steps, { status: 403, body: { code: "woocommerce_rest_invalid_nonce" } }],
+      [steps, { status: 200, kind: "broken" }],
+      [steps, { status: 0, kind: "unanswered" }],
+      // A cart opened without its token.
+      [steps.slice(0, 1), { status: 200, body: cart([]) }],
       [steps.slice(2), { status: 200, raw: "not-json" }],
       [steps.slice(2), { status: 200, body: { items: [] } }],
-    ] as const;
+    ];
     for (const [where, failure] of failures) {
       const reasons = new Set<string>();
       for (const step of where) {
@@ -1666,19 +1709,27 @@ describe("the shop's own shipping rate for a parcel's place", () => {
           return { status: 200, body: cart([rate()]) };
         });
 
-        const read = await ratesFor(stand.url, "28", JAKARTA);
+        const read = await shippingRatesInTheShop(
+          stand.url,
+          "28",
+          JAKARTA,
+          failing(`${stand.url}${step}`, failure, true),
+        );
 
-        const said = `${step} ${failure.status}`;
+        const said = `${step} ${failure.kind ?? failure.status}`;
         expect(read.ok, said).toBe(false);
         if (!read.ok) {
-          expect(read.why, said).toContain(String(failure.status));
+          expect(read.why, said).toContain(step);
+          if (failure.kind !== "unanswered") {
+            expect(read.why, said).toContain(String(failure.status));
+          }
           expect(read.why, said).not.toMatch(/jakarta/i);
           reasons.add(read.why);
         }
         await stand.close();
         stand = null;
       }
-      expect(reasons.size, `${failure.status}`).toBe(where.length);
+      expect(reasons.size, `${failure.kind ?? failure.status}`).toBe(where.length);
     }
   });
 
