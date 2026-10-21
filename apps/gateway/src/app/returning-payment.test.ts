@@ -105,12 +105,12 @@ describe("a key's signature for a paid purchase", () => {
     expect(checked).toMatchObject({ verified: false, reason: "signature" });
   });
 
-  it("is left to the payment layer where the chain cannot say whether it was used", async () => {
+  it("is decided on the claims where the chain cannot say whether it was used", async () => {
     const checked = await checking(
       await signed(),
       aChain(new Error("the chain was asked"), new Error("the endpoint did not answer")).reader,
     );
 
-    expect(checked).toBeNull();
+    expect(checked).toMatchObject({ verified: true, payer: WALLET.address });
   });
 });

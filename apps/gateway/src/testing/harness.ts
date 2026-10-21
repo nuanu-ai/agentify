@@ -23,6 +23,7 @@ import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
+import { paymentChainOn } from "../adapters/x402/payment-chain.js";
 import { Gateway } from "../app/gateway.js";
 import {
   grantLiveApproval,
@@ -136,6 +137,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   // the order, and a test that replaces `queue.stage` replaces the store's too.
   const store = new MemoryStore(config.payment.network, countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
+  const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
   const announcer = new RecordingAnnouncer();
   const ids = countedIds();
 
@@ -148,6 +150,9 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     ids,
     announcer,
     widestChallenge: widestChallengeOn(config),
+    // Read from the configuration as the process reads it, so a test names a
+    // chain endpoint by PAYMENT_RPC_URL; none is configured by default.
+    ...(chain === undefined ? {} : { chain }),
   };
 
   const gateway = new Gateway(runtime);

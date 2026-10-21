@@ -43,8 +43,14 @@ afterEach(async () => {
  * is up to the test. The buyer's wallet has nothing left in it from then on,
  * as the payment layer would say of any payment it is asked about.
  */
-async function aPaidSale(sold: Card = card, { delivers = true } = {}) {
-  const harnessed = await harness();
+async function aPaidSale(
+  sold: Card = card,
+  {
+    delivers = true,
+    overrides = {},
+  }: { delivers?: boolean; overrides?: Record<string, string> } = {},
+) {
+  const harnessed = await harness(overrides);
   const served = await serve(harnessed);
   const worker = workUntilStopped(harnessed, {
     ...(delivers ? { onOrder: () => ({ delivered: { access_code: "SESAME" } }) } : {}),
@@ -124,6 +130,21 @@ const codeOf = (body: unknown): string | undefined =>
   (body as { error?: { code?: string } }).error?.code;
 
 describe("a purchase already paid for", () => {
+  it("comes back to its payer's fresh signature while the chain endpoint does not answer", async () => {
+    // The claims decide whether an authorization was taken; the chain is only
+    // a second guard, and its silence must not send the buyer to the payment
+    // layer, which would refuse the empty wallet.
+    const sale = await aPaidSale(card, { overrides: { PAYMENT_RPC_URL: "http://127.0.0.1:1" } });
+
+    const again = await sale.present(
+      await signedPayment(BUYER, sale.requirements, sale.fresh("0x02")),
+    );
+
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(again.body).toMatchObject({ order_id: sale.orderId });
+    expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+  });
+
   it("comes back to its payer's fresh signature with no second charge, though the wallet is empty now", async () => {
     const sale = await aPaidSale();
 
@@ -251,15 +272,16 @@ describe("a payment that paid one order, presented for another", () => {
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 2, charged: 2 });
   });
 
-  it.each([
-    ["is over", card],
-    ["is still open", { ...card, merchant_item_id: "esim-7-days", fulfillment: "async" } as Card],
-  ])(
-    "is refused for an order not paid yet without naming the order it paid, which %s",
-    async (_state, sold) => {
-      // The payment layer stands in here for one that has not seen the first
-      // charge yet, so only the claim on the first order turns the payment away.
-      const sale = await aPaidSale(sold, { delivers: sold.fulfillment === "sync" });
+  it("is refused in one answer, naming no order, whether the order it paid is over or open", async () => {
+    // The payment layer stands in here for one that has not seen the first
+    // charge yet, so only the claim on the first order turns the payment away.
+    const answers: unknown[] = [];
+    const later: Card = { ...card, merchant_item_id: "esim-7-days", fulfillment: "async" };
+    for (const [sold, delivers] of [
+      [card, true],
+      [later, false],
+    ] as const) {
+      const sale = await aPaidSale(sold, { delivers });
       const unpaid = await sale.anotherOrder();
       sale.harnessed.facilitator.willVerify();
 
@@ -268,8 +290,12 @@ describe("a payment that paid one order, presented for another", () => {
       expect(answered.status).toBe(409);
       expect(codeOf(answered.body)).toBe("payment_already_spent");
       expect(JSON.stringify(answered.body)).not.toContain(sale.orderId);
-    },
-  );
+      answers.push(answered.body);
+      await open?.stop();
+      open = null;
+    }
+    expect(answers[0]).toStrictEqual(answers[1]);
+  });
 });
 
 describe("a purchase not paid for yet", () => {
