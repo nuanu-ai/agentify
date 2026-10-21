@@ -13,7 +13,13 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import { type Gateway, merchantPayout, payoutSplitFor, setPayoutWallet } from "@agentify/gateway";
+import {
+  type Gateway,
+  type MerchantKey,
+  merchantPayout,
+  payoutSplitFor,
+  setPayoutWallet,
+} from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -27,7 +33,6 @@ import {
   type Card,
   checksummedAddressOf,
   MERCHANT_FINDINGS,
-  type MerchantKey,
   OrderCloseRequestSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";

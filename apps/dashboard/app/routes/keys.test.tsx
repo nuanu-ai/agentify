@@ -9,7 +9,7 @@
  * list after a press would cost the merchant the only showing of a secret.
  */
 
-import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
+import type { MerchantKey } from "@agentify/gateway";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";

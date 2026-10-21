@@ -16,6 +16,7 @@ import {
   SellerSiteSchema,
   ServiceNameSchema,
 } from "@nuanu-ai/agentify-contracts";
+import { z } from "zod";
 import type { Ids } from "../ports/clock.js";
 import type { Store, StoredKey, StoredMerchant } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
@@ -45,6 +46,23 @@ export interface IssuedKey {
   /** The only time this is ever readable. Nothing keeps it. */
   readonly secret: string;
 }
+
+/**
+ * The label a merchant issues a key under: not empty and not padded with
+ * spaces, so that two labels that look the same are the same, and one line of
+ * at most a hundred characters, because the message that tells a merchant of a
+ * new key names it by its label. Any alphabet is allowed. Keys already held
+ * are listed under whatever they were named.
+ */
+export const NewKeyLabelSchema = z
+  .string()
+  .regex(/^\S(?:[\s\S]*\S)?$/u, "a label must not be empty or padded with spaces")
+  .max(100, "a label is at most 100 characters, the one line a key is known by")
+  .regex(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+    /^[^\u0000-\u001F\u007F-\u009F\u2028\u2029]*$/u,
+    "a label is one line: it cannot carry a line break, a tab or another control character",
+  );
 
 /**
  * Sets or clears the name a merchant is listed under in a discovery catalog.

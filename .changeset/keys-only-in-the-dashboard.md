@@ -11,3 +11,9 @@ to the merchant's dashboard, so a key that leaks cannot issue itself a successor
 or revoke the merchant's other keys, and revoking it ends what it can do. The
 codes `key_opened_this_call` and `no_such_key`, which only those routes sent,
 are removed from `ERROR_CODES`. The SDK made none of these calls.
+
+The documents only those routes carried leave the package with them:
+`MerchantKeySchema`, `MerchantKeyListSchema`, `IssueKeyRequestSchema`,
+`IssuedKeySchema` and `DisabledKeySchema`, their types, and their entries
+`merchant_key`, `merchant_key_list`, `issue_key_request`, `issued_key` and
+`disabled_key` in `schemas`.

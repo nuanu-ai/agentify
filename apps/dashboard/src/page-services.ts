@@ -9,11 +9,11 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { NewKeyLabelSchema } from "@agentify/gateway";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
   IdentifierSchema,
-  IssueKeyRequestSchema,
   OrderCloseRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
@@ -477,14 +477,14 @@ const shownIn = (form: FormData): Shown | null => {
 /**
  * A key with no name cannot be told apart from another on the screen meant for
  * telling them apart before revoking one. The rest of the rule is the
- * contract's: one line, at most the length the gateway takes, which also keeps
- * the live announcement naming it to one line.
+ * gateway's: one line, at most the length it takes, which also keeps the live
+ * announcement naming it to one line.
  */
 export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
     return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
   }
-  const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
+  const unfit = NewKeyLabelSchema.safeParse(label);
   if (unfit.success) return null;
   const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
   return `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`;

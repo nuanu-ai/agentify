@@ -31,16 +31,13 @@ import {
   CardSchema,
   CONTRACT_VERSION,
   type Delivery,
-  type DisabledKey,
   deliveryCheckFor,
   type HandlerAnswer,
-  type IssuedKey,
   localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type MerchantFinding,
-  type MerchantKey,
   type OrderAcceptResponse,
   type OrderCallResponse,
   type OrderCloseRequest,
@@ -89,6 +86,7 @@ import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
   keyDigest,
+  NewKeyLabelSchema,
   payoutWalletFrom,
   registerMerchant,
   setSellerSite,
@@ -173,6 +171,30 @@ export type WalletChangeRefusal =
  * account's email, and that is what a message names.
  */
 export type Caller = { readonly kind: "signed_in"; readonly email: string };
+
+/**
+ * One of a merchant's keys as their dashboard lists it, with no field for the
+ * secret, which is shown once when the key is issued. The instants are ISO 8601.
+ */
+export interface MerchantKey {
+  readonly id: string;
+  readonly label: string;
+  readonly created_at: string;
+  /**
+   * Behind the truth by up to a few minutes, and null where no call is
+   * recorded, which a key made before the gateway recorded this shares with
+   * one nobody has called.
+   */
+  readonly last_used_at: string | null;
+  /** Null while the key still works. */
+  readonly disabled_at: string | null;
+}
+
+/** A key just issued: its row, and its secret, readable this once. */
+export interface IssuedMerchantKey {
+  readonly key: MerchantKey;
+  readonly secret: string;
+}
 
 /** The queue's name for the daily sweep of claims on payments. */
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
@@ -1118,12 +1140,18 @@ export class Gateway {
    * never waits on the message: a key cannot move money or set the wallet, and
    * mail being down must not keep a merchant from a key.
    */
-  async issueMerchantKey(merchantId: string, label: string, askedBy: Caller): Promise<IssuedKey> {
+  async issueMerchantKey(
+    merchantId: string,
+    label: string,
+    askedBy: Caller,
+  ): Promise<IssuedMerchantKey> {
     const issued = await issueKey(
       this.runtime.store,
       this.runtime.ids,
       merchantId,
-      label,
+      // Throws with the schema's own words, which the dashboard checks for
+      // first and shows.
+      NewKeyLabelSchema.parse(label),
       this.runtime.clock(),
       this.runtime.config.environment,
     );
@@ -1144,13 +1172,13 @@ export class Gateway {
    * with. `null` is a key that does not exist or is somebody else's, told
    * apart nowhere, so a refusal cannot count another merchant's keys.
    */
-  async disableMerchantKey(merchantId: string, keyId: string): Promise<DisabledKey | null> {
+  async disableMerchantKey(merchantId: string, keyId: string): Promise<MerchantKey | null> {
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
     if (disabled === null) {
       return null;
     }
     this.#letGo(merchantId, (held) => held.keyId === keyId);
-    return { key: merchantKeyOf(disabled) };
+    return merchantKeyOf(disabled);
   }
 
   // --- buying ---------------------------------------------------------------

@@ -317,7 +317,7 @@ describe("disabling a key", () => {
 
     const disabled = await harnessed.gateway.disableMerchantKey(made.merchant_id, second.key.id);
 
-    expect(disabled?.key.disabled_at).not.toBeNull();
+    expect(disabled?.disabled_at).not.toBeNull();
     expect(await opensTheDoor(served, second.secret)).toBe(false);
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
@@ -329,7 +329,7 @@ describe("disabling a key", () => {
 
     const disabled = await harnessed.gateway.disableMerchantKey(made.merchant_id, made.keyId);
 
-    expect(disabled).toMatchObject({ key: { id: made.keyId } });
+    expect(disabled).toMatchObject({ id: made.keyId });
     expect(await opensTheDoor(served, made.secret)).toBe(false);
   });
 

@@ -16,6 +16,8 @@ import type {
   Caller,
   Gateway,
   Integration,
+  IssuedMerchantKey,
+  MerchantKey,
   PayoutTransaction,
   RecordedPayoutSplit,
   WalletChangeRefusal,
@@ -28,6 +30,7 @@ import {
   merchantOrderAnswer,
   merchantOrderList,
   merchantPayout,
+  NewKeyLabelSchema,
   NO_SUCH_ITEM,
   NO_SUCH_ORDER,
   type Refused,
@@ -39,13 +42,8 @@ import {
   type Delivery,
   EvmAddressSchema,
   type HandlerAnswer,
-  type IssuedKey,
-  IssuedKeySchema,
-  IssueKeyRequestSchema,
   type MerchantCard,
   type MerchantCardList,
-  type MerchantKey,
-  MerchantKeySchema,
   type OrderCallResponse,
   type OrderCloseRequest,
   type OrderCloseResponse,
@@ -59,7 +57,6 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { z } from "zod";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
 
@@ -157,7 +154,7 @@ export interface GatewayClient {
    */
   paidIntoSplits(): Promise<Answer<Readonly<Record<string, RecordedPayoutSplit>>>>;
   keys(): Promise<Answer<readonly MerchantKey[]>>;
-  issueKey(label: string): Promise<Answer<IssuedKey>>;
+  issueKey(label: string): Promise<Answer<IssuedMerchantKey>>;
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /** Null for none. */
   sellerName(): Promise<Answer<string | null>>;
@@ -406,8 +403,6 @@ const orderCallAnswer = <T extends OrderCallResponse | OrderCloseResponse>(
     : { ok: false, status: CONFLICT, why: held.error.message, code: held.error.code };
 };
 
-const KeysSchema = z.array(MerchantKeySchema);
-
 /**
  * Also the answer for another merchant's key, so disabling cannot count
  * somebody else's keys.
@@ -549,21 +544,17 @@ export const gatewayFor = (
         return done(into);
       }),
     keys: () =>
-      call("reading the keys", async () =>
-        done(KeysSchema.parse(await application.merchantKeys(merchantId))),
-      ),
+      call("reading the keys", async () => done(await application.merchantKeys(merchantId))),
     issueKey: (label) =>
       call("issuing a key", async () => {
-        const asked = hold(IssueKeyRequestSchema, { label });
+        const asked = hold(NewKeyLabelSchema, label);
         if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
-        return done(
-          IssuedKeySchema.parse(await application.issueMerchantKey(merchantId, label, session)),
-        );
+        return done(await application.issueMerchantKey(merchantId, label, session));
       }),
     disableKey: (keyId) =>
       call("disabling a key", async () => {
         const disabled = await application.disableMerchantKey(merchantId, keyId);
-        return disabled === null ? NO_SUCH_KEY : done(MerchantKeySchema.parse(disabled.key));
+        return disabled === null ? NO_SUCH_KEY : done(disabled);
       }),
     liveApproval: () =>
       call("reading the live approval", async () =>
