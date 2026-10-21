@@ -319,6 +319,7 @@ const A_DOWNLOAD: EligibleWooProduct = {
 
 const QUESTION = {
   price_id: "prc_idr",
+  purpose: "purchase" as const,
   merchant_item_id: ITEM,
   expires_at: "2026-10-21T12:00:30.000Z",
 };
@@ -430,6 +431,35 @@ describe("a price question for a card from a shop priced in rupiah", () => {
     expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toMatchObject({
       inTheShop: { amount: "274000", currency: "IDR" },
     });
+  });
+});
+
+describe("a parcel's price where the shop's cart answers in another currency than its product", () => {
+  it("is not available, rather than adding yen of shipping to rupiah goods", async () => {
+    const shops = memoryWooShops();
+    await shops.saveRate("acc_1", SHOP, RATE);
+    const tote: EligibleWooProduct = {
+      kind: "parcel",
+      productId: "41",
+      price: { amount: "250000", currency: "IDR" },
+      tax: { mode: "off" },
+      fingerprint: "tote-in-rupiah",
+    };
+    const inYen = async (): Promise<RatesRead> => ({
+      ok: true,
+      currency: "JPY",
+      rates: [{ methodId: "flat_rate", instanceId: "1", title: "Flat", cost: "500", tax: "0" }],
+      priced: { ok: false, why: "untaxed", again: false, saidNo: false },
+    });
+
+    const answer = await quoteFromTheShop(
+      CONNECTION,
+      { ...QUESTION, ship_to: { country: "ID", state: "BA", city: "Gianyar" } },
+      NOW,
+      { ...parts(shops, tote), shippingRates: inYen },
+    );
+
+    expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
   });
 });
 

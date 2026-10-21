@@ -6,10 +6,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Delivery, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
+import type { Delivery, Money, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
-import { withinACent } from "./woo-catalog.js";
+import { amountOfMinor, minorOf, withinOneUnit } from "./woo-money.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -339,6 +339,13 @@ export const matchesSavedWooSale = (
   order.price.amount === facts.amount &&
   order.price.currency === facts.currency;
 
+/**
+ * What the shop's order is held to: the amount the sale was priced at in the
+ * shop's currency, which is what was paid where the shop sells in US dollars.
+ */
+const inTheShopOf = (facts: WooOrderFacts): Money =>
+  facts.converted?.inTheShop ?? { amount: facts.amount, currency: facts.currency };
+
 const sameProduct = (
   product: {
     productId: string;
@@ -349,8 +356,8 @@ const sameProduct = (
 ): boolean =>
   product.productId === facts.productId &&
   product.fingerprint === facts.productFingerprint &&
-  product.price.amount === facts.amount &&
-  product.price.currency === facts.currency;
+  product.price.amount === inTheShopOf(facts).amount &&
+  product.price.currency === inTheShopOf(facts).currency;
 
 /**
  * What the merchant can check in their shop, one clause for each fact that
@@ -366,12 +373,16 @@ const differencesOf = (
   orderId: string,
   wooOrderId: string,
 ): string[] => {
-  const price = `${facts.amount} ${facts.currency}`;
+  const held = inTheShopOf(facts);
+  const price = `${held.amount} ${held.currency}`;
+  const decimals = minorOf(held.amount)?.decimals ?? 2;
+  const none = amountOfMinor(0n, decimals);
+  const unit = decimals === 2 ? "a cent" : `1 ${held.currency}`;
   const untaxed =
-    order.subtotal === facts.amount &&
-    order.lineTotal === facts.amount &&
-    order.totalTax === "0.00" &&
-    order.lineTax === "0.00";
+    order.subtotal === held.amount &&
+    order.lineTotal === held.amount &&
+    order.totalTax === none &&
+    order.lineTax === none;
   return [
     order.id !== wooOrderId || order.orderKey === ""
       ? "the shop answered with a different order"
@@ -380,12 +391,12 @@ const differencesOf = (
       ? null
       : `its status is ${order.status}, not Processing or Completed`,
     tax.mode === "off"
-      ? order.currency === facts.currency && withinACent(order.total, facts.amount) && untaxed
+      ? order.currency === held.currency && withinOneUnit(order.total, held.amount) && untaxed
         ? null
-        : `its total is not ${price}, or within a cent of it, with no tax`
-      : order.currency === facts.currency && withinACent(order.total, facts.amount)
+        : `its total is not ${price}, or within ${unit} of it, with no tax`
+      : order.currency === held.currency && withinOneUnit(order.total, held.amount)
         ? null
-        : `its total is not ${price}, or within a cent of it`,
+        : `its total is not ${price}, or within ${unit} of it`,
     order.paymentMethod === "agentify" ? null : "it was not paid with Agentify",
     order.transactionId === orderId ? null : "its Transaction ID is not this Agentify order ID",
     order.billingEmail === email ? null : `its billing email is not ${email}`,
@@ -408,10 +419,23 @@ const soldItem = (
   orderId,
   productId: facts.productId,
   email,
-  price: { amount: facts.amount, currency: facts.currency },
+  price: inTheShopOf(facts),
   download: { id: product.downloadId, name: product.fileName },
   paidInto,
   tax: product.tax,
+  ...(facts.converted === undefined
+    ? {}
+    : {
+        converted: {
+          paid: { amount: facts.amount, currency: facts.currency },
+          rate: {
+            version: facts.converted.rate.version,
+            currency: facts.converted.inTheShop.currency,
+            rate: facts.converted.rate.rate,
+            setAt: new Date(facts.converted.rate.setAt),
+          },
+        },
+      }),
 });
 
 const permissionFor = (

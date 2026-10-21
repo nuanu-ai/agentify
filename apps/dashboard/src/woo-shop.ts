@@ -21,18 +21,22 @@ import {
 import { z } from "zod";
 import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import {
-  amountOfCents,
-  centsOf,
   decimalOfMinorUnits,
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
-  TYPED_PRICE,
-  USD_SCALE,
-  usdAmountOf,
-  withinACent,
 } from "./woo-catalog.js";
+import {
+  amountOfMinor,
+  minorOf,
+  type ShopDecimals,
+  shopAmountOf,
+  shopDecimalsOf,
+  TYPED_PRICE,
+  withinOneUnit,
+} from "./woo-money.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
+import type { AppliedRate } from "./woo-shops.js";
 
 const SHOP_ANSWERS_WITHIN_MS = 15_000;
 
@@ -84,7 +88,10 @@ interface EligibleDownload {
   readonly productId: string;
   readonly downloadId: string;
   readonly fileName: string;
-  /** What the buyer pays: the price as entered, with any tax inside it. */
+  /**
+   * The price as entered, with any tax inside it, in the shop's currency at
+   * its Number of decimals.
+   */
   readonly price: Money;
   /** No download is sold from a shop whose prices are entered before tax. */
   readonly tax: { readonly mode: "off" | "included" };
@@ -98,7 +105,8 @@ interface EligibleParcel {
   readonly productId: string;
   /**
    * The goods as entered, without shipping, and without the tax the buyer's
-   * place adds where prices are entered before tax.
+   * place adds where prices are entered before tax, in the shop's currency at
+   * its Number of decimals.
    */
   readonly price: Money;
   readonly tax: ShopTax;
@@ -494,7 +502,13 @@ export const inspectProductInTheShop = async (
     if (product.download_limit !== -1) unsupported.push("its download count is limited");
     if (product.download_expiry !== -1) unsupported.push("its download access expires");
   }
-  if (currency !== "USD") unsupported.push("the shop currency is not USD");
+  // A dollar shop sells at a dollar's cents; any other currency at the shop's
+  // own decimals, none or two, which every total it writes is matched at.
+  const shopCurrency = typeof currency === "string" ? currency : "";
+  const scale = shopDecimalsOf(String(decimals));
+  if (!/^[A-Z]{3}$/.test(shopCurrency)) {
+    unsupported.push("the shop's currency setting is not a currency code");
+  }
   if (kind === "download") {
     if (method !== "force") unsupported.push("the download method is not Force Downloads");
     if (login !== "no") unsupported.push("downloads require a WooCommerce login");
@@ -520,15 +534,20 @@ export const inspectProductInTheShop = async (
   }
   // Order totals are written at this setting and matched character for
   // character, so any other value is refused before a paid order exists that
-  // could not be matched. Left out of the download fingerprint, so fingerprints
-  // already recorded for accepted quotes stay valid.
-  if (decimals !== String(USD_SCALE)) {
+  // could not be matched.
+  if (shopCurrency === "USD" && scale !== 2) {
     unsupported.push(
-      `prices are not written at ${USD_SCALE} decimals (set WooCommerce → Settings → General →` +
-        ` Number of decimals to ${USD_SCALE})`,
+      "prices are not written at 2 decimals (set WooCommerce → Settings → General → Number of" +
+        " decimals to 2)",
+    );
+  } else if (scale === null) {
+    unsupported.push(
+      `prices are written at ${String(decimals)} decimals, and a shop in another currency than US` +
+        " dollars is sold from only where it writes them with none or two (WooCommerce → Settings" +
+        " → General → Number of decimals)",
     );
   }
-  if (unsupported.length > 0) {
+  if (unsupported.length > 0 || scale === null) {
     return {
       ok: false,
       why: `This product cannot be imported: ${unsupported.join("; ")}.`,
@@ -548,19 +567,20 @@ export const inspectProductInTheShop = async (
   }
   // From here on the price is the one form the card, the quote, the order and
   // WooCommerce's totals all use; the fingerprint hashes it too, so "25" and
-  // "25.00" hash alike and earlier digests stay valid.
-  const amount = usdAmountOf(product.price);
+  // "25.00" hash alike.
+  const amount = shopAmountOf(product.price, scale);
   if (amount === null) {
     return {
       ok: false,
       why:
-        `The shop's price for this product is ${product.price}, which has more than the two` +
-        " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
-        " set; give the product a price in whole cents in WooCommerce.",
+        `The shop's price for this product is ${product.price}, which has more decimal places` +
+        ` than the ${scale} the shop writes its prices with. It is not rounded to an amount the` +
+        " shop never set; give the product a price the shop writes whole.",
       again: false,
       saidNo: true,
     };
   }
+  const price: Money = { amount, currency: shopCurrency };
   if (kind === "parcel") {
     let tax: ShopTax = { mode: entered === "excluded" ? "excluded" : "off" };
     if (entered === "included") {
@@ -596,7 +616,8 @@ export const inspectProductInTheShop = async (
           new URL(keys.shopUrl).origin,
           productId,
           amount,
-          "USD",
+          shopCurrency,
+          scale,
           product.type,
           product.status,
           product.stock_status,
@@ -619,7 +640,7 @@ export const inspectProductInTheShop = async (
       .digest("hex");
     return {
       ok: true,
-      product: { kind, productId, price: { amount, currency: "USD" }, tax, fingerprint },
+      product: { kind, productId, price, tax, fingerprint },
     };
   }
   const download = product.downloads[0];
@@ -693,7 +714,8 @@ export const inspectProductInTheShop = async (
         download.name,
         raw.toString(),
         amount,
-        "USD",
+        shopCurrency,
+        scale,
         product.type,
         product.status,
         product.stock_status,
@@ -722,7 +744,7 @@ export const inspectProductInTheShop = async (
       productId,
       downloadId: download.id,
       fileName: download.name,
-      price: { amount, currency: "USD" },
+      price,
       tax: { mode: entered === "included" ? "included" : "off" },
       fingerprint,
     },
@@ -742,29 +764,64 @@ export interface SoldItem {
   /** The card's `merchant_item_id`. */
   readonly productId: string;
   readonly email: string;
-  /** What the buyer actually paid, which is what the shop's order records. */
+  /**
+   * What the shop's order records, in the shop's currency at its decimals:
+   * what the buyer paid where the shop sells in US dollars.
+   */
   readonly price: Money;
   readonly download: { readonly id: string; readonly name: string };
   readonly paidInto: PaidIntoSplit | null;
   /** As the product was sold under; it decides how the order's line is priced. */
   readonly tax: { readonly mode: "off" | "included" };
+  /** Absent where the shop sells in US dollars. */
+  readonly converted?: Converted;
+}
+
+/** What the buyer paid for a sale from a shop in another currency, and the rate it was converted at. */
+export interface Converted {
+  readonly paid: Money;
+  readonly rate: AppliedRate;
 }
 
 /**
  * The shop order's metadata: our order identifier, what the buyer paid, which
- * the shop's total may differ from by a cent, and for a payment into a split
- * two lines the merchant reads beside the order, the commission on what was
- * paid and the split it went to. No key begins with an underscore, which
- * WooCommerce hides. The answer check reads only the identifier, so the lines
- * neither break nor weaken it.
+ * the shop's total may differ from by one of its smallest units, for a sale
+ * from a shop in another currency the amount it was priced at and the rate
+ * the buyer paid at, and for a payment into a split two lines the merchant
+ * reads beside the order, the commission on what was paid and the split it
+ * went to. No key begins with an underscore, which WooCommerce hides. The
+ * answer check reads only the identifier, so the lines neither break nor
+ * weaken it.
  */
 const metadataOf = (
   orderId: string,
+  inTheShop: Money,
+  converted: Converted | undefined,
+  into: PaidIntoSplit | null,
+): readonly { readonly key: string; readonly value: string }[] => {
+  const paid = converted?.paid ?? inTheShop;
+  return [
+    { key: "agentify_order_id", value: orderId },
+    { key: "agentify_paid", value: `${paid.amount} ${paid.currency}` },
+    ...(converted === undefined
+      ? []
+      : [
+          { key: "agentify_shop_amount", value: `${inTheShop.amount} ${inTheShop.currency}` },
+          {
+            key: "agentify_rate",
+            value:
+              `${converted.rate.rate} ${converted.rate.currency} per USD, rate` +
+              ` ${converted.rate.version}, set ${converted.rate.setAt.toISOString()}`,
+          },
+        ]),
+    ...commissionOf(paid, into),
+  ];
+};
+
+const commissionOf = (
   paid: Money,
   into: PaidIntoSplit | null,
 ): readonly { readonly key: string; readonly value: string }[] => [
-  { key: "agentify_order_id", value: orderId },
-  { key: "agentify_paid", value: `${paid.amount} ${paid.currency}` },
   ...(into === null
     ? []
     : [
@@ -887,9 +944,9 @@ export interface ShippingRate {
   readonly instanceId: string;
   /** As the shop's own checkout calls it. */
   readonly title: string;
-  /** In US dollars at two decimals, as an order's shipping line carries it. */
+  /** In the shop's currency at its decimals, as an order's shipping line carries it. */
   readonly cost: string;
-  /** The tax the cart adds to the rate, at two decimals; "0.00" where none. */
+  /** The tax the cart adds to the rate, at the same decimals; nothing where none. */
   readonly tax: string;
 }
 
@@ -918,6 +975,11 @@ export interface CartPrice {
 export type RatesRead =
   | {
       readonly ok: true;
+      /**
+       * The currency every rate and total of the cart is in, at the decimals its
+       * amounts are written with; null where it offered no rate to name one.
+       */
+      readonly currency: string | null;
       readonly rates: readonly ShippingRate[];
       readonly priced: CartPrice | NotSellable;
     }
@@ -983,11 +1045,8 @@ const PricedCartSchema = z.looseObject({
   }),
 });
 
-/** Cents of a Store API amount, written in minor units at two decimals. */
-const minorCents = (minor: string): bigint | null => {
-  const amount = decimalOfMinorUnits(minor, USD_SCALE);
-  return amount === null ? null : centsOf(amount);
-};
+/** A Store API amount, which is written in the shop's smallest unit already. */
+const unitsOf = (minor: string): bigint | null => (/^\d+$/.test(minor) ? BigInt(minor) : null);
 
 /**
  * WooCommerce has no endpoint that calculates a rate, so this uses the Store
@@ -1186,20 +1245,26 @@ export const shippingRatesInTheShop = async (
     };
   }
   const rates: ShippingRate[] = [];
+  const [first] = only.shipping_rates.filter((rate) => !NOT_SHIPPING.has(rate.method_id));
+  const currency = first?.currency_code ?? null;
+  const scale: ShopDecimals | null =
+    first === undefined ? null : shopDecimalsOf(String(first.currency_minor_unit));
   for (const rate of only.shipping_rates) {
     if (NOT_SHIPPING.has(rate.method_id)) continue;
     // Not dropped: a rate left out in silence could make another look
     // cheapest, and the shop would charge what we did not say.
-    if (rate.currency_code !== "USD" || rate.currency_minor_unit !== USD_SCALE) {
+    if (scale === null || rate.currency_code !== currency || rate.currency_minor_unit !== scale) {
       return {
         ok: false,
-        why: "The shop's cart offered a shipping rate that is not a US dollar amount.",
+        why:
+          "The shop's cart offered shipping rates in more than one currency, or at decimals" +
+          " other than none or two.",
         again: false,
         saidNo: true,
       };
     }
-    const cost = decimalOfMinorUnits(rate.price, USD_SCALE);
-    const tax = decimalOfMinorUnits(rate.taxes, USD_SCALE);
+    const cost = decimalOfMinorUnits(rate.price, scale);
+    const tax = decimalOfMinorUnits(rate.taxes, scale);
     if (cost === null || tax === null) {
       return {
         ok: false,
@@ -1230,7 +1295,7 @@ export const shippingRatesInTheShop = async (
     const { totals, items } = read.data;
     const [packed] = read.data.shipping_rates;
     const costOf = (one: { price: string; taxes: string }) =>
-      (minorCents(one.price) ?? 0n) + (minorCents(one.taxes) ?? 0n);
+      (unitsOf(one.price) ?? 0n) + (unitsOf(one.taxes) ?? 0n);
     const offered = (packed?.shipping_rates ?? []).filter(
       (one) => !NOT_SHIPPING.has(one.method_id),
     );
@@ -1247,10 +1312,16 @@ export const shippingRatesInTheShop = async (
         saidNo: true,
       };
     }
-    if (totals.currency_code !== "USD" || totals.currency_minor_unit !== USD_SCALE) {
+    if (
+      scale === null ||
+      totals.currency_code !== currency ||
+      totals.currency_minor_unit !== scale ||
+      cheapest.currency_code !== currency ||
+      cheapest.currency_minor_unit !== scale
+    ) {
       return {
         ok: false,
-        why: "The shop's cart totals are not in US dollars at two decimals.",
+        why: "The shop's cart totals are not in the currency and at the decimals of its rates.",
         again: false,
         saidNo: true,
       };
@@ -1267,13 +1338,13 @@ export const shippingRatesInTheShop = async (
       };
     }
     const [goods, ...more] = items;
-    const subtotal = minorCents(goods?.totals.line_subtotal ?? "");
-    const goodsTax = minorCents(goods?.totals.line_subtotal_tax ?? "");
-    const itemsTotal = minorCents(totals.total_items);
-    const shipping = minorCents(cheapest.price);
-    const shippingTax = minorCents(cheapest.taxes);
-    const totalTax = minorCents(totals.total_tax);
-    const total = minorCents(totals.total_price);
+    const subtotal = unitsOf(goods?.totals.line_subtotal ?? "");
+    const goodsTax = unitsOf(goods?.totals.line_subtotal_tax ?? "");
+    const itemsTotal = unitsOf(totals.total_items);
+    const shipping = unitsOf(cheapest.price);
+    const shippingTax = unitsOf(cheapest.taxes);
+    const totalTax = unitsOf(totals.total_tax);
+    const total = unitsOf(totals.total_price);
     if (
       goods === undefined ||
       more.length > 0 ||
@@ -1289,27 +1360,27 @@ export const shippingRatesInTheShop = async (
     ) {
       return unread(`The shop's cart totals are not this parcel's amounts at ${placing}.`);
     }
-    const untaxed = totalTax === 0n && offered.every((one) => minorCents(one.taxes) === 0n);
+    const untaxed = totalTax === 0n && offered.every((one) => unitsOf(one.taxes) === 0n);
     if (!cheapest.selected && !untaxed) {
       return { choose: { package_id: packed?.package_id, rate_id: cheapest.rate_id } };
     }
     return {
       ok: true,
-      total: amountOfCents(cheapest.selected ? total : itemsTotal + shipping),
-      goodsBeforeTax: amountOfCents(subtotal),
-      goods: amountOfCents(subtotal + goodsTax),
+      total: amountOfMinor(cheapest.selected ? total : itemsTotal + shipping, scale),
+      goodsBeforeTax: amountOfMinor(subtotal, scale),
+      goods: amountOfMinor(subtotal + goodsTax, scale),
       taxes: totals.tax_lines.map((line) => `${line.name} ${line.rate}`).sort(),
       rate: {
         methodId: cheapest.method_id,
         instanceId: String(cheapest.instance_id),
         title: cheapest.name,
-        cost: amountOfCents(shipping),
-        tax: amountOfCents(shippingTax),
+        cost: amountOfMinor(shipping, scale),
+        tax: amountOfMinor(shippingTax, scale),
       },
     };
   };
   const asRead = priceOf(document);
-  if (!("choose" in asRead)) return { ok: true, rates, priced: asRead };
+  if (!("choose" in asRead)) return { ok: true, currency, rates, priced: asRead };
 
   const choosing = `${cart}/select-shipping-rate`;
   const chosen = await ask(choosing, {
@@ -1317,7 +1388,7 @@ export const shippingRatesInTheShop = async (
     headers,
     body: JSON.stringify(asRead.choose),
   });
-  if (!chosen.ok) return { ok: true, rates, priced: chosen };
+  if (!chosen.ok) return { ok: true, currency, rates, priced: chosen };
   let rechecked: unknown;
   try {
     rechecked = JSON.parse(chosen.body);
@@ -1333,11 +1404,12 @@ export const shippingRatesInTheShop = async (
   if ("choose" in afterChoosing || (afterChoosing.ok && nowChosen !== asRead.choose.rate_id)) {
     return {
       ok: true,
+      currency,
       rates,
       priced: unread(`The shop's cart did not total the rate chosen at ${choosing}.`),
     };
   }
-  return { ok: true, rates, priced: afterChoosing };
+  return { ok: true, currency, rates, priced: afterChoosing };
 };
 
 /**
@@ -1377,7 +1449,7 @@ export const createTheOrderInTheShop = async (
     set_paid: true,
     currency: sold.price.currency,
     billing: { email: sold.email },
-    meta_data: metadataOf(sold.orderId, sold.price, sold.paidInto),
+    meta_data: metadataOf(sold.orderId, sold.price, sold.converted, sold.paidInto),
     line_items: [
       sold.tax.mode === "off"
         ? {
@@ -1449,17 +1521,18 @@ export const createTheOrderInTheShop = async (
     | undefined;
   // With tax inside the price the line holds the amount before tax, and the
   // tax is the shop's to record; the total is still what was paid.
+  const none = noneAt(sold.price.amount);
   const untaxedAsSold =
     sold.tax.mode !== "off" ||
-    (made.total_tax === "0.00" &&
+    (made.total_tax === none &&
       line?.subtotal === sold.price.amount &&
       line.total === sold.price.amount &&
-      line.total_tax === "0.00");
+      line.total_tax === none);
   if (
     !["processing", "completed"].includes(String(made.status)) ||
     made.currency !== sold.price.currency ||
     typeof made.total !== "string" ||
-    !withinACent(made.total, sold.price.amount) ||
+    !withinOneUnit(made.total, sold.price.amount) ||
     !untaxedAsSold ||
     lineItems.length !== 1 ||
     line?.product_id !== productId ||
@@ -1484,6 +1557,16 @@ export const createTheOrderInTheShop = async (
     downloadId: sold.download.id,
     total: made.total,
   };
+};
+
+/**
+ * Nothing, as the shop writes it at the decimals of `amount`: "0.00" beside
+ * "25.00" and "0" beside "250000". Null where `amount` is not a shop's amount,
+ * which then matches no total.
+ */
+const noneAt = (amount: string): string | null => {
+  const read = minorOf(amount);
+  return read === null ? null : amountOfMinor(0n, read.decimals);
 };
 
 /**
@@ -1555,8 +1638,12 @@ export interface ParcelSold {
    * reaches the buyer.
    */
   readonly email: string;
-  /** The goods and the shipping together, with any tax on both. */
-  readonly paid: Money;
+  /**
+   * The goods and the shipping together, with any tax on both, in the shop's
+   * currency at its decimals: what the buyer paid where the shop sells in US
+   * dollars.
+   */
+  readonly total: Money;
   /** The goods alone: the order's product line where the shop calculates no tax. */
   readonly goods: string;
   /** How the shop calculates tax, as the parcel was priced under it. */
@@ -1566,6 +1653,8 @@ export interface ParcelSold {
   /** Read into the order and not kept anywhere of ours. */
   readonly address: ShipTo;
   readonly paidInto: PaidIntoSplit | null;
+  /** Absent where the shop sells in US dollars. */
+  readonly converted?: Converted;
 }
 
 export type ParcelMade =
@@ -1648,12 +1737,12 @@ export const createTheParcelInTheShop = async (
     payment_method_title: "Agentify",
     transaction_id: sold.orderId,
     set_paid: true,
-    currency: sold.paid.currency,
+    currency: sold.total.currency,
     billing: { email: sold.email },
     shipping,
     // On what was paid, the goods and the shipping together: the split took
     // the whole of it.
-    meta_data: metadataOf(sold.orderId, sold.paid, sold.paidInto),
+    meta_data: metadataOf(sold.orderId, sold.total, sold.converted, sold.paidInto),
     line_items: [
       sold.tax === "off"
         ? { product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }
@@ -1688,16 +1777,17 @@ export const createTheParcelInTheShop = async (
   const heldWhereItGoes =
     made.shipping !== undefined &&
     Object.entries(shipping).every(([field, value]) => made.shipping?.[field] === value);
+  const none = noneAt(sold.total.amount);
   const untaxedAsSold =
     sold.tax !== "off" ||
-    (made.total_tax === "0.00" &&
+    (made.total_tax === none &&
       line?.subtotal === sold.goods &&
       line.total === sold.goods &&
-      line.total_tax === "0.00");
+      line.total_tax === none);
   if (
     !["processing", "completed"].includes(made.status) ||
-    made.currency !== sold.paid.currency ||
-    !withinACent(made.total, sold.paid.amount) ||
+    made.currency !== sold.total.currency ||
+    !withinOneUnit(made.total, sold.total.amount) ||
     !untaxedAsSold ||
     line === undefined ||
     moreLines.length > 0 ||

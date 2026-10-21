@@ -104,55 +104,6 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
  */
 export const USD_SCALE = 2;
 
-/**
- * WooCommerce keeps ".99" as typed and drops a trailing dot, so "5." never
- * arrives and is not a price here.
- */
-export const TYPED_PRICE = /^(?=\.?\d)(\d*)(?:\.(\d+))?$/;
-
-/**
- * WooCommerce keeps a price as typed, so `wc/v3` answers `"25"` and `"19.9"`
- * where the Store API and order totals write 25.00 and 19.90. The card, the
- * quote and the order are compared with those totals character for character,
- * so this is the one form they all carry. Padding, adding a leading zero, and
- * dropping leading zeros or zeros past the second place are exact; dropping any
- * other digit is rounding, so `"25.001"` is null rather than `"25.00"`.
- */
-export const usdAmountOf = (typed: string): string | null => {
-  const written = TYPED_PRICE.exec(typed);
-  if (written === null) {
-    return null;
-  }
-  // A whole part left empty, as in ".99", is the zero it stands for.
-  const whole = (written[1] ?? "").replace(/^0+/, "") || "0";
-  const fraction = written[2] ?? "";
-  if (/[1-9]/.test(fraction.slice(USD_SCALE))) {
-    return null;
-  }
-  return `${whole}.${fraction.slice(0, USD_SCALE).padEnd(USD_SCALE, "0")}`;
-};
-
-/**
- * Sums of money are made in cents: a parcel's price is goods plus shipping, and
- * floating-point addition does not always give back the cents it was given.
- */
-export const centsOf = (amount: string): bigint | null =>
-  /^\d+\.\d{2}$/.test(amount) ? BigInt(amount.replace(".", "")) : null;
-
-/**
- * Whether a total the shop recorded is the amount paid or a cent either side
- * of it, which is as far as WooCommerce's own rounding of a cart and an order
- * made from it was measured to part them; both at two decimals.
- */
-export const withinACent = (recorded: string, paid: string): boolean => {
-  const shop = centsOf(recorded);
-  const buyer = centsOf(paid);
-  return shop !== null && buyer !== null && shop - buyer <= 1n && buyer - shop <= 1n;
-};
-
-export const amountOfCents = (cents: bigint): string =>
-  decimalOfMinorUnits(cents.toString(), USD_SCALE) ?? "";
-
 const sentenceOf = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 

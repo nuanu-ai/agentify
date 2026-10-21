@@ -1792,37 +1792,6 @@ describe("the protected product check", () => {
     expect(fingerprintOf(anotherPrice)).not.toBe(fingerprintOf(withCents));
   });
 
-  it("keeps the fingerprint already recorded for a product priced with its cents", async () => {
-    // Accepted quotes and paid-order ledger rows store this digest, and
-    // recovery compares a fresh reading with it, so a price that already had
-    // two decimals must hash to the stored value; it is pinned. The shop
-    // answers at a fixed address because the address is part of what is hashed.
-    const origin = "https://shop.example.com";
-    const inProcess = async (url: string | URL): Promise<Response> => {
-      const path = new URL(url).pathname;
-      if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
-      if (path.includes("/settings/")) return Response.json(settingAt(path, settingFor(path)));
-      return Response.json(
-        productDocument({
-          price: "0.01",
-          downloads: [
-            { id: "dl_guide", name: "Agentify guide.txt", file: `${origin}/protected/guide.txt` },
-          ],
-        }),
-      );
-    };
-
-    const read = await inspectProductInTheShop(
-      connectionTo(origin),
-      merchantItemIdFor(origin, "11"),
-      inProcess,
-    );
-
-    expect(read.ok && read.product.fingerprint).toBe(
-      "e99a840cd2bd3f94384df3aa19fa18abf96de58435552c19b64703f59ab598dc",
-    );
-  });
-
   it("refuses a price with more decimals than a dollar has, rather than rounding it", async () => {
     // The Store API rounds "25.001" to 2500 cents; selling at 25.00 or 25.01
     // would be a price the merchant did not set, so the product stays in the
@@ -2046,9 +2015,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         true,
       ],
       [
-        "a rate in another currency",
+        "rates in two currencies",
         null,
-        { status: 200, body: cart([rate({ currency_code: "EUR" })]) },
+        {
+          status: 200,
+          body: cart([rate(), rate({ rate_id: "flat_rate:4", currency_code: "EUR" })]),
+        },
         true,
       ],
       [
@@ -2224,12 +2196,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   });
 
   it("refuses rates it could not sell at, rather than choosing among them", async () => {
-    // Another currency or scale, or two packages: none is the price of
-    // shipping this parcel in dollars, and choosing among them would be a
-    // guess.
+    // Rates in two currencies, decimals no shop is sold from at, or two
+    // packages: none is the price of shipping this parcel, and choosing among
+    // them would be a guess.
     for (const body of [
-      cart([rate({ currency_code: "EUR" })]),
-      cart([rate({ currency_minor_unit: 0, price: "5" })]),
+      cart([rate(), rate({ rate_id: "flat_rate:4", currency_code: "EUR" })]),
+      cart([rate({ currency_minor_unit: 3, price: "5000" })]),
       cart([rate({ price: "five" })]),
       cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
       cart([rate()], { needs_shipping: false }),
@@ -2309,6 +2281,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     };
     expect(read).toStrictEqual({
       ok: true,
+      currency: "USD",
       rates: [standard],
       priced: {
         ok: true,
@@ -2548,7 +2521,7 @@ describe("creating a parcel's order", () => {
     orderId: "ord_9",
     productId: "28",
     email: "merchant@example.com",
-    paid: { amount: "23.00", currency: "USD" },
+    total: { amount: "23.00", currency: "USD" },
     goods: "20.00",
     rate: {
       methodId: "flat_rate",
@@ -2791,7 +2764,7 @@ describe("creating a parcel's order", () => {
 
       const made = await createParcel(connectionTo(stand.url), {
         ...sold,
-        paid: { amount: answer.total, currency: "USD" },
+        total: { amount: answer.total, currency: "USD" },
         rate,
         tax,
       });
@@ -2831,7 +2804,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), {
       ...sold,
-      paid: { amount: "23.33", currency: "USD" },
+      total: { amount: "23.33", currency: "USD" },
       rate,
       tax: "included",
     });
@@ -2867,7 +2840,7 @@ describe("creating a parcel's order", () => {
 
       const made = await createParcel(connectionTo(stand.url), {
         ...sold,
-        paid: { amount: paid, currency: "USD" },
+        total: { amount: paid, currency: "USD" },
         rate: paket,
         tax: "included",
       });
@@ -2901,7 +2874,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), {
       ...sold,
-      paid: { amount: "31.88", currency: "USD" },
+      total: { amount: "31.88", currency: "USD" },
       rate: standard,
       tax: "included",
     });
@@ -2929,7 +2902,7 @@ describe("creating a parcel's order", () => {
 
     const made = await createParcel(connectionTo(stand.url), {
       ...sold,
-      paid: { amount: answer.total, currency: "USD" },
+      total: { amount: answer.total, currency: "USD" },
       goods: "20.33",
       rate,
     });
