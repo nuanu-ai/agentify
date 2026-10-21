@@ -71,7 +71,9 @@ locality, tax based on the shipping address, and from an inclusive shop only to
 a locality whose cart taxes the goods as a cart at the shop's own address does;
 and either sells only from a shop rounding tax at the subtotal, since rounding
 per line its cart and order can round a half cent of tax apart.
-Either order is taken on when its total is what was paid, its tax recorded. A
+An order from any shop is taken on when its total is equal to what was paid,
+or within one cent, the difference recorded (the product owner, 2026-10-21),
+and a taxed order's tax is recorded as the shop wrote it. A
 catalogue shown otherwise than prices are entered, and tax from an outside
 service, are not sold from. With tax off an order's tax must be nothing.
 
