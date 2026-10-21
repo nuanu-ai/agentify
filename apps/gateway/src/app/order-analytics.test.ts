@@ -335,6 +335,22 @@ describe("a payment attempt's result", () => {
     expect(payments(h)).toStrictEqual([]);
   });
 
+  it("is not recorded paid off a payment stage that says settled with no saved completion behind it", async () => {
+    open = await harness();
+    const quoted = await stored(open, await priced(open, await published(open)));
+    const { paymentAttempt: _none, ...unattempted } = quoted;
+
+    const events = orderChanged(
+      { ...unattempted, order: { ...quoted.order, state: "fulfilled", payment: "settling" } },
+      { ...unattempted, order: { ...quoted.order, state: "delivered", payment: "settled" } },
+      channelOf(open.runtime.config),
+      "system",
+    );
+
+    expect(events.map((event) => event.name)).toStrictEqual(["agc_order_outcome_changed"]);
+    expect(events[0]?.fields).toMatchObject({ outcome: "delivered", payment_state: "unresolved" });
+  });
+
   it("leaves the amount out, and never says zero, where the order holds no price", async () => {
     open = await harness();
     const orderId = await priced(open, await published(open));
@@ -489,8 +505,12 @@ describe("the outcome the buyer reads", () => {
       { kind: "handler_delivered", at: h.now() },
       { delivery: { activation_code: "LATE" } },
     );
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.gateway.runner.presentVerifiedPayment(orderId, PAYER, "PAYMENT", payTo, h.now(), {
+      recovery,
+      fingerprint: "fp-original",
+    });
     h.advance(60_000);
+    await runOut(h, orderId);
     h.runtime.facilitator.reconcile = async () => ({
       settled: true,
       transaction: TRANSACTION,
