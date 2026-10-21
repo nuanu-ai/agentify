@@ -11,9 +11,15 @@ channel for now, where the money is not real.
 
 The connector imports a product only when it is a published simple product,
 priced in US dollars, whose stock is not counted. The shop as a whole needs
-WooCommerce's tax calculation turned off, prices written with two decimals
-(WooCommerce → Settings → General → Number of decimals), and permalinks set to
-anything other than Plain.
+prices written with two decimals (WooCommerce → Settings → General → Number of
+decimals) and permalinks set to anything other than Plain.
+
+The connector cannot yet sell from a shop in which WooCommerce calculates tax,
+and the import leaves every product of such a shop where it is. Do not turn tax
+calculation off to get round this. It is one setting for the whole shop, so
+turning it off stops the shop charging tax to every one of its customers, not
+only to the buyers who come through Agentify. Whether a sale owes tax is
+yours to settle, and this page does not answer it.
 
 Such a product becomes one of two kinds of card:
 
@@ -198,3 +204,6 @@ WooCommerce → Settings → Advanced → REST API.
 - Parcels on the live channel. A parcel sells on the test channel only, and
   how a live parcel's time to ship is set is not decided.
 - How a buyer reaches your support to arrange a remedy outside Agentify.
+- Selling from a shop that calculates tax. Its products are not imported, and
+  turning tax calculation off is not a way round it, for the reason given under
+  [What can be imported](#what-can-be-imported).
