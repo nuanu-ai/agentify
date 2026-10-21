@@ -550,3 +550,41 @@ subtotal. A shop with tax off is not asked about the rounding. On the one-item
 orders measured, switching a shop from rounding per line to rounding at the
 subtotal moved an order's tax by a cent at most (21.78 to 21.79, 7.72 to
 7.73, 22.06 to 22.05); orders of several lines were not measured.
+
+A third and last round of the review, with tax rounded at the subtotal, found
+two more ways for the cart and the order to part, both confirmed on the
+rebuilt shop. A shipping cost entered finer than a cent, as a German shop
+enters 10.0756 of net shipping so that customers see 11.99, is taxed exactly
+by the cart and as the 10.08 the order is sent: paid 31.99, the order came to
+32.00, and with prices entered before tax 35.79 against 35.80. And a shop
+keeping one gross price by filter and showing its tax as a single total gave
+carts with no tax lines, so at a small price, where 19% and 20% round to the
+same cents, a Paris parcel paid at 12.98 was recorded at 12.99. The same round
+found a false refusal: at 20% the cart rounds the goods before tax and their
+tax each on its own, so a product at 1.11 shows 0.93 and 0.19 at the shop's
+own address.
+
+Across the three rounds there were five such cases, which are one class: the
+order the connector creates through `wc/v3` and the Store API cart that
+priced it compute shipping and tax with different arithmetic, and the cart's
+answer does not show where they will part. Four of them, the half cent
+rounded apart per line, the compound rate on a parcel, the compound-rate
+download and the sub-cent shipping cost, were a cent apart. The fifth, one
+gross price kept by filter behind a single tax total, moved a Paris parcel to
+the French rate and came to 0.17 (31.88 against 32.05) in the first round,
+and to a cent at the small price of the third.
+
+The product owner decided on 2026-10-21 that a shop's order is taken on when
+its total is what was paid or within one cent of it, either way, for every
+shop, the difference recorded: on the shop's order, which carries what was
+paid beside its own total, and in the connector's record of the sale, which
+the merchant's Orders screen reads. Parcels from shops that calculate tax are
+sold under the rules above, with the one cent also allowed between the cart's
+goods and the price. An order further than a cent, such as the Paris case,
+is still not taken on.
+
+Two ways the review pointed to would close the class rather than bound it,
+and are directions for later, not decisions: having the shop's own Store API
+checkout build the order from the cart it priced, so the order is the cart's;
+or creating the order unpaid and marking it paid only once its total matches,
+so a mismatch never leaves a paid order in the shop.
