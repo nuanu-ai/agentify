@@ -214,9 +214,11 @@ async function expectUpstreamMissing(baseUrl, requestPath, role) {
 
 /**
  * The scanner limits scans and the dashboard sign-in links by this one address,
- * so a value the browser sent must not reach either.
+ * so a value the browser sent must not reach either, and neither may the
+ * address of a proxy on the way, which would count every visitor as one: what
+ * arrives is the address this script's own requests came from.
  */
-async function expectSingleForwardedClient(baseUrl, spoofed, requestPath, role) {
+async function expectSingleForwardedClient(baseUrl, spoofed, requestPath, role, cameFrom, proxy) {
   const response = await fetch(`${baseUrl}${requestPath}`, {
     headers: { "X-Forwarded-For": spoofed },
   });
@@ -227,6 +229,8 @@ async function expectSingleForwardedClient(baseUrl, spoofed, requestPath, role) 
   assert.ok(body.forwardedFor.length > 0);
   assert.notEqual(body.forwardedFor, spoofed);
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
+  assert.notEqual(body.forwardedFor, proxy, `${requestPath} sees the edge, not the visitor`);
+  assert.equal(body.forwardedFor, cameFrom, requestPath);
 }
 
 function runInner({
@@ -337,6 +341,14 @@ try {
     CADDY_IMAGE,
   );
   const edgeAddress = networkAddress(edgeName);
+  // A request to a published port reaches the network from its gateway.
+  const testClientAddress = docker(
+    "network",
+    "inspect",
+    "--format",
+    "{{(index .IPAM.Config 0).Gateway}}",
+    networkName,
+  ).trim();
   runInner({
     configPath: sourceCaddyfile,
     containerName: innerName,
@@ -471,8 +483,19 @@ try {
   assert.match(await response.text(), /documentation guide/);
 
   for (const baseUrl of [innerBase, edgeBase]) {
-    await expectSingleForwardedClient(baseUrl, "198.51.100.77", "/api/health", "scanner");
-    await expectSingleForwardedClient(baseUrl, "198.51.100.77", "/dashboard/sign-in", "dashboard");
+    for (const [requestPath, role] of [
+      ["/api/health", "scanner"],
+      ["/dashboard/sign-in", "dashboard"],
+    ]) {
+      await expectSingleForwardedClient(
+        baseUrl,
+        "198.51.100.77",
+        requestPath,
+        role,
+        testClientAddress,
+        edgeAddress,
+      );
+    }
     for (const adminPath of ["/admin", "/admin/users", "/admin%2Fusers"]) {
       await expectUnmarked(baseUrl, adminPath);
     }
