@@ -19,6 +19,7 @@ import {
   type IntegrationSwitch,
   type MerchantScope,
   NO_PENDING_HANDLER,
+  type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
   type PaymentClaim,
@@ -601,7 +602,11 @@ export class MemoryStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
+  async addOrder(
+    record: StoredOrder,
+    through?: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<boolean> {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
@@ -619,6 +624,9 @@ export class MemoryStore implements Store {
       return false;
     }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
+    if (analytics !== undefined) {
+      await this.recordAnalytics(analytics, record.order.timestamps.createdAt);
+    }
     return true;
   }
 
@@ -647,6 +655,7 @@ export class MemoryStore implements Store {
     id: string,
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
+    analytics?: OrderAnalytics,
   ): Promise<OrderLookup<T>> {
     // Each order's decisions run one after another. Only the tail of the chain
     // is kept, so an idle order costs one settled promise.
@@ -682,7 +691,12 @@ export class MemoryStore implements Store {
           // The merchant comes from the order that was read, not from the save,
           // as the Postgres adapter takes it from the row: no decision may change
           // whose sale it is.
-          this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
+          const saved = Object.freeze({ ...decided.save, merchantId: found.merchantId });
+          const observed = analytics?.(found, saved) ?? [];
+          this.#orders.set(id, saved);
+          for (const { event, at } of observed) {
+            await this.recordAnalytics(event, at);
+          }
         }
 
         // None of these can refuse, which is what makes the order safe to have

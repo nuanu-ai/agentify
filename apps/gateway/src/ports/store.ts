@@ -257,6 +257,16 @@ export interface OrderChange<T> {
 }
 
 /**
+ * The product analytics events a saved change to an order amounts to, each
+ * with the instant it happened at, read off the order as the hold found it and
+ * as it was saved.
+ */
+export type OrderAnalytics = (
+  before: StoredOrder,
+  after: StoredOrder,
+) => readonly { readonly event: AnalyticsEvent; readonly at: number }[];
+
+/**
  * The result of running something only if nobody else is running it. Finding
  * it taken is an ordinary outcome, not a failure.
  */
@@ -792,8 +802,15 @@ export interface Store {
    * otherwise; the write and `switchIntegration` wait for each other on the
    * merchant. A purchase always names one; without one the write is
    * unconditional, which is how a test sets an order down.
+   *
+   * `analytics` is recorded in the same write, dated when the order was made,
+   * and only when the order was written.
    */
-  addOrder(record: StoredOrder, through?: Integration): Promise<boolean>;
+  addOrder(
+    record: StoredOrder,
+    through?: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<boolean>;
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its
@@ -860,11 +877,17 @@ export interface Store {
    * asks; nothing else touches the order in between. Given a `scope`, another
    * merchant's order is not found: ownership is checked in the same read as the
    * lock, so there is no window between checking whose it is and acting on it.
+   *
+   * Where `change` saves the order, `analytics` is asked what the order as
+   * found and as saved amount to, and what it answers is recorded in the same
+   * write; it is not asked when nothing is saved, and nothing it answered
+   * stays when the write fails.
    */
   withOrder<T>(
     id: string,
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
+    analytics?: OrderAnalytics,
   ): Promise<OrderLookup<T>>;
 
   // --- payments -------------------------------------------------------------

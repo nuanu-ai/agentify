@@ -39,6 +39,7 @@ import {
   type IntegrationSwitch,
   type MerchantScope,
   NO_PENDING_HANDLER,
+  type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
   type PaymentClaim,
@@ -808,23 +809,34 @@ export class PostgresStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
+  async addOrder(
+    record: StoredOrder,
+    through?: Integration,
+    analytics?: AnalyticsEvent,
+  ): Promise<boolean> {
     try {
-      if (through === undefined) {
+      if (through === undefined && analytics === undefined) {
         await this.#db.insert(orders).values(rowFor(record));
         return true;
       }
       return await this.#db.transaction(async (tx) => {
-        // Held for share, which any number of births can hold at once and a
-        // switch cannot (`switchIntegration`).
-        const [merchant] = await tx
-          .select({ integration: merchants.integration })
-          .from(merchants)
-          .where(eq(merchants.id, record.merchantId))
-          .limit(1)
-          .for("share");
-        if (merchant === undefined || integrationOf(merchant.integration) !== through) {
-          return false;
+        if (through !== undefined) {
+          // Held for share, which any number of births can hold at once and a
+          // switch cannot (`switchIntegration`).
+          const [merchant] = await tx
+            .select({ integration: merchants.integration })
+            .from(merchants)
+            .where(eq(merchants.id, record.merchantId))
+            .limit(1)
+            .for("share");
+          if (merchant === undefined || integrationOf(merchant.integration) !== through) {
+            return false;
+          }
+        }
+        // Recorded ahead of the insert, so an insert refused as a duplicate
+        // takes the event back with it.
+        if (analytics !== undefined) {
+          await recordAlong(tx, analytics, new Date(record.order.timestamps.createdAt));
         }
         await tx.insert(orders).values(rowFor(record));
         return true;
@@ -1003,6 +1015,7 @@ export class PostgresStore implements Store {
     id: string,
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
+    analytics?: OrderAnalytics,
   ): Promise<OrderLookup<T>> {
     // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
@@ -1026,6 +1039,18 @@ export class PostgresStore implements Store {
       }
 
       const decided = await change(row.record);
+      // The merchant always comes from the row, never from the save: an
+      // order's merchant never changes, and a document disagreeing with the
+      // column would list an order under one merchant while its envelopes
+      // went to another.
+      const saved =
+        decided.save === undefined ? undefined : { ...decided.save, merchantId: row.merchantId };
+      // Recorded ahead of the writes below, so any of them refusing takes the
+      // events back with it.
+      const observed = saved === undefined ? [] : (analytics?.(row.record, saved) ?? []);
+      for (const { event, at } of observed) {
+        await recordAlong(tx, event, new Date(at));
+      }
 
       // The writes that must not be lost go in this transaction, so a process
       // that dies mid-flight did all of them or none, the queue's job inserts
@@ -1065,12 +1090,8 @@ export class PostgresStore implements Store {
         }
       }
 
-      if (decided.save !== undefined) {
-        // The merchant always comes from the row, never from the save: an
-        // order's merchant never changes, and a document disagreeing with the
-        // column would list an order under one merchant while its envelopes
-        // went to another.
-        const next = rowFor({ ...decided.save, merchantId: row.merchantId });
+      if (saved !== undefined) {
+        const next = rowFor(saved);
         await tx
           .update(orders)
           .set({
