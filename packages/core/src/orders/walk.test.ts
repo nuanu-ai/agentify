@@ -76,8 +76,6 @@ const POLICY: OrderPolicy = {
     quoteTtlMs: 10_000,
     settleResponseMs: 25_000,
     syncResponseMs: 8_000,
-    paymentAfterConfirmationMs: 12_000,
-    confirmationResponseMs: 15_000,
     asyncFulfillmentMs: 20_000,
   },
   redelivery: { baseDelayMs: 500, factor: 3, maxDelayMs: 20_000, maxAttempts: 4 },
@@ -306,7 +304,7 @@ function takeAWalk(seed: number, steps: number): { order: Order; trace: readonly
   const input: CreateOrderInput = {
     id: `ord_walk_${seed}`,
     at: WALK_STARTS_AT,
-    mode: modeOf(pick(next, ["sync", "async", "confirm"])),
+    mode: modeOf(pick(next, ["sync", "async"])),
     policy: POLICY,
     priceCheck: pick(next, ["none", "merchant"]),
     cardPrice: PRICE,

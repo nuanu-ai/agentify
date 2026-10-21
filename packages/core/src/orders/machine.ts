@@ -50,7 +50,7 @@ import type {
   TransitionRejectionCode,
   TransitionResult,
 } from "./model.js";
-import { effectsOnQuoted, endedWithNothingHeld, holdsShipTo } from "./model.js";
+import { endedWithNothingHeld, holdsShipTo } from "./model.js";
 import { paidAfterClosure } from "./outcome.js";
 import { nextRedelivery } from "./redelivery.js";
 
@@ -166,10 +166,6 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
       return fromCreated(order, event);
     case "quoted":
       return fromQuoted(order, event);
-    case "awaiting_confirmation":
-      return fromAwaitingConfirmation(order, event);
-    case "confirmed":
-      return fromConfirmed(order, event);
     case "paid":
       return fromPaid(order, event);
     case "dispatched":
@@ -187,8 +183,6 @@ function transitionIn(order: Order, event: OrderEvent): TransitionResult {
     case "expired":
       return fromExpired(order, event);
     case "rejected":
-    case "declined":
-    case "cancelled":
       return fromClosedWithoutMoney(order, event);
     default:
       return assertNever(order.state, "order state");
@@ -247,25 +241,6 @@ function answer(order: Order, merchantAnswer: MerchantAnswer): TransitionResult 
 }
 
 /**
- * The merchant is told his acceptance landed.
- *
- * Used from two arms, the dispatched one and the confirmation the same event
- * answers, because those are the same fact about him and two different answers
- * would describe a difference that is not there. An acceptance arriving while
- * our record still says `paid` is routed into the dispatched arm. It rides
- * alongside the other effects rather than through `answer`, which replaces
- * them.
- *
- * A delivered order answers an acceptance in its own arm, because the goods are
- * already released. An unfulfilled order gets this word from the gateway
- * rather than from here.
- */
-const ACCEPTANCE_LANDED: Effect = {
-  kind: "answer_merchant",
-  answer: { ok: true, result: "accepted" },
-};
-
-/**
  * The answer to a call or a handler answer the order's mode does not have: a
  * separate `deliver` or `refuse`, or taking the order on, in the synchronous
  * mode.
@@ -289,7 +264,7 @@ function closedToMerchant(order: Order): TransitionResult {
  * buyers, and a lost sale is cheaper than a debt.
  */
 function sellsOnSilentQuote(mode: OrderMode): boolean {
-  return mode.needsConfirmation || mode.settle === "after_fulfillment";
+  return mode.settle === "after_fulfillment";
 }
 
 /**
@@ -319,7 +294,7 @@ function enterQuoted(
       quoteSource: source,
       timestamps: { ...order.timestamps, quotedAt: at },
     },
-    effectsOnQuoted(order.mode),
+    [{ kind: "verify_payment" }],
   );
 }
 
@@ -340,10 +315,7 @@ function startSettle(order: Order, at: number, state?: OrderState): TransitionRe
   );
 }
 
-/**
- * The order is ready to go to the merchant. The delivery counters start fresh
- * here: a confirmation round and an order round are two different deliveries.
- */
+/** The order is ready to go to the merchant, with its delivery counters fresh. */
 function enterPaid(order: Order, at: number, payment: "verified" | "settled"): TransitionResult {
   return ok(
     {
@@ -460,20 +432,6 @@ function closedOnTheClock(
   return ok(late.order, [...closed.effects, ...late.effects]);
 }
 
-/** The merchant left. A paid order without goods remains unfulfilled. */
-function onDeparture(order: Order): TransitionResult {
-  const closure: Closure = { cause: "merchant_departed" };
-
-  if (order.payment === "settled") {
-    return ok({ ...order, state: "unfulfilled", closure }, [
-      { kind: "mark_unfulfilled", closure },
-      { kind: "emit_merchant_event", event: "order.unfulfilled" },
-    ]);
-  }
-
-  return ok(closeWithoutMoney(order, "cancelled", closure));
-}
-
 /**
  * An order that never reached the handler goes back into the queue, unless
  * another attempt would be pointless. `giveUp` is the deadline this leg of the
@@ -552,16 +510,9 @@ function onDeadline(
       // price check is his silence, and silence is answered by mode.
       return onQuoteSilence(order, event.at);
     case "quote_expiry":
-    case "confirmation_response":
       return ok(closeWithoutMoney(order, "expired", closure));
     case "settle_response":
       return onSilentSettle(order);
-    case "payment_after_confirmation":
-      // The merchant said he would fulfill and nobody paid him for it. He owes
-      // nothing, and he is told so rather than left waiting.
-      return ok(closeWithoutMoney(order, "expired", closure), [
-        { kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" },
-      ]);
     case "sync_response":
     case "async_fulfillment":
       return resolveFulfillmentFailure(order, closure);
@@ -600,14 +551,7 @@ function onSilentSettle(order: Order): TransitionResult {
     return ok(silent);
   }
 
-  const closed = closeWithoutMoney(silent, "rejected", { cause: "payment_outcome_unknown" });
-
-  // A merchant who answered "I will fulfill it" is owed the news that nobody
-  // paid him, and it makes no difference to him whether the charge failed or
-  // went quiet.
-  return order.state === "confirmed"
-    ? ok(closed, [{ kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" }])
-    : ok(closed);
+  return ok(closeWithoutMoney(silent, "rejected", { cause: "payment_outcome_unknown" }));
 }
 
 // --- the states -------------------------------------------------------------
@@ -636,15 +580,12 @@ function fromCreated(order: Order, event: StateEvent): TransitionResult {
       return enterQuoted(order, event.at, event.price, "merchant_answer");
     case "quote_silent":
       return onQuoteSilence(order, event.at);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "payment_verified":
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_delivered":
@@ -661,14 +602,6 @@ function fromCreated(order: Order, event: StateEvent): TransitionResult {
 function fromQuoted(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "payment_verified":
-      if (order.mode.needsConfirmation) {
-        // The merchant of a card that needs confirming has not said he will
-        // fulfill it yet, and until he does nothing may touch the buyer's
-        // money. (A verification arriving twice off the queue is stopped
-        // earlier, by the settle-in-flight guard: the first one is still being
-        // executed when the second lands.)
-        return notApplicable(order, event);
-      }
       return order.mode.settle === "after_fulfillment"
         ? enterPaid(order, event.at, "verified")
         : startSettle(order, event.at);
@@ -693,17 +626,6 @@ function fromQuoted(order: Order, event: StateEvent): TransitionResult {
             payment: "settle_failed",
           })
         : notApplicable(order, event);
-    case "confirmation_dispatched":
-      return order.mode.needsConfirmation
-        ? ok({
-            ...order,
-            state: "awaiting_confirmation",
-            dispatch: { attempts: 1, accepted: false },
-            timestamps: { ...order.timestamps, confirmationRequestedAt: event.at },
-          })
-        : notApplicable(order, event);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -715,150 +637,6 @@ function fromQuoted(order: Order, event: StateEvent): TransitionResult {
     case "handler_undelivered":
     case "deliver_called":
     case "refuse_called":
-      return notApplicable(order, event);
-    default:
-      return assertNever(event, "order event");
-  }
-}
-
-function fromAwaitingConfirmation(order: Order, event: StateEvent): TransitionResult {
-  switch (event.kind) {
-    case "handler_accepted":
-      return ok(
-        {
-          ...order,
-          state: "confirmed",
-          timestamps: { ...order.timestamps, confirmedAt: event.at },
-        },
-        // The agent is invited to pay, and the answer says the merchant's "I
-        // will" landed: the same word the asynchronous mode uses, because an
-        // answer names which of the three things he said, not what the machine
-        // did about it. The confirmation mode has no shape on the wire, and the
-        // gateway throws on `invite_payment` rather than invent one.
-        [{ kind: "invite_payment" }, ACCEPTANCE_LANDED],
-      );
-    case "handler_refused":
-      return ok(
-        closeWithoutMoney(order, "declined", {
-          cause: "merchant_refused",
-          code: event.code,
-          message: event.message,
-        }),
-      );
-    case "refuse_called":
-      return ok(
-        closeWithoutMoney(order, "declined", {
-          cause: "merchant_refused",
-          code: event.code,
-          message: event.message,
-        }),
-        [{ kind: "answer_merchant", answer: { ok: true, result: "refused" } }],
-      );
-    case "handler_delivered":
-    case "deliver_called":
-      // Nothing has been charged for this order yet, so there is nothing to
-      // hand goods over against.
-      return reject(
-        order,
-        event,
-        "delivery_before_payment",
-        "goods cannot be handed over against a confirmation request: nothing has been charged",
-      );
-    case "handler_undelivered": {
-      const deadline = order.timestamps.confirmationRequestedAt;
-      return redeliver(
-        order,
-        event.at,
-        deadline === null ? null : deadline + order.policy.deadlines.confirmationResponseMs,
-        "confirmation_response",
-      );
-    }
-    case "confirmation_dispatched":
-      // The confirmation request has its own deliveries and its own worker
-      // that can die. Counting them is what makes the backoff back off and the
-      // attempt cap mean anything on this leg of the order. The merchant's own
-      // deadline is not moved by our redeliveries: it runs from the first time
-      // we asked him, not from the last time we managed to reach him.
-      return ok({
-        ...order,
-        dispatch: { ...order.dispatch, attempts: order.dispatch.attempts + 1 },
-      });
-    case "merchant_departed":
-      return onDeparture(order);
-    case "purchase_repeated":
-      return ok(order);
-    case "quote_answered":
-    case "quote_silent":
-    case "payment_verified":
-    case "payment_verification_failed":
-    case "payment_settled":
-    case "payment_settle_failed":
-    case "order_dispatched":
-      return notApplicable(order, event);
-    default:
-      return assertNever(event, "order event");
-  }
-}
-
-function fromConfirmed(order: Order, event: StateEvent): TransitionResult {
-  switch (event.kind) {
-    case "payment_verified":
-      return order.mode.settle === "after_fulfillment"
-        ? enterPaid(order, event.at, "verified")
-        : startSettle(order, event.at);
-    case "payment_settled":
-      return order.payment === "settling"
-        ? enterPaid(order, event.at, "settled")
-        : notApplicable(order, event);
-    case "payment_verification_failed":
-      return ok(
-        closeWithoutMoney(order, "rejected", {
-          cause: "payment_not_verified",
-          reason: event.reason,
-        }),
-        [{ kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" }],
-      );
-    case "payment_settle_failed":
-      return order.payment === "settling"
-        ? ok(
-            {
-              ...closeWithoutMoney(order, "rejected", { cause: "payment_not_settled" }),
-              payment: "settle_failed",
-            },
-            [{ kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" }],
-          )
-        : notApplicable(order, event);
-    case "refuse_called":
-      // Taking an order on does not bind the merchant while it is still open,
-      // and here nothing has been charged for it yet.
-      return ok(
-        closeWithoutMoney(order, "declined", {
-          cause: "merchant_refused",
-          code: event.code,
-          message: event.message,
-        }),
-        [{ kind: "answer_merchant", answer: { ok: true, result: "refused" } }],
-      );
-    case "handler_refused":
-      return ok(
-        closeWithoutMoney(order, "declined", {
-          cause: "merchant_refused",
-          code: event.code,
-          message: event.message,
-        }),
-      );
-    case "merchant_departed":
-      return onDeparture(order);
-    case "purchase_repeated":
-      return ok(order);
-    case "quote_answered":
-    case "quote_silent":
-    case "confirmation_dispatched":
-    case "order_dispatched":
-    case "handler_accepted":
-    case "handler_delivered":
-    case "handler_undelivered":
-    case "deliver_called":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -879,9 +657,8 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
         return answer(order, NOT_IN_THIS_MODE);
       }
       // A call can be made from anywhere at any time and proves nothing about
-      // whether the order round ever reached his handler — in the confirm mode
-      // he knows about the order from the confirmation round. So it is
-      // answered where it lands, and the delivery counter is left alone.
+      // whether the order round ever reached his handler. So it is answered
+      // where it lands, and the delivery counter is left alone.
       return fromDispatched({ ...order, state: "dispatched" }, event);
     case "handler_accepted":
       if (order.mode.settle === "after_fulfillment") {
@@ -899,8 +676,6 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
       // Dropping his answer would misreport an already fulfilled order as
       // unfulfilled when its deadline runs out.
       return fromDispatched(handedOver(order), event);
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -909,7 +684,6 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -981,7 +755,10 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // but the silence after it must not count. A parcel's repeat is the
       // exception: its address went with this acceptance, and `transition`
       // refuses to hand it over empty.
-      return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [ACCEPTANCE_LANDED]);
+      return answer(
+        { ...order, dispatch: { ...order.dispatch, accepted: true } },
+        { ok: true, result: "accepted" },
+      );
     case "handler_delivered":
       return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
     case "handler_refused":
@@ -1051,8 +828,6 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
         timestamps: { ...order.timestamps, dispatchedAt: event.at },
       });
     }
-    case "merchant_departed":
-      return onDeparture(order);
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1061,7 +836,6 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1100,12 +874,10 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     // is always mid-charge and the settling guard has already turned back
     // everything below. These arms exist for the compiler; refusing is the
     // safe thing for them to say if that ever stops being true.
-    case "merchant_departed":
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
     case "payment_verification_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1131,9 +903,8 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
       // already handed over.
       //
       // Only an order that still stands and where nothing failed is answered as
-      // ordinary this way. On an order that ran out its deadline or closed with
-      // a departed merchant the refusal stays, because `order_already_closed`
-      // is exactly true there.
+      // ordinary this way. On an order that ran out its deadline the refusal
+      // stays, because `order_already_closed` is exactly true there.
       return answer(order, { ok: true, result: "already_delivered" });
     case "order_dispatched":
       // A hand-over of an order that is closed. The gateway gives a worker
@@ -1143,7 +914,6 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
       return notApplicable(order, event);
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1152,7 +922,6 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
     case "handler_refused":
     case "handler_undelivered":
       return notApplicable(order, event);
@@ -1208,14 +977,8 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
       return answer(order, NOT_IN_THIS_MODE);
-    case "merchant_departed":
-      // He owes nothing on this order: the goods are made and it is the money
-      // that never came. The portal promises the buyer can still close it with
-      // a repeat, and his leaving takes nothing away from that.
-      return ok(order);
     case "quote_answered":
     case "quote_silent":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1248,16 +1011,12 @@ function fromUnfulfilled(order: Order, event: StateEvent): TransitionResult {
     case "order_dispatched":
     case "purchase_repeated":
       return ok(order);
-    case "merchant_departed":
-      // Leaving the service does not record a delivery or close fulfillment.
-      return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
       return notApplicable(order, event);
     default:
       return assertNever(event, "order event");
@@ -1292,14 +1051,12 @@ function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResul
       return answer(order, { ok: false, error: "fulfillment_closed", retryable: false });
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
     case "payment_verification_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1319,7 +1076,6 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
       // He refused this order himself; goods arriving afterwards are not a
       // late fulfillment of it, they are a contradiction.
       return notApplicable(order, event);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
@@ -1328,7 +1084,6 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
     case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1342,8 +1097,8 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
 /**
  * Whether goods arriving now are the late end of a fulfillment this order was
  * actually waiting for. Only a purchase closed by the synchronous budget
- * qualifies: an order that ran out of time waiting for a confirmation or for a
- * payment never reached the handler at all.
+ * qualifies: an order that ran out of time waiting for a payment never reached
+ * the handler at all.
  */
 function awaitedLateGoods(order: Order): boolean {
   return (
@@ -1395,13 +1150,10 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
     case "deliver_called":
     case "refuse_called":
       return closedToMerchant(order);
-    case "merchant_departed":
-      return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "payment_settled":
     case "payment_settle_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1412,7 +1164,7 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
   }
 }
 
-/** `rejected`, `declined` and `cancelled`: closed, and nobody was charged. */
+/** `rejected`: closed, and nobody was charged. */
 function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
@@ -1442,14 +1194,12 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
       return order.closure?.cause === "payment_outcome_unknown"
         ? ok({ ...order, payment: "settle_failed", closure: { cause: "payment_not_settled" } })
         : notApplicable(order, event);
-    case "merchant_departed":
     case "purchase_repeated":
       return ok(order);
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
     case "payment_verification_failed":
-    case "confirmation_dispatched":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_delivered":

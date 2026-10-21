@@ -50,8 +50,6 @@ describe("loadConfig", () => {
       settleBeforeGoodsMs: 15_000,
       syncResponseMs: 10_000,
       syncBudgetMs: 20_000,
-      paymentAfterConfirmationMs: 300_000,
-      defaultConfirmationResponseMs: 3_600_000,
       defaultAsyncFulfillmentMs: 86_400_000,
       handlerAnswerMs: 3_000,
     });
@@ -79,8 +77,6 @@ describe("loadConfig", () => {
       SETTLE_BEFORE_GOODS_MS: "3500",
       SYNC_RESPONSE_MS: "4000",
       SYNC_BUDGET_MS: "9000",
-      PAYMENT_AFTER_CONFIRMATION_MS: "5000",
-      DEFAULT_CONFIRMATION_RESPONSE_MS: "6000",
       DEFAULT_ASYNC_FULFILLMENT_MS: "7000",
       HANDLER_ANSWER_MS: "1500",
       REDELIVERY_BASE_DELAY_MS: "10",
@@ -95,8 +91,6 @@ describe("loadConfig", () => {
     expect(config.deadlines.settleBeforeGoodsMs).toBe(3500);
     expect(config.deadlines.syncResponseMs).toBe(4000);
     expect(config.deadlines.syncBudgetMs).toBe(9000);
-    expect(config.deadlines.paymentAfterConfirmationMs).toBe(5000);
-    expect(config.deadlines.defaultConfirmationResponseMs).toBe(6000);
     expect(config.deadlines.defaultAsyncFulfillmentMs).toBe(7000);
     expect(config.deadlines.handlerAnswerMs).toBe(1500);
     expect(config.redelivery).toStrictEqual({

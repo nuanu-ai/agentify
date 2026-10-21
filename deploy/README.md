@@ -708,8 +708,8 @@ until `/etc/agentify/backup.env` exists, root's with mode 600. TEST takes no
 backups, since its data is test data.
 
 It refuses while root is in the "password must be changed" state, because in
-that state `sudo` refuses to switch accounts, and it stopped every production
-release on 2026-09-22. Check it yourself with:
+that state `sudo` refuses to switch accounts and a release cannot run. Check it
+yourself with:
 
 ```sh
 sudo chage -l root | grep -i 'password must be changed' && echo 'change root password first'

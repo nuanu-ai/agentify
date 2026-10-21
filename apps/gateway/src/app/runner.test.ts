@@ -20,15 +20,13 @@ const impossible = (): StoredOrder => {
     // is credited, and nothing was charged.
     state: "delivered",
     payment: "verified",
-    mode: { needsConfirmation: false, settle: "after_fulfillment" },
+    mode: { settle: "after_fulfillment" },
     policy: {
       deadlines: {
         quoteResponseMs: 5_000,
         quoteTtlMs: 30_000,
         settleResponseMs: 2_000,
         syncResponseMs: 8_000,
-        paymentAfterConfirmationMs: 300_000,
-        confirmationResponseMs: 3_600_000,
         asyncFulfillmentMs: 86_400_000,
       },
       redelivery: { baseDelayMs: 500, factor: 2, maxDelayMs: 30_000, maxAttempts: 5 },
@@ -43,8 +41,6 @@ const impossible = (): StoredOrder => {
     timestamps: {
       createdAt: 0,
       quotedAt: 0,
-      confirmationRequestedAt: null,
-      confirmedAt: null,
       settleStartedAt: null,
       paidAt: 0,
       dispatchedAt: 0,
@@ -132,7 +128,7 @@ describe("an order that holds an address it should not", () => {
         id: "ord_parcel",
         state: "dispatched",
         payment: "settled",
-        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        mode: { settle: "on_purchase", parcel: true },
         dispatch: { attempts: 1, accepted: true },
       },
     };

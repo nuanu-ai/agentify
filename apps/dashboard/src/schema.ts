@@ -343,7 +343,7 @@ export const wooShops = pgTable("dashboard_woo_shops", {
    */
   permissions: text("permissions").notNull(),
   /** Changes on every reconnect. */
-  revision: text("revision").notNull().default("legacy"),
+  revision: text("revision").notNull(),
   connectedAt: moment("connected_at"),
 });
 

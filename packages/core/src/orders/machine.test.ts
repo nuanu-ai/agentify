@@ -52,13 +52,7 @@ function kinds(effects: readonly Effect[]): readonly string[] {
 const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
   // Waiting for the price. The answer and the silence are the two ways that
   // wait can end.
-  created: [
-    "quote_answered",
-    "quote_silent",
-    "purchase_repeated",
-    "merchant_departed",
-    "deadline_expired",
-  ],
+  created: ["quote_answered", "quote_silent", "purchase_repeated", "deadline_expired"],
   // Priced, and nothing charged: a synchronous card, whose money is verified
   // here and executed after the goods. The settle's own outcomes are not
   // answered because nothing has been sent for execution yet — on the
@@ -67,33 +61,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "payment_verified",
     "payment_verification_failed",
     "purchase_repeated",
-    "merchant_departed",
-    "deadline_expired",
-  ],
-  // The merchant has the question and the buyer's money has not been touched.
-  // His goods are refused rather than dismissed: there is nothing charged to
-  // hand them over against, and the refusal is what tells him so.
-  awaiting_confirmation: [
-    "purchase_repeated",
-    "confirmation_dispatched",
-    "handler_accepted",
-    "handler_delivered",
-    "handler_refused",
-    "handler_undelivered",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
-  // He said he would deliver, and the agent owes the payment. He may still
-  // refuse while nothing is charged.
-  confirmed: [
-    "payment_verified",
-    "payment_verification_failed",
-    "purchase_repeated",
-    "handler_refused",
-    "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // Queued for the merchant. Every answer of his is taken here as well as in
@@ -108,7 +75,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_undelivered",
     "deliver_called",
     "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   dispatched: [
@@ -120,7 +86,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_undelivered",
     "deliver_called",
     "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // The whole row, and not because this state is permissive. Both ways into it
@@ -142,7 +107,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_delivered",
     "deliver_called",
     "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // The goods are made and the money never came. A repeat brings a fresh
@@ -155,7 +119,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_delivered",
     "deliver_called",
     "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // A debt, and the widest row in the table. Everything the merchant can say
@@ -171,7 +134,6 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "deliver_called",
     "refuse_called",
     "close_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // The debt is paid back. There is nothing left to deliver against, and
@@ -181,54 +143,21 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "handler_delivered",
     "deliver_called",
     "refuse_called",
-    "merchant_departed",
     "deadline_expired",
   ],
   // He refused this order himself. Goods arriving afterwards are not a late
   // fulfillment of it but a contradiction, which is why `handler_delivered` is
   // missing from a row that otherwise looks like the three below.
-  failed: [
-    "purchase_repeated",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
+  failed: ["purchase_repeated", "deliver_called", "refuse_called", "deadline_expired"],
   // Closed before the handler ever saw the order, and nobody was charged. The
   // settle's outcomes are answered on one of these — the order closed on the
   // guess that a silent charge did not move — and this fixture is not that
   // one: it closed because the goods were gone.
-  rejected: [
-    "purchase_repeated",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
-  declined: [
-    "purchase_repeated",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
+  rejected: ["purchase_repeated", "deliver_called", "refuse_called", "deadline_expired"],
   // Out of time. Late goods and the repeat that collects them are answered
   // only where the purchase was closed by the synchronous budget, and this
   // fixture ran out of a price instead.
-  expired: [
-    "purchase_repeated",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
-  cancelled: [
-    "purchase_repeated",
-    "deliver_called",
-    "refuse_called",
-    "merchant_departed",
-    "deadline_expired",
-  ],
+  expired: ["purchase_repeated", "deliver_called", "refuse_called", "deadline_expired"],
 };
 
 describe("the shape of the machine", () => {
@@ -397,16 +326,6 @@ describe("pricing the purchase", () => {
     expect(order.price).toStrictEqual(TEST_PRICE);
     expect(order.quoteSource).toBe("card_snapshot");
     expect(kinds(effects)).toStrictEqual(["verify_payment"]);
-  });
-
-  it("sells a card with confirmation at its snapshot price when the check goes silent", () => {
-    const { order, effects } = must(newOrder("confirm", { priceCheck: "merchant" }), {
-      kind: "quote_silent",
-      at: T0 + 1,
-    });
-
-    expect(order.state).toBe("quoted");
-    expect(kinds(effects)).toStrictEqual(["dispatch_confirmation_request"]);
   });
 
   it("treats running out of patience with the price check as the same silence", () => {
@@ -659,246 +578,6 @@ describe("the asynchronous mode: the money moves first", () => {
   });
 });
 
-describe("the mode with confirmation: the question comes before the money", () => {
-  // Two distinct refusals so a row that hard-codes the test's own words dies.
-  const refusals = [
-    { code: "cannot_fulfill", message: "not this week" },
-    { code: "holiday", message: "back next month" },
-  ] as const;
-
-  it("asks the merchant while the buyer's money sits still", () => {
-    const { order } = must(newOrder("confirm"), { kind: "confirmation_dispatched", at: T0 + 1 });
-
-    expect(order.state).toBe("awaiting_confirmation");
-    expect(order.payment).toBe("none");
-  });
-
-  it("writes the question down as one hand-over that nobody has taken on", () => {
-    // `dispatch` is a record and not a control (`model.ts`): `attempts` is how
-    // many times this order went to the merchant, `accepted` whether one of
-    // those was taken on. The question has just gone out once and he has said
-    // nothing, and whoever reads the record — a support view, a dispute — is
-    // not told otherwise.
-    const { order } = must(newOrder("confirm"), { kind: "confirmation_dispatched", at: T0 + 1 });
-
-    expect(order.dispatch).toStrictEqual({ attempts: 1, accepted: false });
-  });
-
-  it("gives the agent a deadline to pay once the merchant says he will, and keeps the record", () => {
-    const asked = reach("awaiting_confirmation");
-    // Before the answer the clock running is the merchant's, not the agent's:
-    // nobody has said "I will" yet, so there is no instant to pay from.
-    expect(asked.timestamps.confirmedAt).toBeNull();
-    expect(deadlines(asked).map((deadline) => deadline.kind)).toStrictEqual([
-      "confirmation_response",
-    ]);
-
-    const { order, effects } = must(asked, { kind: "handler_accepted", at: T0 + 2 });
-
-    expect(order.state).toBe("confirmed");
-    expect(order.payment).toBe("none");
-    // The whole record, not only the new instant: the deadline to pay runs
-    // from the instant of his answer, and whoever renders the order later
-    // reads the earlier timestamps off the same record.
-    expect(order.timestamps).toStrictEqual({ ...asked.timestamps, confirmedAt: T0 + 2 });
-    expect(deadlines(order)).toStrictEqual([
-      {
-        kind: "payment_after_confirmation",
-        at: T0 + 2 + TEST_POLICY.deadlines.paymentAfterConfirmationMs,
-      },
-    ]);
-    // The agent is invited to pay and the merchant is told his "I will"
-    // landed. He answered a question, and an answer with no reply to it is
-    // indistinguishable on his side from one that never arrived.
-    expect(effects).toStrictEqual([
-      { kind: "invite_payment" },
-      { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
-    ]);
-  });
-
-  it("closes the purchase for nothing, with the merchant's words, when his handler says he will not", () => {
-    // A refusal, nothing charged. Why is read off the closure: the gateway
-    // fills the agent's `refusal` from a `merchant_refused` closure whatever
-    // state carries it, so a declined order with no words on it would tell him
-    // "refused, and the reason is none" where the truth is "not written down".
-    for (const words of refusals) {
-      const { order, effects } = must(reach("awaiting_confirmation"), {
-        kind: "handler_refused",
-        at: T0 + 2,
-        ...words,
-      });
-
-      expect(order.state).toBe("declined");
-      expect(order.payment).toBe("none");
-      expect(order.closure).toStrictEqual({
-        cause: "merchant_refused",
-        ...words,
-      });
-      // His handler's result is his answer, and the machine answers calls, not
-      // results: the effect that answers `refuse` belongs to the merchant who
-      // called it, and no state that takes a handler's result emits one — the
-      // dispatched order's twin is pinned in the synchronous mode's block. This
-      // row sits next to the call's row, and a refusal that fell into it would
-      // be the machine answering a merchant who did not call.
-      expect(effects).toStrictEqual([]);
-    }
-  });
-
-  it("answers the merchant who refuses the question he was asked, and keeps his words", () => {
-    // He called `refuse` about a confirmation request, and a call gets an
-    // answer. Without one his code is left hanging on the wire, or repeats a
-    // refusal that already closed the order and reads the second answer as
-    // the first.
-    for (const words of refusals) {
-      const { order, effects } = must(reach("awaiting_confirmation"), {
-        kind: "refuse_called",
-        at: T0 + 2,
-        ...words,
-      });
-
-      expect(order.state).toBe("declined");
-      expect(order.payment).toBe("none");
-      // The record keeps his words whichever door the refusal came through:
-      // the agent's `refusal` is read off this closure, not off the answer.
-      expect(order.closure).toStrictEqual({
-        cause: "merchant_refused",
-        ...words,
-      });
-      expect(effects).toStrictEqual([
-        { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
-      ]);
-    }
-  });
-
-  it("refuses goods handed over before the money moved", () => {
-    // Portal: the merchant cannot fulfill straight into a confirmation
-    // request, because nothing has been charged for it yet.
-    const result = transition(reach("awaiting_confirmation"), {
-      kind: "handler_delivered",
-      at: T0 + 2,
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.rejection.code).toBe("delivery_before_payment");
-  });
-
-  it("charges after the confirmation and then behaves like the asynchronous mode", () => {
-    const verified = must(reach("confirmed"), { kind: "payment_verified", at: T0 + 3 });
-
-    expect(verified.order.state).toBe("confirmed");
-    expect(kinds(verified.effects)).toStrictEqual(["execute_payment"]);
-
-    const paid = must(verified.order, { kind: "payment_settled", at: T0 + 4 });
-
-    expect(paid.order.state).toBe("paid");
-    expect(paid.order.payment).toBe("settled");
-  });
-
-  it("starts the order round with a fresh delivery record once the buyer has paid", () => {
-    // A confirmation round and an order round are two different deliveries
-    // (`enterPaid`). The question went out once and was answered, and none of
-    // that is a hand-over of the paid order: it has gone to nobody yet, so the
-    // record counts nothing and says nothing was taken on. Only the handler's
-    // acceptance of the dispatched order turns the flag on ("remembers that
-    // the handler took the order on").
-    const confirmed = reach("confirmed");
-    expect(confirmed.dispatch.attempts).toBe(1);
-
-    const paid = walk(confirmed, [
-      { kind: "payment_verified", at: T0 + 3 },
-      { kind: "payment_settled", at: T0 + 4 },
-    ]);
-
-    expect(paid.state).toBe("paid");
-    expect(paid.dispatch).toStrictEqual({ attempts: 0, accepted: false });
-  });
-
-  it("tells the merchant who confirmed that the charge failed", () => {
-    // Portal: the merchant who said "I will" is told when nobody paid him,
-    // whichever way the payment came to nothing. The event is the only thing
-    // that tells him; the order's state is ours, and he does not poll it.
-    const midCharge = walk(reach("confirmed"), [{ kind: "payment_verified", at: T0 + 3 }]);
-    const { order, effects } = must(midCharge, { kind: "payment_settle_failed", at: T0 + 4 });
-
-    expect(order.state).toBe("rejected");
-    expect(order.payment).toBe("settle_failed");
-    expect(order.closure).toStrictEqual({ cause: "payment_not_settled" });
-    expect(effects).toStrictEqual([
-      { kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" },
-    ]);
-  });
-
-  it("tells the merchant who confirmed that the payment did not verify", () => {
-    // The other way the payment comes to nothing: the buyer's signature does
-    // not hold. The order is rejected, not cancelled, the closure names the
-    // reason so the merchant's reconciliation can read it, and the same event
-    // tells him he is free.
-    const { order, effects } = must(reach("confirmed"), {
-      kind: "payment_verification_failed",
-      at: T0 + 3,
-      reason: "signature",
-    });
-
-    expect(order.state).toBe("rejected");
-    expect(order.payment).toBe("none");
-    expect(order.closure).toStrictEqual({ cause: "payment_not_verified", reason: "signature" });
-    expect(effects).toStrictEqual([
-      { kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" },
-    ]);
-  });
-
-  it("lets a merchant who confirmed still refuse while nothing is charged, and keeps his words", () => {
-    // Taking an order on does not bind the merchant while the order is still
-    // open.
-    for (const words of refusals) {
-      const { order, effects } = must(reach("confirmed"), {
-        kind: "refuse_called",
-        at: T0 + 3,
-        ...words,
-      });
-
-      expect(order.state).toBe("declined");
-      expect(order.payment).toBe("none");
-      expect(order.closure).toStrictEqual({
-        cause: "merchant_refused",
-        ...words,
-      });
-      // And his call is answered, as it is on the confirmation request: a
-      // refusal that closes the order and says nothing back leaves his code
-      // hanging on the wire.
-      expect(effects).toStrictEqual([
-        { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
-      ]);
-    }
-  });
-
-  it("declines with the merchant's words, not as a departure, when his handler refuses an order he confirmed", () => {
-    // Delivery is at least once by design and the machine takes a merchant's
-    // answers where they land, so his handler's "I will not" can arrive on an
-    // order he already took on. It is a refusal while nothing is charged, the
-    // same as the call above. The row next to it is the merchant leaving, and
-    // a refusal that fell into it would close the order `cancelled` for a
-    // merchant who left, with the words he actually answered thrown away.
-    for (const words of refusals) {
-      const { order, effects } = must(reach("confirmed"), {
-        kind: "handler_refused",
-        at: T0 + 3,
-        ...words,
-      });
-
-      expect(order.state).toBe("declined");
-      expect(order.payment).toBe("none");
-      expect(order.closure).toStrictEqual({
-        cause: "merchant_refused",
-        ...words,
-      });
-      // A handler's result is not a call, so nothing answers it here either.
-      expect(effects).toStrictEqual([]);
-    }
-  });
-});
-
 describe("when the time runs out", () => {
   it("lets a price die of its own age", () => {
     const { order } = must(newOrder("sync"), {
@@ -909,30 +588,6 @@ describe("when the time runs out", () => {
 
     expect(order.state).toBe("expired");
     expect(order.payment).toBe("none");
-  });
-
-  it("closes an unanswered confirmation without charging anybody", () => {
-    const { order } = must(reach("awaiting_confirmation"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "confirmation_response",
-    });
-
-    expect(order.state).toBe("expired");
-    expect(order.payment).toBe("none");
-  });
-
-  it("frees the merchant when a confirmed order goes unpaid", () => {
-    const { order, effects } = must(reach("confirmed"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "payment_after_confirmation",
-    });
-
-    expect(order.state).toBe("expired");
-    expect(effects).toStrictEqual([
-      { kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" },
-    ]);
   });
 
   it("closes a synchronous purchase without a charge", () => {
@@ -1451,60 +1106,6 @@ describe("goods handed over that were never paid for", () => {
   });
 });
 
-describe("the merchant leaves", () => {
-  it("closes an open order on which nothing was charged", () => {
-    const { order } = must(reach("dispatched"), { kind: "merchant_departed", at: T0 + 5 });
-
-    expect(order.state).toBe("cancelled");
-    expect(order.payment).toBe("verified");
-  });
-
-  for (const state of ["created", "awaiting_confirmation", "confirmed"] as const) {
-    it(`writes the departure down as an ending from ${state}`, () => {
-      // Nothing is charged in any of these three, so the merchant owes
-      // nothing — but the order is still waiting on him: for a price, for a
-      // confirmation, for the payment he invited. Left open it would keep its
-      // clock running against a merchant who is not there, and in `created`
-      // the quote-silence policy would go on to sell at the card price on his
-      // behalf. The ending is a cancellation that says why, and no clock.
-      const { order } = must(reach(state), { kind: "merchant_departed", at: T0 + 5 });
-
-      expect(order.state).toBe("cancelled");
-      expect(order.closure).toStrictEqual({ cause: "merchant_departed" });
-      expect(deadlines(order)).toStrictEqual([]);
-    });
-  }
-
-  it("turns an open order that was charged into an unfulfilled one", () => {
-    // For what was not delivered the merchant refunds, so the debt has to be
-    // recorded, not swept into a terminal that claims nobody owes anything.
-    const paid = walk(newOrder("async"), [
-      { kind: "payment_verified", at: T0 + 1 },
-      { kind: "payment_settled", at: T0 + 2 },
-      { kind: "order_dispatched", at: T0 + 3 },
-    ]);
-    const { order, effects } = must(paid, { kind: "merchant_departed", at: T0 + 5 });
-
-    expect(order.state).toBe("unfulfilled");
-    expect(order.closure).toStrictEqual({ cause: "merchant_departed" });
-    expect(kinds(effects)).toStrictEqual(["mark_unfulfilled", "emit_merchant_event"]);
-  });
-
-  it("leaves an unfulfilled order exactly where it was", () => {
-    const debt = reach("unfulfilled");
-    const { order } = must(debt, { kind: "merchant_departed", at: T0 + 999 });
-
-    expect(order).toStrictEqual(debt);
-  });
-
-  it("touches nothing that is already closed", () => {
-    const delivered = reach("delivered");
-    const { order } = must(delivered, { kind: "merchant_departed", at: T0 + 999 });
-
-    expect(order).toStrictEqual(delivered);
-  });
-});
-
 describe("while the settle is in flight", () => {
   /**
    * The window between the payment being sent for execution and the answer
@@ -1547,7 +1148,7 @@ describe("while the settle is in flight", () => {
   });
 
   it("keeps refusing them where he is holding nothing", () => {
-    // In `quoted` and `confirmed` the merchant has not been given the order at
+    // In `quoted` the merchant has not been given the order at
     // all, so his calling about it is not a retry of anything.
     const result = transition(settling(), { kind: "deliver_called", at: T0 + 2 });
 
@@ -1560,7 +1161,6 @@ describe("while the settle is in flight", () => {
     // Every one of these would otherwise tell the buyer his purchase never
     // happened while his money was already on its way to the merchant.
     const closing: readonly OrderEvent[] = [
-      { kind: "merchant_departed", at: T0 + 2 },
       { kind: "payment_verification_failed", at: T0 + 2, reason: "signature" },
       { kind: "handler_refused", at: T0 + 2, code: "out_of_stock", message: "none" },
       { kind: "refuse_called", at: T0 + 2, code: "out_of_stock", message: "none" },
@@ -1572,20 +1172,6 @@ describe("while the settle is in flight", () => {
       if (result.ok) continue;
       expect(result.rejection.code, event.kind).toBe("settle_in_flight");
     }
-  });
-
-  it("refuses a merchant who confirmed and then changes his mind mid-charge", () => {
-    const midCharge = walk(reach("confirmed"), [{ kind: "payment_verified", at: T0 + 3 }]);
-    const result = transition(midCharge, {
-      kind: "refuse_called",
-      at: T0 + 4,
-      code: "out_of_stock",
-      message: "sold out",
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.rejection.code).toBe("settle_in_flight");
   });
 
   it("sends the payment for execution once and not twice", () => {
@@ -1618,12 +1204,9 @@ describe("while the settle is in flight", () => {
     expect(closed.closure).toStrictEqual({ cause: "payment_outcome_unknown" });
   });
 
-  it("tells no merchant he went unpaid after confirming when he never confirmed", () => {
-    // The portal promises `order.unpaid_after_confirmation` to a merchant who
-    // answered "I will fulfill it" and was then not paid. This order never had
-    // a confirmation round: it went from quoted straight into the charge. A
-    // webhook here would report a confirmation he never gave, and the closure
-    // of a quoted order warrants no effect at all — so the whole list is
+  it("tells the merchant nothing when a purchase he was never handed closes on a quiet charge", () => {
+    // The order went from quoted straight into the charge and never reached
+    // him, so its closure warrants no effect at all — the whole list is
     // asserted empty, not just the absence of one kind.
     const { order, effects } = must(settling(), {
       kind: "deadline_expired",
@@ -1701,7 +1284,12 @@ describe("while the settle is in flight", () => {
   it("marks the refusal it gives during the charge as one to send again", () => {
     // The interpreter has no queue of its own for refused events; the flag is
     // how the machine asks for one.
-    const result = transition(settling(), { kind: "merchant_departed", at: T0 + 2 });
+    const result = transition(settling(), {
+      kind: "handler_refused",
+      at: T0 + 2,
+      code: "out_of_stock",
+      message: "none",
+    });
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -1724,23 +1312,6 @@ describe("while the settle is in flight", () => {
     if (nonsense.ok || early.ok) return;
     expect(nonsense.rejection.retryable).toBe(false);
     expect(early.rejection.retryable).toBe(false);
-  });
-
-  it("frees a merchant whose confirmed order went quiet rather than failing", () => {
-    // He answered "I will fulfill it" and nobody paid him. Whether the charge
-    // failed or never answered makes no difference to him, and the portal
-    // promises him the event either way.
-    const midCharge = walk(reach("confirmed"), [{ kind: "payment_verified", at: T0 + 3 }]);
-    const { order, effects } = must(midCharge, {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "settle_response",
-    });
-
-    expect(order.state).toBe("rejected");
-    expect(effects).toStrictEqual([
-      { kind: "emit_merchant_event", event: "order.unpaid_after_confirmation" },
-    ]);
   });
 
   it("turns a charge that lands after that into an unfulfilled paid order rather than losing it", () => {
@@ -1798,24 +1369,6 @@ describe("while the settle is in flight", () => {
     expect(order.state).toBe("delivered");
     expect(order.payment).toBe("settled");
     expect(kinds(effects)).toStrictEqual(["release_goods_to_agent", "issue_receipt"]);
-  });
-
-  it("holds an order with the goods made and the money in flight against a departure", () => {
-    // What keeps a merchant's departure from closing an order whose goods he
-    // has already produced is not a branch inside that state — it is that the
-    // state is always mid-charge, so the guard turns the departure back before
-    // anything else looks at it. This is the test that makes that true, and
-    // the reason the arm behind it can never be reached.
-    const held = reach("fulfilled");
-
-    expect(held.payment).toBe("settling");
-
-    const result = transition(held, { kind: "merchant_departed", at: T0 + 9 });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.rejection.code).toBe("settle_in_flight");
-    expect(result.rejection.retryable).toBe(true);
   });
 
   it("does not let a failed verification wipe the charge it knows nothing about", () => {
@@ -1910,10 +1463,8 @@ describe("an answer that arrives before we recorded handing the order over", () 
   it("claims a hand-over only from an answer that proves the handler ran", () => {
     // A `refuse` call can be made from anywhere at any time; a handler answer
     // can only come from a handler that was invoked. Counting the first as a
-    // delivery credits the order round with a delivery it never had, and in
-    // the confirm mode the merchant learned of the order from the confirmation
-    // round instead.
-    const paid = walk(reach("confirmed"), [
+    // delivery credits the order round with a delivery it never had.
+    const paid = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 3 },
       { kind: "payment_settled", at: T0 + 4 },
     ]);
@@ -1983,88 +1534,6 @@ describe("an answer that arrives before we recorded handing the order over", () 
   });
 });
 
-describe("delivering the confirmation request again", () => {
-  it("counts its attempts and backs off like any other delivery", () => {
-    // The confirmation leg has its own deliveries and its own worker that can
-    // die. Without a counter the backoff is a constant and the attempt cap is
-    // dead, which is a retry storm against a side that is already down.
-    const first = must(reach("awaiting_confirmation"), {
-      kind: "handler_undelivered",
-      at: T0 + 2,
-    });
-
-    expect(first.effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
-
-    const redelivered = must(first.order, { kind: "confirmation_dispatched", at: T0 + 3 });
-
-    expect(redelivered.order.dispatch.attempts).toBe(2);
-
-    const second = must(redelivered.order, { kind: "handler_undelivered", at: T0 + 4 });
-
-    expect(second.effects).toStrictEqual([{ kind: "redeliver_order", attempt: 3, delayMs: 2_000 }]);
-  });
-
-  it("stops repeating once the merchant's deadline to answer is too close", () => {
-    // The clock on this leg is the merchant's own deadline to answer, and it
-    // runs from the first time we asked him. A redelivery bounded by nothing
-    // would put the question in front of him again past the moment his
-    // silence has already closed the order; a redelivery bounded by that clock
-    // gives up in time, and the order waits that clock out and closes citing
-    // it.
-    const asked = reach("awaiting_confirmation");
-    const due = T0 + 1 + TEST_POLICY.deadlines.confirmationResponseMs;
-
-    expect(asked.timestamps.confirmationRequestedAt).toBe(T0 + 1);
-
-    // One delay short of the deadline the question still goes out; half a
-    // delay short it no longer fits. The two together say which clock it is:
-    // a shorter one, the payment clock say, would already have closed the
-    // order at the first of them.
-    const inTime = must(asked, { kind: "handler_undelivered", at: due - 1_500 });
-
-    expect(inTime.effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
-
-    const silent = must(asked, { kind: "handler_undelivered", at: due - 500 });
-
-    expect(silent.order.state).toBe("awaiting_confirmation");
-    expect(silent.effects).toStrictEqual([]);
-    const { order } = must(silent.order, {
-      kind: "deadline_expired",
-      at: due,
-      deadline: "confirmation_response",
-    });
-    expect(order.state).toBe("expired");
-    expect(order.closure).toStrictEqual({
-      cause: "deadline_expired",
-      deadline: "confirmation_response",
-    });
-  });
-
-  it("closes the order citing the deadline it actually ran out of", () => {
-    // The reason is what the merchant and the agent read. Citing a
-    // fulfillment deadline on an order that never reached fulfillment is a
-    // claim the machine cannot back.
-    const exhausted: Order = {
-      ...reach("awaiting_confirmation"),
-      dispatch: { attempts: 5, accepted: false },
-    };
-    const silent = must(exhausted, { kind: "handler_undelivered", at: T0 + 9 });
-    expect(silent.order.state).toBe("awaiting_confirmation");
-    const due = T0 + 1 + TEST_POLICY.deadlines.confirmationResponseMs;
-    const { order } = must(silent.order, {
-      kind: "deadline_expired",
-      at: due,
-      deadline: "confirmation_response",
-    });
-
-    expect(order.state).toBe("expired");
-    expect(order.closure).toStrictEqual({
-      cause: "deadline_expired",
-      deadline: "confirmation_response",
-    });
-  });
-});
-
 describe("records that would say something untrue", () => {
   it("does not leave a refusal written on an order that ended in success", () => {
     // The closure is what a receipt, a dispute and the merchant's dashboard
@@ -2117,16 +1586,6 @@ describe("records that would say something untrue", () => {
 });
 
 describe("an order whose goods are out and whose money is not", () => {
-  it("stays open when the merchant leaves, because he owes nothing on it", () => {
-    // Portal: this order stays unclosed and a repeat of the purchase closes
-    // it. The merchant already produced the goods; his departure takes away
-    // nothing the buyer is still waiting for.
-    const unpaid = reach("delivered_unpaid");
-    const { order } = must(unpaid, { kind: "merchant_departed", at: T0 + 9 });
-
-    expect(order.state).toBe("delivered_unpaid");
-  });
-
   it("answers nobody and writes nothing when a payment fails to verify", () => {
     // A verification that failed belongs to the payment layer, not to any call
     // of the merchant's: no charge was made, so there is nothing to write down,
@@ -2233,16 +1692,6 @@ describe("events that do not belong where they arrived", () => {
     ["quoted", { kind: "order_dispatched", at: T0 + 1 }, "a dispatch before the payment"],
     ["quoted", { kind: "payment_settled", at: T0 + 1 }, "a settle nobody verified first"],
     [
-      "awaiting_confirmation",
-      { kind: "payment_verified", at: T0 + 1 },
-      "a payment before the merchant answered",
-    ],
-    [
-      "paid",
-      { kind: "confirmation_dispatched", at: T0 + 1 },
-      "a confirmation on an order already paid for",
-    ],
-    [
       "fulfilled",
       { kind: "handler_refused", at: T0 + 1, code: "x", message: "y" },
       "a refusal after the goods",
@@ -2254,19 +1703,9 @@ describe("events that do not belong where they arrived", () => {
       "an acceptance of a purchase that never happened",
     ],
     [
-      "declined",
-      { kind: "payment_settled", at: T0 + 1 },
-      "a charge for a confirmation the merchant refused",
-    ],
-    [
       "fulfillment_closed",
       { kind: "payment_settled", at: T0 + 1 },
       "a second charge on a paid order the merchant closed",
-    ],
-    [
-      "cancelled",
-      { kind: "payment_verified", at: T0 + 1 },
-      "a payment on an order the merchant left behind",
     ],
     [
       "failed",

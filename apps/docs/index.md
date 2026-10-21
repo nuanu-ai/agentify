@@ -106,8 +106,7 @@ channel, where the money is not real, is the one exception.
 | Where it sells | the test channel, then the live one | the test channel, until its orders have gone through there end to end |
 
 You sell through one of the two at a time. A third way, an order sent to you as
-a message that you confirm by hand before the buyer pays, is designed and not
-available.
+a message that you confirm by hand before the buyer pays, is not available.
 
 ## After you are connected
 

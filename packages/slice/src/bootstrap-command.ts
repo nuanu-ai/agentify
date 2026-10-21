@@ -286,13 +286,7 @@ export function withinCaps(purchase: {
 }
 
 /** The words a status document uses for an order where no money moved. */
-const NOTHING_WAS_CHARGED = new Set([
-  "rejected",
-  "declined",
-  "expired",
-  "cancelled",
-  "delivered_unpaid",
-]);
+const NOTHING_WAS_CHARGED = new Set(["rejected", "expired", "delivered_unpaid"]);
 
 /** And the word for an order where nobody can say whether it was. */
 const NOBODY_KNOWS = "payment_unresolved";

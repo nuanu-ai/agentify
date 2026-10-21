@@ -1452,4 +1452,79 @@ if (databaseUrl === null) {
       ).rejects.toMatchObject({ code: "23502" });
     });
   });
+
+  describe("the migration that drops the confirmation step from stored orders", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 23)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_plain','Plain','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("takes the confirmation's flag, instants and deadlines out of every order and leaves the rest as it was", async () => {
+      const kept = {
+        order: {
+          id: "ord_kept",
+          state: "delivered",
+          mode: { settle: "on_purchase", parcel: true },
+          policy: {
+            deadlines: { quoteTtlMs: 30_000, asyncFulfillmentMs: 86_400_000 },
+            redelivery: { maxAttempts: 5 },
+          },
+          timestamps: { createdAt: 1, paidAt: 2 },
+        },
+        merchantId: "mch_plain",
+        params: { needsConfirmation: true },
+      };
+      const written = {
+        ...kept,
+        order: {
+          ...kept.order,
+          id: "ord_written",
+          mode: { needsConfirmation: false, ...kept.order.mode },
+          policy: {
+            ...kept.order.policy,
+            deadlines: {
+              ...kept.order.policy.deadlines,
+              paymentAfterConfirmationMs: 300_000,
+              confirmationResponseMs: 3_600_000,
+            },
+          },
+          timestamps: {
+            ...kept.order.timestamps,
+            confirmationRequestedAt: null,
+            confirmedAt: null,
+          },
+        },
+      };
+      for (const record of [kept, written]) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,'delivered',false,'mch_plain','itm_plain','sku',$2,now(),now())",
+          [record.order.id, JSON.stringify(record)],
+        );
+      }
+
+      for (const statement of await statementsOf("0023_order_drops_confirmation.sql")) {
+        await pool.query(statement);
+      }
+
+      const rows = (await pool.query("select id, record from orders order by id")).rows;
+      expect(rows).toStrictEqual([
+        { id: "ord_kept", record: kept },
+        { id: "ord_written", record: { ...kept, order: { ...kept.order, id: "ord_written" } } },
+      ]);
+    });
+  });
 }

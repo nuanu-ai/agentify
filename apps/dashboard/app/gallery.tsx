@@ -398,11 +398,11 @@ const ON_SALE: readonly Product[] = ["esimEurope", "vpn", "number"];
 
 interface Listed {
   readonly product: Product;
-  readonly selling?: "open" | "paused" | "departed";
+  readonly selling?: "open" | "paused";
   readonly paused?: boolean;
 }
 
-const cardsOf = (selling: "open" | "paused" | "departed", listed: readonly (Product | Listed)[]) =>
+const cardsOf = (selling: "open" | "paused", listed: readonly (Product | Listed)[]) =>
   MerchantCardListSchema.parse({
     selling,
     cards: listed.map((one) => {
@@ -442,10 +442,8 @@ type Status =
   | "in_progress"
   | "delivered"
   | "shipped"
-  | "cancelled"
   | "rejected"
   | "payment_unresolved"
-  | "declined"
   | "expired"
   | "unfulfilled"
   | "fulfillment_closed"
@@ -1393,29 +1391,6 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
-      id: "dashboard-cards-left",
-      screen: "Cards",
-      when: "A merchant who has left Agentify looks at their cards.",
-      cause: "The merchant's selling is departed; nothing on this page puts it back on sale.",
-    },
-    cardsView(cardsOf("departed", ON_SALE), ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live"), { selling: "departed" }) },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-left-none",
-      screen: "Cards",
-      when: "A merchant who left Agentify before publishing anything opens Cards.",
-      cause:
-        "The merchant's selling is departed and they have no cards, so the page offers no way to publish one.",
-    },
-    cardsView(cardsOf("departed", []), ORIGIN.live, true),
-    "live",
-    { account: bannerOf(seenBy("live"), { selling: "departed" }) },
-  ),
-  cards(
-    {
       id: "dashboard-cards-selling-through-shop",
       screen: "Cards",
       when: "A merchant who switched to their WooCommerce shop looks at the cards their code published.",
@@ -1761,7 +1736,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
       cause:
-        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown and Declined at confirmation.",
+        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown.",
     },
     ordersOf([
       ["vpn", "delivered"],
@@ -1770,12 +1745,10 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "unfulfilled"],
       ["number", "delivered_unpaid"],
       ["vpn", "rejected"],
-      ["esimEurope", "declined"],
       ["number", "expired"],
       ["esimEurope", "fulfillment_closed"],
       ["esimWeek", "delivered"],
       ["vpn", "shipped"],
-      ["number", "cancelled"],
     ]),
   ),
   {

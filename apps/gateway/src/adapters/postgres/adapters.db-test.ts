@@ -289,13 +289,15 @@ if (databaseUrl === null) {
       expect(after.rows[0]?.updated_at).toStrictEqual(before.rows[0]?.updated_at);
     });
 
-    it("refuses to guess when the column holds a word the machine does not know", async () => {
-      // A hand-edited row or a value from another version of this code.
-      // Guessing would be guessing whether somebody is selling.
+    it("holds no selling word the machine does not know", async () => {
+      // A hand-edited row or a value from another version of this code would
+      // leave every read guessing whether somebody is selling.
       await store.setSelling(A, "paused");
-      await pool.query("update merchants set selling = $1 where id = $2", ["sort-of", A]);
 
-      await expect(store.selling(A)).rejects.toThrow(/sort-of/);
+      await expect(
+        pool.query("update merchants set selling = $1 where id = $2", ["sort-of", A]),
+      ).rejects.toThrow(/merchants_selling_known/);
+      expect(await store.selling(A)).toBe("paused");
 
       await store.setSelling(A, "open");
     });
@@ -578,7 +580,7 @@ if (databaseUrl === null) {
       await store.withOrder(orderId, (found) => ({
         // The order this decision would have written, handed back as its answer
         // rather than named in `save`.
-        result: { ...found, order: { ...found.order, state: "cancelled" as const } },
+        result: { ...found, order: { ...found.order, state: "expired" as const } },
       }));
 
       expect(await writtenAt()).toBe(before);
@@ -609,7 +611,7 @@ if (databaseUrl === null) {
         id: "env_db_1",
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_db_1",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -680,7 +682,7 @@ if (databaseUrl === null) {
             id: `env_${BUYER}_${MARKER}`,
             sent_at: "2026-08-26T12:00:00.000Z",
             payload: {
-              type: "order.unpaid_after_confirmation",
+              type: "order.payment_failed_after_delivery",
               order_id: "ord_db_refused",
               at: "2026-08-26T12:00:00.000Z",
             },
@@ -891,7 +893,7 @@ if (databaseUrl === null) {
         id,
         sent_at: "2026-08-26T12:00:00.000Z",
         payload: {
-          type: "order.unpaid_after_confirmation",
+          type: "order.payment_failed_after_delivery",
           order_id: "ord_written_with_the_state",
           at: "2026-08-26T12:00:00.000Z",
         },
@@ -1031,7 +1033,7 @@ if (databaseUrl === null) {
           id: `env_${randomUUID()}`,
           sent_at: "2026-08-26T12:00:00.000Z",
           payload: {
-            type: "order.unpaid_after_confirmation",
+            type: "order.payment_failed_after_delivery",
             order_id: order.id,
             at: "2026-08-26T12:00:00.000Z",
           },

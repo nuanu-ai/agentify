@@ -24,7 +24,6 @@ import {
   bodyRefused,
   CONFLICT,
   hold,
-  merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
   merchantPayout,
@@ -87,15 +86,10 @@ export type Answer<T> =
 
 /**
  * Why a paid order was left unfulfilled: the merchant refused an order already paid for, its
- * delivery deadline passed, the merchant left, or the payment network
- * confirmed the charge only after the gateway had stopped waiting for it and
- * closed the order.
+ * delivery deadline passed, or the payment network confirmed the charge only
+ * after the gateway had stopped waiting for it and closed the order.
  */
-export type UnfulfilledCause =
-  | "refused"
-  | "deadline_passed"
-  | "merchant_left"
-  | "charge_confirmed_late";
+export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed_late";
 
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
@@ -191,7 +185,7 @@ export interface GatewayClient {
     Answer<{
       readonly through: Integration;
       readonly offSale: readonly string[];
-      readonly selling: "open" | "paused" | "departed";
+      readonly selling: "open" | "paused";
     }>
   >;
   /**
@@ -201,7 +195,7 @@ export interface GatewayClient {
    */
   standing(): Promise<
     Answer<{
-      readonly selling: "open" | "paused" | "departed";
+      readonly selling: "open" | "paused";
       readonly through: Integration;
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
@@ -483,10 +477,8 @@ export const gatewayFor = (
       }),
     setSelling: (selling) =>
       call(selling ? "resuming the selling" : "stopping the selling", async () => {
-        const changed = await application.setSelling(merchantId, selling ? "open" : "paused");
-        return changed.ok
-          ? answered(API_ROUTES.pause_selling, changed.cards)
-          : refusedAs(merchantDeparted(changed.why));
+        const cards = await application.setSelling(merchantId, selling ? "open" : "paused");
+        return answered(API_ROUTES.pause_selling, cards);
       }),
     orders: (open) =>
       call("reading the orders", async () =>
@@ -506,11 +498,9 @@ export const gatewayFor = (
               ? "refused"
               : cause === "deadline_expired"
                 ? "deadline_passed"
-                : cause === "merchant_departed"
-                  ? "merchant_left"
-                  : cause === "payment_outcome_unknown"
-                    ? "charge_confirmed_late"
-                    : undefined;
+                : cause === "payment_outcome_unknown"
+                  ? "charge_confirmed_late"
+                  : undefined;
           if (said !== undefined) {
             owed[record.order.id] = said;
           }

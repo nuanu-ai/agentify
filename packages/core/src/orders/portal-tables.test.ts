@@ -114,7 +114,6 @@ const ENDINGS = [
   "You recorded a parcel's shipment",
   "There is none, or you refused in the synchronous mode",
   "Time ran out: the price lapsed before the payment, or no synchronous delivery arrived",
-  "You left",
   "The money was charged and no delivery happened",
   "You delivered synchronously and the payment did not execute",
   "The facilitator did not say whether the money was charged",
@@ -128,7 +127,7 @@ const statusOf = (ending: (typeof ENDINGS)[number]): readonly string[] =>
 function paidParcel(): Order {
   return walk(
     newOrder("async", {
-      mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+      mode: { settle: "on_purchase", parcel: true },
       priceCheck: "merchant",
     }),
     [
@@ -147,11 +146,11 @@ function paidParcel(): Order {
 }
 
 describe('apps/docs/orders.md, "How an order can end"', () => {
-  it(`${ENDINGS[8]}: closure preserves payment and stops future fulfillment`, () => {
+  it(`${ENDINGS[7]}: closure preserves payment and stops future fulfillment`, () => {
     const paid = reach("unfulfilled");
     const closed = must(paid, { kind: "close_called", at: T0 + 10 }).order;
     const unresolved = must(reach("fulfilled"), { kind: "close_called", at: T0 + 10 }).order;
-    expect(statusOf(ENDINGS[8])).toStrictEqual([outcomeFor(closed), outcomeFor(unresolved)]);
+    expect(statusOf(ENDINGS[7])).toStrictEqual([outcomeFor(closed), outcomeFor(unresolved)]);
     expect(closed.payment).toBe(paid.payment);
   });
 
@@ -218,22 +217,11 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     }
   });
 
-  it(`${ENDINGS[4]}: what was not delivered comes back to the buyer`, () => {
-    const free = must(reach("dispatched"), { kind: "merchant_departed", at: T0 + 5 }).order;
-    const charged = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 }).order;
-
-    // The money did move on the second, so the same departure has to reach
-    // the agent as a different word: closing it as though nobody owed anything
-    // would lose the buyer's money.
-    expect(statusOf(ENDINGS[4])).toStrictEqual([outcomeFor(free), outcomeFor(charged)]);
-    expect(outcomeFor(charged)).toBe("unfulfilled");
+  it(`${ENDINGS[4]}: the money is the merchant's and the order is unfulfilled`, () => {
+    expect(statusOf(ENDINGS[4])).toStrictEqual([outcomeFor(reach("unfulfilled"))]);
   });
 
-  it(`${ENDINGS[5]}: the money is the merchant's and the order is unfulfilled`, () => {
-    expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(reach("unfulfilled"))]);
-  });
-
-  it(`${ENDINGS[7]}: the agent is told the outcome is unknown, not that he was refused`, () => {
+  it(`${ENDINGS[6]}: the agent is told the outcome is unknown, not that he was refused`, () => {
     // The row promises "the outcome of the payment is not known", not
     // "refused". To an agent deciding whether to buy the same thing elsewhere
     // these are different answers, and the machine may not give the cheaper one
@@ -243,7 +231,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
 
-    expect(statusOf(ENDINGS[7])).toStrictEqual([outcomeFor(unresolved)]);
+    expect(statusOf(ENDINGS[6])).toStrictEqual([outcomeFor(unresolved)]);
     expect(outcomeFor(unresolved)).not.toBe("rejected");
 
     // And the row's promise that a repeat with the same key is safe: it costs
@@ -255,10 +243,10 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(repeated.effects).toStrictEqual([]);
   });
 
-  it(`${ENDINGS[6]}: the money never came, and a repeat drives the payment home`, () => {
+  it(`${ENDINGS[5]}: the money never came, and a repeat drives the payment home`, () => {
     const order = reach("delivered_unpaid");
 
-    expect(statusOf(ENDINGS[6])).toStrictEqual([outcomeFor(order)]);
+    expect(statusOf(ENDINGS[5])).toStrictEqual([outcomeFor(order)]);
     // The agent is told why, which the page's last cell promises.
     expect(endingReasonFor(order)).toBe("payment_not_settled");
 
@@ -271,7 +259,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(closed)).toBe("delivered");
   });
 
-  it(`${ENDINGS[6]}: where the charge went unanswered instead, the repeat waits`, () => {
+  it(`${ENDINGS[5]}: where the charge went unanswered instead, the repeat waits`, () => {
     // The other half of the portal's "You delivered and the payment did not
     // execute". The same merchant event carries both, so the page sends the
     // merchant to the order's own word to tell them apart, and the two words
@@ -285,7 +273,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     // The word the page tells him to read: not `delivered_unpaid`, which is
     // the paragraph with the repeat in it, and not `in_progress`, which is an
     // order still waiting on him.
-    expect(statusOf(ENDINGS[7])).toStrictEqual([outcomeFor(order)]);
+    expect(statusOf(ENDINGS[6])).toStrictEqual([outcomeFor(order)]);
 
     // "A repeat purchase is refused": no second charge goes out on a guess
     // about the first.
@@ -323,7 +311,7 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     const async = silent(newOrder("async", { priceCheck: "merchant" }));
     const parcel = silent(
       newOrder("async", {
-        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        mode: { settle: "on_purchase", parcel: true },
         priceCheck: "merchant",
       }),
     );
@@ -438,15 +426,6 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
     expect(effects).toContainEqual(sentAs(EVENTS[0]));
   });
 
-  it(`${EVENTS[0]}: sent when the merchant left with the money and the goods undelivered`, () => {
-    // A departure closes the open orders, and one that took money and delivered
-    // nothing leaves a debt exactly as a passed deadline does, so the merchant
-    // is owed the same notice by the same event.
-    const { effects } = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 });
-
-    expect(effects).toContainEqual(sentAs(EVENTS[0]));
-  });
-
   it(`${EVENTS[1]}: sent when the goods went out and the money did not arrive`, () => {
     const { effects } = must(reach("fulfilled"), { kind: "payment_settle_failed", at: T0 + 5 });
 
@@ -470,7 +449,7 @@ const FAILURES = [
 
 function priceCheckedParcel(): Order {
   return newOrder("async", {
-    mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+    mode: { settle: "on_purchase", parcel: true },
     priceCheck: "merchant",
   });
 }
@@ -602,9 +581,9 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
 describe("the portal and this machine cannot drift apart quietly", () => {
   it('has exactly the encoded rows in "How an order can end"', () => {
     expect(tableRows(ORDERS_PAGE, "How an order can end")).toStrictEqual([
-      ...ENDINGS.slice(0, 7),
-      ENDINGS[8],
+      ...ENDINGS.slice(0, 6),
       ENDINGS[7],
+      ENDINGS[6],
     ]);
   });
 
