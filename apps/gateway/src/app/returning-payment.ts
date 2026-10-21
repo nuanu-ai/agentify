@@ -96,7 +96,7 @@ export async function returningPayment(
   if (paidWith(paid, ours, authorization)) {
     return refused(
       "signature",
-      "this authorization has been presented before, and each payment needs a new one",
+      "the signed authorization has already been used, and each payment needs one of its own",
     );
   }
 
