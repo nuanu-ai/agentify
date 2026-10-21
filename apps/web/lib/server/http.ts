@@ -144,6 +144,15 @@ export function hasSameOrigin(request: Request): boolean {
   }
 }
 
+/**
+ * The address a request came from. The edge replaces whatever `X-Forwarded-For`
+ * a browser sent with the one address its trusted-proxy boundary decided, so a
+ * request that did not pass it, as on a laptop, counts as one client.
+ */
+export function clientAddress(request: Request): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
 export function bearerToken(request: Request): string | null {
   const authorization = request.headers.get("authorization");
   return authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
