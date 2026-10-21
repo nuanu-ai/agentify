@@ -9,8 +9,10 @@ channel for now, where the money is not real.
 
 ## What can be imported
 
-The connector imports a product only when it is a published simple product,
-priced in US dollars, whose stock is not counted. The shop as a whole needs
+The connector imports a product only when it is a published simple product
+that WooCommerce marks purchasable and in stock, priced in US dollars, whose
+stock is not counted and which is not limited to one in an order (Sold
+individually). The shop as a whole needs
 prices written with two decimals (WooCommerce → Settings → General → Number of
 decimals) and permalinks set to anything other than Plain.
 
@@ -200,7 +202,11 @@ The result lists every product it read under one of these headings:
 
 A product deleted from the shop, sold out, or no longer supported keeps its
 card, but the price check refuses its purchase before payment. Pause the cards
-you no longer want buyers to see.
+you no longer want buyers to see. A change that lands after a buyer was quoted
+and before the order is placed, such as a new price, or for a parcel a
+different shipping rate, leaves that paid sale unfulfilled on your Orders
+screen, because the connector checks the product and the rate again before it
+creates the order and refuses what no longer matches what was paid.
 
 ## Parcels
 
