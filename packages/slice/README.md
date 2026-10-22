@@ -12,8 +12,8 @@ described below. All of them drive the real gateway and the real SDK from the
 outside, so that a test sees what a merchant or an agent would. Each one that
 listens does so on loopback, on a port of its own by default, so that a run
 can use several at once: the stand on 8787, the cut proxy on 8788, the
-outbound stand-in's control on 8789, the payment fault control on 8790 and the
-additions proxy on 8791.
+outbound stand-in's control on 8789, the payment fault control on 8790, the
+additions proxy on 8791, and the controlled Woo fault's stack on 18620 to 18626.
 
 ## Cutting an answer after the server committed it
 
