@@ -100,8 +100,15 @@ export interface WooPages {
   shop(person: Person, query: URLSearchParams): Promise<Outcome<WooShopView>>;
   connect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
   importCatalogue(person: Person): Promise<Outcome<WooShopView | WooImportView>>;
-  /** Saves the rate of a shop in another currency, and imports the shop again at it. */
-  setRate(person: Person, form: FormData): Promise<Outcome<WooShopView | WooImportView>>;
+  /**
+   * Saves the rate of a shop in another currency, and imports the shop again at
+   * it. `cookie` names the session saving it, which its notice tells apart.
+   */
+  setRate(
+    person: Person,
+    form: FormData,
+    cookie: string | undefined,
+  ): Promise<Outcome<WooShopView | WooImportView>>;
   switchToShop(person: Person): Promise<Outcome<WooShopView>>;
   disconnect(person: Person): Promise<Outcome<WooShopView>>;
   /**
@@ -728,7 +735,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
 
     importCatalogue: async (person) => await importFor(person, null),
 
-    async setRate(person, form) {
+    async setRate(person, form, cookie) {
       const connection = await shops.connectionOf(person.id);
       if (connection === null) {
         return { kind: "redirect", location: `${base}/woocommerce` };
@@ -827,7 +834,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         );
       }
       const shopOrigin = originOf(connection);
-      const previous = await shops.currentRate(person.id, shopOrigin, currency.code);
+      const [previous, session] = await Promise.all([
+        shops.currentRate(person.id, shopOrigin, currency.code),
+        identity.whoIs(cookie, { renew: false }),
+      ]);
       const setAt = new Date();
       // Handed over before the rate is written: a rate nobody was told of could
       // sell the shop's goods for cents unseen, so no notice means no rate.
@@ -839,7 +849,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           rate,
           previous: previous?.rate ?? null,
           setAt,
-          setBy: person.email,
+          sessionSignedInAt: session?.person.id === person.id ? session.signedInAt : null,
           screen: `${whereWeAre}/woocommerce`,
         }),
       );

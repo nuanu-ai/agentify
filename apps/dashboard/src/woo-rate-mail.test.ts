@@ -45,7 +45,7 @@ describe("the notice of a new exchange rate", () => {
     const sent = rateNoticeMessage(notice(null));
 
     expect(sent.body).toContain("from a session signed in to this account");
-    expect(sent.body).not.toMatch(/signed in to this account at/);
+    expect(sent.body).not.toMatch(/signed in (to this account )?at/);
   });
 
   it("keeps the previous rate, the steps to take, and a link that signs nobody in", () => {

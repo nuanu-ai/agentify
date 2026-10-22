@@ -14,7 +14,12 @@ export const handle = WOOCOMMERCE;
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   return acted(
-    async () => await wooPagesIn(context).setRate(context.get(signedIn), await formOf(request)),
+    async () =>
+      await wooPagesIn(context).setRate(
+        context.get(signedIn),
+        await formOf(request),
+        request.headers.get("cookie") ?? undefined,
+      ),
     asked,
   );
 }

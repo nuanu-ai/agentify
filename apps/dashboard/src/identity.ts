@@ -830,6 +830,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           person: personFrom(found.response.user),
           operator: operatorOn(found.response.user),
           request: typeof request === "string" ? request : null,
+          signedInAt: new Date(found.response.session.createdAt),
           setCookies: found.headers.getSetCookie(),
         });
       }
@@ -1295,6 +1296,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           person: first.person,
           operator: first.operator,
           request: first.request,
+          signedInAt: first.signedInAt,
           setCookies: first.setCookies,
         };
       }
