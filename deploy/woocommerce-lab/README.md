@@ -317,6 +317,36 @@ products on the hard profile and nearly two thousand on the basic one, so it
 takes seconds on the first and a minute or two on the second. It can be
 combined with a tax overlay.
 
+## Settings readings
+
+A settings reading records, at one moment, every WooCommerce option and the
+WordPress settings a shop depends on: the site and home addresses as stored and
+as in effect, permalinks, the time zone, the administrator's address and
+WooCommerce's sender, whether anything redirects outgoing mail, every plugin
+and must-use plugin with its version and whether it is active, the theme, the
+payment methods and whether each is enabled, the shipping zones with their
+places and methods, the tax classes and rates, webhooks, and the REST API keys.
+A key is recorded by its description, user, permissions and last access only;
+its secret, its hash and its last characters never are. Any other value held
+under a name that marks a secret, such as a payment plugin's secret key, is
+recorded as a hash keyed with the installation's own salt, so that two readings
+show that it changed without showing it. Transients and caches are left out
+because they change on their own.
+
+```sh
+./lab.sh settings save before-connect
+./lab.sh settings save after-connect
+./lab.sh settings diff before-connect after-connect
+./lab.sh settings list
+```
+
+The difference is printed one setting a line, grouped by section, as added,
+removed or changed with the earlier and the later value. Readings are kept in
+`$WOOCOMMERCE_DATA_ROOT/readings`, survive switches, and are never
+overwritten. WooCommerce keeps some bookkeeping of its own among its options,
+such as when it last ran a scheduled task, and a difference there is real but
+usually not the story's.
+
 ## Building the profiles
 
 A profile is built from the clean baseline, which holds the basic profile's

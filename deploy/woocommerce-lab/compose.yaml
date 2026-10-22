@@ -80,7 +80,7 @@ services:
     networks: [shop]
 
   # The hands lab.sh works the data directory with: unpacking and packing
-  # snapshots. It runs
+  # snapshots and writing settings readings. It runs
   # as root inside its container so that the host needs no sudo for files the
   # database, WordPress and Caddy own, and it has no network.
   tools:

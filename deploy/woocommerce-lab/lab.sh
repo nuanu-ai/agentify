@@ -4,7 +4,8 @@
 # shellcheck disable=SC2016
 
 # The WooCommerce lab's one command: it builds the shop profiles, switches the
-# running shop between them and lays overlays over the active one. README.md describes
+# running shop between them, lays overlays over the active one, and keeps the
+# settings readings. README.md describes
 # each profile and overlay and what a switch does to a connected merchant.
 set -euo pipefail
 
@@ -29,6 +30,9 @@ Usage: ./lab.sh <command>
                               (realistic and hard download their plugins)
   baseline                    rebuild the clean baseline every profile starts from
                               (downloads WordPress and WooCommerce)
+  settings save <name>        take a settings reading
+  settings diff <a> <b>       show every difference between two readings
+  settings list               the readings taken
 
 Profiles: basic realistic realistic-usd hard
 Overlays: tax-incl tax-excl tax-per-line tax-shop-shows-excl tax-cart-shows-excl
@@ -133,7 +137,7 @@ stop_shop() {
 }
 
 prepare_data_root() {
-  in_lab 'mkdir -p /lab/baseline /lab/profiles /lab/db /lab/wordpress /lab/caddy-data /lab/caddy-config'
+  in_lab 'mkdir -p /lab/baseline /lab/profiles /lab/readings /lab/db /lab/wordpress /lab/caddy-data /lab/caddy-config'
 }
 
 # The files a profile is built from. A stored profile records their
@@ -482,6 +486,32 @@ PY
   printf '%s\n' "${missing:- none}"
 }
 
+settings() {
+  local action="${1:-}" name
+  case "$action" in
+    save)
+      name="${2:?settings save needs a name}"
+      [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || fail "a reading's name is letters, digits, dots, dashes and underscores"
+      if in_lab 'test -e "/lab/readings/$1.json"' "$name"; then
+        fail "a reading called $name exists; readings are evidence and are not overwritten"
+      fi
+      wp eval-file /seed/reading.php >"$lab_tmp/reading.json"
+      python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$lab_tmp/reading.json" ||
+        fail "the reading is not JSON"
+      in_lab 'cat >"/lab/readings/$1.json"' "$name" <"$lab_tmp/reading.json"
+      printf 'Reading %s taken.\n' "$name"
+      ;;
+    diff)
+      [[ $# -eq 3 ]] || fail "settings diff needs two readings"
+      in_lab 'cat "/lab/readings/$1.json"' "$2" >"$lab_tmp/a.json" || fail "there is no reading called $2"
+      in_lab 'cat "/lab/readings/$1.json"' "$3" >"$lab_tmp/b.json" || fail "there is no reading called $3"
+      python3 -I lib/settings_diff.py "$lab_tmp/a.json" "$lab_tmp/b.json"
+      ;;
+    list) in_lab 'ls -l /lab/readings' ;;
+    *) fail "settings takes save, diff or list" ;;
+  esac
+}
+
 # --- Dispatch ----------------------------------------------------------------
 
 main() {
@@ -525,6 +555,7 @@ main() {
           lay_overlay "$target"
           ;;
         check) check_shop "$@" ;;
+        settings) settings "$@" ;;
         *)
           usage
           exit 2
