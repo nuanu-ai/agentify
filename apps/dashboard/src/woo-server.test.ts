@@ -26,7 +26,7 @@ import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
-import type { Preflight, ShopSample } from "./woo-connect.js";
+import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
 import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
@@ -140,6 +140,8 @@ interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
   /** One product priced in US dollars where a test does not say. */
   readonly sample?: (shopUrl: string) => Promise<ShopSample | null>;
+  /** The rate guard's example product; a catalogue that did not answer where a test does not say. */
+  readonly example?: (shopUrl: string) => Promise<PricedExample>;
   /** Coinbase's rupiah rate as it read on 2026-10-21 where a test does not say. */
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   /** Every message handed over where a test does not say. */
@@ -298,6 +300,8 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       },
       sample: async (shopUrl) =>
         standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl),
+      example: async (shopUrl) =>
+        standing.example === undefined ? { kind: "unanswered" } : await standing.example(shopUrl),
       reference: async (currency) =>
         standing.reference === undefined
           ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
@@ -2821,6 +2825,7 @@ describe("a shop priced in another currency than US dollars", () => {
   });
   const inRupiah: Standing = {
     sample: async () => IN_RUPIAH,
+    example: async () => ({ kind: "priced", name: "Rayon Sarong", price: "240000" }),
     catalogue: async () => ({ ok: true, products: [rupiahProduct] }),
     inspectProduct: async (_keys, merchantItemId) => ({
       ok: true,
@@ -3020,6 +3025,45 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
       expect(rateNotices(running)).toEqual([]);
       expect(await pricesOnSale(running)).toEqual([]);
+    });
+
+    it("says no product of the catalogue's first page has a price, not that it did not answer, and still asks for the rate again", async () => {
+      const running = await started({ ...inRupiah, example: async () => ({ kind: "none" }) });
+      await connectedIn(running);
+
+      const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      const said = readable(asked.html);
+      expect(said).toContain("90.0% below");
+      expect(said).toContain(
+        "none of the first 10 products in your shop's public catalogue has a price in IDR",
+      );
+      expect(said).not.toContain("did not answer");
+      expect(said).toContain("Type the rate again");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(rateNotices(running)).toEqual([]);
+    });
+
+    it("says the catalogue did not answer only when it did not, and still asks for the rate again", async () => {
+      const running = await started({
+        ...inRupiah,
+        example: async () => ({ kind: "unanswered" }),
+      });
+      await connectedIn(running);
+
+      const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      const said = readable(asked.html);
+      expect(said).toContain("your shop's public catalogue did not answer just now");
+      expect(said).not.toContain("has a price in IDR");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800", again: "1800" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "1800",
+        confirmed: true,
+      });
     });
 
     it("saves that rate once it is typed again, and keeps that it was", async () => {
