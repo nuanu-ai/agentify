@@ -1,3 +1,27 @@
+# What the shop's request log may hold. WooCommerce accepts an API key and its
+# secret in the query string (consumer_key, consumer_secret, oauth_*) and in
+# the Authorization header. Every request header is dropped, and the value of
+# any query parameter whose name mentions consumer or oauth, in any case, or
+# carries a percent escape is replaced: PHP decodes an escaped name, so
+# `%63onsumer_secret` reaches WooCommerce as consumer_secret. Caddy applies one
+# filter per field, which is why this is a single expression.
+(redacted_request) {
+	request>uri regexp "(?i)([?&][^=&]*(?:%|consumer|oauth)[^=&]*)=[^&]*" "${1}=REDACTED"
+	request>headers delete
+}
+
+{
+	# Caddy's own messages, such as an upstream error, carry the request too.
+	log default {
+		format filter {
+			wrap json
+			fields {
+				import redacted_request
+			}
+		}
+	}
+}
+
 woo.nuanu.ai {
 	encode zstd gzip
 	reverse_proxy wordpress:80
@@ -7,5 +31,23 @@ woo.nuanu.ai {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
-}
 
+	# The shop's request log: when, which method and path, the status, how
+	# long it took and who said they were asking. At most 10 MiB a file, five
+	# older files kept, none older than thirty days.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				import redacted_request
+				resp_headers delete
+			}
+		}
+	}
+	log_append user_agent {http.request.header.User-Agent}
+}

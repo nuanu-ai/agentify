@@ -40,6 +40,7 @@ services:
         define('DISALLOW_FILE_EDIT', true);
     volumes:
       - ${WOOCOMMERCE_DATA_ROOT}/wordpress:/var/www/html
+      - ./apache-log.conf:/etc/apache2/conf-enabled/zz-lab-log.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
       interval: 5s
@@ -77,10 +78,11 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-data:/data
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-config:/config
+      - ${WOOCOMMERCE_DATA_ROOT}/caddy-logs:/var/log/caddy
     networks: [shop]
 
   # The hands lab.sh works the data directory with: unpacking and packing
-  # snapshots and writing settings readings. It runs
+  # snapshots, writing settings readings and reading the request log. It runs
   # as root inside its container so that the host needs no sudo for files the
   # database, WordPress and Caddy own, and it has no network.
   tools:

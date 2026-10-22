@@ -28,7 +28,8 @@ wp post list --post_type=product --title="$sentinel_title" --format=count | grep
   fail "reset mutation was not created"
 
 in_lab() { compose run --rm --no-deps -T tools "$1"; }
-in_lab 'echo "preserve me" >/lab/caddy-data/.reset-preserve-sentinel'
+in_lab 'echo "preserve me" >/lab/caddy-data/.reset-preserve-sentinel
+  echo "preserve me" >/lab/caddy-logs/.reset-preserve-sentinel'
 
 started_at="$(date +%s)"
 switch_log="$(mktemp)"
@@ -41,7 +42,8 @@ elapsed="$(( $(date +%s) - started_at ))"
 wp post list --post_type=product --title="$sentinel_title" --format=count | grep -qx 0 || \
   fail "experimental product survived the switch"
 in_lab 'test -f /lab/caddy-data/.reset-preserve-sentinel' || fail "Caddy state was deleted during the switch"
-in_lab 'rm -f /lab/caddy-data/.reset-preserve-sentinel'
+in_lab 'test -f /lab/caddy-logs/.reset-preserve-sentinel' || fail "the request log was deleted during the switch"
+in_lab 'rm -f /lab/caddy-data/.reset-preserve-sentinel /lab/caddy-logs/.reset-preserve-sentinel'
 (( elapsed < 60 )) || fail "switching to the basic profile took ${elapsed}s"
 
-printf 'PASS: switching to the basic profile removed the mutation in %ss and kept Caddy state\n' "$elapsed"
+printf 'PASS: switching to the basic profile removed the mutation in %ss and kept Caddy state and the request log\n' "$elapsed"

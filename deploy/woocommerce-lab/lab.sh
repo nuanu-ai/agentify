@@ -5,7 +5,7 @@
 
 # The WooCommerce lab's one command: it builds the shop profiles, switches the
 # running shop between them, lays overlays over the active one, and keeps the
-# settings readings. README.md describes
+# two instruments, settings readings and the request log. README.md describes
 # each profile and overlay and what a switch does to a connected merchant.
 set -euo pipefail
 
@@ -20,7 +20,7 @@ usage() {
 Usage: ./lab.sh <command>
 
   status                      which profile and overlays the shop runs, whether
-                              Agentify's REST keys exist
+                              Agentify's REST keys exist, how big the request log is
   list                        the stored profiles: when and from what each was built
   switch <profile>            restore a stored profile, offline, and check it
   overlay <overlay>           lay an overlay over the active profile and check it
@@ -33,6 +33,8 @@ Usage: ./lab.sh <command>
   settings save <name>        take a settings reading
   settings diff <a> <b>       show every difference between two readings
   settings list               the readings taken
+  requests [--since WHEN] [--until WHEN] [--agent TEXT]
+                              the requests the shop received, as its Caddy logged them
 
 Profiles: basic realistic realistic-usd hard
 Overlays: tax-incl tax-excl tax-per-line tax-shop-shows-excl tax-cart-shows-excl
@@ -137,7 +139,7 @@ stop_shop() {
 }
 
 prepare_data_root() {
-  in_lab 'mkdir -p /lab/baseline /lab/profiles /lab/readings /lab/db /lab/wordpress /lab/caddy-data /lab/caddy-config'
+  in_lab 'mkdir -p /lab/baseline /lab/profiles /lab/readings /lab/db /lab/wordpress /lab/caddy-data /lab/caddy-config /lab/caddy-logs'
 }
 
 # The files a profile is built from. A stored profile records their
@@ -463,6 +465,7 @@ PY
         printf("           %s, %s, last used %s\n", $key->description, $key->permissions, $key->last_access ?: "never");
       }'
   fi
+  in_lab 'printf "Request log: %s in %s files\n" "$(du -sh /lab/caddy-logs | cut -f1)" "$(ls /lab/caddy-logs | wc -l)"'
 }
 
 list_profiles() {
@@ -512,6 +515,13 @@ settings() {
   esac
 }
 
+show_requests() {
+  in_lab 'for f in /lab/caddy-logs/access*; do
+      [ -e "$f" ] || continue
+      case "$f" in *.gz) gzip -dc "$f" ;; *) cat "$f" ;; esac
+    done' | python3 -I lib/request_log.py "$@"
+}
+
 # --- Dispatch ----------------------------------------------------------------
 
 main() {
@@ -556,6 +566,7 @@ main() {
           ;;
         check) check_shop "$@" ;;
         settings) settings "$@" ;;
+        requests) show_requests "$@" ;;
         *)
           usage
           exit 2

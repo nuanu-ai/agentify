@@ -62,6 +62,7 @@ Overlays:  over-limit, tax-per-line
 Built:     2026-10-22T08:04:47Z from revision 9d2b6e6f8360, with uncommitted lab changes; its check passed
 In the shop: profile hard, overlays over-limit, tax-per-line
 REST keys: 0
+Request log: 4.0K in 1 files
 ```
 
 That session ran on a throwaway copy of the lab on a laptop, before its
@@ -91,7 +92,7 @@ identifies products by SKU or name and records their numbers after the switch.
 An overlay changes settings or, for `over-limit`, adds products, and leaves
 orders and keys alone, so a connected merchant stays connected; whether the
 connector still accepts the shop under the new settings is what the story
-tests. Caddy's certificate state survives both.
+tests. Caddy's certificate state and the request log survive both.
 
 ## The basic profile
 
@@ -347,6 +348,34 @@ overwritten. WooCommerce keeps some bookkeeping of its own among its options,
 such as when it last ran a scheduled task, and a difference there is real but
 usually not the story's.
 
+## The request log
+
+The lab's Caddy logs every request to the shop to
+`$WOOCOMMERCE_DATA_ROOT/caddy-logs/access.log`: when it arrived, its method,
+path and query, the status, how long it took and the User-Agent it sent. A file
+is rolled at 10 MiB, five older files are kept, compressed, and none older than
+thirty days, so the log never holds more than about sixty megabytes.
+
+Credentials never reach it. WooCommerce accepts an API key and its secret in
+the query string, as `consumer_key` and `consumer_secret` or as OAuth 1.0
+parameters named `oauth_…`, and in the Authorization header. The log drops
+every request header, and replaces with `REDACTED` the value of every query
+parameter whose name mentions `consumer` or `oauth` in any case, or holds a
+percent escape, because PHP decodes an escaped name before WooCommerce reads
+it. Caddy's own messages, such as an upstream error, carry the request too and
+are filtered the same way. WordPress's Apache writes its own access log to the
+container's output; the lab sets its format to the path alone, without the
+query string.
+
+```sh
+./lab.sh requests --since 2026-10-22T09:30 --until 2026-10-22T10:00
+./lab.sh requests --since 15m --agent agentify
+```
+
+Moments are in UTC, or a span back from now such as `15m`, `2h` or `1d`.
+`--agent` keeps the requests whose User-Agent contains the text given, ignoring
+case, and `--agent ''` those that sent none. Each request is one line.
+
 ## Building the profiles
 
 A profile is built from the clean baseline, which holds the basic profile's
@@ -417,7 +446,7 @@ neither. Public edge availability is checked from outside the fixture host,
 which cannot hairpin through the shared public address. `./verify-reset.sh` is
 the destructive acceptance check: it creates an extra product, switches to the
 basic profile, and proves the mutation disappeared within one minute while
-Caddy's state remained.
+Caddy's state and the request log remained.
 
 ## What the profiles leave out
 
