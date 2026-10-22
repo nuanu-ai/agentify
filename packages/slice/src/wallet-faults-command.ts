@@ -83,7 +83,8 @@ export const readPlan = (argv: readonly string[]): Read => {
   ) {
     return refused(`--dashboard takes ${TAKES["--dashboard"]}, and the value given is not one.`);
   }
-  if (dashboard.hostname === "coinbase.com" || dashboard.hostname.endsWith(".coinbase.com")) {
+  const host = dashboard.hostname.replace(/\.$/, "");
+  if (host === "coinbase.com" || host.endsWith(".coinbase.com")) {
     return refused(
       "--dashboard names a host of Coinbase's, which this browser must never reach; name the dashboard.",
     );
@@ -339,8 +340,10 @@ export async function openWalletFaults(
 
   const dashboardTab = await context.newPage();
   let reading = Promise.resolve();
+  let closing = false;
   const read = (): Promise<void> => {
     reading = reading.then(async () => {
+      if (closing) return;
       const said = await saidOn(dashboardTab).catch(() => [] as string[]);
       const lines = [
         "reading",
@@ -355,12 +358,14 @@ export async function openWalletFaults(
   };
 
   // Windows are numbered as they open. A window left open from before the
-  // dashboard's page loaded again would, on closing, tell the new page that
-  // its window closed, so an earlier window vanishes when a new one opens.
+  // dashboard's tab loaded again would, on closing, tell the new page that
+  // its window closed, so an earlier window of the same tab vanishes when a
+  // new one opens; another tab's windows are left alone.
   const windows = new Map<Page, number>();
   const opened = async (window: Page, number: number): Promise<void> => {
+    const tab = await window.opener();
     for (const [earlier, itsNumber] of windows) {
-      if (earlier === window || earlier.isClosed()) continue;
+      if (earlier === window || earlier.isClosed() || (await earlier.opener()) !== tab) continue;
       out(`window ${itsNumber}: made to vanish, since window ${number} opened`);
       await earlier
         .locator("#vanish")
@@ -430,6 +435,7 @@ export async function openWalletFaults(
     page: dashboardTab,
     read,
     close: async () => {
+      closing = true;
       clearInterval(watching);
       await reading.catch(() => undefined);
       await browser.close();

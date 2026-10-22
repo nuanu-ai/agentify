@@ -56,6 +56,8 @@ describe("the command's door", () => {
       "http://keys.coinbase.com/connect",
       "https://wallet.coinbase.com/",
       "https://coinbase.com/",
+      "https://wallet.coinbase.com./",
+      "https://Keys.Coinbase.com/connect",
     ]) {
       expect(refusal(["--dashboard", dashboard, "--address", ADDRESS])).toMatch(
         /a host of Coinbase's/,

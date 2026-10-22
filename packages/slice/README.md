@@ -417,12 +417,13 @@ The buttons under a waiting request answer it in one of these ways:
 | Say the window closed, then answer as the wallet | The message a closing window sends, and straight after it the wallet's answer |
 | Hold the answer | Nothing yet; the request stays held and offers the wallet's answer, the refusal and the closing answer, each to be sent whenever chosen |
 
-Windows are numbered in the terminal as they open. The page uses one window
-for as long as it is loaded, so a second one opens only after the window was
-closed or the dashboard's page loaded again, after a Save among other things.
-An earlier window still open at that moment is made to vanish, and the
+Windows are numbered in the terminal as they open. A page uses one window for
+as long as it is loaded, so a tab opens a second one only after its window was
+closed or the tab loaded again, after a Save among other things. An earlier
+window of the same tab still open at that moment is made to vanish, and the
 terminal says so: closed in the ordinary way it would tell the new page that
-its window closed, and the new page would give up on its own.
+its window closed, and the new page would give up on its own. Windows opened
+from another tab are left alone.
 
 Two buttons at the top act on the window itself. "Close, as a person closes
 it" closes the window and tells the page that it closed. The window says so as
