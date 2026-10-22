@@ -59,7 +59,7 @@ products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
   --resolve "woo.nuanu.ai:443:$WOO_LAB_INGRESS_IP" \
   'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
 catalogue_json="$(wp wc product list --user=admin --status=publish --per_page=100 \
-  --fields=name,price,type,purchasable,stock_status,manage_stock,sold_individually,virtual,downloadable,downloads,download_limit,download_expiry \
+  --fields=name,price,type,purchasable,in_stock,manage_stock,sold_individually,virtual,downloadable,downloads,download_limit,download_expiry \
   --format=json)"
 # The deny rule answers 403 whether or not a file is behind it, so the files
 # themselves are also compared with the seed's copies, inside the WordPress
@@ -178,7 +178,7 @@ for name in sorted(DOWNLOADS):
         for fact, holds in (
             ("a simple product", product.get("type") == "simple"),
             ("purchasable", product.get("purchasable") is True),
-            ("in stock", product.get("stock_status") == "instock"),
+            ("in stock", product.get("in_stock") is True),
             ("without managed stock", product.get("manage_stock") is False),
             ("not sold individually", product.get("sold_individually") is False),
             ("virtual", product.get("virtual") is True),
