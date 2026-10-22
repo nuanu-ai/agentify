@@ -678,9 +678,12 @@ nothing about the buyer's wallet.
 The control speaks for the facilitator and nobody else. The gateway's recovery
 of an unanswered charge reads the chain through `PAYMENT_RPC_URL`, and there is
 no model of that chain here, so the stories that need a finalized transfer, a
-cancelled authorisation, one that expired unused, an unreachable endpoint or a
-receipt that does not match are not run with it, and a lost answer stays
-unresolved on the local stack for good. A facilitator's answer that a charge
+cancelled authorisation, one that expired unused or a receipt that does not
+match are not run with it, and a lost answer stays unresolved on the local
+stack for good. An unreachable endpoint is the one chain fault the stack can
+still show: `AGENTIFY_PAYMENT_RPC_URL` set to an address where nothing
+listens, for that story alone, since any address that answers is a real
+chain. A facilitator's answer that a charge
 is pending, or a failure in words the adapter does not know, is not offered
 either: the gateway keeps both as unknown, which `settle-lost` already shows.
 It is not the forwarder that records the calls between the gateway and
@@ -1110,7 +1113,8 @@ started with a profile of its own for the run, given
 opens `https://agentify.woo-fault.test/dashboard/sign-in`. It does not know
 the run's authority, so it warns about the certificate on each name once; the
 run's own profile keeps that exception to itself. Sign-in links are in the
-application's log, `woo_stack logs app`. The
+application's log, `woo_stack logs app`, or, when the outbound stand-in is
+joined to the stack, in what it kept, `pnpm outbound --port 18624 mail read`. The
 dashboard's pages there lack the site's fonts and mark, which the stack's web
 server would serve and this stack does not run.
 
