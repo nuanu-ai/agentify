@@ -288,7 +288,10 @@ gives exports no rate rather than a rate of zero.
 
 An overlay is laid over the running profile with `./lab.sh overlay <name>`,
 takes seconds, and is checked as soon as it is laid: the check is the
-profile's own, with the overlay's settings in place of the profile's. The
+profile's own, with the overlay's settings in place of the profile's. It is
+laid only over a shop that passes its check as it stands, so a setting changed
+by hand is reported before anything is laid over it, and the shop is left as
+it was. The
 shop records the overlays laid since the last switch, `status` names them, and
 switching to a profile, even the one already running, clears them.
 
@@ -383,11 +386,14 @@ WooCommerce's API credentials never reach it. WooCommerce accepts an API key
 and its secret in the query string, as `consumer_key` and `consumer_secret` or
 as OAuth 1.0 parameters named `oauth_…`, and in the Authorization header, and
 WooCommerce and WordPress put other bearer values in links: an order's key and
-the buyer's email in a download link, a password reset key, a nonce. The log
-drops every request header, and replaces with `REDACTED` the value of every
-query parameter whose name mentions consumer, oauth, key, order, email, nonce,
-token, pass, pwd, secret or auth in any case, or holds a percent escape,
-because PHP decodes an escaped name before WooCommerce reads it. Caddy's own messages, such as an upstream error, carry the request too and
+the buyer's email in a download link, a password reset key, a nonce, and the
+one-time token with which Agentify's Connect names the merchant, which
+WooCommerce passes on as `user_id` and inside `redirect_to`. The log drops
+every request header, and replaces with `REDACTED` the value of every query
+parameter whose name mentions consumer, oauth, key, order, email, nonce, token,
+pass, pwd, secret, auth, user, redirect or referer in any case, or holds a
+percent escape, because PHP decodes an escaped name before WooCommerce reads
+it. A value carried inside another parameter's value is removed with it. Caddy's own messages, such as an upstream error, carry the request too and
 are filtered the same way. WordPress's Apache writes its own access log to the
 container's output; the lab sets its format to the path alone, without the
 query string.

@@ -2,13 +2,15 @@
 # secret in the query string (consumer_key, consumer_secret, oauth_*) and in
 # the Authorization header, and WooCommerce and WordPress put bearer values in
 # links: an order's key and the buyer's email in a download link, a password
-# reset key, a nonce. Every request header is dropped, and the value of any
+# reset key, a nonce, and the one-time token Agentify's Connect passes as
+# user_id, which also travels inside redirect_to. A value nested in another
+# parameter's value is caught only by the outer name. Every request header is dropped, and the value of any
 # query parameter whose name mentions one of the words below, in any case, or
 # carries a percent escape is replaced: PHP decodes an escaped name, so
 # `%63onsumer_secret` reaches WooCommerce as consumer_secret. Caddy applies one
 # filter per field, which is why this is a single expression.
 (redacted_request) {
-	request>uri regexp "(?i)([?&][^=&]*(?:%|consumer|oauth|key|order|email|nonce|token|pass|pwd|secret|auth)[^=&]*)=[^&]*" "${1}=REDACTED"
+	request>uri regexp "(?i)([?&][^=&]*(?:%|consumer|oauth|key|order|email|nonce|token|pass|pwd|secret|auth|user|redirect|referer)[^=&]*)=[^&]*" "${1}=REDACTED"
 	request>headers delete
 }
 

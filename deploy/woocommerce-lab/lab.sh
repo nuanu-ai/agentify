@@ -109,23 +109,30 @@ finished_as() {
 take_lock() {
   local lock="$lab_dir/.lab.lock"
   if ! mkdir "$lock" 2>/dev/null; then
-    local holder
-    holder="$(cat "$lock/pid" 2>/dev/null || true)"
-    if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then
-      fail "another ./lab.sh command is running (process $holder: $(cat "$lock/command" 2>/dev/null))"
+    if lock_held "$lock"; then
+      fail "another ./lab.sh command is running ($(cat "$lock/command" 2>/dev/null || echo 'starting')). If none is, remove $lock"
     fi
-    rm -rf "$lock"
-    mkdir "$lock" || fail "could not take the lab's lock at $lock"
+    # Moved aside before it is removed, so that of two commands taking over
+    # the same stale lock only one can.
+    mv "$lock" "$lock.stale.$$" 2>/dev/null && rm -rf "$lock.stale.$$"
+    mkdir "$lock" 2>/dev/null || fail "another ./lab.sh command took the lab's lock at $lock first"
   fi
   echo $$ >"$lock/pid"
   echo "$*" >"$lock/command"
   lab_lock="$lock"
 }
 
+# A lock is held while the process that took it is a lab.sh, or while it is
+# too new to have written its process number.
+lock_held() {
+  local holder
+  holder="$(cat "$1/pid" 2>/dev/null || true)"
+  [[ -z "$holder" ]] && return 0
+  ps -p "$holder" -o command= 2>/dev/null | grep -q 'lab\.sh'
+}
+
 lab_busy() {
-  local lock="$lab_dir/.lab.lock" holder
-  holder="$(cat "$lock/pid" 2>/dev/null || true)"
-  [[ -n "$holder" && "$holder" != "$$" ]] && kill -0 "$holder" 2>/dev/null
+  [[ -d "$lab_dir/.lab.lock" ]] && lock_held "$lab_dir/.lab.lock"
 }
 
 seconds() { python3 -I -c 'import time; print(f"{time.time():.1f}")'; }
@@ -212,7 +219,8 @@ restore_baseline() {
   in_lab 'gzip -t /lab/baseline/wordpress.sql.gz && gzip -t /lab/baseline/wordpress.tar.gz' ||
     fail "the baseline is corrupt; the running shop was not changed"
   stop_shop
-  in_lab 'find /lab/db /lab/wordpress -mindepth 1 -delete
+  in_lab 'mkdir -p /lab/db /lab/wordpress
+    find /lab/db /lab/wordpress -mindepth 1 -delete
     tar -xzf /lab/baseline/wordpress.tar.gz -C /lab/wordpress
     chown -R 33:33 /lab/wordpress && chown 999:999 /lab/db'
   compose up -d db
@@ -247,7 +255,8 @@ build_baseline() {
   prepare_data_root
   stop_shop
   mark_unfinished "a rebuild of the baseline" "./lab.sh switch basic"
-  in_lab 'find /lab/db /lab/wordpress -mindepth 1 -delete
+  in_lab 'mkdir -p /lab/db /lab/wordpress
+    find /lab/db /lab/wordpress -mindepth 1 -delete
     chown 33:33 /lab/wordpress && chown 999:999 /lab/db'
   compose up -d db wordpress caddy
   wait_for_database
@@ -411,9 +420,9 @@ PY
   mark_unfinished "a switch to the $profile profile" "./lab.sh switch $profile"
   stop_shop
   in_lab 'rm -rf /lab/db.old /lab/wordpress.old
-    mv /lab/db /lab/db.old
+    [ ! -e /lab/db ] || mv /lab/db /lab/db.old
     mv /lab/db.next /lab/db
-    mv /lab/wordpress /lab/wordpress.old
+    [ ! -e /lab/wordpress ] || mv /lab/wordpress /lab/wordpress.old
     mv /lab/wordpress.next /lab/wordpress
     rm -rf /lab/db.old /lab/wordpress.old'
   if has_mail_catcher "$profile"; then start_shop with-mail; else start_shop; fi
@@ -438,6 +447,13 @@ lay_overlay() {
   [[ -n "$profile" ]] || fail "no profile is active; switch to one first"
   local before
   before="$(recorded_overlays)"
+  # The shop must be its profile before anything is laid over it, so that a
+  # failure afterwards is the overlay's and a refusal here changes nothing.
+  # shellcheck disable=SC2086
+  run_check "$profile" $before >"$lab_tmp/before" 2>&1 || {
+    grep -E '^(FAIL|Error)' "$lab_tmp/before" >&2 || true
+    fail "the shop is not the $profile profile${before:+ with $before} as it stands, so nothing was laid over it; ./lab.sh switch $profile restores it"
+  }
   mark_unfinished "the $overlay overlay laid over the $profile profile${before:+ with $before}" \
     "./lab.sh switch $profile, then lay the overlays again"
   wp eval-file /seed/overlay.php "$overlay"
@@ -472,10 +488,12 @@ check_shop() {
 show_status() {
   local unfinished active
   if lab_busy; then
-    printf 'Busy:      ./lab.sh %s is running; what follows may change under it.\n' "$(cat "$lab_dir/.lab.lock/command" 2>/dev/null)"
+    printf 'Busy:      ./lab.sh %s is running; what follows may change under it.\n' "$(cat "$lab_dir/.lab.lock/command" 2>/dev/null || echo '…')"
   fi
   unfinished="$(in_lab 'cat /lab/unfinished 2>/dev/null || true')"
-  if [[ -n "$unfinished" ]]; then
+  if [[ -n "$unfinished" ]] && lab_busy; then
+    printf 'In progress: %s, started at %s.\n' "$(echo "$unfinished" | cut -d'|' -f2)" "${unfinished%%|*}"
+  elif [[ -n "$unfinished" ]]; then
     local at="${unfinished%%|*}" rest="${unfinished#*|}"
     printf 'UNFINISHED: %s, started at %s, did not finish, so the shop is not\n' "${rest%%|*}" "$at"
     printf 'what it was before nor what it was meant to become. Run %s.\n' "${rest#*|}"
