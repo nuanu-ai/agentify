@@ -1,7 +1,7 @@
 /**
  * The proxy that answers with additions, started by hand:
  *
- *   pnpm additions --to http://localhost:8080 --add event-kind [--add field@/v0/worker/poll …] [--port 8789]
+ *   pnpm additions --to http://localhost:8080 --add event-kind [--add field@/v0/worker/poll …] [--port 8791]
  *
  * It runs until it is stopped. What each addition adds where, and how to read
  * the log, is in this package's README; the proxy itself lives in

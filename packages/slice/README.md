@@ -7,9 +7,13 @@ real gateway booted in memory, the `buy` and `smoke` commands that walk a
 purchase against a running gateway or a test network, the stand — a local
 console, started with `pnpm stand`, where one person sits in turn in each of
 the three seats of a purchase: the merchant who publishes, the agent who buys,
-and the merchant's code answering orders — and the two fault instruments
+and the merchant's code answering orders — and the fault instruments
 described below. All of them drive the real gateway and the real SDK from the
-outside, so that a test sees what a merchant or an agent would.
+outside, so that a test sees what a merchant or an agent would. Each one that
+listens does so on loopback, on a port of its own by default, so that a run
+can use several at once: the stand on 8787, the cut proxy on 8788, the
+outbound stand-in's control on 8789, the payment fault control on 8790 and the
+additions proxy on 8791.
 
 ## Cutting an answer after the server committed it
 
@@ -531,7 +535,7 @@ It is started from the root of the repository, and runs until it is stopped:
 pnpm payment-faults --fault settle-lost
 ```
 
-It listens on `127.0.0.1:8789`, or on the port given with `--port`, and only on
+It listens on `127.0.0.1:8790`, or on the port given with `--port`, and only on
 loopback. The stack's gateway runs in a container, which reaches the host's
 loopback as `host.docker.internal` on Docker Desktop, where this was tried; on a
 Linux Docker engine that name is not defined by `compose.yaml`, and whether a
@@ -540,7 +544,7 @@ pointed at the control with the variable `compose.yaml` already reads, and the
 application is recreated for it to take effect:
 
 ```sh
-AGENTIFY_FACILITATOR_URL=http://host.docker.internal:8789 docker compose up -d app
+AGENTIFY_FACILITATOR_URL=http://host.docker.internal:8790 docker compose up -d app
 ```
 
 The same variable has to be given to every later `docker compose up` of that
@@ -709,8 +713,8 @@ pnpm additions --to http://localhost:8080 --add address-shape
 `--to` is read as the cut proxy reads it, with the same refusals: a base URL,
 http or https, without a user name, a password, a query or a fragment, and a
 hosted gateway given by its https address. The proxy listens on
-`127.0.0.1:8789`, or on the port given with `--port`, and only on loopback. A
-merchant's code is pointed at it with `baseUrl: "http://127.0.0.1:8789"` in
+`127.0.0.1:8791`, or on the port given with `--port`, and only on loopback. A
+merchant's code is pointed at it with `baseUrl: "http://127.0.0.1:8791"` in
 its SDK client, and every call the SDK makes then passes through it: polls,
 order reads and lists, answers, deliveries, refusals and publishes. The first
 lines it prints say where it listens and where it forwards, and then, one line

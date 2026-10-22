@@ -445,7 +445,7 @@ type Started =
   | { readonly ok: true; readonly proxy: { readonly port: number; close(): Promise<void> } }
   | { readonly ok: false; readonly why: string };
 
-const DEFAULT_PORT = "8789";
+const DEFAULT_PORT = "8791";
 
 const refused = (why: string): Read => ({ ok: false, why });
 

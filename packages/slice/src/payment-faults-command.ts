@@ -53,7 +53,7 @@ const TAKES = {
 } as const;
 type Flag = keyof typeof TAKES;
 
-const DEFAULT_PORT = "8789";
+const DEFAULT_PORT = "8790";
 const DEFAULT_LATE_SECONDS = "20";
 const MOST_BODY_BYTES = 1 << 20;
 
