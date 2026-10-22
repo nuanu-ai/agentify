@@ -504,15 +504,17 @@ on others, so they are done in the days before the run.
    the fixture host, and while the profile is stored; in between it answers as
    a half-built shop that is no profile at all. On the fixture host the basic
    profile took 87 seconds to build, the realistic profile 313 and the
-   realistic-usd profile 301; the hard profile is the slowest, close to an
-   hour on the fixture host. `./lab.sh build all` builds the four in that order
+   realistic-usd profile 301, and the hard profile 3,921, about sixty-five
+   minutes, because writing its 1,950 products and 2,250 variations is bound
+   by the host's disk. `./lab.sh build all` builds the four in that order
    and leaves the hard profile running. A build runs in the foreground of the
    operator's terminal, so it is started in a session that survives a dropped
    connection, such as tmux, and watched to the end: a build that stops part
    way leaves the shop down until somebody acts.
 
    A switch restores a stored profile without the network and checks it, and
-   took about fourteen seconds on the fixture host. The first switch of a run
+   took fourteen to twenty-five seconds on the fixture host; the shop's first
+   page can time out for a few seconds after it while WordPress warms up. The first switch of a run
    is to the basic profile, also right after `build all`. A switch erases
    everything the shop held: orders, customers, the mail in the mail catcher
    and every REST API key, those of every merchant connected to the shop
@@ -548,7 +550,7 @@ on others, so they are done in the days before the run.
    whose check fails, leaves an unfinished record: `./lab.sh status` names the
    command and what to run, and `check` and `overlay` refuse until then.
    Switching to a stored profile is the way back, `./lab.sh switch basic` in
-   about fourteen seconds; an interrupted build leaves the stored profile it
+   under half a minute; an interrupted build leaves the stored profile it
    was replacing as it was. At the end of the run the shop goes back to the
    basic profile (step 7).
 
