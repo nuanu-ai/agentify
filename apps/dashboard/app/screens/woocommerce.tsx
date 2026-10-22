@@ -426,10 +426,12 @@ function Connected({
             {(pending) => (
               <>
                 <p className={styles.sub}>
-                  Reads up to {connection.productsAtMost} products and publishes{" "}
+                  Reads up to {connection.productsAtMost.toLocaleString("en-US")} products and
+                  publishes{" "}
                   <a href={`${GUIDE}#what-can-be-imported`}>the ones the connector supports</a>; the
                   rest stay in your shop. Running it again updates the same cards. A shop with more
-                  than {connection.productsAtMost} products is refused whole, not cut short.
+                  than {connection.productsAtMost.toLocaleString("en-US")} products is refused
+                  whole, not cut short.
                 </p>
                 <Button pending={pending}>Import products</Button>
                 <BeforeImportingNote connection={connection} base={base} />

@@ -53,10 +53,12 @@ const AT_MOST = 10_000;
 
 /**
  * Shown to a merchant before they start, and named on the page that refuses a
- * larger catalogue rather than silently importing the first two hundred: every
- * product is a separate publish call while a merchant holds the page open.
+ * larger catalogue rather than silently importing the first part of it. About
+ * nine real shops in ten fit under it. The import runs while the merchant holds
+ * the page open, and reading a catalogue this size is some fifty requests to the
+ * shop besides one for each download's file.
  */
-export const PRODUCTS_AT_MOST = 200;
+export const PRODUCTS_AT_MOST = 2_000;
 
 export type CatalogueRead =
   | { readonly ok: true; readonly products: readonly StoreProduct[] }
@@ -265,7 +267,7 @@ const OF_ANOTHER_SHOP: NotSellable = {
 };
 
 /** Preserves input order while bounding calls into one merchant's shop. */
-export const mapAtMost = async <Input, Output>(
+const mapAtMost = async <Input, Output>(
   values: readonly Input[],
   atMost: number,
   visit: (value: Input) => Promise<Output>,
@@ -1061,8 +1063,8 @@ export const catalogueOf = async (
   return {
     ok: false,
     why:
-      `Your shop offers more than ${atMost} products, which is more than this brings over in one` +
-      " go. Nothing was imported.",
+      `Your shop offers more than ${atMost.toLocaleString("en-US")} products, which is more than` +
+      " this brings over in one go. Nothing was imported.",
   };
 };
 
