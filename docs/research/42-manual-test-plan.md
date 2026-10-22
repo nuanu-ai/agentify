@@ -428,81 +428,109 @@ who can reach the test channel's host and the host the lab shop runs on, which
 the lab README calls the fixture host. Steps that need either host are the
 operator's, and their commands are in [deploy/README.md](../../deploy/README.md)
 and the [lab README](../../deploy/woocommerce-lab/README.md), which keep the
-deployment facts this public plan leaves out. Every `./lab.sh` command below is
-run by the operator on the fixture host. Moments are written in UTC, as the
-lab's request log reads them.
+deployment facts this public plan leaves out, the shop's address among them.
+Every `./lab.sh` command below is run by the operator on the fixture host.
+Moments are written in UTC, as the lab's request log reads them. Funding the
+buyers' wallets and admitting the participants' Google accounts (step 4) wait
+on others, so they are done in the days before the run.
 
 1. Agree the run with the other person who uses the test channel and the lab
    before changing either: which revision the channel will run, which profiles
    the shop will run and when, and how long the run holds both. Then record
-   what actually runs. Moving the `deploy-test` tag asks for a revision, and
-   the test host releases it within a minute or two once the commit's image
-   build has succeeded; the release checks the public routes and that every
-   card on sale before it is still on sale and answers its payment challenge
-   ("Releasing to test" in deploy/README.md). Record the commit the tag names
-   (`git ls-remote origin refs/tags/deploy-test`) beside the revision the
-   operator reads from the channel itself, as that section shows, and record a
-   mismatch as item 1 above asks. A revision whose image build failed or was
-   cancelled is refused and recorded as failed, and the test host's timer does
-   not try a failed revision again on its own: the build is run again and the
-   operator then releases the revision by hand ("When a release fails"). Record
-   the versions npm serves of `@nuanu-ai/agentify` and
+   what actually runs. Moving the `deploy-test` tag asks for a revision. The
+   test host's timer looks at the tag once a minute and releases the commit
+   once its image build has succeeded, which happens only for a commit pushed
+   as the head of a branch; a branch is rebased onto `main` before it goes
+   there, because the channel's database keeps the migrations of every
+   revision it has run. A release has taken about two minutes from moving the
+   tag to its verified line, with the channel down for about twenty seconds of
+   them, though pulling the images, before anything stops, can take up to a
+   quarter of an hour. It ends by checking the public
+   routes and that every card on sale before it is still on sale and answers
+   its payment challenge ("Releasing to test" in deploy/README.md).
+
+   Record the commit the tag names (`git ls-remote origin refs/tags/deploy-test`)
+   beside what the operator reads on the channel, and record a mismatch as
+   item 1 above asks. The operator reads four things there, as deploy/README.md
+   describes: the last verified revision, the last refused or failed one, any
+   unfinished transition, and the revision the running application's image
+   carries. They can disagree, and the image's revision is the one that runs.
+   A release that started and then failed its checks keeps running, unverified,
+   and waits for a person, as does a revision whose image build failed or was
+   cancelled, which is recorded as failed and which the timer does not try
+   again; a wait of thirty minutes for images is recorded as failed too. The
+   way out of each is in "When a release fails": a build run again and a
+   release by hand, or a release naming the cards it takes off sale on purpose.
+
+   Record the versions npm serves of `@nuanu-ai/agentify` and
    `@nuanu-ai/agentify-contracts` (`npm view <package> version`) and the
    versions each participant actually installed. When the run is also a
    release check that claims production runs the same commit, record the
-   `app-v` tag on that commit (`git tag --points-at <commit>`) and the revision
-   the operator reads from production; a tag on the right commit does not show
-   that production took it.
+   `app-v` tag on that commit (`git fetch --tags origin`, then
+   `git tag --points-at <commit>`) and what the operator reads on production
+   in the same four ways; a tag on the right commit does not show that
+   production took it.
 
-2. Settle the lab before anyone is given an address. `./lab.sh status` names
-   the running profile and overlays, a command that is running or did not
-   finish, whether the lab's files changed since the running profile was
+2. Settle the lab before anyone is given the shop's address. `./lab.sh status`
+   names the running profile and overlays, a command that is running or did
+   not finish, whether the lab's files changed since the running profile was
    built, and the REST API keys in the shop; `./lab.sh list` names each stored
-   profile, the revision it was built from and whether its check passed. Record
-   both. A lab copied onto the host rather than checked out names its commit
-   in a `REVISION` file, and the profiles name that commit.
+   profile and the revision it was built from. Record both. A lab copied onto
+   the host rather than checked out names its commit in a `REVISION` file, and
+   the profiles name that commit. The operator also looks for a
+   `compose.override.yaml` beside the lab's `compose.yaml`, which neither
+   command shows and which has no place in a run.
 
-   Builds belong before the run, by agreement, never during it. A build is
-   needed only when a profile is missing, its check failed, the lab's files
-   changed in a way the run depends on, or a switch refuses the profile
-   because it holds files of another database image than the lab now runs.
-   For the whole of a build the shop is unusable: it is down, answering 502 or
-   timing out, while its database starts from empty data, which takes about
-   three minutes on the fixture host, and while the profile is stored; in
-   between it answers as a half-built shop that is no profile at all. On the
-   fixture host the basic profile took 87 seconds to build, the realistic
-   profile 313 and the realistic-usd profile 301; the hard profile is the
-   slowest, close to an hour on the fixture host. `./lab.sh build all` builds
-   the four in that order and leaves the hard profile running. Whoever starts
-   a build watches it to the end: a build that stops part way leaves the shop
-   down until somebody acts.
+   The lab is brought to the commit the run uses, keeping its server-owned
+   `.env`, before the run and never during it, and so are builds. A profile is
+   built again when it is missing, when a switch to it refuses because it holds
+   files of another database image than the lab now runs or fails its check,
+   or when the lab's files differ between the commit it was built from and the
+   lab's commit now (`git diff --stat <built> <now> -- deploy/woocommerce-lab`);
+   `status` reports that last case for the running profile. For the whole of a
+   build the shop is unusable: it is down, answering 502 or timing out, while
+   its database starts from empty data, which has taken up to three minutes on
+   the fixture host, and while the profile is stored; in between it answers as
+   a half-built shop that is no profile at all. On the fixture host the basic
+   profile took 87 seconds to build, the realistic profile 313 and the
+   realistic-usd profile 301; the hard profile is the slowest, close to an
+   hour on the fixture host. `./lab.sh build all` builds the four in that order
+   and leaves the hard profile running. A build runs in the foreground of the
+   operator's terminal, so it is started in a session that survives a dropped
+   connection, such as tmux, and watched to the end: a build that stops part
+   way leaves the shop down until somebody acts.
 
    A switch restores a stored profile without the network and checks it, and
    took about fourteen seconds on the fixture host. The first switch of a run
    is to the basic profile, also right after `build all`. A switch erases
    everything the shop held: orders, customers, the mail in the mail catcher
-   and every REST API key, the connected merchant's included, and it sets the
-   shop administrator's password back to the one in the lab's server-owned
-   `.env`. Settings readings and the request log survive it. Agentify is not
-   told, so the merchant's integration still names the shop and the cards it
-   imported stay listed. While the shop's keys are gone, a buyer who buys one
-   of those cards waits about five seconds, the time the gateway waits for a
-   price, and is answered with HTTP 409 and the order `rejected` with the
-   reason `price_check_unanswered`, nothing charged; the merchant connects
-   again to end that. After reconnecting, and until the next import, a card is
-   priced against whatever product now carries the shop's product number it
-   was made from, which on another profile can be a different product. The
-   import republishes each card whose number names a product it can sell, and
-   a card whose number names none stays listed and is refused before payment.
-   Import, then, before any buyer is given the catalogue.
+   and every REST API key, those of every merchant connected to the shop
+   included, and it sets the shop administrator's password back to the one in
+   the lab's server-owned `.env`. Settings readings and the request log
+   survive it. Agentify is not told, so each connected merchant's integration
+   still names the shop and the cards it imported stay listed. While the
+   shop's keys are gone, a buyer who buys one of those cards waits about five
+   seconds, the time the gateway waits for a price, and is answered with
+   HTTP 409 and the order `rejected` with the reason `price_check_unanswered`,
+   nothing charged. After the merchant connects again, and until their next
+   import, a card is priced against whatever product now carries the shop's
+   product number it was made from, which on another profile can be a
+   different product. The import republishes each card whose number names a
+   product it can sell, and a card whose number names none stays listed and is
+   refused before payment. Import, then, before any buyer is given the
+   catalogue.
 
-   Before a switch, let the connected merchant's orders end: a download
-   delivered, a parcel marked Completed in the shop or deliberately left and
-   recorded. A parcel's shop order is erased with the rest, so it can no
-   longer be marked Completed and turns unfulfilled when its seven days run
-   out. Save the evidence that lives only in the shop, its orders with their
-   Agentify lines and the mail caught, and pause all sales on Cards so that no
-   purchase is priced across the switch.
+   Before a switch, let the orders of every merchant connected to the shop
+   end: a download delivered, a parcel marked Completed in the shop or
+   deliberately left and recorded. A parcel's shop order is erased with the
+   rest, so it can no longer be marked Completed and turns unfulfilled when
+   its seven days run out. Save the evidence that lives only in the shop: its
+   orders with their Agentify lines, from the shop's WooCommerce order screens,
+   and the mail caught, downloaded message by message from the catcher's web
+   interface. Then every connected merchant pauses all sales on Cards, so that
+   no purchase is priced across the switch. A merchant who does not go on to
+   the next profile stays paused, which takes their cards out of the
+   catalogue, so a buyer participant never meets a card nobody can sell.
 
    Only one command that changes the shop runs at a time; a second is refused
    and names the first. A build, switch or overlay that is interrupted, or
@@ -516,9 +544,12 @@ lab's request log reads them.
 3. Check that the test channel reaches the shop. The channel's dashboard and
    its WooCommerce worker call the shop by its public address, and on the test
    channel that goes through a route the operator installs for acceptance runs
-   ("The Woo acceptance route on TEST" in deploy/README.md). Before the Woo
-   stories, with the shop running, the operator runs that route's reconcile
-   operation from a clean checkout of `main`. It ends by checking both
+   ("The Woo acceptance route on TEST" in deploy/README.md), which stays
+   installed between runs unless the operator removes it as that section
+   describes. Before the Woo stories, with the shop running, the operator runs
+   that route's reconcile operation; it refuses unless it runs from a clean
+   checkout at a commit of `main`, the one it is given, with the operator's
+   own inventory filled in from the example beside it. It ends by checking both
    directions from inside the running containers: from the test channel's
    application, that the shop's name resolves to its public address, that the
    shop's public catalogue answers 200 and that a request for a file in its
@@ -527,31 +558,37 @@ lab's request log reads them.
    health check answers 200. A failure in either direction refuses the
    operation and says which. Later in the run, a Connect, an import or a price
    check that says the shop did not answer while the shop opens normally from
-   outside points at the route, and running the check again is the first step.
+   outside points at the route, and running the reconcile operation again is
+   both the check and the repair.
 
    The realistic, realistic-usd and hard profiles hand every message the shop
    sends to the lab's mail catcher, which listens only on the fixture host's
-   loopback. The operator opens a tunnel to it as the lab README shows, and
-   whoever reads the mail for H-11 or the human checkout does so through that
-   tunnel. The catcher keeps mail only while it runs, and a switch discards
-   it. The basic profile has no catcher, and its mail reaches nobody. Sign-in
-   links and rate notices come from the test channel's dashboard, not the
-   shop, and go to real mailboxes.
+   loopback. The operator opens a tunnel to it as the lab README shows; the
+   tunnel ends on the operator's own machine, so whoever reads the mail for
+   H-11 or the human checkout reads it there or has the operator save it. The
+   catcher keeps mail only while it runs, and a switch discards it. The basic
+   profile has no catcher, and its mail reaches nobody. Sign-in links and rate
+   notices come from the test channel's dashboard, not the shop, and go to
+   real mailboxes.
 
 4. Prepare the accounts and the money. The run uses two merchants and two
    buyers (item 2 above), and the stand's operator merchant besides (Goods and
    instruments). A first attempt needs a dashboard address that has never
-   signed in on the test channel; the operator can start an address over
-   ("Starting an address over on TEST" in deploy/README.md), which is refused
-   for an account whose merchant has an order or a receipt. Participants sign
-   in with Google where a story does not need an emailed link, within the
-   limits above; where the test channel's Google project admits only listed
-   test users, the operator lists each participant's account first ("Google
-   sign-in"). A merchant who imports from the shop sets a seller name and a
-   payout wallet in Settings first, and the site as well for parcels. The
-   person playing the shop owner signs in to WooCommerce as the lab's
-   administrator, whose password the operator hands over privately from the
-   lab's `.env`; it never goes into a report.
+   signed in on the test channel. The operator can start an address over
+   ("Starting an address over on TEST" in deploy/README.md), but that is
+   refused for an account whose merchant has an order or a receipt, so an
+   address a paid run has used is replaced by a new one, not by a plus or dot
+   variant of it, which the product may treat as the same person (E-02).
+   Participants sign in with Google where a story does not need an emailed
+   link, within the limits above; where the test channel's Google project
+   admits only listed test users, whoever administers that project lists each
+   participant's account first ("Google sign-in"). The organiser's own setup
+   merchants, those not playing a participant, set a seller name and a payout
+   wallet in Settings before importing from the shop, and the site as well for
+   parcels; a participant finds those steps on their own, and telling them is
+   assistance. The person playing the shop owner signs in to WooCommerce as
+   the lab's administrator, whose password the operator hands over privately
+   from the lab's `.env`; it never goes into a report.
 
    A rate saved for a shop priced in rupiah belongs to the account, the
    shop's address and the currency, and outlives switches and reconnections
@@ -564,23 +601,29 @@ lab's request log reads them.
    realistic profile's stories.
 
    Buyers pay in test USDC on Base Sepolia from [Circle's faucet](https://faucet.circle.com),
-   which asks for a captcha, so a person requests it; a faucet hands out a
-   limited amount at a time, so fund the wallets before the run day. Fund each
-   buyer's signer with exactly its total budget and set the per-purchase limit
-   in the client, as "People and independent first attempts" describes; a
-   buyer needs no ETH. Payouts (M) are transactions somebody sends and pays a
-   fee for, in test ETH on Base Sepolia that a faucet also hands out; the gas
-   cap of item 4 above covers them.
+   which asks for a captcha, so a person requests it, and which hands out a
+   limited amount at a time. Fund each buyer's signer with exactly its total
+   budget and set the per-purchase limit in the client, as "People and
+   independent first attempts" describes; a buyer needs no ETH. A payout (M)
+   is a transaction sent by whoever holds the wallet that sends it, which pays
+   the network's fee in test ETH on Base Sepolia; the organiser funds that
+   wallet from a faucet for Base Sepolia ETH, records which, and the gas cap
+   of item 4 above covers it.
 
 5. Know which instruments exist. The response-cutting proxy, `pnpm cut`, runs
-   on the organiser's machine against the test channel's https address and
-   cuts one answer per start; the stand's merchant barriers run in the stand,
-   with its records directory set ([slice README](../../packages/slice/README.md)).
-   Both have so far been exercised against local servers only, and the first
-   use against the test channel is recorded as such. The lab's settings
-   reading and request log run on the fixture host. Around a story such as
-   H-11 they are used like this, with names that carry the run's date because
-   a reading is never overwritten:
+   on the organiser's machine, forwards to the test channel's https address
+   and cuts one answer per start, and it sees only callers pointed at it: the
+   buy command with its gateway address set to the proxy, or an SDK merchant
+   whose base address is the proxy. A buyer following a card's public purchase
+   address, and the WooCommerce connector, which runs on the test channel
+   itself, go around it. The merchant barriers are the stand's pauses; the
+   stand keeps durable records when it is started with a records directory,
+   and runs without one for the stories the [slice README](../../packages/slice/README.md)
+   names. Both have so far been exercised against local servers only, and
+   their first use against the test channel is recorded as such. The lab's
+   settings reading and request log run on the fixture host. Around a story
+   such as H-11 they are used like this, with names that carry the run's date
+   because a reading is never overwritten:
 
    ```sh
    ./lab.sh settings save 2026-10-22-h11-before
@@ -607,29 +650,46 @@ lab's request log reads them.
 6. Run the profiles in the order "Goods and instruments" gives: basic with its
    overlays, then the realistic profiles, then the hard profile. After each
    switch, `./lab.sh status` shows the profile running with no unfinished
-   record and no REST keys; the Woo merchant connects the shop again from the
-   dashboard, imports, and on a rupiah profile sets the rate where the screen
-   asks for one, which runs the import itself; and the organiser records each
-   product's number against its SKU and resumes sales if they were paused for
-   the switch. That reconnection is setup, not a finding, unless it fails. An
-   overlay takes seconds, except `over-limit` on the basic profile at a minute
-   or two, and keeps the merchant connected. A story that changed the shop by
-   hand makes the next overlay refuse, and switching to the profile again
+   record and no REST keys. Each merchant that goes on with this profile
+   connects the shop again from the dashboard, imports, and on a rupiah profile
+   sets the rate where the screen asks for one, which runs the import itself,
+   then resumes sales; the organiser records the numbers of the products the
+   coming stories use against their SKUs, from the shop's product list. That
+   reconnection is setup, not a finding, unless it fails. The hard profile is
+   the exception: H-11 comes first there, with its first settings reading
+   taken before any merchant connects, and no other merchant connects the
+   shop until H-11's second reading is taken.
+
+   An overlay takes seconds, except `over-limit` on the basic profile at a
+   minute or two, and keeps the merchants connected. Anything that moves the
+   shop away from what its profile's check counts makes the next overlay
+   refuse: a story that changed the shop by hand, and also an order that sold
+   out a product counting its stock. Human orders therefore use products whose
+   stock is not counted where an overlay follows, as H-09's `over-limit`
+   follows H-11 on the hard profile; otherwise switching to the profile again
    comes first. Every story records, beside its evidence row (What must agree
-   after a sale) and its four results, the revision running at the time, the
-   profile and overlays as `status` named them, the merchant account and its
-   integration, the products' numbers, the moments it started and ended, the
-   names of its settings readings and any help given.
+   after a sale) and its four results, the revision running at the time, which
+   is the one recorded in step 1 unless the tag has moved since and the
+   operator read it again, the profile and overlays as `status` named them,
+   the merchant account and its integration, the products' numbers, the
+   moments it started and ended, the names of its settings readings and any
+   help given.
 
 7. End the run. Save what lives only in the shop and in the catcher, have the
    operator copy the readings and the request log the run needs into its
    private evidence, then `./lab.sh switch basic` and `./lab.sh status` to see
-   the basic profile running with no unfinished record. Leave the test channel
-   on a named revision, `main`'s or the one agreed, and record it. Tell the
-   other person what the channel and the shop now run and which accounts,
-   keys and connections the run left in place, as "Remaining work and cleanup"
-   lists them. Reports and evidence go to the run's private location ("Report
-   and evidence").
+   the basic profile running with no unfinished record. The switch erases the
+   merchants' shop keys, so each Woo merchant is left with all sales paused,
+   and the stands and other merchant processes the run started are stopped.
+   Leave the test channel on a named revision and record it: `main`'s, when
+   the run's revision added no migration `main` lacks; otherwise the run's
+   revision stays until the database has been put back as "Restoring" in
+   deploy/README.md describes, since `main` would start against tables it does
+   not expect. Tell the other person what the channel and the shop now run and
+   which accounts, keys, connections and unresolved orders the run left in
+   place, the list the report keeps under "Remaining work and cleanup".
+   Reports and evidence go to the run's private location ("Report and
+   evidence").
 
 ## Reading the stories
 
