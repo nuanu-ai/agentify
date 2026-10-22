@@ -181,6 +181,7 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
   let mailMode: MailMode = "accept";
   const coinbaseRecord: CoinbaseRequest[] = [];
   const mailRecord: MailPost[] = [];
+  let mailArrivals = 0;
   const upstreamHost = options.coinbaseUpstream.host;
   const send = options.coinbaseUpstream.protocol === "https:" ? httpsRequest : httpRequest;
 
@@ -218,12 +219,26 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
       return;
     }
 
-    const target = new URL(line.path, options.coinbaseUpstream);
+    // Only a path is joined to Coinbase's origin: a URL resolved against it
+    // would let `//other.host/` or an absolute-form request name another host.
+    if (!line.path.startsWith("/") || line.path.startsWith("//")) {
+      response.on("finish", () => end("refused with 400, not a path on api.coinbase.com"));
+      json(response, 400, {
+        error: "the stand-in passes paths on api.coinbase.com and nothing else",
+      });
+      return;
+    }
+    const brokeOff = (): void => {
+      end("passed, Coinbase broke off its answer");
+      response.destroy();
+    };
     const outgoing = send(
-      target,
+      new URL(`${options.coinbaseUpstream.origin}${line.path}`),
       { method: line.method, headers: forwardable(request.headers, upstreamHost) },
       (answer) => {
         response.writeHead(answer.statusCode ?? 502, answerable(answer.headers));
+        answer.on("aborted", brokeOff);
+        answer.on("error", brokeOff);
         answer.pipe(response);
         response.on("finish", () => end(`passed, Coinbase answered ${answer.statusCode}`));
       },
@@ -237,7 +252,7 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
         );
         json(response, 502, { error: "Coinbase could not be reached from the stand-in" });
       } else {
-        response.destroy();
+        brokeOff();
       }
     });
     request.pipe(outgoing);
@@ -247,6 +262,8 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
     void (async () => {
       const at = new Date().toISOString();
       const mode = mailMode;
+      mailArrivals += 1;
+      const seq = mailArrivals;
       const body = await readBody(request, LARGEST_MESSAGE);
       let parsed: Record<string, unknown> = {};
       try {
@@ -256,7 +273,7 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
         // Kept as a post with nothing readable in it.
       }
       const post: MailPost = {
-        seq: mailRecord.length + 1,
+        seq,
         at,
         mode,
         outcome: null,
@@ -300,11 +317,19 @@ export async function startStandIn(options: StandInOptions): Promise<StandIn> {
 
   const control = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://control").pathname;
-    const [, side, word] = path.split("/");
+    const [, side, word, ...more] = path.split("/");
+    if (more.length > 0) return json(response, 404, { error: "no such control" });
     if (request.method === "GET" && path === "/status") return json(response, 200, state());
     if (request.method === "GET" && path === "/coinbase")
       return json(response, 200, coinbaseRecord);
-    if (request.method === "GET" && path === "/mail") return json(response, 200, mailRecord);
+    if (request.method === "GET" && path === "/mail") {
+      // Kept as each post was read whole; listed in the order they arrived.
+      return json(
+        response,
+        200,
+        [...mailRecord].sort((one, other) => one.seq - other.seq),
+      );
+    }
     if (request.method === "POST" && path === "/restore") {
       coinbaseMode = "pass";
       mailMode = "accept";

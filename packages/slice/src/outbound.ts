@@ -66,7 +66,14 @@ const control = async (port: number, method: "GET" | "POST", path: string): Prom
         " laid over compose.yaml, or name the stand-in's published port with --port.",
     );
   }
-  const body: unknown = await answer.json();
+  let body: unknown;
+  try {
+    body = await answer.json();
+  } catch {
+    throw new Error(
+      `Something at 127.0.0.1:${port} answered ${answer.status} without the stand-in's JSON; it is not the stand-in's control port.`,
+    );
+  }
   if (!answer.ok) {
     const why = (body as { error?: unknown }).error;
     throw new Error(typeof why === "string" ? why : `the stand-in answered ${answer.status}`);
