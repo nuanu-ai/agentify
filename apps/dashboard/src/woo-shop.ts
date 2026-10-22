@@ -21,6 +21,7 @@ import {
 import { z } from "zod";
 import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import {
+  DECIMALS_ARE_EVERY_CUSTOMERS,
   decimalOfMinorUnits,
   productIdFromMerchantItem,
   type StoreProduct,
@@ -550,7 +551,9 @@ export const inspectProductInTheShop = async (
   if (unsupported.length > 0 || scale === null) {
     return {
       ok: false,
-      why: `This product cannot be imported: ${unsupported.join("; ")}.`,
+      why:
+        `This product cannot be imported: ${unsupported.join("; ")}.` +
+        (shopCurrency !== "USD" && scale === null ? ` ${DECIMALS_ARE_EVERY_CUSTOMERS}` : ""),
       again: false,
       saidNo: true,
     };

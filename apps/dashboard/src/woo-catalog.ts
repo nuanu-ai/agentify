@@ -30,6 +30,15 @@ import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
 import { dollarsAt, type ShopDecimals } from "./woo-money.js";
 
 /**
+ * Said wherever a shop is refused for its Number of decimals: the setting is
+ * the whole shop's, so the merchant learns what changing it costs before
+ * thinking of it as the way in.
+ */
+export const DECIMALS_ARE_EVERY_CUSTOMERS =
+  "That setting is how many decimals every price in your shop is shown with, to every" +
+  " customer, so changing it changes the prices all of them see, not only Agentify's buyers.";
+
+/**
  * Loose, so the day WooCommerce adds a field it does not refuse a whole
  * merchant's catalogue.
  */

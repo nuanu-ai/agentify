@@ -16,7 +16,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { plainTextOfHtml } from "./html-text.js";
-import { decimalOfMinorUnits } from "./woo-catalog.js";
+import { DECIMALS_ARE_EVERY_CUSTOMERS, decimalOfMinorUnits } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** The name in the key row the merchant reads in their shop. */
@@ -340,7 +340,8 @@ export const writesOtherDecimals = (currency: string, decimals: number): string 
   `When we asked your shop's public catalogue just now, it wrote its prices in ${currency} with` +
   ` ${decimals} decimals. Agentify sells from a shop priced in another currency than US dollars` +
   " only where the shop writes its prices with no decimals or with two (WooCommerce → Settings →" +
-  ` General → Number of decimals), so Connect stopped here.${NOTHING_CHANGED}`;
+  ` General → Number of decimals), so Connect stopped here. ${DECIMALS_ARE_EVERY_CUSTOMERS}` +
+  NOTHING_CHANGED;
 
 export const noReferenceFor = (currency: string): string =>
   `When we asked your shop's public catalogue just now, it priced its products in ${currency},` +
