@@ -41,7 +41,6 @@ const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
   currency: "USD",
   decimals: 2,
-  product: { name: "Canvas tote bag", price: "25.00" },
 };
 const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
 const SHOP = "https://shop.example.com";
@@ -2336,7 +2335,6 @@ describe("one integration at a time", () => {
       sample: async () => ({
         currency: "KWD",
         decimals: 3,
-        product: { name: "Dallah coffee pot", price: "12.500" },
       }),
     });
     await running.signIn();
@@ -2816,7 +2814,6 @@ describe("a shop priced in another currency than US dollars", () => {
   const IN_RUPIAH: ShopSample = {
     currency: "IDR",
     decimals: 0,
-    product: { name: "Rayon Sarong", price: "240000" },
   };
   const rupiahProduct = aProduct({
     id: 41,

@@ -26,10 +26,13 @@ import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-
 import {
   APP_NAME,
   authorizeUrlFor,
+  EXAMPLE_PAGE,
   GRANT_MINUTES,
   isTheGrantScreen,
   noReferenceFor,
   type Preflight,
+  type PricedExample,
+  pricedExampleOfTheShop,
   referenceUnanswered,
   type ShopSample,
   sampleOfTheShop,
@@ -72,6 +75,8 @@ export interface ShopCalls {
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
   /** Null where the shop did not clearly say. */
   readonly sample: (shopUrl: string) => Promise<ShopSample | null>;
+  /** The rate guard's example, in the shop's currency at its decimals. */
+  readonly example?: (shopUrl: string, currency: ShopCurrency) => Promise<PricedExample>;
   /** Coinbase's rate for one US dollar; not the shop's, but read only beside it. */
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
@@ -258,6 +263,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   const whereWeAre = `${config.publicBaseUrl}${base}`;
   const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
   const sample = parts.shop?.sample ?? sampleOfTheShop;
+  const example =
+    parts.shop?.example ??
+    ((shopUrl: string, currency: ShopCurrency) => pricedExampleOfTheShop(shopUrl, currency));
   const reference = parts.shop?.reference ?? ((code: string) => referenceRateOf(code));
   const postman = parts.postman ?? postmanFor(config);
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
@@ -793,20 +801,17 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       const confirmed = gap?.far === true;
       const again = once(form.getAll("again"));
       if (read.ok && gap?.far === true && rateWrittenAs(String(again ?? "")) !== rate) {
-        const example = await sample(connection.shopUrl);
-        const product =
-          example?.product === null ||
-          example === null ||
-          example.currency !== currency.code ||
-          minorOf(example.product.price)?.decimals !== currency.decimals
-            ? null
-            : example.product;
+        const product = await example(connection.shopUrl, currency);
         const costs =
-          product === null
-            ? "What one of your products would cost could not be shown, because your shop's catalogue did not answer just now."
-            : `So ${product.name}, priced ${product.price} ${currency.code}, would sell for` +
+          product.kind === "priced"
+            ? `So ${product.name}, priced ${product.price} ${currency.code}, would sell for` +
               ` ${dollarsAt(product.price, rate) ?? "?"} USD instead of` +
-              ` ${dollarsAt(product.price, read.rate) ?? "?"} USD.`;
+              ` ${dollarsAt(product.price, read.rate) ?? "?"} USD.`
+            : product.kind === "none"
+              ? "What one of your products would cost is not shown, because none of the first" +
+                ` ${EXAMPLE_PAGE} products in your shop's public catalogue has a price in ${currency.code}.`
+              : "What one of your products would cost could not be shown, because your shop's" +
+                " public catalogue did not answer just now.";
         return await drawTheShop(
           person,
           {

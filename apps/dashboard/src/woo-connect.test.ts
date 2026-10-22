@@ -249,7 +249,6 @@ describe("the currency a shop prices in, asked before Connect", () => {
       expect(await sampleOfTheShop(shop.url, fetch), `${currency} ${minorUnit}`).toMatchObject({
         currency,
         decimals: minorUnit,
-        product: { name: "Batik scarf" },
       });
       await shop.close();
       shop = null;
