@@ -14,6 +14,7 @@
     "buy": "tsx src/buy.ts",
     "cut": "tsx src/cut.ts",
     "outbound": "tsx src/outbound.ts",
+    "payment-faults": "tsx src/payment-faults.ts",
     "stand": "node --env-file-if-exists=../../.env.stand --import tsx src/stand.ts"
   },
   "devDependencies": {

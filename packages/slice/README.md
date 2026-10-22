@@ -499,3 +499,186 @@ that no longer goes through it, and `pnpm outbound status` still reports
 whatever mode it was left in. `docker compose -f compose.yaml -f
 packages/slice/outbound/compose.yaml down` removes the stand-in with the rest of
 the stack.
+
+## Breaking a payment on purpose
+
+Several stories in the [manual test plan](../../docs/research/42-manual-test-plan.md)
+turn on what the payment layer answers about one purchase: a payment the
+facilitator refuses to verify, a charge it refuses outright, a charge it carried
+out whose answer never came back, and a charge whose success arrives after the
+gateway has stopped waiting for it. No real facilitator gives any of these on
+demand. The payment fault control is a facilitator of its own for the local
+stack: it answers the two calls the gateway makes, verify and settle, the way
+the gateway's x402 client expects, valid and settled, except the one call the
+armed fault names. The gateway is pointed at it through the setting it already
+has, `FACILITATOR_URL`, so nothing in the gateway, the SDK or the dashboard
+changes or knows.
+
+Nothing it answers is money. It signs nothing, broadcasts nothing and asks no
+chain, and what it calls a transfer is an entry in its own memory. Every line
+of its log that names a transfer says it is a local model, and the transfer is
+named `local-model-<run>-<n>`, where the run is six hexadecimal characters
+drawn when the control starts, so that the transfers of two runs are told apart.
+That name is what the gateway records as the transaction that paid an order:
+the buyer's answer, the order's status, the merchant's receipt and the
+dashboard all show it, and none of them is evidence of a payment on any chain.
+
+### Pointing the local stack at it
+
+It is started from the root of the repository, and runs until it is stopped:
+
+```sh
+pnpm payment-faults --fault settle-lost
+```
+
+It listens on `127.0.0.1:8789`, or on the port given with `--port`, and only on
+loopback. The stack's gateway runs in a container, which reaches the host's
+loopback as `host.docker.internal` on Docker Desktop, where this was tried; on a
+Linux Docker engine that name is not defined by `compose.yaml`, and whether a
+container reaches a loopback listener there has not been tried. The stack is
+pointed at the control with the variable `compose.yaml` already reads, and the
+application is recreated for it to take effect:
+
+```sh
+AGENTIFY_FACILITATOR_URL=http://host.docker.internal:8789 docker compose up -d app
+```
+
+The same variable has to be given to every later `docker compose up` of that
+stack, or the application comes back on the sandbox's scripted facilitator.
+`AGENTIFY_PAYMENT_RPC_URL` stays empty, as `compose.yaml` leaves it. Given an
+address, the gateway's payment recovery would read the real Base Sepolia for
+every charge left unanswered, find the buyer's authorisation never used, since
+nothing ever broadcast it, and once it had expired record the order as not
+paid: the opposite of what `settle-lost`, and a late success that reached
+nobody, claim in the model. That was not tried here.
+
+A gateway whose facilitator is anything but the sandbox's is no longer a
+sandbox. It takes itself for a test channel: its first log line and the
+dashboard's banner say that payments settle on Base Sepolia with test funds,
+which is not true here, every key it issues begins with `csk_test_`, and a
+merchant sells only once they have a seller name and a payout wallet, set in
+the dashboard as on the test channel. The sandbox's placeholder wallet no
+longer stands in for one. Any address will do, such as a well-known
+local-devnet account, since nothing is ever paid to it. A gateway on a chain
+where the money is real refuses to start with any facilitator but Coinbase's,
+and the control itself answers only for Base Sepolia, `eip155:84532`: a call
+naming any other chain is answered 400 with no verdict, which the gateway reads
+as a facilitator that said nothing, and the log line says why.
+
+The buyer is `pnpm buy`, pointed at the stack as usual, or any x402 client. A
+buyer's signature is a real authorisation on Base Sepolia, and the control is
+the only party that receives it besides the gateway; it never sends it on, and
+its log never prints it.
+
+### Choosing the fault
+
+The rule names a fault and, optionally, which call it falls on and how long the
+answer is held. Without `--fault` the control breaks nothing, which is how the
+stack is run between faults.
+
+`--fault verify-refused` answers the chosen verification invalid, with the
+reason `insufficient_funds`. The gateway refuses that purchase before any goods
+are asked for and charges nothing: the buyer is answered 409
+`payment_not_verified`, not retryable, and the refusal quotes the control's own
+sentence, which says it is the armed fault.
+
+`--fault settle-failed` answers the chosen settle as a definite failure, one
+refused before anything was broadcast, with `invalid_exact_evm_recipient_mismatch`.
+That reason is one of the two the gateway's x402 adapter takes as proof that
+no money moved; every other failure it keeps as unknown, which is why the
+control does not let the reason be chosen. No transfer is counted in the model.
+A synchronous purchase whose goods were made reads `delivered_unpaid` with
+`payment_status` `not_paid`, the goods withheld from the buyer and the order
+listed for the merchant as delivered and not paid; a purchase paid before its
+goods reads `rejected` and `not_paid`.
+
+`--fault settle-lost` counts the chosen settle as a transfer in the model and
+closes the connection without an answer. The gateway's client meets a closed
+connection and the gateway keeps the order's payment as still running until its
+own wait for the charge runs out, ten seconds on a synchronous purchase and
+fifteen on one paid before its goods (`SETTLE_RESPONSE_MS` and
+`SETTLE_BEFORE_GOODS_MS`). From then the order reads `payment_unresolved` with
+`payment_status` `unresolved`, for the buyer, for the merchant and on the
+dashboard, where it says the payment outcome is unknown. With payment recovery
+off it stays that way, since nothing on the local stack can ever settle it.
+
+`--fault settle-late` holds the chosen settle and then answers it settled, as
+a counted transfer in the model. The hold is what makes it late, and only a
+hold longer than the gateway's own wait for the charge, ten or fifteen seconds
+as above, does: a shorter one is merely slow. When the wait runs out the order
+reads `payment_unresolved`, and the success that comes after it is applied to
+the order. A synchronous order then releases its goods and reads `delivered`
+and `paid`; an order paid before its goods and not handed to the merchant reads
+`unfulfilled` and `paid`. A merchant's closure sent during the hold was taken at
+once, two and six seconds into it, and the late success then left the order
+`fulfillment_closed` and `paid`, back on the merchant's open orders as paid
+after closure. The gateway's facilitator client gives up on its own after thirty
+seconds, measured with `@x402/core` 2.23.0 and counted from before the call
+reaches the control: a hold of thirty seconds or more never reaches the
+gateway, which then reads the charge as unknown exactly as with `settle-lost`,
+and the log says that the success reached nobody. A hold a little under thirty
+seconds, such as 27, leaves the most time for a person to act before the
+answer. The log line says only that the control sent the answer; the order
+turning `paid` is what shows the gateway received it.
+
+`--nth` picks which call of the faulted kind is broken, counted in the order the
+calls arrive: verifications for `verify-refused`, settles for the others. It is
+the first by default. The nth call is not the nth purchase: a purchase the
+merchant refuses, one whose goods come too late, one whose price is declined
+and one whose payment the gateway refuses on its own reach no settle, a
+buyer who presents a payment again after a verification went unanswered makes
+a second verification, and a payment
+presented again for an order already paid is meant to reach the facilitator
+not at all. The safe habit is to restart the control with the default `--nth`
+right before the purchase to break, and to read the log's count of calls
+rather than count purchases.
+
+`--after` is the hold, in seconds, from 0 to 600: twenty by default for
+`settle-late` and none for the other settle faults, where a hold makes the
+failure or the lost answer late as well. It is refused with `verify-refused`.
+
+A fault falls once. From then on every call is answered valid or settled, and
+the log says the fault is spent; arming it again means restarting the control.
+Stopping it while a settle is held drops that answer as well, which is a lost
+answer nobody chose, so a held settle is waited out before a restart. A
+control that is not running at all is one more way to fail, not a fault it
+arms: a verification that meets the closed port is answered to the buyer as a
+refusal marked retryable, and a settle that meets it is unknown, as with
+`settle-lost`.
+
+### Reading the log
+
+The log is one line per call on standard output, and more for a settle the
+fault holds or cuts: the time, a sequence number, verify or settle, the
+payment reference, the amount, the payer, the address paid, the first
+characters of the authorisation's nonce, and what was answered and after how
+long. A line also says when the gateway stopped waiting while an answer was
+held. The payment reference is the name the 402 challenge gives an order and
+opens nothing; the order's own identifier never reaches a facilitator and is
+not in the log. The payee is the merchant's payout contract, which is how a
+story about a changed wallet reads which address a charge was made out to.
+
+The model counts one transfer per authorisation. A second settle of an
+authorisation it already counted is answered as the rule says, names the first
+transfer again and says so in its line: that line is what a story about a
+charge made twice looks for, since no chain would move one authorisation's
+money twice and a gateway that asked for it would be the defect. A real
+facilitator would refuse the used authorisation, so the order such a settle
+leaves behind is not what a real one would, and only the log line is evidence
+in that case. The control checks nothing else about a payment: no signature,
+no balance and no nonce on any chain, so a payment it calls valid proves
+nothing about the buyer's wallet.
+
+### What it does not model
+
+The control speaks for the facilitator and nobody else. The gateway's recovery
+of an unanswered charge reads the chain through `PAYMENT_RPC_URL`, and there is
+no model of that chain here, so the stories that need a finalized transfer, a
+cancelled authorisation, one that expired unused, an unreachable endpoint or a
+receipt that does not match are not run with it, and a lost answer stays
+unresolved on the local stack for good. A facilitator's answer that a charge
+is pending, or a failure in words the adapter does not know, is not offered
+either: the gateway keeps both as unknown, which `settle-lost` already shows.
+It is not the forwarder that records the calls between the gateway and
+x402.org's facilitator, and a real settlement on the test channel still needs
+a capped real purchase there.
