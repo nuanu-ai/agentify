@@ -199,41 +199,186 @@ const BASE_SETTINGS = [
 ] as const;
 
 /**
- * Download and shipping settings are asked for in one batch, one round trip
- * whichever class the product is, and only the answers bearing on its class
- * decide, a lost one included; a shop that hides or drops its download
- * settings can still sell a parcel.
+ * The settings every product is judged by, in the order the judge reads them:
+ * download and shipping settings alike, whichever class the product is, and
+ * only the answers bearing on its class decide, a lost one included; a shop
+ * that hides or drops its download settings can still sell a parcel.
  */
+const SETTING_PATHS = [
+  "/wp-json/wc/v3/settings/general/woocommerce_currency",
+  "/wp-json/wc/v3/settings/general/woocommerce_calc_taxes",
+  "/wp-json/wc/v3/settings/products/woocommerce_file_download_method",
+  "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
+  "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
+  "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
+  "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
+  "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
+  "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
+  "/wp-json/wc/v3/settings/tax",
+  "/wp-json/wc/v3/settings/general",
+] as const;
+
+/**
+ * How many requests a whole catalogue keeps in somebody else's shop at once:
+ * the pace of a few visitors, on a shop that is often on shared hosting.
+ */
+const IN_THE_SHOP_AT_ONCE = 4;
+
+/**
+ * A list asks for only the fields the judge reads, so a page stays small
+ * whatever else the shop's products carry.
+ */
+const PRODUCT_FIELDS = Object.keys(ProductSchema.shape).join(",");
+
+/** Null where the shop never answered; `body` is null where its answer broke off. */
+type Answered = { readonly response: Response; readonly body: string | null } | null;
+
+const askedTheShop = async (
+  keys: ShopKeys,
+  path: string,
+  request: WooRequest,
+): Promise<Answered> => {
+  let response: Response;
+  try {
+    response = await request(`${keys.shopUrl}${path}`, {
+      headers: { authorization: basicFor(keys), accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+    });
+  } catch {
+    return null;
+  }
+  const body = await response.text().catch(() => null);
+  return { response, body };
+};
+
+/**
+ * Settled before the shop is asked, so a card left over from a shop the
+ * merchant connected before is told as not for sale rather than as a price
+ * check unanswered.
+ */
+const OF_ANOTHER_SHOP: NotSellable = {
+  ok: false,
+  why: "This card belongs to a different WooCommerce shop.",
+  again: false,
+  saidNo: true,
+};
+
+/** Preserves input order while bounding calls into one merchant's shop. */
+export const mapAtMost = async <Input, Output>(
+  values: readonly Input[],
+  atMost: number,
+  visit: (value: Input) => Promise<Output>,
+): Promise<Output[]> => {
+  const results = new Array<Output>(values.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < values.length) {
+      const index = next;
+      next += 1;
+      const value = values[index];
+      if (value !== undefined) results[index] = await visit(value);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
+  return results;
+};
+
+/** The product and every setting at once, as the price question and an order ask about one card. */
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
   merchantItemId: string,
   request: WooRequest = wooRequest,
 ): Promise<ProductInspection> => {
   const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
-  if (productId === null) {
-    // Settled here, so a card left over from a shop the merchant connected
-    // before is told as not for sale rather than as a price check unanswered.
-    return {
-      ok: false,
-      why: "This card belongs to a different WooCommerce shop.",
-      again: false,
-      saidNo: true,
-    };
+  if (productId === null) return OF_ANOTHER_SHOP;
+  const answers = await Promise.all(
+    [`/wp-json/wc/v3/products/${productId}`, ...SETTING_PATHS].map((path) =>
+      askedTheShop(keys, path, request),
+    ),
+  );
+  return await judged(keys, productId, answers, request);
+};
+
+/**
+ * Every product of an import, judged as `inspectProductInTheShop` judges one,
+ * from one read of each setting and the products' documents a hundred to a
+ * request, with at most a few requests in the shop at once. In the order asked.
+ */
+export const inspectProductsInTheShop = async (
+  keys: ShopKeys,
+  merchantItemIds: readonly string[],
+  request: WooRequest = wooRequest,
+): Promise<ProductInspection[]> => {
+  const productIds = merchantItemIds.map((id) => productIdFromMerchantItem(keys.shopUrl, id));
+  const settings = await mapAtMost(SETTING_PATHS, IN_THE_SHOP_AT_ONCE, (path) =>
+    askedTheShop(keys, path, request),
+  );
+  const wanted = [...new Set(productIds.filter((id): id is string => id !== null))];
+  const pages = Array.from({ length: Math.ceil(wanted.length / PER_PAGE) }, (_, index) =>
+    wanted.slice(index * PER_PAGE, (index + 1) * PER_PAGE),
+  );
+  /** Each product's own document, or its page's answer where that is not a list to look in. */
+  const read = new Map<string, Answered | "left out">();
+  await mapAtMost(pages, IN_THE_SHOP_AT_ONCE, async (page) => {
+    const answered = await askedTheShop(
+      keys,
+      `/wp-json/wc/v3/products?include=${page.join(",")}&per_page=${PER_PAGE}&_fields=${PRODUCT_FIELDS}`,
+      request,
+    );
+    const listed = listedIn(answered);
+    for (const id of page) {
+      if (answered === null || listed === null) {
+        read.set(id, answered);
+        continue;
+      }
+      // Matched by its own id: a document the list carries for another
+      // product never stands in for this one.
+      const document = listed.find((one) => String(one.id) === id);
+      read.set(
+        id,
+        document === undefined
+          ? "left out"
+          : { response: answered.response, body: JSON.stringify(document) },
+      );
+    }
+  });
+  return await mapAtMost(productIds, IN_THE_SHOP_AT_ONCE, async (productId) => {
+    if (productId === null) return OF_ANOTHER_SHOP;
+    const product = read.get(productId) ?? null;
+    if (product === "left out") {
+      // Not told as the shop's no: a list can leave a product out for reasons
+      // of its own, a cache in front of the shop among them.
+      return {
+        ok: false,
+        why: `The shop's protected product list left out product ${productId}, so it could not be checked.`,
+        again: true,
+      };
+    }
+    return await judged(keys, productId, [product, ...settings], request);
+  });
+};
+
+/** The documents of a list page, or null where the page is not a readable list. */
+const listedIn = (answered: Answered): readonly { readonly id: unknown }[] | null => {
+  if (answered === null || !answered.response.ok || typeof answered.body !== "string") return null;
+  try {
+    const document: unknown = JSON.parse(answered.body);
+    return Array.isArray(document)
+      ? document.filter((one): one is { id: unknown } => typeof one === "object" && one !== null)
+      : null;
+  } catch {
+    return null;
   }
-  const endpoints = [
-    `/wp-json/wc/v3/products/${productId}`,
-    "/wp-json/wc/v3/settings/general/woocommerce_currency",
-    "/wp-json/wc/v3/settings/general/woocommerce_calc_taxes",
-    "/wp-json/wc/v3/settings/products/woocommerce_file_download_method",
-    "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
-    "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
-    "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
-    "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
-    "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
-    "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
-    "/wp-json/wc/v3/settings/tax",
-    "/wp-json/wc/v3/settings/general",
-  ] as const;
+};
+
+/** The product's answer first, then each of `SETTING_PATHS` in order. */
+const judged = async (
+  keys: ShopKeys,
+  productId: string,
+  answers: readonly Answered[],
+  request: WooRequest,
+): Promise<ProductInspection> => {
   /** The product first. */
   const BEARING = {
     download: [0, 1, 2, 3, 4, 5, 6, 7],
@@ -241,30 +386,13 @@ export const inspectProductInTheShop = async (
   } as const;
   /** Asked as a whole group rather than one setting. */
   const GROUPS = [10, 11];
-  const settingAsked = (index: number) => endpoints[index]?.split("/").at(-1);
+  const settingAsked = (index: number) => SETTING_PATHS[index - 1]?.split("/").at(-1);
   /** Which check an answer was, and the status it came with, as a log names them. */
   const checkAt = (index: number) =>
     index === 0
       ? "product"
       : `${settingAsked(index)} ${GROUPS.includes(index) ? "settings" : "setting"}`;
   const statusAt = (index: number) => `HTTP ${answers[index]?.response.status}`;
-  /** Null where the shop never answered; `body` is null where its answer broke off. */
-  const answers = await Promise.all(
-    endpoints.map(async (path) => {
-      let response: Response;
-      try {
-        response = await request(`${keys.shopUrl}${path}`, {
-          headers: { authorization: basicFor(keys), accept: "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
-        });
-      } catch {
-        return null;
-      }
-      const body = await response.text().catch(() => null);
-      return { response, body };
-    }),
-  );
   /** Undefined where it is not JSON. */
   const documentOf = (index: number): unknown => {
     const body = answers[index]?.body;
@@ -366,7 +494,7 @@ export const inspectProductInTheShop = async (
   const kind = !product.virtual && !product.downloadable ? "parcel" : "download";
   const settingsUnanswered = unanswered(BEARING[kind]);
   if (settingsUnanswered !== null) return settingsUnanswered;
-  const settings = endpoints.map((_, index) => SettingSchema.safeParse(documentOf(index)));
+  const settings = answers.map((_, index) => SettingSchema.safeParse(documentOf(index)));
   if (settings[2]?.success !== true) {
     return {
       ok: false,

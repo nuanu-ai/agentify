@@ -49,6 +49,7 @@ import {
   type CatalogueRead,
   catalogueOf,
   inspectProductInTheShop,
+  mapAtMost,
   PRODUCTS_AT_MOST,
   type ProductInspection,
   type ShopKeys,
@@ -173,26 +174,6 @@ const shopStateOf = async (shops: WooShops, accountId: string): Promise<ShopStat
  * nobody's choice, and is read as not named at all.
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
-
-/** Preserves input order while bounding calls into one merchant's shop. */
-const mapAtMost = async <Input, Output>(
-  values: readonly Input[],
-  atMost: number,
-  visit: (value: Input) => Promise<Output>,
-): Promise<Output[]> => {
-  const results = new Array<Output>(values.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < values.length) {
-      const index = next;
-      next += 1;
-      const value = values[index];
-      if (value !== undefined) results[index] = await visit(value);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
-  return results;
-};
 
 /**
  * A throw may come after the card was written, so it is neither a refusal nor a

@@ -1862,17 +1862,25 @@ describe("the protected product check", () => {
       (new URL(url, "http://x").searchParams.get("include") ?? "").split(",").filter(Boolean);
 
     /**
-     * A shop of `count` products, every third a parcel and the rest downloads,
-     * answering a list from these documents and each product on its own.
+     * A shop answering a list from these documents and each product on its
+     * own, its files on its own origin whenever it was stood up.
      */
     const shopOf = (
       documents: ReadonlyMap<string, Record<string, unknown>>,
-      answer: (asked: Asked) => ReturnType<Parameters<typeof shopAnswering>[0]> | null = () =>
-        null,
+      answer: (asked: Asked) => ReturnType<Parameters<typeof shopAnswering>[0]> | null = () => null,
     ) =>
       shopAnswering((asked) => {
         const given = answer(asked);
         if (given !== null) return given;
+        const here = (document: Record<string, unknown> | undefined) =>
+          document === undefined
+            ? undefined
+            : (JSON.parse(
+                JSON.stringify(document).replaceAll(
+                  "http://127.0.0.1/protected/",
+                  `${stand?.url}/protected/`,
+                ),
+              ) as Record<string, unknown>);
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("/settings/")) {
           return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
@@ -1881,18 +1889,19 @@ describe("the protected product check", () => {
           return {
             status: 200,
             body: includedIn(asked.url).flatMap((id) => {
-              const document = documents.get(id);
+              const document = here(documents.get(id));
               return document === undefined ? [] : [document];
             }),
           };
         }
         const one = /^\/wp-json\/wc\/v3\/products\/(\d+)$/.exec(asked.url)?.[1];
-        const document = one === undefined ? undefined : documents.get(one);
+        const document = one === undefined ? undefined : here(documents.get(one));
         return document === undefined
           ? { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } }
           : { status: 200, body: document };
       });
 
+    /** Every third a parcel and the rest downloads. */
     const documentsOf = (count: number) =>
       new Map(
         Array.from({ length: count }, (_, index) => {
@@ -1953,7 +1962,9 @@ describe("the protected product check", () => {
 
       const together = await inspectAll(keys, [...documents.keys()]);
       const oneByOne = await Promise.all(
-        [...documents.keys()].map((id) => inspectProduct(keys, merchantItemIdFor(stand?.url ?? "", id))),
+        [...documents.keys()].map((id) =>
+          inspectProduct(keys, merchantItemIdFor(stand?.url ?? "", id)),
+        ),
       );
 
       expect(together).toEqual(oneByOne);
@@ -1967,13 +1978,19 @@ describe("the protected product check", () => {
       // carries for another product stand in for it.
       const documents = documentsOf(3);
       stand = await shopOf(documents, (asked) =>
-        asked.url.startsWith(LIST) ? { status: 200, body: [documents.get("1"), parcelDocument({ id: 99 })] } : null,
+        asked.url.startsWith(LIST)
+          ? { status: 200, body: [documents.get("1"), parcelDocument({ id: 99 })] }
+          : null,
       );
 
       const [first, second] = await inspectAll(connectionTo(stand.url), ["1", "2"]);
 
       expect(first).toMatchObject({ ok: true });
-      expect(second).toMatchObject({ ok: false, again: true, why: expect.stringContaining("product 2") });
+      expect(second).toMatchObject({
+        ok: false,
+        again: true,
+        why: expect.stringContaining("product 2"),
+      });
       expect(second).not.toHaveProperty("saidNo");
     });
 
@@ -1981,7 +1998,8 @@ describe("the protected product check", () => {
       const documents = documentsOf(150);
       const losingTheSecond: WooRequest = async (url, init) => {
         const href = String(url);
-        if (href.includes(LIST) && includedIn(href)[0] === "101") throw new TypeError("fetch failed");
+        if (href.includes(LIST) && includedIn(href)[0] === "101")
+          throw new TypeError("fetch failed");
         return await fetch(url, init);
       };
       stand = await shopOf(documents);
