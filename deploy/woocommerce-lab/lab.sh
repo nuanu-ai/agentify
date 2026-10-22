@@ -138,8 +138,11 @@ lab_busy() {
 seconds() { python3 -I -c 'import time; print(f"{time.time():.1f}")'; }
 since() { python3 -I -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.1f}")' "$1"; }
 
+# A build restores the baseline from its SQL dump, so MariaDB first creates its
+# data directory from nothing; on the fixture host that took three minutes
+# where a laptop took seconds.
 wait_for_database() {
-  for _ in $(seq 1 90); do
+  for _ in $(seq 1 600); do
     if compose exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1; then
       return
     fi
@@ -355,7 +358,7 @@ build_profile() {
   if has_mail_catcher "$profile"; then start_shop with-mail; else start_shop; fi
 
   local revision changed=no
-  revision="$(git rev-parse --short=12 HEAD 2>/dev/null || echo 'not a git checkout')"
+  revision="$(git rev-parse --short=12 HEAD 2>/dev/null || head -c 12 "$lab_dir/REVISION" 2>/dev/null || echo 'not a git checkout')"
   if [[ -n "$(git status --porcelain -- . 2>/dev/null)" ]]; then
     changed=yes
   fi
