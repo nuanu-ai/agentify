@@ -1,5 +1,99 @@
 # Merchant SDK release history
 
+## 0.8.0
+
+### Minor Changes
+
+- bcdd8d8: Handle up to four stream messages concurrently through one poll producer, so a slow order no longer blocks unrelated orders and quotes while capacity is available. Preserve same-order event ordering, coalesce in-flight order redeliveries, and wait for all started handlers during shutdown. Handlers for different orders may now overlap; fulfillment still needs idempotency by order identifier.
+- f9a2ce4: The confirmation mode is gone from the contract. `FulfillmentSchema` is
+  `sync`, `async` or `ship`, and a card naming `confirm` is refused with the
+  ordinary list of modes; the card and the agent's public card have no
+  `confirm_deadline_seconds`; the order status `declined` and the event
+  `order.unpaid_after_confirmation` (`ORDER_EVENT_TYPES.UNPAID_AFTER_CONFIRMATION`)
+  are removed. No card could be published in that mode, so the gateway sent none
+  of these values, and a reader built on the previous version reads everything
+  it sends today. The SDK re-exports the narrower `Card`, `CardInput`,
+  `Fulfillment`, `OrderStatus` and `OrderEvent` types and `ORDER_EVENT_TYPES`
+  without that member.
+  
+  Code that names any of the removed values stops compiling on upgrade:
+  `ORDER_EVENT_TYPES.UNPAID_AFTER_CONFIRMATION`, a `case "declined"` on an order
+  status, `fulfillment: "confirm"` in a card, and `confirm_deadline_seconds`.
+  Such code handled something the gateway never sent, so deleting it changes
+  nothing at run time.
+- d9bcb7d: A merchant's selling state is `open` or `paused`; `departed` is gone from
+  `SellingStateSchema`, because nothing could set a merchant to it. With it go
+  the order status `cancelled`, the reason `merchant_left` on `order.unfulfilled`
+  and on an unfulfilled order's status, and the error code `merchant_departed`.
+  The descriptions of the pause and resume routes no longer speak of a merchant
+  who has left. The gateway sent none of these values, so a reader built on the
+  previous version reads everything it sends today. The SDK re-exports the
+  narrower `OrderStatus` and `OrderEvent` types.
+  
+  Code that names any of the removed values stops compiling on upgrade: a
+  `case "cancelled"` on an order status, the reason `merchant_left`, the error
+  code `merchant_departed`, and the selling state `departed`. Such code handled
+  something the gateway never sent, so deleting it changes nothing at run time.
+- 64ac57f: The SDK reads what only informs leniently, so an older release keeps working
+  when Agentify adds to it. A field it does not know on an event, a card, a
+  receipt, an envelope or around an order is left out of what the merchant's
+  code receives. An event of a kind it does not know is skipped: the rest of the
+  poll is handled, and the problem reporter receives one non-fatal
+  `event_skipped` problem naming the event's type and its order. A word it does
+  not know reads `unknown` in an order's `status` or `payment_status`, an
+  event's `reason` and the `result` beside `ok: true`, where the call still
+  succeeded. A price question for a `purpose` it does not know is left
+  unanswered with one non-fatal `quote_skipped` problem, which counts as a silent
+  price check: a synchronous card sells at its card price, and other modes
+  refuse the sale. The SDK's
+  `OrderStatus`, `PaymentStatus`, `OrderWithStatus`, `OrderList`, `OrderEvent`,
+  `OrderCallResult` and `OrderCallResponse` types carry that one extra word.
+  
+  What an order delivers is read as closed as it is written, off the stream and
+  read back: an unknown field or address shape there fails the poll or the read
+  rather than reach the merchant's code with part of the order missing.
+  
+  On a version mismatch the worker takes no new work, lets handlers already
+  running send their answers for as long as a poll may take, and then stops,
+  reporting any order still in a handler as abandoned.
+  
+  The contracts package gains `readerOf(schema)`, which makes this reader out of
+  any of the merchant's documents, with the `Read`, `UnreadEvent` and
+  `UnknownWord` types and `UNKNOWN_WORD`. The schemas themselves stay closed:
+  they are what a gateway writes, and a field it was not meant to send is
+  refused on its side.
+  
+  Every SDK call names the package's release in its `user-agent` header as
+  `agentify-sdk/<version>`, the version only when the manifest beside the code
+  is this package's own. The gateway notes it beside a key's last use whenever
+  it writes that down. Nothing is refused on it.
+  
+  `CONTRACT_VERSION` moves from `2` to `3`, once, at the switch from strict to
+  lenient reading: a release up to 0.7.1 reads strictly, and now stops at its
+  first poll answer saying it is out of date rather than failing on a later
+  addition. From here the version moves when a field or a word is renamed or
+  removed, a field's meaning changes, anything is added to what an order
+  delivers, or a card mode, selling state or kind of message is added; an
+  informational field, an event kind or a status, reason, result or purpose
+  word leaves it alone. Every schema's identity moves with it, to
+  `urn:agentify:contract:3:<name>`.
+
+### Patch Changes
+
+- 8cd051f: The description of `orders.list` says that an order which ended rejected or
+  expired with nothing charged or held is deleted thirty days after it was last
+  written, after which `orders.get` refuses it with `no_such_order` and no list
+  carries it.
+- Updated dependencies [92b905b]
+- Updated dependencies [f9a2ce4]
+- Updated dependencies [d9bcb7d]
+- Updated dependencies [f662789]
+- Updated dependencies [3099788]
+- Updated dependencies [581ee20]
+- Updated dependencies [c43b0e9]
+- Updated dependencies [64ac57f]
+  - @nuanu-ai/agentify-contracts@0.14.0
+
 ## 0.7.1
 
 ### Patch Changes
