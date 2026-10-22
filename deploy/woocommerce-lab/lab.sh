@@ -35,6 +35,8 @@ Usage: ./lab.sh <command>
   settings list               the readings taken
   requests [--since WHEN] [--until WHEN] [--agent TEXT]
                               the requests the shop received, as its Caddy logged them
+  orders [AGENTIFY_ORDER_ID]  how many orders the shop holds, by status, and every
+                              order carrying that Agentify order; exits 3 if none does
 
 Profiles: basic realistic realistic-usd hard
 Overlays: tax-incl tax-excl tax-per-line tax-shop-shows-excl tax-cart-shows-excl
@@ -265,8 +267,10 @@ build_baseline() {
   wait_for_database
   wait_for_wordpress
 
+  # A local copy behind the controlled Woo fault names its own address in its
+  # .env, so that every link its profiles store leads to the copy.
   wp core install \
-    --url=https://woo.nuanu.ai \
+    --url="${WOO_LAB_URL:-https://woo.nuanu.ai}" \
     --title='Test Gift Shop' \
     --admin_user=admin \
     --admin_password="$WORDPRESS_ADMIN_PASSWORD" \
@@ -436,7 +440,7 @@ PY
   finished_as "$profile"
   printf '\nThe shop is the %s profile, switched in %ss. Orders, customers, REST API keys and\n' "$profile" "$(since "$started")"
   printf 'any Agentify connection to the shop are gone: a connected merchant connects again.\n'
-  printf 'Store: https://woo.nuanu.ai  Admin: admin, with the password in .env\n'
+  printf 'Store: %s  Admin: admin, with the password in .env\n' "${WOO_LAB_URL:-https://woo.nuanu.ai}"
 }
 
 active_profile() {
@@ -594,6 +598,19 @@ show_requests() {
     done' | python3 -I lib/request_log.py "$@"
 }
 
+# Read-only, and refused rather than answered while another command changes
+# the shop, since an order count taken half way through a switch is neither
+# profile's.
+show_orders() {
+  [[ $# -le 1 ]] || fail "orders takes at most one Agentify order identifier"
+  if lab_busy; then
+    fail "./lab.sh $(cat "$lab_dir/.lab.lock/command" 2>/dev/null || echo '…') is changing the shop, so it was not asked; ask again once that finishes"
+  fi
+  compose ps --status running --services 2>/dev/null | grep -qx db ||
+    fail "the shop's database is not running, so the shop was not asked"
+  wp eval-file - "$@" <lib/orders.php
+}
+
 # --- Dispatch ----------------------------------------------------------------
 
 main() {
@@ -608,7 +625,7 @@ main() {
   lab_lock=""
   trap 'rm -rf "$lab_tmp"; if [[ -n "$lab_lock" ]]; then rm -rf "$lab_lock"; fi' EXIT
   case "$command $*" in
-    status* | list* | requests* | "settings diff"* | "settings list"* | help* | -h* | --help*) ;;
+    status* | list* | requests* | orders* | "settings diff"* | "settings list"* | help* | -h* | --help*) ;;
     *) take_lock "$command" "$@" ;;
   esac
 
@@ -644,6 +661,7 @@ main() {
         check) check_shop "$@" ;;
         settings) settings "$@" ;;
         requests) show_requests "$@" ;;
+        orders) show_orders "$@" ;;
         *)
           usage
           exit 2

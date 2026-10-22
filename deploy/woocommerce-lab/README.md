@@ -510,3 +510,84 @@ built for WordPress, usually together with its LiteSpeed Cache plugin, which
 caches pages and can change what a repeated request is answered with. Both
 change DNS, the shared ingress or the fixture host, and whether to make those
 changes is the operator's decision.
+
+## Counting the shop's orders
+
+`./lab.sh orders` says how many orders the shop holds, by status and with
+those in the bin, and `./lab.sh orders <Agentify order id>` also lists every
+order that carries that identifier, either in the `agentify_order_id` line the
+connector writes on an order or as the order's transaction, with its number,
+status, total, when and through what it was created, the `agentify_` lines
+the connector wrote on it, and any fee lines. It reads the orders through
+WooCommerce and changes nothing, so it runs beside a connected merchant, but
+not while another command is changing the shop, which it refuses. Asked about an identifier that no order carries, it says so and
+exits 3; a shop it could not ask, because the database is not running or `wp`
+failed, ends in a failure with its reason, which is not the same answer.
+
+```console
+$ ./lab.sh orders ord_43fa27b215b94b6abd6eb54ab83b3ca7
+The shop holds 4 orders: 4 completed.
+1 order carries ord_43fa27b215b94b6abd6eb54ab83b3ca7:
+  order 4226 (number 4226): completed, total 16001 IDR, created 2026-10-22T13:04:30Z via rest-api; carries it as agentify_order_id and transaction
+    agentify_order_id: ord_43fa27b215b94b6abd6eb54ab83b3ca7
+    agentify_paid: 0.87 USD
+    agentify_shop_amount: 16000 IDR
+    agentify_rate: 18500 IDR per USD, rate 2, set 2026-10-22T13:03:52.192Z
+    fee line Controlled Woo fault: total shifted by 1: 1
+```
+
+That order, on a local copy of the hard profile, is one the controlled Woo
+fault below shifted by one rupiah on its way into the shop. Reading the shop
+this way is how a story shows whether WooCommerce made the order for a sale,
+and that it made one and not two.
+
+## A local copy behind the controlled Woo fault
+
+The controlled Woo fault ([packages/slice/README.md](../../packages/slice/README.md))
+fronts a copy of this lab on the organiser's own machine, never the shared lab.
+A copy is this directory of a commit, unpacked into a directory of its own as
+described under "The command", with a `.env` that names the copy and wires it
+to the instrument:
+
+```sh
+WOOCOMMERCE_DATA_ROOT=<the copy's own data directory, absolute, without links>
+WOO_LAB_LISTEN_ADDRESS=127.0.0.1
+WORDPRESS_DB_PASSWORD=<openssl rand -hex 24>
+MARIADB_ROOT_PASSWORD=<openssl rand -hex 24>
+WORDPRESS_ADMIN_PASSWORD=<openssl rand -hex 18>
+COMPOSE_PROJECT_NAME=instr-woo-lab
+COMPOSE_FILE=compose.yaml:local-copy.yaml
+WOO_LAB_URL=https://shop.woo-fault.test
+WOO_FAULT_DIR=<the directory packages/slice/woo-fault/certs.sh made>
+```
+
+Compose reads the last four from the `.env` as `lab.sh` runs it, so every
+command of the copy acts on the Compose project `instr-woo-lab` with
+[`local-copy.yaml`](local-copy.yaml) laid over `compose.yaml`. That file joins
+the copy's WordPress to the instrument's network, where the edge reaches it,
+resolves the dashboard's name to the edge, has WooCommerce trust the run's
+certificate authority for that name alone when it posts a merchant's keys, and
+turns the copy's Caddy into a stand-in that serves nothing, since the lab's
+Caddy would ask Let's Encrypt for the shared lab's certificate. The mail
+catcher listens on 127.0.0.1:18626. `WOO_LAB_URL` is the address
+`./lab.sh baseline` installs WordPress at, so the profiles a copy builds store
+their download files at the copy's own address; without it a download in the
+copy would be a link to the shared lab, and `local-copy.yaml` refuses to start
+a copy whose `.env` does not set it.
+
+The copy needs the instrument's stack up first, because its network is the
+stack's. It then builds its own baseline and the profiles a run needs, which
+downloads WordPress, WooCommerce and, for the realistic and hard profiles,
+their plugins:
+
+```sh
+./lab.sh baseline
+./lab.sh build basic        # and realistic, realistic-usd or hard as the run needs
+```
+
+From then on the copy is switched, overlaid, checked and read as the lab is,
+and a switch disconnects a merchant from it as it does here. Its request log is
+the edge's, since its Caddy carries no requests; `./lab.sh requests` there
+shows nothing. The copy is taken down with `docker compose down` in its
+directory, before the instrument's stack, whose network it is still attached
+to.

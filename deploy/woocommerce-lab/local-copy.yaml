@@ -1,0 +1,66 @@
+# A copy of the lab on a laptop, reached only through the controlled Woo
+# fault's edge (packages/slice/README.md). It is laid over compose.yaml by the
+# copy's own .env, which names this file in COMPOSE_FILE; the lab on the
+# fixture host never reads it. The README's "A local copy behind the controlled
+# Woo fault" says how a copy is made.
+#
+# The copy answers as https://shop.woo-fault.test instead of the lab's public
+# name, so that no link it writes leads to the shared lab, and .test is a name
+# no public resolver answers. The copy's .env names that address in
+# WOO_LAB_URL, which lab.sh installs the baseline at, so every profile the copy
+# builds stores its download files at the copy's own address; a copy without
+# it refuses to start. The two constants below say the same to the running
+# shop.
+#
+# WooCommerce posts a merchant's keys to the dashboard over https, verifying
+# its certificate against WordPress's own list of authorities. For the
+# dashboard's name alone, the hook below points that check at the run's
+# authority instead, which keeps every other request on WordPress's own list.
+# A hook placed in $wp_filter before WordPress loads is taken as if a plugin
+# had added it, so no file of the shop changes and no must-use plugin appears
+# for the profile's check to find. `$$` is Compose's escape for `$`.
+
+services:
+  wordpress:
+    environment:
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', '${WOO_LAB_URL:?set WOO_LAB_URL=https://shop.woo-fault.test in the copy .env}');
+        define('WP_SITEURL', '${WOO_LAB_URL:?set WOO_LAB_URL=https://shop.woo-fault.test in the copy .env}');
+        define('WP_MEMORY_LIMIT', '512M');
+        define('WP_ENVIRONMENT_TYPE', 'staging');
+        define('DISALLOW_FILE_EDIT', true);
+        $$GLOBALS['wp_filter']['http_request_args'][10][] = [
+          'accepted_args' => 2,
+          'function' => static function ($$args, $$url) {
+            if (parse_url($$url, PHP_URL_HOST) === 'agentify.woo-fault.test') {
+              $$args['sslcertificates'] = '/woo-fault/ca.pem';
+            }
+            return $$args;
+          },
+        ];
+    extra_hosts:
+      - "agentify.woo-fault.test:192.175.48.10"
+    volumes:
+      - "${WOO_FAULT_DIR:?set WOO_FAULT_DIR to the directory certs.sh made}/ca.pem:/woo-fault/ca.pem:ro"
+    networks:
+      shop: {}
+      edge:
+        aliases: [woo-fault-wordpress]
+
+  # The lab's Caddy would ask Let's Encrypt for the lab's public name, which
+  # Let's Encrypt would check against the shared lab. In a copy the edge is the
+  # shop's TLS and its request log, so Caddy only stands in for lab.sh.
+  caddy:
+    command: ["sh", "-c", "trap 'exit 0' TERM; sleep 2147483647 & wait"]
+    ports: !reset []
+
+  mailpit:
+    ports: !override
+      - "127.0.0.1:18626:8025"
+
+networks:
+  shop:
+    name: instr-woo-lab
+  edge:
+    name: instr-woo-edge
+    external: true
