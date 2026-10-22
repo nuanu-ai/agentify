@@ -249,12 +249,14 @@ spread, which your rate should allow for.
 Beside the field the page shows Coinbase's open rate, with the moment Agentify
 read it, because Coinbase's answer carries no time of its own. It is there to
 catch a mistyped rate and decides no price. A rate more than a tenth away from
-it is saved only once you type it a second time, and the page shows what one of
-your products would then cost in dollars; a rate written the wrong way round,
-or with a digit missing, is the mistake this catches. When Coinbase does not
+it is saved only once you type it a second time, and the page shows what a
+product of yours would then cost in dollars: the first of the first ten in your
+shop's public catalogue with a price, or, where none of them has one, says so.
+A rate written the wrong way round, or with a digit missing, is the mistake
+this catches. When Coinbase does not
 answer, the rate is saved all the same, with a note that it was not compared
 with anything. Every rate saved is sent to your account's email address with
-the rate before it, and a rate whose message could not be sent is not saved,
+the rate before it and when the session that saved it signed in, and a rate whose message could not be sent is not saved,
 because a rate nobody was told of could sell your goods for cents unseen.
 Every rate you have saved is kept.
 
