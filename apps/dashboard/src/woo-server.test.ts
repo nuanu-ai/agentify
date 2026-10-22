@@ -93,6 +93,8 @@ interface Running {
   readonly ownKey: string;
   /** Every message the dashboard handed to its mail provider, the sign-in links among them. */
   readonly messages: readonly Message[];
+  /** The sessions table as the in-memory store keeps it, for a test that puts a sign-in in the past. */
+  readonly sessions: Record<string, unknown>[];
   get(path: string): Promise<Visit>;
   /**
    * A browser coming back from its shop without a session. The session cookie
@@ -395,6 +397,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     read,
     ownKey,
     messages,
+    sessions: rows.dashboard_sessions ?? [],
     get: (path) => visit("GET", `${base}${path}`),
     getWithoutCookie: (path) => visit("GET", `${base}${path}`, { noCookie: true }),
     post: (path, form = {}) =>
@@ -3006,6 +3009,28 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(notice?.to).toBe(PERSON);
       expect(notice?.body).toContain("18000 IDR per US dollar");
       expect(notice?.body).toContain("No rate was set before");
+    });
+
+    it("tells, in the notice, when the session that entered the rate signed in, and names no address as who did", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      // The owner's own browser signed in two days ago; a second one signs in now.
+      for (const row of running.sessions) row.createdAt = new Date("2026-10-20T08:00:00.000Z");
+      const before = Math.floor(Date.now() / 1000) * 1000;
+      await running.signIn("woocommerce");
+      const after = Date.now();
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      const [sent] = rateNotices(running);
+      expect(sent?.body).not.toContain(PERSON);
+      expect(sent?.body).not.toContain("2026-10-20 08:00:00 UTC");
+      const named = /signed in to this account at (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC/.exec(
+        sent?.body ?? "",
+      );
+      const signedInAt = Date.parse(`${named?.[1]}T${named?.[2]}Z`);
+      expect(signedInAt).toBeGreaterThanOrEqual(before);
+      expect(signedInAt).toBeLessThanOrEqual(after);
     });
 
     it("names the previous rate in the notice of the next one", async () => {
