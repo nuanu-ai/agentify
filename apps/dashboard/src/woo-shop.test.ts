@@ -226,6 +226,39 @@ describe("reading the catalogue", () => {
     expect(stand.asked).toHaveLength(1);
   });
 
+  it("takes a catalogue whose short page settles it, whatever count the shop gives", async () => {
+    // A count cached apart from the page, or one written in some other form,
+    // never outweighs a page that shows the catalogue is complete.
+    for (const total of ["2100", "1e5", " 2001 "]) {
+      stand = await shopAnswering(() => ({
+        status: 200,
+        body: Array.from({ length: 30 }, (_, i) => aProduct(i + 1)),
+        headers: { "x-wp-total": total },
+      }));
+
+      const read = await readCatalogue(stand.url, 2_000);
+
+      expect(read.ok === true && read.products, total).toHaveLength(30);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses early only on a count written as a plain number", async () => {
+    stand = await shopAnswering((asked) => ({
+      status: 200,
+      body:
+        Number(new URL(asked.url, "http://x").searchParams.get("page")) === 1
+          ? Array.from({ length: 100 }, (_, i) => aProduct(i + 1))
+          : [],
+      headers: { "x-wp-total": "1e5" },
+    }));
+
+    const read = await readCatalogue(stand.url, 2_000);
+
+    expect(read.ok === true && read.products).toHaveLength(100);
+  });
+
   it("reads on past a count at or under the ceiling, which only the pages settle", async () => {
     // A count is the shop's word, which a cache can leave stale: it may refuse
     // early, never admit a catalogue the pages show is too large.
@@ -2096,9 +2129,18 @@ describe("the protected product check", () => {
       );
     });
 
-    it("keeps at most four requests in the shop at once", async () => {
+    it("keeps at most four requests in the shop at once, products its lists left out included", async () => {
       // Somebody else's shop, often on shared hosting: a whole catalogue is
-      // read at the pace of a few visitors, not all at once.
+      // read at the pace of a few visitors, not all at once, even where every
+      // product has to be asked after alone.
+      for (const listsCarry of ["every product", "none"] as const) {
+        await stand?.close();
+        stand = null;
+        await atMostFourAtOnce(listsCarry);
+      }
+    });
+
+    const atMostFourAtOnce = async (listsCarry: "every product" | "none") => {
       const documents = documentsOf(900);
       let inFlight = 0;
       let most = 0;
@@ -2112,7 +2154,9 @@ describe("the protected product check", () => {
           inFlight -= 1;
         }
       };
-      stand = await shopOf(documents);
+      stand = await shopOf(documents, (asked) =>
+        listsCarry === "none" && asked.url.startsWith(LIST) ? { status: 200, body: [] } : null,
+      );
       const keys = connectionTo(stand.url);
 
       const read = await inspectProductsInTheShop(
@@ -2121,10 +2165,13 @@ describe("the protected product check", () => {
         counting,
       );
 
-      expect(read.every((one) => one.ok)).toBe(true);
-      expect(most).toBeLessThanOrEqual(4);
-      expect(most).toBeGreaterThan(1);
-    });
+      expect(
+        read.every((one) => one.ok),
+        listsCarry,
+      ).toBe(true);
+      expect(most, listsCarry).toBeLessThanOrEqual(4);
+      expect(most, listsCarry).toBeGreaterThan(1);
+    };
   });
 });
 
