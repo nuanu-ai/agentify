@@ -306,8 +306,12 @@ them, and a card you paused stays paused through it.
 The page answers once every product has been read and published, so a large
 shop takes a while: the import asks your shop for a hundred products at a time,
 a few requests at once, and how long that takes depends on how quickly your
-shop answers. One import of a shop runs at a time; pressing Import again while
-one runs reads nothing and says so.
+shop answers. If you leave the page, the import carries on and the cards it
+publishes appear on Cards, but its list of what was published and what was
+not shows only on the page that started it. One import of a shop runs at a
+time; pressing Import again while one runs reads nothing and says so. A shop
+that reports more than 2,000 products is refused on the first page it
+answers.
 
 Nothing is read until the name your products are sold under is set in
 Settings, and the wallet your share is paid out to on a channel where payments
