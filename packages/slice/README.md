@@ -819,3 +819,188 @@ poll with `contract_version_mismatch`.
 A restart drops whatever is in flight through the proxy, a poll the gateway
 holds open among them, so the merchant process is stopped before the proxy is
 restarted with other additions, as with the cut proxy.
+
+## Faulting the wallet behind the dashboard's Coinbase buttons
+
+The dashboard's Settings page asks a merchant's Coinbase Wallet for two
+things, through Coinbase's own code running in the page: an address for the
+payout wallet box, under "Create or connect a Coinbase Wallet", and the payout
+transaction, under "Pay out with Coinbase Wallet". Each opens Coinbase's
+window, and the page waits for the window's answer. The stories of the
+[manual test plan](../../docs/research/42-manual-test-plan.md) that ask what
+the page does when that answer is a refusal, is malformed, never comes or
+comes after the page stopped waiting cannot be played with Coinbase's real
+window, which a tester cannot make misbehave on demand. This command opens a
+browser on the real dashboard in which Coinbase's window is a stand-in, and the
+person at the stand-in chooses each answer.
+
+```sh
+pnpm wallet-faults --dashboard http://localhost:8080/dashboard --address 0x…
+```
+
+`--dashboard` is the dashboard's address with its base path, http or https,
+without a query and without a user name or password. `--address` is the EVM
+address the stand-in gives as the wallet's. Give one you hold: the stand-in
+only puts it in the box, but a press of Save in this browser is a real save on
+that dashboard, and payouts would then go to it. The command opens Playwright's
+Chromium, visibly, on the dashboard's Settings page, and runs until that tab
+is closed or the command is stopped with Ctrl-C. A flag that is missing or
+malformed is refused with one sentence naming it, and nothing opens; so is a
+dashboard on a host of Coinbase's, which would otherwise become reachable. A
+dashboard that does not answer is named in one sentence, and the browser
+closes.
+
+The Coinbase buttons are drawn only where payments settle on a chain, so a
+dashboard in the sandbox has none. The local stack is in the sandbox unless it
+is started with `AGENTIFY_FACILITATOR_URL` naming some other address. Name
+one where nothing listens, such as `http://127.0.0.1:9/facilitator`: the
+stack then calls itself TEST, the buttons are drawn, and no purchase can be
+paid, which none of these stories needs. A facilitator that answers would make
+purchases payable, and the gateway refuses a host of Coinbase's here without
+its keys. The
+payout button appears once a payout wallet is saved. The test channel's
+dashboard has both buttons as it is.
+
+The browser starts with nothing kept: no session and nothing of Coinbase's.
+Sign in by asking for a link and pasting the link into this browser's address
+bar; on the local stack the link is in the dashboard's log. Google's sign-in
+is not available here, for the reason the next paragraph gives.
+
+### What the browser reaches
+
+Every request a page in this browser makes goes through one rule, except the
+further hops of a redirect, which Chromium follows without asking it. A request to
+the dashboard's origin, its scheme, host and port, is sent to the dashboard as
+it is. A request for Coinbase's window, `https://keys.coinbase.com/connect`
+with any query, never leaves the browser: it is answered with the stand-in.
+Every other request, to Coinbase's other hosts, to Google, to anything at all,
+is refused before it leaves, and the terminal says so once for each host. The
+browser is also told that no host name but the dashboard's exists and that
+no address written as numbers can be looked up, so a redirect, or anything
+else that went around the rule, can reach the dashboard's host and nothing
+else, without a line in the terminal. Service workers, which could otherwise
+answer requests unseen, are switched off, and so is WebRTC's direct traffic,
+which goes around both. The
+one request that is made from the command itself rather than the browser is
+the reading of Settings described below; it goes to the dashboard's Settings
+address and follows no redirect.
+
+The stand-in holds no wallet and signs nothing. The only key it makes is the
+key of the encryption Coinbase's code uses between the page and its window,
+made afresh for every handshake. The address it gives is the one named on the
+command line, and the identifier it gives when it acknowledges a payout is
+made up on the spot and names nothing on any chain. No transaction is ever
+sent.
+
+### The stand-in's window
+
+The window opens where Coinbase's would, when one of the two buttons is
+pressed. Coinbase's code in the page, `@base-org/account`, runs as the
+dashboard serves it, and talks to the stand-in as it talks to Coinbase: the
+window says it has loaded, the page introduces itself, the two agree a session
+key in a handshake, and each request then travels encrypted under that key.
+The stand-in answers the handshake and the move to the payout's chain at once,
+since a person approves neither. Every other request waits for a choice: the
+request for an address, which the payout button also makes before it sends
+anything, and the payout itself. Each is listed in the window with its number,
+its method and its session, the payout with the address it is sent from, its
+chain, the contract it calls and the size of its data, and waits until a
+button under it is pressed. Until then the page has been told nothing.
+
+The buttons under a waiting request answer it in one of these ways:
+
+| Button | What the window sends the page |
+| --- | --- |
+| Answer as the wallet | The address from `--address`, or for a payout an acknowledgement naming a made-up batch |
+| Refuse (4001) | EIP-1193's refusal, code 4001 with the words "User rejected the request.", as a person declining does |
+| Unreadable answer | The wallet's answer encrypted under a key the page does not hold |
+| Answer outside the protocol | A reply to the request that carries no content at all |
+| Answer in the wrong shape | A readable answer of the wrong form: the address shortened as wallets display it, its first six characters and last four around an ellipsis, or an acknowledgement naming no batch |
+| Say the window closed, then answer as the wallet | The message a closing window sends, and straight after it the wallet's answer |
+| Hold the answer | Nothing yet; the request stays held and offers the wallet's answer, the refusal and the closing answer, each to be sent whenever chosen |
+
+Windows are numbered in the terminal as they open. A page uses one window for
+as long as it is loaded, so a tab opens a second one only after its window was
+closed or the tab loaded again, after a Save among other things. An earlier
+window of the same tab still open at that moment is made to vanish, and the
+terminal says so: closed in the ordinary way it would tell the new page that
+its window closed, and the new page would give up on its own. Windows opened
+from another tab are left alone.
+
+Two buttons at the top act on the window itself. "Close, as a person closes
+it" closes the window and tells the page that it closed. The window says so as
+it unloads, so closing it by its own close box should tell the page the same
+way, but only the button has been tried. "Vanish without a word" closes it
+without telling the page, as a phone that drops a tab may. A request
+can also simply be left waiting.
+
+The four faults a story asks for are made this way. A refusal is "Refuse
+(4001)". A malformed answer is one of the three that follow it, each failing in
+a different place: the decryption, the reading of the message, and the reading
+of the value. An answer that never comes is a request left waiting, or the
+window vanished. An answer after the page gave up has two forms, for the two
+ways the page gives up. Holding a request and pressing the same button in the
+page again starts a new press, which ends the session the held request was
+asked in; the held answer, sent afterwards, arrives encrypted under the key
+of that ended session. "Say the window closed, then answer as the
+wallet" lets the page hear that the window closed, upon which Coinbase's code
+stops listening and closes the window itself, and sends the wallet's answer
+just after, so it arrives at a page no longer waiting for it.
+
+### What the terminal prints
+
+Every line starts with the time in UTC. The window's lines say what it was
+asked and what it answered, by request number. The page's lines say what the
+page shows beside its buttons whenever that changes: every element the page
+marks as a status, so a copy button's "Copied." appears there too.
+
+A reading is printed a second and a half after every answer the window sends
+and every closing of the window, after every press of a form on the dashboard
+once its page has loaded, and whenever Enter is pressed in the terminal. It
+has four lines. The first is what the page says beside its buttons, and the
+second what the payout wallet box holds, both in the tab the dashboard opened
+in; tabs opened by hand are not read. The third is what Coinbase's code keeps
+in the dashboard's storage in this browser: the account it connected, if any,
+and which of its session keys it kept, named and never shown. The fourth is
+the payout wallet as the dashboard's server draws Settings when asked afresh
+with this browser's cookies, with every address whole: the address saved
+here and any address waiting to replace it. It says that no payout wallet is
+saved only where the page offers the box under the label it has while nothing
+is saved. When the answer is not Settings, because the session has ended and
+the dashboard redirects to sign in, or it answers with an error, or the page
+is drawn in a way the command does not recognise, the line says it was not
+read and why, and never reads that as nothing saved.
+
+The log holds addresses, which are public, request numbers and the page's own
+words. It never prints a cookie, the value of a session key or the payout's
+data.
+
+### What it cannot stand in for
+
+It covers the dashboard's one path to Coinbase Wallet in an ordinary browser,
+on a computer or a phone: `@base-org/account` opening Coinbase's window. It
+was written against version 2.5.13 of that code, and the window's second line,
+"the page introduced itself as …", names the version the page runs. Opened
+inside Coinbase Wallet's own app, the dashboard's Coinbase code uses the
+wallet the app injects into the page instead, and opens no window; that path is
+not imitated. Neither is a wallet other than Coinbase's: the dashboard asks
+no other wallet anything, and a payout sent from one with the three values
+Settings shows never passes through the page.
+
+What the page does with each answer is real, and so is what the dashboard
+records. Whether Coinbase's window ever sends such an answer, and with what
+words, is not shown by this command: the refusal's words are EIP-1193's
+generic ones, and whether Coinbase's window can answer after saying it closed,
+or answer a new handshake while a request waits, I don't know. Coinbase's own
+screens, its sign-in, passkeys and wallet creation, are not imitated at all.
+The stand-in stays open between requests until it is closed; Coinbase's window
+may close itself after answering, and when it does is not known here. It sends
+the page no list of chains, so the move to the payout's chain reaches the
+window rather than being settled in the page.
+
+Nothing happens on a chain. An acknowledged payout sends nothing, so what the
+network does with a payout, a reverted inner call among it, cannot be made
+here; the page's words after an acknowledgement can be read, and the payout
+contract holds what it held before. Evidence from this command is
+controlled-provider evidence and is reported apart from what Coinbase's real
+window did.

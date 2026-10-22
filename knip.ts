@@ -98,6 +98,13 @@ export default {
       // its readers import the function from the `.mjs` beside it.
       ignoreIssues: { "src/deployment/preflight.d.mts": ["exports", "types"] },
     },
+    "packages/slice": {
+      entry: [
+        // Read as text by `src/wallet-faults-command.ts` and served to the
+        // browser it opens as the stand-in for Coinbase Wallet's window.
+        "src/wallet-window.js",
+      ],
+    },
     "packages/gallery": {
       entry: [
         // Read as text and written into the gallery's page by `src/main.ts`.
