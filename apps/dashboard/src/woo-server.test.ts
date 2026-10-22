@@ -3186,6 +3186,7 @@ describe("a shop priced in another currency than US dollars", () => {
         rate: "18000",
       });
       expect(readable(saved.html)).toContain("already being imported");
+      expect(readable(saved.html)).toContain("publish your products at this rate");
       expect(reads).toBe(1);
     });
 
