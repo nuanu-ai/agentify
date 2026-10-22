@@ -392,9 +392,11 @@ pnpm outbound status
 ```
 
 Each of them prints the mode of both sides and how many requests each has
-recorded. A silent side never answers: the dashboard gives up on Coinbase after
-three seconds and on the mail provider after ten, and the screen waits that
-long before it says what happened. When Coinbase's side passes, the stand-in
+recorded. A silent side never answers: the dashboard gives up on each read of
+Coinbase after three seconds and on each message after ten. Saving a rate reads
+Coinbase twice, once to compare the rate and once to draw the screen again, and
+mails the rate in between, so a save with Coinbase silent takes about six
+seconds and one with mail silent about ten more. When Coinbase's side passes, the stand-in
 makes the dashboard's request to the real api.coinbase.com itself, with the
 same method, path, query and headers, less the ones that describe the
 connection and the forwarding headers its front adds, and hands back Coinbase's
@@ -416,22 +418,36 @@ api.coinbase.com since it started:
 2026-10-22T12:37:41.533Z  #22  GET /v2/exchange-rates?currency=USD  pass  passed, Coinbase answered 200 after 224 ms
 ```
 
-The time is when the request arrived, in UTC by this machine's clock, and the
-line is made at that moment, before anything is decided about the request, so a
+The time is when the request arrived, in UTC by the clock of the stand-in's
+container, and the line is made at that moment, before anything is decided about the request, so a
 request that is still open is listed as such. Then come the sequence number,
 the method and the path with its query, the mode the request met, and how it
 ended: passed with Coinbase's status; passed but Coinbase could not be reached,
-with the network's code, in which case the dashboard was answered 502; refused;
-or left by its caller. To show that no
-request went to Coinbase while a buyer waited, note the moments the purchase
-started and ended and read the lines between them; the purchase itself is not
-in this record.
+with the network's code, in which case the dashboard was answered 502; passed
+but Coinbase broke off its answer; refused; or left by its caller. A request
+whose target is not a path on api.coinbase.com is refused with a 400 and sent
+nowhere, which the dashboard's own request never meets. To show that no request
+went to Coinbase while a buyer waited, read the containers' clock just before
+the purchase starts and again once it has ended, and read the lines between the
+two moments:
 
-A request that never got past the TLS front is not in the record. That happens
-only if the application trusts another authority than the one the front signs
-with, as after the front's volumes were removed and the front started again
-without the application, and then the dashboard reports Coinbase unreadable
-even while the side passes. Opening the
+```sh
+docker compose -f compose.yaml -f packages/slice/outbound/compose.yaml exec app node -p "new Date().toISOString()"
+```
+
+The containers share one clock, and on Docker Desktop it can drift from the
+Mac's after the Mac sleeps, so the time on the buyer's terminal is not the one
+to compare. Neither is a time in the purchase answer: the price's `as_of` is
+when the price behind the sale was true, which can be long before the purchase,
+and its `at` is when the price was fixed, after which payment and fulfilment go
+on. The purchase itself is not in this record.
+
+A request that never got past the TLS front is not in the record. That
+happens when the application trusts another authority than the one the front
+signs with, as after the front's volumes were removed and the front started
+again without the application, and while the stand-in itself is down or
+restarting, when the front answers 502 on its behalf. Either way the dashboard
+reports Coinbase unreadable even while the side passes. Opening the
 WooCommerce screen of a shop in another currency with Coinbase passing adds a
 line; a screen that says Coinbase's rate could not be read and adds no line
 means the stand-in is not where the requests go.
@@ -467,8 +483,19 @@ fails at the level of HTTP: the application always reaches the front and its
 TLS always succeeds, so a fault in name resolution or a refused connection is
 not among the modes.
 
-Taking the instrument off is starting the stack again without the file, which
-puts the application back on its own mail setting and the real
-api.coinbase.com; the stand-in's two containers stay until they are removed,
-and `docker compose -f compose.yaml -f packages/slice/outbound/compose.yaml down`
-removes them with the rest of the stack.
+Taking the instrument off is starting the stack again without the file and
+with `--remove-orphans`, which puts the application back on its own mail
+setting and the real api.coinbase.com and removes the stand-in's two
+containers:
+
+```sh
+docker compose -f compose.yaml up -d --remove-orphans
+```
+
+It also removes every other container the project has outside `compose.yaml`,
+such as a shop laid over the same project by a file of its own. Without
+`--remove-orphans` the stand-in keeps running beside an application
+that no longer goes through it, and `pnpm outbound status` still reports
+whatever mode it was left in. `docker compose -f compose.yaml -f
+packages/slice/outbound/compose.yaml down` removes the stand-in with the rest of
+the stack.
