@@ -11,7 +11,7 @@
 # beside the Markdown, so the build runs no browser. Vite's manifest, which
 # only the speed budget reads, is not served.
 
-FROM node:24.21.0-alpine AS docs
+FROM node:24.22.1-alpine AS docs
 RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 WORKDIR /app
 
