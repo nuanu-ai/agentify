@@ -1044,10 +1044,11 @@ export const catalogueOf = async (
     }
 
     products.push(...read.data);
-    // The shop's own count may refuse early, never admit: a cache can leave it
-    // stale, and only the pages read settle a catalogue that fits.
-    const counted = Number(answered.headers.get("x-wp-total") ?? "");
-    if (Number.isInteger(counted) && counted > atMost) break;
+    // The shop's own count may refuse early, never admit, and never outweighs
+    // a short page: a cache can leave it stale, and only the pages read settle
+    // a catalogue that fits.
+    const counted = answered.headers.get("x-wp-total") ?? "";
+    if (read.data.length === PER_PAGE && /^\d+$/.test(counted) && Number(counted) > atMost) break;
     // The ceiling is checked before the short page: the other way round, a
     // catalogue of 250 against a ceiling of 200 would come back whole on its
     // short third page.
