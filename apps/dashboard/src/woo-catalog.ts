@@ -30,9 +30,10 @@ import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
 import { dollarsAt, type ShopDecimals } from "./woo-money.js";
 
 /**
- * Said wherever a shop is refused for its Number of decimals: the setting is
- * the whole shop's, so the merchant learns what changing it costs before
- * thinking of it as the way in.
+ * Said wherever a shop in another currency than US dollars is refused for
+ * writing decimals other than none or two: the setting is the whole shop's, so
+ * the merchant learns what changing it costs before thinking of it as the way
+ * in.
  */
 export const DECIMALS_ARE_EVERY_CUSTOMERS =
   "That setting is how many decimals every price in your shop is shown with, to every" +
