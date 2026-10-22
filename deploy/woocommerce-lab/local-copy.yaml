@@ -14,8 +14,9 @@
 #
 # WooCommerce posts a merchant's keys to the dashboard over https, verifying
 # its certificate against WordPress's own list of authorities. For the
-# dashboard's name alone, the hook below points that check at the run's
-# authority instead, which keeps every other request on WordPress's own list.
+# dashboard's name and the copy's own, both served by the edge, the hook below
+# points that check at the run's authority instead, which keeps every other
+# request on WordPress's own list.
 # A hook placed in $wp_filter before WordPress loads is taken as if a plugin
 # had added it, so no file of the shop changes and no must-use plugin appears
 # for the profile's check to find. `$$` is Compose's escape for `$`.
@@ -32,7 +33,7 @@ services:
         $$GLOBALS['wp_filter']['http_request_args'][10][] = [
           'accepted_args' => 2,
           'function' => static function ($$args, $$url) {
-            if (parse_url($$url, PHP_URL_HOST) === 'agentify.woo-fault.test') {
+            if (in_array(parse_url($$url, PHP_URL_HOST), ['agentify.woo-fault.test', 'shop.woo-fault.test'], true)) {
               $$args['sslcertificates'] = '/woo-fault/ca.pem';
             }
             return $$args;

@@ -289,6 +289,71 @@ describe("holding an order before the shop", () => {
 
     expect(shop.received).toEqual([]);
   });
+
+  it("lets clear disarm a hold whose caller gave up, without sending it, and keeps one still waiting", async () => {
+    const shop = await standInShop();
+    const { port, edge } = await edgeFor(shop, await standInShop());
+    armed(edge, ["hold", "--order", "ord_gone"]);
+    armed(edge, ["hold", "--order", "ord_waiting"]);
+
+    await call(port, SHOP, "POST", ORDERS, orderBody("ord_gone"), { leaveAfterMs: 50 });
+    const waiting = call(port, SHOP, "POST", ORDERS, orderBody("ord_waiting"));
+    await settled(() => {
+      const said = edge.control(["status"]).said;
+      return said.includes("gave up") && said.includes("ord_waiting: #");
+    });
+    armed(edge, ["clear"]);
+    const again = await call(port, SHOP, "POST", ORDERS, orderBody("ord_gone"));
+    await pause(50);
+
+    expect(again.status).toBe(201);
+    expect(shop.received.map((one) => JSON.parse(one.body).transaction_id)).toEqual(["ord_gone"]);
+    armed(edge, ["release", "--order", "ord_waiting"]);
+    expect((await waiting).status).toBe(201);
+  });
+});
+
+describe("a copy that does not accept the connection", () => {
+  it("is answered 502 by the edge, and neither the shift nor the cut armed for that order is spent", async () => {
+    const received: Received[] = [];
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(chunk as Buffer);
+      received.push({
+        method: request.method ?? "",
+        url: request.url ?? "",
+        body: Buffer.concat(chunks).toString("utf8"),
+      });
+      response.writeHead(201, { "content-type": "application/json" });
+      response.end(JSON.stringify({ id: 200 + received.length }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const shopPort = (server.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const { port, edge } = await edgeFor(
+      { url: `http://127.0.0.1:${shopPort}`, received },
+      await standInShop(),
+    );
+    armed(edge, ["shift", "--next", "--by", "1"]);
+    armed(edge, ["fail", "--method", "POST", "--path", ORDERS, "--fault", "cut"]);
+
+    const unreachable = await call(port, SHOP, "POST", ORDERS, orderBody("ord_waiting"));
+    await new Promise<void>((resolve) => server.listen(shopPort, "127.0.0.1", resolve));
+    closing.push(
+      () =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => resolve());
+        }),
+    );
+    const reached = await call(port, SHOP, "POST", ORDERS, orderBody("ord_waiting"));
+
+    expect(unreachable.status).toBe(502);
+    expect(reached.status).toBeNull();
+    expect(received.map((one) => JSON.parse(one.body).fee_lines)).toEqual([
+      [{ name: "Controlled Woo fault: total shifted by 1", total: "1", tax_status: "none" }],
+    ]);
+  });
 });
 
 describe("shifting an order's total", () => {

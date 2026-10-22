@@ -336,9 +336,9 @@ WooCommerce made an order.
 
 It works only against a copy of the lab on the organiser's own machine. The
 shared lab on the fixture host is never behind it. The stack's application
-resolves the shared lab's public name to the edge as well, which answers only
-for its own two names, so a merchant who types that name into the local
-dashboard reaches nothing.
+resolves the shared lab's public name to the edge as well, whose certificate
+names only the two .test names, so the connector refuses it and a merchant who
+types the shared lab's address into the local dashboard reaches nothing.
 
 ### How the connector reaches it
 
@@ -386,13 +386,17 @@ The stack is the root `compose.yaml` with the instrument's file laid over it.
 It runs as the Compose project `instr-woo-fault`, builds its own image under
 the name `instr-woo-app`, and publishes only on 127.0.0.1: the gateway on
 18620, the edge's TLS on 18621, the edge's control commands on 18622 and
-Postgres on 18623. Every Compose command on it names both files and runs from
-the repository's root: `-p instr-woo-fault` alone would read the root
-`compose.yaml` there, which knows nothing of the edge, so a `down` would leave
-the edge running. A shell function keeps that short:
+Postgres on 18623. Every Compose command on it names both files and the
+run's certificate directory, and runs from the repository's root:
+`-p instr-woo-fault` alone would read the root `compose.yaml` there, which
+knows nothing of the edge, so a `down` would leave the edge running. A shell
+function keeps that short, and is defined again in every terminal of the run:
 
 ```sh
-woo_stack() { docker compose -f compose.yaml -f packages/slice/woo-fault/stack.yaml "$@"; }
+woo_stack() {
+  WOO_FAULT_DIR="$HOME/woo-fault-run/certs" \
+    docker compose -f compose.yaml -f packages/slice/woo-fault/stack.yaml "$@"
+}
 woo_stack up -d --build --wait postgres migrate app woo-fault
 ```
 
@@ -445,7 +449,8 @@ outbound faults, whose overlay is `packages/slice/outbound/compose.yaml`:
 
 ```sh
 woo_stack() {
-  AGENTIFY_APP_IMAGE=instr-woo-app AGENTIFY_OUTBOUND_PORT=18624 docker compose -f compose.yaml \
+  WOO_FAULT_DIR="$HOME/woo-fault-run/certs" AGENTIFY_APP_IMAGE=instr-woo-app \
+    AGENTIFY_OUTBOUND_PORT=18624 docker compose -f compose.yaml \
     -f packages/slice/outbound/compose.yaml -f packages/slice/woo-fault/stack.yaml "$@"
 }
 woo_stack up -d --build --wait postgres migrate app woo-fault outbound outbound-tls
@@ -498,7 +503,12 @@ creates a shop order with `POST /wp-json/wc/v3/orders`, and reads one back at
 `/?download_file=…`, served from the path `/`. The rule fails the
 next matching request, or the next `--count` of them, or every one until
 `clear` with `--count all`. Several rules may be armed at once, and the first
-armed that matches a request is the one that fails it.
+armed that matches a request is the one that fails it. The copy's own
+scheduled calls, WP-Cron at `/wp-cron.php` and WooCommerce's background work
+under `/wp-admin/`, reach the shop through the edge as well, so a broad
+pattern such as `/**` with a count can be spent on one of them; patterns under
+`/wp-json/wc/` meet only the connector's and a browser's requests. A cut whose
+request could not reach the copy at all cut nothing and stays armed.
 
 The fault decides where the request ends:
 
@@ -622,5 +632,5 @@ until that is deleted too.
 
 ```sh
 (cd <the copy> && docker compose down)
-docker compose -p instr-woo-fault down -v
+woo_stack down -v
 ```

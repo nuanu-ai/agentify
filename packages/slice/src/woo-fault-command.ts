@@ -60,6 +60,8 @@ interface Hold {
   /** Null until a hold armed for the next order meets one. */
   order: string | null;
   readonly parked: Parked[];
+  /** Set when clear lets go of a hold whose callers all gave up. */
+  cleared?: boolean;
 }
 
 interface Shift {
@@ -365,14 +367,20 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
   };
 
   const failFor = (method: string, path: string): FailRule | null => {
-    const rule = fails.find((one) => one.method === method && one.pattern.test(path));
+    const rule = fails.find(
+      (one) => one.left !== 0 && one.method === method && one.pattern.test(path),
+    );
     if (rule === undefined) return null;
-    if (rule.left !== null) {
-      rule.left -= 1;
-      if (rule.left === 0) fails.splice(fails.indexOf(rule), 1);
-    }
+    if (rule.left !== null) rule.left -= 1;
     return rule;
   };
+
+  /** A cut that could not reach the shop cut nothing, so it is armed again. */
+  const unspend = (rule: FailRule | null): void => {
+    if (rule !== null && rule.left !== null) rule.left += 1;
+  };
+
+  const armedFails = (): FailRule[] => fails.filter((one) => one.left !== 0);
 
   const toShop = async (n: number, request: IncomingMessage, response: ServerResponse) => {
     const callerLeft = () => response.destroyed || !request.socket.writable;
@@ -408,7 +416,11 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
         hold.parked.push({ n, since: new Date(), callerLeft, go: resolve });
       });
       if (callerLeft()) {
-        log("released, but its caller had already given up, so it was never sent to the shop");
+        log(
+          hold.cleared
+            ? "let go by clear; its caller had already given up, so it was never sent to the shop"
+            : "released, but its caller had already given up, so it was never sent to the shop",
+        );
         return;
       }
       log("released; going on to the shop");
@@ -449,8 +461,9 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
       answer = await forward(options.shop, request, sent, options.shopHost);
     } catch (error) {
       if (NEVER_CONNECTED.has(codeOf(error))) {
-        // Nothing left the edge, so the shift is still owed to the order.
+        // Nothing left the edge, so the shift is still owed to the order and a cut is still armed.
         if (shift !== null) shifts.unshift(shift);
+        unspend(rule);
         const waiting = !callerLeft();
         if (waiting) {
           response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
@@ -537,9 +550,11 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
   const status = (): string => {
     const lines = [`Shop ${options.shopHost} -> ${options.shop.origin}`];
     lines.push(
-      fails.length === 0
+      armedFails().length === 0
         ? "Failing: nothing"
-        : `Failing, first match wins:\n${fails.map((rule) => `  ${ruleNamed(rule)}`).join("\n")}`,
+        : `Failing, first match wins:\n${armedFails()
+            .map((rule) => `  ${ruleNamed(rule)}`)
+            .join("\n")}`,
     );
     lines.push(
       holds.length === 0
@@ -708,7 +723,10 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
         const waiting = holds.filter((one) => one.parked.some((parked) => !parked.callerLeft()));
         // A request whose caller gave up is let go here, to its log line and never to the shop.
         for (const hold of holds) {
-          if (!waiting.includes(hold)) for (const parked of hold.parked) parked.go();
+          if (!waiting.includes(hold)) {
+            hold.cleared = true;
+            for (const parked of hold.parked) parked.go();
+          }
         }
         fails.splice(0);
         shifts.splice(0);
