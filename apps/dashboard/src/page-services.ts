@@ -157,8 +157,7 @@ const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input
  * script calls itself by. A browser always names itself, so saying nothing is
  * a program too.
  */
-const PROGRAM_NAMES =
-  /bot|crawl|spider|preview|monitor|probe|curl|wget|python-requests|headless/i;
+const PROGRAM_NAMES = /bot|crawl|spider|preview|monitor|probe|curl|wget|python-requests|headless/i;
 const fetchedByAProgram = (userAgent: string | null): boolean =>
   userAgent === null || userAgent.trim() === "" || PROGRAM_NAMES.test(userAgent);
 
