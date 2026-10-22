@@ -1,0 +1,108 @@
+# The disposable stack the controlled Woo fault runs in, laid over the root
+# compose.yaml. It starts nothing by itself; this package's README gives the
+# command, which names the services it needs.
+#
+# The connector reaches a shop only at an https address whose name resolves to
+# public internet addresses, and it checks the certificate. This file meets
+# that without a switch in the product: the stack's own network, `edge`, is
+# given a public range, 192.175.48.0/24, so that the address the edge holds on
+# it is one the connector accepts, and the application's container resolves the
+# shop's name to that address and trusts the run's own certificate authority
+# through Node's NODE_EXTRA_CA_CERTS. The range is a public one, used by the
+# AS112 project to answer stray reverse lookups; a container on this network
+# reaches the edge at that address and can no longer reach the real one, which
+# nothing in the stack asks. No route on the machine itself changes.
+#
+# The shop's name and the dashboard's end in .test, which no public resolver
+# answers, so a container this file does not wire fails to resolve them rather
+# than reaching a real site. The dashboard's address is https too, because
+# WooCommerce posts a shop's keys only to an https address; the local copy of
+# the lab resolves the dashboard's name to the same edge.
+#
+# WOO_FAULT_DIR names the directory certs.sh made for this run.
+
+name: instr-woo-fault
+
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:18623:5432"
+
+  migrate:
+    image: instr-woo-app
+
+  app:
+    image: instr-woo-app
+    # The gateway alone, for `pnpm buy` on this machine; the dashboard is
+    # reached through the edge.
+    ports:
+      - "127.0.0.1:18620:3000"
+    environment:
+      PUBLIC_BASE_URL: https://agentify.woo-fault.test
+      COOKIE_SECURE: "true"
+      # Node reads one file of extra authorities, once, at start-up. certs.sh
+      # starts it with the run's authority; another instrument laid over the
+      # same stack appends its own and restarts the application.
+      NODE_EXTRA_CA_CERTS: /woo-fault/trust.pem
+    extra_hosts:
+      - "shop.woo-fault.test:192.175.48.10"
+    volumes:
+      - "${WOO_FAULT_DIR:?set WOO_FAULT_DIR to the directory certs.sh made}/trust.pem:/woo-fault/trust.pem:ro"
+    networks:
+      default: {}
+      edge: {}
+
+  woo-fault:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.app
+    image: instr-woo-app
+    restart: unless-stopped
+    command:
+      - pnpm
+      - --filter
+      - "@agentify/slice"
+      - woo-fault
+      - serve
+      - --shop-host
+      - shop.woo-fault.test
+      - --shop
+      - http://woo-fault-wordpress
+      - --dashboard-host
+      - agentify.woo-fault.test
+      - --dashboard
+      - http://app:3001
+      - --gateway
+      - http://app:3000
+      - --cert
+      - /woo-fault/edge.pem
+      - --key
+      - /woo-fault/edge-key.pem
+      - --port
+      - "443"
+      - --control-port
+      - "8790"
+    # The buyer runs here, `exec`-ed into this container, because a purchase's
+    # challenge and status address name the dashboard's https address, which
+    # only the run's network resolves and only the run's authority vouches for.
+    environment:
+      NODE_EXTRA_CA_CERTS: /woo-fault/ca.pem
+    extra_hosts:
+      - "agentify.woo-fault.test:192.175.48.10"
+    # TLS for a browser on this machine, and the control commands.
+    ports:
+      - "127.0.0.1:18621:443"
+      - "127.0.0.1:18622:8790"
+    volumes:
+      - "${WOO_FAULT_DIR:?set WOO_FAULT_DIR to the directory certs.sh made}:/woo-fault:ro"
+    networks:
+      default: {}
+      edge:
+        ipv4_address: 192.175.48.10
+
+networks:
+  edge:
+    name: instr-woo-edge
+    ipam:
+      config:
+        - subnet: 192.175.48.0/24

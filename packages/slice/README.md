@@ -317,3 +317,277 @@ now" in the Owed panel, goes out without a pause, and so does a refusal sent
 from the Owed panel. Price questions and order events are not paused either.
 Nothing in the SDK or the gateway changes when the stand pauses: the pause
 lives entirely in the stand's merchant.
+
+## Controlled Woo fault
+
+The WooCommerce stories of the manual test plan need the shop to misbehave at
+a known moment and need to show what the shop did about it: a product or
+settings read that fails before a price is given, the order call whose answer
+is lost after WooCommerce made the order, the connector stopped just before it
+makes a chosen order while somebody changes the rate, and a shop order whose
+total is a unit away from what was paid. The controlled Woo fault does this
+from outside the product. It is the TLS edge of a local copy of the lab shop:
+the dashboard's connector reaches the shop through it, so it can fail a chosen
+request, hold the request that would create a chosen order until it is
+released by that order's identifier, and add a fee line to a chosen order on
+its way to the shop. The lab's `./lab.sh orders` counts the copy's orders and
+names the ones that carry an Agentify order, which is how a run shows whether
+WooCommerce made an order.
+
+It works only against a copy of the lab on the organiser's own machine. The
+shared lab on the fixture host is never behind it, and the stack below cannot
+reach it by mistake, for the reasons given under "How the connector reaches
+it".
+
+### How the connector reaches it
+
+The connector talks to a shop only at an https address whose name resolves to
+public internet addresses, and it checks the shop's certificate; a proxy on
+the loopback or a private Docker address is refused before a byte is sent, and
+the connector honours no proxy setting. Nothing in the product was changed to
+let the instrument in. Instead, [`woo-fault/stack.yaml`](woo-fault/stack.yaml),
+laid over the root `compose.yaml`, gives the stack a network of its own,
+`instr-woo-edge`, on 192.175.48.0/24. That range is public: the AS112 project
+uses it to answer stray reverse lookups, and nothing in the stack asks it
+anything. A range set aside for documentation or testing would be the natural
+choice and cannot be used: the connector refuses 192.0.2.0/24, 198.51.100.0/24,
+203.0.113.0/24 and 198.18.0.0/15 together with the private, loopback, shared
+and link-local ranges, so the shop has to sit at an address that is ordinary
+public space. The edge holds 192.175.48.10 on that network, the application's
+container resolves the shop's name to that address, and Node trusts the run's
+own certificate authority through `NODE_EXTRA_CA_CERTS`, which Node reads at
+start-up. No route or trust store on the machine itself changes.
+
+The shop is called `shop.woo-fault.test` and the dashboard
+`agentify.woo-fault.test`. No public resolver answers a name ending in
+`.test`, so a client the stack does not wire, such as the organiser's ordinary
+browser or a container of another stack, fails to resolve the shop instead of
+reaching a real one, and the edge refuses to start with names that do not end
+in `.test`. The dashboard's address is https too, because the dashboard
+connects a shop only from an https address and WooCommerce posts the shop's
+keys only to one; the local copy of the lab resolves the dashboard's name to
+the same edge. The edge sends every request for the dashboard's name to the
+stack untouched: under `/dashboard` to the dashboard, everything else to the
+gateway. It never fails, holds or logs those.
+
+### Starting the stack and the copy
+
+The certificates come first. `certs.sh` makes a new directory holding a
+certificate authority for this run and the edge's certificate for both names,
+and deletes the authority's key as soon as that one certificate is signed:
+
+```sh
+packages/slice/woo-fault/certs.sh "$HOME/woo-fault-run/certs"
+export WOO_FAULT_DIR="$HOME/woo-fault-run/certs"
+```
+
+The stack is the root `compose.yaml` with the instrument's file laid over it.
+It runs as the Compose project `instr-woo-fault`, builds its own image under
+the name `instr-woo-app`, and publishes only on 127.0.0.1: the gateway on
+18620, the edge's TLS on 18621, the edge's control commands on 18622 and
+Postgres on 18623. The scanner, the documentation and the stand's mock
+merchant are not started:
+
+```sh
+docker compose -f compose.yaml -f packages/slice/woo-fault/stack.yaml \
+  up -d --build --wait postgres migrate app woo-fault
+```
+
+Then the lab copy, from the [lab README](../../deploy/woocommerce-lab/README.md)'s
+"A local copy behind the controlled Woo fault", which needs the stack's
+network to exist and so starts after it. A copy is wired to this edge and to
+nothing else.
+
+A browser reaches both names through the edge's published port. A Chromium
+started with a profile of its own for the run, given
+
+```
+--user-data-dir=$HOME/woo-fault-run/browser
+--host-resolver-rules="MAP shop.woo-fault.test 127.0.0.1:18621, MAP agentify.woo-fault.test 127.0.0.1:18621"
+```
+
+opens `https://agentify.woo-fault.test/dashboard/sign-in`. It does not know
+the run's authority, so it warns about the certificate on each name once; the
+run's own profile keeps that exception to itself. Sign-in links are in the
+application's log, `docker compose -p instr-woo-fault logs app`. The
+dashboard's pages there lack the site's fonts and mark, which the stack's web
+server would serve and this stack does not run.
+
+From there the merchant connects `https://shop.woo-fault.test` as a merchant
+connects any shop: the browser goes to the copy's approval screen, the copy's
+administrator signs in with the password in the copy's `.env`, and WooCommerce
+posts the keys back to the dashboard through the edge. A buyer is pointed at
+the gateway with `GATEWAY_URL=http://127.0.0.1:18620 pnpm buy <card>`.
+
+### Another instrument on the same stack
+
+The stack and the copy are not this instrument's alone: any run that needs
+the local dashboard to sell from a local lab shop, in any profile, rupiah
+included, connects it the same way and need not arm a fault. Another overlay
+of the root `compose.yaml` joins by being named before this one, so that this
+file's project name and the application's settings below win:
+
+```sh
+AGENTIFY_APP_IMAGE=instr-woo-app AGENTIFY_OUTBOUND_PORT=18624 \
+docker compose -f compose.yaml -f packages/slice/outbound/compose.yaml \
+  -f packages/slice/woo-fault/stack.yaml \
+  up -d --build --wait postgres migrate app woo-fault outbound outbound-tls
+```
+
+That is the dashboard's outbound faults, whose stand-in then listens on
+127.0.0.1:18624 and shares the image. Node in the application reads one file
+of extra authorities, once, as it starts, and this file names `trust.pem` in
+the run's certificate directory, which `certs.sh` starts with the run's own
+authority. An instrument with an authority of its own appends it there and
+restarts the application; for the outbound stand-in, once its front has made
+its authority on the first start:
+
+```sh
+docker compose -p instr-woo-fault cp outbound-tls:/outbound-ca/root.crt "$WOO_FAULT_DIR/outbound-root.crt"
+cat "$WOO_FAULT_DIR/outbound-root.crt" >>"$WOO_FAULT_DIR/trust.pem"
+docker compose -p instr-woo-fault restart app
+```
+
+### The commands
+
+The control commands run from the repository's root and are posted to the
+edge on 127.0.0.1:18622, or to the address in `WOO_FAULT_CONTROL`. Each prints
+one sentence saying what it armed or why it armed nothing, and exits 1 when it
+armed nothing. Nothing is armed when the edge starts, and what is armed lives
+in the edge's memory: restarting the `woo-fault` service disarms everything
+and drops whatever is in flight through it.
+
+```sh
+pnpm woo-fault status
+pnpm woo-fault fail --method GET --path '/wp-json/wc/v3/products/*' --fault 503 [--count 3|all]
+pnpm woo-fault hold --next | --order <Agentify order id>
+pnpm woo-fault release --order <Agentify order id>
+pnpm woo-fault shift --next | --order <Agentify order id> --by 1
+pnpm woo-fault clear
+```
+
+`fail` names a method in capitals, a path pattern and a fault. The pattern is
+matched against the whole path without its query string, quoted so that the
+shell leaves it alone; `*` stands for any run of characters within one path
+segment and `**` for any run across segments. The connector reads a product at
+`/wp-json/wc/v3/products/<id>` and several at `/wp-json/wc/v3/products`, the
+shop's settings at `/wp-json/wc/v3/settings/general`, `/wp-json/wc/v3/settings/tax`
+and the paths under `/wp-json/wc/v3/settings/*/*`, the public catalogue at
+`/wp-json/wc/store/v1/products`, a parcel's cart at
+`/wp-json/wc/store/v1/cart` and the paths under `/wp-json/wc/store/v1/cart/*`,
+and creates a shop order with `POST /wp-json/wc/v3/orders`. The rule fails the
+next matching request, or the next `--count` of them, or every one until
+`clear` with `--count all`. Several rules may be armed at once, and the first
+armed that matches a request is the one that fails it.
+
+The fault decides where the request ends:
+
+- A status from 400 to 599 is answered by the edge with that status and a
+  WordPress-shaped error whose code is `woo_fault`; the shop never sees the
+  request.
+- `malformed` is answered by the edge with a 200 whose JSON document breaks
+  off midway; the shop never sees the request.
+- `drop` closes the connection with no answer at all, which the connector
+  meets as a shop that went away; the shop never sees the request.
+- `cut` sends the request to the shop, reads the shop's whole answer and then
+  closes the connection without writing a byte of it. For an order call that
+  means WooCommerce made the order and the connector never learned of it.
+
+`hold` arms a hold for the request that creates the shop order of one
+Agentify order, given with `--order`, or, with `--next`, for whichever order
+the next such request names; `status` then names the order it caught. A held
+request waits at the edge and the shop does not see it until `release --order`
+names that order. While a hold is armed it catches every request creating that
+order. A release sends on each one whose caller is still waiting and disarms
+the hold; a request whose caller gave up while it was held is never sent, so a
+release cannot make an order that nobody is waiting for. A held request then
+meets any `fail` rule armed for it, as any other request would.
+
+`shift` adds one fee line, named "Controlled Woo fault: total shifted by …",
+to the request creating the chosen order, or the next order with `--next`, so
+that the order WooCommerce records totals the amount the connector sent plus
+the shift. The amount is in the shop's currency, written with a dot and
+without separators, and may be negative: `--by 1` and `--by -2` on the rupiah
+shop, `--by 0.01` on the dollar shop. The fee is untaxed, so the shop's tax
+lines stay as they would have been. A shift is spent on the first request it
+changes, and is applied only to a request that is sent to the shop. To shift
+an order whose identifier is not known in advance, hold it with `--next`, read
+its identifier from `status`, arm the shift with `--order` and release it.
+
+`clear` disarms every failure, every shift and every hold that has caught
+nothing; a hold with a request waiting stays until it is released.
+
+### What a hold meets
+
+The connector gives up on a shop call after fifteen seconds. A request held
+longer than that loses its caller, and the connector treats the call as one
+whose outcome it cannot know: it keeps its record that it tried, and from
+then on answers that order as unknown rather than calling the shop again.
+Releasing it afterwards sends nothing, as above. A story that changes
+something while an order is held, such as saving a rate, does it and releases
+within those fifteen seconds; saving a rate runs an import through the edge
+too, which a hold does not stop, and a release need not wait for it.
+
+While its order call is held, the gateway may hand the same order to the
+dashboard again. The connector meets its own record of the call in progress
+and answers that repeat by its rules; which answer it gives is what the story
+reads, and the edge's log and `status` show how many requests to create that
+order arrived and how many went on to the shop.
+
+### The log and the evidence of an order
+
+The edge's log is the stack's log of the `woo-fault` service:
+
+```sh
+docker compose -p instr-woo-fault logs -f woo-fault
+```
+
+It has one line for every request to the shop, and more for one that is held
+and released: the time, a sequence number, the method, the path without its
+query string, for an order call the Agentify order it creates, and what
+happened. A request that reached the shop says so with the shop's status and
+size, and for an order call the shop order its answer named. A request the
+edge answered or closed says that the shop never saw it. A cut says both that
+the shop answered and that the caller got nothing. The log never prints a
+header, a body or a query string, because the connector's keys travel in
+headers and an order's body carries the merchant's address and the buyer's
+delivery address. Agentify order identifiers do appear, and as with the cut
+proxy's log, a log from a run belongs with that run's private evidence. In a
+copy of the lab the edge's log is also the shop's request log: the copy's
+Caddy only stands in for `lab.sh`, so `./lab.sh requests` there shows nothing.
+
+`status` adds, for every Agentify order an order call has named, how many
+such calls arrived at the edge and how many were sent on to the shop. The
+shop's own answer is `./lab.sh orders <Agentify order id>` in the copy, which
+reads the orders through WooCommerce and lists every one that carries the
+identifier, with its status, total and fee lines; it exits 3 when none does,
+and fails with a sentence when the shop could not be asked. Without an
+identifier it counts the shop's orders by status. A story proves that
+WooCommerce made an order by both: the edge's line saying the shop answered
+the call, and the order in the shop.
+
+### What it cannot do
+
+It fails a request by its method and path alone, so it cannot fail the read of
+one product while passing the read of another with the same pattern, beyond
+the order of arrival. It does not change what the shop answers: a product or
+setting answered with another object's identifier, a public price that differs
+from the authenticated one, or a challenge page from bot protection, which
+H-09 and H-17 ask for, are not among its faults. A shift changes an order on
+its way into the shop and cannot change an order the shop already holds. It
+fronts a local copy only, so the stories it serves run on the local stack's
+sandbox facilitator, which accepts pretend payments and proves nothing about
+settlement. And it holds nothing but the shop's side: a stand-in for a merchant
+that stops at a moment, or a lost gateway answer, is the stand's and the cut
+proxy's.
+
+### Stopping
+
+The copy goes first, because it is attached to the stack's network, and then
+the stack with its volumes. The copy keeps its profiles in its data directory
+until that is deleted too.
+
+```sh
+(cd <the copy> && docker compose down)
+docker compose -p instr-woo-fault down -v
+```

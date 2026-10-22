@@ -13,6 +13,7 @@
     "serve": "tsx src/serve.ts",
     "buy": "tsx src/buy.ts",
     "cut": "tsx src/cut.ts",
+    "woo-fault": "tsx src/woo-fault.ts",
     "stand": "node --env-file-if-exists=../../.env.stand --import tsx src/stand.ts"
   },
   "devDependencies": {
