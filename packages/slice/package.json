@@ -17,6 +17,7 @@
     "payment-faults": "tsx src/payment-faults.ts",
     "additions": "tsx src/additions.ts",
     "wallet-faults": "tsx src/wallet-faults.ts",
+    "woo-fault": "tsx src/woo-fault.ts",
     "stand": "node --env-file-if-exists=../../.env.stand --import tsx src/stand.ts"
   },
   "devDependencies": {

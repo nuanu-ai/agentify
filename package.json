@@ -40,6 +40,7 @@
     "payment-faults": "pnpm --filter @agentify/slice run payment-faults",
     "additions": "pnpm --filter @agentify/slice run additions",
     "wallet-faults": "pnpm --filter @agentify/slice run wallet-faults",
+    "woo-fault": "pnpm --filter @agentify/slice run woo-fault",
     "changeset": "changeset",
     "mutate": "node scripts/mutate.mjs",
     "scanner:build": "pnpm --filter '@agentify/scanner-worker...' --if-present run build",
