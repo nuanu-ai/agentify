@@ -1,0 +1,2 @@
+# Held by a running ./lab.sh command.
+.lab.lock/
