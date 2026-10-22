@@ -13,6 +13,7 @@
     "serve": "tsx src/serve.ts",
     "buy": "tsx src/buy.ts",
     "cut": "tsx src/cut.ts",
+    "wallet-faults": "tsx src/wallet-faults.ts",
     "stand": "node --env-file-if-exists=../../.env.stand --import tsx src/stand.ts"
   },
   "devDependencies": {
@@ -23,6 +24,7 @@
     "@x402/core": "2.23.0",
     "@x402/evm": "2.23.0",
     "@x402/fetch": "2.23.0",
+    "playwright": "1.61.1",
     "tsx": "^4.23.12",
     "viem": "2.47.0",
     "vitest": "^4.1.11"
