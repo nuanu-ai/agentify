@@ -6,22 +6,33 @@
 //
 // Every WooCommerce option, the WordPress settings a shop depends on, its
 // plugins, payment methods, shipping zones, taxes, webhooks and REST API keys.
-// A secret is never printed. A REST API key is named by its description,
-// permissions and last access alone. Any other value under a name that marks
-// it as a secret, such as a payment plugin's secret key, is printed as a keyed
-// hash, so that two readings show whether it changed without showing it; the
-// key is this WordPress installation's own salt, which no reading contains.
+// A REST API key is named by its description, permissions and last access
+// alone. Any other value under a name that marks it as a secret, such as a
+// payment plugin's secret key, is printed as a keyed hash, so that two
+// readings show whether it changed without showing it; the key is this
+// WordPress installation's own salt, which no reading contains.
 
 if (!defined('ABSPATH')) {
     exit(1);
 }
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-const LAB_SECRET_NAME = '/secret|password|passwd|pwd|token|api_?key|private_?key|signature|webhook_?key|consumer_?key|nonce|salt/i';
+// A value is hashed when its own name or the name of anything it sits under
+// mentions one of these, which hashes some harmless values too: a hash still
+// shows that a value changed. A secret kept under a name that mentions none of
+// them would be printed.
+const LAB_SECRET_NAME = '/key|auth|credential|pass|pwd|secret|token|signature|nonce|salt|hash/i';
 
 function lab_redact($value, string $name, bool $secret = false)
 {
     $secret = $secret || preg_match(LAB_SECRET_NAME, $name);
+    // A plugin may keep its settings as a JSON string.
+    if (is_string($value) && ($value[0] ?? '') === '{') {
+        $decoded = json_decode($value, true);
+        if (is_array($decoded)) {
+            $value = $decoded;
+        }
+    }
     if (is_array($value) || is_object($value)) {
         $out = [];
         foreach ((array) $value as $key => $inner) {
