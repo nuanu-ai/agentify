@@ -49,6 +49,7 @@ import {
   type CatalogueRead,
   catalogueOf,
   inspectProductInTheShop,
+  inspectProductsInTheShop,
   PRODUCTS_AT_MOST,
   type ProductInspection,
   type ShopKeys,
@@ -81,6 +82,11 @@ export interface ShopCalls {
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
   readonly inspectProduct: (keys: ShopKeys, merchantItemId: string) => Promise<ProductInspection>;
+  /** Every product of an import, in the order asked. */
+  readonly inspectProducts: (
+    keys: ShopKeys,
+    merchantItemIds: readonly string[],
+  ) => Promise<readonly ProductInspection[]>;
   readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
 }
 
@@ -174,26 +180,6 @@ const shopStateOf = async (shops: WooShops, accountId: string): Promise<ShopStat
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
-/** Preserves input order while bounding calls into one merchant's shop. */
-const mapAtMost = async <Input, Output>(
-  values: readonly Input[],
-  atMost: number,
-  visit: (value: Input) => Promise<Output>,
-): Promise<Output[]> => {
-  const results = new Array<Output>(values.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < values.length) {
-      const index = next;
-      next += 1;
-      const value = values[index];
-      if (value !== undefined) results[index] = await visit(value);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
-  return results;
-};
-
 /**
  * A throw may come after the card was written, so it is neither a refusal nor a
  * publication: the import records no verdict, says whether it was published is
@@ -277,6 +263,13 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   const postman = parts.postman ?? postmanFor(config);
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
   const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
+  const inspectProducts = parts.shop?.inspectProducts ?? inspectProductsInTheShop;
+  /**
+   * The shops being imported now, by origin. This process is the only one that
+   * imports, so a shop walked twice at once would be a second press or a
+   * second tab sending the whole walk to somebody else's shop again.
+   */
+  const importing = new Set<string>();
   const recovery = wooRecoveryPagesFor({
     shops,
     gatewayFor: parts.clientFor,
@@ -428,21 +421,69 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await drawTheShop(person, { refused: unset.document, ...saved }, 409);
     }
 
-    // The ceiling goes in, so a catalogue too large is refused after three
-    // round trips to somebody else's shop rather than fifty.
+    const origin = originOf(connection);
+    if (importing.has(origin)) {
+      noted(
+        person,
+        `pressed Import while the shop at ${connection.shopUrl} was already being imported, so it was not read again`,
+      );
+      return await drawTheShop(
+        person,
+        rateSaved === null
+          ? {
+              problem:
+                "An import of your shop is already running, and the cards it publishes appear" +
+                " on Cards. Import again once it has ended to see a result here.",
+            }
+          : {
+              rate: {
+                saved: rateSaved,
+                problem:
+                  "An import of your shop is already running, and it may have read the rate" +
+                  " before you saved this one. Import again once it has ended to publish your" +
+                  " products at this rate.",
+              },
+            },
+        409,
+      );
+    }
+    importing.add(origin);
+    try {
+      return await walked(person, connection, rateSaved);
+    } finally {
+      importing.delete(origin);
+    }
+  };
+
+  /** One import's walk through the shop, the only one for that shop while it runs. */
+  const walked = async (
+    person: Person,
+    connection: WooConnection,
+    rateSaved: string | null,
+  ): Promise<Outcome<WooShopView | WooImportView>> => {
+    const saved = rateSaved === null ? {} : { rate: { saved: rateSaved } };
+    const resulted = (settled: Parameters<typeof importResult>[1], counts?: ImportCounts) =>
+      shops.recordAnalytics(importResult(person, settled, counts), new Date());
+
+    // The ceiling goes in, so a catalogue too large is refused a page past the
+    // ceiling rather than read whole.
     const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
     if (!read.ok) {
       await resulted({ outcome: "blocked", reason_code: "catalogue_unavailable" });
       return await drawTheShop(person, { problem: read.why, ...saved }, 502);
     }
 
-    const inspections = await mapAtMost(read.products, 4, async (product) => ({
-      product,
-      inspected: await inspectProduct(
-        connection,
-        merchantItemIdFor(connection.shopUrl, String(product.id)),
-      ),
-    }));
+    const checked = await inspectProducts(
+      connection,
+      read.products.map((product) => merchantItemIdFor(connection.shopUrl, String(product.id))),
+    );
+    const inspections = read.products.map((product, index) => {
+      const inspected = checked[index];
+      if (inspected === undefined) {
+        throw new Error("the product checks came back fewer than the products asked about");
+      }
+      return { product, inspected };
+    });
     // The shop's own settings, as every product check read them, name what it
     // sells in; noted for the screen, which asks for a rate in that currency.
     const sells = currencyRead(inspections.map((one) => one.inspected));

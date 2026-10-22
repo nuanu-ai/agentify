@@ -1,0 +1,10 @@
+# The plugins visible on at least a fifth of the Indonesian shops in the census
+# of real shops, each pinned to a version published on wordpress.org, as
+# slug@version. The realistic and hard profiles install them when they are
+# built, and their checks require each one active at this version. Elementor
+# Pro, the sixth, is sold by its vendor and is not published there.
+elementor@4.3.5
+contact-form-7@6.2.3
+woo-xendit-virtual-accounts@8.0.0
+click-to-chat-for-whatsapp@4.45
+google-site-kit@1.190.0

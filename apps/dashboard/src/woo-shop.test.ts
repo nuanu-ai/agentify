@@ -35,6 +35,7 @@ import {
   createTheOrderInTheShop,
   createTheParcelInTheShop,
   inspectProductInTheShop,
+  inspectProductsInTheShop,
   readTheOrderInTheShop,
   shipmentInTheShop,
   shippingRatesInTheShop,
@@ -46,6 +47,7 @@ interface Asked {
   readonly authorization: string | undefined;
   readonly cartToken: string | undefined;
   readonly nonce: string | undefined;
+  readonly range: string | undefined;
   readonly body: string;
 }
 
@@ -75,6 +77,7 @@ const shopAnswering = async (
         authorization: request.headers.authorization,
         cartToken: request.headers["cart-token"] as string | undefined,
         nonce: request.headers.nonce as string | undefined,
+        range: request.headers.range,
         body: Buffer.concat(chunks).toString("utf8"),
       };
       asked.push(call);
@@ -206,6 +209,71 @@ describe("reading the catalogue", () => {
     expect(read.ok === false && read.why).toContain("150");
     // Two pages to know there are more than a hundred and fifty, and no more.
     expect(stand.asked).toHaveLength(2);
+  });
+
+  it("refuses on the first page a shop whose own count is over the ceiling", async () => {
+    // The shops over the ceiling are the largest ones, and reading them a page
+    // past it keeps the merchant waiting for a "no" the first page could give.
+    stand = await shopAnswering(() => ({
+      status: 200,
+      body: Array.from({ length: 100 }, (_, i) => aProduct(i + 1)),
+      headers: { "x-wp-total": "3380" },
+    }));
+
+    const read = await readCatalogue(stand.url, 2_000);
+
+    expect(read).toMatchObject({ ok: false, why: expect.stringContaining("more than 2,000") });
+    expect(stand.asked).toHaveLength(1);
+  });
+
+  it("takes a catalogue whose short page settles it, whatever count the shop gives", async () => {
+    // A count cached apart from the page, or one written in some other form,
+    // never outweighs a page that shows the catalogue is complete.
+    for (const total of ["2100", "1e5", " 2001 "]) {
+      stand = await shopAnswering(() => ({
+        status: 200,
+        body: Array.from({ length: 30 }, (_, i) => aProduct(i + 1)),
+        headers: { "x-wp-total": total },
+      }));
+
+      const read = await readCatalogue(stand.url, 2_000);
+
+      expect(read.ok === true && read.products, total).toHaveLength(30);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses early only on a count written as a plain number", async () => {
+    stand = await shopAnswering((asked) => ({
+      status: 200,
+      body:
+        Number(new URL(asked.url, "http://x").searchParams.get("page")) === 1
+          ? Array.from({ length: 100 }, (_, i) => aProduct(i + 1))
+          : [],
+      headers: { "x-wp-total": "1e5" },
+    }));
+
+    const read = await readCatalogue(stand.url, 2_000);
+
+    expect(read.ok === true && read.products).toHaveLength(100);
+  });
+
+  it("reads on past a count at or under the ceiling, which only the pages settle", async () => {
+    // A count is the shop's word, which a cache can leave stale: it may refuse
+    // early, never admit a catalogue the pages show is too large.
+    const page = (n: number) =>
+      n <= 2 ? Array.from({ length: 100 }, (_, i) => aProduct(i + 1)) : [aProduct(201)];
+    stand = await shopAnswering((asked) => ({
+      status: 200,
+      body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
+      headers: { "x-wp-total": "150" },
+    }));
+
+    const read = await readCatalogue(stand.url, 200);
+
+    expect(read.ok).toBe(false);
+    expect(stand.asked).toHaveLength(3);
   });
 
   it("refuses a catalogue over the ceiling whose last page is a short one", async () => {
@@ -1237,6 +1305,29 @@ describe("the protected product check", () => {
     });
   });
 
+  it("asks for a download's first byte only, so a public file is not fetched whole to learn it is public", async () => {
+    // A whole catalogue of downloads checks every file; on a shop whose files
+    // are public that would pull each of them from somebody else's server.
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") {
+        return asked.range === "bytes=0-0"
+          ? { status: 206, raw: "x", headers: { "content-range": "bytes 0-0/2000000" } }
+          : { status: 200, raw: "x".repeat(2_000_000) };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: false, saidNo: true, why: expect.stringContaining("public") });
+    expect(stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.range).toBe(
+      "bytes=0-0",
+    );
+  });
+
   it("calls a downloadable file public only where it was served without an order permission", async () => {
     // A missing file or a redirect to a login is not a file anyone can fetch;
     // either still refuses the sale, which cannot rely on it being protected.
@@ -1851,6 +1942,236 @@ describe("the protected product check", () => {
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
+  });
+
+  describe("for a whole catalogue", () => {
+    const LIST = "/wp-json/wc/v3/products?";
+
+    /** The ids a list request names, in the order it names them. */
+    const includedIn = (url: string): string[] =>
+      (new URL(url, "http://x").searchParams.get("include") ?? "").split(",").filter(Boolean);
+
+    /**
+     * A shop answering a list from these documents and each product on its
+     * own, its files on its own origin whenever it was stood up.
+     */
+    const shopOf = (
+      documents: ReadonlyMap<string, Record<string, unknown>>,
+      answer: (asked: Asked) => ReturnType<Parameters<typeof shopAnswering>[0]> | null = () => null,
+    ) =>
+      shopAnswering((asked) => {
+        const given = answer(asked);
+        if (given !== null) return given;
+        const here = (document: Record<string, unknown> | undefined) =>
+          document === undefined
+            ? undefined
+            : (JSON.parse(
+                JSON.stringify(document).replaceAll(
+                  "http://127.0.0.1/protected/",
+                  `${stand?.url}/protected/`,
+                ),
+              ) as Record<string, unknown>);
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        }
+        if (asked.url.startsWith(LIST)) {
+          // Only the fields asked for, as WordPress answers `_fields`, so a
+          // judge that read one more would find it missing here too.
+          const fields = new URL(asked.url, "http://x").searchParams.get("_fields")?.split(",");
+          return {
+            status: 200,
+            body: includedIn(asked.url).flatMap((id) => {
+              const document = here(documents.get(id));
+              if (document === undefined) return [];
+              return [
+                fields === undefined
+                  ? document
+                  : Object.fromEntries(
+                      Object.entries(document).filter(([field]) => fields.includes(field)),
+                    ),
+              ];
+            }),
+          };
+        }
+        const one = /^\/wp-json\/wc\/v3\/products\/(\d+)$/.exec(asked.url)?.[1];
+        const document = one === undefined ? undefined : here(documents.get(one));
+        return document === undefined
+          ? { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } }
+          : { status: 200, body: document };
+      });
+
+    /** Every third a parcel and the rest downloads. */
+    const documentsOf = (count: number) =>
+      new Map(
+        Array.from({ length: count }, (_, index) => {
+          const id = String(index + 1);
+          return [
+            id,
+            index % 3 === 0
+              ? parcelDocument({ id: index + 1 })
+              : productDocument({ id: index + 1 }),
+          ] as const;
+        }),
+      );
+
+    const inspectAll = (keys: ReturnType<typeof connectionTo>, ids: readonly string[]) =>
+      inspectProductsInTheShop(
+        keys,
+        ids.map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        fetch,
+      );
+
+    it("asks the shop for each setting once and for its products a hundred at a time", async () => {
+      // Asked one product at a time with every setting beside it, a catalogue
+      // of two thousand was some twenty-four thousand requests to somebody
+      // else's shop.
+      const documents = documentsOf(250);
+      stand = await shopOf(documents);
+
+      const read = await inspectAll(connectionTo(stand.url), [...documents.keys()]);
+
+      expect(read).toHaveLength(250);
+      expect(read.every((one) => one.ok)).toBe(true);
+      const settings = stand.asked.filter((asked) => asked.url.includes("/settings/"));
+      expect(settings.length).toBe(new Set(settings.map((asked) => asked.url)).size);
+      expect(settings.length).toBeLessThanOrEqual(11);
+      const lists = stand.asked.filter((asked) => asked.url.startsWith(LIST));
+      expect(lists.map((asked) => includedIn(asked.url).length)).toEqual([100, 100, 50]);
+      expect(stand.asked.some((asked) => /\/products\/\d+$/.test(asked.url))).toBe(false);
+      // The key goes with every protected request, as with the single check.
+      expect(
+        [...settings, ...lists].every((asked) => asked.authorization?.startsWith("Basic ")),
+      ).toBe(true);
+    });
+
+    it("judges every product exactly as the check of that one product does", async () => {
+      // One judge for both: a catalogue read must not let through what the
+      // price question at purchase refuses, nor refuse in other words.
+      const documents = new Map<string, Record<string, unknown>>([
+        ["11", productDocument({ id: 11 })],
+        ["28", parcelDocument({ id: 28 })],
+        ["30", parcelDocument({ id: 30, manage_stock: true })],
+        ["31", parcelDocument({ id: 31, type: "variable" })],
+        ["32", productDocument({ id: 32, download_limit: 5 })],
+        ["33", parcelDocument({ id: 33, price: "20.005" })],
+        ["34", productDocument({ id: 34, downloads: [] })],
+      ]);
+      stand = await shopOf(documents);
+      const keys = connectionTo(stand.url);
+
+      const together = await inspectAll(keys, [...documents.keys()]);
+      const oneByOne = await Promise.all(
+        [...documents.keys()].map((id) =>
+          inspectProduct(keys, merchantItemIdFor(stand?.url ?? "", id)),
+        ),
+      );
+
+      expect(together).toEqual(oneByOne);
+      expect(together.filter((one) => one.ok)).toHaveLength(2);
+    });
+
+    it("asks after a product the shop's list left out on its own, and judges it as the single check does", async () => {
+      // A list can leave a product out for reasons of its own, a cache in front
+      // of the shop among them, and a document it carries for another product
+      // never stands in for the one asked about.
+      const documents = documentsOf(3);
+      stand = await shopOf(documents, (asked) =>
+        asked.url.startsWith(LIST)
+          ? { status: 200, body: [documents.get("1"), parcelDocument({ id: 99 })] }
+          : asked.url === "/wp-json/wc/v3/products/3"
+            ? { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } }
+            : null,
+      );
+      const keys = connectionTo(stand.url);
+
+      const together = await inspectAll(keys, ["1", "2", "3"]);
+      const alone = await inspectProduct(keys, merchantItemIdFor(stand.url, "3"));
+
+      expect(together[0]).toMatchObject({ ok: true });
+      expect(together[1]).toMatchObject({ ok: true, product: { productId: "2" } });
+      expect(together[2]).toEqual(alone);
+      expect(together[2]).toMatchObject({ ok: false, saidNo: true });
+      const onTheirOwn = stand.asked.filter((asked) => /\/products\/\d+$/.test(asked.url));
+      expect(onTheirOwn.map((asked) => asked.url)).toEqual(
+        expect.arrayContaining(["/wp-json/wc/v3/products/2", "/wp-json/wc/v3/products/3"]),
+      );
+    });
+
+    it("leaves only the products of a page the shop did not answer to be asked again", async () => {
+      const documents = documentsOf(150);
+      const losingTheSecond: WooRequest = async (url, init) => {
+        const href = String(url);
+        if (href.includes(LIST) && includedIn(href)[0] === "101")
+          throw new TypeError("fetch failed");
+        return await fetch(url, init);
+      };
+      stand = await shopOf(documents);
+      const keys = connectionTo(stand.url);
+
+      const read = await inspectProductsInTheShop(
+        keys,
+        [...documents.keys()].map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        losingTheSecond,
+      );
+
+      expect(read.slice(0, 100).every((one) => one.ok)).toBe(true);
+      // Told as the shop not answering, which it did not, rather than as a
+      // product its list left out.
+      expect(read.slice(100)).toEqual(
+        Array.from({ length: 50 }, () =>
+          expect.objectContaining({
+            ok: false,
+            again: true,
+            why: expect.stringContaining("did not answer"),
+          }),
+        ),
+      );
+    });
+
+    it("keeps at most four requests in the shop at once, products its lists left out included", async () => {
+      // Somebody else's shop, often on shared hosting: a whole catalogue is
+      // read at the pace of a few visitors, not all at once, even where every
+      // product has to be asked after alone.
+      for (const listsCarry of ["every product", "none"] as const) {
+        await stand?.close();
+        stand = null;
+        await atMostFourAtOnce(listsCarry);
+      }
+    });
+
+    const atMostFourAtOnce = async (listsCarry: "every product" | "none") => {
+      const documents = documentsOf(900);
+      let inFlight = 0;
+      let most = 0;
+      const counting: WooRequest = async (url, init) => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          return await fetch(url, init);
+        } finally {
+          inFlight -= 1;
+        }
+      };
+      stand = await shopOf(documents, (asked) =>
+        listsCarry === "none" && asked.url.startsWith(LIST) ? { status: 200, body: [] } : null,
+      );
+      const keys = connectionTo(stand.url);
+
+      const read = await inspectProductsInTheShop(
+        keys,
+        [...documents.keys()].map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        counting,
+      );
+
+      expect(
+        read.every((one) => one.ok),
+        listsCarry,
+      ).toBe(true);
+      expect(most, listsCarry).toBeLessThanOrEqual(4);
+      expect(most, listsCarry).toBeGreaterThan(1);
+    };
   });
 });
 

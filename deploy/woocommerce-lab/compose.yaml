@@ -9,6 +9,9 @@ services:
       MARIADB_USER: wordpress
       MARIADB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+    # A profile's snapshot is the database's own files, copied while it is
+    # stopped, so it must be given time to shut down cleanly.
+    stop_grace_period: 60s
     volumes:
       - ${WOOCOMMERCE_DATA_ROOT}/db:/var/lib/mysql
     healthcheck:
@@ -37,6 +40,7 @@ services:
         define('DISALLOW_FILE_EDIT', true);
     volumes:
       - ${WOOCOMMERCE_DATA_ROOT}/wordpress:/var/www/html
+      - ./apache-log.conf:/etc/apache2/conf-enabled/zz-lab-log.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost/"]
       interval: 5s
@@ -74,11 +78,25 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-data:/data
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-config:/config
+      - ${WOOCOMMERCE_DATA_ROOT}/caddy-logs:/var/log/caddy
     networks: [shop]
 
-  # The mail catcher the realistic profile hands the shop's mail to. It starts
-  # only with that profile, keeps mail only while it runs, and its web
-  # interface listens on this host's loopback alone.
+  # The hands lab.sh works the data directory with: unpacking and packing
+  # snapshots, writing settings readings and reading the request log. It runs
+  # as root inside its container so that the host needs no sudo for files the
+  # database, WordPress and Caddy own, and it has no network.
+  tools:
+    image: wordpress:7.1-php8.3-apache
+    profiles: [tools]
+    user: "0:0"
+    entrypoint: ["sh", "-euc"]
+    network_mode: none
+    volumes:
+      - ${WOOCOMMERCE_DATA_ROOT}:/lab
+
+  # The mail catcher the realistic and hard profiles hand the shop's mail to.
+  # It starts only with those profiles, keeps mail only while it runs, and its
+  # web interface listens on this host's loopback alone.
   mailpit:
     image: axllent/mailpit:v1.31.4
     profiles: [realistic]

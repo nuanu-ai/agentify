@@ -1263,3 +1263,79 @@ LiteSpeed six of seven, Cloudflare five of seven, all outside their ranges).
 Rules 6 and 7 stand as the first results gave them. The second sample adds
 one more shop to rule 6's count, by a dropped connection, and no European
 shop.
+
+## The catalogue ceiling, read from these counts
+
+Added on 2026-10-22, after both samples, when the product owner asked for the
+connector's ceiling of 200 products to be raised so that it covers nine shops
+in ten. No decision record says where 200 came from: it was a constant in the
+connector's first commit, and the comment beside it gave as the reason that
+every product was a separate publish while the merchant held the page open.
+This section is not part of the pre-registered census and decides nothing the
+census's own rules decide.
+
+The counts are the `X-WP-Total` of the first listing page of each shop whose
+listing could be read and carried the header: 26 Indonesian shops across both
+samples, 16 European and 6 American, 48 in all. The share of them a ceiling
+covers is the share with at most that many products.
+
+| Ceiling | Indonesia (26) | Europe (16) | United States (6) | All (48) |
+| --- | --- | --- | --- | --- |
+| 200 | 62% | 69% | 100% | 69% |
+| 1,500 | 92% | 81% | 100% | 90% (43 of 48) |
+| 2,000 | 92% | 88% | 100% | 92% |
+
+The ceiling is set at 2,000. At 1,500 the whole group is at nine in ten only
+when rounded (43 of 48 is 89.6%) and Europe at eight, so one shop more or less
+would move the answer; 2,000 takes in 44 of 48, and no ceiling below 3,380
+covers more. The shops it leaves out are the four largest: 3,380 and 6,149
+products in Indonesia, 4,347 and 9,773 in Europe. Products are counted as the
+Store API counts them, so a variable product is one, not one per variation.
+
+### What a catalogue of that size asks of the shop
+
+The import used to check each product with its own request and eleven requests
+for the shop's settings beside it, four products at a time, so a shop of 2,000
+products would have been asked some 24,000 authenticated requests with up to
+48 at once. On a throwaway copy of the integration lab holding 1,990 products,
+it made 23,995 requests over 122 seconds. The import now reads the shop's
+settings once and the protected product documents a hundred to a request,
+judged by the same code as the single check, with at most four requests in the
+shop at once; a product a list leaves out is asked after on its own, and a
+download's file is asked for its first byte only. On the same shop it made 146
+requests over about 6 seconds (20 listing pages, 11 settings, 20 protected
+lists and 95 checks that a download's file refuses a request without an
+order), and the whole import, publishing included, answered in 8 to 9 seconds,
+and in 6.9 when run again. Both versions published the same 916 cards, set 92
+products aside to fix and passed over 982. With 60 products added, the shop of
+2,050 was refused on its first listing page, because it reports its own count
+beside a full page; a shop that does not report one is refused a page past the
+ceiling, on the 21st, and in both cases before any protected request and with
+its cards left as they were.
+
+The lab is a local container with no other plugin and answers in a tenth of a
+second, so these times are a floor. The census timed its own hundred-product
+listing request, which is the request an import repeats once per hundred
+products: across 34 sites with at least a hundred products, from the test
+host's Indonesian network, it took a median of 4.5 seconds, 6.4 at the
+ninetieth percentile and 8.0 at most. These are the 34 sites, placed in a
+group or not, whose listing the census read and whose count was at least a
+hundred; the raw answers are among the census's working files, which are not
+published and are not in this repository. The protected requests on real shops
+were not timed. If they cost about what a listing page costs, an import of
+2,000 parcels from such a shop would take about two minutes, mostly the 21
+listing pages read one after another, and about three at the ninetieth
+percentile; a shop selling downloads adds one request per download, four at a
+time, which is small where the server honours a request for the file's first
+byte and the whole file, up to the connector's ten megabytes, where it does
+not. That is an estimate, not a measurement. Nor was it measured whether a
+real shop answers a protected list of a hundred products within the fifteen
+seconds every request is given: a page that does not is told, for each of its
+hundred products, as the shop not answering, and an import run again asks
+again. The import runs inside the merchant's request. Neither Caddy in front
+of the dashboard nor the dashboard's own server limits how long a response may
+take; the test host's ingress is configured outside this repository and was
+not read. Firefox gives up on a response after five minutes by default; other
+browsers were not checked. The import stays inside the request, and moves out
+of it into a job of its own only once a real shop proves slow enough to come
+near that limit (the product owner, 2026-10-22).
