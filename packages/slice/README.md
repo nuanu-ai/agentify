@@ -336,7 +336,7 @@ Nothing it answers is money. It signs nothing, broadcasts nothing and asks no
 chain, and what it calls a transfer is an entry in its own memory. Every line
 of its log that names a transfer says it is a local model, and the transfer is
 named `local-model-<run>-<n>`, where the run is six hexadecimal characters
-drawn when the control starts, so that two runs never name the same transfer.
+drawn when the control starts, so that the transfers of two runs are told apart.
 That name is what the gateway records as the transaction that paid an order:
 the buyer's answer, the order's status, the merchant's receipt and the
 dashboard all show it, and none of them is evidence of a payment on any chain.
@@ -363,9 +363,12 @@ AGENTIFY_FACILITATOR_URL=http://host.docker.internal:8789 docker compose up -d a
 
 The same variable has to be given to every later `docker compose up` of that
 stack, or the application comes back on the sandbox's scripted facilitator.
-`AGENTIFY_PAYMENT_RPC_URL` stays empty, as `compose.yaml` leaves it: given an
-address, the gateway's payment recovery would read Base Sepolia itself for
-transfers that only the model made, and would never find them.
+`AGENTIFY_PAYMENT_RPC_URL` stays empty, as `compose.yaml` leaves it. Given an
+address, the gateway's payment recovery would read the real Base Sepolia for
+every charge left unanswered, find the buyer's authorisation never used, since
+nothing ever broadcast it, and once it had expired record the order as not
+paid: the opposite of what `settle-lost` and a late success claim in the
+model. That was not tried here.
 
 A gateway whose facilitator is anything but the sandbox's is no longer a
 sandbox. It takes itself for a test channel: its first log line and the
@@ -392,8 +395,8 @@ answer is held. Without `--fault` the control breaks nothing, which is how the
 stack is run between faults.
 
 `--fault verify-refused` answers the chosen verification invalid, with the
-reason `insufficient_funds`. The gateway refuses that purchase before the
-merchant is asked for anything and charges nothing: the buyer is answered 409
+reason `insufficient_funds`. The gateway refuses that purchase before any goods
+are asked for and charges nothing: the buyer is answered 409
 `payment_not_verified`, not retryable, and the refusal quotes the control's own
 sentence, which says it is the armed fault.
 
@@ -409,41 +412,56 @@ goods reads `rejected` and `not_paid`.
 
 `--fault settle-lost` counts the chosen settle as a transfer in the model and
 closes the connection without an answer. The gateway's client meets a closed
-connection and the gateway records that it does not know: the order reads
-`payment_unresolved` with `payment_status` `unresolved`, for the buyer, for the
-merchant and on the dashboard. With payment recovery off it stays that way,
-since nothing on the local stack can ever settle it.
+connection and the gateway keeps the order's payment as still running until its
+own wait for the charge runs out, ten seconds on a synchronous purchase and
+fifteen on one paid before its goods (`SETTLE_RESPONSE_MS` and
+`SETTLE_BEFORE_GOODS_MS`). From then the order reads `payment_unresolved` with
+`payment_status` `unresolved`, for the buyer, for the merchant and on the
+dashboard, where it says the payment outcome is unknown. With payment recovery
+off it stays that way, since nothing on the local stack can ever settle it.
 
 `--fault settle-late` holds the chosen settle and then answers it settled, as
-a counted transfer in the model. The hold is what makes it late: the gateway
-waits ten seconds for the charge on a synchronous purchase and fifteen on one
-paid before its goods (`SETTLE_RESPONSE_MS` and `SETTLE_BEFORE_GOODS_MS`), and
-records the outcome as unknown when the wait runs out; the success that comes
-after it is applied to the order. A synchronous order then releases its goods
-and reads `delivered` and `paid`; an order paid before its goods and not handed
-to the merchant reads `unfulfilled` and `paid`, and one the merchant closed in
-the meantime reads `fulfillment_closed` and `paid` and comes back onto the
-merchant's open orders. The gateway's facilitator client gives up on its own
-after thirty seconds, measured with `@x402/core` 2.23.0: a hold of thirty
-seconds or more never reaches the gateway, which then reads the charge as
-unknown exactly as with `settle-lost`, and the log says that the success reached
-nobody.
+a counted transfer in the model. The hold is what makes it late, and only a
+hold longer than the gateway's own wait for the charge, ten or fifteen seconds
+as above, does: a shorter one is merely slow. When the wait runs out the order
+reads `payment_unresolved`, and the success that comes after it is applied to
+the order. A synchronous order then releases its goods and reads `delivered`
+and `paid`; an order paid before its goods and not handed to the merchant reads
+`unfulfilled` and `paid`. A merchant's closure sent during the hold was taken at
+once, two and six seconds into it, and the late success then left the order
+`fulfillment_closed` and `paid`, back on the merchant's open orders as paid
+after closure. The gateway's facilitator client gives up on its own after thirty
+seconds, measured with `@x402/core` 2.23.0 and counted from before the call
+reaches the control: a hold of thirty seconds or more never reaches the
+gateway, which then reads the charge as unknown exactly as with `settle-lost`,
+and the log says that the success reached nobody. A hold a little under thirty
+seconds, such as 27, leaves the most time for a person to act before the
+answer, and the log line saying the answer was sent is the proof that it
+arrived.
 
 `--nth` picks which call of the faulted kind is broken, counted in the order the
 calls arrive: verifications for `verify-refused`, settles for the others. It is
-the first by default. A purchase verifies once and settles once, so on a stack
-with one buyer the nth call is the nth purchase. A payment presented again for
-an order already paid is meant to be checked by the gateway itself and never to
-reach a facilitator; the log is where a story checks that it did not. `--after` is the hold, in seconds, from 0 to 600: twenty by default
-for `settle-late` and none for the other settle faults, where a hold makes the
+the first by default. The nth call is not the nth purchase: a purchase the
+merchant refuses, one whose goods come too late, one whose price is declined
+and one whose payment the gateway refuses on its own reach no settle, a
+verification the facilitator leaves unanswered is asked again, and a payment
+presented again for an order already paid is meant to reach the facilitator
+not at all. The safe habit is to restart the control with the default `--nth`
+right before the purchase to break, and to read the log's count of calls
+rather than count purchases.
+
+`--after` is the hold, in seconds, from 0 to 600: twenty by default for
+`settle-late` and none for the other settle faults, where a hold makes the
 failure or the lost answer late as well. It is refused with `verify-refused`.
 
 A fault falls once. From then on every call is answered valid or settled, and
 the log says the fault is spent; arming it again means restarting the control.
 Stopping it while a settle is held drops that answer as well, which is a lost
 answer nobody chose, so a held settle is waited out before a restart. A
-stopped control is a third fault in its own right: every call meets a closed
-port, and the gateway answers the buyer with a refusal it marks retryable.
+control that is not running at all is one more way to fail, not a fault it
+arms: a verification that meets the closed port is answered to the buyer as a
+refusal marked retryable, and a settle that meets it is unknown, as with
+`settle-lost`.
 
 ### Reading the log
 
@@ -461,8 +479,10 @@ The model counts one transfer per authorisation. A second settle of an
 authorisation it already counted is answered as the rule says, names the first
 transfer again and says so in its line: that line is what a story about a
 charge made twice looks for, since no chain would move one authorisation's
-money twice and a gateway that asked for it would be the defect. The control
-checks nothing else about a payment: no signature, no balance and no nonce on
+money twice and a gateway that asked for it would be the defect. The order
+after such a settle is not what a real facilitator would leave, which would
+refuse the used authorisation, so the order's state is no evidence in that
+case and the log line is. The control checks nothing else about a payment: no signature, no balance and no nonce on
 any chain, so a payment it calls valid proves nothing about the buyer's wallet.
 
 ### What it does not model
