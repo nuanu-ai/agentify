@@ -114,7 +114,8 @@ $price_factors = [1, 1.15, 1.3, 0.85, 1.6, 0.7, 2.0, 1.1, 0.9, 1.45, 0.8, 1.25];
 // The census measured, of all products listed: 74% simple with variable
 // products carrying a median of four or five variations, 6% out of stock, 13%
 // on sale at a median of 42% off, 4% sold one at a time, weight or dimensions
-// on 51%; and stock counted for 30% of the simple products in stock. Unpriced made-to-order products keep the realistic profile's share,
+// on 51% (the first sample's figure; the combined one was not reported); and
+// stock counted for 30% of the simple products in stock. Unpriced made-to-order products keep the realistic profile's share,
 // four in 113. The realistic profile's 113 products give no weight, so the
 // generated ones carry it a little more often to bring the shop to 51%.
 $generated_total = HARD_PRODUCTS - 113 - 2;

@@ -77,6 +77,14 @@ running shop against its profile and overlays, and `./lab.sh check --as
 <profile>` against another one, which fails; it is the negative control for
 the check itself. `./lab.sh` alone prints every command.
 
+Only one command that changes the shop runs at a time; a second one is refused
+and names the first. A build, a switch or an overlay records what it is doing
+before it touches the shop and clears the record only once the shop has passed
+its check. If it is interrupted or the check fails, `status` says which command
+did not finish and what to run, and `check` and `overlay` refuse until it is
+run, so a shop that is half one profile and half another is never reported as
+either.
+
 ## What a switch does to a connected merchant
 
 A switch replaces the shop's whole database and WordPress files with the
@@ -236,7 +244,8 @@ census's shape at that size. Of the 1,950 products, 1,451 are simple (74%) and
 simple products count their stock, about 30% of the simple products in stock;
 117 are out of stock (6%), 244 on sale at a third, two fifths or half off
 (12.5%, against the census's 13%), 79 sold one at a time (4%), and 994 give a
-weight (51%, the census's share of products with a weight or dimensions).
+weight (51%, the share of products with a weight or dimensions among the
+first census sample's Indonesian shops; the combined figure was not reported).
 Sixty-nine pieces of furniture are made to order and have no price, the
 realistic profile's share of four in 113. The 113 realistic products are kept, and the
 others are generated in the same eight categories, in the same proportions
@@ -257,9 +266,9 @@ Denpasar, Bali, with one rate for Indonesia, PPN at 11%, applied to shipping
 too, and no rate for any other country. The shipping zones are the basic
 profile's, priced in rupiah at the lab's rate and taxed: Bali by its state at
 Rp 48.000, the San Francisco postcodes at Rp 120.000, the rest of Indonesia by
-its country at Rp 80.000 or Rp 192.000 express. A buyer in San Francisco is
-therefore the place the tote ships to at a different rate, none, and every
-place outside the three zones is one the shop does not ship to. The hard
+its country at Rp 80.000 or Rp 192.000 express. A parcel to San Francisco is
+therefore shipped at a different tax rate, none, and the shop does not ship to
+any place outside the three zones. The hard
 profile has the realistic profile's plugins, bank transfer and mail catcher.
 
 Indonesia's VAT, PPN, is 12% by law, but since 1 January 2025 it is charged for
@@ -283,11 +292,16 @@ profile's own, with the overlay's settings in place of the profile's. The
 shop records the overlays laid since the last switch, `status` names them, and
 switching to a profile, even the one already running, clears them.
 
-The tax overlays set the tax modes the stories about tax need, exactly as
-research note 56's Indonesian shop set them: the shop based in Denpasar, Bali
-(`ID:BA`, 80361), tax calculated, tax based on the customer's shipping address
-and rounded at the subtotal, and one rate, PPN at 11% for Indonesia applied to
-shipping, unless the overlay names otherwise. Each replaces the shop's tax rates
+The tax overlays set the tax modes the stories about tax need, on research note
+56's Indonesian shop: based in Denpasar, Bali (`ID:BA`, 80361), with tax
+calculated, based on the customer's shipping address, and one rate, PPN at 11%
+for Indonesia applied to shipping. Research note 56 entered that shop's prices
+including tax and left the rounding at WooCommerce's default, per line; the
+lab's starting mode rounds at the subtotal instead, because the connector sells
+from a shop that calculates tax only when it does, and each other overlay
+changes one setting from there. Prices entered before tax on an Indonesian
+shop, `tax-excl`, are the lab's own combination: research note 56 tried them
+on its American shop. Each replaces the shop's tax rates
 with that one rate, and a tax overlay replaces any tax overlay laid before it.
 None changes a product or the tax status of a shipping rate: on the basic
 profile the zones stay untaxed as `seed/parcel.php` makes them, and on the hard
@@ -307,9 +321,12 @@ profile they stay taxed.
   address.
 - `tax-on-base`: as `tax-incl`, with tax based on the shop's base address.
 
-Choosing a tote price and a shipping cost at which rounding per line and at the
-subtotal give totals a cent apart is part of the story that needs it, not of
-the overlay, because it changes the catalogue.
+With one rate of 11% and one tote in the cart, rounding per line and at the
+subtotal give the same cart total: on the local copy of the lab, with the Bali
+rate made taxable at 0.50, 1.50 and 2.50, every tote price from 10.00 to 26.00
+gave the same total under both. A story that needs the two roundings a cent
+apart has to find another cart, such as one of several lines, and changes the
+shop by hand to make it, which the profile's check then reports.
 
 `over-limit` adds copies of the shop's oldest priced simple product, named and
 given SKUs `OVER-LIMIT-0001` onwards, until the public catalogue lists 2,001
@@ -328,10 +345,14 @@ and must-use plugin with its version and whether it is active, the theme, the
 payment methods and whether each is enabled, the shipping zones with their
 places and methods, the tax classes and rates, webhooks, and the REST API keys.
 A key is recorded by its description, user, permissions and last access only;
-its secret, its hash and its last characters never are. Any other value held
-under a name that marks a secret, such as a payment plugin's secret key, is
-recorded as a hash keyed with the installation's own salt, so that two readings
-show that it changed without showing it. Transients and caches are left out
+its secret, its hash and its last characters never are. Any other value whose
+name, or the name of a setting it sits in, mentions key, auth, credential,
+pass, pwd, secret, token, signature, nonce, salt or hash, such as a payment
+plugin's secret key, is recorded as a hash keyed with the installation's own
+salt, so that two readings show that it changed without showing it; a plugin
+setting kept as a JSON string is read inside. That hashes some harmless
+values too, and a secret kept under a name that mentions none of those words
+would be recorded as it is. Transients and caches are left out
 because they change on their own.
 
 ```sh
@@ -352,17 +373,21 @@ usually not the story's.
 
 The lab's Caddy logs every request to the shop to
 `$WOOCOMMERCE_DATA_ROOT/caddy-logs/access.log`: when it arrived, its method,
-path and query, the status, how long it took and the User-Agent it sent. A file
-is rolled at 10 MiB, five older files are kept, compressed, and none older than
-thirty days, so the log never holds more than about sixty megabytes.
+path and query, the status, how long it took and the User-Agent it sent. The
+current file is rolled once it reaches 10 MiB, and five rolled files are kept,
+compressed, each for at most thirty days, so the log never holds more than
+about sixty megabytes; a quiet lab can keep lines older than thirty days in the
+current file.
 
-Credentials never reach it. WooCommerce accepts an API key and its secret in
-the query string, as `consumer_key` and `consumer_secret` or as OAuth 1.0
-parameters named `oauth_…`, and in the Authorization header. The log drops
-every request header, and replaces with `REDACTED` the value of every query
-parameter whose name mentions `consumer` or `oauth` in any case, or holds a
-percent escape, because PHP decodes an escaped name before WooCommerce reads
-it. Caddy's own messages, such as an upstream error, carry the request too and
+WooCommerce's API credentials never reach it. WooCommerce accepts an API key
+and its secret in the query string, as `consumer_key` and `consumer_secret` or
+as OAuth 1.0 parameters named `oauth_…`, and in the Authorization header, and
+WooCommerce and WordPress put other bearer values in links: an order's key and
+the buyer's email in a download link, a password reset key, a nonce. The log
+drops every request header, and replaces with `REDACTED` the value of every
+query parameter whose name mentions consumer, oauth, key, order, email, nonce,
+token, pass, pwd, secret or auth in any case, or holds a percent escape,
+because PHP decodes an escaped name before WooCommerce reads it. Caddy's own messages, such as an upstream error, carry the request too and
 are filtered the same way. WordPress's Apache writes its own access log to the
 container's output; the lab sets its format to the path alone, without the
 query string.
