@@ -40,6 +40,19 @@ earlier work: Docker Compose also reads a `compose.override.yaml` it finds
 beside `compose.yaml`, such as one pointing a service at another image, and
 neither `status` nor a profile's record would show that it is there.
 
+A copied lab is brought to another commit by unpacking that commit's lab over
+its directory, keeping the server-owned `.env`, removing any file the commit
+no longer has, and writing the commit into `REVISION`. From a checkout of this
+repository, the commit's files are
+
+```sh
+git archive <commit> deploy/woocommerce-lab
+```
+
+unpacked with the leading `deploy/woocommerce-lab/` stripped. A checked-out
+lab is brought to it with git. Neither touches a stored profile; whether one
+needs building again is decided by `status` and by the files it compares.
+
 ```console
 $ ./lab.sh list
 basic          built 2026-10-22T08:50:47Z from e63c2e5165d6, check passed, 57 MB stored, 34s to build
