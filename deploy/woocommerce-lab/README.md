@@ -36,10 +36,10 @@ no sudo beyond whatever the host requires for Docker.
 
 ```console
 $ ./lab.sh list
-basic          built 2026-10-22T07:44:44Z from 9d2b6e6f8360, check passed, 57 MB stored, 56s to build
-hard           built 2026-10-22T08:04:47Z from 9d2b6e6f8360, check passed, 113 MB stored, 174s to build
-realistic      built 2026-10-22T07:50:33Z from 9d2b6e6f8360, check passed, 88 MB stored, 107s to build
-realistic-usd  built 2026-10-22T07:52:15Z from 9d2b6e6f8360, check passed, 88 MB stored, 101s to build
+basic          built 2026-10-22T08:50:47Z from e63c2e5165d6, check passed, 57 MB stored, 34s to build
+hard           built 2026-10-22T08:55:21Z from e63c2e5165d6, check passed, 113 MB stored, 122s to build
+realistic      built 2026-10-22T08:52:03Z from e63c2e5165d6, check passed, 88 MB stored, 75s to build
+realistic-usd  built 2026-10-22T08:53:18Z from e63c2e5165d6, check passed, 88 MB stored, 74s to build
 Not built: none
 $ ./lab.sh switch hard
 ok    the shop says it was built as this profile
@@ -47,9 +47,7 @@ ok    the overlays it records
 ok    products in the public catalogue
 …
 Success: The shop is the hard profile.
-
-The shop is the hard profile, switched in 25.4s. Orders, customers, REST API keys and
-any Agentify connection to the shop are gone: a connected merchant connects again.
+…
 $ ./lab.sh overlay over-limit
 51 copies of Chili Sambal Sachet added; the public catalogue lists 2001 products.
 …
@@ -59,14 +57,13 @@ $ ./lab.sh status
 Running:   caddy db mailpit wordpress
 Profile:   hard
 Overlays:  over-limit, tax-per-line
-Built:     2026-10-22T08:04:47Z from revision 9d2b6e6f8360, with uncommitted lab changes; its check passed
+Built:     2026-10-22T08:55:21Z from revision e63c2e5165d6; its check passed
 In the shop: profile hard, overlays over-limit, tax-per-line
 REST keys: 0
-Request log: 4.0K in 1 files
+Request log: 20K in 1 files
 ```
 
-That session ran on a throwaway copy of the lab on a laptop, before its
-changes were committed, which is why the revision carries uncommitted changes.
+That session ran on a throwaway copy of the lab on a laptop.
 
 `./lab.sh status` says which profile and overlays the shop runs, whether the
 lab's files have changed since that profile was built, and whether any REST API
