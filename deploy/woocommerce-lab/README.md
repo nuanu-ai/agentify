@@ -593,6 +593,7 @@ From then on the copy is switched, overlaid, checked and read as the lab is,
 and a switch disconnects a merchant from it as it does here. Its request log is
 the edge's, since its Caddy carries no requests; `./lab.sh requests` there
 shows nothing, while the edge's log carries the copy's own scheduled calls
-beside the connector's. The copy is taken down with `docker compose down` in its
-directory, before the instrument's stack, whose network it is still attached
+beside the connector's. The copy is taken down with `docker compose --profile realistic down` in its
+directory, which also stops the mail catcher a realistic or hard profile
+started, before the instrument's stack, whose network it is still attached
 to.

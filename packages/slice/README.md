@@ -631,6 +631,6 @@ the stack with its volumes. The copy keeps its profiles in its data directory
 until that is deleted too.
 
 ```sh
-(cd <the copy> && docker compose down)
+(cd <the copy> && docker compose --profile realistic down)
 woo_stack down -v
 ```
