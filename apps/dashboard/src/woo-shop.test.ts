@@ -2012,8 +2012,16 @@ describe("the protected product check", () => {
       );
 
       expect(read.slice(0, 100).every((one) => one.ok)).toBe(true);
+      // Told as the shop not answering, which it did not, rather than as a
+      // product its list left out.
       expect(read.slice(100)).toEqual(
-        Array.from({ length: 50 }, () => expect.objectContaining({ ok: false, again: true })),
+        Array.from({ length: 50 }, () =>
+          expect.objectContaining({
+            ok: false,
+            again: true,
+            why: expect.stringContaining("did not answer"),
+          }),
+        ),
       );
     });
 

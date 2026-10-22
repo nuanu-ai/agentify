@@ -1053,7 +1053,7 @@ describe("importing the catalogue", () => {
 
     const refused = await running.post("/woocommerce/import");
 
-    expect(readable(refused.html)).toContain("more than 2,000 products");
+    expect(readable(refused.html)).toContain("Your shop offers more than 2,000 products");
     expect(readable(refused.html)).toContain("Nothing was imported");
     expect(await cardsOf(running)).toHaveLength(0);
     expect(storePages(seen).length).toBeLessThanOrEqual(21);
@@ -1067,8 +1067,8 @@ describe("importing the catalogue", () => {
 
     const screen = readable((await running.get("/woocommerce")).html);
 
-    expect(screen).toContain("2,000 products");
-    expect(screen).not.toMatch(/\b200 products\b/);
+    expect(screen).toContain("Reads up to 2,000 products");
+    expect(screen).toContain("more than 2,000 products is refused whole");
   });
 
   it("walks a shop once at a time: a second press while an import runs reads nothing", async () => {
