@@ -1100,10 +1100,35 @@ describe("importing the catalogue", () => {
     const done = await first;
 
     expect(second.status).toBe(409);
-    expect(readable(second.html)).toContain("already being imported");
+    // The first may have been started from a page since closed, so the words
+    // send the merchant to Cards rather than to its result.
+    expect(readable(second.html)).toContain("already running");
+    expect(readable(second.html)).toContain("Cards");
     expect(storePages(seen)).toHaveLength(1);
     expect(done.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(3);
+  });
+
+  it("lets the next import run after one that failed inside Agentify", async () => {
+    // A walk that throws must not leave the shop marked as being imported until
+    // the process restarts.
+    let reads = 0;
+    const running = await started({
+      catalogue: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error("the shop's answer could not be handled");
+        return { ok: true, products: [aProduct()] };
+      },
+    });
+    await connected(running);
+
+    await loggedDuring(async () => {
+      await running.post("/woocommerce/import");
+    });
+    const again = await running.post("/woocommerce/import");
+
+    expect(again.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(1);
   });
 
   it("lets the next import run once the one before it has ended", async () => {
@@ -3185,7 +3210,7 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
         rate: "18000",
       });
-      expect(readable(saved.html)).toContain("already being imported");
+      expect(readable(saved.html)).toContain("already running");
       expect(readable(saved.html)).toContain("publish your products at this rate");
       expect(reads).toBe(1);
     });
