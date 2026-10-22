@@ -6,7 +6,7 @@
 # Node runs the TypeScript through tsx, as on a laptop; the one compile step is
 # the dashboard's pages, below.
 
-FROM node:24.21.0-alpine
+FROM node:24.22.1-alpine
 
 # pnpm is pinned so the install inside the image matches the lockfile.
 # COREPACK_HOME is shared and world-readable because corepack caches under the

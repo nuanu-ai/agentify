@@ -1,4 +1,4 @@
-FROM node:24.21.0-alpine AS base
+FROM node:24.22.1-alpine AS base
 
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH
@@ -46,7 +46,7 @@ CMD ["pnpm", "--filter", "@agentify/web", "privacy:cleanup"]
 # The build is the whole process, every package it imports bundled in
 # (apps/web/vite.config.ts), so the image carries the build and nothing
 # installed beside it.
-FROM node:24.21.0-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 
 ARG AGENTIFY_SOURCE_REVISION=unknown
 ENV AGENTIFY_SOURCE_REVISION=$AGENTIFY_SOURCE_REVISION
