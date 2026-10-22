@@ -35,6 +35,7 @@ import {
   createTheOrderInTheShop,
   createTheParcelInTheShop,
   inspectProductInTheShop,
+  inspectProductsInTheShop,
   readTheOrderInTheShop,
   shipmentInTheShop,
   shippingRatesInTheShop,
@@ -1851,6 +1852,182 @@ describe("the protected product check", () => {
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
+  });
+
+  describe("for a whole catalogue", () => {
+    const LIST = "/wp-json/wc/v3/products?";
+
+    /** The ids a list request names, in the order it names them. */
+    const includedIn = (url: string): string[] =>
+      (new URL(url, "http://x").searchParams.get("include") ?? "").split(",").filter(Boolean);
+
+    /**
+     * A shop of `count` products, every third a parcel and the rest downloads,
+     * answering a list from these documents and each product on its own.
+     */
+    const shopOf = (
+      documents: ReadonlyMap<string, Record<string, unknown>>,
+      answer: (asked: Asked) => ReturnType<Parameters<typeof shopAnswering>[0]> | null = () =>
+        null,
+    ) =>
+      shopAnswering((asked) => {
+        const given = answer(asked);
+        if (given !== null) return given;
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+        }
+        if (asked.url.startsWith(LIST)) {
+          return {
+            status: 200,
+            body: includedIn(asked.url).flatMap((id) => {
+              const document = documents.get(id);
+              return document === undefined ? [] : [document];
+            }),
+          };
+        }
+        const one = /^\/wp-json\/wc\/v3\/products\/(\d+)$/.exec(asked.url)?.[1];
+        const document = one === undefined ? undefined : documents.get(one);
+        return document === undefined
+          ? { status: 404, body: { code: "woocommerce_rest_product_invalid_id" } }
+          : { status: 200, body: document };
+      });
+
+    const documentsOf = (count: number) =>
+      new Map(
+        Array.from({ length: count }, (_, index) => {
+          const id = String(index + 1);
+          return [
+            id,
+            index % 3 === 0
+              ? parcelDocument({ id: index + 1 })
+              : productDocument({ id: index + 1 }),
+          ] as const;
+        }),
+      );
+
+    const inspectAll = (keys: ReturnType<typeof connectionTo>, ids: readonly string[]) =>
+      inspectProductsInTheShop(
+        keys,
+        ids.map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        fetch,
+      );
+
+    it("asks the shop for each setting once and for its products a hundred at a time", async () => {
+      // Asked one product at a time with every setting beside it, a catalogue
+      // of two thousand was some twenty-four thousand requests to somebody
+      // else's shop.
+      const documents = documentsOf(250);
+      stand = await shopOf(documents);
+
+      const read = await inspectAll(connectionTo(stand.url), [...documents.keys()]);
+
+      expect(read).toHaveLength(250);
+      expect(read.every((one) => one.ok)).toBe(true);
+      const settings = stand.asked.filter((asked) => asked.url.includes("/settings/"));
+      expect(settings.length).toBe(new Set(settings.map((asked) => asked.url)).size);
+      expect(settings.length).toBeLessThanOrEqual(11);
+      const lists = stand.asked.filter((asked) => asked.url.startsWith(LIST));
+      expect(lists.map((asked) => includedIn(asked.url).length)).toEqual([100, 100, 50]);
+      expect(stand.asked.some((asked) => /\/products\/\d+$/.test(asked.url))).toBe(false);
+      // The key goes with every protected request, as with the single check.
+      expect(
+        [...settings, ...lists].every((asked) => asked.authorization?.startsWith("Basic ")),
+      ).toBe(true);
+    });
+
+    it("judges every product exactly as the check of that one product does", async () => {
+      // One judge for both: a catalogue read must not let through what the
+      // price question at purchase refuses, nor refuse in other words.
+      const documents = new Map<string, Record<string, unknown>>([
+        ["11", productDocument({ id: 11 })],
+        ["28", parcelDocument({ id: 28 })],
+        ["30", parcelDocument({ id: 30, manage_stock: true })],
+        ["31", parcelDocument({ id: 31, type: "variable" })],
+        ["32", productDocument({ id: 32, download_limit: 5 })],
+        ["33", parcelDocument({ id: 33, price: "20.005" })],
+        ["34", productDocument({ id: 34, downloads: [] })],
+      ]);
+      stand = await shopOf(documents);
+      const keys = connectionTo(stand.url);
+
+      const together = await inspectAll(keys, [...documents.keys()]);
+      const oneByOne = await Promise.all(
+        [...documents.keys()].map((id) => inspectProduct(keys, merchantItemIdFor(stand?.url ?? "", id))),
+      );
+
+      expect(together).toEqual(oneByOne);
+      expect(together.filter((one) => one.ok)).toHaveLength(2);
+    });
+
+    it("says a product the shop's list left out could not be checked, not that the shop has none", async () => {
+      // A list can leave a product out for reasons of its own, a cache in front
+      // of the shop among them; telling the merchant it was deleted would send
+      // them looking for a product that is there. Nor does a document the list
+      // carries for another product stand in for it.
+      const documents = documentsOf(3);
+      stand = await shopOf(documents, (asked) =>
+        asked.url.startsWith(LIST) ? { status: 200, body: [documents.get("1"), parcelDocument({ id: 99 })] } : null,
+      );
+
+      const [first, second] = await inspectAll(connectionTo(stand.url), ["1", "2"]);
+
+      expect(first).toMatchObject({ ok: true });
+      expect(second).toMatchObject({ ok: false, again: true, why: expect.stringContaining("product 2") });
+      expect(second).not.toHaveProperty("saidNo");
+    });
+
+    it("leaves only the products of a page the shop did not answer to be asked again", async () => {
+      const documents = documentsOf(150);
+      const losingTheSecond: WooRequest = async (url, init) => {
+        const href = String(url);
+        if (href.includes(LIST) && includedIn(href)[0] === "101") throw new TypeError("fetch failed");
+        return await fetch(url, init);
+      };
+      stand = await shopOf(documents);
+      const keys = connectionTo(stand.url);
+
+      const read = await inspectProductsInTheShop(
+        keys,
+        [...documents.keys()].map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        losingTheSecond,
+      );
+
+      expect(read.slice(0, 100).every((one) => one.ok)).toBe(true);
+      expect(read.slice(100)).toEqual(
+        Array.from({ length: 50 }, () => expect.objectContaining({ ok: false, again: true })),
+      );
+    });
+
+    it("keeps at most four requests in the shop at once", async () => {
+      // Somebody else's shop, often on shared hosting: a whole catalogue is
+      // read at the pace of a few visitors, not all at once.
+      const documents = documentsOf(900);
+      let inFlight = 0;
+      let most = 0;
+      const counting: WooRequest = async (url, init) => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          return await fetch(url, init);
+        } finally {
+          inFlight -= 1;
+        }
+      };
+      stand = await shopOf(documents);
+      const keys = connectionTo(stand.url);
+
+      const read = await inspectProductsInTheShop(
+        keys,
+        [...documents.keys()].map((id) => merchantItemIdFor(keys.shopUrl, id)),
+        counting,
+      );
+
+      expect(read.every((one) => one.ok)).toBe(true);
+      expect(most).toBeLessThanOrEqual(4);
+      expect(most).toBeGreaterThan(1);
+    });
   });
 });
 
