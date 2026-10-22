@@ -9,8 +9,9 @@ fail() {
 }
 
 [[ -f compose.yaml ]] || fail "compose.yaml is missing"
-[[ -x reset-store.sh ]] || fail "reset-store.sh is missing or not executable"
-bash -n reset-store.sh
+[[ -x lab.sh ]] || fail "lab.sh is missing or not executable"
+bash -n lab.sh
+bash -n verify-reset.sh
 
 WOOCOMMERCE_DATA_ROOT=/tmp/agentify-woo-lab-static \
 WOO_LAB_LISTEN_ADDRESS=127.0.0.1 \
@@ -31,13 +32,23 @@ fi
 : "${WOO_LAB_PUBLIC_IP:?set WOO_LAB_PUBLIC_IP to the shared public address the shop hostname resolves to}"
 : "${WOO_LAB_INGRESS_IP:?set WOO_LAB_INGRESS_IP to the ingress address behind that public address}"
 
-docker_cmd=(sudo -n docker)
+if docker info >/dev/null 2>&1; then
+  docker_cmd=(docker)
+else
+  docker_cmd=(sudo -n docker)
+fi
 compose() { "${docker_cmd[@]}" compose "$@"; }
 wp() { compose run --rm -T cli wp "$@"; }
 
 compose ps --status running --services | grep -qx wordpress || fail "wordpress is not running"
 compose ps --status running --services | grep -qx db || fail "database is not running"
 compose ps --status running --services | grep -qx caddy || fail "caddy is not running"
+
+# What follows is the basic profile's catalogue, read through the public path.
+[[ "$(wp option get agentify_lab_profile 2>/dev/null)" == basic ]] ||
+  fail "the shop is not the basic profile; this check reads the basic catalogue (./lab.sh switch basic)"
+[[ "$(wp option get agentify_lab_overlays --format=json 2>/dev/null || echo '[]')" == '[]' ]] ||
+  fail "overlays are laid over the basic profile; switch to it again for this check"
 
 resolved_addresses="$(getent ahostsv4 woo.nuanu.ai | awk '{print $1}' | sort -u)"
 [[ "$resolved_addresses" == "$WOO_LAB_PUBLIC_IP" ]] || \
@@ -73,7 +84,8 @@ from decimal import Decimal, InvalidOperation
 # connector telling them apart. A gift card promises an experience that no
 # file can deliver, so it carries none and the connector must name it and
 # leave it in the shop. A download is the whole of what it promises, and it is
-# shaped to the one class of product the connector imports.
+# shaped to the one class of product the connector imports. The basic profile
+# adds one parcel, the tote bag of seed/parcel.php.
 GIFT_CARDS = {
     "Coffee & Brunch Gift Card",
     "Dinner for Two Gift Card",
@@ -87,7 +99,8 @@ DOWNLOADS = {
     "Gift Message Templates": "1.00",
     "Gift Wrapping Guide": "2",
 }
-SEEDED = GIFT_CARDS | set(DOWNLOADS)
+PARCELS = {"Nuanu Tote Bag"}
+SEEDED = GIFT_CARDS | set(DOWNLOADS) | PARCELS
 PROTECTED_UPLOADS = "https://woo.nuanu.ai/wp-content/uploads/woocommerce_uploads/"
 SHOP_UPLOADS = "/var/www/html/wp-content/uploads/woocommerce_uploads/"
 SEED_DOWNLOADS = "seed/downloads"
@@ -112,7 +125,7 @@ if any(
     if html.unescape(product["name"]) in GIFT_CARDS
 ):
     fail("every gift card must have a WebP product photo")
-print("PASS: private ingress Store API exposes the seven seeded products")
+print("PASS: private ingress Store API exposes the basic profile's eight products")
 
 listed = json.loads(os.environ["CATALOGUE_JSON"])
 catalogue = {html.unescape(product.get("name", "")): product for product in listed}
