@@ -298,10 +298,16 @@ Cards.
 
 ## Importing
 
-An import reads up to 200 products and publishes the ones the connector
-supports. A shop with more than 200 products is refused whole rather than cut
+An import reads up to 2,000 products and publishes the ones the connector
+supports. A shop with more than 2,000 products is refused whole rather than cut
 short. Running the import again updates the same cards and does not double
 them, and a card you paused stays paused through it.
+
+The page answers once every product has been read and published, so a large
+shop takes a while: the import asks your shop for a hundred products at a time,
+a few requests at once, and how long that takes depends on how quickly your
+shop answers. One import of a shop runs at a time; pressing Import again while
+one runs reads nothing and says so.
 
 Nothing is read until the name your products are sold under is set in
 Settings, and the wallet your share is paid out to on a channel where payments
