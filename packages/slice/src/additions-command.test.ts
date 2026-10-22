@@ -268,7 +268,7 @@ describe("what is never rewritten", () => {
     for (const line of logged) expect(line).toMatch(/: passed through$/);
   });
 
-  it.each<{ as: string; path: string; canned: Canned }>([
+  it.each<{ as: string; path: string; canned: Canned; why?: string }>([
     {
       as: "an answer with a payment settlement in its headers",
       path: "/x402/orders/ord_1/status",
@@ -296,6 +296,7 @@ describe("what is never rewritten", () => {
       as: "an answer that is not one JSON document",
       path: "/v0/orders",
       canned: { body: '{"orders":[]}{"orders":[]}' },
+      why: "is not one JSON document",
     },
     {
       as: "an answer in a coding the proxy does not decode",
@@ -309,8 +310,9 @@ describe("what is never rewritten", () => {
       as: "an answer nested deeper than the proxy can walk",
       path: "/v0/orders",
       canned: { body: `{"orders":[${"[".repeat(20_000)}${"]".repeat(20_000)}]}` },
+      why: "nests deeper",
     },
-  ])("passes $as byte for byte, on a route an addition reaches", async ({ path, canned }) => {
+  ])("passes $as byte for byte, on a route an addition reaches", async ({ path, canned, why }) => {
     const to = await upstream({ [`GET ${path}`]: canned });
     const { base, lines } = await proxied(to, "field", "status-word");
 
@@ -323,7 +325,9 @@ describe("what is never rewritten", () => {
       }).once("error", reject);
     });
     expect(received.equals(Buffer.from(canned.body))).toBe(true);
-    expect(lines.at(-1)).toContain("passed through unchanged, because");
+    expect(lines.at(-1)).toContain(
+      `passed through unchanged, because ${why === undefined ? "" : `the body ${why}`}`,
+    );
   });
 
   it("passes an answer to HEAD as it came", async () => {
@@ -377,7 +381,7 @@ describe("the log", () => {
 
     await fetch(`${base}/v0/worker/poll`, {
       method: "POST",
-      headers: { authorization: "Bearer csk_test_a-key-that-must-not-show" },
+      headers: { authorization: "Bearer a-merchant-key-that-must-not-show" },
     });
     const line = lines.at(-1) ?? "";
 
@@ -386,7 +390,7 @@ describe("the log", () => {
     expect(line).toContain(
       "event-kind (beside the order of order ord_1; beside the event of order ord_9)",
     );
-    expect(line).not.toContain("csk_test");
+    expect(line).not.toContain("must-not-show");
     expect(line).not.toContain("buyer@example.com");
   });
 });

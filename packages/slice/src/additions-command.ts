@@ -55,15 +55,16 @@ interface Member {
 const SCALAR = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
 
 /**
- * The document with the offset of every value in `text`, or null when `text`
- * is not one JSON document. `JSON.parse` decides validity; this walk only
+ * The document with the offset of every value in `text`, or the reason it
+ * cannot be read: it is not one JSON document, or it nests deeper than the walk
+ * can go. `JSON.parse` decides validity; this walk only
  * records where each part lies.
  */
-const scan = (text: string): Node | null => {
+const scan = (text: string): Node | string => {
   try {
     JSON.parse(text);
   } catch {
-    return null;
+    return "the body is not one JSON document";
   }
   let at = 0;
   const space = () => {
@@ -118,8 +119,8 @@ const scan = (text: string): Node | null => {
     return value();
   } catch {
     // Nesting deep enough to exhaust the stack: JSON.parse takes it, this
-    // walk does not, and the answer passes as one that cannot be read.
-    return null;
+    // walk does not.
+    return "the body nests deeper than the proxy can walk";
   }
 };
 
@@ -609,8 +610,8 @@ const rewrite = (answer: Answer, route: RouteName, names: readonly AdditionName[
     return { why: "the body is not UTF-8" };
   }
   const document = scan(text);
-  if (document === null) {
-    return { why: "the body is not one JSON document" };
+  if (typeof document === "string") {
+    return { why: document };
   }
   const edits = names
     .flatMap((name) =>
