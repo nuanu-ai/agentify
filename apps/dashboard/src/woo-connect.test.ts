@@ -8,7 +8,9 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  EXAMPLE_PAGE,
   isTheGrantScreen as inspectGrantScreen,
+  pricedExampleOfTheShop,
   sampleOfTheShop,
   theStateToken,
   whatIsWrongWithTheShopUrl,
@@ -17,7 +19,10 @@ import {
 const isTheGrantScreen = (url: string) => inspectGrantScreen(url, fetch);
 
 const shopAnswering = async (
-  answer: (path: string) => {
+  answer: (
+    path: string,
+    method: string,
+  ) => {
     status: number;
     body?: string;
     location?: string;
@@ -25,7 +30,7 @@ const shopAnswering = async (
   },
 ): Promise<{ url: string; close: () => Promise<void> }> => {
   const server: Server = createServer((request, response) => {
-    const said = answer(request.url ?? "/");
+    const said = answer(request.url ?? "/", request.method ?? "");
     response.writeHead(said.status, {
       "content-type": said.type ?? "text/html; charset=UTF-8",
       ...(said.location === undefined ? {} : { location: said.location }),
@@ -244,7 +249,6 @@ describe("the currency a shop prices in, asked before Connect", () => {
       expect(await sampleOfTheShop(shop.url, fetch), `${currency} ${minorUnit}`).toMatchObject({
         currency,
         decimals: minorUnit,
-        product: { name: "Batik scarf" },
       });
       await shop.close();
       shop = null;
@@ -296,5 +300,99 @@ describe("the currency a shop prices in, asked before Connect", () => {
       throw new Error("the operation was aborted due to timeout");
     };
     expect(await sampleOfTheShop("https://shop.example.com", failing)).toBeNull();
+  });
+});
+
+describe("the product the rate guard shows as an example", () => {
+  const RUPIAH = { code: "IDR", decimals: 0 } as const;
+  const aProduct = (name: string, price: string, currency = "IDR", minorUnit = 0) => ({
+    id: 7,
+    name,
+    prices: { price, currency_code: currency, currency_minor_unit: minorUnit },
+  });
+  // A made-to-order product with no price, as the Store API lists one.
+  const unpriced = (name: string) => aProduct(name, "0");
+  const asked: { method: string; path: string }[] = [];
+  const answering = async (products: unknown) => {
+    asked.length = 0;
+    shop = await shopAnswering((path, method) => {
+      asked.push({ method, path });
+      return { status: 200, type: "application/json", body: JSON.stringify(products) };
+    });
+    return shop.url;
+  };
+
+  it("is the first product with a price in the shop's currency, past unpriced ones listed before it", async () => {
+    const url = await answering([
+      unpriced("Made-to-Order Teak Wardrobe"),
+      unpriced("Made-to-Order Rattan Sofa Set"),
+      aProduct("Rayon Sarong", "240000"),
+      aProduct("Batik Scarf", "150000"),
+    ]);
+
+    expect(await pricedExampleOfTheShop(url, RUPIAH, fetch)).toEqual({
+      kind: "priced",
+      name: "Rayon Sarong",
+      price: "240000",
+    });
+  });
+
+  it("is read from one small first page of the public catalogue", async () => {
+    const url = await answering([aProduct("Rayon Sarong", "240000")]);
+
+    await pricedExampleOfTheShop(url, RUPIAH, fetch);
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.method).toBe("GET");
+    const read = new URL(asked[0]?.path ?? "", "https://shop");
+    expect(read.pathname).toBe("/wp-json/wc/store/v1/products");
+    expect(read.searchParams.get("per_page")).toBe(String(EXAMPLE_PAGE));
+  });
+
+  it("says the page holds no priced product, rather than that the catalogue did not answer", async () => {
+    const pages = [
+      [],
+      [unpriced("Made-to-Order Teak Wardrobe"), unpriced("Made-to-Order Teak Gazebo")],
+      [aProduct("Rayon Sarong", "1450", "EUR", 2)],
+      [aProduct("Rayon Sarong", "1800", "JPY", 0)],
+      [aProduct("Rayon Sarong", "24000000", "IDR", 2)],
+      [aProduct("", "240000")],
+    ];
+    for (const page of pages) {
+      const url = await answering(page);
+      expect(await pricedExampleOfTheShop(url, RUPIAH, fetch), JSON.stringify(page)).toEqual({
+        kind: "none",
+      });
+      await shop?.close();
+      shop = null;
+    }
+  });
+
+  it("is not known where the catalogue did not answer, without throwing", async () => {
+    const unanswered = [
+      {
+        status: 503,
+        type: "application/json",
+        body: JSON.stringify([aProduct("Sarong", "240000")]),
+      },
+      { status: 404, type: "application/json", body: '{"code":"rest_no_route"}' },
+      { status: 200, body: "<html><body>Welcome to my shop</body></html>" },
+      { status: 200, type: "application/json", body: '{"products":[]}' },
+      { status: 302, location: "https://example.invalid/wp-json/wc/store/v1/products" },
+    ];
+    for (const answer of unanswered) {
+      shop = await shopAnswering(() => answer);
+      expect(await pricedExampleOfTheShop(shop.url, RUPIAH, fetch), answer.body).toEqual({
+        kind: "unanswered",
+      });
+      await shop.close();
+      shop = null;
+    }
+    const failing = async (): Promise<Response> => {
+      throw new Error("the operation was aborted due to timeout");
+    };
+    expect(await pricedExampleOfTheShop("https://shop.example.com", RUPIAH, failing)).toEqual({
+      kind: "unanswered",
+    });
   });
 });

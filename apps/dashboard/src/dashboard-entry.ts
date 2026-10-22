@@ -122,7 +122,9 @@ export type AttachMerchantResult =
 /**
  * The operator flag is read with the session every time, so a change at the
  * terminal holds from the next request. `request` is the scanner's full-report
- * request whose link opened this session, null otherwise. The cookie lines
+ * request whose link opened this session, null otherwise. `signedInAt` is when
+ * this session was opened, which tells two sessions of one account apart where
+ * their address cannot. The cookie lines
  * renew the session when the reading moved its end (at most once a day) and are
  * empty otherwise; whoever answers the browser passes them on as they are.
  */
@@ -130,6 +132,7 @@ export type LiveSession = Readonly<{
   person: Person;
   operator: boolean;
   request: string | null;
+  signedInAt: Date;
   setCookies: readonly string[];
 }>;
 

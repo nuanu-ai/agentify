@@ -16,7 +16,7 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { plainTextOfHtml } from "./html-text.js";
-import { decimalOfMinorUnits } from "./woo-catalog.js";
+import { DECIMALS_ARE_EVERY_CUSTOMERS, decimalOfMinorUnits } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** The name in the key row the merchant reads in their shop. */
@@ -227,7 +227,7 @@ const whatAPlainPermalinkShopLooksLike = (shop: URL): string =>
   " so WordPress falls through to the shop's front page without an error. Set permalinks to" +
   " anything other than Plain, save, and press Connect again.";
 
-/** Loose, as the import's own read is: only the currency and one price are asked of it. */
+/** Loose, as the import's own read is: only the name, the currency and the price are asked of it. */
 const PricedProductSchema = z.looseObject({
   name: z.string().default(""),
   prices: z.looseObject({
@@ -237,16 +237,10 @@ const PricedProductSchema = z.looseObject({
   }),
 });
 
-/**
- * What one product of the shop's public catalogue says: the currency it prices
- * in, the decimals it writes, and that product with its price, which the rate
- * screen uses to show what a mistyped rate would charge.
- */
+/** What one product of the shop's public catalogue says: the currency it prices in and the decimals it writes. */
 export interface ShopSample {
   readonly currency: string;
   readonly decimals: number;
-  /** Null where its name or price could not be read as text and an amount. */
-  readonly product: { readonly name: string; readonly price: string } | null;
 }
 
 /**
@@ -275,15 +269,60 @@ export const sampleOfTheShop = async (
     const read = PricedProductSchema.safeParse(listed[0]);
     if (!read.success) return null;
     const { prices } = read.data;
-    const name = plainTextOfHtml(read.data.name).text;
-    const price = decimalOfMinorUnits(prices.price, prices.currency_minor_unit);
-    return {
-      currency: prices.currency_code,
-      decimals: prices.currency_minor_unit,
-      product: name === "" || price === null ? null : { name, price },
-    };
+    return { currency: prices.currency_code, decimals: prices.currency_minor_unit };
   } catch {
     return null;
+  }
+};
+
+/** How many products of the public catalogue the rate screen looks through for an example. */
+export const EXAMPLE_PAGE = 10;
+
+/**
+ * What the rate screen can show of one of the shop's products: the first one
+ * on the catalogue's first page with a name and a price above zero in the
+ * shop's currency at its decimals; `none` where the page answered without one,
+ * which a made-to-order product listed with no price makes common; and
+ * `unanswered` where the catalogue did not clearly answer at all.
+ */
+export type PricedExample =
+  | { readonly kind: "priced"; readonly name: string; readonly price: string }
+  | { readonly kind: "none" }
+  | { readonly kind: "unanswered" };
+
+/** Read as `sampleOfTheShop` reads, a page instead of one product; never throws. */
+export const pricedExampleOfTheShop = async (
+  shopUrl: string,
+  currency: { readonly code: string; readonly decimals: number },
+  request: WooRequest = wooRequest,
+): Promise<PricedExample> => {
+  try {
+    const answered = await request(
+      `${shopUrlAs(shopUrl)}/wp-json/wc/store/v1/products?per_page=${EXAMPLE_PAGE}`,
+      {
+        redirect: "manual",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+      },
+    );
+    if (answered.status !== 200) return { kind: "unanswered" };
+    const listed: unknown = JSON.parse(await answered.text());
+    if (!Array.isArray(listed)) return { kind: "unanswered" };
+    for (const one of listed) {
+      const read = PricedProductSchema.safeParse(one);
+      if (!read.success) continue;
+      const { prices } = read.data;
+      if (prices.currency_code !== currency.code) continue;
+      if (prices.currency_minor_unit !== currency.decimals) continue;
+      const price = decimalOfMinorUnits(prices.price, prices.currency_minor_unit);
+      const name = plainTextOfHtml(read.data.name).text;
+      if (price !== null && /[1-9]/.test(price) && name !== "") {
+        return { kind: "priced", name, price };
+      }
+    }
+    return { kind: "none" };
+  } catch {
+    return { kind: "unanswered" };
   }
 };
 
@@ -301,7 +340,8 @@ export const writesOtherDecimals = (currency: string, decimals: number): string 
   `When we asked your shop's public catalogue just now, it wrote its prices in ${currency} with` +
   ` ${decimals} decimals. Agentify sells from a shop priced in another currency than US dollars` +
   " only where the shop writes its prices with no decimals or with two (WooCommerce → Settings →" +
-  ` General → Number of decimals), so Connect stopped here.${NOTHING_CHANGED}`;
+  ` General → Number of decimals), so Connect stopped here. ${DECIMALS_ARE_EVERY_CUSTOMERS}` +
+  NOTHING_CHANGED;
 
 export const noReferenceFor = (currency: string): string =>
   `When we asked your shop's public catalogue just now, it priced its products in ${currency},` +

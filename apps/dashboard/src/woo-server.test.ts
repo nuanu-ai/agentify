@@ -26,7 +26,7 @@ import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
-import type { Preflight, ShopSample } from "./woo-connect.js";
+import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
 import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
@@ -35,13 +35,12 @@ import {
   type ProductInspection,
   type WooOrderLookup,
 } from "./woo-shop.js";
-import { memoryWooShops, type WooShops } from "./woo-shops.js";
+import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
   currency: "USD",
   decimals: 2,
-  product: { name: "Canvas tote bag", price: "25.00" },
 };
 const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
 const SHOP = "https://shop.example.com";
@@ -94,6 +93,8 @@ interface Running {
   readonly ownKey: string;
   /** Every message the dashboard handed to its mail provider, the sign-in links among them. */
   readonly messages: readonly Message[];
+  /** The sessions table as the in-memory store keeps it, for a test that puts a sign-in in the past. */
+  readonly sessions: Record<string, unknown>[];
   get(path: string): Promise<Visit>;
   /**
    * A browser coming back from its shop without a session. The session cookie
@@ -140,6 +141,8 @@ interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
   /** One product priced in US dollars where a test does not say. */
   readonly sample?: (shopUrl: string) => Promise<ShopSample | null>;
+  /** The rate guard's example product; a catalogue that did not answer where a test does not say. */
+  readonly example?: (shopUrl: string, currency: ShopCurrency) => Promise<PricedExample>;
   /** Coinbase's rupiah rate as it read on 2026-10-21 where a test does not say. */
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   /** Every message handed over where a test does not say. */
@@ -298,6 +301,10 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       },
       sample: async (shopUrl) =>
         standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl),
+      example: async (shopUrl, currency) =>
+        standing.example === undefined
+          ? { kind: "unanswered" }
+          : await standing.example(shopUrl, currency),
       reference: async (currency) =>
         standing.reference === undefined
           ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
@@ -392,6 +399,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     read,
     ownKey,
     messages,
+    sessions: rows.dashboard_sessions ?? [],
     get: (path) => visit("GET", `${base}${path}`),
     getWithoutCookie: (path) => visit("GET", `${base}${path}`, { noCookie: true }),
     post: (path, form = {}) =>
@@ -2332,7 +2340,6 @@ describe("one integration at a time", () => {
       sample: async () => ({
         currency: "KWD",
         decimals: 3,
-        product: { name: "Dallah coffee pot", price: "12.500" },
       }),
     });
     await running.signIn();
@@ -2345,6 +2352,18 @@ describe("one integration at a time", () => {
     expect(await onSale(running)).toContain(card);
     expect((await theCodePolls(running)).status).toBe(200);
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
+  it("says, in refusing a shop writing three decimals, that the setting is what every customer of the shop sees prices with", async () => {
+    const running = await started({ sample: async () => ({ currency: "KWD", decimals: 3 }) });
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const said = readable(pressed.html);
+    expect(said).toContain("Number of decimals");
+    expect(said).toContain("every customer");
+    expect(said).not.toMatch(/set (it|WooCommerce|Number of decimals)[^.]* to/i);
   });
 
   it("sends a shop priced in US dollars to approve keys as before", async () => {
@@ -2812,7 +2831,6 @@ describe("a shop priced in another currency than US dollars", () => {
   const IN_RUPIAH: ShopSample = {
     currency: "IDR",
     decimals: 0,
-    product: { name: "Rayon Sarong", price: "240000" },
   };
   const rupiahProduct = aProduct({
     id: 41,
@@ -2821,6 +2839,7 @@ describe("a shop priced in another currency than US dollars", () => {
   });
   const inRupiah: Standing = {
     sample: async () => IN_RUPIAH,
+    example: async () => ({ kind: "priced", name: "Rayon Sarong", price: "240000" }),
     catalogue: async () => ({ ok: true, products: [rupiahProduct] }),
     inspectProduct: async (_keys, merchantItemId) => ({
       ok: true,
@@ -2994,6 +3013,28 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(notice?.body).toContain("No rate was set before");
     });
 
+    it("tells, in the notice, when the session that entered the rate signed in, and names no address as who did", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      // The owner's own browser signed in two days ago; a second one signs in now.
+      for (const row of running.sessions) row.createdAt = new Date("2026-10-20T08:00:00.000Z");
+      const before = Math.floor(Date.now() / 1000) * 1000;
+      await running.signIn("woocommerce");
+      const after = Date.now();
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+
+      const [sent] = rateNotices(running);
+      expect(sent?.body).not.toContain(PERSON);
+      expect(sent?.body).not.toContain("2026-10-20 08:00:00 UTC");
+      const named = /signed in to this account at (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC/.exec(
+        sent?.body ?? "",
+      );
+      const signedInAt = Date.parse(`${named?.[1]}T${named?.[2]}Z`);
+      expect(signedInAt).toBeGreaterThanOrEqual(before);
+      expect(signedInAt).toBeLessThanOrEqual(after);
+    });
+
     it("names the previous rate in the notice of the next one", async () => {
       const running = await started(inRupiah);
       await connectedIn(running);
@@ -3020,6 +3061,53 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
       expect(rateNotices(running)).toEqual([]);
       expect(await pricesOnSale(running)).toEqual([]);
+    });
+
+    it("says no product of the catalogue's first page has a price, not that it did not answer, and still asks for the rate again", async () => {
+      const askedIn: ShopCurrency[] = [];
+      const running = await started({
+        ...inRupiah,
+        example: async (_shopUrl, currency) => {
+          askedIn.push(currency);
+          return { kind: "none" };
+        },
+      });
+      await connectedIn(running);
+
+      const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      const said = readable(asked.html);
+      expect(said).toContain("90.0% below");
+      expect(said).toContain(
+        "none of the first 10 products in your shop's public catalogue has a price in IDR",
+      );
+      expect(said).not.toContain("did not answer");
+      expect(said).toContain("Type the rate again");
+      expect(askedIn).toEqual([{ code: "IDR", decimals: 0 }]);
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(rateNotices(running)).toEqual([]);
+    });
+
+    it("says the catalogue did not answer only when it did not, and still asks for the rate again", async () => {
+      const running = await started({
+        ...inRupiah,
+        example: async () => ({ kind: "unanswered" }),
+      });
+      await connectedIn(running);
+
+      const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
+
+      const said = readable(asked.html);
+      expect(said).toContain("your shop's public catalogue did not answer just now");
+      expect(said).not.toContain("has a price in IDR");
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800", again: "1800" });
+
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "1800",
+        confirmed: true,
+      });
     });
 
     it("saves that rate once it is typed again, and keeps that it was", async () => {
