@@ -35,7 +35,10 @@ WordPress and Caddy own through a container of its own, so the operator needs
 no sudo beyond whatever the host requires for Docker. Where the lab is copied
 onto the host rather than checked out, a file named `REVISION` beside
 `lab.sh`, holding the commit it was copied from, is what each profile's record
-names as its revision.
+names as its revision. A copy holds that commit's files and nothing left from
+earlier work: Docker Compose also reads a `compose.override.yaml` it finds
+beside `compose.yaml`, such as one pointing a service at another image, and
+neither `status` nor a profile's record would show that it is there.
 
 ```console
 $ ./lab.sh list
