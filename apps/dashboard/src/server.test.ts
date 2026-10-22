@@ -7412,6 +7412,7 @@ describe("what the pages record for product analytics", () => {
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 HeadlessChrome/120.0.0.0",
       "curl/8.7.1",
       "python-requests/2.32.3",
+      "Agentify-Observability-Probe/1.0",
     ];
     for (const agent of robots) {
       const robot = (await running.another()).sending({ "user-agent": agent });

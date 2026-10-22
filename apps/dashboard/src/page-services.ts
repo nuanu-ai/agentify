@@ -153,10 +153,11 @@ const refusedAs = (answer: Answer<unknown> & { ok: false }): Blocked =>
 const INVALID_INPUT: Blocked = { outcome: "blocked", reason_code: "invalid_input" };
 
 /**
- * What a crawler, a link preview, an uptime monitor or a script calls itself
- * by. A browser always names itself, so saying nothing is a program too.
+ * What a crawler, a link preview, an uptime monitor, our own public probe or a
+ * script calls itself by. A browser always names itself, so saying nothing is
+ * a program too.
  */
-const PROGRAM_NAMES = /bot|crawl|spider|preview|monitor|curl|wget|python-requests|headless/i;
+const PROGRAM_NAMES = /bot|crawl|spider|preview|monitor|probe|curl|wget|python-requests|headless/i;
 const fetchedByAProgram = (userAgent: string | null): boolean =>
   userAgent === null || userAgent.trim() === "" || PROGRAM_NAMES.test(userAgent);
 
