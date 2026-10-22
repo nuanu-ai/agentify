@@ -317,3 +317,158 @@ now" in the Owed panel, goes out without a pause, and so does a refusal sent
 from the Owed panel. Price questions and order events are not paused either.
 Nothing in the SDK or the gateway changes when the stand pauses: the pause
 lives entirely in the stand's merchant.
+
+## Making the dashboard's outside services fail
+
+Three stories in the manual test plan, H-12, H-20 and H-23, need one of the
+two outside services the dashboard calls on a merchant's behalf to fail while
+everything else keeps working: Coinbase's exchange rates, which the dashboard
+reads when a shop priced in another currency is connected and when its
+WooCommerce screen is drawn, and the mail provider, which carries every rate a
+merchant saves to the account's address before the rate is written. H-23 also
+needs a record of every request the dashboard sends to Coinbase with its time,
+so that a request made while a buyer waits for a price would show.
+
+The instrument is a Compose file, `packages/slice/outbound/compose.yaml`, laid
+over the repository's `compose.yaml`, and a command, `pnpm outbound`, that
+works it from the host. The file adds a stand-in with its own TLS front and
+changes two things in the application's container and nothing in the
+application itself. The name api.coinbase.com resolves there to the TLS front,
+which answers with a certificate from its own local authority, and the
+application's Node process is told to trust that authority beside the usual
+ones. The application's `MAIL_URL` names the stand-in, so the stand-in is the
+mail provider. Every other name resolves as it always does, the shop's, the
+chain's and the facilitator's at api.cdp.coinbase.com among them. The gateway
+runs in the same process as the dashboard and is under the same two changes,
+but it sends nothing to api.coinbase.com and nothing through the mail provider,
+so the faults reach the dashboard alone.
+
+### Starting a stack with it
+
+The stand-in is for a stack on this machine. It is started with the stack, from
+the root of the repository:
+
+```sh
+export AGENTIFY_SITE_ADDRESS=agentify.localhost
+export AGENTIFY_WEB_PUBLISH=127.0.0.1:8443:443
+export AGENTIFY_PUBLIC_ORIGIN=https://agentify.localhost:8443
+export AGENTIFY_COOKIE_SECURE=true
+docker compose -f compose.yaml -f packages/slice/outbound/compose.yaml up -d --build
+```
+
+The four variables are there because the dashboard holds a stack with a mail
+provider to the rules of a real one. It refuses to start while the address it
+names itself by is localhost, since every link it mails would then point at the
+reader's own computer, and the start-up error says so. A name under
+`.localhost` is not refused, and Chrome, Firefox and curl take it to this
+machine. Connect, for its part, refuses a dashboard that is not on https,
+because WooCommerce posts a shop's keys only to an https address; with a
+hostname for its site address the stack's own Caddy serves https from a local
+authority of its own, which a browser warns about until it is told to go on.
+The stand-in takes those variables as it finds them and sets none of them. The
+control port is published on 127.0.0.1:8789, or on the port named in
+`AGENTIFY_OUTBOUND_PORT`, and `pnpm outbound` takes that port with `--port`.
+
+Every message the dashboard sends now goes to the stand-in, sign-in links
+included, and none goes further. The stand-in has no way to send mail: it
+forwards nothing to any provider in any mode. Sign in by reading the link with
+`pnpm outbound mail read`, as the dashboard's log is read on a stack without
+the instrument.
+
+### Working it
+
+Each side has three modes, and a mode applies to every request that arrives
+after it is set; a request already open keeps the mode it arrived under.
+
+```sh
+pnpm outbound coinbase pass      # forward to Coinbase, unchanged (the start)
+pnpm outbound coinbase refuse    # answer 503 at once; Coinbase is not asked
+pnpm outbound coinbase silent    # answer nothing; Coinbase is not asked
+pnpm outbound mail accept        # answer 200 and keep the message (the start)
+pnpm outbound mail refuse        # answer 503 and keep the message
+pnpm outbound mail silent        # answer nothing and keep the message
+pnpm outbound restore            # Coinbase passes and mail is accepted again
+pnpm outbound status
+```
+
+Each of them prints the mode of both sides and how many requests each has
+recorded. A silent side never answers: the dashboard gives up on Coinbase after
+three seconds and on the mail provider after ten, and the screen waits that
+long before it says what happened. When Coinbase's side passes, the stand-in
+makes the dashboard's request to the real api.coinbase.com itself, with the
+same method, path, query and headers, less the ones that describe the
+connection and the forwarding headers its front adds, and hands back Coinbase's
+answer as it came. Nothing else reaches Coinbase from the instrument.
+
+Restarting the stand-in also restores both sides, and it empties both records.
+
+### Reading the record of Coinbase requests
+
+```sh
+pnpm outbound coinbase log
+```
+
+prints one line for every request that reached the stand-in for
+api.coinbase.com since it started:
+
+```
+2026-10-22T12:37:01.231Z  #17  GET /v2/exchange-rates?currency=USD  silent  the caller left without an answer after 3002 ms
+2026-10-22T12:37:41.533Z  #22  GET /v2/exchange-rates?currency=USD  pass  passed, Coinbase answered 200 after 224 ms
+```
+
+The time is when the request arrived, in UTC by this machine's clock, and the
+line is made at that moment, before anything is decided about the request, so a
+request that is still open is listed as such. Then come the sequence number,
+the method and the path with its query, the mode the request met, and how it
+ended: passed with Coinbase's status; passed but Coinbase could not be reached,
+with the network's code, in which case the dashboard was answered 502; refused;
+or left by its caller. To show that no
+request went to Coinbase while a buyer waited, note the moments the purchase
+started and ended and read the lines between them; the purchase itself is not
+in this record.
+
+A request that never got past the TLS front is not in the record. That happens
+only if the application trusts another authority than the one the front signs
+with, as after the front's volumes were removed and the front started again
+without the application, and then the dashboard reports Coinbase unreadable
+even while the side passes. Opening the
+WooCommerce screen of a shop in another currency with Coinbase passing adds a
+line; a screen that says Coinbase's rate could not be read and adds no line
+means the stand-in is not where the requests go.
+
+### Reading the mail
+
+```sh
+pnpm outbound mail read
+```
+
+prints every post the dashboard made to its mail provider since the stand-in
+started: when it arrived, the mode it met, how it ended, the recipient and the
+subject, and then the sender and the plain-text body, which carries every link
+the message does. A refused or unanswered message is kept and listed with its
+ending, so the record shows the rate notice the dashboard tried to send for a
+rate it then did not save. The record lives in the stand-in's memory and goes
+when it stops.
+
+### What it does not do
+
+It runs on a stack on this machine and has not been used on the test channel,
+whose application is started by the host's release from a fixed set of Compose
+files and whose mail goes to a real provider.
+
+It brings no shop. A story about a shop priced in rupiah needs one the
+connector accepts: on https with a certificate the application trusts, at a
+public address, and able to post its keys to the dashboard's https address. The
+lab's shop at its public address cannot reach a stack on this machine to post
+them.
+
+Only api.coinbase.com and the mail provider are stood in for. Coinbase's side
+fails at the level of HTTP: the application always reaches the front and its
+TLS always succeeds, so a fault in name resolution or a refused connection is
+not among the modes.
+
+Taking the instrument off is starting the stack again without the file, which
+puts the application back on its own mail setting and the real
+api.coinbase.com; the stand-in's two containers stay until they are removed,
+and `docker compose -f compose.yaml -f packages/slice/outbound/compose.yaml down`
+removes them with the rest of the stack.
