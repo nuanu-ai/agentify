@@ -114,7 +114,13 @@ const scan = (text: string): Node | null => {
     at += raw.length;
     return { kind: "scalar", start, end: at, raw };
   };
-  return value();
+  try {
+    return value();
+  } catch {
+    // Nesting deep enough to exhaust the stack: JSON.parse takes it, this
+    // walk does not, and the answer passes as one that cannot be read.
+    return null;
+  }
 };
 
 /** The member a reader of this object would take: the last one of that name, as `JSON.parse` does. */
@@ -155,8 +161,7 @@ interface Edit {
 }
 
 const NOTE_FIELD = '"instrument_note":"added by the additions proxy"';
-const DELIVERY_FIELD_NAME = "quantity";
-const DELIVERY_FIELD = `"${DELIVERY_FIELD_NAME}":3`;
+const DELIVERY_FIELD = '"quantity":3';
 const NEW_STATUS = "added_status";
 const NEW_EVENT_KIND = "order.added_kind";
 const NEW_REASON = "added_reason";
@@ -281,30 +286,24 @@ const ADDITIONS = {
   },
   "event-reason": {
     informs: true,
-    what: `the reason "${NEW_REASON}" in place of each order.unfulfilled event's reason in a poll`,
+    what: `the reason "${NEW_REASON}" in place of the reason of each event in a poll that carries one, which order.unfulfilled does`,
     routes: ["poll_worker"],
     edits: (document) =>
       envelopesOf(document, "order_event").flatMap((envelope) => {
         const event = memberOf(envelope, "payload");
-        return wordOf(event, "type") === "order.unfulfilled"
-          ? wordIn(
-              memberOf(event, "reason"),
-              NEW_REASON,
-              `event of order ${wordOf(event, "order_id") ?? "without an id"}`,
-            )
-          : [];
+        return wordIn(
+          memberOf(event, "reason"),
+          NEW_REASON,
+          `event of order ${wordOf(event, "order_id") ?? "without an id"}`,
+        );
       }),
   },
   "result-word": {
     informs: true,
     what: `the result word "${NEW_RESULT}" in place of the result of a successful answer, delivery or refusal`,
     routes: ["answer_order", "deliver_order", "refuse_order"],
-    edits: (document) => {
-      const ok = memberOf(document, "ok");
-      return ok?.kind === "scalar" && ok.raw === "true"
-        ? wordIn(memberOf(document, "result"), NEW_RESULT, "result")
-        : [];
-    },
+    // A failed call carries `error` and no result, so only a success is reached.
+    edits: (document) => wordIn(memberOf(document, "result"), NEW_RESULT, "result"),
   },
   "quote-purpose": {
     informs: true,
@@ -326,9 +325,7 @@ const ADDITIONS = {
     routes: ["poll_worker", "get_order", "list_orders"],
     edits: (document, route) =>
       ordersIn(document, route).flatMap((order) =>
-        order.kind === "object" && memberOf(order, DELIVERY_FIELD_NAME) === undefined
-          ? [fieldIn(order, DELIVERY_FIELD, orderLabel(order))]
-          : [],
+        order.kind === "object" ? [fieldIn(order, DELIVERY_FIELD, orderLabel(order))] : [],
       ),
   },
   "address-shape": {
@@ -619,20 +616,34 @@ const rewrite = (answer: Answer, route: RouteName, names: readonly AdditionName[
     .flatMap((name) =>
       ADDITIONS[name].edits(document, route, text).map((edit) => ({ ...edit, name })),
     )
-    .sort((one, other) => other.start - one.start);
-  let changed = text;
+    .sort((one, other) => one.start - other.start);
+  // One pass over the text: a list with tens of thousands of orders is
+  // rewritten in the time it takes to copy it, not once per edit.
+  const pieces: string[] = [];
+  let copied = 0;
   for (const edit of edits) {
-    changed = `${changed.slice(0, edit.start)}${edit.text}${changed.slice(edit.end)}`;
+    pieces.push(text.slice(copied, edit.start), edit.text);
+    copied = edit.end;
   }
-  return { body: Buffer.from(changed, "utf8"), edits: edits.reverse() };
+  pieces.push(text.slice(copied));
+  return { body: Buffer.from(pieces.join(""), "utf8"), edits };
 };
 
 /**
- * Sends the rewritten body unencoded. The length is restated, and the coding
- * and the entity tag are dropped, because both described the upstream's bytes.
+ * Sends the rewritten body unencoded. The length is restated, and the coding,
+ * the entity tag and any digest are dropped, because they described the
+ * upstream's bytes.
  */
 const sendRewritten = (response: ServerResponse, answer: Answer, body: Buffer): void => {
-  const { "content-encoding": _coding, etag: _tag, ...headers } = endToEnd(answer.headers);
+  const {
+    "content-encoding": _coding,
+    etag: _tag,
+    "content-md5": _md5,
+    digest: _digest,
+    "content-digest": _contentDigest,
+    "repr-digest": _reprDigest,
+    ...headers
+  } = endToEnd(answer.headers);
   response.writeHead(answer.status, answer.statusMessage, {
     ...headers,
     "content-length": body.length,
@@ -700,7 +711,7 @@ export const runAdditions = async (
 
     const route = routeOf(method, path);
     const names =
-      route === undefined || method === "HEAD"
+      route === undefined
         ? []
         : settings.rules
             .filter(
@@ -734,7 +745,10 @@ export const runAdditions = async (
     sequence += 1;
     const n = sequence;
     exchange(n, request, response).catch((error: unknown) => {
-      stamped(`#${n} failed inside the proxy (${codeOf(error)}); the connection was closed`);
+      const path = (request.url ?? "").split("?", 1)[0] ?? "";
+      stamped(
+        `#${n} ${request.method ?? ""} ${path} failed inside the proxy (${codeOf(error)}); the connection was closed`,
+      );
       request.socket.destroy();
     });
   });
@@ -753,7 +767,7 @@ export const runAdditions = async (
   for (const rule of settings.rules) {
     const addition: Addition = ADDITIONS[rule.name];
     say(
-      `  ${rule.name}: ${addition.what}; on ${answersOf(addition)}${rule.only === null ? "" : `, where the path matches ${rule.only}`}`,
+      `  ${rule.name}: ${addition.what}; ${rule.only === null ? "on" : `only where the path matches ${rule.only}, among`} ${answersOf(addition)}`,
     );
   }
 

@@ -7,7 +7,7 @@
  * rewritten.
  */
 
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, get as httpGet, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
@@ -209,15 +209,35 @@ describe("additions to what an order delivers", () => {
     expect(plain).not.toHaveProperty("ship_to");
   });
 
+  it("add the field at the top of an order read and to each order listed", async () => {
+    const read = PARCEL.replace(
+      '"test":true',
+      '"test":true,"status":"in_progress","payment_status":"paid"',
+    );
+    const to = await upstream({
+      "GET /v0/orders/ord_2": { body: read },
+      "GET /v0/orders": { body: `{"orders":[${read}]}` },
+    });
+    const { base } = await proxied(to, "delivery-field");
+
+    const one = (await (await fetch(`${base}/v0/orders/ord_2`)).json()) as { quantity?: number };
+    expect(one.quantity).toBe(3);
+    const listed = (await (await fetch(`${base}/v0/orders`)).json()) as {
+      orders: { quantity?: number }[];
+    };
+    expect(listed.orders[0]?.quantity).toBe(3);
+  });
+
   it("are refused beside additions that only inform", async () => {
     const started = await runAdditions(
       ["--to", "http://127.0.0.1:1", "--add", "field", "--add", "address-shape"],
       () => {},
     );
-    expect(started).toEqual({
-      ok: false,
-      why: expect.stringContaining("address-shape cannot run beside field"),
-    });
+    expect(started.ok).toBe(false);
+    if (!started.ok) {
+      expect(started.why).toContain("address-shape");
+      expect(started.why).toContain("field");
+    }
   });
 });
 
@@ -248,18 +268,71 @@ describe("what is never rewritten", () => {
     for (const line of logged) expect(line).toMatch(/: passed through$/);
   });
 
-  it("passes an answer carrying a payment challenge or settlement unchanged on a route an addition reaches", async () => {
-    const body = '{"order_id":"ord_1","status":"in_progress"}';
-    const to = await upstream({
-      "GET /x402/orders/ord_1/status": {
+  it.each<{ as: string; path: string; canned: Canned }>([
+    {
+      as: "an answer with a payment settlement in its headers",
+      path: "/x402/orders/ord_1/status",
+      canned: {
         headers: { "payment-response": "eyJzdWNjZXNzIjp0cnVlfQ==" },
-        body,
+        body: '{"order_id":"ord_1","status":"in_progress"}',
       },
-    });
+    },
+    {
+      as: "a 402",
+      path: "/v0/orders/ord_1",
+      canned: { status: 402, body: '{"error":{"code":"x","message":"y","retryable":false}}' },
+    },
+    {
+      as: "an answer that is not JSON",
+      path: "/v0/orders",
+      canned: { headers: { "content-type": "text/plain" }, body: '{"orders":[]}' },
+    },
+    {
+      as: "an answer that is not UTF-8",
+      path: "/v0/orders",
+      canned: { body: Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d]) },
+    },
+    {
+      as: "an answer that is not one JSON document",
+      path: "/v0/orders",
+      canned: { body: '{"orders":[]}{"orders":[]}' },
+    },
+    {
+      as: "an answer in a coding the proxy does not decode",
+      path: "/v0/orders",
+      canned: {
+        headers: { "content-encoding": "gzip, gzip" },
+        body: gzipSync(gzipSync('{"orders":[]}')),
+      },
+    },
+    {
+      as: "an answer nested deeper than the proxy can walk",
+      path: "/v0/orders",
+      canned: { body: `{"orders":[${"[".repeat(20_000)}${"]".repeat(20_000)}]}` },
+    },
+  ])("passes $as byte for byte, on a route an addition reaches", async ({ path, canned }) => {
+    const to = await upstream({ [`GET ${path}`]: canned });
     const { base, lines } = await proxied(to, "field", "status-word");
 
-    expect(await (await fetch(`${base}/x402/orders/ord_1/status`)).text()).toBe(body);
-    expect(lines.at(-1)).toContain("never rewrites");
+    // node:http rather than fetch, which would decode the body on the way in.
+    const received = await new Promise<Buffer>((resolve, reject) => {
+      httpGet(`${base}${path}`, (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => resolve(Buffer.concat(chunks)));
+      }).once("error", reject);
+    });
+    expect(received.equals(Buffer.from(canned.body))).toBe(true);
+    expect(lines.at(-1)).toContain("passed through unchanged, because");
+  });
+
+  it("passes an answer to HEAD as it came", async () => {
+    const to = await upstream({ "HEAD /v0/orders": { body: "" } });
+    const { base, lines } = await proxied(to, "field");
+
+    const response = await fetch(`${base}/v0/orders`, { method: "HEAD" });
+    expect(response.status).toBe(200);
+    expect(lines.at(-1)).toMatch(/: passed through$/);
   });
 
   it("refuses a rule whose pattern could reach the purchase or the catalog, and one that reaches none of its answers", async () => {
@@ -267,9 +340,10 @@ describe("what is never rewritten", () => {
       const started = await runAdditions(["--to", "http://127.0.0.1:1", "--add", add], () => {});
       return started.ok ? "started" : started.why;
     };
-    expect(await refusal("field@/x402/*/purchase")).toContain("never rewrites them");
+    expect(await refusal("field@/x402/*/purchase")).toContain("POST /x402/:item_id/purchase");
+    expect(await refusal("field@/*/*/*")).toContain("POST /x402/:item_id/purchase");
     expect(await refusal("field@/*/*")).toContain("GET /x402/catalog");
-    expect(await refusal("status-word@/v0/cards")).toContain("matches none of the answers");
+    expect(await refusal("status-word@/v0/cards")).toContain("GET /v0/orders/:order_id");
   });
 });
 

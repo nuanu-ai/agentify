@@ -359,10 +359,10 @@ leave them out, read them as `unknown` or skip them, and go on selling.
 
 | Addition | What the caller receives | In which answers |
 | --- | --- | --- |
-| `field` | the field `"instrument_note":"added by the additions proxy"` at the top of the answer, inside `error` when the answer is a refusal, and, in a poll, also in each envelope and in each event | every merchant route under `/v0/` and an agent's `GET /x402/orders/:order_id/status`; the top of an order read is closed, so an order read gets the field only inside a refusal |
+| `field` | the field `"instrument_note":"added by the additions proxy"` at the top of the answer, inside `error` when the answer is a refusal made of `error` alone, and, in a poll, also in each envelope the gateway sent and in each event | every merchant route under `/v0/` and an agent's `GET /x402/orders/:order_id/status`; the top of an order read is closed, so an order read gets the field only inside a refusal, and a failed call that answers `ok: false` beside its `error` gets it at the top |
 | `status-word` | `added_status` in place of each order's `status` | an order read, each order of a list, and an agent's status read |
 | `event-kind` | a new envelope after each order and each order event of a poll, holding an event of the kind `order.added_kind` about the same order, with the envelope's own identifier followed by `.added` and its own time | polls |
-| `event-reason` | `added_reason` in place of the `reason` of each `order.unfulfilled` event | polls |
+| `event-reason` | `added_reason` in place of the `reason` of each event that carries one, which today is `order.unfulfilled` | polls |
 | `result-word` | `added_result` in place of the `result` of a successful answer, delivery or refusal | `POST /v0/orders/:order_id/answer`, `deliver` and `refuse` |
 | `quote-purpose` | `added_purpose` in place of each price question's `purpose` | polls |
 
@@ -372,7 +372,7 @@ stays where it was.
 
 | Addition | What the caller receives | In which answers |
 | --- | --- | --- |
-| `delivery-field` | the field `"quantity":3` in each order's core, unless the order already carries one | each order of a poll, an order read and each order of a list |
+| `delivery-field` | the field `"quantity":3` in each order's core | each order of a poll, an order read and each order of a list |
 | `address-shape` | in place of each `ship_to` that names a place, a pickup point: `{"pickup_point":"added_pickup_point", …}` with the address's own country, state, city and postal code, and without its name, lines and phone; an erased address is left as it is | the same |
 
 An addition reaches only an answer that carries what it changes, so a word
@@ -386,11 +386,12 @@ are run in two runs. One addition can be given only once.
 An addition can be narrowed to the answers whose path matches a pattern, read
 as the cut proxy reads one, by writing the pattern after an `@`:
 `--add status-word@/v0/orders` gives the open-orders list the new word while
-an order read one by one keeps its own, and `--add field@/v0/orders/*/deliver`
-leaves every poll alone. A pattern that matches none of the answers its
+an order read one by one keeps its own, and `--add 'field@/v0/orders/*/deliver'`
+leaves every poll alone. A pattern with a `*` is quoted, as for the cut proxy,
+or the shell expands it or refuses it before the proxy sees it. A pattern that matches none of the answers its
 addition reaches is refused with the answers it does reach. A pattern that
 could reach the purchase, `/x402/:item_id/purchase`, or the catalog,
-`/x402/catalog`, is refused as well, as `field@/*/*/*` is: those answers carry
+`/x402/catalog`, is refused as well, as `'field@/*/*/*'` is: those answers carry
 a payment's requirements and its settlement, and this proxy never rewrites
 them.
 
@@ -400,8 +401,9 @@ Every answer that no addition reaches is passed on as the cut proxy passes
 one: the status, the headers and the body unchanged, apart from the headers
 that describe the connection and the restated length. So is an answer that an
 addition reaches but that carries a payment challenge or settlement in its
-headers, or a 402, whatever its route; one that is not JSON, not UTF-8, or not
-one JSON document; one encoded in a coding the proxy does not decode; and one
+headers, or a 402, whatever its route; one that is not JSON, not UTF-8, not
+one JSON document, or nested too deep for the proxy to walk; one encoded in a
+coding the proxy does not decode, which includes a body encoded twice; and one
 that holds nothing the addition changes. The log line says which of these it
 was.
 
@@ -411,9 +413,10 @@ envelope after the envelope it stands beside, and a word or an address shape
 in place of the old value's exact bytes, so the answer the caller receives
 differs from the gateway's only where the log says, and the spacing, the order
 of the fields and the spelling of every number are the gateway's. An answer
-that arrived compressed is decoded first and sent on uncompressed, without its
-`content-encoding` and without its `etag`, since both described the bytes the
-gateway sent; the other headers pass as they came.
+that arrived compressed is decoded first and sent on uncompressed. A rewritten
+answer goes without its `content-encoding`, its `etag` and any digest of its
+body (`content-md5`, `digest`, `content-digest`, `repr-digest`), since they
+described the bytes the gateway sent; the other headers pass as they came.
 
 ### The log
 
@@ -444,8 +447,9 @@ and is met by running an older release against the gateway as it is. An
 older release meets these additions with its own reader: the release before
 contract version 3 reads every answer closed, so with `field` reaching every
 poll it fails each poll and names the gateway's version as a remark without
-ever stopping on the mismatch, while with no addition on an empty poll it
-stops at the first one with `contract_version_mismatch`.
+ever stopping on the mismatch. Run against the gateway directly, or through
+the proxy with additions that leave an empty poll alone, it stops at the first
+poll with `contract_version_mismatch`.
 
 A restart drops whatever is in flight through the proxy, a poll the gateway
 holds open among them, so the merchant process is stopped before the proxy is
