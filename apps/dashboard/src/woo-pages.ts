@@ -849,7 +849,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           rate,
           previous: previous?.rate ?? null,
           setAt,
-          sessionSignedInAt: session?.person.id === person.id ? session.signedInAt : null,
+          sessionSignedInAt: session?.signedInAt ?? null,
           screen: `${whereWeAre}/woocommerce`,
         }),
       );
