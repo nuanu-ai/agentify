@@ -44,8 +44,11 @@ services:
       # starts it with the run's authority; another instrument laid over the
       # same stack appends its own and restarts the application.
       NODE_EXTRA_CA_CERTS: /woo-fault/trust.pem
+    # The shared lab's name goes to the edge too, which answers only for the
+    # two .test names, so a merchant who types it here reaches nothing.
     extra_hosts:
       - "shop.woo-fault.test:192.175.48.10"
+      - "woo.nuanu.ai:192.175.48.10"
     volumes:
       - "${WOO_FAULT_DIR:?set WOO_FAULT_DIR to the directory certs.sh made}/trust.pem:/woo-fault/trust.pem:ro"
     networks:

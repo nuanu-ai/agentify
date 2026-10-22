@@ -38,8 +38,11 @@ services:
             return $$args;
           },
         ];
+    # The shop's own name as well: WP-Cron and WooCommerce's scheduled actions
+    # call the shop at its own address, through the edge, whose log shows them.
     extra_hosts:
       - "agentify.woo-fault.test:192.175.48.10"
+      - "shop.woo-fault.test:192.175.48.10"
     volumes:
       - "${WOO_FAULT_DIR:?set WOO_FAULT_DIR to the directory certs.sh made}/ca.pem:/woo-fault/ca.pem:ro"
     networks:

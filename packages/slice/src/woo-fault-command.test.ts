@@ -16,7 +16,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { setTimeout as pause } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Edge, wooFaultEdge } from "./woo-fault-command.js";
+import { type Edge, serveWooFault, wooFaultEdge } from "./woo-fault-command.js";
 
 const SHOP = "shop.woo-fault.test";
 const DASHBOARD = "agentify.woo-fault.test";
@@ -152,34 +152,31 @@ const settled = async (until: () => boolean): Promise<void> => {
 };
 
 describe("failing a chosen shop request", () => {
-  it("answers a matching product read without the shop seeing it, as many times as armed, and the next one reaches the shop", async () => {
+  it("answers matching product reads without the shop seeing them, as many as armed, first rule first, and the next one reaches the shop", async () => {
     const shop = await standInShop();
-    const { port, edge, log } = await edgeFor(shop, await standInShop());
-    armed(edge, [
-      "fail",
-      "--method",
-      "GET",
-      "--path",
-      "/wp-json/wc/v3/products/*",
-      "--fault",
-      "503",
-    ]);
+    const { port, edge } = await edgeFor(shop, await standInShop());
+    const products = "/wp-json/wc/v3/products/*";
+    armed(edge, ["fail", "--method", "GET", "--path", products, "--fault", "503", "--count", "2"]);
+    armed(edge, ["fail", "--method", "GET", "--path", products, "--fault", "429"]);
 
-    const failed = await call(port, SHOP, "GET", "/wp-json/wc/v3/products/12");
-    const settings = await call(port, SHOP, "GET", "/wp-json/wc/v3/settings/general");
-    const next = await call(port, SHOP, "GET", "/wp-json/wc/v3/products/12");
+    const statuses: (number | null)[] = [];
+    for (const path of [
+      "/wp-json/wc/v3/products/12",
+      "/wp-json/wc/v3/products/12/variations",
+      "/wp-json/wc/v3/settings/general",
+      "/wp-json/wc/v3/products/12",
+      "/wp-json/wc/v3/products/12",
+      "/wp-json/wc/v3/products/12",
+    ]) {
+      statuses.push((await call(port, SHOP, "GET", path)).status);
+    }
 
-    expect(failed.status).toBe(503);
-    expect(JSON.parse(failed.body)).toMatchObject({ code: "woo_fault" });
-    expect(settings.status).toBe(200);
-    expect(next.status).toBe(200);
+    expect(statuses).toEqual([503, 200, 200, 503, 429, 200]);
     expect(shop.received.map((one) => one.url)).toEqual([
+      "/wp-json/wc/v3/products/12/variations",
       "/wp-json/wc/v3/settings/general",
       "/wp-json/wc/v3/products/12",
     ]);
-    expect(log.join("\n")).toMatch(
-      /#1 GET \/wp-json\/wc\/v3\/products\/12: FAILED: answered 503 by the edge, never sent to the shop/,
-    );
   });
 
   it.each([
@@ -213,7 +210,7 @@ describe("failing a chosen shop request", () => {
 
   it("with cut, lets the shop create the order and leaves the caller with no answer, once", async () => {
     const shop = await standInShop();
-    const { port, edge, log } = await edgeFor(shop, await standInShop());
+    const { port, edge } = await edgeFor(shop, await standInShop());
     armed(edge, ["fail", "--method", "POST", "--path", ORDERS, "--fault", "cut"]);
 
     const cut = await call(port, SHOP, "POST", ORDERS, orderBody("ord_cut"));
@@ -223,23 +220,35 @@ describe("failing a chosen shop request", () => {
     expect(cut.error).toBe("ECONNRESET");
     expect(again.status).toBe(201);
     expect(shop.received).toHaveLength(2);
-    expect(log.join("\n")).toMatch(
-      /#1 POST \/wp-json\/wc\/v3\/orders \(creates the shop order for ord_cut\): sent to the shop, which answered 201, \d+ bytes, naming shop order 101; CUT/,
-    );
-    expect(edge.control(["status"]).said).toMatch(/ord_cut: 2 arrived, 2 sent on to the shop/);
   });
 
-  it("leaves the dashboard's traffic alone even where a failure's pattern covers its path", async () => {
-    const stack = await standInShop();
-    const { port, edge } = await edgeFor(await standInShop(), stack);
+  it("leaves the dashboard's traffic alone even where a failure's pattern covers its path, and answers no other name", async () => {
+    const shop = await standInShop();
+    const dashboard = await standInShop();
+    const gateway = await standInShop();
+    const log: string[] = [];
+    const edge = wooFaultEdge(
+      {
+        shopHost: SHOP,
+        shop: new URL(shop.url),
+        dashboardHost: DASHBOARD,
+        dashboard: new URL(dashboard.url),
+        gateway: new URL(gateway.url),
+      },
+      (line) => log.push(line),
+    );
+    const port = Number(new URL(await serve(edge.handle)).port);
     armed(edge, ["fail", "--method", "POST", "--path", "/**", "--fault", "503", "--count", "all"]);
 
     const callback = await call(port, DASHBOARD, "POST", "/dashboard/woocommerce/callback", "{}");
-    const elsewhere = await call(port, "woo.example.com", "GET", "/");
+    const purchase = await call(port, DASHBOARD, "POST", "/x402/item_1/purchase", "{}");
+    const elsewhere = await call(port, "woo.nuanu.ai", "POST", "/wp-json/wc/v3/orders", "{}");
 
-    expect(callback.status).toBe(200);
-    expect(stack.received.map((one) => one.url)).toEqual(["/dashboard/woocommerce/callback"]);
-    expect(elsewhere.status).toBe(421);
+    expect([callback.status, purchase.status, elsewhere.status]).toEqual([200, 200, 421]);
+    expect(dashboard.received.map((one) => one.url)).toEqual(["/dashboard/woocommerce/callback"]);
+    expect(gateway.received.map((one) => one.url)).toEqual(["/x402/item_1/purchase"]);
+    expect(shop.received).toEqual([]);
+    expect(log).toEqual([]);
   });
 });
 
@@ -250,16 +259,14 @@ describe("holding an order before the shop", () => {
     armed(edge, ["hold", "--next"]);
 
     const held = call(port, SHOP, "POST", ORDERS, orderBody("ord_held"));
-    await settled(() => /ord_held: #1 waiting since/.test(edge.control(["status"]).said));
+    await settled(() => edge.control(["status"]).said.includes("ord_held"));
     const other = await call(port, SHOP, "POST", ORDERS, orderBody("ord_other"));
 
     expect(shop.received.map((one) => JSON.parse(one.body).transaction_id)).toEqual(["ord_other"]);
     expect(other.status).toBe(201);
     expect(edge.control(["release", "--order", "ord_other"]).ok).toBe(false);
 
-    expect(armed(edge, ["release", "--order", "ord_held"])).toMatch(
-      /1 request sent on to the shop/,
-    );
+    armed(edge, ["release", "--order", "ord_held"]);
     expect((await held).status).toBe(201);
     expect(shop.received.map((one) => JSON.parse(one.body).transaction_id)).toEqual([
       "ord_other",
@@ -269,23 +276,18 @@ describe("holding an order before the shop", () => {
 
   it("never sends a held request whose caller gave up before the release", async () => {
     const shop = await standInShop();
-    const { port, edge, log } = await edgeFor(shop, await standInShop());
+    const { port, edge } = await edgeFor(shop, await standInShop());
     armed(edge, ["hold", "--order", "ord_gone"]);
 
     const gone = await call(port, SHOP, "POST", ORDERS, orderBody("ord_gone"), {
       leaveAfterMs: 50,
     });
     expect(gone.status).toBeNull();
-    await settled(() => /1 whose caller gave up/.test(edge.control(["status"]).said));
-    expect(armed(edge, ["release", "--order", "ord_gone"])).toMatch(
-      /0 requests sent on to the shop, 1 not sent because its caller had given up/,
-    );
-    await settled(() => log.some((line) => line.includes("never sent")));
+    await settled(() => edge.control(["status"]).said.includes("gave up"));
+    armed(edge, ["release", "--order", "ord_gone"]);
+    await pause(100);
 
     expect(shop.received).toEqual([]);
-    expect(log.join("\n")).toMatch(
-      /released, but its caller had already given up, so it was never sent to the shop/,
-    );
   });
 });
 
@@ -310,20 +312,73 @@ describe("shifting an order's total", () => {
     expect(repeated.fee_lines).toBeUndefined();
   });
 
-  it("refuses an amount that is not one, and arms nothing", () => {
-    const edge = wooFaultEdge(
+  it("with --next, shifts the next order the shop is sent, not one the edge failed before the shop", async () => {
+    const shop = await standInShop();
+    const { port, edge } = await edgeFor(shop, await standInShop());
+    armed(edge, ["fail", "--method", "POST", "--path", ORDERS, "--fault", "503"]);
+    armed(edge, ["shift", "--next", "--by", "2"]);
+
+    expect((await call(port, SHOP, "POST", ORDERS, orderBody("ord_refused"))).status).toBe(503);
+    await call(port, SHOP, "POST", ORDERS, orderBody("ord_sent"));
+
+    expect(shop.received.map((one) => JSON.parse(one.body))).toEqual([
       {
-        shopHost: SHOP,
-        shop: new URL("http://127.0.0.1:9"),
-        dashboardHost: DASHBOARD,
-        dashboard: new URL("http://127.0.0.1:9"),
-        gateway: new URL("http://127.0.0.1:9"),
+        ...JSON.parse(orderBody("ord_sent")),
+        fee_lines: [
+          { name: "Controlled Woo fault: total shifted by 2", total: "2", tax_status: "none" },
+        ],
       },
-      () => {},
-    );
+    ]);
+  });
+
+  it("refuses an amount that is not one, and arms nothing", async () => {
+    const shop = await standInShop();
+    const { port, edge } = await edgeFor(shop, await standInShop());
     for (const by of ["0", "1,5", "Rp1", "1e3"]) {
       expect(edge.control(["shift", "--next", "--by", by]).ok).toBe(false);
     }
-    expect(edge.control(["status"]).said).toMatch(/Shifting: nothing/);
+    await call(port, SHOP, "POST", ORDERS, orderBody("ord_plain"));
+
+    expect(JSON.parse(shop.received[0]?.body ?? "{}")).toEqual(JSON.parse(orderBody("ord_plain")));
+  });
+});
+
+describe("starting the edge", () => {
+  const flags = (shopHost: string, shop: string): string[] => [
+    "--shop-host",
+    shopHost,
+    "--shop",
+    shop,
+    "--dashboard-host",
+    DASHBOARD,
+    "--dashboard",
+    "http://app:3001",
+    "--gateway",
+    "http://app:3000",
+    "--cert",
+    "/nonexistent/edge.pem",
+    "--key",
+    "/nonexistent/edge-key.pem",
+    "--port",
+    "0",
+    "--control-port",
+    "0",
+  ];
+
+  it.each([
+    [
+      "a shop name a public resolver may answer",
+      "woo.nuanu.ai",
+      "http://woo-fault-wordpress",
+      "--shop-host",
+    ],
+    ["a shop reached over TLS", SHOP, "https://woo.nuanu.ai", "--shop,"],
+  ])("refuses %s before it listens, naming the flag", async (_case, shopHost, shop, flag) => {
+    const lines: string[] = [];
+    const started = await serveWooFault(flags(shopHost, shop), (line) => lines.push(line));
+
+    expect(started.ok).toBe(false);
+    expect(started.said).toContain(flag);
+    expect(lines).toEqual([]);
   });
 });

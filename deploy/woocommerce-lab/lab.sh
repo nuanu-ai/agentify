@@ -69,6 +69,12 @@ load_env() {
   # Where the shop listens and where its data lives are deployment facts.
   : "${WOOCOMMERCE_DATA_ROOT:?set WOOCOMMERCE_DATA_ROOT to the directory holding the lab data, baseline and profiles}"
   : "${WOO_LAB_LISTEN_ADDRESS:?set WOO_LAB_LISTEN_ADDRESS to the address the lab Caddy binds on}"
+  # A copy at its own address that is not wired to the controlled Woo fault
+  # would run the lab's own Caddy and address over it, both of which lead to
+  # the shared lab.
+  if [[ -n "${WOO_LAB_URL:-}" && ":${COMPOSE_FILE:-}:" != *":local-copy.yaml:"* ]]; then
+    fail "WOO_LAB_URL names a local copy, and COMPOSE_FILE does not lay local-copy.yaml over compose.yaml; the copy's .env sets COMPOSE_FILE=compose.yaml:local-copy.yaml"
+  fi
   local resolved
   resolved="$(python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$WOOCOMMERCE_DATA_ROOT")"
   [[ "$resolved" == "$WOOCOMMERCE_DATA_ROOT" ]] ||

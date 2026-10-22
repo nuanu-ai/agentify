@@ -139,6 +139,15 @@ const wholeBody = async (message: IncomingMessage): Promise<Buffer> => {
   return Buffer.concat(chunks);
 };
 
+/** Failures in which no byte of the request can have reached the shop. */
+const NEVER_CONNECTED = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+]);
+
 const codeOf = (error: unknown): string => {
   const code = (error as { code?: unknown } | null)?.code;
   return code === undefined ? "no error code" : String(code);
@@ -436,10 +445,23 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
     }
 
     let answer: Answer;
-    if (order !== null && count !== null) count.sentToShop += 1;
     try {
       answer = await forward(options.shop, request, sent, options.shopHost);
     } catch (error) {
+      if (NEVER_CONNECTED.has(codeOf(error))) {
+        // Nothing left the edge, so the shift is still owed to the order.
+        if (shift !== null) shifts.unshift(shift);
+        const waiting = !callerLeft();
+        if (waiting) {
+          response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+          response.end(`The controlled Woo fault could not reach the shop: ${codeOf(error)}.\n`);
+        }
+        log(
+          `could not reach the shop (${codeOf(error)}), so it was never sent${waiting ? "; answered 502" : " and the caller had left"}`,
+        );
+        return;
+      }
+      if (count !== null) count.sentToShop += 1;
       if (callerLeft()) {
         log(
           `sent to the shop${shiftNote}; no whole answer (${codeOf(error)}) and the caller had left`,
@@ -453,6 +475,7 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
       log(`sent to the shop${shiftNote}; no whole answer (${codeOf(error)}), answered 502`);
       return;
     }
+    if (count !== null) count.sentToShop += 1;
     const facts = `${answer.status}, ${answer.body.length} bytes${creating ? shopOrderNote(answer) : ""}`;
     if (rule !== null) {
       response.socket?.destroy();
@@ -682,14 +705,18 @@ export const wooFaultEdge = (options: EdgeOptions, say: (line: string) => void):
       case "clear": {
         const flags = flagsOf(rest, {});
         if (typeof flags === "string") return { ok: false, said: flags };
-        const waiting = holds.filter((one) => one.parked.length > 0);
+        const waiting = holds.filter((one) => one.parked.some((parked) => !parked.callerLeft()));
+        // A request whose caller gave up is let go here, to its log line and never to the shop.
+        for (const hold of holds) {
+          if (!waiting.includes(hold)) for (const parked of hold.parked) parked.go();
+        }
         fails.splice(0);
         shifts.splice(0);
         holds.splice(0, holds.length, ...waiting);
         return {
           ok: true,
           said:
-            "Cleared every failure, every shift and every hold that has caught nothing" +
+            "Cleared every failure, every shift and every hold with no request still waiting" +
             (waiting.length > 0
               ? `; ${waiting.length} hold${waiting.length === 1 ? "" : "s"} with requests waiting stay until released.`
               : "."),

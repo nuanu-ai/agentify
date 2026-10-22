@@ -565,7 +565,9 @@ Compose reads the last four from the `.env` as `lab.sh` runs it, so every
 command of the copy acts on the Compose project `instr-woo-lab` with
 [`local-copy.yaml`](local-copy.yaml) laid over `compose.yaml`. That file joins
 the copy's WordPress to the instrument's network, where the edge reaches it,
-resolves the dashboard's name to the edge, has WooCommerce trust the run's
+resolves the dashboard's name and the copy's own to the edge, so that the
+copy's scheduled work, which calls the shop at its own address, passes through
+the edge and shows in its log, has WooCommerce trust the run's
 certificate authority for that name alone when it posts a merchant's keys, and
 turns the copy's Caddy into a stand-in that serves nothing, since the lab's
 Caddy would ask Let's Encrypt for the shared lab's certificate. The mail
@@ -573,7 +575,9 @@ catcher listens on 127.0.0.1:18626. `WOO_LAB_URL` is the address
 `./lab.sh baseline` installs WordPress at, so the profiles a copy builds store
 their download files at the copy's own address; without it a download in the
 copy would be a link to the shared lab, and `local-copy.yaml` refuses to start
-a copy whose `.env` does not set it.
+a copy whose `.env` does not set it. Set without `local-copy.yaml` in
+`COMPOSE_FILE`, it makes every `./lab.sh` command refuse, since the lab's own
+Caddy and address would then run over a copy built for another.
 
 The copy needs the instrument's stack up first, because its network is the
 stack's. It then builds its own baseline and the profiles a run needs, which
@@ -588,6 +592,7 @@ their plugins:
 From then on the copy is switched, overlaid, checked and read as the lab is,
 and a switch disconnects a merchant from it as it does here. Its request log is
 the edge's, since its Caddy carries no requests; `./lab.sh requests` there
-shows nothing. The copy is taken down with `docker compose down` in its
+shows nothing, while the edge's log carries the copy's own scheduled calls
+beside the connector's. The copy is taken down with `docker compose down` in its
 directory, before the instrument's stack, whose network it is still attached
 to.
