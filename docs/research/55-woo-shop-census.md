@@ -1308,10 +1308,10 @@ lists and 95 checks that a download's file refuses a request without an
 order), and the whole import, publishing included, answered in 8 to 9 seconds,
 and in 6.9 when run again. Both versions published the same 916 cards, set 92
 products aside to fix and passed over 982. With 60 products added, the shop of
-2,050 was refused on its first listing page, because it reports its own count;
-a shop that does not report one is refused a page past the ceiling, on the
-21st, and in both cases before any protected request and with its cards left
-as they were.
+2,050 was refused on its first listing page, because it reports its own count
+beside a full page; a shop that does not report one is refused a page past the
+ceiling, on the 21st, and in both cases before any protected request and with
+its cards left as they were.
 
 The lab is a local container with no other plugin and answers in a tenth of a
 second, so these times are a floor. The census timed its own hundred-product
@@ -1320,19 +1320,22 @@ products: across 34 sites with at least a hundred products, from the test
 host's Indonesian network, it took a median of 4.5 seconds, 6.4 at the
 ninetieth percentile and 8.0 at most. These are the 34 sites, placed in a
 group or not, whose listing the census read and whose count was at least a
-hundred; the raw answers are kept outside the repository with the rest of the
-census data. The protected requests on real shops were not timed. If they cost
-about what a listing page costs, an import of 2,000 parcels from such a shop
-would take about two minutes, mostly the 20 listing pages read one after
-another, and about three at the ninetieth percentile; a shop selling downloads
-adds one small request per download, four at a time. That is an estimate, not
-a measurement. Nor was it measured whether a real shop answers a protected
-list of a hundred products within the fifteen seconds every request is given:
-a page that does not is told, for each of its hundred products, as the shop
-not answering, and an import run again asks again. The import runs inside the
-merchant's request. Neither Caddy in front of the dashboard nor the
-dashboard's own server limits how long a response may take; the test host's
-ingress is configured outside this repository and was not read. Firefox gives
-up on a response after five minutes by default; other browsers were not
-checked. A shop slow enough to come near that is the case for moving the
-import out of the request, which is the product owner's decision.
+hundred; the raw answers are among the census's working files, which are not
+published and are not in this repository. The protected requests on real shops
+were not timed. If they cost about what a listing page costs, an import of
+2,000 parcels from such a shop would take about two minutes, mostly the 21
+listing pages read one after another, and about three at the ninetieth
+percentile; a shop selling downloads adds one request per download, four at a
+time, which is small where the server honours a request for the file's first
+byte and the whole file, up to the connector's ten megabytes, where it does
+not. That is an estimate, not a measurement. Nor was it measured whether a
+real shop answers a protected list of a hundred products within the fifteen
+seconds every request is given: a page that does not is told, for each of its
+hundred products, as the shop not answering, and an import run again asks
+again. The import runs inside the merchant's request. Neither Caddy in front
+of the dashboard nor the dashboard's own server limits how long a response may
+take; the test host's ingress is configured outside this repository and was
+not read. Firefox gives up on a response after five minutes by default; other
+browsers were not checked. A shop slow enough to come near that is the case
+for moving the import out of the request, which is the product owner's
+decision.
