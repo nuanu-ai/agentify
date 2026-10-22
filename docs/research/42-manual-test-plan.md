@@ -1274,6 +1274,60 @@ first, then unresolved obligations or a blocked task, then unsafe or misleading
 comprehension, then recoverable inconvenience. Do not down-rank a false monetary
 claim because the underlying API was correct.
 
+## Findings known before the run
+
+Building the fault instruments and preparing the lab turned up defects and open
+product questions before any run. The product owner decided on 2026-10-22 that
+they are fixed together after the acceptance run, with what the run finds,
+rather than one by one now. So that none is lost, they are listed here. A run's
+"Findings" section starts from this list: each item is confirmed or refuted on
+the run's revision, by the story named beside it, and kept with its evidence.
+The change that fixes or settles an item removes it from this list in the same
+change. Items marked "decision" wait for the product owner, not for a fix.
+
+Seen with a controlled instrument, which shows what the product does with an
+answer, not how often a real provider gives that answer:
+
+- With any facilitator but the sandbox's configured, the local stack calls
+  itself the test channel and says payments settle with test funds (J-08, on
+  the local stack).
+- When the facilitator cannot be reached, the buyer reads the library's words
+  "fetch failed" (J-06).
+- The dashboard says the payment network confirmed a payment when only the
+  facilitator answered that it was settled (J-08, J-10).
+- SDK 0.8.0 skips an open order whose status word it does not know, so it
+  delivers neither of such orders (D-08, second variant).
+- SDK 0.8.0 fails every poll when an order carries a field it does not know,
+  naming neither the field nor an upgrade; SDK 0.7.1 never reaches its stop
+  for an older contract while every poll carries an unknown field (D-08, third
+  variant).
+- Both SDKs quote the start of an answer they cannot read, an order id and a
+  price among it, in the problem they report (D-08).
+- A payout answer the dashboard cannot read is shown as "did not send the
+  payout", when the page cannot know whether it went (M-04).
+- An acknowledgement that arrives after the wallet window said it closed is
+  shown as "Nothing was sent" (M-04).
+- The merchant is shown raw JavaScript error text when the wallet answers
+  outside its protocol (M-04, A-02).
+- A wallet window that vanishes leaves the Settings page waiting with no limit,
+  and the wallet SDK's session keys stay in the browser (M-04, E-04).
+- With Coinbase silent, saving an exchange rate takes about six seconds,
+  because the save reads Coinbase twice (H-23).
+
+Left open by earlier changes:
+
+- Decision: the WooCommerce screen shows a rate as set "by" the account's own
+  address, which ADR-0044 records as who saved it, though it cannot tell one
+  session of the account from another (H-20).
+- Decision: Sign out every other device keeps the current browser signed in,
+  so the steps the rate and payout notices give do not remove a session copied
+  from that same browser (H-20, E-04).
+- No screen lists an account's sessions, so a merchant cannot check the
+  sign-in moment a rate notice names (H-20).
+- A dollar shop's decimals refusal, and the import's refusal of a product
+  written at other decimals than the shop's, ask for the setting to be changed
+  without saying that it changes what every customer of the shop sees (H-12).
+
 ## Report and evidence
 
 Reports remain in a private location named for the run. Do not open tracker
