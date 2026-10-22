@@ -37,7 +37,7 @@ export function rateNoticeMessage(notice: RateNotice): Message {
   const paragraphs = [
     signedIn === null
       ? "It was entered from a session signed in to this account."
-      : `It was entered from a session that signed in to this account at ${signedIn}.`,
+      : `It was entered from a session that signed in to this account at ${signedIn}. A session copied from a browser of yours would show that browser's own sign-in, so a moment you recognise does not prove it was you.`,
     notice.previous === null
       ? "No rate was set before."
       : `The previous rate was ${notice.previous} ${notice.currency} per US dollar.`,
