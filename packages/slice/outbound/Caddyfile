@@ -1,0 +1,14 @@
+# The TLS front of the outbound stand-in. It answers as api.coinbase.com with a
+# certificate from its own local authority, which only the application of this
+# stack trusts, and hands each request to the stand-in in plain http. It
+# installs nothing into any trust store and has no admin endpoint.
+{
+	admin off
+	skip_install_trust
+	local_certs
+	auto_https disable_redirects
+}
+
+api.coinbase.com {
+	reverse_proxy outbound:8080
+}
