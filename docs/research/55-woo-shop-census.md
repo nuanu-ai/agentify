@@ -1336,6 +1336,6 @@ again. The import runs inside the merchant's request. Neither Caddy in front
 of the dashboard nor the dashboard's own server limits how long a response may
 take; the test host's ingress is configured outside this repository and was
 not read. Firefox gives up on a response after five minutes by default; other
-browsers were not checked. A shop slow enough to come near that is the case
-for moving the import out of the request, which is the product owner's
-decision.
+browsers were not checked. The import stays inside the request, and moves out
+of it into a job of its own only once a real shop proves slow enough to come
+near that limit (the product owner, 2026-10-22).
