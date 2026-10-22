@@ -341,16 +341,21 @@ without a query and without a user name or password. `--address` is the EVM
 address the stand-in gives as the wallet's. Give one you hold: the stand-in
 only puts it in the box, but a press of Save in this browser is a real save on
 that dashboard, and payouts would then go to it. The command opens Playwright's
-Chromium, visibly, on the dashboard's Settings page, and runs until that
-browser is closed or the command is stopped with Ctrl-C. A flag that is missing
-or malformed is refused with one sentence naming it, and nothing opens.
+Chromium, visibly, on the dashboard's Settings page, and runs until that tab
+is closed or the command is stopped with Ctrl-C. A flag that is missing or
+malformed is refused with one sentence naming it, and nothing opens; so is a
+dashboard on a host of Coinbase's, which would otherwise become reachable. A
+dashboard that does not answer is named in one sentence, and the browser
+closes.
 
 The Coinbase buttons are drawn only where payments settle on a chain, so a
 dashboard in the sandbox has none. The local stack is in the sandbox unless it
-is started with `AGENTIFY_FACILITATOR_URL` naming some address other than
-`sandbox:scripted`; any http address does, a port where nothing listens
-included, and the stack then calls itself TEST. Nothing in these stories
-needs that address to answer, but no purchase can be paid on such a stack. The
+is started with `AGENTIFY_FACILITATOR_URL` naming some other address. Name
+one where nothing listens, such as `http://127.0.0.1:9/facilitator`: the
+stack then calls itself TEST, the buttons are drawn, and no purchase can be
+paid, which none of these stories needs. A facilitator that answers would make
+purchases payable, and the gateway refuses a host of Coinbase's here without
+its keys. The
 payout button appears once a payout wallet is saved. The test channel's
 dashboard has both buttons as it is.
 
@@ -361,16 +366,19 @@ is not available here, for the reason the next paragraph gives.
 
 ### What the browser reaches
 
-Every request a page in this browser makes goes through one rule. A request to
+Every request a page in this browser makes goes through one rule, except the
+further hops of a redirect, which Chromium follows without asking it. A request to
 the dashboard's origin, its scheme, host and port, is sent to the dashboard as
 it is. A request for Coinbase's window, `https://keys.coinbase.com/connect`
 with any query, never leaves the browser: it is answered with the stand-in.
 Every other request, to Coinbase's other hosts, to Google, to anything at all,
 is refused before it leaves, and the terminal says so once for each host. The
-browser is also told that no host name but the dashboard's exists, so a
-request that went around the rule by a host name would still reach no one,
-and service workers, which could otherwise answer requests unseen, are
-switched off. The
+browser is also told that no host name but the dashboard's exists and that
+no address written as numbers can be looked up, so a redirect, or anything
+else that went around the rule, can reach the dashboard's host and nothing
+else, without a line in the terminal. Service workers, which could otherwise
+answer requests unseen, are switched off, and so is WebRTC's direct traffic,
+which goes around both. The
 one request that is made from the command itself rather than the browser is
 the reading of Settings described below; it goes to the dashboard's Settings
 address and follows no redirect.
@@ -409,6 +417,13 @@ The buttons under a waiting request answer it in one of these ways:
 | Say the window closed, then answer as the wallet | The message a closing window sends, and straight after it the wallet's answer |
 | Hold the answer | Nothing yet; the request stays held and offers the wallet's answer, the refusal and the closing answer, each to be sent whenever chosen |
 
+Windows are numbered in the terminal as they open. The page uses one window
+for as long as it is loaded, so a second one opens only after the window was
+closed or the dashboard's page loaded again, after a Save among other things.
+An earlier window still open at that moment is made to vanish, and the
+terminal says so: closed in the ordinary way it would tell the new page that
+its window closed, and the new page would give up on its own.
+
 Two buttons at the top act on the window itself. "Close, as a person closes
 it" closes the window and tells the page that it closed. The window says so as
 it unloads, so closing it by its own close box should tell the page the same
@@ -446,10 +461,12 @@ in the dashboard's storage in this browser: the account it connected, if any,
 and which of its session keys it kept, named and never shown. The fourth is
 the payout wallet as the dashboard's server draws Settings when asked afresh
 with this browser's cookies, with every address whole: the address saved
-here and any address waiting to replace it. When that answer is not Settings,
-because the session has ended and the dashboard redirects to sign in, or it
-answers with an error, or the page has no payout wallet section, the line says
-it was not read and why, and never reads that as nothing saved.
+here and any address waiting to replace it. It says that no payout wallet is
+saved only where the page offers the box under the label it has while nothing
+is saved. When the answer is not Settings, because the session has ended and
+the dashboard redirects to sign in, or it answers with an error, or the page
+is drawn in a way the command does not recognise, the line says it was not
+read and why, and never reads that as nothing saved.
 
 The log holds addresses, which are public, request numbers and the page's own
 words. It never prints a cookie, the value of a session key or the payout's

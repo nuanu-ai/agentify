@@ -50,10 +50,17 @@ describe("the command's door", () => {
     }
   });
 
-  it("refuses to treat Coinbase's window as the dashboard", () => {
-    expect(
-      refusal(["--dashboard", "https://keys.coinbase.com/connect", "--address", ADDRESS]),
-    ).toMatch(/Coinbase's window/);
+  it("refuses to treat any host of Coinbase's as the dashboard, since that host would become reachable", () => {
+    for (const dashboard of [
+      "https://keys.coinbase.com/connect",
+      "http://keys.coinbase.com/connect",
+      "https://wallet.coinbase.com/",
+      "https://coinbase.com/",
+    ]) {
+      expect(refusal(["--dashboard", dashboard, "--address", ADDRESS])).toMatch(
+        /a host of Coinbase's/,
+      );
+    }
   });
 
   it("refuses an address that is not an EVM address or whose checksum is wrong", () => {

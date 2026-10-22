@@ -83,8 +83,10 @@ export const readPlan = (argv: readonly string[]): Read => {
   ) {
     return refused(`--dashboard takes ${TAKES["--dashboard"]}, and the value given is not one.`);
   }
-  if (dashboard.origin === COINBASE_WINDOW.origin) {
-    return refused("--dashboard names Coinbase's window, which this browser answers itself.");
+  if (dashboard.hostname === "coinbase.com" || dashboard.hostname.endsWith(".coinbase.com")) {
+    return refused(
+      "--dashboard names a host of Coinbase's, which this browser must never reach; name the dashboard.",
+    );
   }
   const address = given.get("--address") ?? "";
   if (!isAddress(address)) {
@@ -157,33 +159,33 @@ const lineFor = (event: WindowEvent): string | null => {
   const n = `#${String(event.number)} ${String(event.method)}`;
   switch (event.kind) {
     case "loaded":
-      return `window: opened by ${String(event.origin)}`;
+      return `opened by ${String(event.origin)}`;
     case "introduced":
-      return `window: the page introduced itself as ${String(event.sdk)}`;
+      return `the page introduced itself as ${String(event.sdk)}`;
     case "handshake":
-      return `window: handshake answered, session ${String(event.session)}`;
+      return `handshake answered, session ${String(event.session)}`;
     case "routine":
-      return `window: ${n} to chain ${String(event.chain)} answered at once`;
+      return `${n} to chain ${String(event.chain)} answered at once`;
     case "asked":
-      return `window: ${n} asked in session ${String(event.session)}${
+      return `${n} asked in session ${String(event.session)}${
         event.detail === "" ? "" : `, ${String(event.detail)}`
       }; waiting for a choice in the window`;
     case "held":
-      return `window: ${n} held; the page has been told nothing`;
+      return `${n} held; the page has been told nothing`;
     case "answered":
-      return `window: ${n} ${event.late === true ? "held, then " : ""}${String(event.said)}`;
+      return `${n} ${event.late === true ? "held, then " : ""}${String(event.said)}`;
     case "closing":
-      return "window: closing as a person closes it, telling the page";
+      return "closing as a person closes it, telling the page";
     case "vanishing":
-      return "window: vanishing without telling the page";
+      return "vanishing without telling the page";
     case "unknown-session":
-      return `window: request #${String(event.number)} came under a session this window never agreed, and stays unanswered`;
+      return `request #${String(event.number)} came under a session this window never agreed, and stays unanswered`;
     case "unrecognised":
-      return "window: the page sent a message this window does not recognise";
+      return "the page sent a message this window does not recognise";
     case "orphan":
-      return "window: opened by something other than the dashboard's button, and answers nothing";
+      return "opened by something other than the dashboard's button, and answers nothing";
     case "failed":
-      return `window: could not handle a message: ${String(event.why)}`;
+      return `could not handle a message: ${String(event.why)}`;
     default:
       return null;
   }
@@ -252,7 +254,12 @@ const savedOf = async (context: BrowserContext, settings: URL): Promise<string> 
         const spans = /<div class="address">(.*?)<\/div>/s.exec(block)?.[1] ?? "";
         return `${label.toLowerCase()} ${spans.replace(/<[^>]*>/g, "")}`;
       });
-    return shown.length === 0 ? "no payout wallet saved" : shown.join("; ");
+    if (shown.length > 0) return shown.join("; ");
+    // The box is labelled so only while nothing is saved; without that label
+    // an empty reading is a page this command no longer understands.
+    return html.includes(">Payout wallet address</label>")
+      ? "no payout wallet saved"
+      : "not read: the page shows neither a saved address nor an empty box";
   } catch (thrown) {
     return `not read (${firstLine(thrown)})`;
   }
@@ -299,7 +306,11 @@ export async function openWalletFaults(
     headless,
     // Every host name but the dashboard's resolves to nothing, so a request
     // the routes below did not see still reaches no one.
-    args: [`--host-resolver-rules=EXCLUDE ${dashboard.hostname}, MAP * ~NOTFOUND`],
+    // WebRTC's STUN goes around both, so it is kept off the network.
+    args: [
+      `--host-resolver-rules=EXCLUDE ${dashboard.hostname}, MAP * ~NOTFOUND`,
+      "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    ],
   });
   const context = await browser.newContext({ serviceWorkers: "block" });
   const refusedHosts = new Set<string>();
@@ -343,9 +354,23 @@ export async function openWalletFaults(
     return reading;
   };
 
+  // Windows are numbered as they open. A window left open from before the
+  // dashboard's page loaded again would, on closing, tell the new page that
+  // its window closed, so an earlier window vanishes when a new one opens.
+  const windows = new Map<Page, number>();
+  const opened = async (window: Page, number: number): Promise<void> => {
+    for (const [earlier, itsNumber] of windows) {
+      if (earlier === window || earlier.isClosed()) continue;
+      out(`window ${itsNumber}: made to vanish, since window ${number} opened`);
+      await earlier
+        .locator("#vanish")
+        .click()
+        .catch(() => undefined);
+    }
+  };
   context.on("console", (message) => {
-    const from = message.page()?.url() ?? "";
-    if (destinationOf(from, dashboard) !== "stand-in") return;
+    const window = message.page();
+    if (window === null || destinationOf(window.url(), dashboard) !== "stand-in") return;
     const text = message.text();
     if (!text.startsWith("stand-in ")) return;
     let event: WindowEvent;
@@ -354,8 +379,14 @@ export async function openWalletFaults(
     } catch {
       return;
     }
+    let number = windows.get(window);
+    if (number === undefined) {
+      number = windows.size + 1;
+      windows.set(window, number);
+    }
     const line = lineFor(event);
-    if (line !== null) out(line);
+    if (line !== null) out(`window ${number}: ${line}`);
+    if (event.kind === "loaded") void opened(window, number);
     if (READ_AFTER.has(event.kind)) setTimeout(() => void read(), 1_500);
   });
 
@@ -386,7 +417,13 @@ export async function openWalletFaults(
   out(
     `opening ${settings.href} in a browser where Coinbase Wallet's window is a stand-in giving ${plan.address}; every other host is refused`,
   );
-  await dashboardTab.goto(settings.href);
+  try {
+    await dashboardTab.goto(settings.href);
+  } catch (thrown) {
+    clearInterval(watching);
+    await browser.close();
+    throw new Error(`The dashboard at ${settings.href} did not answer: ${firstLine(thrown)}`);
+  }
   return {
     browser,
     context,
