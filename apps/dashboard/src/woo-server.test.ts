@@ -2349,6 +2349,18 @@ describe("one integration at a time", () => {
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
   });
 
+  it("says, in refusing a shop writing three decimals, that the setting is what every customer of the shop sees prices with", async () => {
+    const running = await started({ sample: async () => ({ currency: "KWD", decimals: 3 }) });
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const said = readable(pressed.html);
+    expect(said).toContain("Number of decimals");
+    expect(said).toContain("every customer");
+    expect(said).not.toMatch(/set (it|WooCommerce|Number of decimals)[^.]* to/i);
+  });
+
   it("sends a shop priced in US dollars to approve keys as before", async () => {
     const running = await started({ sample: async () => IN_DOLLARS });
     await running.signIn();

@@ -112,6 +112,12 @@ describe("the shop's product, read from a shop priced in rupiah", () => {
     });
   });
 
+  it("is refused from a shop that writes three decimals, saying the setting is what every customer of the shop sees prices with", async () => {
+    const read = await inspectProductInTheShop(KEYS, ITEM, aShopIn("KWD", "3", "75.000"));
+
+    expect(read.ok === false && read.why).toContain("every customer");
+  });
+
   it("is refused from a dollar shop at no decimals, as it always was", async () => {
     const read = await inspectProductInTheShop(KEYS, ITEM, aShopIn("USD", "0", "25"));
 
