@@ -274,6 +274,9 @@ export const runPaymentFaults = async (
   /** The model's transfers, by payer and nonce: one authorization moves money once. */
   const transfers = new Map<string, { readonly transaction: string; readonly call: number }>();
   const timers = new Set<NodeJS.Timeout>();
+  /** Connections the model closes itself, which no line may blame on the gateway. */
+  const closedByModel = new WeakSet<ServerResponse>();
+  let stopping = false;
 
   const wait = (ms: number): Promise<void> =>
     new Promise((resolve) => {
@@ -347,10 +350,11 @@ export const runPaymentFaults = async (
     const log = (words: string) => stamped(`#${n} settle ${describe(presented)}: ${words}`);
     const arrived = Date.now();
     let leftAt: number | null = null;
-    // The response closes when its connection does; closing before anything
-    // was written means the gateway stopped waiting.
+    // The response closes when its connection does. Closed before anything was
+    // written, and not by the model itself, it means the gateway stopped waiting.
     response.once("close", () => {
-      if (response.writableEnded || leftAt !== null) return;
+      if (response.writableEnded || leftAt !== null || closedByModel.has(response) || stopping)
+        return;
       leftAt = Date.now();
       if (fault !== null && rule.afterMs > 0) {
         log(
@@ -371,6 +375,7 @@ export const runPaymentFaults = async (
       if (gone()) {
         log(`${goneWords()}, before the model closed it; the answer was lost either way`);
       } else {
+        closedByModel.add(response);
         request.socket.destroy();
         log(`closed the connection after ${seconds(Date.now() - arrived)} with no answer`);
       }
@@ -481,7 +486,9 @@ export const runPaymentFaults = async (
     sequence += 1;
     const n = sequence;
     exchange(n, request, response).catch(() => {
-      stamped(`#${n} failed inside the model facilitator; the connection was closed`);
+      stamped(
+        `#${n} ended before it was answered, its request broken off or the model failing; the connection was closed`,
+      );
       request.socket.destroy();
     });
   });
@@ -506,6 +513,7 @@ export const runPaymentFaults = async (
       port: bound,
       close: () =>
         new Promise((resolve) => {
+          stopping = true;
           for (const timer of timers) clearTimeout(timer);
           timers.clear();
           server.closeAllConnections();

@@ -227,6 +227,20 @@ describe("the payment fault control's own record", () => {
     expect(log.find((line) => /reached nobody/.test(line))).toMatch(/LOCAL MODEL/);
   });
 
+  it("closes a lost settle's connection itself after its hold, without saying the caller left", async () => {
+    const { port, log } = await startFaults(["--fault", "settle-lost", "--after", "0.3"]);
+
+    const settled = await post(port, "/settle", payment("eip155:84532"));
+    // The server sees its own close a turn after the caller does.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(settled.status).toBeNull();
+    expect(log.join("\n")).toMatch(/closed the connection after 0\.\d s with no answer/);
+    expect(log.join("\n")).not.toMatch(
+      /stopped waiting|closed the connection after [\d.]+ s, before/,
+    );
+  });
+
   it.each([
     [["--fault", "settle-slow"], /--fault takes/],
     [["--fault", "verify-refused", "--after", "5"], /--after delays a settle/],
