@@ -1,0 +1,101 @@
+# The dashboard's outbound faults: laid over the repository's compose.yaml, it
+# puts a stand-in between the application and the two outside services the
+# dashboard calls on a merchant's behalf, Coinbase's exchange rates and the
+# mail provider. The stand-in passes Coinbase through or refuses it or falls
+# silent, accepts mail or refuses it or falls silent, keeps every message, and
+# records every request to Coinbase with its time. packages/slice/README.md
+# says how to run it; `pnpm outbound` works it from the host.
+#
+# Nothing in the application changes. Only two things in its container do:
+# the name api.coinbase.com resolves to the stand-in's TLS front rather than to
+# Coinbase, and the process trusts that front's local authority beside the
+# usual ones. Every other name, the shop's, the facilitator's at
+# api.cdp.coinbase.com and the chain's among them, resolves as it always does.
+#
+# For a stack on this machine only. Its mail goes nowhere but the stand-in.
+
+services:
+  app:
+    environment:
+      MAIL_URL: http://outbound:8081
+      # The stand-in reads no key; the dashboard refuses a provider without one.
+      MAIL_API_KEY: outbound-stand-in-reads-no-key
+      NODE_EXTRA_CA_CERTS: /outbound-ca/root.crt
+    volumes:
+      - outbound-ca:/outbound-ca:ro
+    networks:
+      default:
+      coinbase-stand-in:
+    depends_on:
+      outbound:
+        condition: service_healthy
+      outbound-tls:
+        condition: service_healthy
+
+  # The application's image, which carries this package.
+  outbound:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.app
+    image: "${AGENTIFY_APP_IMAGE:-agentify-app}"
+    command: ["pnpm", "--silent", "--filter", "@agentify/slice", "outbound", "serve"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AGENTIFY_OUTBOUND_PORT:-8789}:8789"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8789/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # Its own container because the stand-in has to reach the real
+  # api.coinbase.com when it passes, and the name is answered by this front
+  # only on the network it shares with the application.
+  outbound-tls:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    # The authority is made on the first start and kept in its volume, so the
+    # copy the application trusts stays the one that signs.
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
+        running=$$!
+        trap 'kill $$running' TERM INT
+        root=/data/caddy/pki/authorities/local/root.crt
+        until [ -s "$$root" ]; do sleep 0.2; done
+        cp "$$root" /outbound-ca/root.crt.new
+        chmod 644 /outbound-ca/root.crt.new
+        mv /outbound-ca/root.crt.new /outbound-ca/root.crt
+        wait "$$running"
+    volumes:
+      - ./packages/slice/outbound/Caddyfile:/etc/caddy/Caddyfile:ro
+      - outbound-tls:/data
+      - outbound-ca:/outbound-ca
+    healthcheck:
+      test: ["CMD", "test", "-s", "/outbound-ca/root.crt"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    networks:
+      default:
+      coinbase-stand-in:
+        aliases:
+          - api.coinbase.com
+
+networks:
+  # Shared by the application and the TLS front alone, so that only they see
+  # the name answered by the front.
+  coinbase-stand-in:
+
+volumes:
+  outbound-ca:
+  outbound-tls:
