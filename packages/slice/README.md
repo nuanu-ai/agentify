@@ -317,3 +317,136 @@ now" in the Owed panel, goes out without a pause, and so does a refusal sent
 from the Owed panel. Price questions and order events are not paused either.
 Nothing in the SDK or the gateway changes when the stand pauses: the pause
 lives entirely in the stand's merchant.
+
+## Answering as a newer gateway
+
+Story D-08 in the manual test plan asks what a merchant process does when the
+gateway is newer than its release of the SDK without having moved the contract
+version: when it adds things a reader is to ignore or read as `unknown`, and,
+separately, when it adds to what an order delivers, which a reader is to
+refuse. The rules are those of the contract version's decision record,
+[ADR-0006](../../docs/decisions/0006-wire-version.md). The gateway of the run's
+revision never sends such an answer, because it writes every answer to the
+closed shape it knows, so the additions proxy stands in front of it and
+answers as the newer gateway would. Like the cut proxy, it is outside the
+product: nothing in the gateway or the SDK changes when it runs.
+
+It is started from the root of the repository with one or more additions, and
+runs until it is stopped:
+
+```sh
+pnpm additions --to http://localhost:8080 --add field --add status-word --add event-kind \
+  --add event-reason --add result-word --add quote-purpose
+pnpm additions --to http://localhost:8080 --add delivery-field
+pnpm additions --to http://localhost:8080 --add address-shape
+```
+
+`--to` is read as the cut proxy reads it, with the same refusals: a base URL,
+http or https, without a user name, a password, a query or a fragment, and a
+hosted gateway given by its https address. The proxy listens on
+`127.0.0.1:8789`, or on the port given with `--port`, and only on loopback. A
+merchant's code is pointed at it with `baseUrl: "http://127.0.0.1:8789"` in
+its SDK client, and every call the SDK makes then passes through it: polls,
+order reads and lists, answers, deliveries, refusals and publishes. The first
+lines it prints say where it listens and where it forwards, and then, one line
+for each addition, what it adds and on which answers.
+
+### The additions
+
+Each addition is named by what it is, and the places it reaches are fixed from
+the contract. The first six only inform: a reader of contract version 3 is to
+leave them out, read them as `unknown` or skip them, and go on selling.
+
+| Addition | What the caller receives | In which answers |
+| --- | --- | --- |
+| `field` | the field `"instrument_note":"added by the additions proxy"` at the top of the answer, inside `error` when the answer is a refusal, and, in a poll, also in each envelope and in each event | every merchant route under `/v0/` and an agent's `GET /x402/orders/:order_id/status`; the top of an order read is closed, so an order read gets the field only inside a refusal |
+| `status-word` | `added_status` in place of each order's `status` | an order read, each order of a list, and an agent's status read |
+| `event-kind` | a new envelope after each order and each order event of a poll, holding an event of the kind `order.added_kind` about the same order, with the envelope's own identifier followed by `.added` and its own time | polls |
+| `event-reason` | `added_reason` in place of the `reason` of each `order.unfulfilled` event | polls |
+| `result-word` | `added_result` in place of the `result` of a successful answer, delivery or refusal | `POST /v0/orders/:order_id/answer`, `deliver` and `refuse` |
+| `quote-purpose` | `added_purpose` in place of each price question's `purpose` | polls |
+
+The last two add to what an order delivers, which a reader is to refuse rather
+than read narrowed: the poll or the read that carries one fails, and the order
+stays where it was.
+
+| Addition | What the caller receives | In which answers |
+| --- | --- | --- |
+| `delivery-field` | the field `"quantity":3` in each order's core, unless the order already carries one | each order of a poll, an order read and each order of a list |
+| `address-shape` | in place of each `ship_to` that names a place, a pickup point: `{"pickup_point":"added_pickup_point", …}` with the address's own country, state, city and postal code, and without its name, lines and phone; an erased address is left as it is | the same |
+
+An addition reaches only an answer that carries what it changes, so a word
+needs something in flight: `event-reason` needs a refused order to raise its
+event, `quote-purpose` a card with a price check and a buyer asking for its
+price, and `address-shape` a parcel's order before the merchant takes it on.
+Additions of the two kinds are refused together, because a delivery addition
+fails the very poll that would show whether the informing ones were read; they
+are run in two runs. One addition can be given only once.
+
+An addition can be narrowed to the answers whose path matches a pattern, read
+as the cut proxy reads one, by writing the pattern after an `@`:
+`--add status-word@/v0/orders` gives the open-orders list the new word while
+an order read one by one keeps its own, and `--add field@/v0/orders/*/deliver`
+leaves every poll alone. A pattern that matches none of the answers its
+addition reaches is refused with the answers it does reach. A pattern that
+could reach the purchase, `/x402/:item_id/purchase`, or the catalog,
+`/x402/catalog`, is refused as well, as `field@/*/*/*` is: those answers carry
+a payment's requirements and its settlement, and this proxy never rewrites
+them.
+
+### What it leaves alone
+
+Every answer that no addition reaches is passed on as the cut proxy passes
+one: the status, the headers and the body unchanged, apart from the headers
+that describe the connection and the restated length. So is an answer that an
+addition reaches but that carries a payment challenge or settlement in its
+headers, or a 402, whatever its route; one that is not JSON, not UTF-8, or not
+one JSON document; one encoded in a coding the proxy does not decode; and one
+that holds nothing the addition changes. The log line says which of these it
+was.
+
+When an addition reaches an answer, the proxy works on the upstream's own
+text. A field is inserted before the closing brace of its object, a new
+envelope after the envelope it stands beside, and a word or an address shape
+in place of the old value's exact bytes, so the answer the caller receives
+differs from the gateway's only where the log says, and the spacing, the order
+of the fields and the spelling of every number are the gateway's. An answer
+that arrived compressed is decoded first and sent on uncompressed, without its
+`content-encoding` and without its `etag`, since both described the bytes the
+gateway sent; the other headers pass as they came.
+
+### The log
+
+The log is one line per request on standard output: the time, a sequence
+number, the method, the path without its query string, the upstream's status
+and the size of its body. A line ends with what became of the answer: passed
+through, passed through unchanged and why, or sent with its new size and the
+additions it carried, each with the places it went to and how many times, such
+as `field (envelope ×2; top), event-kind (beside the order of order ord_…)`.
+As in the cut proxy, the log never prints a header, a body or a query string.
+It names orders and price questions, and an order identifier is a buyer's
+proof of purchase, so a log from a run against a real channel belongs with the
+private evidence of that run.
+
+### What it cannot do
+
+It adds only to answers. What a merchant's code sends passes untouched, and so
+does every answer to an agent except the order's status read: the purchase
+answer an agent reads first never carries a new status word. The order
+document names its own address in `status_url`, built from the address the
+gateway answers as, so an agent that follows it reads the gateway directly and
+meets no addition, as with the cut proxy.
+
+It adds only what leaves the contract version where it is. A new kind of
+envelope, a new card mode, a field in a price question or anything else that
+moves the version, by the decision record above, is the first variant of D-08
+and is met by running an older release against the gateway as it is. An
+older release meets these additions with its own reader: the release before
+contract version 3 reads every answer closed, so with `field` reaching every
+poll it fails each poll and names the gateway's version as a remark without
+ever stopping on the mismatch, while with no addition on an empty poll it
+stops at the first one with `contract_version_mismatch`.
+
+A restart drops whatever is in flight through the proxy, a poll the gateway
+holds open among them, so the merchant process is stopped before the proxy is
+restarted with other additions, as with the cut proxy.

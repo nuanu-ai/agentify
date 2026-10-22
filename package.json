@@ -36,6 +36,7 @@
     "buy": "pnpm --filter @agentify/slice run buy",
     "stand": "pnpm --filter @agentify/slice run stand",
     "cut": "pnpm --filter @agentify/slice run cut",
+    "additions": "pnpm --filter @agentify/slice run additions",
     "changeset": "changeset",
     "mutate": "node scripts/mutate.mjs",
     "scanner:build": "pnpm --filter '@agentify/scanner-worker...' --if-present run build",

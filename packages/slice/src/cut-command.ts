@@ -67,7 +67,7 @@ type Read =
   | { readonly ok: false; readonly why: string };
 
 /** One upstream answer, read to its end. */
-interface Answer {
+export interface Answer {
   readonly status: number;
   readonly statusMessage: string;
   readonly headers: IncomingHttpHeaders;
@@ -176,7 +176,7 @@ const HOP_BY_HOP = new Set([
   "upgrade",
 ]);
 
-const endToEnd = (headers: IncomingHttpHeaders): OutgoingHttpHeaders =>
+export const endToEnd = (headers: IncomingHttpHeaders): OutgoingHttpHeaders =>
   Object.fromEntries(Object.entries(headers).filter(([name]) => !HOP_BY_HOP.has(name)));
 
 const wholeBody = async (message: IncomingMessage): Promise<Buffer> => {
@@ -192,7 +192,7 @@ const wholeBody = async (message: IncomingMessage): Promise<Buffer> => {
  * arrived. Parsing it into a URL would resolve dot segments and send the
  * upstream a different path from the one the caller asked for.
  */
-const forward = (
+export const forward = (
   upstream: URL,
   basePath: string,
   incoming: IncomingMessage,
@@ -225,12 +225,12 @@ const forward = (
     outgoing.end(body);
   });
 
-const codeOf = (error: unknown): string => {
+export const codeOf = (error: unknown): string => {
   const code = (error as { code?: unknown } | null)?.code;
   return code === undefined ? "no error code" : String(code);
 };
 
-const DECODERS = new Map<string, (body: Buffer) => Buffer>([
+export const DECODERS = new Map<string, (body: Buffer) => Buffer>([
   ["gzip", gunzipSync],
   ["deflate", inflateSync],
   ["br", brotliDecompressSync],
@@ -299,7 +299,7 @@ const factsOf = (answer: Answer): { readonly facts: string; readonly unit: strin
  * answer to HEAD keeps the length the upstream gave, which describes a body
  * such an answer never carries.
  */
-const passThrough = (response: ServerResponse, answer: Answer, method: string): void => {
+export const passThrough = (response: ServerResponse, answer: Answer, method: string): void => {
   response.writeHead(
     answer.status,
     answer.statusMessage,
@@ -338,7 +338,7 @@ const cut = (response: ServerResponse, answer: Answer, phase: Phase): Promise<nu
   });
 };
 
-const listen = (
+export const listen = (
   server: ReturnType<typeof createServer>,
   port: number,
 ): Promise<number | { readonly code: string }> =>
