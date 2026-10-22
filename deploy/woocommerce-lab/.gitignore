@@ -1,2 +1,4 @@
 # Held by a running ./lab.sh command.
 .lab.lock/
+# Written on a host where the lab is copied rather than checked out.
+REVISION

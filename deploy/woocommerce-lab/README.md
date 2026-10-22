@@ -32,7 +32,10 @@ Everything is done with `./lab.sh`, run on the fixture host from the directory
 the lab is checked out into. It reads the deployment facts and the passwords
 from the lab's server-owned `.env`, and it reaches files the database,
 WordPress and Caddy own through a container of its own, so the operator needs
-no sudo beyond whatever the host requires for Docker.
+no sudo beyond whatever the host requires for Docker. Where the lab is copied
+onto the host rather than checked out, a file named `REVISION` beside
+`lab.sh`, holding the commit it was copied from, is what each profile's record
+names as its revision.
 
 ```console
 $ ./lab.sh list
