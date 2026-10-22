@@ -354,6 +354,7 @@ describe("the product the rate guard shows as an example", () => {
       [],
       [unpriced("Made-to-Order Teak Wardrobe"), unpriced("Made-to-Order Teak Gazebo")],
       [aProduct("Rayon Sarong", "1450", "EUR", 2)],
+      [aProduct("Rayon Sarong", "1800", "JPY", 0)],
       [aProduct("Rayon Sarong", "24000000", "IDR", 2)],
       [aProduct("", "240000")],
     ];
