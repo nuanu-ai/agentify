@@ -1,5 +1,138 @@
 # Contracts release history
 
+## 0.14.0
+
+### Minor Changes
+
+- 92b905b: A merchant's key no longer reaches the merchant's keys. The routes
+  `list_keys` (`GET /v0/keys`), `issue_key` (`POST /v0/keys`) and `disable_key`
+  (`POST /v0/keys/:key_id/disable`) are removed from `API_ROUTES`, and the gateway
+  answers them as it answers any address it does not have: 404 with the code
+  `no_such_route`. Keys are issued, listed and revoked only by a person signed in
+  to the merchant's dashboard, so a key that leaks cannot issue itself a successor
+  or revoke the merchant's other keys, and revoking it ends what it can do. The
+  codes `key_opened_this_call` and `no_such_key`, which only those routes sent,
+  are removed from `ERROR_CODES`. The SDK made none of these calls.
+  
+  The documents only those routes carried leave the package with them:
+  `MerchantKeySchema`, `MerchantKeyListSchema`, `IssueKeyRequestSchema`,
+  `IssuedKeySchema` and `DisabledKeySchema`, their types, and their entries
+  `merchant_key`, `merchant_key_list`, `issue_key_request`, `issued_key` and
+  `disabled_key` in `schemas`.
+  
+  The `publish_card` description no longer calls the operator's approval
+  one-time: a merchant whose approval the operator has withdrawn gets
+  `no_operator_approval` as one never approved does.
+- f9a2ce4: The confirmation mode is gone from the contract. `FulfillmentSchema` is
+  `sync`, `async` or `ship`, and a card naming `confirm` is refused with the
+  ordinary list of modes; the card and the agent's public card have no
+  `confirm_deadline_seconds`; the order status `declined` and the event
+  `order.unpaid_after_confirmation` (`ORDER_EVENT_TYPES.UNPAID_AFTER_CONFIRMATION`)
+  are removed. No card could be published in that mode, so the gateway sent none
+  of these values, and a reader built on the previous version reads everything
+  it sends today. The SDK re-exports the narrower `Card`, `CardInput`,
+  `Fulfillment`, `OrderStatus` and `OrderEvent` types and `ORDER_EVENT_TYPES`
+  without that member.
+  
+  Code that names any of the removed values stops compiling on upgrade:
+  `ORDER_EVENT_TYPES.UNPAID_AFTER_CONFIRMATION`, a `case "declined"` on an order
+  status, `fulfillment: "confirm"` in a card, and `confirm_deadline_seconds`.
+  Such code handled something the gateway never sent, so deleting it changes
+  nothing at run time.
+- d9bcb7d: A merchant's selling state is `open` or `paused`; `departed` is gone from
+  `SellingStateSchema`, because nothing could set a merchant to it. With it go
+  the order status `cancelled`, the reason `merchant_left` on `order.unfulfilled`
+  and on an unfulfilled order's status, and the error code `merchant_departed`.
+  The descriptions of the pause and resume routes no longer speak of a merchant
+  who has left. The gateway sent none of these values, so a reader built on the
+  previous version reads everything it sends today. The SDK re-exports the
+  narrower `OrderStatus` and `OrderEvent` types.
+  
+  Code that names any of the removed values stops compiling on upgrade: a
+  `case "cancelled"` on an order status, the reason `merchant_left`, the error
+  code `merchant_departed`, and the selling state `departed`. Such code handled
+  something the gateway never sent, so deleting it changes nothing at run time.
+- c43b0e9: Two codes join `ERROR_CODES`, both refusals of a purchase before anything is
+  charged and both with `retryable` true: `seller_busy`, with HTTP 429 and a
+  `Retry-After`, while twenty of the seller's purchases already wait for payment,
+  and `seller_not_taking_orders`, for a purchase that charges before its goods
+  while the seller's own process has not polled for ten minutes. A client that
+  switches over `ERROR_CODES` and keeps a default arm reads either as an ordinary
+  refusal with a sentence to show.
+  
+  The descriptions of the purchase route, the order status route and the
+  merchant's list of orders say so, and say that an order which ended rejected or
+  expired with nothing charged or held is deleted thirty days after it was last
+  written, after which its identifier is answered as one that names no order and
+  it leaves the merchant's list.
+- 64ac57f: The SDK reads what only informs leniently, so an older release keeps working
+  when Agentify adds to it. A field it does not know on an event, a card, a
+  receipt, an envelope or around an order is left out of what the merchant's
+  code receives. An event of a kind it does not know is skipped: the rest of the
+  poll is handled, and the problem reporter receives one non-fatal
+  `event_skipped` problem naming the event's type and its order. A word it does
+  not know reads `unknown` in an order's `status` or `payment_status`, an
+  event's `reason` and the `result` beside `ok: true`, where the call still
+  succeeded. A price question for a `purpose` it does not know is left
+  unanswered with one non-fatal `quote_skipped` problem, which counts as a silent
+  price check: a synchronous card sells at its card price, and other modes
+  refuse the sale. The SDK's
+  `OrderStatus`, `PaymentStatus`, `OrderWithStatus`, `OrderList`, `OrderEvent`,
+  `OrderCallResult` and `OrderCallResponse` types carry that one extra word.
+  
+  What an order delivers is read as closed as it is written, off the stream and
+  read back: an unknown field or address shape there fails the poll or the read
+  rather than reach the merchant's code with part of the order missing.
+  
+  On a version mismatch the worker takes no new work, lets handlers already
+  running send their answers for as long as a poll may take, and then stops,
+  reporting any order still in a handler as abandoned.
+  
+  The contracts package gains `readerOf(schema)`, which makes this reader out of
+  any of the merchant's documents, with the `Read`, `UnreadEvent` and
+  `UnknownWord` types and `UNKNOWN_WORD`. The schemas themselves stay closed:
+  they are what a gateway writes, and a field it was not meant to send is
+  refused on its side.
+  
+  Every SDK call names the package's release in its `user-agent` header as
+  `agentify-sdk/<version>`, the version only when the manifest beside the code
+  is this package's own. The gateway notes it beside a key's last use whenever
+  it writes that down. Nothing is refused on it.
+  
+  `CONTRACT_VERSION` moves from `2` to `3`, once, at the switch from strict to
+  lenient reading: a release up to 0.7.1 reads strictly, and now stops at its
+  first poll answer saying it is out of date rather than failing on a later
+  addition. From here the version moves when a field or a word is renamed or
+  removed, a field's meaning changes, anything is added to what an order
+  delivers, or a card mode, selling state or kind of message is added; an
+  informational field, an event kind or a status, reason, result or purpose
+  word leaves it alone. Every schema's identity moves with it, to
+  `urn:agentify:contract:3:<name>`.
+
+### Patch Changes
+
+- f662789: The description of the purchase request says that a payer whose answer was
+  lost and who signs the kept payment request again gets an order already paid
+  back from a check made by the gateway itself, not by the payment layer: that
+  payment is never charged, so the wallet need not hold the price again. It has
+  to be a fresh signature that is still valid, since the payment that paid the
+  order can be read from the chain and is refused, and a fresh signature from
+  any other wallet is refused as `not_this_purchase`. A payment that is not
+  verified is answered in words that name no order, with the reason it was
+  refused in the words of whoever refused it, the gateway or the payment layer;
+  the description no longer says those words are the same either way. It says
+  plainly that whoever holds an order's payment reference can learn whether the
+  order was paid, and cannot learn the order's identifier, its goods or its
+  address.
+- 3099788: The descriptions of a parcel's card price, its price question and its purchase
+  address now say that the price on the card leaves out a tax that depends on the
+  buyer's place, and that the merchant's answer for the place includes it beside
+  shipping.
+- 581ee20: The description of the currencies a card can be priced in now says that a shop
+  connected through the dashboard and priced in another currency has its prices
+  converted at its merchant's own rate before they reach this rule. Which
+  currencies a card may carry is unchanged.
+
 ## 0.13.0
 
 ### Minor Changes
