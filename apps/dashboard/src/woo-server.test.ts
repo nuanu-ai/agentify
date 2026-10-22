@@ -31,7 +31,9 @@ import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
+  catalogueOf,
   inspectProductInTheShop,
+  inspectProductsInTheShop,
   type ProductInspection,
   type WooOrderLookup,
 } from "./woo-shop.js";
@@ -148,6 +150,12 @@ interface Standing {
   /** Every message handed over where a test does not say. */
   readonly mailRefused?: boolean;
   readonly catalogue?: (shopUrl: string) => Promise<CatalogueRead>;
+  /**
+   * The shop itself, answered without a socket: the connector's own catalogue
+   * read and product checks run against it, in place of `catalogue` and
+   * `inspectProduct`.
+   */
+  readonly shop?: WooRequest;
   readonly inspectProduct?: (
     keys: Parameters<typeof inspectProductInTheShop>[0],
     merchantItemId: string,
@@ -265,6 +273,23 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const asked: string[] = [];
   const read: string[] = [];
   const silent = standing.silent;
+  const inspectProduct =
+    standing.shop !== undefined
+      ? (keys: Parameters<typeof inspectProductInTheShop>[0], merchantItemId: string) =>
+          inspectProductInTheShop(keys, merchantItemId, standing.shop)
+      : (standing.inspectProduct ??
+        (async (_keys: unknown, merchantItemId: string): Promise<ProductInspection> => ({
+          ok: true,
+          product: {
+            kind: "download",
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "off" as const },
+          },
+        })));
   const app: Express = buildApp(config, {
     pages: await testPages(),
     gateway: harnessed.gateway,
@@ -309,26 +334,18 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         standing.reference === undefined
           ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
           : await standing.reference(currency),
-      catalogue: async (shopUrl) => {
+      catalogue: async (shopUrl, atMost) => {
         read.push(shopUrl);
+        if (standing.shop !== undefined) return await catalogueOf(shopUrl, atMost, standing.shop);
         return standing.catalogue === undefined
           ? { ok: true, products: [] }
           : await standing.catalogue(shopUrl);
       },
-      inspectProduct:
-        standing.inspectProduct ??
-        (async (_keys, merchantItemId) => ({
-          ok: true,
-          product: {
-            kind: "download",
-            productId: merchantItemId.split("_").at(-1) ?? "",
-            downloadId: "dl_guide",
-            fileName: "Guide",
-            price: { amount: "25.00", currency: "USD" },
-            fingerprint: "accepted-download-fingerprint",
-            tax: { mode: "off" as const },
-          },
-        })),
+      inspectProduct,
+      inspectProducts: async (keys, merchantItemIds) =>
+        standing.shop === undefined
+          ? await Promise.all(merchantItemIds.map((id) => inspectProduct(keys, id)))
+          : await inspectProductsInTheShop(keys, merchantItemIds, standing.shop),
       ...(standing.readOrder === undefined
         ? {}
         : { readOrder: (_keys, id) => standing.readOrder?.(id) as Promise<WooOrderLookup> }),
@@ -943,40 +960,162 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toHaveLength(1);
   });
 
-  it("bounds protected product checks during a whole-catalogue import", async () => {
-    let active = 0;
-    let most = 0;
-    const products = Array.from({ length: 12 }, (_, index) =>
-      aProduct({ id: index + 1, name: `Download ${index + 1}`, sku: `download-${index + 1}` }),
-    );
-    const running = await started({
-      catalogue: async () => ({ ok: true, products }),
-      inspectProduct: async (_keys, merchantItemId) => {
-        active += 1;
-        most = Math.max(most, active);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        active -= 1;
-        return {
-          ok: true,
-          product: {
-            kind: "download",
-            productId: merchantItemId.split("_").at(-1) ?? "",
-            downloadId: "dl_guide",
-            fileName: "Guide",
-            price: { amount: "25.00", currency: "USD" },
-            fingerprint: "accepted-download-fingerprint",
-            tax: { mode: "off" as const },
-          },
+  /**
+   * A shop of `count` downloads as WooCommerce answers for one: its Store API
+   * pages, its protected list and settings, and a refusal for a file asked
+   * without an order. Every address asked is kept in `seen`.
+   */
+  const shopOfDownloads =
+    (count: number, seen: string[], before?: (at: URL) => Promise<void>): WooRequest =>
+    async (url) => {
+      const at = new URL(String(url));
+      seen.push(`${at.pathname}${at.search}`);
+      await before?.(at);
+      const json = (body: unknown) =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      const file = { id: "dl_guide", name: "Guide", file: `${SHOP}/protected/guide.txt` };
+      if (at.pathname === "/wp-json/wc/store/v1/products") {
+        const page = Number(at.searchParams.get("page"));
+        const per = Number(at.searchParams.get("per_page"));
+        const first = (page - 1) * per + 1;
+        const last = Math.min(page * per, count);
+        return json(
+          Array.from({ length: Math.max(0, last - first + 1) }, (_, index) =>
+            aProduct({
+              id: first + index,
+              name: `Guide ${first + index}`,
+              sku: `guide-${first + index}`,
+            }),
+          ),
+        );
+      }
+      if (at.pathname === "/wp-json/wc/v3/products") {
+        return json(
+          (at.searchParams.get("include") ?? "").split(",").map((id) => ({
+            id: Number(id),
+            type: "simple",
+            status: "publish",
+            purchasable: true,
+            stock_status: "instock",
+            manage_stock: false,
+            sold_individually: false,
+            virtual: true,
+            downloadable: true,
+            download_limit: -1,
+            download_expiry: -1,
+            price: "25.00",
+            downloads: [file],
+          })),
+        );
+      }
+      if (at.pathname.startsWith("/wp-json/wc/v3/settings/")) {
+        const id = at.pathname.split("/").at(-1) ?? "";
+        const values: Record<string, string> = {
+          woocommerce_currency: "USD",
+          woocommerce_calc_taxes: "no",
+          woocommerce_file_download_method: "force",
+          woocommerce_downloads_require_login: "no",
+          woocommerce_downloads_grant_access_after_payment: "yes",
+          woocommerce_downloads_redirect_fallback_allowed: "no",
+          woocommerce_price_num_decimals: "2",
+          woocommerce_ship_to_countries: "",
+          woocommerce_ship_to_destination: "shipping",
         };
-      },
-    });
+        return json(id in values ? { id, value: values[id] } : []);
+      }
+      return new Response("Forbidden", { status: 403 });
+    };
+
+  const storePages = (seen: readonly string[]) =>
+    seen.filter((one) => one.startsWith("/wp-json/wc/store/v1/products"));
+
+  it("imports a shop of exactly two thousand products whole", async () => {
+    const seen: string[] = [];
+    const running = await started({ shop: shopOfDownloads(2_000, seen) });
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
 
     expect(imported.status).toBe(200);
-    expect(most).toBeLessThanOrEqual(4);
-    expect(most).toBeGreaterThan(1);
+    expect(await cardsOf(running)).toHaveLength(2_000);
+    // The products' documents came in lists, not one request each.
+    expect(seen.some((one) => /^\/wp-json\/wc\/v3\/products\/\d+/.test(one))).toBe(false);
+    expect(storePages(seen)).toHaveLength(21);
+  }, 60_000);
+
+  it("refuses a shop of two thousand and one products whole, a page past the ceiling at most", async () => {
+    const seen: string[] = [];
+    const running = await started({ shop: shopOfDownloads(2_001, seen) });
+    await connected(running);
+
+    const refused = await running.post("/woocommerce/import");
+
+    expect(readable(refused.html)).toContain("more than 2,000 products");
+    expect(readable(refused.html)).toContain("Nothing was imported");
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(storePages(seen).length).toBeLessThanOrEqual(21);
+    // Refused before a single protected request reached the shop.
+    expect(seen.some((one) => one.startsWith("/wp-json/wc/v3/"))).toBe(false);
+  });
+
+  it("names the ceiling to a merchant before they import", async () => {
+    const running = await started();
+    await connected(running);
+
+    const screen = readable((await running.get("/woocommerce")).html);
+
+    expect(screen).toContain("2,000 products");
+    expect(screen).not.toMatch(/\b200 products\b/);
+  });
+
+  it("walks a shop once at a time: a second press while an import runs reads nothing", async () => {
+    // A large import takes a while, and a merchant who presses again, or opens
+    // a second tab, would otherwise send the whole walk to the same shop twice.
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached = (): void => undefined;
+    const reading = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const seen: string[] = [];
+    const running = await started({
+      shop: shopOfDownloads(3, seen, async (at) => {
+        if (at.searchParams.get("page") === "1") {
+          reached();
+          await held;
+        }
+      }),
+    });
+    await connected(running);
+
+    const first = running.post("/woocommerce/import");
+    await reading;
+    const second = await running.post("/woocommerce/import");
+    release();
+    const done = await first;
+
+    expect(second.status).toBe(409);
+    expect(readable(second.html)).toContain("already being imported");
+    expect(storePages(seen)).toHaveLength(1);
+    expect(done.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(3);
+  });
+
+  it("lets the next import run once the one before it has ended", async () => {
+    const seen: string[] = [];
+    const running = await started({ shop: shopOfDownloads(3, seen) });
+    await connected(running);
+
+    await running.post("/woocommerce/import");
+    const again = await running.post("/woocommerce/import");
+
+    expect(again.status).toBe(200);
+    expect(storePages(seen)).toHaveLength(2);
   });
 
   it("counts a card it published again and does not call it on sale while it is paused", async () => {
@@ -3011,6 +3150,43 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(notice?.to).toBe(PERSON);
       expect(notice?.body).toContain("18000 IDR per US dollar");
       expect(notice?.body).toContain("No rate was set before");
+    });
+
+    it("keeps a rate saved while the shop is being imported, and asks for an import once that one ends", async () => {
+      // The import already running may have read the rate before this one was
+      // saved, so publishing at it is left to the next press.
+      let release = (): void => undefined;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let reached = (): void => undefined;
+      const reading = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let reads = 0;
+      const running = await started({
+        ...inRupiah,
+        catalogue: async () => {
+          reads += 1;
+          reached();
+          await held;
+          return { ok: true, products: [rupiahProduct] };
+        },
+      });
+      await connectedIn(running);
+
+      const first = running.post("/woocommerce/import");
+      await reading;
+      const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      release();
+      await first;
+
+      expect(saved.status).toBe(409);
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
+        rate: "18000",
+      });
+      expect(readable(saved.html)).toContain("already being imported");
+      expect(reads).toBe(1);
     });
 
     it("tells, in the notice, when the session that entered the rate signed in, and names no address as who did", async () => {
