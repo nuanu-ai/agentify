@@ -6,7 +6,12 @@
  * Coinbase is played by a loopback server here.
  */
 
-import { createServer, type IncomingHttpHeaders } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingHttpHeaders,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,7 +37,14 @@ afterEach(async () => {
   await Promise.all(running.splice(0).map((one) => one.close()));
 });
 
-const coinbase = async (): Promise<{ url: URL; received: Received[] }> => {
+const answerRates = (response: ServerResponse): void => {
+  response.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip" });
+  response.end(RATES);
+};
+
+const coinbase = async (
+  answer: (response: ServerResponse) => void = answerRates,
+): Promise<{ url: URL; received: Received[] }> => {
   const received: Received[] = [];
   const server = createServer((request, response) => {
     received.push({
@@ -40,8 +52,7 @@ const coinbase = async (): Promise<{ url: URL; received: Received[] }> => {
       url: request.url ?? "",
       headers: request.headers,
     });
-    response.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip" });
-    response.end(RATES);
+    answer(response);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   running.push({
@@ -209,12 +220,88 @@ describe("Coinbase's side of the stand-in", () => {
     ]);
   });
 
+  it("keeps a request that arrived while silent unanswered after a restore, and sends it nowhere", async () => {
+    const upstream = await coinbase();
+    const stand = await standIn(upstream.url);
+    await set(stand, "/coinbase/silent");
+
+    const waiting = askRates(stand, 600);
+    for (let tries = 0; tries < 50 && (await coinbaseRecord(stand)).length === 0; tries += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await set(stand, "/restore");
+
+    await expect(waiting).rejects.toThrow();
+    await settled(() => coinbaseRecord(stand));
+    expect(upstream.received).toHaveLength(0);
+    expect((await coinbaseRecord(stand))[0]?.outcome).toBe("the caller left without an answer");
+  });
+
+  it("says Coinbase could not be reached, and answers 502, when a pass finds nothing there", async () => {
+    const gone = await coinbase();
+    const stand = await standIn(gone.url);
+    await Promise.all(running.splice(0, 1).map((one) => one.close()));
+
+    const answer = await askRates(stand);
+    await settled(() => coinbaseRecord(stand));
+
+    expect(answer.status).toBe(502);
+    expect((await coinbaseRecord(stand))[0]?.outcome).toBe(
+      "passed, Coinbase could not be reached (ECONNREFUSED)",
+    );
+  });
+
+  it("says Coinbase broke off its answer, and ends the caller's, when Coinbase stops midway", async () => {
+    const upstream = await coinbase((response) => {
+      response.writeHead(200, { "content-type": "application/json", "content-length": "100" });
+      response.write('{"data":');
+      setTimeout(() => response.destroy(), 20);
+    });
+    const stand = await standIn(upstream.url);
+
+    const answer = await askRates(stand);
+    await expect(answer.text()).rejects.toThrow();
+    await settled(() => coinbaseRecord(stand));
+
+    expect((await coinbaseRecord(stand))[0]?.outcome).toBe("passed, Coinbase broke off its answer");
+  });
+
+  it("refuses a request that would name another host than Coinbase, sends it nowhere, and keeps serving", async () => {
+    const upstream = await coinbase();
+    const other = await coinbase();
+    const stand = await standIn(upstream.url);
+
+    const elsewhere = await fetch(at(stand.coinbasePort, `//${other.url.host}/v2/exchange-rates`));
+    const absolute = await new Promise<number>((resolve, reject) => {
+      const asked = httpRequest(
+        { host: "127.0.0.1", port: stand.coinbasePort, path: "ftp://other.example/" },
+        (answer) => {
+          answer.resume();
+          resolve(answer.statusCode ?? 0);
+        },
+      );
+      asked.on("error", reject);
+      asked.end();
+    });
+    const after = await askRates(stand);
+    await settled(() => coinbaseRecord(stand));
+
+    expect([elsewhere.status, absolute, after.status]).toEqual([400, 400, 200]);
+    expect(upstream.received.map((one) => one.url)).toEqual([RATES_PATH]);
+    expect(other.received).toHaveLength(0);
+    expect((await coinbaseRecord(stand))[0]?.outcome).toBe(
+      "refused with 400, not a path on api.coinbase.com",
+    );
+  });
+
   it("refuses a mode it does not have and keeps the one in force", async () => {
     const stand = await standIn((await coinbase()).url);
 
     const answer = await fetch(at(stand.controlPort, "/coinbase/drop"), { method: "POST" });
+    const trailing = await fetch(at(stand.controlPort, "/coinbase/refuse/now"), { method: "POST" });
 
     expect(answer.status).toBe(400);
+    expect(trailing.status).toBe(404);
     expect(
       ((await (await fetch(at(stand.controlPort, "/status"))).json()) as StandInState).coinbase,
     ).toBe("pass");
