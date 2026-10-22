@@ -35,7 +35,7 @@ import {
   type ProductInspection,
   type WooOrderLookup,
 } from "./woo-shop.js";
-import { memoryWooShops, type WooShops } from "./woo-shops.js";
+import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
@@ -142,7 +142,7 @@ interface Standing {
   /** One product priced in US dollars where a test does not say. */
   readonly sample?: (shopUrl: string) => Promise<ShopSample | null>;
   /** The rate guard's example product; a catalogue that did not answer where a test does not say. */
-  readonly example?: (shopUrl: string) => Promise<PricedExample>;
+  readonly example?: (shopUrl: string, currency: ShopCurrency) => Promise<PricedExample>;
   /** Coinbase's rupiah rate as it read on 2026-10-21 where a test does not say. */
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   /** Every message handed over where a test does not say. */
@@ -301,8 +301,10 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       },
       sample: async (shopUrl) =>
         standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl),
-      example: async (shopUrl) =>
-        standing.example === undefined ? { kind: "unanswered" } : await standing.example(shopUrl),
+      example: async (shopUrl, currency) =>
+        standing.example === undefined
+          ? { kind: "unanswered" }
+          : await standing.example(shopUrl, currency),
       reference: async (currency) =>
         standing.reference === undefined
           ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
@@ -3062,7 +3064,14 @@ describe("a shop priced in another currency than US dollars", () => {
     });
 
     it("says no product of the catalogue's first page has a price, not that it did not answer, and still asks for the rate again", async () => {
-      const running = await started({ ...inRupiah, example: async () => ({ kind: "none" }) });
+      const askedIn: ShopCurrency[] = [];
+      const running = await started({
+        ...inRupiah,
+        example: async (_shopUrl, currency) => {
+          askedIn.push(currency);
+          return { kind: "none" };
+        },
+      });
       await connectedIn(running);
 
       const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
@@ -3074,6 +3083,7 @@ describe("a shop priced in another currency than US dollars", () => {
       );
       expect(said).not.toContain("did not answer");
       expect(said).toContain("Type the rate again");
+      expect(askedIn).toEqual([{ code: "IDR", decimals: 0 }]);
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
       expect(rateNotices(running)).toEqual([]);
     });
