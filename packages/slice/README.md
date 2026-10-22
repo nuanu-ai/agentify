@@ -367,8 +367,8 @@ stack, or the application comes back on the sandbox's scripted facilitator.
 address, the gateway's payment recovery would read the real Base Sepolia for
 every charge left unanswered, find the buyer's authorisation never used, since
 nothing ever broadcast it, and once it had expired record the order as not
-paid: the opposite of what `settle-lost` and a late success claim in the
-model. That was not tried here.
+paid: the opposite of what `settle-lost`, and a late success that reached
+nobody, claim in the model. That was not tried here.
 
 A gateway whose facilitator is anything but the sandbox's is no longer a
 sandbox. It takes itself for a test channel: its first log line and the
@@ -436,15 +436,16 @@ reaches the control: a hold of thirty seconds or more never reaches the
 gateway, which then reads the charge as unknown exactly as with `settle-lost`,
 and the log says that the success reached nobody. A hold a little under thirty
 seconds, such as 27, leaves the most time for a person to act before the
-answer, and the log line saying the answer was sent is the proof that it
-arrived.
+answer. The log line says only that the control sent the answer; the order
+turning `paid` is what shows the gateway received it.
 
 `--nth` picks which call of the faulted kind is broken, counted in the order the
 calls arrive: verifications for `verify-refused`, settles for the others. It is
 the first by default. The nth call is not the nth purchase: a purchase the
 merchant refuses, one whose goods come too late, one whose price is declined
 and one whose payment the gateway refuses on its own reach no settle, a
-verification the facilitator leaves unanswered is asked again, and a payment
+buyer who presents a payment again after a verification went unanswered makes
+a second verification, and a payment
 presented again for an order already paid is meant to reach the facilitator
 not at all. The safe habit is to restart the control with the default `--nth`
 right before the purchase to break, and to read the log's count of calls
@@ -479,11 +480,12 @@ The model counts one transfer per authorisation. A second settle of an
 authorisation it already counted is answered as the rule says, names the first
 transfer again and says so in its line: that line is what a story about a
 charge made twice looks for, since no chain would move one authorisation's
-money twice and a gateway that asked for it would be the defect. The order
-after such a settle is not what a real facilitator would leave, which would
-refuse the used authorisation, so the order's state is no evidence in that
-case and the log line is. The control checks nothing else about a payment: no signature, no balance and no nonce on
-any chain, so a payment it calls valid proves nothing about the buyer's wallet.
+money twice and a gateway that asked for it would be the defect. A real
+facilitator would refuse the used authorisation, so the order such a settle
+leaves behind is not what a real one would, and only the log line is evidence
+in that case. The control checks nothing else about a payment: no signature,
+no balance and no nonce on any chain, so a payment it calls valid proves
+nothing about the buyer's wallet.
 
 ### What it does not model
 

@@ -231,7 +231,7 @@ describe("the payment fault control's own record", () => {
     const { port, log } = await startFaults(["--fault", "settle-lost", "--after", "0.3"]);
 
     const settled = await post(port, "/settle", payment("eip155:84532"));
-    // The server sees its own close a turn after the caller does.
+    // Gives the server's own close event time to fire before the log is read.
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(settled.status).toBeNull();
