@@ -53,10 +53,10 @@ const AT_MOST = 10_000;
 
 /**
  * Shown to a merchant before they start, and named on the page that refuses a
- * larger catalogue rather than silently importing the first part of it. About
- * nine real shops in ten fit under it. The import runs while the merchant holds
- * the page open, and reading a catalogue this size is some fifty requests to the
- * shop besides one for each download's file.
+ * larger catalogue rather than silently importing the first part of it, and set
+ * from a census of real shops' catalogues. The import runs while the merchant
+ * holds the page open, and reading a catalogue this size is some fifty requests
+ * to the shop besides one for each download's file.
  */
 export const PRODUCTS_AT_MOST = 2_000;
 
@@ -321,7 +321,9 @@ export const inspectProductsInTheShop = async (
     wanted.slice(index * PER_PAGE, (index + 1) * PER_PAGE),
   );
   /** Each product's own document, or its page's answer where that is not a list to look in. */
-  const read = new Map<string, Answered | "left out">();
+  const read = new Map<string, Answered>();
+  /** Products the list did not carry, asked after on their own. */
+  const leftOut: string[] = [];
   await mapAtMost(pages, IN_THE_SHOP_AT_ONCE, async (page) => {
     const answered = await askedTheShop(
       keys,
@@ -337,27 +339,19 @@ export const inspectProductsInTheShop = async (
       // Matched by its own id: a document the list carries for another
       // product never stands in for this one.
       const document = listed.find((one) => String(one.id) === id);
-      read.set(
-        id,
-        document === undefined
-          ? "left out"
-          : { response: answered.response, body: JSON.stringify(document) },
-      );
+      if (document === undefined) leftOut.push(id);
+      else read.set(id, { response: answered.response, body: JSON.stringify(document) });
     }
+  });
+  // A list can leave a product out for reasons of its own, a cache in front of
+  // the shop among them; asked alone, it is judged on the answer the single
+  // check would have had.
+  await mapAtMost(leftOut, IN_THE_SHOP_AT_ONCE, async (id) => {
+    read.set(id, await askedTheShop(keys, `/wp-json/wc/v3/products/${id}`, request));
   });
   return await mapAtMost(productIds, IN_THE_SHOP_AT_ONCE, async (productId) => {
     if (productId === null) return OF_ANOTHER_SHOP;
-    const product = read.get(productId) ?? null;
-    if (product === "left out") {
-      // Not told as the shop's no: a list can leave a product out for reasons
-      // of its own, a cache in front of the shop among them.
-      return {
-        ok: false,
-        why: `The shop's protected product list left out product ${productId}, so it could not be checked.`,
-        again: true,
-      };
-    }
-    return await judged(keys, productId, [product, ...settings], request);
+    return await judged(keys, productId, [read.get(productId) ?? null, ...settings], request);
   });
 };
 
@@ -801,7 +795,10 @@ const judged = async (
   }
   let answered: number | undefined;
   try {
+    // One byte answers the question: a public file is fetched no further,
+    // and a protected one is refused whatever is asked of it.
     const exposed = await request(raw, {
+      headers: { range: "bytes=0-0" },
       redirect: "manual",
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
@@ -1047,6 +1044,10 @@ export const catalogueOf = async (
     }
 
     products.push(...read.data);
+    // The shop's own count may refuse early, never admit: a cache can leave it
+    // stale, and only the pages read settle a catalogue that fits.
+    const counted = Number(answered.headers.get("x-wp-total") ?? "");
+    if (Number.isInteger(counted) && counted > atMost) break;
     // The ceiling is checked before the short page: the other way round, a
     // catalogue of 250 against a ceiling of 200 would come back whole on its
     // short third page.

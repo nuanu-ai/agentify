@@ -432,14 +432,14 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         rateSaved === null
           ? {
               problem:
-                "Your shop is already being imported. Its result shows where that import was" +
-                " started; import again once it has ended to see a result here.",
+                "An import of your shop is already running, and the cards it publishes appear" +
+                " on Cards. Import again once it has ended to see a result here.",
             }
           : {
               rate: {
                 saved: rateSaved,
                 problem:
-                  "Your shop is already being imported, and that import may have read the rate" +
+                  "An import of your shop is already running, and it may have read the rate" +
                   " before you saved this one. Import again once it has ended to publish your" +
                   " products at this rate.",
               },
