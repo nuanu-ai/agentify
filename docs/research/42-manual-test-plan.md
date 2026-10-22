@@ -481,14 +481,25 @@ on others, so they are done in the days before the run.
    `compose.override.yaml` beside the lab's `compose.yaml`, which neither
    command shows and which has no place in a run.
 
-   The lab is brought to the commit the run uses, keeping its server-owned
-   `.env`, before the run and never during it, and so are builds. A profile is
-   built again when it is missing, when a switch to it refuses because it holds
-   files of another database image than the lab now runs or fails its check,
-   or when the lab's files differ between the commit it was built from and the
-   lab's commit now (`git diff --stat <built> <now> -- deploy/woocommerce-lab`);
-   `status` reports that last case for the running profile. For the whole of a
-   build the shop is unusable: it is down, answering 502 or timing out, while
+   The lab is brought to the commit the run uses, as the lab README describes,
+   before the run and never during it, and so are builds. A profile is built
+   again when it is missing, when a switch to it refuses because it holds files
+   of another database image than the lab now runs or fails its check, or when
+   the files a profile is built from differ between the commit it was built
+   from and the lab's commit now. Those files are `lab.sh`, `compose.yaml`,
+   `apache-log.conf` and `seed/`, the ones `status` compares for the running
+   profile; a change anywhere else in the lab, such as its README, needs no
+   rebuild. The comparison runs in any checkout of this repository, since a
+   copied lab is not one:
+
+   ```sh
+   git diff --stat <built> <now> -- deploy/woocommerce-lab/lab.sh \
+     deploy/woocommerce-lab/compose.yaml deploy/woocommerce-lab/apache-log.conf \
+     deploy/woocommerce-lab/seed
+   ```
+
+   For the whole of a build the shop is unusable: it is down, answering 502 or
+   timing out, while
    its database starts from empty data, which has taken up to three minutes on
    the fixture host, and while the profile is stored; in between it answers as
    a half-built shop that is no profile at all. On the fixture host the basic
@@ -577,8 +588,11 @@ on others, so they are done in the days before the run.
    signed in on the test channel. The operator can start an address over
    ("Starting an address over on TEST" in deploy/README.md), but that is
    refused for an account whose merchant has an order or a receipt, so an
-   address a paid run has used is replaced by a new one, not by a plus or dot
-   variant of it, which the product may treat as the same person (E-02).
+   address a paid run has used is replaced by a new mailbox rather than a plus
+   or dot variant of it. A variant is a separate account to the dashboard, but
+   its links land in the same inbox as the original's, so a reader cannot tell
+   which account a link belongs to, and Google sign-in returns the account's
+   own address rather than the variant, which reaches the original's account.
    Participants sign in with Google where a story does not need an emailed
    link, within the limits above; where the test channel's Google project
    admits only listed test users, whoever administers that project lists each
@@ -683,9 +697,12 @@ on others, so they are done in the days before the run.
    and the stands and other merchant processes the run started are stopped.
    Leave the test channel on a named revision and record it: `main`'s, when
    the run's revision added no migration `main` lacks; otherwise the run's
-   revision stays until the database has been put back as "Restoring" in
-   deploy/README.md describes, since `main` would start against tables it does
-   not expect. Tell the other person what the channel and the shop now run and
+   revision stays, or the fix goes forward on `main`, since `main` would start
+   against tables it does not expect. Restoring the database ("Restoring" in
+   deploy/README.md) loses everything written after its restore point, the
+   run's orders and the merchants' obligations among them, so it is done only
+   with the other person's agreement and only after every order of the run is
+   reconciled; it is never a way to tidy a run. Tell the other person what the channel and the shop now run and
    which accounts, keys, connections and unresolved orders the run left in
    place, the list the report keeps under "Remaining work and cleanup".
    Reports and evidence go to the run's private location ("Report and
