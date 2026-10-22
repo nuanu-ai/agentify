@@ -728,7 +728,10 @@ the dashboard's private route, and the preflight refuses a channel where any
 other service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
-`MAIL_FROM`.
+`MAIL_FROM`. TEST may name the three mail settings too, and does where its
+sign-in links and rate notices are to reach real mailboxes, as an acceptance
+run needs; without them its dashboard writes every message to the
+application's log instead of sending it.
 
 The channel overlays use free public Base RPC for background payment recovery:
 `https://sepolia.base.org` on TEST and `https://mainnet.base.org` on PRODUCTION.
@@ -996,9 +999,10 @@ The operator's dashboard at `/admin` opens for a session whose account carries
 the operator flag, and answers everybody else with the site's 404 page
 (ADR-0026 §6). Nobody is flagged on a new channel, so it opens for nobody until
 somebody is. The person who is to read it signs in once at
-`/dashboard/sign-in`, which makes their account; on TEST the dashboard writes
-its mail to the application's log rather than sending it, so the link is read
-with `deploy/stack.sh test logs app` from the newest checkout. They are then
+`/dashboard/sign-in`, which makes their account. The link arrives by mail
+where the channel names a mail provider; a channel without one writes its mail
+to the application's log rather than sending it, and the link is then read
+with `deploy/stack.sh <channel> logs app` from the newest checkout. They are then
 flagged on the host of that channel:
 
 ```sh
