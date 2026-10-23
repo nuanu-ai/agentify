@@ -3,7 +3,8 @@
 Date: 2026-08-28
 Status: accepted (the product owner, 2026-09-24 and 2026-09-25; the split,
 2026-10-14); the write left `/v0` with the dashboard's key, 2026-10-09; revised
-2026-10-20: the payee a paid order's payment is checked against
+2026-10-20: the payee a paid order's payment is checked against; revised
+2026-10-23 (the product owner): the sessions a cancel ends
 
 ## Context
 
@@ -65,8 +66,11 @@ changes, the earliest moment it can apply and that it was asked for in the
 dashboard from a session signed in as which account, naming no person, since
 the gateway knows the account and not who holds the session; it links to the
 wallet screen without a token. A cancel there ends every session of every
-account naming the merchant but the one that pressed, and, moving money nowhere
-new, is announced afterwards and never refused. So is a key issued for the
+account naming the merchant, the one that pressed included, and in the same
+answer gives the pressing browser a new session of the same sign-in: a session
+copied from that browser carries its token, so keeping it would keep the copy,
+which could ask again after every cancel. Moving money nowhere new, a cancel is
+announced afterwards and never refused. So is a key issued for the
 merchant's own code, its message naming who asked: the account a dashboard
 session was signed in as, or the key a call was made with.
 
