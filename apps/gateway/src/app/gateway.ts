@@ -75,6 +75,7 @@ import { PaymentEdge } from "../http/x402.js";
 import { orderFingerprint } from "../order-fingerprint.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
+import type { NoVerdict } from "../ports/facilitator.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   AnalyticsOf,
@@ -1881,7 +1882,7 @@ export class Gateway {
       // what this payment did.
       const why =
         verified.verified === "unknown"
-          ? NO_ANSWER_FROM_THE_CHECK
+          ? NO_VERDICT_WORDS[verified.cause]
           : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
       // A refusal's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
@@ -1891,16 +1892,17 @@ export class Gateway {
         `[gateway] a payment for ${orderFingerprint(orderId)} did not verify: ${
           verified.verified === false
             ? `refused as ${verified.reason}`
-            : `the payment layer could not be asked, or gave no answer to rely on: ${verified.failure}`
+            : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
         }`,
       );
       return {
         step: "payment_not_verified",
         why,
-        // "unknown" means nobody said no — the layer did not answer or could
-        // not be asked — so trying again may work; "false" means the same
-        // payment will not pass, though a corrected one still may.
-        retryable: verified.verified === "unknown",
+        // Only a silence may pass on a second try. A seller who cannot be
+        // paid, or a check that contradicts the payment, meets the same
+        // payment the same way, and "false" means the same payment will not
+        // pass, though a corrected one still may.
+        retryable: verified.verified === "unknown" && verified.cause === "no_answer",
       };
     }
 
@@ -3006,9 +3008,15 @@ function briefly(said: string): string {
 }
 
 /** What an agent whose payment was refused does next, by why it was refused. */
-/** What a buyer is told when the payment check could not be asked or did not answer. */
-const NO_ANSWER_FROM_THE_CHECK =
-  "this payment charged nothing: Agentify got no answer it could rely on from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds";
+/** What a buyer is told for a payment that got no verdict, by why. */
+const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
+  no_answer:
+    "this payment charged nothing: Agentify got no answer from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+  seller_cannot_be_paid:
+    "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
+  payer_contradicted:
+    "this payment charged nothing: the payment check vouched for it but named a different payer from the wallet that signed it, so Agentify did not accept it",
+};
 
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:

@@ -108,12 +108,21 @@ export type VerifyOutcome =
       readonly message: string;
     }
   /**
-   * The facilitator could not be asked, or gave no answer that can be relied
-   * on. Nothing is claimed. `failure` is for the operator's log: Agentify's
-   * own sentence where the question could not be put, or the name of what
-   * failed where the facilitator could not be reached. A buyer never reads it.
+   * No verdict on the payment, and nothing is claimed; `cause` says why.
+   * `failure` is for the operator's log: Agentify's own sentence where the
+   * question could not be put or the answer contradicted the payment, or the
+   * name of what failed where the facilitator could not be reached. A buyer
+   * never reads it.
    */
-  | { readonly verified: "unknown"; readonly failure: string };
+  | { readonly verified: "unknown"; readonly cause: NoVerdict; readonly failure: string };
+
+/**
+ * Why a payment got no verdict: the facilitator could not be reached or did
+ * not answer, which asking again may cure; the question could not be put,
+ * because the order as it stands cannot pay its seller; or the facilitator
+ * vouched for the payment naming a payer other than the wallet that signed it.
+ */
+export type NoVerdict = "no_answer" | "seller_cannot_be_paid" | "payer_contradicted";
 
 export type SettleOutcome =
   | { readonly settled: true; readonly transaction: string }

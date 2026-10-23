@@ -74,7 +74,7 @@ export class X402Facilitator implements Facilitator {
       // Our own side of the question could not be built (no payout address,
       // a currency we cannot charge in). That is not a verdict on the payment,
       // so it must not be reported as a refusal.
-      return { verified: "unknown", failure: describe(thrown) };
+      return { verified: "unknown", cause: "seller_cannot_be_paid", failure: describe(thrown) };
     }
 
     const mismatch = wrongOffer(payload.accepted, requirements);
@@ -129,13 +129,14 @@ export class X402Facilitator implements Facilitator {
         const said = thrown.invalidMessage ?? thrown.invalidReason ?? "no reason was given";
         return { verified: false, reason: shapeOf(thrown.invalidReason), message: said };
       }
-      return { verified: "unknown", failure: failureNamed(thrown) };
+      return { verified: "unknown", cause: "no_answer", failure: failureNamed(thrown) };
     }
 
     if (answered.isValid) {
       if (answered.payer && !sameAddress(answered.payer, authorization.payer)) {
         return {
           verified: "unknown",
+          cause: "payer_contradicted",
           failure: "The facilitator named a payer different from the signed authorization.",
         };
       }
