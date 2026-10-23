@@ -78,8 +78,8 @@ export interface ReadFinding {
  * does not know, or one whose payload does not fit, such as an order carrying
  * a field the contract does not allow. It names the kind the message said it
  * was (empty when it named none that can be written), the order or price
- * question it is about where that is an identifier that did not itself fail,
- * and where it failed.
+ * question it is about where that is an identifier short enough to write, and
+ * where it failed.
  */
 export interface UnreadEnvelope {
   readonly kind: UnknownWord;
@@ -160,22 +160,15 @@ const nameWritten = (name: string): string => {
 const kindWritten = (kind: unknown): string =>
   typeof kind === "string" && NAME_SHAPED.test(kind) ? nameWritten(kind) : "";
 
-const startsWith = (path: readonly string[], prefix: readonly string[]): boolean =>
-  prefix.every((segment, index) => path[index] === segment);
-
 /**
  * The identifier an unread order or message is named by: only one that is an
- * identifier, short enough to write, and not itself where the document failed.
+ * identifier and short enough to write. Every field it is taken from is held
+ * to that same rule, so one that failed there is never named.
  */
-const subjectOf = (
-  value: unknown,
-  findings: readonly ReadFinding[],
-  at: readonly string[],
-): string | undefined =>
+const subjectOf = (value: unknown): string | undefined =>
   typeof value === "string" &&
   value.length <= SUBJECT_AT_MOST &&
-  IdentifierSchema.safeParse(value).success &&
-  !findings.some((finding) => startsWith(finding.path, at))
+  IdentifierSchema.safeParse(value).success
     ? value
     : undefined;
 
@@ -230,8 +223,7 @@ const unreadEnvelope = (sent: unknown, issues: readonly z.core.$ZodIssue[]): Unr
         : kind === "quote_request"
           ? "price_id"
           : undefined;
-  const subject =
-    field === undefined ? undefined : subjectOf(payload?.[field], findings, ["payload", field]);
+  const subject = field === undefined ? undefined : subjectOf(payload?.[field]);
 
   return {
     kind: UNKNOWN_WORD,
@@ -275,7 +267,7 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
             const read = each.safeParse(sent);
             if (read.success) return read.data;
             const findings = findingsOf(read.error.issues);
-            const subject = subjectOf((sent as { id?: unknown } | null)?.id, findings, ["id"]);
+            const subject = subjectOf((sent as { id?: unknown } | null)?.id);
             const unread: UnreadOrder = { ...(subject === undefined ? {} : { subject }), findings };
             return unread;
           }),
@@ -295,7 +287,7 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
       const ofAnotherKind = z
         .looseObject({ type: aWord(), order_id: z.unknown() })
         .transform(({ type, order_id }): UnreadEvent => {
-          const order = subjectOf(order_id, [], []);
+          const order = subjectOf(order_id);
           return {
             type: UNKNOWN_WORD,
             named: kindWritten(type),
