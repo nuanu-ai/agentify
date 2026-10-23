@@ -200,6 +200,7 @@ export async function sendPayout(
     const from = await accountOf(wallet);
     if (!waiting()) return { kind: "failed" } as const;
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
+    if (!waiting()) return { kind: "failed" } as const;
     let acknowledged: unknown;
     try {
       acknowledged = await wallet.request({
