@@ -308,8 +308,9 @@ Orders are delivered at least once, so the same order can reach your handler
 again: after a network break, after your process restarted, after a retry of
 ours. Pass `order.id` on as the idempotency key of your own delivery system and
 answer a repeat with the result you gave the first time ([Telling a repeat
-apart](/orders#telling-a-repeat-apart)). After a restart, the orders still
-open can be read back from us ([Finding out where an order
+apart](/orders#telling-a-repeat-apart)). The identifier is an ordinary
+reference that opens nothing, so it is safe to log and to hand on. After a
+restart, the orders still open can be read back from us ([Finding out where an order
 stands](/orders#finding-out-where-an-order-stands)).
 
 ### Answering the price question
@@ -455,7 +456,10 @@ a card that asks for none, to the purchase address the catalogue gives for
 the card. The client meets the 402 that names the price and your payout
 contract, signs the payment and sends the same call again, and the answer is
 the order: `status` says where it stands, `delivered` holds the goods once
-they are the buyer's, and `status_url` is where it is read again.
+they are the buyer's, and `status_url` is where it is read again. That address
+carries the buyer's key, the only thing that opens the order and its goods, so
+a real agent keeps it to itself; `order_id` in the same answer is the order's
+ordinary reference, the one your handler saw as `order.id`.
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the

@@ -44,7 +44,7 @@ charges nothing, so a retry costs the buyer nothing.
 An order that ended rejected or expired with nothing charged, nothing held for
 its buyer and nothing presented to pay with is deleted thirty days after it was
 last written, by a daily job in bounded batches, unless a receipt or a payment
-claim names it. Its identifier is then answered as one that names no order.
+claim names it. Its buyer's key is then answered as one that names no order.
 Nothing with money, a claim, a receipt or goods is deleted.
 
 ## Alternatives rejected

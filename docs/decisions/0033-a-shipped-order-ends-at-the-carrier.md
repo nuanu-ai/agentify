@@ -53,8 +53,8 @@ the buyer's address from backups taken before the erasure (ADR-0029); for a
 WooCommerce shop's, also the connector's fixed seven days to ship, region codes
 the shop writes its own way, the guest session a price question leaves in the
 shop, and how slow a shop may be. Who may read a parcel's tracking is
-ADR-0011's rule: the holder of the order identifier, which no payment
-requirement or listing carries.
+ADR-0011's rule: the holder of the buyer's key in the order's status address,
+which reaches only the agent that bought.
 
 ## Consequences
 

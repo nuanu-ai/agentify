@@ -211,8 +211,9 @@ payment is which sequence the sale follows. With synchronous fulfillment the
 goods come back in the answer to the purchase and the money moves only once
 the merchant has produced them, so a refusal costs the buyer nothing. With
 asynchronous fulfillment the money moves at the purchase and the agent leaves
-with an order identifier, which is the whole of its proof when it comes back
-for the goods (ADR-0011). A parcel, the `ship` mode, is paid at the purchase
+with the order's status address, whose buyer's key is the whole of its proof
+when it comes back for the goods, while the order's identifier only names the
+order (ADR-0011). A parcel, the `ship` mode, is paid at the purchase
 too, carries the buyer's address to the merchant and ends when the merchant
 records the shipment; it sells on the test channel only (ADR-0032, ADR-0033).
 A paid order not delivered in time reads `unfulfilled`, and a late delivery
