@@ -49,7 +49,8 @@ for every order the seller's name and site (ADR-0034), and for a paid one the
 transaction that paid it, which leads to the buyer's wallet. Anyone who learns
 an unpaid order's identifier can pay for it at its full price before its buyer
 does, and for a parcel then receives its tracking; the buyer's payment is
-refused, saying that nothing was charged and that buying needs a new purchase.
+refused, saying that nothing was charged, that buying needs a new purchase, and
+that a fresh payment from the wallet that paid returns it.
 
 ## Alternatives rejected
 

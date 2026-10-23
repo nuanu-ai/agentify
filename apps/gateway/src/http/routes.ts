@@ -680,14 +680,15 @@ async function answerPurchase(
       // The order already belongs to another payer. Its identifier is in every
       // challenge for it and a listing can publish it, so holding it proves
       // nothing; the wording says nothing about how far along it is. Nothing
-      // was charged either way, and the buyer who lost the race to pay needs
-      // to hear that and how to buy.
+      // was charged, and the payer may be the buyer who lost the race to pay
+      // or the buyer itself signing again from another of its wallets, so the
+      // words tell each what to do without telling them apart.
       return written(
         response,
         CONFLICT,
         refusal(
           "not_this_purchase",
-          "another payment already took this purchase, and nothing was charged for this one: to buy, start a new purchase",
+          "another payment already took this purchase, and nothing was charged for this one: to buy, start a new purchase; if this purchase was paid from another of your wallets, a fresh payment from that wallet returns it",
         ),
       );
 
