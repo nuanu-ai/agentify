@@ -71,8 +71,10 @@ const wallet = ({
   let keys = false;
   const sent: Sent[] = [];
   const later: { answer: () => void; refuse: () => void }[] = [];
+  const asked: string[] = [];
   const answering: Wallet = {
     async request({ method, params }) {
+      asked.push(method);
       if (method === hangs) {
         keys = true;
         return new Promise((resolve, reject) => {
@@ -126,6 +128,8 @@ const wallet = ({
     /** Whether the keys of a session with the wallet's window are kept in the page. */
     keys: () => keys,
     later,
+    /** Every method the page asked the wallet, in order, a late answer's own repeat included. */
+    asked,
   };
 };
 
@@ -397,6 +401,19 @@ describe("waiting for the merchant's wallet", () => {
       expect(sent).toEqual([]);
     },
   );
+
+  it("asks the wallet nothing more once it has stopped waiting, not even to move to the payout's chain", async () => {
+    vi.useFakeTimers();
+    const { answering, asked, later } = wallet({ hangs: "eth_requestAccounts" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+    await sending;
+    later[0]?.answer();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(asked).not.toContain("wallet_switchEthereumChain");
+  });
 
   it("says a payout the wallet acknowledges after the limit was sent", async () => {
     vi.useFakeTimers();
