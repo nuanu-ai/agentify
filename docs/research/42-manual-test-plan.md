@@ -1285,27 +1285,13 @@ the run's revision, by the story named beside it, and kept with its evidence.
 The change that fixes or settles an item removes it from this list in the same
 change. Items marked "decision" wait for the product owner, not for a fix.
 
-Seen with a controlled instrument, which shows what the product does with an
-answer, not how often a real provider gives that answer:
-
-- SDK 0.8.0 skips an open order whose status word it does not know, so it
-  delivers neither of such orders (D-08, second variant).
-- SDK 0.8.0 fails every poll when an order carries a field it does not know,
-  naming neither the field nor an upgrade; SDK 0.7.1 never reaches its stop
-  for an older contract while every poll carries an unknown field (D-08, third
-  variant).
-- Both SDKs quote the start of an answer they cannot read, an order id and a
-  price among it, in the problem they report (D-08).
-- With Coinbase silent, saving an exchange rate takes about six seconds,
-  because the save reads Coinbase twice (H-23).
-
-Left open by earlier changes:
-
-- No screen lists an account's sessions, so a merchant cannot check the
-  sign-in moment a rate notice names (H-20).
-- A dollar shop's decimals refusal, and the import's refusal of a product
-  written at other decimals than the shop's, ask for the setting to be changed
-  without saying that it changes what every customer of the shop sees (H-12).
+None is open now. The last of them were settled on 2026-10-23. The defects
+were fixed. Two did not reproduce on the run's revision: a save of an exchange
+rate reads Coinbase once, as loading the screen does (H-23), and the decimals
+refusals already say that the setting changes what every customer of the shop
+sees (H-12). The product owner decided that no screen lists an account's
+sessions for now, and that the rate notice keeps naming when the saving
+session signed in (H-20).
 
 ## Report and evidence
 
