@@ -11,6 +11,7 @@ import { Button } from "@agentify/ui";
 import { useEffect, useRef, useState } from "react";
 import { type PagePresses, pressesOf } from "./presses.js";
 import type { askAddress, sendPayout } from "./requests.js";
+import { WALLET_ANSWERS_WITHIN_MS } from "./waiting.js";
 
 /**
  * Coinbase Wallet's code, fetched when the pointer reaches a button or it takes
@@ -18,6 +19,8 @@ import type { askAddress, sendPayout } from "./requests.js";
  * window; a browser that still blocks it gets Coinbase's own prompt to go on.
  */
 const coinbase = () => import("./coinbase.js");
+
+const LIMIT = `${WALLET_ANSWERS_WITHIN_MS / 60_000} minutes`;
 
 export const WALLET_WORDS = {
   connect: "Create or connect a Coinbase Wallet",
@@ -33,6 +36,7 @@ export const WALLET_WORDS = {
   connectClosed: "Coinbase Wallet was closed. The box is as you left it.",
   connectLost:
     "Coinbase Wallet's answer was lost, as happens when another of its buttons is pressed while its window is open. Press again.",
+  connectUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page stopped waiting. The box is as you left it; press again.`,
   connectFailed: "Coinbase Wallet gave no address. You can still enter one by hand.",
   connectNotOpened:
     "This page could not open Coinbase Wallet. Press again, or enter an address by hand.",
@@ -44,6 +48,7 @@ export const WALLET_WORDS = {
   payoutClosed: "Coinbase Wallet was closed before the payout was asked for. Nothing was sent.",
   payoutUnconfirmed:
     "Coinbase Wallet's window closed without confirming the payout. If you approved it there, it may still go out, so check what your payout contract holds before sending another.",
+  payoutUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page does not know whether the payout went out. Check what your payout contract holds before sending another.`,
   payoutEarlierStands:
     "Coinbase Wallet sent nothing this time. It did send a payout from this page earlier.",
   payoutUnknown:
@@ -126,13 +131,15 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
     pressed.say(
       asked.kind === "address"
         ? WALLET_WORDS.addressInTheBox
-        : asked.kind === "cancelled"
-          ? WALLET_WORDS.connectClosed
-          : asked.kind === "lost" || !alone()
-            ? WALLET_WORDS.connectLost
-            : asked.kind === "notOpened"
-              ? WALLET_WORDS.connectNotOpened
-              : WALLET_WORDS.connectFailed,
+        : asked.kind === "unanswered"
+          ? WALLET_WORDS.connectUnanswered
+          : asked.kind === "cancelled"
+            ? WALLET_WORDS.connectClosed
+            : asked.kind === "lost" || !alone()
+              ? WALLET_WORDS.connectLost
+              : asked.kind === "notOpened"
+                ? WALLET_WORDS.connectNotOpened
+                : WALLET_WORDS.connectFailed,
     );
   };
   return (
@@ -199,6 +206,16 @@ export function CoinbasePayout({
     if (sent.kind === "sent") {
       if (page !== null) page.payoutSent = true;
       pressed.say(WALLET_WORDS.payoutSent);
+      return;
+    }
+    if (sent.kind === "unanswered") {
+      if (page !== null) page.payoutUnknown = true;
+      pressed.say(WALLET_WORDS.payoutUnanswered);
+      void sent.late.then((acknowledged) => {
+        if (!acknowledged) return;
+        if (page !== null) page.payoutSent = true;
+        pressed.say(WALLET_WORDS.payoutSent);
+      });
       return;
     }
     if (sent.kind === "unconfirmed" || sent.kind === "lost" || !alone()) {

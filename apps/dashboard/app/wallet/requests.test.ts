@@ -10,7 +10,8 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askAddress, sendPayout, WALLET_ANSWERS_WITHIN_MS, type Wallet } from "./requests.js";
+import { askAddress, sendPayout, type Wallet } from "./requests.js";
+import { WALLET_ANSWERS_WITHIN_MS } from "./waiting.js";
 
 afterEach(() => {
   vi.useRealTimers();

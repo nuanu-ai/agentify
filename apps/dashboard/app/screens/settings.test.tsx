@@ -30,7 +30,8 @@ import { type SettingsPress, settingsView } from "../../src/settings-view.js";
 import { readable } from "../../src/testing/html.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { WALLET_WORDS } from "../wallet/buttons.js";
-import { WALLET_ANSWERS_WITHIN_MS, type Wallet } from "../wallet/requests.js";
+import type { Wallet } from "../wallet/requests.js";
+import { WALLET_ANSWERS_WITHIN_MS } from "../wallet/waiting.js";
 import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
 
 /**
