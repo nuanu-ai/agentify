@@ -63,6 +63,8 @@ const coinbase = vi.hoisted(() => ({
   breaks: undefined as string | undefined,
   /** A request whose answer the provider can no longer read. */
   loses: undefined as string | undefined,
+  /** A request the provider answers by throwing `thrown`, which need not be an error EIP-1193 describes. */
+  throws: undefined as Readonly<{ at: string; thrown: unknown }> | undefined,
   chain: "0x2105",
   sent: [] as Readonly<{ chainId: string; calls: readonly unknown[] }>[],
   provider: undefined as Wallet | undefined,
@@ -77,6 +79,7 @@ vi.mock("../wallet/coinbase.js", async () => {
     },
     async request({ method, params }) {
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
+      if (method === coinbase.throws?.at) throw coinbase.throws.thrown;
       if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
       if (method === coinbase.loses) {
         throw {
@@ -285,6 +288,7 @@ afterEach(() => {
     holding: 0,
     held: [],
     loses: undefined,
+    throws: undefined,
     provider: undefined,
     declines: undefined,
     breaks: undefined,
@@ -1125,6 +1129,23 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+  });
+
+  it("never says the payout was not sent when the wallet's answer to it is a failure the page cannot read", async () => {
+    for (const thrown of [
+      { message: "The operation failed for an operation-specific reason" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "wallet_sendCalls", thrown };
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+      await press();
+
+      expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
   });
 
   it("keeps saying it does not know when a later press is closed", async () => {

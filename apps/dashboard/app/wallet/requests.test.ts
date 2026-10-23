@@ -39,6 +39,7 @@ const wallet = ({
   declines,
   breaks,
   loses,
+  throws,
   acknowledges = { id: "0x00b47c4" },
 }: {
   readonly windows?: readonly unknown[];
@@ -47,6 +48,8 @@ const wallet = ({
   readonly breaks?: string;
   /** A request whose answer the provider can no longer read, its session with the window gone. */
   readonly loses?: string;
+  /** A request the provider answers by throwing `thrown`, which need not be an error EIP-1193 describes. */
+  readonly throws?: Readonly<{ at: string; thrown: unknown }>;
   /** What the wallet answers once it has taken a batch. */
   readonly acknowledges?: unknown;
 } = {}) => {
@@ -57,6 +60,7 @@ const wallet = ({
   const answering: Wallet = {
     async request({ method, params }) {
       if (method === declines) throw DECLINED;
+      if (method === throws?.at) throw throws.thrown;
       if (method === breaks) throw { code: -32603, message: "Something went wrong at Coinbase" };
       if (method === loses) {
         throw {
@@ -263,6 +267,21 @@ describe("sending the payout through the merchant's wallet", () => {
   it("does not call a payout sent that the wallet refused to send", async () => {
     const { answering } = wallet({ breaks: "wallet_sendCalls" });
 
-    expect((await sendPayout(answering, 84532, payout)).kind).toBe("failed");
+    expect((await sendPayout(answering, 84532, payout)).kind).not.toBe("sent");
+  });
+
+  it("does not know whether a payout went out when the wallet's answer to it is a failure it cannot read", async () => {
+    const thrown = [
+      { message: "The operation failed for an operation-specific reason" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+      undefined,
+      "closed",
+      { code: -32603, message: "Something went wrong at Coinbase" },
+    ];
+    for (const one of thrown) {
+      const { answering } = wallet({ throws: { at: "wallet_sendCalls", thrown: one } });
+
+      expect(await sendPayout(answering, 84532, payout), String(one)).toEqual({ kind: "lost" });
+    }
   });
 });
