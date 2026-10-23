@@ -774,18 +774,26 @@ handed to your code with part of it missing would be delivered wrongly without
 a word. On the subscription, an order carrying a field or an address shape
 there that your package does not know is not handed to your handler. Your
 problem handler receives one `unread` problem, not fatal, with the order's
-identifier as its `subject`, naming each field it could not read and saying
-that a newer release reads it, and everything else in that poll answer and in
-the polls after it is handled as usual. Nothing is answered for that order, so
-it comes again within its attempts, and once paid it stays on the open list.
+identifier as its `subject`, naming each field it could not read, and
+everything else in that poll answer and in the polls after it is handled as
+usual. Anything added to an order comes with a new contract version, as the
+next paragraphs say, so an order like this is outside the version your package
+speaks, and the problem says exactly that: the order carries something that
+version does not allow, and a newer release may read it, which is a
+possibility rather than a promise. Nothing is answered for that order, so it
+comes again while it has attempts left and its deadline allows, and otherwise
+ends undelivered; once paid, it stays on the open list.
 Read back, the same order fails `orders.get`, and fails `orders.list` as a
 whole, with a thrown `AgentifyError` that names the fields.
 
 A message on the subscription that does not fit for another reason, such as a
 timestamp that is not one, is set aside in the same way with an `unread`
-problem naming where it failed. That problem does not say a newer release reads
-the message, because nothing on your side can tell a broken message from one
-written in a shape added later. Neither problem, nor any failure your package
+problem naming where it failed. That problem does not say even that a newer
+release may read the message, because nothing on your side can tell a broken
+message from one written in a shape added later. Only where the contract
+promises that Agentify adds something without a new version, an event of a new
+kind or a word such as a price question's purpose, does the problem say that a
+newer release reads it. Neither problem, nor any failure your package
 reports about an answer it could not read, repeats what that answer carried:
 the buyer's parameters and the prices stay out of your logs, and only the
 names of the fields and what was expected there are given. An answer that is

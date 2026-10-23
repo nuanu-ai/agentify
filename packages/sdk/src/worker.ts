@@ -334,12 +334,16 @@ const versionSpokenIn = (body: unknown): string | undefined => {
   return typeof named === "string" && named !== "" ? named : undefined;
 };
 
-/** A newer release's name, for the sentence that says it reads what this one cannot. */
+/** A newer release's name, for the sentences about what it reads that this one cannot. */
 const NEWER_RELEASE = "a newer release of @nuanu-ai/agentify";
 
 /**
  * The warning for a message this package could not read: where it failed, by
- * field and never by value, and what follows for the work it carried.
+ * field and never by value, and what follows for the work it carried. Every
+ * such message is outside the contract version this release speaks, since
+ * anything added to an order, to a price question or to the kinds of message
+ * comes with a new version; so a newer release only may read it, and where
+ * what failed is a value rather than something added, not even that is said.
  */
 const unreadWarning = (envelope: UnreadEnvelope): WorkerProblem => {
   // The merchant's handler is given the payload, so its fields are named from there.
@@ -347,9 +351,9 @@ const unreadWarning = (envelope: UnreadEnvelope): WorkerProblem => {
     issue.path[0] === "payload" ? { ...issue, path: issue.path.slice(1) } : issue,
   );
   const where = whereItFailed(issues);
-  const unreadable = `has something this release cannot read (${where}); ${
+  const unreadable = `has something contract version ${contractVersion}, which this release speaks, does not allow (${where}); ${
     onlyWhatIsNew(issues)
-      ? `${NEWER_RELEASE} reads it`
+      ? `${NEWER_RELEASE} may read it`
       : "nothing here says whether it was sent broken or in a shape added later"
   }`;
   const about = envelope.subject;
