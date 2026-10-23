@@ -4,7 +4,9 @@ Date: 2026-08-28
 Status: accepted (the product owner, 2026-08-28; 2026-09-25: every registration
 path except the one main path is removed; 2026-10-09: the key made for a
 dashboard and the registration route are deleted when the dashboard joined the
-gateway's process, `docs/research/35-one-process.md`; 2026-10-15: Google sign-in)
+gateway's process, `docs/research/35-one-process.md`; 2026-10-15: Google sign-in;
+2026-10-23: administration moves from the terminal to the operator's workspace,
+`docs/research/85-operator-admin.md`)
 
 ## Context
 
@@ -22,12 +24,13 @@ mailed to their address or uses an eligible Google account (ADR-0026 §1); a
 merchant, when that signed-in person presses the one control the dashboard
 offers (§1). No command at a server's terminal makes an account, a merchant or a
 key, and no deployed channel's gateway seeds a merchant at start-up: the release
-refuses a channel configured to. The operator's terminal looks after what exists
-— lists merchants, keys and accounts, disables a key, takes a listing name away,
-ends a person's sessions, moves the operator flag. Live sales approval is an
-administrative action in the web cabinet (ADR-0026 §6) and remains available at
-the terminal, which also withdraws it. None of these permissions implies a
-staffed order-resolution service. Only the laptop's stack seeds its sandbox
+refuses a channel configured to. An operator looks after what exists — lists
+merchants, keys and accounts, disables a key, takes a listing name away, ends a
+person's sessions, moves the operator flag, admits a merchant to live sales and
+withdraws that admission — from the operator's workspace (ADR-0026 §6; the
+product owner, 2026-10-23). A terminal command that does one of these today is
+deleted when the workspace does the same, and none is added. None of these
+permissions implies a staffed order-resolution service. Only the laptop's stack seeds its sandbox
 merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant on the dashboard's explicit

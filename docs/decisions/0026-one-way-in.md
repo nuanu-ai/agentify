@@ -71,17 +71,29 @@ wallet for settled payments (ADR-0020), and administrative approval on live.
 The commission is the price; no subscription replaces this approval.
 Publishing tells an integrator what is missing.
 
-**6. Operators use the same sign-in.** `/admin` needs the account flag set only
-by `pnpm account operator`, read on every session request. The header shows its
-link to operators. Everybody else, including while identity is unavailable, gets
-the site's 404; the edge neither marks nor guards this read-only path. The page
-links to `/dashboard/admin/live-sales`, which checks the same flag on each
-request and admits one existing merchant after explicit confirmation. Its forms
-also pass the dashboard's origin and account checks; the operator needs no
-merchant of their own. Approval is live-only, granting and withdrawing it are
-both idempotent, and a merchant withdrawn at the terminal stands as one never
+**6. Operators use the same sign-in.** `/admin` needs the account flag, read on
+every session request. The header shows its link to operators. Everybody else,
+including while identity is unavailable, gets the site's 404; the edge neither
+marks nor guards this read-only path. The page links to
+`/dashboard/admin/live-sales`, which checks the same flag on each request and
+admits one existing merchant after explicit confirmation. Its forms also pass
+the dashboard's origin and account checks; the operator needs no merchant of
+their own. Approval is live-only, granting and withdrawing it are both
+idempotent, and a merchant whose approval is withdrawn stands as one never
 approved, a pause rather than a cancellation. Neither bypasses another selling
-guard or asserts a payment outcome; no staff queue is promised by this permission.
+guard or asserts a payment outcome; no staff queue is promised by this
+permission. The product owner decided on 2026-10-23 that every administrative
+action at the terminal, the operator flag's included, moves into the operator's
+workspace (`docs/research/85-operator-admin.md`); until each ships, its terminal
+command (`pnpm account operator`, `pnpm approve --withdraw`) stands. In the
+workspace every administrative action needs a session signed in within the last
+fifteen minutes, by the sign-in moment a renewed session keeps; an older session
+is asked to sign in again, by link or Google, before the action goes ahead. Each
+intervention carries the operator's reason, and every action and refused attempt
+is journaled (ADR-0045). Granting or removing the flag mails every operator of
+the channel, and the last operator's flag cannot be removed. A channel with no
+operator takes its first from its configuration, at the configured address's
+next sign-in, and ignores the configuration once any operator exists.
 
 **7. One gate protects dashboard pages.** Its exceptions are sign-in, sign-out,
 the link landing page, Google start and callback, styles and built scripts,
