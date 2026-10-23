@@ -693,6 +693,28 @@ describe("a gateway newer than this package", () => {
     expect(problems[2]?.message).not.toMatch(/newer release/);
   });
 
+  it("skips an event whose kind is not a word without naming the kind or offering a newer release", async () => {
+    // A kind that is not shaped like one may be anything the sender put
+    // there, and is broken rather than news.
+    const sent = "order refunded by buyer@example.com";
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.event, payload: { type: sent, order_id: "order-1", at: AT } }),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => problems.length > 0, "the skipped event");
+
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
+    expect(problems[0]?.message).toContain("nothing here says");
+    expect(problems[0]?.message).not.toMatch(/newer release/);
+    expect(problems[0]?.message).not.toContain(sent);
+    expect(problems[0]?.message).not.toContain("buyer@example.com");
+  });
+
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
     // No answer is a silent price check, whose outcome per mode is already
     // the contract's; a price guessed for an unknown purpose would not be.
