@@ -12,6 +12,7 @@ import {
   buyOverHttp,
   type Harness,
   harness,
+  loggedWhile,
   type Served,
   serve,
   theMerchantKey,
@@ -825,6 +826,50 @@ describe("the payment challenge", () => {
     expect((await harnessed.store.orderById(offered.order.order.id))?.order.state).toBe("quoted");
   });
 
+  it("tells the buyer in Agentify's words that the payment check gave no answer, and keeps the library's for the log", async () => {
+    // The library's words for an unreachable facilitator say nothing a buyer's
+    // agent can act on, and read as though the purchase itself broke. What the
+    // agent needs is that nothing was charged and the same payment may pass
+    // once the check answers.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.facilitator.willVerify({ verified: "unknown", failure: "TypeError: fetch failed" });
+    const payment = Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+      }),
+      "utf8",
+    ).toString("base64");
+
+    let answered: Awaited<ReturnType<Served["call"]>> | undefined;
+    const logged = await loggedWhile(async () => {
+      answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    });
+
+    if (answered === undefined) throw new Error("the purchase was never answered");
+    expect(answered.status).toBe(409);
+    const { error } = answered.body as {
+      error: { code: string; message: string; retryable: boolean };
+    };
+    expect(error.code).toBe("payment_not_verified");
+    expect(error.retryable).toBe(true);
+    expect(error.message).not.toContain("fetch failed");
+    expect(logged).toContain("fetch failed");
+    const order = (await harnessed.store.orderById(offered.order.order.id))?.order;
+    expect(order?.state).toBe("quoted");
+    expect(order?.payment).toBe("none");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    expect(
+      harnessed.store.recordedAnalytics.filter(({ event }) => event.name === "agc_payment_result"),
+    ).toStrictEqual([]);
+  });
+
   it("has nothing to sell under an identifier nobody published", async () => {
     const { served } = await started();
     expect((await served.call("GET", "/x402/item_nope/purchase")).status).toBe(404);
@@ -1329,7 +1374,7 @@ describe("whose purchase it is", () => {
 
     // The buyer takes the order first, and their own payment cannot be checked
     // yet because nothing is answering.
-    harnessed.facilitator.willVerify({ verified: "unknown", message: "not asked yet" });
+    harnessed.facilitator.willVerify({ verified: "unknown", failure: "not asked yet" });
     await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
       headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },

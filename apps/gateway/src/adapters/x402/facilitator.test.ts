@@ -732,13 +732,21 @@ describe("verifying a payment", () => {
     }
   });
 
-  it("says nobody knows when the facilitator could not be asked", async () => {
-    const answered = await facilitatorFor(
-      new Answering({ verify: new Error("the facilitator timed out") }),
-      edge,
-    ).verify(charge(honest()));
+  it("says nobody knows when the facilitator could not be reached, naming the failure for the operator's log", async () => {
+    // What fetch throws carries the address it could not reach in its cause's
+    // message; the log keeps what kind of failure it was.
+    const unreachable = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:9"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    const answered = await facilitatorFor(new Answering({ verify: unreachable }), edge).verify(
+      charge(honest()),
+    );
 
-    expect(answered).toStrictEqual({ verified: "unknown", message: "the facilitator timed out" });
+    if (answered.verified !== "unknown") throw new Error("the silence was taken for a verdict");
+    expect(answered.failure).toContain("TypeError");
+    expect(answered.failure).toContain("ECONNREFUSED");
   });
 
   it("refuses something that is not a payment at all", async () => {
@@ -763,7 +771,7 @@ describe("verifying a payment", () => {
 
     expect(answered.verified).toBe("unknown");
     expect(answered).toMatchObject({
-      message: expect.stringContaining("nowhere to send the money"),
+      failure: expect.stringContaining("nowhere to send the money"),
     });
     // And nothing reached the facilitator, because there was no question to put
     // to it: what is missing is on our side of the call.
