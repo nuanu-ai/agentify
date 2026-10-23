@@ -594,6 +594,7 @@ describe("recovering a payment without another charge", () => {
     await h.store.addOrder({
       ...saved,
       paymentRef: "pay_duplicate",
+      buyerKey: "bk_duplicate",
       order: { ...saved.order, id: "ord_duplicate" },
     });
     h.runtime.facilitator.recoveryFor = async () => recovery;

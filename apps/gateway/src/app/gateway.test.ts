@@ -922,6 +922,7 @@ describe("the goods against the card that sold them", () => {
     await harnessed.store.addOrder({
       ...older,
       paymentRef: harnessed.runtime.ids("pay"),
+      buyerKey: harnessed.runtime.ids("bk"),
       order: { ...older.order, id: oldId },
     });
     await harnessed.gateway.payPurchase(oldId, "OLD", "OLD");

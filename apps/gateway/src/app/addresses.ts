@@ -4,9 +4,9 @@
  * gateway is configured to answer as, never from a request: behind the proxy
  * that ends the agent's TLS a request says plain http, and its host and
  * forwarding headers are whatever the proxy or the caller wrote, so an address
- * built from them could send a paid order's identifier anywhere. An identifier
- * goes through the route table's substitution, since it may hold a character
- * that would split the path.
+ * built from them could send a buyer's key anywhere. A value goes through the
+ * route table's substitution, since it may hold a character that would split
+ * the path.
  */
 
 import { API_ROUTES, expandPath } from "@nuanu-ai/agentify-contracts";
@@ -22,6 +22,9 @@ type Configured = Pick<GatewayConfig, "publicBaseUrl">;
 export const purchaseUrlOf = (config: Configured, itemId: string): string =>
   `${config.publicBaseUrl}${expandPath(API_ROUTES.purchase_item.path, { item_id: itemId })}`;
 
-/** Where one order is read again, and where goods that come later are collected. */
-export const statusUrlOf = (config: Configured, orderId: string): string =>
-  `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+/**
+ * Where one order is read again, and where goods that come later are
+ * collected: the address that carries its buyer's key.
+ */
+export const statusUrlOf = (config: Configured, buyerKey: string): string =>
+  `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, { buyer_key: buyerKey })}`;

@@ -17,9 +17,9 @@
  * or collects the console with a spy is watched as well. The record is checked
  * after each test and after each file, where nothing under test can catch it.
  *
- * A buyer's key is any token of the shape the gateway gives one: `key_` and
+ * A buyer's key is any token of the shape the gateway gives one: `bk_` and
  * identifier characters, not preceded by a letter or digit. That takes in the
- * short ones fixtures make up (`key_1`), since code that logs those logs the
+ * short ones fixtures make up (`bk_1`), since code that logs those logs the
  * real ones too; a freshly issued key is checked to fit. An order key is read
  * the same way, and a status address whatever value it carries.
  * A download link is recognised with its query separators written plainly or
@@ -38,11 +38,11 @@ import { afterAll, afterEach } from "vitest";
 import { randomIds } from "./apps/gateway/src/ports/clock.js";
 import { API_ROUTES } from "./packages/contracts/src/api.js";
 
-const BUYER_KEY = /(?<![A-Za-z0-9])key_[A-Za-z0-9][A-Za-z0-9_-]*/;
+const BUYER_KEY = /(?<![A-Za-z0-9])bk_[A-Za-z0-9][A-Za-z0-9_-]*/;
 
-if (!BUYER_KEY.test(randomIds("key"))) {
+if (!BUYER_KEY.test(randomIds("bk"))) {
   throw new Error(
-    `a buyer's key the gateway issues, such as ${randomIds("key")}, no longer has the ` +
+    `a buyer's key the gateway issues, such as ${randomIds("bk")}, no longer has the ` +
       "shape this guard looks for, so it would let every one of them through to the log",
   );
 }

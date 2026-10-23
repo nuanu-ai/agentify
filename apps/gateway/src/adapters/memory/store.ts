@@ -655,6 +655,9 @@ export class MemoryStore implements Store {
         `the order ${record.order.id} names a payment reference another order already has`,
       );
     }
+    if ([...this.#orders.values()].some((held) => held.buyerKey === record.buyerKey)) {
+      throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
+    }
     // No await from here to the write, so the count and the write are one step
     // against every other birth in the one process this map lives in.
     if (birth !== undefined) {
@@ -704,6 +707,10 @@ export class MemoryStore implements Store {
 
   async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
     return [...this.#orders.values()].find((record) => record.paymentRef === paymentRef) ?? null;
+  }
+
+  async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
+    return [...this.#orders.values()].find((record) => record.buyerKey === buyerKey) ?? null;
   }
 
   async merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null> {

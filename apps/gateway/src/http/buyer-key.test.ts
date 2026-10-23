@@ -73,7 +73,7 @@ describe("the buyer's key", () => {
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
     const { order_id: orderId, status_url: address } = bought.body as AgentOrderStatus;
     const key = keyIn(address);
-    expect(key).toMatch(/^key_/);
+    expect(key).toMatch(/^bk_/);
 
     const delivered = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
       body: { activation_code: "LPA:1$example.com$ACTIVATE" },

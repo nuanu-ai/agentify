@@ -1678,6 +1678,7 @@ export class Gateway {
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
       paymentRef: this.runtime.ids("pay"),
+      buyerKey: this.runtime.ids("bk"),
       // What the agent was promised, kept with the order so a card republished
       // since cannot change what this sale is held to. A parcel's card declares
       // none: its order is held to a shipment.
@@ -2096,6 +2097,11 @@ export class Gateway {
    */
   async orderById(orderId: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderById(orderId);
+  }
+
+  /** The order a buyer's key opens, whoever it belongs to; only the agent's status read asks. */
+  async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
+    return this.runtime.store.orderByBuyerKey(buyerKey);
   }
 
   /**

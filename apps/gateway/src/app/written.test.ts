@@ -119,7 +119,7 @@ const page = { items: [shown] };
 
 const status = {
   order_id: "ord_7c1e05",
-  status_url: "https://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+  status_url: "https://agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
   status: "rejected",
   payment_status: "not_paid",
   price: {

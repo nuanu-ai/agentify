@@ -75,18 +75,13 @@ const publish = async (served: Served, card: Card): Promise<string> => {
 };
 
 describe("the surface is the table", () => {
-  it("exports bounded route templates without order identifiers or query tokens", async () => {
+  it("exports bounded route templates without buyers' keys or query tokens", async () => {
     const { served } = await started();
-    await served.call(
-      "GET",
-      "/x402/orders/private-order-identifier/status?token=private-query-token",
-    );
+    await served.call("GET", "/x402/orders/private-buyer-key/status?token=private-query-token");
     await served.call("GET", "/unknown/private-unmatched-path");
     const exported = await telemetry.metrics();
-    expect(exported).toContain('route="/x402/orders/:order_id/status"');
-    expect(exported).not.toMatch(
-      /private-order-identifier|private-query-token|private-unmatched-path/,
-    );
+    expect(exported).toContain('route="/x402/orders/:buyer_key/status"');
+    expect(exported).not.toMatch(/private-buyer-key|private-query-token|private-unmatched-path/);
   });
   it("serves every call the contract says may be served", async () => {
     // Catches a route express mounts but does not match at its own literal path,

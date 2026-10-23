@@ -1048,6 +1048,7 @@ describe("a shipment against a card republished since the sale", () => {
     await harnessed.store.addOrder({
       ...older,
       paymentRef: harnessed.runtime.ids("pay"),
+      buyerKey: harnessed.runtime.ids("bk"),
       order: { ...older.order, id: orderId },
     });
     await harnessed.gateway.payPurchase(orderId, "PAYMENT-OLDER", "PAYMENT-OLDER");

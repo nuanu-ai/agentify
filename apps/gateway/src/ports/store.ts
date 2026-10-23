@@ -201,6 +201,16 @@ export interface StoredOrder {
    */
   readonly paymentRef: string;
   /**
+   * The buyer's key: random, issued with the order, and the only thing the
+   * agent's read of its purchase finds the order by. It reaches the buyer
+   * inside the status address and nobody else, so it is never written into
+   * anything the merchant reads, the payment side is sent, analytics or a
+   * log line. It is kept as issued, because a buyer who lost the purchase
+   * answer is given the same address again. Every order has one, and no two
+   * share one.
+   */
+  readonly buyerKey: string;
+  /**
    * The result the card declared when the order was made; a delivery is held
    * to this, so a later republish changes nothing for the order. Absent on a
    * parcel's order, which is held to a shipment, and on an order stored
@@ -931,12 +941,17 @@ export interface Store {
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its
-   * callers have no merchant: the payment route, which takes no key; the
-   * agent's read of its own purchase; and the gateway's own clocks. The answer
-   * the agent gets names no merchant, which keeps this from being a read
-   * across merchants. A merchant's own read is {@link merchantOrder}.
+   * callers have no merchant: the payment route, which takes no key, and the
+   * gateway's own clocks. A merchant's own read is {@link merchantOrder}.
    */
   orderById(id: string): Promise<StoredOrder | null>;
+
+  /**
+   * The order a buyer's key opens, whoever it belongs to. Only the agent's
+   * read of its own purchase asks: the answer it gets names no merchant, which
+   * keeps this from being a read across merchants.
+   */
+  orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null>;
 
   /**
    * The order a payment is for, by the reference its challenge carried,

@@ -1416,10 +1416,10 @@ function salePriceOf(record: StoredOrder): SalePrice | null {
 
 /**
  * Where one order stands, as the agent that bought it reads it, both from the
- * purchase and from a later read by identifier alone; one builder keeps the two
+ * purchase and from a later read by its key alone; one builder keeps the two
  * answers alike. It is built field by field rather than trimmed from the order,
- * because anyone holding the identifier can read it and a field later added to
- * the merchant's record would otherwise leak here unnoticed. `config` is taken
+ * because anyone holding the status address can read it and a field later
+ * added to the merchant's record would otherwise leak here unnoticed. `config` is taken
  * whole rather than as a base string, so that the address cannot quietly become
  * one read off a request.
  */
@@ -1433,7 +1433,7 @@ export function agentOrderStatusOf(
 
   return {
     order_id: record.order.id,
-    status_url: statusUrlOf(config, record.order.id),
+    status_url: statusUrlOf(config, record.buyerKey),
     status,
     payment_status: paymentStatusOf(record.order),
     ...transactionOf(record),

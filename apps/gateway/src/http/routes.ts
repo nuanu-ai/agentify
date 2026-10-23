@@ -313,9 +313,11 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 }
 
 /**
- * What became of one purchase, for the agent that made it. Knowing the order's
- * identifier stands in for a key, so the read is not scoped to a merchant. The
- * document is the same one the purchase itself answers with.
+ * What became of one purchase, for the agent that made it. The buyer's key in
+ * the address stands in for a merchant key, so the read is not scoped to a
+ * merchant, and it is the only thing the order is found by: an order
+ * identifier presented here names no order. The document is the same one the
+ * purchase itself answers with.
  */
 async function orderStatus(
   gateway: Gateway,
@@ -325,7 +327,7 @@ async function orderStatus(
   // cache on the way may keep one. The refusal says the same, or the header
   // alone would tell an order from a guess.
   response.setHeader("Cache-Control", "no-store");
-  const record = await gateway.orderById(params.order_id ?? "");
+  const record = await gateway.orderByBuyerKey(params.buyer_key ?? "");
   if (record === null) {
     return refusedWith(response, NO_SUCH_ORDER);
   }

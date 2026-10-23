@@ -426,9 +426,9 @@ async function callerBehind(
     }
 
     // No key is read: on an open route the payment stands in for
-    // authorisation, and on the agent's route the order's identifier does.
+    // authorisation, and on the agent's route the buyer's key in the address does.
     case "none":
-    case "order_id":
+    case "buyer_key":
       return null;
 
     case "undecided":

@@ -253,8 +253,9 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  *
  * It carries what the buyer may know and nothing more: no merchant account, no
  * merchant's key for the product, none of the parameters the buyer sent.
- * Anyone holding an order's identifier, or the `status_url` built from it, can
- * read it and the goods in it, so neither is to be shared.
+ * `status_url` carries the buyer's key, and anyone holding that address can
+ * read the order and the goods in it, so it is not to be shared. `order_id`
+ * is no secret: it names the order, and the buyer quotes it to the seller.
  *
  * `price` and `delivered` are required and nullable, so that "none yet" is a
  * stated fact rather than a missing field. `refusal` is present only where a
@@ -267,13 +268,19 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  */
 export const AgentOrderStatusSchema = z
   .looseObject({
+    /**
+     * The order's reference, the same one the merchant holds. It is no secret
+     * and opens nothing: it is what the buyer quotes to the seller.
+     */
     order_id: IdentifierSchema,
 
     /**
      * Where this order is read again: the whole address of its status route,
      * scheme and host included, ready to call. An agent that bought goods that
      * come later collects them here, and cannot work the address out from the
-     * purchase address.
+     * purchase address or the order's identifier. The address carries the
+     * buyer's key, the only thing that opens the order, so it is not to be
+     * shared.
      *
      * It is built from the address the gateway is configured to answer as,
      * never from the request, which behind a TLS-ending proxy says plain http.
@@ -393,7 +400,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      "What became of one purchase, as the agent that made it reads it: where the order stands, what happened to the buyer's payment, what it was priced at, and the goods once they are the buyer's. status_url is where this document is read again: the whole address of the order's status route, built from the address the gateway is configured to answer as and never from the request, and the place an agent that bought goods that come later collects them. order_id and status_url are the only key to this order and its goods. Anyone who holds either can read them, so they are not to be shared, and every answer of the status route tells caches to keep nothing. The document is smaller than the merchant's own view of the same order on purpose: no merchant account, no merchant's key for the product, none of the purchase parameters and nothing about any other order. status says where the order stands. payment_status says, independently of it, whether the original payment is paid, not_paid or unresolved; a word not among those is one added later and says nothing an agent can act on. Nothing a merchant says changes that payment fact, and closing fulfillment establishes no refund. price is what the buyer was asked for and not proof that anything was charged, or null where nobody named one. transaction is the proof: once payment_status is paid it names the transaction that paid the order, as the merchant's receipt does, whether or not the goods have come, and it is absent before that and on a payment that is not_paid or unresolved. delivered holds the goods once they are the buyer's and is null until then; goods made for a purchase whose payment failed or went unanswered are withheld rather than described. A parcel's order carries shipment instead, the merchant's record of handing it to a carrier, and ship_by, the instant it has to be with a carrier by; both are null until there is something to say, delivered stays null, and shipped is the last word Agentify has about the parcel. refusal is present only where a merchant refused: their own code and sentence, carried across unchanged. An absent refusal means there is no refusal to quote, never that one was dropped. reason is Agentify's own voice. It says why Agentify ended a rejected or expired order where the status word alone would blur what to do next, why a paid order is unfulfilled (the merchant refused it, its delivery deadline passed, or the merchant left), on a paid order whose merchant closed fulfillment, what Agentify knows beside the merchant's words, which can say otherwise, and, on delivered_unpaid, that the merchant made the goods but the charge did not go through, so nothing was taken, Agentify holds the goods, and a payment for this same purchase from the wallet that signed it releases them. unfulfilled is a paid purchase with no delivery, and late goods can still arrive until the merchant closes fulfillment. fulfillment_closed means the merchant stopped fulfillment through Agentify; merchant_closure holds when they did and their optional message, which is their statement alone and not a refund or agreement Agentify has verified. test marks a rehearsal purchase, whose other fields read as they would after a real charge. seller is who sold it, the name and shop site the merchant gave, which Agentify did not check, and the site is where to take what this document cannot answer. A status word a reader does not know is not an ending it knows: it reads the order again later and does not buy again. This document and every part inside it may gain fields, and a reader ignores the ones it does not know.",
+      "What became of one purchase, as the agent that made it reads it: where the order stands, what happened to the buyer's payment, what it was priced at, and the goods once they are the buyer's. status_url is where this document is read again: the whole address of the order's status route, built from the address the gateway is configured to answer as and never from the request, and the place an agent that bought goods that come later collects them. status_url carries the buyer's key, the only thing that opens this order and its goods: anyone who holds the address can read them, so it is not to be shared, and every answer of the status route tells caches to keep nothing. order_id is not a secret. It names the order as the merchant knows it and opens nothing, so it is what the buyer quotes to the seller. The document is smaller than the merchant's own view of the same order on purpose: no merchant account, no merchant's key for the product, none of the purchase parameters and nothing about any other order. status says where the order stands. payment_status says, independently of it, whether the original payment is paid, not_paid or unresolved; a word not among those is one added later and says nothing an agent can act on. Nothing a merchant says changes that payment fact, and closing fulfillment establishes no refund. price is what the buyer was asked for and not proof that anything was charged, or null where nobody named one. transaction is the proof: once payment_status is paid it names the transaction that paid the order, as the merchant's receipt does, whether or not the goods have come, and it is absent before that and on a payment that is not_paid or unresolved. delivered holds the goods once they are the buyer's and is null until then; goods made for a purchase whose payment failed or went unanswered are withheld rather than described. A parcel's order carries shipment instead, the merchant's record of handing it to a carrier, and ship_by, the instant it has to be with a carrier by; both are null until there is something to say, delivered stays null, and shipped is the last word Agentify has about the parcel. refusal is present only where a merchant refused: their own code and sentence, carried across unchanged. An absent refusal means there is no refusal to quote, never that one was dropped. reason is Agentify's own voice. It says why Agentify ended a rejected or expired order where the status word alone would blur what to do next, why a paid order is unfulfilled (the merchant refused it, its delivery deadline passed, or the merchant left), on a paid order whose merchant closed fulfillment, what Agentify knows beside the merchant's words, which can say otherwise, and, on delivered_unpaid, that the merchant made the goods but the charge did not go through, so nothing was taken, Agentify holds the goods, and a payment for this same purchase from the wallet that signed it releases them. unfulfilled is a paid purchase with no delivery, and late goods can still arrive until the merchant closes fulfillment. fulfillment_closed means the merchant stopped fulfillment through Agentify; merchant_closure holds when they did and their optional message, which is their statement alone and not a refund or agreement Agentify has verified. test marks a rehearsal purchase, whose other fields read as they would after a real charge. seller is who sold it, the name and shop site the merchant gave, which Agentify did not check, and the site is where to take what this document cannot answer. A status word a reader does not know is not an ending it knows: it reads the order again later and does not buy again. This document and every part inside it may gain fields, and a reader ignores the ones it does not know.",
   });
 
 /**
@@ -447,20 +454,23 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
  * `none`: anybody may call, as for the catalog and the purchase, where the
  * payment stands in for authorisation.
  *
- * `order_id`: knowing an order's identifier stands in for a key. That rests on
- * the identifier being random and long enough not to be guessed, and on its
- * going only to the agent that bought and to the merchant: the payment
- * challenge, which reaches the payment facilitator and which a discovery
- * listing can publish, names the order by a separate payment reference that
- * no route but the purchase reads. Anyone else who obtains the identifier can
- * read that order, so the agent is told to keep it to itself, the document
- * behind this door carries only what the buyer may know, and a gateway must
- * answer an identifier that names no order exactly as any other unknown one.
+ * `buyer_key`: the buyer's key, a random value created with the order, stands
+ * in for a key. It reaches only the agent that bought, inside the order's
+ * status address, so the agent is told to keep that address to itself. The
+ * order's identifier is not this key: it reaches the merchant and the payment
+ * side and opens nothing here. A gateway answers only by the key, and answers
+ * an order identifier or any other value exactly as a key that names no order,
+ * so the refusal tells nobody what else exists.
  *
  * `undecided`: no door has been chosen. A gateway must not mount such a route;
  * see `mountableRoutes`.
  */
-export const AUTH_MODES = Object.freeze(["merchant_key", "none", "order_id", "undecided"] as const);
+export const AUTH_MODES = Object.freeze([
+  "merchant_key",
+  "none",
+  "buyer_key",
+  "undecided",
+] as const);
 
 export type AuthMode = (typeof AUTH_MODES)[number];
 
@@ -817,10 +827,10 @@ export const API_ROUTES = Object.freeze({
 
   get_order_status: {
     method: "GET",
-    path: "/x402/orders/:order_id/status",
-    auth: "order_id",
+    path: "/x402/orders/:buyer_key/status",
+    auth: "buyer_key",
     description:
-      "What became of a purchase, for the agent that made it, and the route on which an agent that bought goods that come later collects them. Every answer that carries the order document names this address in status_url, whole and ready to call. A paid order with no delivery by its card's deadline reads unfulfilled, as does a paid order the merchant refuses or leaves behind. That says fulfillment failed; it makes no claim about a refund or an agreement between buyer and merchant. Late goods can still arrive and appear here until the merchant closes fulfillment through Agentify, and merchant_closure then attributes any explanation to the merchant. payment_status always states the original payment on its own. A payment whose outcome was unknown keeps being checked after closure, without a new charge and without releasing goods, and the document says so once it is known. Knowing the order's identifier is the proof, so this call takes no key. The identifier reaches the agent that bought in the purchase's answer, and the merchant, but never the payment requirements, which carry a separate payment_ref; this call answers that reference exactly as it answers an identifier that names no order. An order that ended rejected or expired with nothing charged or held is deleted thirty days after it was last written, and its identifier is answered from then on as one that names no order. Whoever mounts the route reads which door a call is behind from its auth and never from its address, and answers an identifier that names no order exactly as any other unknown one, or the refusal becomes a way of counting the orders behind it.",
+      "What became of a purchase, for the agent that made it, and the route on which an agent that bought goods that come later collects them. Every answer that carries the order document names this address in status_url, whole and ready to call. A paid order with no delivery by its card's deadline reads unfulfilled, as does a paid order the merchant refuses or leaves behind. That says fulfillment failed; it makes no claim about a refund or an agreement between buyer and merchant. Late goods can still arrive and appear here until the merchant closes fulfillment through Agentify, and merchant_closure then attributes any explanation to the merchant. payment_status always states the original payment on its own. A payment whose outcome was unknown keeps being checked after closure, without a new charge and without releasing goods, and the document says so once it is known. The address carries the buyer's key, created with the order and given only to the agent that bought, in the status_url of the purchase's answer and of this document; holding the address is the proof, so this call takes no merchant key, and the address is not to be shared. The order's identifier is not the key: it reaches the merchant, their systems and the payment side, and presented here it is answered exactly as a key that names no order, as is any other value. An order that ended rejected or expired with nothing charged or held is deleted thirty days after it was last written, and its key is answered from then on as one that names no order. Whoever mounts the route reads which door a call is behind from its auth and never from its address, and answers a key that names no order exactly as any other unknown value, or the refusal becomes a way of counting the orders behind it.",
     response: { document: AgentOrderStatusSchema },
   },
 }) satisfies Readonly<Record<string, RouteDefinition>>;

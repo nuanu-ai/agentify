@@ -90,7 +90,7 @@ describe("a purchase that lapsed unpaid", () => {
     await theDailyWork(harnessed);
 
     expect(await harnessed.store.orderById(lapsed)).toBeNull();
-    const unknown = await served.call("GET", lapsedAt.replace(/key_[^/]+/, "key_never_made"));
+    const unknown = await served.call("GET", lapsedAt.replace(/bk_[^/]+/, "bk_never_made"));
     const forgotten = await served.call("GET", lapsedAt);
     expect(forgotten.status).toBe(unknown.status);
     expect(forgotten.body).toStrictEqual(unknown.body);

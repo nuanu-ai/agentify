@@ -32,7 +32,7 @@ const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
  * The order this server answers for with a proxy's error page instead of a
  * document, so the buyer can be shown one without a proxy in the way.
  */
-const KEY_BEHIND_A_BAD_PROXY = "key_a_proxy_ate_it";
+const KEY_BEHIND_A_BAD_PROXY = "bk_a_proxy_ate_it";
 
 /**
  * Where this server's purchase answer says the order is collected.
@@ -300,7 +300,7 @@ describe("an answer that arrived against a call that never landed", () => {
       maxUsd: 50,
     });
 
-    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "key_7c1e05"))).rejects.toThrow(
+    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "bk_7c1e05"))).rejects.toThrow(
       /fetch failed/,
     );
   });
@@ -315,7 +315,7 @@ describe("what this buyer never sends", () => {
     // ending up behind the merchant's door.
     await buyer.catalog();
     await buyer.buy(listed("itm_9f2c4a"), {});
-    await buyer.status(statusAt(baseUrl, "key_7c1e05"));
+    await buyer.status(statusAt(baseUrl, "bk_7c1e05"));
 
     expect(asked).toHaveLength(3);
     for (const one of asked) {

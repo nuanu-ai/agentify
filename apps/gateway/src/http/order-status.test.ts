@@ -606,7 +606,7 @@ describe("what is kept of the answer", () => {
     });
 
     const collected = await statusOf(served, orderId);
-    const unknown = await served.call("GET", presenting("key_nothing_here"));
+    const unknown = await served.call("GET", presenting("bk_nothing_here"));
 
     expect((collected.body as AgentOrderStatus).status).toBe("delivered");
     expect(collected.headers.get("cache-control")).toBe("no-store");
@@ -630,7 +630,7 @@ describe("what the address opens the order by", () => {
 
     const real = await served.call("GET", onThisGateway(address));
     const byIdentifier = await served.call("GET", presenting(orderId));
-    const invented = await served.call("GET", presenting("key_nothing_here"));
+    const invented = await served.call("GET", presenting("bk_nothing_here"));
 
     expect(real.status).toBe(200);
     expect((real.body as AgentOrderStatus).order_id).toBe(orderId);

@@ -103,8 +103,7 @@ describe("a merchant closes future Agentify fulfillment", () => {
     };
     const agent = {
       order_id: merchant.id,
-      status_url:
-        "https://test.agentify.ad/x402/orders/key_8d2e4f6a0b1c3d5e7f9a1b3c5d7e9f0a/status",
+      status_url: "https://test.agentify.ad/x402/orders/bk_8d2e4f6a0b1c3d5e7f9a1b3c5d7e9f0a/status",
       status: merchant.status,
       payment_status: merchant.payment_status,
       price: merchant.price,

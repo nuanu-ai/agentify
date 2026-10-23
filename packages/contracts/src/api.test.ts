@@ -527,7 +527,7 @@ describe("the status an agent reads", () => {
     price,
     delivered: null,
     test: true,
-    status_url: "https://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+    status_url: "https://agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     seller: { name: "Freeland", site: "https://freeland.example" },
   };
 
@@ -620,9 +620,9 @@ describe("the status an agent reads", () => {
     // A path needs a host the agent was never told, and an address in another
     // scheme is not one an HTTP client can call.
     for (const status_url of [
-      "/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
-      "agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
-      "ftp://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "ftp://agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     ]) {
       expect(errorOf(AgentOrderStatusSchema, { ...status, status_url }), status_url).toContain(
         "status_url",
@@ -631,7 +631,7 @@ describe("the status an agent reads", () => {
     expect(
       AgentOrderStatusSchema.safeParse({
         ...status,
-        status_url: "http://localhost:8080/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+        status_url: "http://localhost:8080/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
       }).success,
     ).toBe(true);
   });
@@ -650,15 +650,15 @@ describe("the status an agent reads", () => {
       throw new Error("the exported document says nothing about what status_url has to look like");
     }
     const pattern = new RegExp(written);
-    expect(pattern.test("/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status")).toBe(false);
+    expect(pattern.test("/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status")).toBe(false);
     expect(pattern.test(status.status_url)).toBe(true);
 
     for (const status_url of [
       status.status_url,
-      "http://localhost:8080/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
-      "HTTPS://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
-      "ftp://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
-      "/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "http://localhost:8080/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "HTTPS://agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "ftp://agentify.ad/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "/x402/orders/bk_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     ]) {
       expect(pattern.test(status_url), status_url).toBe(
         AgentOrderStatusSchema.safeParse({ ...status, status_url }).success,

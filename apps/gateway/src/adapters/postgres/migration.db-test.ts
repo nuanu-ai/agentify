@@ -1619,7 +1619,7 @@ if (databaseUrl === null) {
     it("gives every order written before it a key of its own that opens it, and changes nothing else", async () => {
       // Nobody holds a key for these orders: their buyers were handed
       // addresses built from the identifier, which opens nothing any more.
-      const before = (id: string, state: string) => ({
+      const keyless = (id: string, state: string) => ({
         order: { id, state, payment: "settled" },
         merchantId: "mch_keyless",
         itemId: "itm_old",
@@ -1629,7 +1629,7 @@ if (databaseUrl === null) {
         paidBy: "0x1111111111111111111111111111111111111111",
         delivery: { access_code: "SESAME" },
       });
-      const rows = [before("ord_delivered", "delivered"), before("ord_waiting", "dispatched")];
+      const rows = [keyless("ord_delivered", "delivered"), keyless("ord_waiting", "dispatched")];
       for (const row of rows) {
         await pool.query(
           "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,false,'mch_keyless','itm_old','sku',$3,now(),now())",
@@ -1647,7 +1647,7 @@ if (databaseUrl === null) {
         )
       ).rows.map((row) => row.record);
       const keys = records.map((record) => record.buyerKey);
-      for (const key of keys) expect(key).toMatch(/^key_[0-9a-f]{32}$/);
+      for (const key of keys) expect(key).toMatch(/^bk_[0-9a-f]{32}$/);
       expect(new Set(keys).size).toBe(rows.length);
       expect(records.map(({ buyerKey: _key, ...rest }) => rest)).toStrictEqual([rows[0], rows[1]]);
       const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());

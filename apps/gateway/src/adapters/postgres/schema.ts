@@ -247,6 +247,8 @@ export const orders = pgTable(
     // The order a payment is for, found by the reference its challenge
     // carried, and never two orders under one reference.
     uniqueIndex("orders_payment_ref_unique").on(sql`(${table.record} ->> 'paymentRef')`),
+    // The order a buyer's key opens, and never two orders under one key.
+    uniqueIndex("orders_buyer_key_unique").on(sql`(${table.record} ->> 'buyerKey')`),
   ],
 );
 
