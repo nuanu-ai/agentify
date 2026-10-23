@@ -1,9 +1,11 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL } from "@agentify/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
 import { PaymentEdge } from "./http/x402.js";
-import { paymentLayer } from "./start.js";
+import { announceTheEnvironment, paymentLayer } from "./start.js";
+import { loggedWhile } from "./testing/logged.js";
 
 const closing: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -46,5 +48,37 @@ describe("starting the payment layer", () => {
     const facilitator = await paymentLayer(config, new PaymentEdge(config));
     expect(facilitator.reconcile).toBeDefined();
     expect(said.join("\n")).toMatch(/8453.*eip155:84532/);
+  });
+});
+
+describe("the first line of the log", () => {
+  const firstLineThrough = (facilitatorUrl: string) =>
+    loggedWhile(async () =>
+      announceTheEnvironment(
+        loadConfig({
+          DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
+          PAYMENT_NETWORK: "eip155:84532",
+          FACILITATOR_URL: facilitatorUrl,
+          CDP_API_KEY_ID: "key-id",
+          CDP_API_KEY_SECRET: "secret",
+        }),
+      ),
+    );
+
+  it("says payments settle with test funds through a facilitator known to settle on a test chain", async () => {
+    for (const known of [CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL]) {
+      expect(await firstLineThrough(known), known).toMatch(/settle with test funds/);
+    }
+  });
+
+  it("names any other facilitator on a test chain and claims nothing settles through it", async () => {
+    // A local stack pointed at a model of a facilitator settles nothing, and
+    // an operator reading "test funds" would believe a transfer happened.
+    const model = "http://host.docker.internal:8790/";
+    const said = await firstLineThrough(model);
+
+    expect(said).toContain(model);
+    expect(said).not.toMatch(/settle with test funds/);
+    expect(said).toContain("TEST");
   });
 });
