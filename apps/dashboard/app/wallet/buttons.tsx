@@ -40,7 +40,9 @@ export const WALLET_WORDS = {
     "With a Coinbase Wallet you send it in one step: Coinbase's window asks you to approve it, and nothing is sent until you do.",
   payoutSent:
     "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out.",
-  payoutClosed: "Coinbase Wallet was closed. Nothing was sent.",
+  payoutClosed: "Coinbase Wallet was closed before the payout was asked for. Nothing was sent.",
+  payoutUnconfirmed:
+    "Coinbase Wallet's window closed without confirming the payout. If you approved it there, it may still go out, so check what your payout contract holds before sending another.",
   payoutEarlierStands:
     "Coinbase Wallet sent nothing this time. It did send a payout from this page earlier.",
   payoutUnknown:
@@ -186,18 +188,21 @@ export function CoinbasePayout({
       sent = NOT_OPENED;
     }
     // What the page says of payouts holds whichever press answers last: a
-    // payout sent is said whenever it went out; a press whose answer was lost,
-    // or that another press overtook in the window, says the page does not
-    // know; and no press says that nothing was sent while the page does not
-    // know or another payout press still waits, whose payout can still go out.
+    // payout sent is said whenever it went out; a press whose payout was
+    // asked for and not acknowledged, or that another press overtook in the
+    // window, says the page does not know; and no press says that nothing was
+    // sent while the page does not know or another payout press still waits,
+    // whose payout can still go out.
     if (sent.kind === "sent") {
       if (page !== null) page.payoutSent = true;
       pressed.say(WALLET_WORDS.payoutSent);
       return;
     }
-    if (sent.kind === "lost" || !alone()) {
+    if (sent.kind === "unconfirmed" || sent.kind === "lost" || !alone()) {
       if (page !== null) page.payoutUnknown = true;
-      pressed.say(WALLET_WORDS.payoutUnknown);
+      pressed.say(
+        sent.kind === "unconfirmed" ? WALLET_WORDS.payoutUnconfirmed : WALLET_WORDS.payoutUnknown,
+      );
       return;
     }
     if (!pressed.latest()) return;

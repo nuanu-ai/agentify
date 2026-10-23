@@ -27,7 +27,7 @@ export interface Wallet {
   disconnect?(): Promise<void> | void;
 }
 
-/** The merchant closed the wallet's window or declined; nothing happened. */
+/** The merchant closed the wallet's window or declined it before any payout was asked for; nothing happened. */
 export interface Cancelled {
   readonly kind: "cancelled";
 }
@@ -45,6 +45,15 @@ export interface Failed {
  */
 export interface Lost {
   readonly kind: "lost";
+}
+
+/**
+ * The wallet answered the payout with a refusal. A wallet's window can say it
+ * was closed and still carry out what it was approved to do, so a refusal of
+ * a payout already asked for does not show that nothing was sent.
+ */
+export interface Unconfirmed {
+  readonly kind: "unconfirmed";
 }
 
 /** EIP-1193's code for a request the person turned down. */
@@ -131,14 +140,16 @@ export async function askAddress(
  * on the chain the wallet is on, and Multicall3 sits at the same address on
  * most chains: sent elsewhere, it can succeed, pay out nothing and still cost
  * a fee. `sent` means the wallet acknowledged the batch, not that the network
- * has included it; an acknowledgment naming no batch is `lost`.
+ * has included it. Once the payout has been asked for, nothing the wallet
+ * answers shows that it was not sent: a refusal is `unconfirmed`, and any
+ * other failure, or an acknowledgment naming no batch, is `lost`.
  */
 export async function sendPayout(
   wallet: Wallet,
   chainId: number,
   payout: Readonly<{ to: string; data: string }>,
   alone: () => boolean = () => true,
-): Promise<{ readonly kind: "sent" } | Cancelled | Failed | Lost> {
+): Promise<{ readonly kind: "sent" } | Cancelled | Failed | Unconfirmed | Lost> {
   const chain = `0x${chainId.toString(16)}`;
   return forgotten(wallet, alone, async () => {
     const from = await accountOf(wallet);
@@ -158,10 +169,9 @@ export async function sendPayout(
         ],
       });
     } catch (thrown) {
-      // Once the payout has been asked for, only a refusal says anything of
-      // what the merchant did in the window; any other failure leaves it unknown.
-      if ((thrown as { code?: unknown } | null)?.code === DECLINED) throw thrown;
-      return { kind: "lost" } as const;
+      return (thrown as { code?: unknown } | null)?.code === DECLINED
+        ? ({ kind: "unconfirmed" } as const)
+        : ({ kind: "lost" } as const);
     }
     return namesABatch(acknowledged) ? ({ kind: "sent" } as const) : ({ kind: "lost" } as const);
   });
