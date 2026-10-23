@@ -864,6 +864,8 @@ describe("the payment challenge", () => {
     expect(error.code).toBe("payment_not_verified");
     expect(error.retryable).toBe(true);
     expect(error.message).not.toContain("fetch failed");
+    expect(error.message).toContain("charged nothing");
+    expect(error.message).toContain("present the same payment again");
     expect(logged).toContain("fetch failed");
     const order = (await harnessed.store.orderById(offered.order.order.id))?.order;
     expect(order?.state).toBe("quoted");
