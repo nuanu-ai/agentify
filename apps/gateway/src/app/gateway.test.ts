@@ -2822,6 +2822,53 @@ describe("a held poll whose key is revoked by another process", () => {
     ]);
   });
 
+  it("gives back what it drew when the key cannot be read after the draw", async () => {
+    // A drawn envelope never returns to the stream by itself, so a poll that
+    // failed here would lose the order for good.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    harnessed.store.keysOf = async () => {
+      throw new Error("the database went away");
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    harnessed.store.keysOf = read;
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
+  it("gives back an order the hold refused when the key cannot be read to say why", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    let reads = 0;
+    harnessed.store.keysOf = async (merchantId) => {
+      reads += 1;
+      if (reads > 1) throw new Error("the database went away");
+      const keys = await read(merchantId);
+      await harnessed.disableKey(harnessed.merchant.keyId);
+      return keys;
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    harnessed.store.keysOf = read;
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
   it("still hands out an order to a poll whose key keeps working", async () => {
     const harnessed = await started();
     const coded = await published(harnessed, asyncCard);
