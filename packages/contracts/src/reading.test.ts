@@ -329,6 +329,19 @@ describe("a reader of the merchant's answers", () => {
         { kind: "order", id: "msg_1", sent_at: AT, payload: { ...order, id: ` ${email} ` } },
         { kind: "order", id: "msg_2", sent_at: AT, payload: { ...order, [long]: 1 } },
         { kind: long, id: "msg_3", sent_at: AT, payload: {} },
+        { kind: "order", id: "msg_4", sent_at: AT, payload: { ...order, [email]: 1 } },
+        {
+          kind: "order",
+          id: "msg_5",
+          sent_at: AT,
+          payload: { ...order, id: "o".repeat(100), quantity: 3 },
+        },
+        {
+          kind: "order_event",
+          id: "msg_6",
+          sent_at: AT,
+          payload: { type: "order.refunded", order_id: ` ${email} `, at: AT },
+        },
       ],
     });
     const listed = readerOf(OrderListSchema).parse({
@@ -338,7 +351,7 @@ describe("a reader of the merchant's answers", () => {
       ],
     });
 
-    for (const marked of [...unread.envelopes, ...listed.orders]) {
+    for (const marked of [...unread.envelopes.slice(0, 6), ...listed.orders]) {
       const written = JSON.stringify(marked);
       expect(written).not.toContain(email);
       expect(written.length).toBeLessThan(1_000);
@@ -356,6 +369,11 @@ describe("a reader of the merchant's answers", () => {
     expect(JSON.stringify(unread.envelopes[2])).toMatch(/cut/);
     expect(unread.envelopes[3]).toMatchObject({ kind: "unknown" });
     expect(JSON.stringify(unread.envelopes[3])).toMatch(/cut/);
+    expect(unread.envelopes[5]).not.toHaveProperty("subject");
+    // An event of a kind it does not know is read, so its order is held to
+    // the identifier rule by itself.
+    expect(unread.envelopes[6]).toMatchObject({ kind: "order_event" });
+    expect(JSON.stringify(unread.envelopes[6])).not.toContain(email);
   });
 
   it("marks a message of a kind it does not know as unread, naming the kind", () => {
