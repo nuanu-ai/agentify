@@ -1942,6 +1942,39 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
       });
 
+      it("is not found through a key that no longer works, and is through one that does", async () => {
+        // A hand-over is recorded only while the key the poll came in on
+        // works, read under the same hold, so a key revoked by any process
+        // takes no order from the moment it is revoked.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "created"));
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
+        await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 1_000);
+        await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
+        await store.disableKey("mk_1", 2_000);
+        let asked = 0;
+        const handOver = (keyId: string) =>
+          store.withOrder(
+            "ord_1",
+            (found) => {
+              asked += 1;
+              return {
+                save: { ...found, order: { ...found.order, state: "quoted" as const } },
+                result: "handed over",
+              };
+            },
+            { merchantId: A, keyId },
+          );
+
+        expect(await handOver("mk_1")).toStrictEqual({ found: false });
+        expect(await handOver("mk_b")).toStrictEqual({ found: false });
+        expect(await handOver("mk_nobody")).toStrictEqual({ found: false });
+        expect(asked).toBe(0);
+        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+
+        expect(await handOver("mk_2")).toStrictEqual({ found: true, result: "handed over" });
+      });
+
       it("does not change hands because a decision about it said so", async () => {
         // Postgres leaves the merchant column out of its update, so a save
         // carrying another merchant would split the document from the column:

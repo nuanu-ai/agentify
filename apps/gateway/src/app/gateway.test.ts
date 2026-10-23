@@ -2623,6 +2623,100 @@ describe("a poll on a key revoked before it was held", () => {
   });
 });
 
+describe("a held poll whose key is revoked by another process", () => {
+  // The terminal command revokes a key by writing the store, so nothing in
+  // this process ends the polls already held on it. The harness's own revoke
+  // writes the store the same way.
+  const heldThenRevoked = async (harnessed: Harness) => {
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await harnessed.disableKey(harnessed.merchant.keyId);
+    return { held };
+  };
+
+  /** Buys and pays for one unit of a card charged at purchase. */
+  const paidFor = async (harnessed: Harness, itemId: string): Promise<string> => {
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    return offered.order.order.id;
+  };
+
+  it("hands out no order that arrives after the revocation, and the order waits for a key that works", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const { held } = await heldThenRevoked(harnessed);
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
+  it("hands out no order when the key is revoked between the poll's own read of it and the hand-over", async () => {
+    // Another process's revocation can land at any instant, so a read of the
+    // key followed by a separate write of the hand-over leaves a moment in
+    // which the order goes to a key that no longer works.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    harnessed.store.keysOf = async (merchantId) => {
+      const keys = await read(merchantId);
+      await harnessed.disableKey(harnessed.merchant.keyId);
+      return keys;
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+    expect((await harnessed.store.orderById(orderId))?.order.dispatch.attempts).toBe(1);
+  });
+
+  it("hands out no price question after the revocation, and the question reaches a key that works", async () => {
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "2000" });
+    const priced = await published(harnessed, livePriced(asyncCard));
+    const { held } = await heldThenRevoked(harnessed);
+
+    const buying = harnessed.gateway.beginPurchase(priced, {});
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const question = next.envelopes[0];
+    if (question?.kind !== "quote_request") throw new Error("the question did not come back");
+    await harnessed.gateway.answerQuote(harnessed.merchant.id, question.payload.price_id, {
+      available: true,
+      price: { amount: "13.00", currency: "USD" },
+      as_of: "2026-08-26T12:00:00.000Z",
+    });
+    const offered = await buying;
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    expect(offered.order.order.price?.amount).toBe("13.00");
+  });
+
+  it("still hands out an order to a poll whose key keeps working", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes.map((envelope) => envelope.payload)).toMatchObject([
+      { id: orderId },
+    ]);
+  });
+});
+
 describe("a merchant's standing in one read", () => {
   /** What the separate reads say about the harness's merchant now. */
   const separately = async (harnessed: Harness) => {
