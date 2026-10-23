@@ -612,10 +612,13 @@ describe("a gateway newer than this package", () => {
 
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({
-      kind: "quote_skipped",
+      kind: "unread",
       fatal: false,
       subject: question.price_id,
     });
+    // A purpose word is added without a new contract version, so a newer
+    // release is certain to answer it.
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify answers it");
     expect(asked).toStrictEqual([]);
     expect(gateway?.callsTo("answer_quote")).toStrictEqual([]);
   });
@@ -645,10 +648,12 @@ describe("a gateway newer than this package", () => {
     expect(events).toStrictEqual([event]);
     expect(problems).toHaveLength(1);
     expect(problems[0]?.fatal).toBe(false);
-    expect(problems[0]?.kind).toBe("event_skipped");
+    expect(problems[0]?.kind).toBe("unread");
     expect(problems[0]?.subject).toBe("order-1");
     expect(problems[0]?.message).toContain("order.refunded");
-    expect(problems[0]?.message).toMatch(/newer/);
+    // A kind of event is added without a new contract version, so a newer
+    // release is certain to read it.
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify reads it");
     // And the loop went on to ask for more.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "the next poll");
   });
