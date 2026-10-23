@@ -32,10 +32,14 @@ export interface Cancelled {
   readonly kind: "cancelled";
 }
 
-/** The wallet failed, in its own words where it gave any. */
+/**
+ * The wallet failed before any payout was asked for. What it said of the
+ * failure is not kept: a wallet's words, or the browser's where the wallet's
+ * code itself broke, are not written for the merchant and can say something
+ * untrue of the payout.
+ */
 export interface Failed {
   readonly kind: "failed";
-  readonly reason: string;
 }
 
 /**
@@ -62,14 +66,14 @@ const DECLINED = 4001;
 /** EIP-1193's code for a request the provider is not authorised for, as an answer from a session it no longer has. */
 const UNAUTHORISED = 4100;
 
+const codeOf = (thrown: unknown): unknown =>
+  typeof thrown === "object" && thrown !== null ? (thrown as { code?: unknown }).code : undefined;
+
 const outcomeOf = (thrown: unknown): Cancelled | Failed | Lost => {
-  const { code, message } = (thrown ?? {}) as { code?: unknown; message?: unknown };
+  const code = codeOf(thrown);
   if (code === DECLINED) return { kind: "cancelled" };
   if (code === UNAUTHORISED) return { kind: "lost" };
-  return {
-    kind: "failed",
-    reason: typeof message === "string" && message !== "" ? message : "the wallet gave no reason",
-  };
+  return { kind: "failed" };
 };
 
 /**
@@ -82,7 +86,7 @@ const accountOf = async (wallet: Wallet): Promise<string> => {
   const accounts = await wallet.request({ method: "eth_requestAccounts" });
   const first = Array.isArray(accounts) ? (accounts[0] as unknown) : undefined;
   if (typeof first !== "string" || !isAddress(first)) {
-    throw { message: "the wallet answered with no address" };
+    throw new Error("the wallet answered with no address");
   }
   return getAddress(first);
 };
@@ -169,7 +173,7 @@ export async function sendPayout(
         ],
       });
     } catch (thrown) {
-      return (thrown as { code?: unknown } | null)?.code === DECLINED
+      return codeOf(thrown) === DECLINED
         ? ({ kind: "unconfirmed" } as const)
         : ({ kind: "lost" } as const);
     }
