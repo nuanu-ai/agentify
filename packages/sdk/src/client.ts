@@ -58,6 +58,7 @@ import {
   reportSafely,
   type StreamHandlerKind,
   startWorker,
+  unknownStatusWarning,
   type WorkerProblem,
 } from "./worker.js";
 
@@ -267,7 +268,10 @@ export interface OrdersNamespace {
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it until it is deleted: an order that ended
    * rejected or expired with nothing charged or held is deleted thirty days
-   * after it was last written, and then leaves every list. Throws `AgentifyError` when the call fails.
+   * after it was last written, and then leaves every list. An order whose
+   * status is a word this release does not know reads `unknown`, and the
+   * problem reporter is told how many such orders the list holds, as one
+   * `unread` problem. Throws `AgentifyError` when the call fails.
    */
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }
@@ -671,6 +675,9 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
           // string carries text.
           query: query?.open === undefined ? {} : { open: query.open ? "true" : "false" },
         });
+
+        const unread = unknownStatusWarning(listed.orders, query?.open === true);
+        if (unread !== null) reportSafely(registry.problem, unread);
 
         return listed.orders.map((order) => withCalls(order));
       },

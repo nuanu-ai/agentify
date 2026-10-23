@@ -317,7 +317,7 @@ describe("reading orders back", () => {
     expect(open.map((one) => one.status)).toStrictEqual(["unknown", "unknown", "unfulfilled"]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
-    expect(problems[0]?.message).toContain("2 of the 3 open orders");
+    expect(problems[0]?.message).toContain("of the 3 open orders listed, 2 have");
     expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify");
     expect(gateway?.calls.map((call) => call.route)).toStrictEqual(["list_orders"]);
   });

@@ -222,6 +222,29 @@ export const acceptanceArgumentWarning = (orderId: string): WorkerProblem => ({
 });
 
 /**
+ * The warning for orders read back with a status word this release does not
+ * know. Such an order reads `unknown`, and a loop over open orders rightly
+ * leaves it alone, so without this nothing would say that paid work may be
+ * waiting among them. It counts them and decides nothing about them.
+ */
+export const unknownStatusWarning = (
+  listed: readonly { readonly status: string }[],
+  open: boolean,
+): WorkerProblem | null => {
+  const unknown = listed.filter((order) => order.status === UNKNOWN_WORD).length;
+
+  if (unknown === 0) return null;
+
+  const them = unknown === 1 ? "it" : "them";
+
+  return {
+    kind: WORKER_PROBLEM_KINDS.UNREAD,
+    fatal: false,
+    message: `of the ${listed.length} ${open ? "open " : ""}orders listed, ${unknown} ${unknown === 1 ? "has" : "have"} a status this release does not know, read as unknown: nothing here guesses whether to deliver ${them}, paid work may be waiting among ${them}, and ${NEWER_RELEASE} reads ${them}`,
+  };
+};
+
+/**
  * Which registration answers each kind on the stream, by the word a merchant
  * passes to `on`. Everything that has to know the stream's kinds derives from
  * this table, and the `satisfies` clause stops the file compiling when the
