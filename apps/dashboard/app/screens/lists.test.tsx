@@ -406,6 +406,32 @@ describe("a paid order left unfulfilled", () => {
     expect(callout.match(/\d+\.\d{2} USD/g)).toStrictEqual(["80.00 USD"]);
   });
 
+  it("names no source for a payment confirmed after Agentify stopped waiting", () => {
+    // The confirmation may be the facilitator's late answer, with no transfer
+    // ever read from the chain, and the order does not record which.
+    const unfulfilled: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
+    });
+    const text = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(
+            SEEN_BY.mode,
+            cards,
+            unfulfilled,
+            unfulfilled,
+            undefined,
+            { ord_unfulfilled: "charge_confirmed_late" },
+            { ord_unfulfilled: SPLIT },
+          )}
+        />
+      )),
+    );
+    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
+    expect(callout).toContain("stopped waiting");
+    expect(callout).not.toMatch(/network|chain|blockchain/i);
+  });
+
   it("does not guess why delivery was missing when no cause was read", () => {
     const unfulfilled: OrderList = OrderListSchema.parse({
       orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
