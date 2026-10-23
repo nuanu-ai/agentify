@@ -1164,6 +1164,26 @@ export class PostgresStore implements Store {
     // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
     const lookup = await this.#db.transaction(async (tx): Promise<OrderLookup<T>> => {
+      // A share lock rather than a plain read: a revocation committed first is
+      // seen here, and one arriving later waits for this commit, so no write
+      // made through a key lands after the key was revoked.
+      if (scope?.keyId !== undefined) {
+        const [working] = await tx
+          .select({ id: merchantKeys.id })
+          .from(merchantKeys)
+          .where(
+            and(
+              eq(merchantKeys.id, scope.keyId),
+              eq(merchantKeys.merchantId, scope.merchantId),
+              isNull(merchantKeys.disabledAt),
+            ),
+          )
+          .limit(1)
+          .for("share");
+        if (working === undefined) {
+          return { found: false };
+        }
+      }
       // The row lock makes a second decision about this order wait here.
       // Where a merchant is named it is in the same predicate, so a stranger's
       // order is never selected or locked.

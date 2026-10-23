@@ -565,6 +565,13 @@ export const analyticsEventOf = <R>(
 /** Which merchant an order belongs to, where a read is one merchant's alone. */
 export interface MerchantScope {
   readonly merchantId: string;
+  /**
+   * The merchant's key the caller came in on, where it acts through one: the
+   * order is then found only while that key works, read under the same hold
+   * as the order, so a key revoked by any process acts on nothing from that
+   * moment.
+   */
+  readonly keyId?: string;
 }
 
 export interface Store {
@@ -1018,6 +1025,8 @@ export interface Store {
    * asks; nothing else touches the order in between. Given a `scope`, another
    * merchant's order is not found: ownership is checked in the same read as the
    * lock, so there is no window between checking whose it is and acting on it.
+   * A scope naming a key finds nothing once that key is revoked, whichever
+   * process revoked it.
    *
    * Where `change` saves the order, `analytics` is asked what the order as
    * found and as saved amount to, and what it answers is recorded in the same
