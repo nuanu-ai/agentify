@@ -21,6 +21,7 @@ import {
   API_ROUTES,
   ErrorEnvelopeSchema,
   expandPath,
+  findingsOf,
   MERCHANT_KEY_HEADER,
   merchantKeyHeaderValue,
   type Read,
@@ -311,7 +312,7 @@ export const callRoute = async <N extends RouteName>(
 
   return failure(
     name,
-    `${name} at ${url.href} answered ${response.status} with JSON that is not the document it promises; where it does not fit, without the values: ${whereItFailed(parsed.error.issues)}`,
+    `${name} at ${url.href} answered ${response.status} with JSON that is not the document it promises; where it does not fit, without the values: ${whereItFailed(findingsOf(parsed.error.issues))}`,
     REACH.ANSWERED,
     body,
   );

@@ -6,7 +6,7 @@
  * carries the contract schemas' findings into the shape a merchant reads.
  */
 
-import type { Problem } from "@nuanu-ai/agentify-contracts";
+import type { Problem, ReadFinding } from "@nuanu-ai/agentify-contracts";
 
 /**
  * One finding of a schema, as much of it as this package reads. A finding
@@ -49,76 +49,55 @@ export const describeProblems = (problems: readonly Problem[]): string =>
     )
     .join("\n");
 
-/**
- * A schema's finding as far as `whereItFailed` reads it. Its message is left
- * out on purpose: a refinement may write the value it refused into it.
- */
-export interface FoundIssue {
-  readonly code?: string | undefined;
-  readonly path: readonly PropertyKey[];
-  readonly expected?: unknown;
-  readonly keys?: readonly string[];
-  readonly errors?: readonly (readonly FoundIssue[])[];
-}
-
 /** How many findings one sentence names before it counts the rest. */
 const NAMED_AT_MOST = 10;
 
-const written = (path: readonly PropertyKey[]): string =>
-  path.length === 0 ? "the document as a whole" : path.map(String).join(".");
+const written = (path: readonly string[]): string =>
+  path.length === 0 ? "the document as a whole" : path.join(".");
 
-/** Of the shapes a union could take, the one that came closest to fitting. */
-const closestOf = (issue: FoundIssue): readonly FoundIssue[] | undefined =>
-  [...(issue.errors ?? [])].sort((one, other) => one.length - other.length)[0];
-
-const findingsIn = (issue: FoundIssue, under: readonly PropertyKey[]): string[] => {
-  const at = [...under, ...issue.path];
-
-  switch (issue.code) {
+const sentencesOf = (finding: ReadFinding): string[] => {
+  switch (finding.code) {
     case "unrecognized_keys":
-      return (issue.keys ?? []).map(
-        (key) => `${written([...at, key])} is a field this release does not know`,
+      return (finding.keys ?? []).map(
+        (key) => `${written([...finding.path, key])} is a field this release does not know`,
       );
-    case "invalid_union": {
-      // The shape that came closest says the most about what is wrong.
-      const closest = closestOf(issue);
-
-      return closest === undefined
-        ? [`${written(at)} takes none of the shapes this release knows`]
-        : closest.flatMap((inner) => findingsIn(inner, at));
-    }
+    case "invalid_key":
+      return [
+        `a key under ${finding.path.length === 0 ? "the document" : finding.path.join(".")} does not fit`,
+      ];
+    case "invalid_union":
+      return [`${written(finding.path)} takes none of the shapes this release knows`];
     case "invalid_type":
-      return [`${written(at)}: expected ${String(issue.expected)}`];
+      return [`${written(finding.path)}: expected ${finding.expected ?? UNNAMED_FINDING}`];
     default:
-      return [`${written(at)}: ${issue.code ?? UNNAMED_FINDING}`];
+      return [`${written(finding.path)}: ${finding.code}`];
   }
 };
 
 /**
  * Where a document failed its schema, by field and by what was expected
- * there, and never with the value that failed: the gateway's documents carry
- * the buyer's parameters and prices, and a merchant's failures go to logs.
- * Past `NAMED_AT_MOST` findings, the rest are counted rather than named.
+ * there, from findings that carry no value (`findingsOf` in the contracts):
+ * the gateway's documents carry the buyer's parameters and prices, and a
+ * merchant's failures go to logs. Past `most` findings, the rest are counted
+ * rather than named.
  */
-export const whereItFailed = (issues: readonly FoundIssue[]): string => {
-  const found = issues.flatMap((issue) => findingsIn(issue, []));
-  const named = found.slice(0, NAMED_AT_MOST).join("; ");
+export const whereItFailed = (
+  findings: readonly ReadFinding[],
+  most: number = NAMED_AT_MOST,
+): string => {
+  const found = findings.flatMap(sentencesOf);
+  const named = found.slice(0, most).join("; ");
 
-  return found.length > NAMED_AT_MOST
-    ? `${named}; and ${found.length - NAMED_AT_MOST} more, not named`
-    : named;
+  return found.length > most ? `${named}; and ${found.length - most} more, not named` : named;
 };
 
 /**
  * Whether every finding is something added rather than something broken: a
- * field this release does not know, or a kind it was not built with. Only
- * then may a merchant be told that a newer release reads it.
+ * field this release does not know, or a shape none of whose kinds it knows.
+ * Only then may a merchant be told that a newer release may read it.
  */
-export const onlyWhatIsNew = (issues: readonly FoundIssue[]): boolean =>
-  issues.length > 0 &&
-  issues.every((issue) => {
-    if (issue.code === "unrecognized_keys") return true;
-    if (issue.code !== "invalid_union") return false;
-    const closest = closestOf(issue);
-    return closest === undefined || onlyWhatIsNew(closest);
-  });
+export const onlyWhatIsNew = (findings: readonly ReadFinding[]): boolean =>
+  findings.length > 0 &&
+  findings.every(
+    (finding) => finding.code === "unrecognized_keys" || finding.code === "invalid_union",
+  );

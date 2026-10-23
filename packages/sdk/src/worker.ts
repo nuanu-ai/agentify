@@ -216,6 +216,9 @@ export const acceptanceArgumentWarning = (orderId: string): WorkerProblem => ({
 /** How many orders one warning about a list names before it counts the rest. */
 const ORDERS_NAMED_AT_MOST = 10;
 
+/** How many findings it names for each of those orders. */
+const FINDINGS_NAMED_PER_ORDER = 3;
+
 /**
  * The warning about a list of orders read back, or null when it holds nothing
  * to warn about. It names the orders left out because this release could not
@@ -230,8 +233,10 @@ export const listWarning = (
   open: boolean,
 ): WorkerProblem | null => {
   const ofThem = `of the ${listed.length} ${open ? "open " : ""}orders listed`;
-  const unread = listed.filter((one): one is UnreadOrder => "issues" in one);
-  const unknown = listed.filter((one) => !("issues" in one) && one.status === UNKNOWN_WORD).length;
+  const unread = listed.filter((one): one is UnreadOrder => "findings" in one);
+  const unknown = listed.filter(
+    (one) => !("findings" in one) && one.status === UNKNOWN_WORD,
+  ).length;
   const said: string[] = [];
 
   if (unread.length > 0) {
@@ -240,14 +245,14 @@ export const listWarning = (
       .slice(0, ORDERS_NAMED_AT_MOST)
       .map(
         (one) =>
-          `${one.subject === undefined ? "an order whose identifier could not be read" : `order ${one.subject}`} (${whereItFailed(one.issues)})`,
+          `${one.subject === undefined ? "an order whose identifier could not be read" : `order ${one.subject}`} (${whereItFailed(one.findings, FINDINGS_NAMED_PER_ORDER)})`,
       )
       .join("; ");
     const rest =
       unread.length > ORDERS_NAMED_AT_MOST
         ? `; and ${unread.length - ORDERS_NAMED_AT_MOST} more, not named`
         : "";
-    const next = unread.every((one) => onlyWhatIsNew(one.issues))
+    const next = unread.every((one) => onlyWhatIsNew(one.findings))
       ? `${NEWER_RELEASE} may read ${them}`
       : `nothing here says whether ${unread.length === 1 ? "it was" : "they were"} sent broken or in a shape added later`;
 
@@ -382,12 +387,13 @@ const NEWER_RELEASE = "a newer release of @nuanu-ai/agentify";
  */
 const unreadWarning = (envelope: UnreadEnvelope): WorkerProblem => {
   // The merchant's handler is given the payload, so its fields are named from there.
-  const issues = envelope.issues.map((issue) =>
-    issue.path[0] === "payload" ? { ...issue, path: issue.path.slice(1) } : issue,
+  const findings = envelope.findings.map((finding) =>
+    finding.path[0] === "payload" ? { ...finding, path: finding.path.slice(1) } : finding,
   );
-  const where = whereItFailed(issues);
+  const where = whereItFailed(findings);
   const unreadable = `has something contract version ${contractVersion}, which this release speaks, does not allow (${where}); ${
-    onlyWhatIsNew(issues)
+    // A message that names no kind that can be written is broken, not news.
+    envelope.named !== "" && onlyWhatIsNew(findings)
       ? `${NEWER_RELEASE} may read it`
       : "nothing here says whether it was sent broken or in a shape added later"
   }`;
@@ -671,7 +677,10 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.UNREAD,
         fatal: false,
         ...(event.order_id === undefined ? {} : { subject: event.order_id }),
-        message: `an event of a kind this release does not know, "${event.named}", arrived and was skipped; ${NEWER_RELEASE} reads it, and orders.list({ open: true }) still finds every paid order waiting on you`,
+        message:
+          event.named === ""
+            ? "an event whose kind is not a word this release can write arrived and was skipped; nothing here says whether it was sent broken, and orders.list({ open: true }) still finds every paid order waiting on you"
+            : `an event of a kind this release does not know, "${event.named}", arrived and was skipped; ${NEWER_RELEASE} reads it, and orders.list({ open: true }) still finds every paid order waiting on you`,
       });
       return;
     }

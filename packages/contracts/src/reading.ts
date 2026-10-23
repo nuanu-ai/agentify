@@ -39,6 +39,7 @@ import {
   type PaymentStatus,
   PaymentStatusSchema,
 } from "./order-status.js";
+import { IdentifierSchema } from "./primitives.js";
 import { type QuotePurpose, QuotePurposeSchema } from "./quote.js";
 import { type OrderCallResult, OrderCallResultSchema } from "./results.js";
 
@@ -47,7 +48,11 @@ export const UNKNOWN_WORD = "unknown";
 
 export type UnknownWord = typeof UNKNOWN_WORD;
 
-/** An event this reader could not read, with the kind it said it was and its order. */
+/**
+ * An event this reader could not read, with the kind it said it was and its
+ * order. The kind is written as `findingsOf` writes a name, and the order only
+ * where it is an identifier short enough to name.
+ */
 export interface UnreadEvent {
   readonly type: UnknownWord;
   readonly named: string;
@@ -55,29 +60,41 @@ export interface UnreadEvent {
 }
 
 /**
+ * Where a document failed its schema and what was expected there, without the
+ * value that failed, as `findingsOf` makes it. A path segment or a key that
+ * is not shaped like a field's name is not written, and one longer than a
+ * fixed length is cut and says so, since an unknown field's name, a record's
+ * key or a kind can be anything a sender put there.
+ */
+export interface ReadFinding {
+  readonly path: readonly string[];
+  readonly code: string;
+  readonly expected?: string;
+  readonly keys?: readonly string[];
+}
+
+/**
  * A message on the worker stream this reader could not read: one of a kind it
  * does not know, or one whose payload does not fit, such as an order carrying
- * a field added after this reader was built. It names the kind the message
- * said it was (empty when it said none), the order or price question it is
- * about where that could be read, and the schema's findings. A finding's
- * `message` may hold the value that failed, so it is not for a log.
+ * a field the contract does not allow. It names the kind the message said it
+ * was (empty when it named none that can be written), the order or price
+ * question it is about where that is an identifier that did not itself fail,
+ * and where it failed.
  */
 export interface UnreadEnvelope {
   readonly kind: UnknownWord;
   readonly named: string;
   readonly subject?: string;
-  readonly issues: readonly z.core.$ZodIssue[];
+  readonly findings: readonly ReadFinding[];
 }
 
 /**
- * An order in a list this reader could not read, such as one carrying a field
- * added after this reader was built: its identifier where that could be read,
- * and the schema's findings, whose `message` may hold the value that failed.
+ * An order in a list this reader could not read, with its identifier under
+ * the same rule as an unread message's and where it failed.
  */
 export interface UnreadOrder {
-  readonly kind: UnknownWord;
   readonly subject?: string;
-  readonly issues: readonly z.core.$ZodIssue[];
+  readonly findings: readonly ReadFinding[];
 }
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -118,26 +135,109 @@ const aWord = () => z.string().regex(/\S/, "a word is not blank");
 const wordOrUnknown = (words: z.ZodType<string>) =>
   aWord().transform((word) => (words.safeParse(word).success ? word : UNKNOWN_WORD));
 
+/** The longest name a finding writes before cutting it. */
+const NAME_AT_MOST = 48;
+
+/** The longest identifier a reader names an unread order or message by. */
+const SUBJECT_AT_MOST = 64;
+
+/** What a field's name, a kind or an event type looks like. */
+const NAME_SHAPED = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+
+/**
+ * A name as a finding may write it: as it is when it is shaped like one and
+ * short, cut and saying so when it is long, and not at all otherwise, since a
+ * record's key or a field a sender invented may be a value.
+ */
+const nameWritten = (name: string): string => {
+  if (!NAME_SHAPED.test(name)) return "(a name not written here)";
+  return name.length <= NAME_AT_MOST
+    ? name
+    : `${name.slice(0, NAME_AT_MOST)}… (cut from ${name.length} characters)`;
+};
+
+/** A kind or an event type as an unread message names it: empty when it cannot be written. */
+const kindWritten = (kind: unknown): string =>
+  typeof kind === "string" && NAME_SHAPED.test(kind) ? nameWritten(kind) : "";
+
+const startsWith = (path: readonly string[], prefix: readonly string[]): boolean =>
+  prefix.every((segment, index) => path[index] === segment);
+
+/**
+ * The identifier an unread order or message is named by: only one that is an
+ * identifier, short enough to write, and not itself where the document failed.
+ */
+const subjectOf = (
+  value: unknown,
+  findings: readonly ReadFinding[],
+  at: readonly string[],
+): string | undefined =>
+  typeof value === "string" &&
+  value.length <= SUBJECT_AT_MOST &&
+  IdentifierSchema.safeParse(value).success &&
+  !findings.some((finding) => startsWith(finding.path, at))
+    ? value
+    : undefined;
+
+const finding = (path: readonly PropertyKey[], code: string): ReadFinding => ({
+  path: path.map((segment) =>
+    typeof segment === "number" ? String(segment) : nameWritten(String(segment)),
+  ),
+  code: nameWritten(code),
+});
+
+/**
+ * A schema's findings without their values: where each failed, its code, what
+ * was expected where the schema says, and the names of fields it does not
+ * know. A union is reported by the shape that came closest, and a record's key
+ * that does not fit is reported against the record, never by the key.
+ */
+export const findingsOf = (
+  issues: readonly z.core.$ZodIssue[],
+  under: readonly PropertyKey[] = [],
+): ReadFinding[] =>
+  issues.flatMap((issue): ReadFinding[] => {
+    const at = [...under, ...issue.path];
+
+    switch (issue.code) {
+      case "invalid_union": {
+        const closest = [...issue.errors].sort((one, other) => one.length - other.length)[0];
+        return closest === undefined ? [finding(at, issue.code)] : findingsOf(closest, at);
+      }
+      case "invalid_key":
+        return [finding(at.slice(0, -1), issue.code)];
+      case "unrecognized_keys":
+        return [{ ...finding(at, issue.code), keys: issue.keys.map(nameWritten) }];
+      case "invalid_type":
+        return [{ ...finding(at, issue.code), expected: nameWritten(String(issue.expected)) }];
+      default:
+        return [finding(at, issue.code)];
+    }
+  });
+
 /** What an envelope that did not fit says it was about, read with no schema. */
 const unreadEnvelope = (sent: unknown, issues: readonly z.core.$ZodIssue[]): UnreadEnvelope => {
   const { kind, payload } = (typeof sent === "object" && sent !== null ? sent : {}) as {
     kind?: unknown;
-    payload?: { id?: unknown; order_id?: unknown; price_id?: unknown };
+    payload?: Record<string, unknown>;
   };
-  const subject =
+  const findings = findingsOf(issues);
+  const field =
     kind === "order"
-      ? payload?.id
+      ? "id"
       : kind === "order_event"
-        ? payload?.order_id
+        ? "order_id"
         : kind === "quote_request"
-          ? payload?.price_id
+          ? "price_id"
           : undefined;
+  const subject =
+    field === undefined ? undefined : subjectOf(payload?.[field], findings, ["payload", field]);
 
   return {
     kind: UNKNOWN_WORD,
-    named: typeof kind === "string" ? kind : "",
-    ...(typeof subject === "string" ? { subject } : {}),
-    issues,
+    named: kindWritten(kind),
+    ...(subject === undefined ? {} : { subject }),
+    findings,
   };
 };
 
@@ -174,12 +274,9 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
           z.unknown().transform((sent): unknown => {
             const read = each.safeParse(sent);
             if (read.success) return read.data;
-            const id = (sent as { id?: unknown } | null)?.id;
-            const unread: UnreadOrder = {
-              kind: UNKNOWN_WORD,
-              ...(typeof id === "string" ? { subject: id } : {}),
-              issues: read.error.issues,
-            };
+            const findings = findingsOf(read.error.issues);
+            const subject = subjectOf((sent as { id?: unknown } | null)?.id, findings, ["id"]);
+            const unread: UnreadOrder = { ...(subject === undefined ? {} : { subject }), findings };
             return unread;
           }),
         ),
@@ -195,13 +292,16 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
     OrderEventSchema,
     () => {
       const known = withoutUnknownFields(OrderEventSchema);
-      const ofAnotherKind = z.looseObject({ type: aWord(), order_id: z.unknown() }).transform(
-        ({ type, order_id }): UnreadEvent => ({
-          type: UNKNOWN_WORD,
-          named: type,
-          ...(typeof order_id === "string" ? { order_id } : {}),
-        }),
-      );
+      const ofAnotherKind = z
+        .looseObject({ type: aWord(), order_id: z.unknown() })
+        .transform(({ type, order_id }): UnreadEvent => {
+          const order = subjectOf(order_id, [], []);
+          return {
+            type: UNKNOWN_WORD,
+            named: kindWritten(type),
+            ...(order === undefined ? {} : { order_id: order }),
+          };
+        });
       // The kind decides which shape an event is held to, so a known event
       // that fails is reported where its own shape failed, never as a kind
       // that looked unfamiliar.

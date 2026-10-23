@@ -685,7 +685,7 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
         if (warning !== null) reportSafely(registry.problem, warning);
 
         return listed.orders
-          .filter((one): one is OrderWithStatus => !("issues" in one))
+          .filter((one): one is OrderWithStatus => !("findings" in one))
           .map((order) => withCalls(order));
       },
     },

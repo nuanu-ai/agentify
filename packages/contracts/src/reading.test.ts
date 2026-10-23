@@ -210,8 +210,8 @@ describe("a reader of the merchant's answers", () => {
           // still read, so one order cannot hide the rest.
           const listed = readerOf(OrderListSchema).parse(newer).orders;
           expect(listed[Number(path[1])], `${name} at ${path.join(".")}`).toMatchObject({
-            kind: "unknown",
             subject: read.id,
+            findings: [{ code: "unrecognized_keys", keys: ["added_later"] }],
           });
           expect(
             listed.filter((one) => !("findings" in one)),
