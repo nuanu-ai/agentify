@@ -112,6 +112,8 @@ export interface MemoryHoldings {
   readonly splits: readonly RecordedPayoutSplit[];
   /** The latest poll recorded for each merchant. */
   readonly contact: ReadonlyMap<string, number>;
+  /** Every analytics event recorded, none of which this store ever sends. */
+  readonly analytics: readonly { readonly event: AnalyticsEvent; readonly at: Date }[];
 }
 
 interface MerchantRow {
@@ -576,6 +578,7 @@ export class MemoryStore implements Store {
       receipts: [...this.#receipts.values()],
       splits: [...this.#splits],
       contact: new Map(this.#contact),
+      analytics: [...this.#analytics],
     };
   }
 
