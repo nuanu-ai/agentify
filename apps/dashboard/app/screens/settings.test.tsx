@@ -1031,8 +1031,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
   });
 
-  it("says, when the wallet does not send it, that the payout then arrives with Agentify's", async () => {
-    coinbase.breaks = "wallet_sendCalls";
+  it("says, when the wallet does not move to the payout's chain, that the payout then arrives with Agentify's", async () => {
+    coinbase.breaks = "wallet_switchEthereumChain";
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
 
     await press();

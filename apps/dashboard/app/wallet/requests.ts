@@ -143,18 +143,26 @@ export async function sendPayout(
   return forgotten(wallet, alone, async () => {
     const from = await accountOf(wallet);
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
-    const acknowledged = await wallet.request({
-      method: "wallet_sendCalls",
-      params: [
-        {
-          version: "2.0.0",
-          from,
-          chainId: chain,
-          atomicRequired: true,
-          calls: [{ to: payout.to, value: "0x0", data: payout.data }],
-        },
-      ],
-    });
+    let acknowledged: unknown;
+    try {
+      acknowledged = await wallet.request({
+        method: "wallet_sendCalls",
+        params: [
+          {
+            version: "2.0.0",
+            from,
+            chainId: chain,
+            atomicRequired: true,
+            calls: [{ to: payout.to, value: "0x0", data: payout.data }],
+          },
+        ],
+      });
+    } catch (thrown) {
+      // Once the payout has been asked for, only a refusal says anything of
+      // what the merchant did in the window; any other failure leaves it unknown.
+      if ((thrown as { code?: unknown } | null)?.code === DECLINED) throw thrown;
+      return { kind: "lost" } as const;
+    }
     return namesABatch(acknowledged) ? ({ kind: "sent" } as const) : ({ kind: "lost" } as const);
   });
 }
