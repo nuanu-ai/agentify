@@ -531,7 +531,13 @@ describe("a gateway newer than this package", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ kind: "unread", fatal: false, subject: order.id });
     expect(problems[0]?.message).toContain("quantity");
-    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify");
+    // Anything added to an order comes with a new contract version, so under
+    // the version this release speaks the order is outside the contract: a
+    // newer release may read it, which is not the same as one that does.
+    expect(problems[0]?.message).toContain(`contract version ${contractVersion}`);
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify may read it");
+    expect(problems[0]?.message).not.toMatch(/agentify reads it/);
+    expect(problems[0]?.message).toMatch(/sent again while it has attempts left/);
   });
 
   it("takes the next order at once after one it cannot read, without the wait that follows a failed poll", async () => {
