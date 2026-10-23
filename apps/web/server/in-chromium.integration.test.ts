@@ -664,7 +664,7 @@ describe("a scan in Chromium", () => {
     });
 
     expect(await page.locator("h1").textContent()).toBe("Private report access required");
-    await page.locator("a.brand").click();
+    await page.locator("header a.brand").click();
     await page.waitForURL(`${origin}/`);
     await page.locator("h1").first().waitFor();
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
