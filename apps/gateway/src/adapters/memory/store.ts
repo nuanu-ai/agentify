@@ -502,6 +502,11 @@ export class MemoryStore implements Store {
     return this.#revoke(found, at);
   }
 
+  #works(keyId: string, merchantId: string): boolean {
+    const key = this.#keys.get(keyId);
+    return key !== undefined && key.merchantId === merchantId && key.disabledAt === null;
+  }
+
   #revoke(found: StoredKey, at: number): StoredKey {
     const stored: StoredKey = Object.freeze({ ...found, disabledAt: found.disabledAt ?? at });
     this.#keys.set(found.id, stored);
@@ -645,15 +650,8 @@ export class MemoryStore implements Store {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
-    // A record without a reference shares it with no other, as on Postgres,
-    // where a missing reference reads as null.
-    if (
-      record.paymentRef !== undefined &&
-      [...this.#orders.values()].some((held) => held.paymentRef === record.paymentRef)
-    ) {
-      throw new Error(
-        `the order ${record.order.id} names a payment reference another order already has`,
-      );
+    if ([...this.#orders.values()].some((held) => held.buyerKey === record.buyerKey)) {
+      throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
     }
     // No await from here to the write, so the count and the write are one step
     // against every other birth in the one process this map lives in.
@@ -702,8 +700,8 @@ export class MemoryStore implements Store {
     return this.#orders.get(id) ?? null;
   }
 
-  async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
-    return [...this.#orders.values()].find((record) => record.paymentRef === paymentRef) ?? null;
+  async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
+    return [...this.#orders.values()].find((record) => record.buyerKey === buyerKey) ?? null;
   }
 
   async merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null> {
@@ -750,7 +748,12 @@ export class MemoryStore implements Store {
       const found = this.#orders.get(id);
       // Ownership is read under the same hold, so there is no window between
       // learning whose the order is and acting on it.
-      if (found === undefined || (scope !== undefined && found.merchantId !== scope.merchantId)) {
+      if (
+        found === undefined ||
+        (scope !== undefined &&
+          (found.merchantId !== scope.merchantId ||
+            (scope.keyId !== undefined && !this.#works(scope.keyId, scope.merchantId))))
+      ) {
         return { found: false };
       }
 

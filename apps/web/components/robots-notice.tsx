@@ -36,7 +36,8 @@ export function RobotsNotice({
       <div>
         {notices.map(({ reason, checkIds }) => (
           <p data-robots-notice={reason} key={reason}>
-            {COPY[reason](checkIds.length)}
+            {COPY[reason](checkIds.length)}{" "}
+            <a href="/docs/scanner#robots">How the scanner reads robots.txt</a>
           </p>
         ))}
         {children}

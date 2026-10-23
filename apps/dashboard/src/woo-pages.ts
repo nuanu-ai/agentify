@@ -912,7 +912,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         currency: currency.code,
         rate,
         setAt,
-        setBy: person.email,
+        sessionSignedInAt: session?.signedInAt ?? null,
         reference: read.ok ? { rate: read.rate, source: read.source, readAt: read.readAt } : null,
         confirmed,
       });

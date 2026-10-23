@@ -29,6 +29,7 @@ import {
   loggedWhile,
   type Served,
   serve,
+  statusPathOf,
 } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER } from "./x402.js";
 
@@ -871,7 +872,7 @@ describe("the split a payment is checked against", () => {
       documents.push(
         (await served.call("GET", `/v0/orders/${orderId}`, { headers: merchant })).body,
       );
-      documents.push((await served.call("GET", `/x402/orders/${orderId}/status`)).body);
+      documents.push((await served.call("GET", await statusPathOf(harnessed, orderId))).body);
     }
 
     expect(orderIds).toHaveLength(2);

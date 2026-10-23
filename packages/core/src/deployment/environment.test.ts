@@ -15,6 +15,7 @@ import {
   PUBLIC_X402_FACILITATOR_URL,
   SANDBOX_FACILITATOR,
   SITES,
+  SURFACE_WORDS,
   surfaceModeOf,
   TESTNET_CHAINS,
 } from "./environment.js";
@@ -80,6 +81,15 @@ describe("surfaceModeOf", () => {
 
   it("refuses an unwritten chain even where nothing settles", () => {
     expect(() => surfaceModeOf("eip155:1", SANDBOX_FACILITATOR)).toThrow();
+  });
+});
+
+describe("SURFACE_WORDS", () => {
+  it("claims on a test page only what the chain vouches for, not that anything settles", () => {
+    // A test mode is any facilitator on a test chain, including a local model
+    // that settles nothing; that the money is not real is all the chain says.
+    expect(SURFACE_WORDS.test).toMatch(/test funds/);
+    expect(SURFACE_WORDS.test).not.toMatch(/settle/i);
   });
 });
 

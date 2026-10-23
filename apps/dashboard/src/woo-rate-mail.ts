@@ -10,7 +10,7 @@
  * that session signed in instead.
  */
 
-import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { moment } from "./words.js";
@@ -42,7 +42,7 @@ export function rateNoticeMessage(notice: RateNotice): Message {
       ? "No rate was set before."
       : `The previous rate was ${notice.previous} ${notice.currency} per US dollar.`,
     `Buyers pay in US dollars at this rate once it is saved, which the WooCommerce screen of your dashboard shows: ${notice.screen}.`,
-    `If nobody at your business entered this rate${signedIn === null ? "" : `, or nobody signed in at ${signedIn}`}, somebody else may be signed in to your dashboard. Press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once, then ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, then set your own rate again.`,
+    `If nobody at your business entered this rate${signedIn === null ? "" : `, or nobody signed in at ${signedIn}`}, somebody else may be signed in to your dashboard. Press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once, then ${SIGN_OUT_EVERYWHERE} in Settings, which ends every session of your account, the one you press it from included. Then sign in again with a new link and set your own rate again.`,
   ];
   return {
     to: notice.to,

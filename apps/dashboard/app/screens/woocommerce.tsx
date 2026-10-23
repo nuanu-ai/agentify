@@ -265,9 +265,19 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
           {rate.saved === null ? null : <p className={styles.arrived}>{rate.saved}</p>}
           {current === null ? null : (
             <p className={current.far ? "problem" : styles.sub}>
-              Your rate, {current.rate} {rate.currency} per US dollar, was set{" "}
-              <Moment at={current.setAt} /> by {current.setBy}
-              {current.gap === null ? "." : `; it is ${current.gap} Coinbase's open rate.`}
+              Your rate, {current.rate} {rate.currency} per US dollar, was entered at{" "}
+              <Moment at={current.setAt} />
+              {current.gap === null ? "." : `; it is ${current.gap} Coinbase's open rate.`}{" "}
+              {current.sessionSignedInAt === null ? (
+                "It was entered from a session signed in to this account; when that session signed in is not recorded."
+              ) : (
+                <>
+                  It was entered from a session that signed in to this account at{" "}
+                  <Moment at={current.sessionSignedInAt} />. A session copied from a browser of
+                  yours shows that browser's own sign-in, so a moment you recognise does not prove
+                  it was you.
+                </>
+              )}
             </p>
           )}
           {reference.kind === "read" ? (

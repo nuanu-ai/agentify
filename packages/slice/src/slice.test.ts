@@ -389,18 +389,19 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     }
   }, 20_000);
 
-  it("refuses an order identifier that names nothing, in the words the contract promises", async () => {
-    // The negative control for the agent's door. An identifier that resolves
-    // to no order is answered with one refusal and no detail — and a second
-    // guess is answered identically, so nobody counts the orders behind it by
-    // asking. If this ever answered two different ways, the door would be a
-    // way of telling a real order from an invented one.
+  it("refuses a key that names nothing, and an order identifier, in the words the contract promises", async () => {
+    // The negative control for the agent's door. A key that resolves to no
+    // order is answered with one refusal and no detail, and so are a second
+    // guess and an order identifier, which opens nothing here, so nobody
+    // counts the orders behind the door by asking. If this ever answered two
+    // different ways, the door would be a way of telling a real order from an
+    // invented one.
     //
-    // No purchase names these two, so their addresses are spelled from the
+    // No purchase names these, so their addresses are spelled from the
     // contract's route table: what is probed is the door, not an answer.
-    const statusAt = (orderId: string): string =>
-      `${booted.baseUrl}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
-    const invented = await buyer.status(statusAt("ord_never_issued"));
+    const statusAt = (value: string): string =>
+      `${booted.baseUrl}${expandPath(API_ROUTES.get_order_status.path, { buyer_key: value })}`;
+    const invented = await buyer.status(statusAt("bk_never_issued"));
 
     expect(invented.status).toBe(404);
     expect(invented.state).toBeNull();
@@ -409,9 +410,11 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       error: { code: "no_such_order", message: "there is no such order", retryable: false },
     });
 
-    const another = await buyer.status(statusAt("ord_nor_this_one"));
-    expect(another.status).toBe(invented.status);
-    expect(another.body).toStrictEqual(invented.body);
+    for (const value of ["bk_nor_this_one", "ord_never_issued"]) {
+      const another = await buyer.status(statusAt(value));
+      expect(another.status).toBe(invented.status);
+      expect(another.body).toStrictEqual(invented.body);
+    }
   }, 20_000);
 
   it("gives the merchant the gateway's own reason for an order it will not describe", async () => {

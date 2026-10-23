@@ -527,6 +527,22 @@ describe("what passes between the caller and the upstream", () => {
   });
 });
 
+describe("an order's status read in the log", () => {
+  it("is named by its route, never by the buyer's key its address carries", async () => {
+    // The key in the address opens the order and its goods, and a run's log
+    // is read by more people than the buyer.
+    const up = await upstream(plainly(200, '{"order_id":"ord_4f1c","status":"in_progress"}'));
+    const { port, log } = await proxy(up.url, purchases("before-headers"));
+
+    const read = await call(port, "GET", "/x402/orders/bk_3e8f02c6b1/status");
+
+    expect(read.status).toBe(200);
+    const line = await lineFor(log, 1);
+    expect(line).toContain("GET /x402/orders/:buyer_key/status");
+    expect(log.join("\n")).not.toContain("bk_3e8f02c6b1");
+  });
+});
+
 describe("an answer to HEAD", () => {
   const described = (_n: number, response: ServerResponse) => {
     response.writeHead(200, { "content-type": "application/json", "content-length": "1001" });

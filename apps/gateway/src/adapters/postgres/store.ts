@@ -912,10 +912,8 @@ export class PostgresStore implements Store {
       if (refused.constraint === ORDER_IDENTIFIER_TAKEN) {
         throw new Error(`the order ${record.order.id} is already written down`);
       }
-      if (refused.constraint === PAYMENT_REF_TAKEN) {
-        throw new Error(
-          `the order ${record.order.id} names a payment reference another order already has`,
-        );
+      if (refused.constraint === BUYER_KEY_TAKEN) {
+        throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
       }
       throw new Error(unknownRuleRefused(`writing the order ${record.order.id}`, refused));
     }
@@ -966,12 +964,12 @@ export class PostgresStore implements Store {
     return row?.record ?? null;
   }
 
-  async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
+  async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
     // Spelled as the index is, or the planner reads every order to answer.
     const [row] = await this.#db
       .select({ record: orders.record })
       .from(orders)
-      .where(sql`(${orders.record} ->> 'paymentRef') = ${paymentRef}`)
+      .where(sql`(${orders.record} ->> 'buyerKey') = ${buyerKey}`)
       .limit(1);
     return row?.record ?? null;
   }
@@ -1164,6 +1162,26 @@ export class PostgresStore implements Store {
     // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
     const lookup = await this.#db.transaction(async (tx): Promise<OrderLookup<T>> => {
+      // A share lock rather than a plain read: a revocation committed first is
+      // seen here, and one arriving later waits for this commit, so no write
+      // made through a key lands after the key was revoked.
+      if (scope?.keyId !== undefined) {
+        const [working] = await tx
+          .select({ id: merchantKeys.id })
+          .from(merchantKeys)
+          .where(
+            and(
+              eq(merchantKeys.id, scope.keyId),
+              eq(merchantKeys.merchantId, scope.merchantId),
+              isNull(merchantKeys.disabledAt),
+            ),
+          )
+          .limit(1)
+          .for("share");
+        if (working === undefined) {
+          return { found: false };
+        }
+      }
       // The row lock makes a second decision about this order wait here.
       // Where a merchant is named it is in the same predicate, so a stranger's
       // order is never selected or locked.
@@ -1352,7 +1370,7 @@ export class PostgresStore implements Store {
  * database. Renaming one in a migration must be matched here.
  */
 const ORDER_IDENTIFIER_TAKEN = "orders_pkey";
-const PAYMENT_REF_TAKEN = "orders_payment_ref_unique";
+const BUYER_KEY_TAKEN = "orders_buyer_key_unique";
 const KEY_IDENTIFIER_TAKEN = "merchant_keys_pkey";
 const KEY_DIGEST_TAKEN = "merchant_keys_digest_unique";
 

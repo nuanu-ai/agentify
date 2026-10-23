@@ -288,6 +288,183 @@ describe("reading orders back", () => {
     ]);
   });
 
+  it("tells the merchant how many open orders carry a status this release does not know, and decides nothing about them", async () => {
+    // A loop that delivers only on the words it knows skips such an order in
+    // silence, and paid work may be waiting behind it; the orders still come
+    // back as they are, for the merchant's code to leave alone.
+    const listed = (status: string, id: string) => ({
+      ...order,
+      id,
+      status,
+      payment_status: "paid",
+    });
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            listed("on_hold", "order-1"),
+            listed("awaiting_pickup", "order-2"),
+            listed("unfulfilled", "order-3"),
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const open = await agentify.orders.list({ open: true });
+
+    expect(open.map((one) => one.status)).toStrictEqual(["unknown", "unknown", "unfulfilled"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
+    expect(problems[0]?.message).toContain("of the 3 open orders listed, 2 have");
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify");
+    expect(gateway?.calls.map((call) => call.route)).toStrictEqual(["list_orders"]);
+  });
+
+  it("returns every order it can read, leaves out the ones it cannot, and names them in one problem without throwing", async () => {
+    // The restart loop reads this list; one order this release cannot read
+    // must not hide the paid orders beside it, and what was left out is said.
+    const listed = (id: string, extra: Record<string, unknown> = {}) => ({
+      ...order,
+      id,
+      status: "unfulfilled",
+      payment_status: "paid",
+      ...extra,
+    });
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            listed("order-1"),
+            listed("order-2", { quantity: 3 }),
+            listed("order-3", {
+              ship_to: {
+                pickup_point_id: "pp_4411",
+                carrier: "JNE",
+                city: "Tabanan",
+                country: "ID",
+              },
+            }),
+            listed("order-4", { status: "on_hold" }),
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const open = await agentify.orders.list({ open: true });
+
+    expect(open.map((one) => one.id)).toStrictEqual(["order-1", "order-4"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
+    const said = problems[0]?.message ?? "";
+    expect(said).toContain("left out 2 of the 4 open orders listed");
+    expect(said).toContain("order-2 (quantity is a field");
+    expect(said).toContain("order-3 (ship_to.pickup_point_id");
+    expect(said).toContain("a newer release of @nuanu-ai/agentify may read them");
+    expect(said).toContain("of the 4 open orders listed, 1 has a status");
+    expect(said).not.toContain("buyer@example.com");
+    expect(said).not.toContain("pp_4411");
+  });
+
+  it("keeps a list's problem short and free of values whatever the orders it left out carry", async () => {
+    // Hundreds of orders with names twenty thousand characters long must not
+    // become megabytes in a log, and a parameter key is the buyer's data.
+    const long = "x".repeat(20_000);
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: Array.from({ length: 300 }, (_, index) => ({
+            ...order,
+            id: `order-${index}`,
+            params: { "buyer@example.com": 1 },
+            status: "unfulfilled",
+            payment_status: "paid",
+            [long]: 1,
+          })),
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list();
+
+    expect(problems[0]?.message).not.toContain("buyer@example.com");
+    expect(problems[0]?.message.length ?? 0).toBeLessThan(5_000);
+    expect(problems[0]?.message).toContain("and 290 more, not named");
+  });
+
+  it("does not say a newer release may read an order a list left out for a value that is merely broken", async () => {
+    // A price written as a number is not news from a newer Agentify, and
+    // saying it was would send the merchant to upgrade for nothing.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            {
+              ...order,
+              price: { ...order.price, amount: 5 },
+              status: "unfulfilled",
+              payment_status: "paid",
+            },
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list({ open: true });
+
+    expect(problems[0]?.message).toContain("price.amount: expected string");
+    expect(problems[0]?.message).not.toMatch(/newer release/);
+    expect(problems[0]?.message).toContain("sent broken");
+  });
+
+  it("names at most ten orders it left out of a list and counts the rest", async () => {
+    // Two thousand unreadable orders must not become a megabyte in a log.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: Array.from({ length: 15 }, (_, index) => ({
+            ...order,
+            id: `order-${index}`,
+            status: "unfulfilled",
+            payment_status: "paid",
+            quantity: 3,
+          })),
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    expect(await agentify.orders.list()).toStrictEqual([]);
+    expect(problems[0]?.message).toContain("left out 15 of the 15 orders listed");
+    expect(problems[0]?.message).toContain("and 5 more, not named");
+    expect(problems[0]?.message).not.toContain("order-12");
+  });
+
+  it("says nothing about a list whose every status this release knows", async () => {
+    // The negative control: the warning is about words this release lacks,
+    // not about orders being open.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        body: { orders: [{ ...order, status: "unfulfilled", payment_status: "paid" }] },
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list({ open: true });
+    await agentify.orders.list();
+
+    expect(problems).toStrictEqual([]);
+  });
+
   it("refuses an order read carrying a field this package does not know rather than hand it back narrowed", async () => {
     // The open-orders loop delivers from what it reads, so a quantity dropped
     // here would be delivered once without a word.
@@ -303,6 +480,7 @@ describe("reading orders back", () => {
     });
 
     await expect(agentify.orders.get("order-1")).rejects.toThrow(AgentifyError);
+    await expect(agentify.orders.get("order-1")).rejects.toThrow(/quantity is a field/);
   });
 
   it("names a release only out of this package's own manifest, never a bundle's", () => {
@@ -789,36 +967,85 @@ describe("a refusal the gateway put into words", () => {
     expect(result.ok === false && result.error.retryable).toBe(true);
   });
 
-  it("still says what came back when the answer is not a refusal either", async () => {
-    // The negative control: JSON that is neither the document nor a refusal
-    // comes back quoted, so a person can see what was sent.
-    const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: JSON.stringify({ trouble: "no code, no words" }) }),
-    });
-
-    const refused = await agentify.orders.get("order-1").then(
+  const thrownBy = (call: Promise<unknown>): Promise<string | null> =>
+    call.then(
       () => null,
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
 
+  it("names the route and the fields that did not fit an answer in JSON, and none of their values", async () => {
+    // The gateway's document carries the buyer's parameters and the price, and
+    // a merchant's failure goes to their logs: what is said is where it broke.
+    const agentify = await gatewayServing({
+      get_order: () => ({
+        text: JSON.stringify({
+          ...order,
+          price: { ...order.price, amount: 5 },
+          status: "in_progress",
+          payment_status: "paid",
+          ship_to: { line_one: "Jl. Raya Kediri 12", city: "Tabanan", country: "ID" },
+        }),
+      }),
+    });
+
+    const refused = await thrownBy(agentify.orders.get("order-1"));
+
+    expect(refused).toContain("get_order");
     expect(refused).toContain("is not the document it promises");
-    expect(refused).toContain("no code, no words");
+    expect(refused).toContain("price.amount");
+    expect(refused).toContain("ship_to");
+    expect(refused).not.toContain("buyer@example.com");
+    expect(refused).not.toContain("Kediri");
+    expect(refused).not.toContain("access-monthly");
   });
 
-  it("does not read a half-written refusal as a refusal", async () => {
-    // A code with no words is not a refusal a caller can act on, so the body
-    // is quoted instead.
+  it("does not read a half-written refusal as a refusal, and quotes nothing of it", async () => {
+    // A code with no words is not a refusal a caller can act on; what it
+    // carried is the gateway's and stays out of the merchant's logs.
     const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: JSON.stringify({ error: { code: "no_message" } }) }),
+      get_order: () => ({
+        status: 409,
+        text: JSON.stringify({ error: { code: "no_message", hint: "buyer@example.com" } }),
+      }),
     });
 
-    const refused = await agentify.orders.get("order-1").then(
-      () => null,
-      (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
-    );
+    const refused = await thrownBy(agentify.orders.get("order-1"));
 
     expect(refused).toContain("is not the document it promises");
-    expect(refused).toContain("no_message");
+    expect(refused).not.toContain("buyer@example.com");
+  });
+
+  it("says how many more fields did not fit than it names, in a long answer", async () => {
+    // An answer with forty fields that do not fit must not become a page of
+    // log; past ten, the rest are counted.
+    const agentify = await gatewayServing({
+      get_order: () => ({
+        text: JSON.stringify({
+          ...order,
+          status: "in_progress",
+          payment_status: "paid",
+          ...Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`added_${index}`, 1])),
+        }),
+      }),
+    });
+
+    const refused = await thrownBy(agentify.orders.get("order-1"));
+
+    expect(refused).toMatch(/and 30 more, not named/);
+    expect(refused?.length ?? 0).toBeLessThan(2_000);
+  });
+
+  it("still quotes an answer that is not JSON, such as a proxy's page", async () => {
+    // The negative control: a proxy's error page is not the gateway's document
+    // and often names what is broken.
+    const agentify = await gatewayServing({
+      get_order: () => ({ status: 502, text: "<html>upstream is down</html>" }),
+    });
+
+    const refused = await thrownBy(agentify.orders.get("order-1"));
+
+    expect(refused).toContain("is not JSON");
+    expect(refused).toContain("upstream is down");
   });
 });
 

@@ -25,6 +25,7 @@ import {
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
+import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
   type DashboardDestination,
@@ -100,7 +101,7 @@ export type Outcome<View> =
       headers?: Readonly<Record<string, string>>;
       setCookies?: readonly string[];
     }>
-  | Readonly<{ kind: "problem"; problem: Problem }>;
+  | Readonly<{ kind: "problem"; problem: Problem; setCookies?: readonly string[] }>;
 
 /**
  * A page that could not be drawn or a form that was not done. The page itself
@@ -317,7 +318,8 @@ export interface PageServices {
     page(person: Person): Promise<Outcome<SettingsView>>;
     name(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     site(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
-    signOutOthers(person: Person, cookie: string | undefined): Promise<Outcome<SettingsView>>;
+    /** Ends every session of the account, the presser's own included, and leads to the sign-in. */
+    signOutEverywhere(person: Person): Promise<Outcome<never>>;
     /** The account's own choice about product analytics, never another account's. */
     analytics(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     wallet(
@@ -404,6 +406,12 @@ const SESSION_ENDED =
  */
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
+const SIGNED_OUT_EVERYWHERE_REASON = "signed-out-everywhere";
+
+const SIGNED_OUT_EVERYWHERE =
+  "Every device signed in to your account was signed out, this one included. " +
+  "Send yourself a new link to sign in again.";
+
 /**
  * A value named once, as a form or an address names it; named twice it is
  * nobody's choice, and is read as not named at all.
@@ -436,7 +444,12 @@ export const askViewOf = (
       : said === "unsaved"
         ? UNSAVED
         : undefined;
-  const reason = said === "session-ended" ? SESSION_ENDED : undefined;
+  const reason =
+    said === "session-ended"
+      ? SESSION_ENDED
+      : said === SIGNED_OUT_EVERYWHERE_REASON
+        ? SIGNED_OUT_EVERYWHERE
+        : undefined;
   return {
     screen: "ask",
     destination: dashboardDestinationIn(once(query.getAll("destination"))),
@@ -523,18 +536,13 @@ export interface Shown {
   readonly paid: string | null;
 }
 
-/** How many other sessions of the account a press ended, the one thing its presser cannot see. */
-export const signedOutOthers = (ended: number): string =>
-  ended === 0
-    ? "No other session of this account was signed in, so none was signed out."
-    : ended === 1
-      ? "1 other session of this account was signed out."
-      : `${ended} other sessions of this account were signed out.`;
+/** What a cancel did to the merchant's sessions, said on the page it answers with. */
+const SIGNED_OUT_BUT_THIS_BROWSER =
+  "Every session of your merchant was signed out, a copy of this browser's included; this browser stays signed in on a new one.";
 
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ` +
-  "Every other session of your merchant was signed out.";
+  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ${SIGNED_OUT_BUT_THIS_BROWSER}`;
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
 export const landedBeforePress = (shown: Shown): string =>
@@ -542,7 +550,7 @@ export const landedBeforePress = (shown: Shown): string =>
   (shown.paid === null
     ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
     : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-  "Every other session of your merchant was signed out.";
+  SIGNED_OUT_BUT_THIS_BROWSER;
 
 /**
  * Each value is held to its shape before anything reads it: the post can carry
@@ -757,13 +765,40 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   const toSettings: Outcome<never> = { kind: "redirect", location: `${base}/settings` };
 
   /**
-   * Every other session of every account at the merchant ends but the one the
-   * presser's cookie names, since the change may have come from any of them.
+   * Every session of every account at the merchant ends, the presser's own
+   * included, since the change may have come from any of them, a copy of the
+   * presser's cookie among them; the presser's browser is given a new session
+   * in the same answer, which `renewing` puts on it.
    */
-  const signOutTheOthers = async (person: Person, cookie: string | undefined): Promise<number> =>
-    person.merchant === null
-      ? 0
-      : await identity.endOtherSessionsOfMerchant(person.merchant.id, cookie);
+  const signOutAllButThisBrowser = async (
+    person: Person,
+    cookie: string | undefined,
+  ): Promise<{
+    ended: number;
+    renewing: <View>(answering: () => Promise<Outcome<View>>) => Promise<Outcome<View>>;
+  }> => {
+    const { ended, setCookies } =
+      person.merchant === null
+        ? { ended: 0, setCookies: [] }
+        : await identity.endMerchantSessionsAndRenew(person.merchant.id, cookie);
+    return {
+      ended,
+      // The old session has ended by now, so whatever the answer, a failure
+      // among them, it carries the new one.
+      renewing: async (answering) => {
+        let outcome: Awaited<ReturnType<typeof answering>>;
+        try {
+          outcome = await answering();
+        } catch (thrown) {
+          if (setCookies.length === 0) throw thrown;
+          throw new FailedAfterSettingCookies(setCookies);
+        }
+        return setCookies.length === 0
+          ? outcome
+          : { ...outcome, setCookies: [...(outcome.setCookies ?? []), ...setCookies] };
+      },
+    };
+  };
 
   /**
    * Cancelling is asking the gateway for the address that applies now. Reached
@@ -784,29 +819,35 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   ): Promise<Outcome<SettingsView>> => {
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) return problemOf(cancelled);
-    const ended = await signOutTheOthers(person, cookie);
+    const { ended, renewing } = await signOutAllButThisBrowser(person, cookie);
     if (cancelled.document.pending === null) {
       noted(
         person,
-        `cancelled a waiting change of the wallet their share is paid out to, and ${ended} other sessions of the merchant were ended`,
+        `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return toSettings;
-      return await settingsDrawn(person, {
-        kind: "wallet-notice",
-        notice: cancelledByTyping(applies, pending.payout_wallet),
-      });
+      if (!byTyping) return await renewing(async () => toSettings);
+      return await renewing(
+        async () =>
+          await settingsDrawn(person, {
+            kind: "wallet-notice",
+            notice: cancelledByTyping(applies, pending.payout_wallet),
+          }),
+      );
     }
     noted(
       person,
-      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
+      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return await settingsDrawn(person, {
-      kind: "wallet-notice",
-      notice:
-        `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-        `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-        "Every other session of your merchant was signed out.",
-    });
+    return await renewing(
+      async () =>
+        await settingsDrawn(person, {
+          kind: "wallet-notice",
+          notice:
+            `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
+            `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
+            SIGNED_OUT_BUT_THIS_BROWSER,
+        }),
+    );
   };
 
   /**
@@ -821,12 +862,15 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     shown: Shown,
     how: string,
   ): Promise<Outcome<SettingsView>> => {
-    const ended = await signOutTheOthers(person, cookie);
+    const { ended, renewing } = await signOutAllButThisBrowser(person, cookie);
     noted(
       person,
-      `${how} after a change of the wallet their share is paid out to had taken effect, and ${ended} other sessions of the merchant were ended`,
+      `${how} after a change of the wallet their share is paid out to had taken effect; ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) });
+    return await renewing(
+      async () =>
+        await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) }),
+    );
   };
 
   const registerMerchant = async (): Promise<string | null> => {
@@ -1504,12 +1548,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
 
       // The answer to a session left open somewhere or held by somebody else.
-      // It ends no other account's sessions and touches no key, and says how
-      // many it ended, the one thing the person could not otherwise see.
-      async signOutOthers(person, cookie) {
-        const ended = await identity.endOtherSessionsOfPerson(person.id, cookie);
-        noted(person, `signed out every other device of their account, ${ended} sessions in all`);
-        return await settingsDrawn(person, { kind: "account", notice: signedOutOthers(ended) });
+      // The presser's own session ends too: one copied from this browser
+      // carries the same token, and keeping this one would keep the copy. It
+      // ends no other account's sessions and touches no key.
+      async signOutEverywhere(person) {
+        const ended = await identity.endSessionsOfPerson(person.id);
+        noted(person, `signed out everywhere, ${ended} sessions in all`);
+        return {
+          kind: "redirect",
+          location: `${base}/sign-in?reason=${SIGNED_OUT_EVERYWHERE_REASON}`,
+          setCookies: clearingLines(identity, config.cookieSecure),
+        };
       },
 
       // Bound to the account signed in, never to one a form names: the gate

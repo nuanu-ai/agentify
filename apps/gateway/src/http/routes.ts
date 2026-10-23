@@ -313,9 +313,11 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 }
 
 /**
- * What became of one purchase, for the agent that made it. Knowing the order's
- * identifier stands in for a key, so the read is not scoped to a merchant. The
- * document is the same one the purchase itself answers with.
+ * What became of one purchase, for the agent that made it. The buyer's key in
+ * the address stands in for a merchant key, so the read is not scoped to a
+ * merchant, and it is the only thing the order is found by: an order
+ * identifier presented here names no order. The document is the same one the
+ * purchase itself answers with.
  */
 async function orderStatus(
   gateway: Gateway,
@@ -325,7 +327,7 @@ async function orderStatus(
   // cache on the way may keep one. The refusal says the same, or the header
   // alone would tell an order from a guess.
   response.setHeader("Cache-Control", "no-store");
-  const record = await gateway.orderById(params.order_id ?? "");
+  const record = await gateway.orderByBuyerKey(params.buyer_key ?? "");
   if (record === null) {
     return refusedWith(response, NO_SUCH_ORDER);
   }
@@ -457,10 +459,9 @@ const isEmptyDocument = (body: unknown): boolean =>
  * anything.
  *
  * A POST with the purchase document and no payment opens and prices an order
- * and answers with the challenge. With a payment it drives the order whose
- * payment reference the payment carries; a payment naming no order we hold
- * by its reference gets a fresh challenge, so the agent pays against a price
- * we actually issued.
+ * and answers with the challenge. With a payment it drives the order the
+ * payment names; a payment naming no order we hold gets a fresh challenge, so
+ * the agent pays against a price we actually issued.
  */
 async function purchase(
   gateway: Gateway,
@@ -503,8 +504,8 @@ async function purchase(
 
   const held = hold(PurchaseRequestSchema, body);
 
-  if (presented !== null && presented !== "unreadable" && presented.paymentRef !== null) {
-    const named = await gateway.orderForPayment(presented.paymentRef);
+  if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
+    const named = await gateway.orderById(presented.orderId);
     if (named !== null) {
       // A paid request's body is read only for the parameters and address sent
       // again, which must be the ones the order was priced for. A malformed one
@@ -664,7 +665,7 @@ async function answerPurchase(
     case "payment_already_spent":
       // One authorisation may not buy two orders. Nothing is said of the other
       // order, not even whether it is over: anyone can read a used
-      // authorization off the chain and point it at any reference. Its buyer
+      // authorization off the chain and point it at any order. Its buyer
       // already holds that order's own answer, which says where it stands.
       return written(
         response,
@@ -676,14 +677,19 @@ async function answerPurchase(
       );
 
     case "not_this_purchase":
-      // The order already belongs to another payer. Its payment reference is
-      // in every challenge for it and a listing can publish it, so holding it
-      // proves nothing; the wording names no order and says nothing about how
-      // far along it is.
+      // The order already belongs to another payer. Its identifier is in every
+      // challenge for it and a listing can publish it, so holding it proves
+      // nothing; the wording says nothing about how far along it is. Nothing
+      // was charged, and the payer may be the buyer who lost the race to pay
+      // or the buyer itself signing again from another of its wallets, so the
+      // words tell each what to do without telling them apart.
       return written(
         response,
         CONFLICT,
-        refusal("not_this_purchase", "this payment does not establish ownership of this purchase"),
+        refusal(
+          "not_this_purchase",
+          "another payment already took this purchase, and nothing was charged for this one: to buy, start a new purchase; if this purchase was paid from another of your wallets, a fresh payment from that wallet returns it",
+        ),
       );
 
     case "payment_not_verified":
@@ -723,7 +729,7 @@ async function answerPurchase(
         PAYMENT_REQUIRED_HEADER,
         edge.challengeFor(
           price,
-          attempt.order.paymentRef,
+          attempt.order.order.id,
           {
             itemId: offered.stored.id,
             card: offered.stored.card,

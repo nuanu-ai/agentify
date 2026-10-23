@@ -122,7 +122,7 @@ describe("recovering a payment without another charge", () => {
         expect(closed?.order).toMatchObject({ state: "fulfillment_closed", payment: "settling" });
         expect(closed?.paymentAttempt).toEqual(before?.paymentAttempt);
         expect(closed?.payment).toBe("PAYMENT");
-        expect(closed?.paymentRef).toBe(before?.paymentRef);
+        expect(closed?.buyerKey).toBe(before?.buyerKey);
         expect(closed?.paymentRecovery).toEqual(recovery);
         release();
         await buying;
@@ -593,7 +593,7 @@ describe("recovering a payment without another charge", () => {
     if (saved === null) throw new Error("no saved order");
     await h.store.addOrder({
       ...saved,
-      paymentRef: "pay_duplicate",
+      buyerKey: "bk_duplicate",
       order: { ...saved.order, id: "ord_duplicate" },
     });
     h.runtime.facilitator.recoveryFor = async () => recovery;

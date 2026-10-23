@@ -177,7 +177,8 @@ export interface RateView {
   readonly current: {
     readonly rate: string;
     readonly setAt: MomentView;
-    readonly setBy: string;
+    /** When the session that saved it signed in; null where that is not recorded. */
+    readonly sessionSignedInAt: MomentView | null;
     /** How the current rate stands against the reference read now, where one was. */
     readonly gap: string | null;
     readonly far: boolean;
@@ -275,7 +276,10 @@ const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): Ra
         : {
             rate: current.rate,
             setAt: momentView(current.setAt.toISOString()),
-            setBy: current.setBy,
+            sessionSignedInAt:
+              current.sessionSignedInAt === null
+                ? null
+                : momentView(current.sessionSignedInAt.toISOString()),
             gap: gap?.shown ?? null,
             far: gap?.far ?? false,
           },

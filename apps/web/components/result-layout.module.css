@@ -8,7 +8,7 @@
  * inside another; a band's words keep to a readable column in its middle.
  */
 .page {
-  min-height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -17,7 +17,7 @@
 .body {
   width: min(100%, 74rem);
   margin-inline: auto;
-  padding: 32px 28px 0;
+  padding: 32px 28px 48px;
 }
 
 .columns {
@@ -145,38 +145,6 @@
 .note > div {
   display: grid;
   gap: var(--space-snug);
-}
-
-/* A published result's foot, on the bottom edge of a page shorter than the window. */
-.page > footer {
-  margin-top: auto;
-}
-
-.foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px 20px;
-  padding: 24px 16px 32px;
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-.foot a,
-.foot button {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.foot a:hover,
-.foot button:hover {
-  color: var(--fg);
 }
 
 /* A short page in a sheet of its own: a heading, a sentence, a way on. */

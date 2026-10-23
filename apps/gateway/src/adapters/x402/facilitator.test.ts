@@ -1,5 +1,7 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
-import type { FacilitatorClient } from "@x402/core/server";
+import { type FacilitatorClient, HTTPFacilitatorClient } from "@x402/core/server";
 import {
   FacilitatorTimeoutError,
   type PaymentPayload,
@@ -10,7 +12,7 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
 import type { Charge } from "../../ports/facilitator.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
@@ -101,7 +103,7 @@ class Answering implements FacilitatorClient {
 }
 
 const charge = (payment: string): Charge => ({
-  paymentRef: "pay_1",
+  orderId: "ord_1",
   amount: "80.00",
   currency: "USD",
   payment,
@@ -113,15 +115,15 @@ const honest = (overrides: Partial<PaymentRequirements> = {}): string =>
   encodePaymentSignatureHeader({
     x402Version: 2,
     accepted: {
-      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+      ...edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
       ...overrides,
     },
     payload: signed(),
   });
 
-/** A charge for the order paid under `paymentRef`, presenting `payment`. */
-const againstReference = (paymentRef: string, payment: string): Charge => ({
-  paymentRef,
+/** A charge for the order `orderId`, presenting `payment`. */
+const againstOrder = (orderId: string, payment: string): Charge => ({
+  orderId,
   amount: "80.00",
   currency: "USD",
   payment,
@@ -182,7 +184,7 @@ describe("verifying a payment", () => {
         charge(
           encodePaymentSignatureHeader({
             x402Version: 2,
-            accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+            accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
             payload: payment,
           }),
         ),
@@ -201,14 +203,14 @@ describe("verifying a payment", () => {
       new Answering({ verify: { isValid: true, payer: other } }),
       edge,
     ).verify(charge(honest()));
-    expect(answered).toMatchObject({ verified: "unknown" });
+    expect(answered).toMatchObject({ verified: "unknown", cause: "payer_contradicted" });
   });
 
   it("refuses Permit2 before verification or settlement", async () => {
     const client = new Answering();
     const payment = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
       payload: { signature: "0x12", permit2Authorization: {} },
     });
     const facilitator = facilitatorFor(client, edge);
@@ -231,7 +233,7 @@ describe("verifying a payment", () => {
         authorization: { ...signed().authorization, validBefore: String(validBefore) },
       };
       const client = new Answering();
-      const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
+      const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO);
       const answered = await facilitatorFor(client, edge).verify(
         charge(encodePaymentSignatureHeader({ x402Version: 2, accepted, payload })),
       );
@@ -245,7 +247,7 @@ describe("verifying a payment", () => {
   );
 
   it("accepts an authorization expiring at the end of the offered timeout and its clock allowance", async () => {
-    const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
+    const accepted = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO);
     const payload = {
       ...signed(),
       authorization: {
@@ -265,7 +267,7 @@ describe("verifying a payment", () => {
     async (signature) => {
       const payment = encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
         payload: { ...signed(), signature },
       });
       expect(await facilitatorFor(new Answering(), edge).verify(charge(payment))).toMatchObject({
@@ -283,7 +285,7 @@ describe("verifying a payment", () => {
       };
       const payment = encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
         payload,
       });
       expect(await facilitatorFor(new Answering(), edge).verify(charge(payment))).toMatchObject({
@@ -292,14 +294,14 @@ describe("verifying a payment", () => {
     },
   );
 
-  it.each([
-    { scheme: "upto" },
-    { extra: { assetTransferMethod: "permit2", payment_ref: "pay_1" } },
-  ])("refuses an incompatible accepted method %j", async (overrides) => {
-    expect(
-      await facilitatorFor(new Answering(), edge).verify(charge(honest(overrides))),
-    ).toMatchObject({ verified: false });
-  });
+  it.each([{ scheme: "upto" }, { extra: { assetTransferMethod: "permit2", order_id: "ord_1" } }])(
+    "refuses an incompatible accepted method %j",
+    async (overrides) => {
+      expect(
+        await facilitatorFor(new Answering(), edge).verify(charge(honest(overrides))),
+      ).toMatchObject({ verified: false });
+    },
+  );
 
   it("refuses an unsigned timeout that differs from the offer before accepting goods", async () => {
     const client = new Answering();
@@ -438,7 +440,7 @@ describe("verifying a payment", () => {
   it.each([{}, { name: "wrong token", version: "999" }])(
     "settles an accepted payment with its canonical domain despite unsigned extra %j",
     async (extra) => {
-      const payment = honest({ extra: { ...extra, payment_ref: "pay_1" } });
+      const payment = honest({ extra: { ...extra, order_id: "ord_1" } });
       const client = new Answering();
       const originalSettle = client.settle.bind(client);
       client.settle = async (payload, requirements) => {
@@ -507,7 +509,7 @@ describe("verifying a payment", () => {
           x402Version: 2,
           accepted: edge.requirementsFor(
             { amount: "80.00", currency: "USD" },
-            "pay_1",
+            "ord_1",
             inLowerCase,
           ),
           payload: signed(inLowerCase),
@@ -524,7 +526,7 @@ describe("verifying a payment", () => {
     // The token's address is an address too, and arrives from the same
     // libraries. A payment echoing it in the other spelling is the same
     // payment.
-    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO);
+    const ours = edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO);
     expect(
       await facilitatorFor(new Answering(), edge).verify(
         charge(honest({ asset: ours.asset.toUpperCase().replace("0X", "0x") })),
@@ -551,13 +553,13 @@ describe("verifying a payment", () => {
     const theirs = "0x27b1fdb04752bbc536007a920d24acb045561c26";
     const paidToThem = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", theirs),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", theirs),
       payload: signed(theirs),
     });
     const client = new Answering();
 
     const answered = await facilitatorFor(client, edge).verify({
-      paymentRef: "pay_1",
+      orderId: "ord_1",
       amount: "80.00",
       currency: "USD",
       payment: paidToThem,
@@ -584,7 +586,7 @@ describe("verifying a payment", () => {
     const paidTo = (payTo: string): string =>
       encodePaymentSignatureHeader({
         x402Version: 2,
-        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", payTo),
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo),
         payload: signed(payTo),
       });
     const against = (payment: string, payTo: string): Charge => ({ ...charge(payment), payTo });
@@ -657,19 +659,19 @@ describe("verifying a payment", () => {
     expect(wrongChain.asked).toStrictEqual([]);
   });
 
-  it("refuses a payment made against another order's reference, or naming its order any other way", async () => {
+  it("refuses a payment made against another order, or naming its order any other way", async () => {
     // Two orders of ours at the same price make one offer indistinguishable
-    // from the other everywhere except in the reference it carries. What stops
-    // one signed authorisation from buying both is the claim taken on the
-    // payment before any of this runs, not this branch; what this branch stops
-    // is a payment for somebody else's order being carried to the facilitator
-    // as though it were for this one. A payment naming an order by its
-    // identifier names no reference, so it is not this order's either.
+    // from the other everywhere except in the order it names. What stops one
+    // signed authorisation from buying both is the claim taken on the payment
+    // before any of this runs, not this branch; what this branch stops is a
+    // payment for somebody else's order being carried to the facilitator as
+    // though it were for this one. A payment naming this order under another
+    // field names no order, so it is not this order's either.
     const client = new Answering();
     const facilitator = facilitatorFor(client, edge);
 
-    for (const named of [{ payment_ref: "pay_2" }, { order_id: "ord_1" }, {}]) {
-      expect(await facilitator.verify(againstReference("pay_1", paidNaming(named)))).toStrictEqual({
+    for (const named of [{ order_id: "ord_2" }, { payment_ref: "ord_1" }, {}]) {
+      expect(await facilitator.verify(againstOrder("ord_1", paidNaming(named)))).toStrictEqual({
         verified: false,
         reason: "price_stale",
         message: "the payment was made against a different order from the one it was presented for",
@@ -678,16 +680,16 @@ describe("verifying a payment", () => {
     expect(client.asked).toStrictEqual([]);
   });
 
-  it("names the order to the facilitator by its payment reference alone, at the check and the charge", async () => {
+  it("names the order to the facilitator by its identifier alone, at the check and the charge", async () => {
     const client = new Answering();
     const facilitator = facilitatorFor(client, edge);
-    const charge = againstReference("pay_1", paidNaming({ payment_ref: "pay_1" }));
+    const charge = againstOrder("ord_1", paidNaming({ order_id: "ord_1" }));
 
     expect(await facilitator.verify(charge)).toMatchObject({ verified: true });
     expect(await facilitator.settle(charge)).toStrictEqual({ settled: true, transaction: "0xtx" });
     expect(client.asked.map((asked) => asked.requirements.extra)).toStrictEqual([
-      { name: "USDC", version: "2", payment_ref: "pay_1" },
-      { name: "USDC", version: "2", payment_ref: "pay_1" },
+      { name: "USDC", version: "2", order_id: "ord_1" },
+      { name: "USDC", version: "2", order_id: "ord_1" },
     ]);
   });
 
@@ -732,13 +734,22 @@ describe("verifying a payment", () => {
     }
   });
 
-  it("says nobody knows when the facilitator could not be asked", async () => {
-    const answered = await facilitatorFor(
-      new Answering({ verify: new Error("the facilitator timed out") }),
-      edge,
-    ).verify(charge(honest()));
+  it("says nobody knows when the facilitator could not be reached, naming the failure for the operator's log", async () => {
+    // What fetch throws carries the address it could not reach in its cause's
+    // message; the log keeps what kind of failure it was.
+    const unreachable = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:9"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    const answered = await facilitatorFor(new Answering({ verify: unreachable }), edge).verify(
+      charge(honest()),
+    );
 
-    expect(answered).toStrictEqual({ verified: "unknown", message: "the facilitator timed out" });
+    if (answered.verified !== "unknown") throw new Error("the silence was taken for a verdict");
+    expect(answered.cause).toBe("no_answer");
+    expect(answered.failure).toContain("TypeError");
+    expect(answered.failure).toContain("ECONNREFUSED");
   });
 
   it("refuses something that is not a payment at all", async () => {
@@ -763,7 +774,8 @@ describe("verifying a payment", () => {
 
     expect(answered.verified).toBe("unknown");
     expect(answered).toMatchObject({
-      message: expect.stringContaining("nowhere to send the money"),
+      cause: "seller_cannot_be_paid",
+      failure: expect.stringContaining("nowhere to send the money"),
     });
     // And nothing reached the facilitator, because there was no question to put
     // to it: what is missing is on our side of the call.
@@ -823,8 +835,74 @@ describe("verifying a payment", () => {
       edge,
     ).verify(charge(honest()));
 
-    expect(answered).toMatchObject({ verified: "unknown" });
+    expect(answered).toMatchObject({ verified: "unknown", cause: "no_answer" });
+    if (answered.verified === "unknown") expect(answered.failure).toContain("500");
   });
+});
+
+describe("a facilitator that answers a check with a failure status and no verdict", () => {
+  // The real client, on a server on this machine: the status reaches the
+  // gateway only in the shape the client raises it, and that is what is read.
+  const closing: (() => Promise<void>)[] = [];
+  afterEach(async () => {
+    await Promise.all(closing.splice(0).map((close) => close()));
+  });
+
+  const answeringWith = async (status: number, body: string): Promise<FacilitatorClient> => {
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(body);
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    closing.push(() => new Promise((resolve) => server.close(() => resolve())));
+    return new HTTPFacilitatorClient({
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    });
+  };
+
+  const NOT_A_VERDICT = JSON.stringify({ error: "a body the log must not carry" });
+
+  it.each([401, 403, 404])(
+    "reads %i as the check refusing Agentify, naming the status for the log and not the body",
+    async (status) => {
+      const answered = await facilitatorFor(
+        await answeringWith(status, NOT_A_VERDICT),
+        edge,
+      ).verify(charge(honest()));
+
+      if (answered.verified !== "unknown")
+        throw new Error("a refusal of Agentify became a verdict");
+      expect(answered.cause).toBe("refused_agentify");
+      expect(answered.failure).toContain(String(status));
+      expect(answered.failure).not.toContain("must not carry");
+    },
+  );
+
+  it("reads a refusal of Agentify the same way when its body is not even JSON", async () => {
+    const answered = await facilitatorFor(await answeringWith(401, "Unauthorized"), edge).verify(
+      charge(honest()),
+    );
+
+    expect(answered).toMatchObject({ verified: "unknown", cause: "refused_agentify" });
+  });
+
+  it.each([429, 500, 503])(
+    "reads %i as no answer that asking again may cure, naming the status for the log",
+    async (status) => {
+      const answered = await facilitatorFor(
+        await answeringWith(status, NOT_A_VERDICT),
+        edge,
+      ).verify(charge(honest()));
+
+      if (answered.verified !== "unknown") throw new Error("a silence became a verdict");
+      expect(answered.cause).toBe("no_answer");
+      expect(answered.failure).toContain(String(status));
+    },
+  );
 });
 
 describe("executing a charge", () => {

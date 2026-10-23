@@ -176,7 +176,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               From <Moment at={pending.from} /> buyers pay into this address's payout contract
               instead. Every account of your merchant was sent a message about it. If nobody at your
               business asked for it, cancel it; cancelling also signs out every session of your
-              merchant but this one.
+              merchant, a copy of this one included, and keeps this browser signed in on a new one.
             </p>
             {pending.split === null ? null : (
               <SplitBeside split={pending.split} label="Buyers will pay into" />
@@ -341,7 +341,7 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
   );
 }
 
-/** Its one control ends every other session of this account and keeps this one. */
+/** Its one control ends every session of this account, this browser's included. */
 function Account({ view }: Readonly<{ view: SettingsView }>) {
   const { who, account } = view;
   return (
@@ -359,17 +359,16 @@ function Account({ view }: Readonly<{ view: SettingsView }>) {
           <Button variant="secondary">Sign out</Button>
         </Form>
       </div>
-      <PostForm document action="/settings/sign-out-others" className="issue">
+      <PostForm document action="/settings/sign-out-everywhere" className="issue">
         {(pending) => (
           <>
             <p className="quiet">
-              Ends every session of {who} except this one, on any device. Each of them needs a new
-              link to sign in again.
+              Ends every session of {who} on every device, this one included, so a session somebody
+              copied from this browser ends too. You then sign in again with a new link.
             </p>
             <Button variant="secondary" pending={pending}>
-              {account.signOutOthers}
+              {account.signOutEverywhere}
             </Button>
-            {account.notice === null ? null : <p role="status">{account.notice}</p>}
           </>
         )}
       </PostForm>

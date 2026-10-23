@@ -140,16 +140,18 @@ export const SURFACE_MARKER_ATTRIBUTE = "data-agentify-surface";
 
 /**
  * What each mode says to a reader, and nothing where there is nothing to warn
- * about. The test wording claims only what the payment was made with: a test
- * chain proves nothing about what a merchant's worker does with the order, and
- * the merchants here run their own code.
+ * about. The test wording claims only what the payment is made in: a test
+ * chain says the money is not real, not that anything settles, since any
+ * facilitator on it is a test mode, a local model that settles nothing among
+ * them; nor does it prove anything about what a merchant's worker does with
+ * the order, and the merchants here run their own code.
  */
 export const SURFACE_WORDS: Readonly<Record<SurfaceMode, string | null>> = {
   sandbox:
     "Sandbox. No chain stands behind this stack: every payment it accepts is pretend, nothing " +
     "arrives at the address in a challenge, and no receipt it writes points at a transfer.",
   test:
-    "Test environment. Payments settle on Base Sepolia with test funds, and every order and " +
-    "receipt here is marked as a test. The live site is agentify.ad.",
+    "Test environment. Payments here are in test funds on Base Sepolia, and every order and " +
+    "receipt is marked as a test. The live site is agentify.ad.",
   live: null,
 };

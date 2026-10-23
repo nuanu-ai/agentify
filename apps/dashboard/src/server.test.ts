@@ -38,7 +38,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalDirectory } from "./approval-command.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
-import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -2073,7 +2073,7 @@ describe("the operator flag", () => {
     expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
 
     // Signing out ends the session the rest are sent with, so it goes last.
-    const lastly = (path: string) => (path.endsWith("/sign-out") ? 1 : 0);
+    const lastly = (path: string) => (/\/sign-out(-everywhere)?$/.test(path) ? 1 : 0);
     for (const { method, path } of routes.sort(
       (one, other) => lastly(one.path) - lastly(other.path),
     )) {
@@ -2356,7 +2356,7 @@ describe("the address a press posts to, opened as a page", () => {
 
     for (const [path, page] of [
       ["/settings/site", "/settings"],
-      ["/settings/sign-out-others", "/settings"],
+      ["/settings/sign-out-everywhere", "/settings"],
       ["/settings/payout-wallet", "/settings"],
       ["/settings/payout-wallet/cancel", "/settings"],
       ["/keys/some-key/disable", "/keys"],
@@ -2715,11 +2715,7 @@ describe("the settings screen", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of [
-      "/settings/site",
-      "/settings/sign-out-others",
-      "/settings/payout-wallet/cancel",
-    ]) {
+    for (const path of ["/settings/site", "/settings/payout-wallet/cancel"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
@@ -2734,7 +2730,7 @@ describe("the settings screen", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/settings", "/settings/sign-out-others", "/settings/payout-wallet"]) {
+    for (const path of ["/settings", "/settings/payout-wallet"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.headers.get("cache-control"), path).toBe("private, no-store");
     }
@@ -3061,7 +3057,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     // A wallet saved before the rule existed, written straight into the store:
     // its split pays Multicall3, a payout over it would hand the share to
     // whoever calls Multicall3 next, and the builder refuses it. The merchant
-    // still needs the page, the control that signs every other device out and
+    // still needs the page, the control that signs every device out and
     // the box that replaces the wallet among it.
     const running = await started({
       dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
@@ -3084,7 +3080,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     const text = readable(screen.html);
     expect(text).toMatch(/get your payout/i);
     expect(text).toMatch(/could not build/i);
-    expect(text).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });
 
@@ -5546,7 +5542,7 @@ describe("a page left open while another address signs in", () => {
       "/keys",
       "/settings",
       "/settings/payout-wallet",
-      "/settings/sign-out-others",
+      "/settings/sign-out-everywhere",
       "/woocommerce/connect",
       "/choose-name",
       "/merchant",
@@ -5563,7 +5559,8 @@ describe("a page left open while another address signs in", () => {
       );
     const refusal = await asDrawn(running.browser, STOP_SELLING, {});
     expect(refusal.status).toBe(409);
-    for (const { action, fields } of drawn.filter(({ action }) => action !== "/sign-out")) {
+    const SIGNS_OUT = ["/sign-out", "/settings/sign-out-everywhere"];
+    for (const { action, fields } of drawn.filter(({ action }) => !SIGNS_OUT.includes(action))) {
       const answer = await asDrawn(running.browser, action, fields);
       expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
@@ -5578,6 +5575,20 @@ describe("a page left open while another address signs in", () => {
     for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
       const answer = await asDrawn(fresh, action, fields);
       expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
+    }
+    // Last, since they end the session the rest were sent with, and Sign out
+    // everywhere before the header's sign-out, while it still has a session
+    // to end.
+    const everywhere = drawn.find(({ action }) => action === "/settings/sign-out-everywhere");
+    const ended = await asDrawn(
+      running.browser,
+      everywhere?.action ?? "",
+      everywhere?.fields ?? {},
+    );
+    expect(ended.to).toBe("/sign-in?reason=signed-out-everywhere");
+    for (const { action, fields } of drawn.filter(({ action }) => action === "/sign-out")) {
+      const answer = await asDrawn(running.browser, action, fields);
+      expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
   });
 });
@@ -5758,7 +5769,7 @@ describe("a press that fails in a way nobody planned for", () => {
       identity: (real) => ({
         ...real,
         signOut: async (cookie) => (breaking ? broken() : await real.signOut(cookie)),
-        endOtherSessionsOfPerson: broken,
+        endSessionsOfPerson: broken,
       }),
     });
     await browser.signIn();
@@ -5771,7 +5782,7 @@ describe("a press that fails in a way nobody planned for", () => {
         ["/keys/some-key/disable", {}],
         ["/settings", { seller_name: "Bright Data Plans" }],
         ["/settings/site", { seller_site: "https://example.com" }],
-        ["/settings/sign-out-others", {}],
+        ["/settings/sign-out-everywhere", {}],
         [
           "/settings/payout-wallet",
           { payout_wallet: "0x1111111111111111111111111111111111111111" },
@@ -6043,10 +6054,34 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(screen.html).not.toContain('action="/settings/payout-wallet/cancel"');
   });
 
-  it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
+  /**
+   * A second browser holding a copy of `browser`'s session cookie as it is
+   * now, as one copied by an extension would.
+   */
+  const copyOf = (browser: Browser): Browser => {
+    const token = browser.sessionToken();
+    return browser.withRawCookie(`${COOKIE}=${token}; ${SECURE_COOKIE}=${token}`);
+  };
+
+  /** The pressing browser goes on, on a session other than the one it pressed with, and no copy of that one opens anything. */
+  const renewedAndTheCopyEnded = async (
+    browser: Browser,
+    before: string | null,
+    copy: Browser,
+  ): Promise<void> => {
+    expect(browser.sessionToken()).not.toBeNull();
+    expect(browser.sessionToken()).not.toBe(before);
+    expect((await browser.get("/settings")).status).toBe(200);
+    expect((await copy.get("/settings")).to).toMatch(/^\/sign-in/);
+    expect((await copy.get("/cards")).to).toMatch(/^\/sign-in/);
+  };
+
+  it("cancels with one press, after which neither the old cookie nor a copy of it opens anything, and the pressing browser stays signed in on a new session", async () => {
     const running = await live();
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
     const otherDevice = await running.another();
     await otherDevice.signIn();
     const partner = await running.another();
@@ -6058,12 +6093,142 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(pressed.status).toBe(303);
     expect(pressed.to).toBe("/settings");
     expect(await waitingNow(running)).toBeNull();
-    expect((await running.browser.get("/settings")).status).toBe(200);
+    await renewedAndTheCopyEnded(running.browser, before, copy);
     // A session the person did not press from may be the one that asked, so it
     // ends: theirs on another device, and every other account's at the
     // merchant.
     expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
     expect((await partner.get("/cards")).to).toMatch(/^\/sign-in/);
+  });
+
+  /** The settings fail to draw while `failing.now` holds, as a store that stopped answering. */
+  const drawingFails = (failing: { now: boolean }): Starting => ({
+    identity: (real) => ({
+      ...real,
+      analyticsOptedOut: async (personId) => {
+        if (failing.now) throw new Error("the store stopped answering");
+        return await real.analyticsOptedOut(personId);
+      },
+    }),
+  });
+
+  it.each([
+    ["the address paid now is typed in", false],
+    ["the address paid before is typed back after the change took effect", true],
+  ] as const)(
+    "keeps this browser signed in on its new session when %s and the page then fails to draw",
+    async (_how, landed) => {
+      const failing = { now: false };
+      const running = await live(drawingFails(failing));
+      await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
+      await aChangeWaits(running);
+      const screen = await running.browser.get("/settings");
+      if (landed) running.harnessed.advance(48 * 60 * 60 * 1_000);
+      failing.now = true;
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        ...(landed ? fromTheWalletForm(screen) : {}),
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+      failing.now = false;
+
+      expect(typed.status).toBe(500);
+      expect(await waitingNow(running)).toBeNull();
+      await renewedAndTheCopyEnded(running.browser, before, copy);
+    },
+  );
+
+  it("keeps this browser signed in on its new session when the change landed before the press and the page then fails to draw", async () => {
+    const failing = { now: false };
+    const running = await live(drawingFails(failing));
+    await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
+    await aChangeWaits(running);
+    const screen = await running.browser.get("/settings");
+    running.harnessed.advance(48 * 60 * 60 * 1_000);
+    failing.now = true;
+
+    const pressed = await running.browser.post(
+      "/settings/payout-wallet/cancel",
+      fromTheScreen(screen),
+    );
+    failing.now = false;
+
+    expect(pressed.status).toBe(500);
+    await renewedAndTheCopyEnded(running.browser, before, copy);
+  });
+
+  it("keeps this browser signed in on its new session when a read of the gateway fails after the cancel", async () => {
+    const failing = { now: false };
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        payoutSplits: async () => (failing.now ? lateAnswer(10) : await real.payoutSplits()),
+      }),
+    });
+    await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
+    await aChangeWaits(running);
+    failing.now = true;
+
+    const typed = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: running.harnessed.merchant.wallet,
+    });
+    failing.now = false;
+
+    expect(typed.status).toBeGreaterThanOrEqual(500);
+    expect(await waitingNow(running)).toBeNull();
+    await renewedAndTheCopyEnded(running.browser, before, copy);
+  });
+
+  it("sets the new session's cookie as a sign-in sets it, to last as long", async () => {
+    const running = await live();
+    await running.browser.signIn();
+    await aChangeWaits(running);
+    const attributesOfTheSession = (lines: readonly string[]): string[] => {
+      const line = lines
+        .filter((one) => one.startsWith(`${COOKIE}=`) || one.startsWith(`${SECURE_COOKIE}=`))
+        .at(-1);
+      return (line ?? "")
+        .split(";")
+        .slice(1)
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => !part.startsWith("expires="))
+        .sort();
+    };
+    rewindLinkSends(running.rows);
+    await running.identity.requestLink(PERSON, "default", { client: "192.0.2.10" });
+    const opened = await running.identity.openLink(
+      actionIn(running.mails.at(-1)).searchParams.get("token") ?? "",
+    );
+    if (opened.status !== "opened") throw new Error("the link did not open");
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+
+    const signedIn = attributesOfTheSession(opened.setCookies);
+    expect(signedIn).toContainEqual(expect.stringMatching(/^max-age=\d+$/));
+    expect(attributesOfTheSession(pressed.headers.getSetCookie())).toStrictEqual(signedIn);
+  });
+
+  it("leaves the sessions of an account at another merchant alone when a change is cancelled", async () => {
+    const running = await live();
+    await running.identity.make("stranger@example.com", "mer_another");
+    await running.browser.signIn();
+    const stranger = await running.another();
+    await stranger.signIn("stranger@example.com");
+    const theirs = stranger.sessionToken();
+    await aChangeWaits(running);
+
+    await running.browser.post("/settings/payout-wallet/cancel");
+
+    expect(
+      (await running.identity.whoIs(`${COOKIE}=${theirs}; ${SECURE_COOKIE}=${theirs}`))?.person
+        .email,
+    ).toBe("stranger@example.com");
   });
 
   it("signs nobody out when the gateway would not cancel", async () => {
@@ -6113,7 +6278,7 @@ describe("a wallet change waiting on the live deployment", () => {
     expect((await otherDevice.get("/settings")).status).toBe(200);
   });
 
-  it("says a change that took effect before the press did take effect, and still signs the others out", async () => {
+  it("says a change that took effect before the press did take effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // The unwanted change has just landed. It is not cancelled (nothing takes
     // it back at once) and the page must not say so; it signs every other
     // session out and says how the old address comes back.
@@ -6124,6 +6289,8 @@ describe("a wallet change waiting on the live deployment", () => {
     try {
       const running = await live();
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6143,6 +6310,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await waitingNow(running)).toBeNull();
       expect(await paidNow(running)).toBe(WAITING);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(said.join("\n")).not.toMatch(/cancelled/i);
     } finally {
       log.mockRestore();
@@ -6205,7 +6373,7 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(await waitingNow(running)).not.toBeNull();
   });
 
-  it("cancels a waiting change when the address paid now is typed in, and signs the others out", async () => {
+  it("cancels a waiting change when the address paid now is typed in, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // Typing the current address is the same act as Cancel. Leaving the asking
     // session signed in would leave it free to ask again, and calling it a
     // change would misreport what happened.
@@ -6232,6 +6400,8 @@ describe("a wallet change waiting on the live deployment", () => {
         running.harnessed.now(),
       );
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6243,6 +6413,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await waitingNow(running)).toBeNull();
       expect(await paidNow(running)).toBe(PAID);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(readable(typed.html)).toMatch(/cancelled/i);
       expect(said.join("\n")).toMatch(/cancelled a waiting change/);
       expect(said.join("\n")).not.toMatch(/changed the address/);
@@ -6251,7 +6422,7 @@ describe("a wallet change waiting on the live deployment", () => {
     }
   });
 
-  it("says a change that took effect before the old address was typed back took effect, and signs the others out", async () => {
+  it("says a change that took effect before the old address was typed back took effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // Typing the address the page showed as paid, after the change took effect,
     // is the same act as Cancel there, not a new change that leaves the other
     // sessions signed in.
@@ -6262,6 +6433,8 @@ describe("a wallet change waiting on the live deployment", () => {
     try {
       const running = await live();
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6278,6 +6451,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await paidNow(running)).toBe(WAITING);
       expect(await waitingNow(running)).toBeNull();
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(said.join("\n")).not.toMatch(/asked for a change/);
     } finally {
       log.mockRestore();
@@ -6297,39 +6471,58 @@ describe("a wallet change waiting on the live deployment", () => {
   });
 });
 
-describe("signing out every other device", () => {
+describe("signing out everywhere", () => {
   // It reaches this account's sessions and no other's, touches no key, and
-  // needs no wallet change to be waiting.
+  // needs no wallet change to be waiting. A session copied from this very
+  // browser carries the same token as the one pressing, so only ending the
+  // pressing session too ends the copy.
 
-  it("ends every other session of this account, keeps this one, and says how many", async () => {
+  it("leaves no session of the account open afterwards, the pressing one and a copy of it included", async () => {
     const running = await started();
     await running.browser.signIn();
+    const copied = running.browser.withRawCookie(`${COOKIE}=${running.browser.sessionToken()}`);
     const laptop = await running.another();
     await laptop.signIn();
     const phone = await running.another();
     await phone.signIn();
+    expect((await copied.get("/settings")).status).toBe(200);
 
-    const pressed = await running.browser.post("/settings/sign-out-others");
+    const pressed = await running.browser.post("/settings/sign-out-everywhere");
 
-    expect(pressed.status).toBe(200);
-    expect(readable(pressed.html)).toMatch(/\b2\b/);
-    expect(readable(pressed.html)).toMatch(/signed out/i);
-    expect((await running.browser.get("/settings")).status).toBe(200);
-    // Each of the others has to sign in again.
-    expect((await laptop.get("/settings")).to).toMatch(/^\/sign-in/);
-    expect((await phone.get("/cards")).to).toMatch(/^\/sign-in/);
+    expect(pressed.status).toBe(303);
+    for (const [who, browser] of [
+      ["the pressing browser", running.browser],
+      ["a copy of its session", copied],
+      ["the laptop", laptop],
+      ["the phone", phone],
+    ] as const) {
+      expect((await browser.get("/settings")).to, who).toMatch(/^\/sign-in/);
+      expect((await browser.get("/cards")).to, who).toMatch(/^\/sign-in/);
+    }
   });
 
-  it("counts no session of this browser's own that a second sign-in left behind", async () => {
-    // A link opened in a signed-in browser replaces its session, so the count
-    // is of other places.
+  it("lands on the sign-in page saying every device was signed out, this one included", async () => {
     const running = await started();
     await running.browser.signIn();
+
+    const pressed = await running.browser.post("/settings/sign-out-everywhere");
+    const landed = await running.browser.get(pressed.to ?? "");
+
+    expect(pressed.to).toMatch(/^\/sign-in\?/);
+    expect(landed.status).toBe(200);
+    expect(readable(landed.html)).toMatch(/every device/i);
+    expect(readable(landed.html)).toMatch(/this one included/i);
+  });
+
+  it("clears this browser's cookie, so it does not go on sending a session that has ended", async () => {
+    const running = await started();
     await running.browser.signIn();
 
-    const pressed = await running.browser.post("/settings/sign-out-others");
+    const pressed = await running.browser.post("/settings/sign-out-everywhere");
 
-    expect(readable(pressed.html)).toMatch(/no other session/i);
+    expect(pressed.headers.getSetCookie().some((line) => line.startsWith(`${COOKIE}=;`))).toBe(
+      true,
+    );
   });
 
   it("works with no wallet change waiting, and is offered on the settings screen", async () => {
@@ -6338,9 +6531,9 @@ describe("signing out every other device", () => {
 
     const screen = await running.browser.get("/settings");
 
-    expect(screen.html).toContain('action="/settings/sign-out-others"');
+    expect(screen.html).toContain('action="/settings/sign-out-everywhere"');
     expect(await waitingOf(running)).toBeNull();
-    expect((await running.browser.post("/settings/sign-out-others")).status).toBe(200);
+    expect((await running.browser.post("/settings/sign-out-everywhere")).status).toBe(303);
   });
 
   it("leaves the sessions of another account at the same merchant alone", async () => {
@@ -6350,7 +6543,7 @@ describe("signing out every other device", () => {
     const partner = await running.another();
     await partner.signIn(OTHER);
 
-    await running.browser.post("/settings/sign-out-others");
+    await running.browser.post("/settings/sign-out-everywhere");
 
     expect((await partner.get("/settings")).status).toBe(200);
   });
@@ -6363,16 +6556,17 @@ describe("signing out every other device", () => {
 
     const pressed = await running.browser
       .from("https://elsewhere.example")
-      .post("/settings/sign-out-others");
+      .post("/settings/sign-out-everywhere");
 
     expect(pressed.status).toBe(403);
     expect((await laptop.get("/settings")).status).toBe(200);
+    expect((await running.browser.get("/settings")).status).toBe(200);
   });
 
   it("is behind the gate", async () => {
     const running = await started();
 
-    const pressed = await running.browser.post("/settings/sign-out-others");
+    const pressed = await running.browser.post("/settings/sign-out-everywhere");
 
     expect(pressed.to).toMatch(/^\/sign-in/);
   });

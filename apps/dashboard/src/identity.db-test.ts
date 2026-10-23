@@ -16,6 +16,7 @@ import {
   LINK_CLIENT_LIMIT,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
+  SESSION_DAYS,
 } from "./identity.js";
 import type { Message } from "./mail.js";
 import { type GoogleProfile, googleExchange } from "./testing/google.js";
@@ -727,7 +728,7 @@ if (databaseUrl === null) {
       });
     });
 
-    it("names a merchant's accounts and ends their sessions but the one kept", async () => {
+    it("names a merchant's accounts, ends every session of them, the pressing one included, and gives the pressing browser a new one", async () => {
       // On PostgreSQL the account's merchant is a column the component maps, so
       // the lookup is checked here and not only on the memory store.
       const messages: Message[] = [];
@@ -747,11 +748,92 @@ if (databaseUrl === null) {
         "owner@example.com",
         "partner@example.com",
       ]);
-      expect(await identity.endOtherSessionsOfMerchant(MERCHANT, pressed)).toBe(1);
-      expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      const signedInAt = (await identity.whoIs(pressed))?.signedInAt;
+      const renewed = await identity.endMerchantSessionsAndRenew(MERCHANT, pressed);
+      const fresh = renewed.setCookies.map((line) => line.split(";")[0]).join("; ");
+
+      expect(renewed.ended).toBe(2);
+      expect(fresh).not.toBe(pressed);
+      // As long as a sign-in's, not a day's, read before any visit could move
+      // its end; the owner's new session is the only live one left.
+      const { rows } = await pool.query<{ days: string }>(
+        `select extract(epoch from s.expires_at - now()) / 86400 as days
+           from dashboard_sessions s join dashboard_accounts a on a.id = s.user_id
+          where a.email = 'owner@example.com' and s.expires_at > now()`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.days)).toBeGreaterThan(SESSION_DAYS - 1);
+      expect(await identity.whoIs(pressed)).toBeNull();
       expect(await identity.whoIs(partner)).toBeNull();
+      const now = await identity.whoIs(fresh);
+      expect(now?.person.email).toBe("owner@example.com");
+      // Renewed, not signed in again: the moment a rate notice names stays the
+      // sign-in the owner made.
+      expect(now?.signedInAt).toStrictEqual(signedInAt);
       expect((await identity.whoIs(elsewhere))?.person.email).toBe("stranger@example.com");
     });
+
+    it("ends every session of the merchant and gives no new one when making the new one fails", async () => {
+      // A renewal can fail after the pressing session was read, as when another
+      // tab ends it in between; the store refusing every new session row
+      // stands in for that here, every time.
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const signedIn = async (email: string): Promise<string> => {
+        await rewindLinkSends();
+        await identity.make(email, MERCHANT);
+        await identity.requestLink(email, "default", ONE_CLIENT);
+        const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+        if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
+        return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+      };
+      const owner = await signedIn("owner@example.com");
+      const partner = await signedIn("partner@example.com");
+      await pool.query(
+        "alter table dashboard_sessions add constraint no_new_sessions check (false) not valid",
+      );
+      try {
+        const renewed = await identity.endMerchantSessionsAndRenew(MERCHANT, owner);
+
+        expect(renewed.setCookies).toStrictEqual([]);
+        expect(renewed.ended).toBe(2);
+        expect(await identity.whoIs(owner)).toBeNull();
+        expect(await identity.whoIs(partner)).toBeNull();
+      } finally {
+        await pool.query("alter table dashboard_sessions drop constraint no_new_sessions");
+      }
+    });
+
+    it.each([
+      ["has ended, as when another tab signed out everywhere first", "ended"],
+      ["belongs to an account at another merchant", "elsewhere"],
+    ] as const)(
+      "ends every session of the merchant and gives no new one when the pressing cookie's session %s",
+      async (_why, whose) => {
+        const messages: Message[] = [];
+        const identity = identityOn(messages);
+        const signedIn = async (email: string, merchant: string): Promise<string> => {
+          await rewindLinkSends();
+          await identity.make(email, merchant);
+          await identity.requestLink(email, "default", ONE_CLIENT);
+          const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+          if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
+          return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+        };
+        const owner = await signedIn("owner@example.com", MERCHANT);
+        const partner = await signedIn("partner@example.com", MERCHANT);
+        const stranger = await signedIn("stranger@example.com", "mer_another");
+        const pressing = whose === "ended" ? owner : stranger;
+        if (whose === "ended") await identity.signOut(owner);
+
+        const renewed = await identity.endMerchantSessionsAndRenew(MERCHANT, pressing);
+
+        expect(renewed.setCookies).toStrictEqual([]);
+        expect(await identity.whoIs(owner)).toBeNull();
+        expect(await identity.whoIs(partner)).toBeNull();
+        expect((await identity.whoIs(stranger))?.person.email).toBe("stranger@example.com");
+      },
+    );
 
     it.each([
       ["this account's", "person"],
@@ -789,14 +871,13 @@ if (databaseUrl === null) {
         );
         const pressed = await signedIn("owner@example.com");
 
-        const ended =
-          reach === "person"
-            ? await identity.endOtherSessionsOfPerson(owner.id, pressed)
-            : await identity.endOtherSessionsOfMerchant(MERCHANT, pressed);
-
-        expect(ended).toBe(1);
+        if (reach === "person") {
+          expect(await identity.endSessionsOfPerson(owner.id)).toBe(2);
+        } else {
+          expect((await identity.endMerchantSessionsAndRenew(MERCHANT, pressed)).ended).toBe(2);
+        }
+        expect(await identity.whoIs(pressed)).toBeNull();
         expect(await identity.whoIs(laptop)).toBeNull();
-        expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
       },
     );
 
@@ -817,17 +898,18 @@ if (databaseUrl === null) {
         [owner.id],
       );
 
-      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(150);
+      expect(await identity.endSessionsOfPerson(owner.id)).toBe(151);
       expect(
         (
           await pool.query("select count(*)::int as n from dashboard_sessions where user_id = $1", [
             owner.id,
           ])
         ).rows[0],
-      ).toStrictEqual({ n: 1 });
+      ).toStrictEqual({ n: 0 });
+      expect(await identity.whoIs(pressed)).toBeNull();
     });
 
-    it("ends every other session of one account and leaves another account's alone", async () => {
+    it("ends every session of one account, the pressing one included, and leaves another account's alone", async () => {
       // On PostgreSQL the sessions are rows the component reads by account, so
       // the reach of the call is checked here and not only on the memory store.
       const messages: Message[] = [];
@@ -846,8 +928,8 @@ if (databaseUrl === null) {
       const laptop = await signedIn("owner@example.com");
       const partner = await signedIn("partner@example.com");
 
-      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(1);
-      expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      expect(await identity.endSessionsOfPerson(owner.id)).toBe(2);
+      expect(await identity.whoIs(pressed)).toBeNull();
       expect(await identity.whoIs(laptop)).toBeNull();
       expect((await identity.whoIs(partner))?.person.email).toBe("partner@example.com");
     });

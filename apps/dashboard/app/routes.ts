@@ -43,7 +43,7 @@ export default [
       route("integrations", "routes/integrations.tsx"),
       route("settings", "routes/settings.tsx", [
         route("site", "routes/settings-site.ts"),
-        route("sign-out-others", "routes/settings-sign-out-others.ts"),
+        route("sign-out-everywhere", "routes/settings-sign-out-everywhere.ts"),
         route("analytics", "routes/settings-analytics.ts"),
         route("payout-wallet/cancel", "routes/settings-payout-wallet-cancel.ts"),
       ]),

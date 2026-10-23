@@ -19,7 +19,6 @@
  */
 
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
@@ -42,7 +41,6 @@ import { payoutSplitFor } from "../../split/parameters.js";
 import { startGateway } from "../../start.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import {
-  authorisation,
   countedIds,
   loggedWhile,
   serve,
@@ -547,6 +545,73 @@ if (databaseUrl === null) {
       }
     }, 30_000);
 
+    it("makes a revocation from another client wait for a hand-over recorded through that key", async () => {
+      // The terminal command revokes a key from a process of its own. Were the
+      // hand-over to read the key and then write, a revocation committed in
+      // between would let the order go to code the merchant had just cut off;
+      // under the hold, the revocation either lands first and the hand-over
+      // finds nothing, or waits until the hand-over is written.
+      await store.addKey({ id: "mk_held", merchantId: A, label: "held", digest: "dg-held" }, now);
+      await store.addOrder(anOrder("ord_held", "created"));
+      const poller = connect(databaseUrl, { max: 1 });
+      const command = connect(databaseUrl, { max: 1 });
+
+      try {
+        const pollerPid = await backendPid(poller.pool);
+        const commandPid = await backendPid(command.pool);
+        const polling = PostgresStore.over(poller.db, "eip155:84532", countedIds());
+        const revoking = PostgresStore.over(command.db, "eip155:84532", countedIds());
+
+        let release: () => void = () => undefined;
+        const released = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        let entered: () => void = () => undefined;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const handOver = polling.withOrder(
+          "ord_held",
+          async (found) => {
+            entered();
+            await released;
+            return {
+              save: { ...found, order: { ...found.order, state: "quoted" as const } },
+              result: "handed over",
+            };
+          },
+          { merchantId: A, keyId: "mk_held" },
+        );
+        await inside;
+
+        const revoked = revoking.disableKeyOf(A, "mk_held", now);
+        let heldUp = false;
+        const until = Date.now() + 5_000;
+        while (Date.now() < until && !heldUp) {
+          const { rows } = await pool.query<{ blockers: number[] }>(
+            "select pg_blocking_pids($1) as blockers",
+            [commandPid],
+          );
+          heldUp = (rows[0]?.blockers ?? []).includes(pollerPid);
+          if (!heldUp) await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        release();
+
+        expect(heldUp).toBe(true);
+        expect(await handOver).toStrictEqual({ found: true, result: "handed over" });
+        expect((await revoked)?.disabledAt).not.toBeNull();
+        expect(
+          await store.withOrder("ord_held", () => ({ result: "again" }), {
+            merchantId: A,
+            keyId: "mk_held",
+          }),
+        ).toStrictEqual({ found: false });
+      } finally {
+        await poller.pool.end();
+        await command.pool.end();
+      }
+    }, 30_000);
+
     it("gives one payment to exactly one of two orders racing for it", async () => {
       const [first, second] = await Promise.all([
         store.claimPayment("fp-db-race", "ord_race_a"),
@@ -879,75 +944,6 @@ if (databaseUrl === null) {
       const listed = await store.receipts(A);
       expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
       expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
-    }, 30_000);
-    it("charges an order written before payment references under the one the migration gave it", async () => {
-      // The order is made, paid and left unpaid by a failed charge as today,
-      // then put back as it was written before references existed, and the
-      // migration's own statement gives it one. Its buyer was never given
-      // that reference, so the payment for it here is presented directly, as
-      // the purchase would once the reference had found the order.
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "paid-again-after-the-migration" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-      const wallet = `0x${randomUUID().replaceAll("-", "").padEnd(40, "0")}`;
-      const earlier = facilitator.settles.length;
-      facilitator.willSettle(
-        ...Array.from(
-          { length: earlier },
-          () => ({ settled: true, transaction: "0xearlier" }) as const,
-        ),
-        { settled: false, reason: "the transfer reverted" },
-        { settled: true, transaction: "0xagain" },
-      );
-      try {
-        const worker = workUntilStopped(
-          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
-          { onOrder: () => ({ delivered: { access_code: "SESAME" } }) },
-        );
-        const first = authorisation(gateway, wallet, "0x01");
-        await gateway.payPurchase(orderId, first.payment, first.fingerprint);
-        await worker.stop();
-        expect((await store.orderById(orderId))?.order.state).toBe("delivered_unpaid");
-
-        await pool.query("update orders set record = record - 'paymentRef' where id = $1", [
-          orderId,
-        ]);
-        const migration = await readFile(
-          join(
-            dirname(fileURLToPath(import.meta.url)),
-            "..",
-            "..",
-            "..",
-            "drizzle",
-            "0018_order_payment_ref.sql",
-          ),
-          "utf8",
-        );
-        const backfill = migration
-          .split("--> statement-breakpoint")
-          .map((statement) => statement.trim())
-          .find((statement) => /^UPDATE/m.test(statement.replace(/^--.*$/gm, "").trim()));
-        if (backfill === undefined) throw new Error("the migration gives no order a reference");
-        await pool.query(backfill);
-
-        const given = (await store.orderById(orderId))?.paymentRef ?? "";
-        expect((await gateway.orderForPayment(given))?.order.id).toBe(orderId);
-        const again = authorisation(gateway, wallet, "0x02");
-        const paid = await gateway.payPurchase(orderId, again.payment, again.fingerprint);
-
-        expect(paid.step).toBe("settled");
-        if (paid.step !== "settled") throw new Error("the order was not paid again");
-        expect(paid.order.order.state).toBe("delivered");
-        expect(paid.delivery).toStrictEqual({ access_code: "SESAME" });
-        expect(facilitator.settles.at(-1)?.paymentRef).toBe(given);
-      } finally {
-        facilitator.willSettle();
-      }
     }, 30_000);
 
     /**

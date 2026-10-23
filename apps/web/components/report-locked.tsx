@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import layout from "./result-layout.module.css";
-import { SiteTop } from "./site-chrome";
+import { SiteFooter, SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 
 /**
@@ -24,6 +24,7 @@ function Locked({ children, doors = true }: Readonly<{ children: ReactNode; door
           <section className={layout.message}>{children}</section>
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

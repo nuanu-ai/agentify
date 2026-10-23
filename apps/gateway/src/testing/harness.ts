@@ -6,11 +6,13 @@
 
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
-import type {
-  HandlerAnswer,
-  Order,
-  QuoteResponse,
-  WorkerPollResponse,
+import {
+  API_ROUTES,
+  expandPath,
+  type HandlerAnswer,
+  type Order,
+  type QuoteResponse,
+  type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
 import {
   decodePaymentRequiredHeader,
@@ -122,7 +124,14 @@ export interface Harness {
 export const theMerchantKey = (environment: Environment): string =>
   `${keyPrefixFor(environment)}a-merchant-key-long-enough`;
 
-export async function harness(overrides: Record<string, string> = {}): Promise<Harness> {
+export async function harness(
+  overrides: Record<string, string> = {},
+  /**
+   * The identifiers the gateway issues: counted by default so a test can read
+   * them, or as production issues them for a test about what they are.
+   */
+  options: { readonly ids?: Ids } = {},
+): Promise<Harness> {
   // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
   // store stamps payment claims from it too, so `advance` moves those as well.
   let now = Date.parse("2026-08-26T12:00:00.000Z");
@@ -139,7 +148,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   const facilitator = new ScriptedFacilitator();
   const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
   const announcer = new RecordingAnnouncer();
-  const ids = countedIds();
+  const ids = options.ids ?? countedIds();
 
   const runtime: Runtime = {
     config,
@@ -493,7 +502,7 @@ export async function signedFor(
   // An order not paid yet has no address of its own, so the test names one.
   const requirements = edge.requirementsFor(
     price,
-    order.paymentRef,
+    order.order.id,
     order.payTo ?? terms.payTo ?? null,
   );
   const payment = await signedPayment(wallet, requirements, {
@@ -504,6 +513,20 @@ export async function signedFor(
     payment,
     fingerprint: paymentFingerprint(decodePaymentSignatureHeader(payment), edge.token()),
   };
+}
+
+/**
+ * The path of the address the buyer of `orderId` reads it again at, as the
+ * purchase answer's `status_url` names it, for a test that holds the order's
+ * identifier rather than that answer.
+ */
+export async function statusPathOf(
+  worked: { readonly gateway: Gateway },
+  orderId: string,
+): Promise<string> {
+  const record = await worked.gateway.runtime.store.orderById(orderId);
+  if (record === null) throw new Error(`there is no order ${orderId} to read again`);
+  return expandPath(API_ROUTES.get_order_status.path, { buyer_key: record.buyerKey });
 }
 
 /** The zero address: an offer made out to nobody, in a payment nobody checks. */

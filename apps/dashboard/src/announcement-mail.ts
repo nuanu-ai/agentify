@@ -10,12 +10,12 @@
  * it. A message carries a plain link to Settings and never a token or sign-in
  * link, so a forwarded or intercepted copy opens nothing. What a message
  * advises has to work in the state it describes: a waiting change can be
- * cancelled; when nothing waits, the advice is to stop selling, sign out every
- * other device, then set an address of one's own.
+ * cancelled; when nothing waits, the advice is to stop selling, sign out
+ * everywhere, then sign in again and set an address of one's own.
  */
 
 import type { Announcement, AskedInTheDashboard } from "@agentify/gateway/announcements";
-import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { type CommissionRate, percentagesOf } from "./shares.js";
@@ -39,15 +39,16 @@ const askedIn = (asked: AskedInTheDashboard): string =>
   `in the dashboard, from a session signed in as ${asked.email}`;
 
 const IF_NOT_YOU =
-  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs every other session out.";
+  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs out every session of your merchant, a copy of yours included, and keeps you signed in on a new one.";
 
 /**
- * The order matters: the stop is immediate; signing out every other device
- * keeps a session that is not the owner's from undoing what comes next; an
- * address of one's own waits and is announced.
+ * The order matters: the stop is immediate; signing out everywhere ends a
+ * session that is not the owner's, a copy of the owner's own among them,
+ * before it can undo what comes next; an address of one's own waits and is
+ * announced.
  */
 const PAUSE_THEN_SET = (settings: string): string =>
-  `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
+  `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERYWHERE} in Settings, which ends every session of your account, the one you press it from included: ${settings}. Then sign in again with a new link and set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
 /**
  * The split a wallet is paid through is checked by no eye, so the message is

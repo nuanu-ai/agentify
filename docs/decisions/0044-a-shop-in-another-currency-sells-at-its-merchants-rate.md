@@ -4,7 +4,9 @@ Date: 2026-10-21
 Status: accepted; the merchant's own rate with Coinbase's beside it, the kept
 history, the shop's currency read from the shop, the scope of currencies and
 the one-unit match read in the shop's currency are the product owner's word of
-2026-10-21; the mechanics below are the proposal's
+2026-10-21; a rate keeps when its saving session signed in rather than an
+address, revised 2026-10-23 (the product owner); the mechanics below are the
+proposal's
 ([research 58](../research/58-woo-shop-currency.md)).
 
 ## Context
@@ -27,15 +29,19 @@ the currency.
 
 Every saved rate is a row added to `dashboard_woo_rates`, never edited or
 removed: the account and the shop origin it belongs to, the currency, the rate
-as a decimal of at most six places, when it was saved and the email of the
-session that saved it, Coinbase's rate as Agentify read it while saving, with
+as a decimal of at most six places, when it was saved and when the session that
+saved it signed in (nothing, where that is not recorded), Coinbase's rate as Agentify read it while saving, with
 that moment (or nothing, where none could be read), and whether it was typed a
 second time because it stood more than a tenth from that reference. Its version
 rises with every row; a shop's current rate for a currency is its highest. A
 rate is written only after a notice of it, with the rate before it, has been
 handed to the mail for the account's address. Coinbase is read on the screen
 and at Connect, never while a buyer waits; it catches a mistyped rate and
-prices nothing.
+prices nothing. No address is kept or shown as who saved a rate: every session
+of the account carries the account's address, a stolen one included, so an
+address would read as proof of who did it while proving nothing. The screen
+and the notice give the moment the rate was entered and when its session
+signed in, and say that such a moment does not prove it was the owner.
 
 A price converts the shop's own amount, a product's or a cart's total, once at
 the current rate, with no request made for it, rounded up to the cent, so the

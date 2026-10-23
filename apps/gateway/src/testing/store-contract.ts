@@ -113,7 +113,7 @@ export const anOrder = (
   at: {
     readonly merchantId?: string;
     readonly createdAt?: number;
-    readonly paymentRef?: string;
+    readonly buyerKey?: string;
   } = {},
 ): StoredOrder => ({
   order: {
@@ -149,7 +149,7 @@ export const anOrder = (
   merchantId: at.merchantId ?? A,
   itemId: "item_1",
   merchantItemId: "sku-1",
-  paymentRef: at.paymentRef ?? `pay_for_${id}`,
+  buyerKey: at.buyerKey ?? `bk_for_${id}`,
   params: {},
   priceId: null,
   delivery: null,
@@ -1942,6 +1942,39 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
       });
 
+      it("is not found through a key that no longer works, and is through one that does", async () => {
+        // A hand-over is recorded only while the key the poll came in on
+        // works, read under the same hold, so a key revoked by any process
+        // takes no order from the moment it is revoked.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "created"));
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
+        await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 1_000);
+        await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
+        await store.disableKey("mk_1", 2_000);
+        let asked = 0;
+        const handOver = (keyId: string) =>
+          store.withOrder(
+            "ord_1",
+            (found) => {
+              asked += 1;
+              return {
+                save: { ...found, order: { ...found.order, state: "quoted" as const } },
+                result: "handed over",
+              };
+            },
+            { merchantId: A, keyId },
+          );
+
+        expect(await handOver("mk_1")).toStrictEqual({ found: false });
+        expect(await handOver("mk_b")).toStrictEqual({ found: false });
+        expect(await handOver("mk_nobody")).toStrictEqual({ found: false });
+        expect(asked).toBe(0);
+        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+
+        expect(await handOver("mk_2")).toStrictEqual({ found: true, result: "handed over" });
+      });
+
       it("does not change hands because a decision about it said so", async () => {
         // Postgres leaves the merchant column out of its update, so a save
         // carrying another merchant would split the document from the column:
@@ -1975,54 +2008,43 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderById("ord_theirs"))?.order.id).toBe("ord_theirs");
       });
 
-      it("is found by its payment reference, whoever's it is, and by nothing else", async () => {
-        // The payment route finds the order a payment is for by the reference
-        // its challenge carried, and takes no key. The order's own identifier
-        // is not a reference, so a payment naming it is bound to nothing.
+      it("is found by its buyer's key, whoever's it is, and by nothing else", async () => {
+        // The agent's read of its own purchase takes no merchant key, so the
+        // buyer's key is the only thing it finds an order by: the identifier
+        // reaches the merchant and the payment side.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted", { paymentRef: "pay_1", createdAt: 1_000 }));
+        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "bk_1", createdAt: 1_000 }));
         await store.addOrder(
-          anOrder("ord_2", "quoted", { merchantId: B, paymentRef: "pay_2", createdAt: 2_000 }),
+          anOrder("ord_2", "quoted", {
+            merchantId: B,
+            buyerKey: "bk_2",
+            createdAt: 2_000,
+          }),
         );
 
-        expect((await store.orderByPaymentRef("pay_1"))?.order.id).toBe("ord_1");
-        expect((await store.orderByPaymentRef("pay_2"))?.order.id).toBe("ord_2");
-        expect(await store.orderByPaymentRef("ord_2")).toBeNull();
-        expect(await store.orderByPaymentRef("pay_3")).toBeNull();
+        expect((await store.orderByBuyerKey("bk_1"))?.order.id).toBe("ord_1");
+        expect((await store.orderByBuyerKey("bk_2"))?.order.id).toBe("ord_2");
+        expect(await store.orderByBuyerKey("ord_2")).toBeNull();
+        expect(await store.orderByBuyerKey("bk_3")).toBeNull();
 
-        // A decision about the order rewrites its document and keeps the reference.
+        // A decision about the order rewrites its document and keeps the key.
         await store.withOrder("ord_2", (found) => ({
           save: { ...found, order: { ...found.order, state: "paid" as const } },
           result: null,
         }));
-        expect((await store.orderByPaymentRef("pay_2"))?.order.state).toBe("paid");
+        expect((await store.orderByBuyerKey("bk_2"))?.order.state).toBe("paid");
       });
 
-      it("refuses a second order under a payment reference another order has", async () => {
-        // Otherwise one payment could be bound to either of two orders.
+      it("refuses a second order under a buyer's key another order has", async () => {
+        // Otherwise one key would open either of two orders.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted", { paymentRef: "pay_1" }));
+        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "bk_1" }));
 
         await expect(
-          store.addOrder(anOrder("ord_2", "quoted", { paymentRef: "pay_1" })),
-        ).rejects.toThrow(/payment reference/);
+          store.addOrder(anOrder("ord_2", "quoted", { buyerKey: "bk_1" })),
+        ).rejects.toThrow(/buyer's key/);
         expect(await store.orderById("ord_2")).toBeNull();
-        expect((await store.orderByPaymentRef("pay_1"))?.order.id).toBe("ord_1");
-      });
-
-      it("keeps orders written without a payment reference apart, and finds none of them by one", async () => {
-        // An order written before references were issued has none until the
-        // migration gives it one, and two of them do not share one.
-        const store = await twoMerchants();
-        const withoutAReference = (id: string, createdAt: number) => {
-          const { paymentRef: _none, ...written } = anOrder(id, "delivered", { createdAt });
-          return written as StoredOrder;
-        };
-        await store.addOrder(withoutAReference("ord_1", 1_000));
-        await store.addOrder(withoutAReference("ord_2", 2_000));
-
-        expect(await idsOf(store.orders(A))).toStrictEqual(["ord_1", "ord_2"]);
-        expect(await store.orderByPaymentRef("undefined")).toBeNull();
+        expect((await store.orderByBuyerKey("bk_1"))?.order.id).toBe("ord_1");
       });
 
       it("is listed among the ones still owed something, or apart from them", async () => {

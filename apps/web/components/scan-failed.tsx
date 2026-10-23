@@ -66,11 +66,16 @@ export function ScanFailed({
               : "No reliable diagnostic was produced"}
       </h1>
       <RobotsNotice checks={checks} className={layout.note} />
-      {headline ? null : (
+      {headline ? null : blocked ? (
         <p>
-          {blocked
-            ? "The site answered the scanner's request for its home page with a bot challenge or a refusal. What could be read around it is what the site shows a reader it turns away, so no score is given."
-            : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
+          The site answered the scanner's request for its home page with a bot challenge or a
+          refusal. What could be read around it is what the site shows a reader it turns away, so no
+          score is given. <a href="/docs/scanner#identity">How the scanner identifies itself</a>
+        </p>
+      ) : (
+        <p>
+          Coverage stayed below the minimum for an honest result. This can happen after a timeout,
+          access block, or scanner failure.
         </p>
       )}
       <button className="button button-primary" onClick={onRetry} type="button">

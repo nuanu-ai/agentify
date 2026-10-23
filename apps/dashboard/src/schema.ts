@@ -390,8 +390,12 @@ export const wooRates = pgTable(
     /** A decimal string with at most six digits after the dot. */
     rate: text("rate").notNull(),
     setAt: moment("set_at"),
-    /** The email of the session that saved it. */
-    setBy: text("set_by").notNull(),
+    /**
+     * When the session that saved it signed in; null where that was not
+     * recorded. Every session of an account carries its address, a stolen one
+     * included, so who saved a rate is not kept as an address.
+     */
+    sessionSignedInAt: timestamp("session_signed_in_at", { withTimezone: true, mode: "date" }),
     /** Coinbase's rate as read while it was saved; null where none could be read. */
     referenceRate: text("reference_rate"),
     referenceSource: text("reference_source"),

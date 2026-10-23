@@ -16,11 +16,11 @@ import type { PaymentVerificationFailure } from "@agentify/core";
  */
 export interface Charge {
   /**
-   * The order's payment reference, the one name for the order the payment
-   * layer is given: what it is sent can be published by a discovery listing,
-   * and the order's identifier opens its goods.
+   * The order's identifier, the one name for the order the payment layer is
+   * given. What it is sent can be published by a discovery listing, so it
+   * carries nothing that opens the order.
    */
-  readonly paymentRef: string;
+  readonly orderId: string;
   readonly amount: string;
   readonly currency: string;
   readonly payment: string;
@@ -107,8 +107,28 @@ export type VerifyOutcome =
       readonly reason: PaymentVerificationFailure;
       readonly message: string;
     }
-  /** The facilitator could not be asked, or did not answer. Nothing is claimed. */
-  | { readonly verified: "unknown"; readonly message: string };
+  /**
+   * No verdict on the payment, and nothing is claimed; `cause` says why.
+   * `failure` is for the operator's log: Agentify's own sentence where the
+   * question could not be put or the answer contradicted the payment, or the
+   * name of what failed where the facilitator could not be reached. A buyer
+   * never reads it.
+   */
+  | { readonly verified: "unknown"; readonly cause: NoVerdict; readonly failure: string };
+
+/**
+ * Why a payment got no verdict: the facilitator could not be reached or did
+ * not answer, which asking again may cure; it turned Agentify itself away, its
+ * credentials or the address it was sent to, which lasts until an operator
+ * acts; the question could not be put, because the order as it stands cannot
+ * pay its seller; or the facilitator vouched for the payment naming a payer
+ * other than the wallet that signed it.
+ */
+export type NoVerdict =
+  | "no_answer"
+  | "refused_agentify"
+  | "seller_cannot_be_paid"
+  | "payer_contradicted";
 
 export type SettleOutcome =
   | { readonly settled: true; readonly transaction: string }

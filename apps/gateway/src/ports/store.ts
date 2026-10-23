@@ -192,14 +192,15 @@ export interface StoredOrder {
   readonly itemId: string;
   readonly merchantItemId: string;
   /**
-   * What the payment challenge names this order by, random like the order's
-   * identifier and never the same: the challenge goes to the payment
-   * facilitator, and a discovery listing can publish it, while the identifier
-   * opens the order and its goods. A payment is bound to the order whose
-   * reference it carries, and nothing answers a reference with the order's
-   * identifier or goods. Every order has one, and no two share one.
+   * The buyer's key: random, issued with the order, and the only thing the
+   * agent's read of its purchase finds the order by. It reaches the buyer
+   * inside the status address and nobody else, so it is never written into
+   * anything the merchant reads, the payment side is sent, analytics or a
+   * log line. It is kept as issued, because a buyer who lost the purchase
+   * answer is given the same address again. Every order has one, and no two
+   * share one.
    */
-  readonly paymentRef: string;
+  readonly buyerKey: string;
   /**
    * The result the card declared when the order was made; a delivery is held
    * to this, so a later republish changes nothing for the order. Absent on a
@@ -241,9 +242,10 @@ export interface StoredOrder {
   /**
    * The order's owner: the payer bound to the first verified authorization,
    * or that payment's fingerprint where the adapter supplies no verified payer.
-   * A payment reference is not secret, since a listing can publish it, and the
-   * payment route takes no key, so without an owner anyone holding a reference
-   * could pay against, take the goods of, or close someone else's order.
+   * The identifier a payment names its order by is not secret, since a listing
+   * can publish it, and the payment route takes no key, so without an owner
+   * anyone holding it could pay against, take the goods of, or close someone
+   * else's order.
    * It is set inside the store's hold on the order, so two racing payments
    * cannot both become the owner.
    */
@@ -565,6 +567,13 @@ export const analyticsEventOf = <R>(
 /** Which merchant an order belongs to, where a read is one merchant's alone. */
 export interface MerchantScope {
   readonly merchantId: string;
+  /**
+   * The merchant's key the caller came in on, where it acts through one: the
+   * order is then found only while that key works, read under the same hold
+   * as the order, so a key revoked by any process acts on nothing from that
+   * moment.
+   */
+  readonly keyId?: string;
 }
 
 export interface Store {
@@ -912,7 +921,7 @@ export interface Store {
 
   /**
    * Writes an order that is not there yet. The record says whose it is. An
-   * identifier or a payment reference another order already has is refused.
+   * identifier or a buyer's key another order already has is refused.
    *
    * Given a `Birth`, the write is made only while its merchant still sells
    * through the integration named and fewer than `waitingAtMost` of their
@@ -931,20 +940,17 @@ export interface Store {
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its
-   * callers have no merchant: the payment route, which takes no key; the
-   * agent's read of its own purchase; and the gateway's own clocks. The answer
-   * the agent gets names no merchant, which keeps this from being a read
-   * across merchants. A merchant's own read is {@link merchantOrder}.
+   * callers have no merchant: the payment route, which takes no key, and the
+   * gateway's own clocks. A merchant's own read is {@link merchantOrder}.
    */
   orderById(id: string): Promise<StoredOrder | null>;
 
   /**
-   * The order a payment is for, by the reference its challenge carried,
-   * whoever it belongs to; unscoped for the same reason as `orderById`. Only
-   * the payment route asks it: a reference is not an order's identifier, and
-   * no other route reads one.
+   * The order a buyer's key opens, whoever it belongs to. Only the agent's
+   * read of its own purchase asks: the answer it gets names no merchant, which
+   * keeps this from being a read across merchants.
    */
-  orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null>;
+  orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null>;
 
   /** One of this merchant's orders. Another merchant's order is not found. */
   merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null>;
@@ -1018,6 +1024,8 @@ export interface Store {
    * asks; nothing else touches the order in between. Given a `scope`, another
    * merchant's order is not found: ownership is checked in the same read as the
    * lock, so there is no window between checking whose it is and acting on it.
+   * A scope naming a key finds nothing once that key is revoked, whichever
+   * process revoked it.
    *
    * Where `change` saves the order, `analytics` is asked what the order as
    * found and as saved amount to, and what it answers is recorded in the same

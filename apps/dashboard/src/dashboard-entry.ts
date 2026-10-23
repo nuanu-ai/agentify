@@ -182,25 +182,28 @@ export interface DashboardIdentity {
   ): Promise<AttachMerchantResult>;
 
   /**
-   * Ends every session of every account naming this merchant except the ones
-   * the `keep` Cookie header carries, and returns how many ended. `keep` is the
-   * raw Cookie header of the presser's request, not a token: anything else
-   * keeps nothing and signs the presser out too.
+   * Ends every live session of every account naming this merchant, the one the
+   * `cookieHeader` carries included, and gives that browser a new session of
+   * the same person: `setCookies` sets it, and `ended` counts the sessions
+   * ended. A copy of the pressing browser's cookie names an ended session, so
+   * it opens nothing. A cookie with no live session of this merchant gets no
+   * new session, and `setCookies` is empty.
    *
-   * For a cancelled wallet change: the change may have been asked for from a
-   * session somebody else holds, and the person who pressed cancel is the one
-   * known to be the owner, so theirs is the one kept.
+   * For a cancelled wallet change: the change may have been asked for from any
+   * session of the merchant, a copy of the presser's own among them, and the
+   * person who pressed cancel is the one known to be the owner.
    */
-  endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
+  endMerchantSessionsAndRenew(
+    merchantId: string,
+    cookieHeader: string | undefined,
+  ): Promise<{ ended: number; setCookies: readonly string[] }>;
 
   /**
-   * Ends every live session of this one account except the ones the `keep`
-   * Cookie header carries, and returns how many ended. `keep` is the raw Cookie
-   * header of the presser's request, not a token: anything else keeps nothing
-   * and signs the presser out too. Another account naming the same merchant is
+   * Ends every live session of this one account, the one asking included, and
+   * returns how many ended. Another account naming the same merchant is
    * somebody else's, and its sessions are not this person's to end.
    */
-  endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
+  endSessionsOfPerson(personId: string): Promise<number>;
 
   /**
    * Records a product analytics observation that has no transaction of its

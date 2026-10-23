@@ -56,7 +56,6 @@ import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
 import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
-import { orderFingerprint } from "../order-fingerprint.js";
 import { asTimestamp } from "../ports/clock.js";
 import {
   type Facilitator,
@@ -502,7 +501,7 @@ export class OrderRunner {
         const events = eventsForVerifiedPayment(found.order, at);
         if (events.length === 0) {
           // A merchant may close an unpaid order while payment verification is
-          // outside this lock. Its public payment reference establishes no owner.
+          // outside this lock. Its public identifier establishes no owner.
           if (found.paidBy !== owner) {
             return { result: { kind: "not_owner", state: found.order.state } };
           }
@@ -639,7 +638,7 @@ export class OrderRunner {
         // logged so that nobody is left unaware of it.
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not repair ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not repair order ${record.order.id}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -662,7 +661,7 @@ export class OrderRunner {
       } catch (thrown) {
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not receipt ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not receipt order ${record.order.id}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -789,7 +788,12 @@ export class OrderRunner {
     return this.#runtime.store.withOrder(
       orderId,
       change,
-      scope === undefined ? undefined : { merchantId: scope.merchantId },
+      scope === undefined
+        ? undefined
+        : {
+            merchantId: scope.merchantId,
+            ...(scope.keyId === undefined ? {} : { keyId: scope.keyId }),
+          },
       (before, after) => {
         try {
           const at = this.#runtime.clock();
@@ -987,7 +991,7 @@ export class OrderRunner {
     }
 
     const outcome = await this.#runtime.facilitator.settle({
-      paymentRef: record.paymentRef,
+      orderId: record.order.id,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1064,7 +1068,7 @@ export class OrderRunner {
       });
       if (recorded.found && recorded.result && source === "facilitator") {
         console.error(
-          `[gateway] ${orderFingerprint(orderId)}: the payment layer left the settle unanswered; its words are kept on the order`,
+          `[gateway] order ${orderId}: the payment layer left the settle unanswered; its words are kept on the order`,
         );
       }
       return !recorded.found ? { outcome: "no_such_order" } : { outcome: "moved_on" };
@@ -1199,7 +1203,7 @@ export class OrderRunner {
     const recovery = await recoveryFor.call(
       this.#runtime.facilitator,
       {
-        paymentRef: record.paymentRef,
+        orderId: record.order.id,
         payment: record.payment,
         payTo: record.payTo,
         amount: price.amount,
@@ -1416,10 +1420,10 @@ function salePriceOf(record: StoredOrder): SalePrice | null {
 
 /**
  * Where one order stands, as the agent that bought it reads it, both from the
- * purchase and from a later read by identifier alone; one builder keeps the two
+ * purchase and from a later read by its key alone; one builder keeps the two
  * answers alike. It is built field by field rather than trimmed from the order,
- * because anyone holding the identifier can read it and a field later added to
- * the merchant's record would otherwise leak here unnoticed. `config` is taken
+ * because anyone holding the status address can read it and a field later
+ * added to the merchant's record would otherwise leak here unnoticed. `config` is taken
  * whole rather than as a base string, so that the address cannot quietly become
  * one read off a request.
  */
@@ -1433,7 +1437,7 @@ export function agentOrderStatusOf(
 
   return {
     order_id: record.order.id,
-    status_url: statusUrlOf(config, record.order.id),
+    status_url: statusUrlOf(config, record.buyerKey),
     status,
     payment_status: paymentStatusOf(record.order),
     ...transactionOf(record),

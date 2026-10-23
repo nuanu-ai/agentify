@@ -62,7 +62,6 @@ import {
   NOT_AN_ADDRESS,
   problemOf,
   type SignInView,
-  signedOutOthers,
   whatIsWrongWithTheLabel,
 } from "../src/page-services.js";
 import {
@@ -747,6 +746,16 @@ const SIGNING_IN: GalleryState[] = [
   ),
   signIn(
     {
+      id: "dashboard-sign-in-signed-out-everywhere",
+      screen: "Sign in",
+      when: "A merchant presses Sign out everywhere in Settings.",
+      cause:
+        "The press ended every session of the account, the one it was pressed from included, so the merchant signs in again with a new link.",
+    },
+    "/sign-in?reason=signed-out-everywhere",
+  ),
+  signIn(
+    {
       id: "dashboard-sign-in-signed-out-elsewhere",
       screen: "Sign in",
       when: "A merchant presses a button in a tab after signing out in another tab.",
@@ -855,7 +864,7 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody opens the dashboard on the test site.",
       cause:
-        "Every page of the test site carries the band that says payments there settle with test funds.",
+        "Every page of the test site carries the band that says payments there are in test funds.",
     },
     {
       path: "/sign-in",
@@ -2058,7 +2067,7 @@ const RECEIPTS: GalleryState[] = [
       id: "dashboard-receipts-test",
       screen: "Receipts",
       when: "A merchant on the test site looks at the receipts of their trial purchases.",
-      cause: "Every receipt there is a test purchase, settled with test funds on Base Sepolia.",
+      cause: "Every receipt there is a test purchase, paid in test funds on Base Sepolia.",
     },
     receiptsView(
       seenBy("test"),
@@ -2325,7 +2334,7 @@ const WOOCOMMERCE: GalleryState[] = [
             currency: "IDR",
             rate: "18000",
             setAt: new Date("2026-10-09T10:00:00Z"),
-            setBy: "owner@example.com",
+            sessionSignedInAt: new Date("2026-10-09T09:41:00Z"),
             reference: null,
             confirmed: false,
           },
@@ -3021,21 +3030,6 @@ const SETTINGS: GalleryState[] = [
       },
     ),
     { path: "/settings/payout-wallet/cancel" },
-  ),
-  settings(
-    {
-      id: "dashboard-settings-signed-out-others",
-      screen: "Settings",
-      when: "A merchant presses Sign out every other device.",
-      cause: "The press ended the account's other sessions and says how many.",
-    },
-    settingsView(
-      "live",
-      WHO,
-      { ...settingsOf(), liveApproval: true },
-      { kind: "account", notice: signedOutOthers(2) },
-    ),
-    { path: "/settings/sign-out-others" },
   ),
   settings(
     {

@@ -12,6 +12,7 @@ import {
   buyOverHttp,
   type Harness,
   harness,
+  loggedWhile,
   type Served,
   serve,
   theMerchantKey,
@@ -19,7 +20,7 @@ import {
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { buildApp, refusal } from "./server.js";
-import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { ORDER_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /**
  * The files that hold every refusal this gateway sends, read as source text
@@ -75,18 +76,13 @@ const publish = async (served: Served, card: Card): Promise<string> => {
 };
 
 describe("the surface is the table", () => {
-  it("exports bounded route templates without order identifiers or query tokens", async () => {
+  it("exports bounded route templates without buyers' keys or query tokens", async () => {
     const { served } = await started();
-    await served.call(
-      "GET",
-      "/x402/orders/private-order-identifier/status?token=private-query-token",
-    );
+    await served.call("GET", "/x402/orders/private-buyer-key/status?token=private-query-token");
     await served.call("GET", "/unknown/private-unmatched-path");
     const exported = await telemetry.metrics();
-    expect(exported).toContain('route="/x402/orders/:order_id/status"');
-    expect(exported).not.toMatch(
-      /private-order-identifier|private-query-token|private-unmatched-path/,
-    );
+    expect(exported).toContain('route="/x402/orders/:buyer_key/status"');
+    expect(exported).not.toMatch(/private-buyer-key|private-query-token|private-unmatched-path/);
   });
   it("serves every call the contract says may be served", async () => {
     // Catches a route express mounts but does not match at its own literal path,
@@ -562,7 +558,7 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.amount).toBe("1");
   });
 
-  it("prices a POST against an order it opened, and names that order by its payment reference", async () => {
+  it("prices a POST against an order it opened, and names that order by its identifier", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -574,10 +570,10 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    const named = challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+    const named = challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.paymentRef);
+    expect(named).toBe(orders[0]?.order.id);
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
@@ -599,10 +595,10 @@ describe("the payment challenge", () => {
 
     expect(bought.status).toBe(402);
     const named = decodePaymentRequiredHeader(bought.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
-      .accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+      .accepts[0]?.extra?.[ORDER_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.paymentRef);
+    expect(named).toBe(orders[0]?.order.id);
   });
 
   it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
@@ -619,7 +615,7 @@ describe("the payment challenge", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -636,7 +632,7 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -742,7 +738,7 @@ describe("the payment challenge", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
+        extra: { [ORDER_IN_EXTRA]: "ord_from_nowhere" },
       },
       payload: {},
     });
@@ -809,7 +805,7 @@ describe("the payment challenge", () => {
     const nonsense = Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+        accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
       }),
       "utf8",
     ).toString("base64");
@@ -824,6 +820,96 @@ describe("the payment challenge", () => {
     // The order it named was not closed by a payment that could not be read.
     expect((await harnessed.store.orderById(offered.order.order.id))?.order.state).toBe("quoted");
   });
+
+  it("tells the buyer in Agentify's words that the payment check gave no answer, and keeps the library's for the log", async () => {
+    // The library's words for an unreachable facilitator say nothing a buyer's
+    // agent can act on, and read as though the purchase itself broke. What the
+    // agent needs is that nothing was charged and the same payment may pass
+    // once the check answers.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.facilitator.willVerify({
+      verified: "unknown",
+      cause: "no_answer",
+      failure: "TypeError: fetch failed",
+    });
+    const payment = Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
+      }),
+      "utf8",
+    ).toString("base64");
+
+    let answered: Awaited<ReturnType<Served["call"]>> | undefined;
+    const logged = await loggedWhile(async () => {
+      answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+    });
+
+    if (answered === undefined) throw new Error("the purchase was never answered");
+    expect(answered.status).toBe(409);
+    const { error } = answered.body as {
+      error: { code: string; message: string; retryable: boolean };
+    };
+    expect(error.code).toBe("payment_not_verified");
+    expect(error.retryable).toBe(true);
+    expect(error.message).not.toContain("fetch failed");
+    expect(error.message).toContain("charged nothing");
+    expect(error.message).toContain("present the same payment again");
+    expect(logged).toContain("fetch failed");
+    const order = (await harnessed.store.orderById(offered.order.order.id))?.order;
+    expect(order?.state).toBe("quoted");
+    expect(order?.payment).toBe("none");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    expect(
+      harnessed.store.recordedAnalytics.filter(({ event }) => event.name === "agc_payment_result"),
+    ).toStrictEqual([]);
+  });
+
+  it.each([
+    ["the seller cannot be paid", "seller_cannot_be_paid", /seller cannot be paid/],
+    ["the check named another payer", "payer_contradicted", /different payer/],
+    ["the check refused Agentify itself", "refused_agentify", /cannot check payments right now/],
+  ] as const)(
+    "does not tell the buyer to present the same payment again when %s",
+    async (_, cause, says) => {
+      // Neither is a silence that passes: the same payment meets the same
+      // missing payout address, or the same contradictory answer.
+      const { served, harnessed } = await started();
+      const itemId = await publish(served, syncCard);
+      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      harnessed.facilitator.willVerify({ verified: "unknown", cause, failure: "our own sentence" });
+      const payment = Buffer.from(
+        JSON.stringify({
+          x402Version: 2,
+          accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
+        }),
+        "utf8",
+      ).toString("base64");
+
+      const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+
+      expect(answered.status).toBe(409);
+      const { error } = answered.body as {
+        error: { code: string; message: string; retryable: boolean };
+      };
+      expect(error.code).toBe("payment_not_verified");
+      expect(error.retryable).toBe(false);
+      expect(error.message).toMatch(says);
+      expect(error.message).toContain("charged nothing");
+      expect(error.message).not.toMatch(/same payment again/);
+      expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
+    },
+  );
 
   it("has nothing to sell under an identifier nobody published", async () => {
     const { served } = await started();
@@ -896,7 +982,7 @@ describe("a card whose payment challenge would be too large to read", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
+        extra: { [ORDER_IN_EXTRA]: "ord_from_nowhere" },
       },
       payload: {},
     });
@@ -1261,7 +1347,7 @@ describe("whose purchase it is", () => {
   };
 
   it("hands the goods to exactly one of two racing payments and refuses the other", async () => {
-    // The order's payment reference is public: it is in the challenge.
+    // The order's identifier is public: it is in the challenge.
     // Synchronous goods reach only the parked call, so a second call under the
     // same order must not take the first one's place.
     const { served, harnessed } = await started(RACE_TIMING);
@@ -1329,7 +1415,11 @@ describe("whose purchase it is", () => {
 
     // The buyer takes the order first, and their own payment cannot be checked
     // yet because nothing is answering.
-    harnessed.facilitator.willVerify({ verified: "unknown", message: "not asked yet" });
+    harnessed.facilitator.willVerify({
+      verified: "unknown",
+      cause: "no_answer",
+      failure: "not asked yet",
+    });
     await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
       headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },
@@ -1393,8 +1483,8 @@ describe("whose purchase it is", () => {
   });
 
   it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // An order's payment reference is in every challenge for it, and a listing
-    // can publish it, so holding one does not make a wallet the buyer.
+    // An order's identifier is in every challenge for it, and a listing can
+    // publish it, so holding one does not make a wallet the buyer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,

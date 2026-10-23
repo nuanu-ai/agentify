@@ -55,6 +55,7 @@ import { boundedGoogleExchange } from "./google-exchange.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { suppressWaitingAbout } from "./nuanu-analytics.js";
+import { renewedSession } from "./renewed-session.js";
 import { reportLinkMessage } from "./report-mail.js";
 import {
   accounts,
@@ -452,6 +453,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       },
       plugins: [
         ...(config.google === null ? [] : [boundedGoogleExchange()]),
+        renewedSession(),
         magicLink({
           expiresIn: LINK_TTL_SECONDS,
           storeToken: "hashed",
@@ -1425,11 +1427,32 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return people.map((person) => person.email);
     },
 
-    async endOtherSessionsOfMerchant(merchantId, keep) {
-      // Read without renewing: this is not the pressing person's visit, and a
-      // renewal would move their session's end while the cookie lines saying so
-      // are thrown away.
-      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
+    async endMerchantSessionsAndRenew(merchantId, cookieHeader) {
+      // The new session is made first, so the one thing kept is a token no
+      // copy of the pressing browser's cookie can carry.
+      const kept = new Set<string>();
+      let setCookies: readonly string[] = [];
+      for (const value of valuesIn(cookieHeader)) {
+        const found = await auth.api.getSession({
+          headers: asHeaders(value),
+          query: { disableRefresh: true },
+        });
+        if (found === null || personFrom(found.user).merchant?.id !== merchantId) continue;
+        try {
+          const renewed = await auth.api.renewSession({
+            headers: asHeaders(value),
+            returnHeaders: true,
+          });
+          kept.add(renewed.response.token);
+          setCookies = renewed.headers.getSetCookie();
+        } catch {
+          // The session can end between the read and the renewal, as when
+          // another tab signs out everywhere; failing here would end nothing,
+          // so every session ends and the browser signs in again.
+          console.error("[dashboard] a session could not be renewed, so none was kept");
+        }
+        break;
+      }
       const people = await (await contextOf()).adapter.findMany<{ id: string }>({
         model: "user",
         where: [{ field: "merchantId", value: merchantId }],
@@ -1438,13 +1461,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       for (const person of people) {
         ended += await endLiveSessionsOf(person.id, kept);
       }
-      return ended;
+      return { ended, setCookies };
     },
 
-    async endOtherSessionsOfPerson(personId, keep) {
-      // Read without renewing, as above.
-      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
-      return await endLiveSessionsOf(personId, kept);
+    async endSessionsOfPerson(personId) {
+      return await endLiveSessionsOf(personId, new Set());
     },
 
     async list(now) {

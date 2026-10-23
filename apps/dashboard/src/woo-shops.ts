@@ -79,8 +79,8 @@ export interface RateEntry {
   readonly currency: string;
   readonly rate: string;
   readonly setAt: Date;
-  /** The email of the session that saved it. */
-  readonly setBy: string;
+  /** When the session that saved it signed in; null where that is not known. */
+  readonly sessionSignedInAt: Date | null;
   /** Null where no reference could be read, so nothing was compared. */
   readonly reference: ReferenceShown | null;
   /** Typed a second time past the guard. */
@@ -406,7 +406,7 @@ const savedRateOfRow = (row: typeof wooRates.$inferSelect): SavedRate => ({
   currency: row.currency,
   rate: row.rate,
   setAt: row.setAt,
-  setBy: row.setBy,
+  sessionSignedInAt: row.sessionSignedInAt,
   reference:
     row.referenceRate === null || row.referenceSource === null || row.referenceReadAt === null
       ? null
@@ -643,7 +643,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           currency: entry.currency,
           rate: entry.rate,
           setAt: entry.setAt,
-          setBy: entry.setBy,
+          sessionSignedInAt: entry.sessionSignedInAt,
           referenceRate: entry.reference?.rate ?? null,
           referenceSource: entry.reference?.source ?? null,
           referenceReadAt: entry.reference?.readAt ?? null,
