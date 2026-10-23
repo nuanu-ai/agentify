@@ -1427,9 +1427,10 @@ describe("the order named by a payment, where it ended before a payment was take
     await expectToSayWhatBecameOf(answered.body, served, orderId, { retryable: false });
   });
 
-  it("does not tell a payment that came after the price lapsed that nothing was charged when another took the order first", async () => {
+  it("does not tell a payment that came after the price lapsed that the order ended uncharged when another took the order first", async () => {
     // The price's timer can fire late, and the order is read before the lapse
-    // is applied; a payment can take it in between.
+    // is applied; a payment can take it in between. The order was charged, to
+    // its buyer; only this payment was not.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
     const challenge = await challengeFor(served, itemId);
@@ -1452,7 +1453,9 @@ describe("the order named by a payment, where it ended before a payment was take
     expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("settled");
     expect(answered.status).toBe(409);
     expect((answered.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
-    expect(JSON.stringify(answered.body)).not.toMatch(/nothing was charged/i);
+    const { message } = (answered.body as { error: { message: string } }).error;
+    expect(message).not.toMatch(/is over/i);
+    expect(message).toMatch(/another payment already took this purchase/i);
   });
 
   it("hands back no order for a synchronous purchase whose seller ran out of time, and its buyer still collects", async () => {
