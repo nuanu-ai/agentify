@@ -9,8 +9,12 @@
  * and a closed window reads as a closed window.
  */
 
-import { describe, expect, it } from "vitest";
-import { askAddress, sendPayout, type Wallet } from "./requests.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { askAddress, sendPayout, WALLET_ANSWERS_WITHIN_MS, type Wallet } from "./requests.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const DATA = "0x82ad56cb0000000000000000000000000000000000000000000000000000000000000020";
@@ -40,6 +44,7 @@ const wallet = ({
   breaks,
   loses,
   throws,
+  hangs,
   acknowledges = { id: "0x00b47c4" },
 }: {
   readonly windows?: readonly unknown[];
@@ -50,15 +55,34 @@ const wallet = ({
   readonly loses?: string;
   /** A request the provider answers by throwing `thrown`, which need not be an error EIP-1193 describes. */
   readonly throws?: Readonly<{ at: string; thrown: unknown }>;
+  /**
+   * A request whose window answers only when the test says, as a window left
+   * open or one that vanished: `later` answers it as the wallet would have.
+   */
+  readonly hangs?: string;
   /** What the wallet answers once it has taken a batch. */
   readonly acknowledges?: unknown;
 } = {}) => {
   let chain = startsOn;
   let remembered: unknown = null;
   let opened = 0;
+  let keys = false;
   const sent: Sent[] = [];
+  const later: { answer: () => void; refuse: () => void }[] = [];
   const answering: Wallet = {
     async request({ method, params }) {
+      if (method === hangs) {
+        keys = true;
+        return new Promise((resolve, reject) => {
+          later.push({
+            answer: () => {
+              hangs = undefined;
+              resolve(answering.request({ method, ...(params === undefined ? {} : { params }) }));
+            },
+            refuse: () => reject(DECLINED),
+          });
+        });
+      }
       if (method === declines) throw DECLINED;
       if (method === throws?.at) throw throws.thrown;
       if (method === breaks) throw { code: -32603, message: "Something went wrong at Coinbase" };
@@ -70,6 +94,7 @@ const wallet = ({
       }
       if (method === "eth_requestAccounts") {
         if (remembered !== null) return remembered;
+        keys = true;
         remembered = windows[Math.min(opened, windows.length - 1)];
         opened += 1;
         return remembered;
@@ -89,9 +114,17 @@ const wallet = ({
     },
     async disconnect() {
       remembered = null;
+      keys = false;
     },
   };
-  return { answering, sent, remembered: () => remembered };
+  return {
+    answering,
+    sent,
+    remembered: () => remembered,
+    /** Whether the keys of a session with the wallet's window are kept in the page. */
+    keys: () => keys,
+    later,
+  };
 };
 
 describe("asking the merchant's wallet for its address", () => {
@@ -273,5 +306,99 @@ describe("sending the payout through the merchant's wallet", () => {
 
       expect(await sendPayout(answering, 84532, payout), String(one)).toEqual({ kind: "lost" });
     }
+  });
+});
+
+describe("waiting for the merchant's wallet", () => {
+  const payout = { to: MULTICALL3, data: DATA };
+
+  /** Whether `asking` has settled, once every answer already given has been read. */
+  const settled = async (asking: Promise<unknown>): Promise<boolean> => {
+    let done = false;
+    void asking.then(() => {
+      done = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    return done;
+  };
+
+  it("keeps waiting for an address until the limit, long enough to approve with a passkey", async () => {
+    vi.useFakeTimers();
+    const { answering } = wallet({ hangs: "eth_requestAccounts" });
+
+    const asking = askAddress(answering);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1);
+
+    expect(await settled(asking)).toBe(false);
+  });
+
+  it("says no address came once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
+    vi.useFakeTimers();
+    const { answering, keys } = wallet({ hangs: "eth_requestAccounts" });
+
+    const asking = askAddress(answering);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+
+    expect(await asking).toEqual({ kind: "unanswered" });
+    expect(keys()).toBe(false);
+  });
+
+  it("leaves the session to a press begun since when it stops waiting", async () => {
+    vi.useFakeTimers();
+    const { answering, keys } = wallet({ hangs: "eth_requestAccounts" });
+
+    const asking = askAddress(answering, () => false);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+
+    expect((await asking).kind).toBe("unanswered");
+    expect(keys()).toBe(true);
+  });
+
+  it("does not know whether a payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
+    vi.useFakeTimers();
+    const { answering, keys } = wallet({ hangs: "wallet_sendCalls" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+
+    expect((await sending).kind).toBe("unanswered");
+    expect(keys()).toBe(false);
+  });
+
+  it("never asks for the payout once it has stopped waiting, even when the account comes late", async () => {
+    vi.useFakeTimers();
+    const { answering, sent, later } = wallet({ hangs: "eth_requestAccounts" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+    await sending;
+    later[0]?.answer();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(sent).toEqual([]);
+  });
+
+  it("says a payout the wallet acknowledges after the limit was sent", async () => {
+    vi.useFakeTimers();
+    const { answering, later } = wallet({ hangs: "wallet_sendCalls" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+    const outcome = await sending;
+    later[0]?.answer();
+
+    expect(outcome.kind === "unanswered" && (await outcome.late)).toBe(true);
+  });
+
+  it("does not take a refusal after the limit for a payout sent or a payout not sent", async () => {
+    vi.useFakeTimers();
+    const { answering, later } = wallet({ hangs: "wallet_sendCalls" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+    const outcome = await sending;
+    later[0]?.refuse();
+
+    expect(outcome.kind === "unanswered" && (await outcome.late)).toBe(false);
   });
 });
