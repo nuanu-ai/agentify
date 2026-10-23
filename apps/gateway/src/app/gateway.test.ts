@@ -2798,6 +2798,42 @@ describe("a held poll whose key is revoked by another process", () => {
     );
   });
 
+  it("gives a parcel's price question no way back once its order ended while the answer was still awaited", async () => {
+    // The price check's deadline is a reminder on the order's clock and the
+    // wait for the answer a timer in this process, so the order can end and
+    // its address be erased while the question is still awaited here.
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "500" });
+    const parcel = (
+      await harnessed.store.publishCard(harnessed.merchant.id, parcelCard, harnessed.now())
+    ).id;
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    revokedAtTheNextRead(harnessed, async () => {
+      const [order] = await harnessed.store.orders(harnessed.merchant.id);
+      if (order === undefined) throw new Error("no order was opened");
+      harnessed.advance(501);
+      await harnessed.gateway.runner.apply(order.order.id, {
+        kind: "deadline_expired",
+        deadline: "quote_response",
+        at: order.order.timestamps.createdAt + 500,
+      });
+      return harnessed.store.keysOf(harnessed.merchant.id);
+    });
+
+    const buying = harnessed.gateway.beginPurchase(parcel, {}, address);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const [order] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(order?.shipTo !== undefined && "erasedAt" in order.shipTo).toBe(true);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.filter((envelope) => envelope.kind === "quote_request")).toStrictEqual(
+      [],
+    );
+    expect((await buying).step).not.toBe("pay");
+  });
+
   it("gives an order event back to the stream for a key that works", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
