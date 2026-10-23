@@ -838,7 +838,7 @@ describe("the payment challenge", () => {
     const payment = Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+        accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
       }),
       "utf8",
     ).toString("base64");
@@ -888,7 +888,7 @@ describe("the payment challenge", () => {
       const payment = Buffer.from(
         JSON.stringify({
           x402Version: 2,
-          accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+          accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
         }),
         "utf8",
       ).toString("base64");
