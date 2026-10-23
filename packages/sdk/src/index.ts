@@ -81,7 +81,6 @@ export type {
   OrderCallResponse,
   OrderCallResult,
   OrderEvent,
-  OrderList,
   OrderStatus,
   OrderWithStatus,
   PaymentStatus,

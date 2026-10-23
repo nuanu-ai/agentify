@@ -447,6 +447,13 @@ later pass and upgrade; [When Agentify is newer than your
 package](#when-agentify-is-newer-than-your-package) says what else a newer
 Agentify changes for you. A loop that delivers does so only on the words where
 delivering is right, so a word it does not know is left alone, as below.
+Because an order left alone that way may be paid work waiting on you,
+`orders.list` tells your problem handler how many of the orders it returned
+carry a status your package does not know, in one `unread` problem that is not
+fatal. It decides nothing about those orders; upgrading the package is what
+reads them. The same problem names any order the list left out because your
+package could not read it at all ([When Agentify is newer than your
+package](#when-agentify-is-newer-than-your-package)).
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -455,7 +462,8 @@ const open = await agentify.orders.list({ open: true })
 for (const waiting of open) {
   // Deliver only where delivering is right: an order still running, or paid
   // and unfulfilled. Every other word waits for a later pass, `unknown`
-  // included: goods held for a payment wait on the buyer, and an order paid
+  // included, which the package has already counted for your problem
+  // handler: goods held for a payment wait on the buyer, and an order paid
   // after you closed it needs your word to the buyer, not goods.
   if (waiting.status !== 'in_progress' && waiting.status !== 'unfulfilled') {
     continue
@@ -739,43 +747,85 @@ package you installed reads past what was added:
   delivers is the exception, below.
 - An event of a kind your package does not know is skipped. The rest of the
   poll it came in is handled as usual, and your problem handler receives one
-  `event_skipped` problem, not fatal, naming the event's `type` and saying that
-  a newer release handles it. An event can be lost in any case, as [Events on
+  `unread` problem, not fatal, naming the event's `type` and saying that a
+  newer release reads it. An event can be lost in any case, as [Events on
   the same subscription](#events-on-the-same-subscription) says, so nothing
   depends on it: a paid order that needs you stays on `orders.list({ open:
   true })` whether its event arrived, was lost or was skipped.
 - An order whose `status` or `payment_status` holds a word your package does
   not know still comes back from `orders.get` and `orders.list`, with that word
   as `unknown`. A loop over open orders that delivers only on `in_progress` and
-  `unfulfilled` leaves such an order alone, which is the right thing to do.
+  `unfulfilled` leaves such an order alone, which is the right thing to do,
+  and `orders.list` gives your problem handler one `unread` problem, not
+  fatal, counting such orders among those it returned and saying that a newer
+  release reads them, since paid work may be waiting among them.
 - An event of a kind your package knows, with a `reason` it does not know,
   reaches your event handler with the reason as `unknown`; the order behind it
   is on the open list as ever.
 - A delivery, refusal or acceptance answered `ok: true` with a `result` word
   your package does not know succeeded, and the word reads `unknown`.
 - A price question for a `purpose` your package does not know is left
-  unanswered, with one `quote_skipped` problem, not fatal. It counts as a
+  unanswered, with one `unread` problem, not fatal, saying that a newer
+  release answers it. It counts as a
   silent price check: a synchronous card sells at its own card price, and in
   the other modes the sale is refused ([What can go wrong](/failures)).
 
 What an order delivers is read exactly: its product, parameters, price,
-address and test flag, off the subscription or read back. A field or an address
-shape there that your package does not know fails the poll or the read loudly,
-as `poll_failed` or a thrown `AgentifyError`, rather than reaching your code
-with part of the order missing; the order comes again within its attempts, and
-it stays on the open list.
+address and test flag, off the subscription or read back, because an order
+handed to your code with part of it missing would be delivered wrongly without
+a word. On the subscription, an order carrying a field or an address shape
+there that your package does not know is not handed to your handler. Your
+problem handler receives one `unread` problem, not fatal, with the order's
+identifier as its `subject`, naming each field it could not read, and
+everything else in that poll answer and in the polls after it is handled as
+usual. Anything added to an order comes with a new contract version, as the
+next paragraphs say, so an order like this is outside the version your package
+speaks, and the problem says exactly that: the order carries something that
+version does not allow, and a newer release may read it, which is a
+possibility rather than a promise. Nothing is answered for that order, so it
+comes again while it has attempts left and its deadline allows, and otherwise
+ends undelivered; once paid, it stays on the open list.
+Read back, the same order fails `orders.get` with a thrown `AgentifyError`
+that names the fields. `orders.list` does not throw for it: it returns every
+order it can read and leaves such an order out, and your problem handler
+receives one `unread` problem saying how many of the orders listed were left
+out and naming each by its identifier and the fields it could not read, the
+first ten of them, with the rest counted. A list is therefore never shorter
+than what Agentify sent without that problem saying so, and a loop over open
+orders goes on with the orders it can deliver.
+
+A message on the subscription that does not fit for another reason, such as a
+timestamp that is not one, is set aside in the same way with an `unread`
+problem naming where it failed. That problem does not say even that a newer
+release may read the message, because nothing on your side can tell a broken
+message from one written in a shape added later. Only where the contract
+promises that Agentify adds something without a new version, an event of a new
+kind or a word such as a price question's purpose, does the problem say that a
+newer release reads it. Neither problem, nor any failure your package
+reports about an answer it could not read, repeats what that answer carried:
+the buyer's parameters and the prices stay out of your logs, and only the
+names of the fields and what was expected there are given. A name that could
+itself be data, such as a key among the buyer's parameters, is not written, a
+long one is cut and says so, and an order or a price question is named by its
+identifier only where that identifier is not itself what failed. An answer that is
+not JSON at all, such as a proxy's error page, is quoted, cut short where it is
+long.
 
 Agentify therefore speaks a new contract version for a change your package
 cannot read past: a field or a word renamed or removed, a field that comes to
 mean something else, anything added to an order or to a price question, and a
 new card mode, selling state or kind of message on the subscription, each of
-which is work or configuration an older package cannot do. Your subscription then stops
-at the first poll answer it can read, with a `contract_version_mismatch`
-problem naming both versions, once the orders already in your handlers have
-sent their answers, or after fifty seconds with a `batch_abandoned` problem
-naming those that did not; until then it reports each answer it cannot read as
-`poll_failed`, naming the version Agentify spoke. Your process stays up and
-sells nothing until you upgrade.
+which is work or configuration an older package cannot do. The version is read
+before anything else in a poll answer, so your subscription stops at the first
+one Agentify sends in another version, whatever the messages inside it carry,
+with a `contract_version_mismatch` problem naming both versions, once the
+orders already in your handlers have sent their answers, or after fifty seconds
+with a `batch_abandoned` problem naming those that did not. Only an answer
+shaped as a poll answer, a version beside a list of messages, stops it. Anything
+else that comes back, such as a proxy's error page that happens to name a
+version, is reported as `poll_failed`, mentioning the version it named, and the
+subscription keeps asking. Once stopped, your process stays up and sells
+nothing until you upgrade.
 
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, and Agentify notes it beside the

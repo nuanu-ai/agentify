@@ -175,15 +175,22 @@ than the engineer.
 This is an early `0.x` pilot surface and the names in it can still change. A
 release keeps working when Agentify adds to what it sends: a field it does not
 know beside an order is left out of what your code receives, an event of a kind
-it does not know is skipped with an `event_skipped` problem, and an order's
+it does not know is skipped with an `unread` problem, and an order's
 status or payment word, an event's reason, a call's result word or a price
 question's purpose it does not know reads `unknown`
 ([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).
-What an order delivers is read exactly, and an unknown field or address shape
-there fails loudly rather than reaching your handler narrowed. A rename, a
+What an order delivers is read exactly: an order carrying an unknown field or
+address shape never reaches your handler narrowed, and is set aside with an
+`unread` problem naming the fields while the rest of the subscription goes on.
+`orders.list` returns every order it can read, and its `unread` problem names
+the orders it left out and counts those whose status word this release does not
+know. No failure or problem this package reports about an answer it could not
+read repeats what that answer carried: it names the fields and what was
+expected there, so the buyer's details stay out of your logs. A rename, a
 removal, a changed meaning or anything added to what an order delivers moves
 the contract version, and a
-process whose version Agentify does not share stops before it takes an order.
+process whose version Agentify does not share stops at the first poll answer,
+before it takes an order.
 Every call names the package's release in its `user-agent`. What changed in each
 release is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md). Register `agentify.on('problem', …)`, which is where you

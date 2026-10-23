@@ -16,9 +16,6 @@ export type PaymentStatus = Contract.Read<Contract.PaymentStatus>;
 /** An order with where it stands, as `orders.get` and `orders.list` read it. */
 export type OrderWithStatus = Contract.Read<Contract.OrderWithStatus>;
 
-/** The document `orders.list` reads its orders from. */
-export type OrderList = Contract.Read<Contract.OrderList>;
-
 /**
  * Something that happened to an order, as the event handler receives it. A
  * reason this package does not know reads `unknown`; an event of a kind it does
