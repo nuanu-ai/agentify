@@ -77,24 +77,25 @@ const isOtherCoinbaseHost = (facilitatorUrl: string): boolean => {
 };
 
 /**
- * Whether this is the one address a live chain may settle through. Every part
- * is compared because the gateway builds `/verify` and `/settle` under it and
- * a mistake anywhere comes up healthy and fails at the first buyer: `http:`
- * would put both credentials on the wire in the clear, a user name or password
- * would make every request throw and print the password into the log, and a
- * query or fragment would be carried into every request. Trailing slashes on
- * the path are ignored because the facilitator client strips them too.
+ * Whether a facilitator address is the endpoint `wantedUrl` names, such as the
+ * one address a live chain may settle through. Every part is compared because
+ * the gateway builds `/verify` and `/settle` under it and a mistake anywhere
+ * comes up healthy and fails at the first buyer: `http:` would put both
+ * credentials on the wire in the clear, a user name or password would make
+ * every request throw and print the password into the log, and a query or
+ * fragment would be carried into every request. Trailing slashes on the path
+ * are ignored because the facilitator client strips them too.
  *
  * Narrower than `isCdpFacilitator`, which decides which host may be handed
- * credentials; this decides which one endpoint real money may settle through.
+ * credentials; this decides which one endpoint is meant.
  */
-function isTheLiveFacilitator(facilitatorUrl: string): boolean {
+export function isFacilitatorAt(facilitatorUrl: string, wantedUrl: string): boolean {
   const host = hostOf(facilitatorUrl);
   if (host === null) {
     return false;
   }
   const given = new URL(facilitatorUrl);
-  const wanted = new URL(CDP_FACILITATOR_URL);
+  const wanted = new URL(wantedUrl);
   return (
     given.protocol === "https:" &&
     host === wanted.hostname &&
@@ -668,7 +669,10 @@ export function loadConfig(
   // there would take payments that never happened, and the unset default is
   // silent: it falls back to the public facilitator, so a test host's `.env`
   // with one line changed would start, issue live keys and settle elsewhere.
-  if (chainEnvironment === "live" && !isTheLiveFacilitator(environmentValues.FACILITATOR_URL)) {
+  if (
+    chainEnvironment === "live" &&
+    !isFacilitatorAt(environmentValues.FACILITATOR_URL, CDP_FACILITATOR_URL)
+  ) {
     problems.push(
       `PAYMENT_NETWORK is ${JSON.stringify(network)}, where the money is real, and FACILITATOR_URL ` +
         `is ${JSON.stringify(environmentValues.FACILITATOR_URL)} — a live chain settles through ` +
