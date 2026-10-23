@@ -367,18 +367,24 @@ describe("waiting for the merchant's wallet", () => {
     expect(keys()).toBe(false);
   });
 
-  it("never asks for the payout once it has stopped waiting, even when the account comes late", async () => {
-    vi.useFakeTimers();
-    const { answering, sent, later } = wallet({ hangs: "eth_requestAccounts" });
+  it.each([
+    ["the account", "eth_requestAccounts"],
+    ["the move to the payout's chain", "wallet_switchEthereumChain"],
+  ])(
+    "never asks for the payout once it has stopped waiting, even when %s comes late",
+    async (_late, hangs) => {
+      vi.useFakeTimers();
+      const { answering, sent, later } = wallet({ hangs });
 
-    const sending = sendPayout(answering, 84532, payout);
-    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
-    await sending;
-    later[0]?.answer();
-    await vi.advanceTimersByTimeAsync(0);
+      const sending = sendPayout(answering, 84532, payout);
+      await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+      await sending;
+      later[0]?.answer();
+      await vi.advanceTimersByTimeAsync(0);
 
-    expect(sent).toEqual([]);
-  });
+      expect(sent).toEqual([]);
+    },
+  );
 
   it("says a payout the wallet acknowledges after the limit was sent", async () => {
     vi.useFakeTimers();
