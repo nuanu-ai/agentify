@@ -1655,4 +1655,59 @@ if (databaseUrl === null) {
       expect(await store.orderByBuyerKey("ord_delivered")).toBeNull();
     });
   });
+
+  describe("the migration that drops the payment reference", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 29)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_ref','Ref','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("takes the reference out of every order and changes nothing else, the buyer's key included", async () => {
+      // A payment names its order by the identifier now, so a reference left
+      // in a document would be a second name nothing reads.
+      const kept = (id: string) => ({
+        order: { id, state: "delivered", payment: "settled" },
+        merchantId: "mch_ref",
+        buyerKey: `bk_${id}`,
+        payment: null,
+        paidBy: "0x1111111111111111111111111111111111111111",
+      });
+      for (const id of ["ord_a", "ord_b"]) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,'delivered',false,'mch_ref','itm_old','sku',$2,now(),now())",
+          [id, JSON.stringify({ ...kept(id), paymentRef: `pay_${id}` })],
+        );
+      }
+
+      for (const statement of await statementsOf("0029_order_drops_payment_ref.sql")) {
+        await pool.query(statement);
+      }
+
+      expect((await pool.query("select record from orders order by id")).rows).toStrictEqual([
+        { record: kept("ord_a") },
+        { record: kept("ord_b") },
+      ]);
+      expect(
+        (
+          await pool.query(
+            "select indexname from pg_indexes where tablename = 'orders' and indexname like 'orders_%_unique' order by indexname",
+          )
+        ).rows,
+      ).toStrictEqual([{ indexname: "orders_buyer_key_unique" }]);
+    });
+  });
 }

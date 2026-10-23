@@ -16,12 +16,11 @@ const NOW = Date.parse("2026-08-26T12:00:00.000Z");
 const edge = new PaymentEdge(testConfig());
 const paid = {
   orderId: "ord_1",
-  paymentRef: "pay_1",
   payTo: "0x00000000000000000000000000000000000000f1",
   payment: null,
   price: { amount: "80.00", currency: "USD" },
 };
-const requirements = edge.requirementsFor(paid.price, paid.paymentRef, paid.payTo);
+const requirements = edge.requirementsFor(paid.price, paid.orderId, paid.payTo);
 const WALLET = aWallet("a wallet that is a contract");
 /** A signature no key made: what a contract wallet's own scheme can look like. */
 const CONTRACTS_SIGNATURE = `0x${"cd".repeat(97)}` as const;
