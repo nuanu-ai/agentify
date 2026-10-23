@@ -2334,7 +2334,7 @@ const WOOCOMMERCE: GalleryState[] = [
             currency: "IDR",
             rate: "18000",
             setAt: new Date("2026-10-09T10:00:00Z"),
-            setBy: "owner@example.com",
+            sessionSignedInAt: new Date("2026-10-09T09:41:00Z"),
             reference: null,
             confirmed: false,
           },

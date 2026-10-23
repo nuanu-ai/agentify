@@ -3186,7 +3186,8 @@ describe("a shop priced in another currency than US dollars", () => {
       )?.[1];
 
       const text = readable((await running.get("/woocommerce")).html);
-      const told = /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+      const told =
+        /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
 
       expect(signedIn).toBeDefined();
       expect(told).toContain(`signed in to this account at ${signedIn}`);
@@ -3207,7 +3208,8 @@ describe("a shop priced in another currency than US dollars", () => {
       });
 
       const text = readable((await running.get("/woocommerce")).html);
-      const told = /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+      const told =
+        /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
 
       expect(told).toContain("2026-10-20 08:00:00 UTC");
       expect(told).not.toMatch(/signed in to this account at/);
