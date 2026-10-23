@@ -2279,6 +2279,23 @@ export class Gateway {
     return keys.some((key) => key.id === keyId && key.disabledAt === null);
   }
 
+  /**
+   * Whether the key still works, read once something has been drawn. A read
+   * that fails counts as a key that does not, because what was drawn never
+   * returns to the stream by itself: given back, it waits for the next poll,
+   * where a thrown poll would lose it.
+   */
+  async #keyConfirmed(merchantId: string, keyId: string): Promise<boolean> {
+    try {
+      return await this.#keyStillWorks(merchantId, keyId);
+    } catch (thrown) {
+      console.error(
+        `[gateway] the key of a poll of ${merchantId} could not be read, so what it drew goes back on the stream: ${failureNamed(thrown)}`,
+      );
+      return false;
+    }
+  }
+
   /** Ends the held polls of one merchant that `which` picks out, with nothing. */
   #letGo(merchantId: string, which: (held: HeldPoll) => boolean): void {
     for (const held of this.#held.get(merchantId) ?? []) {
@@ -2319,7 +2336,7 @@ export class Gateway {
       // Another process may have revoked the key while the poll waited, and
       // nothing in this one heard of it. An order's hand-over is checked again
       // under its hold, which a revocation landing after this read cannot pass.
-      if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
+      if (keyId !== null && !(await this.#keyConfirmed(merchantId, keyId))) {
         for (const delivery of drawn) {
           await this.#giveBack(merchantId, delivery);
         }
@@ -2410,7 +2427,7 @@ export class Gateway {
       if (
         applied.outcome === "no_such_order" &&
         keyId !== null &&
-        !(await this.#keyStillWorks(merchantId, keyId))
+        !(await this.#keyConfirmed(merchantId, keyId))
       ) {
         revoked = true;
         await this.#giveBack(merchantId, delivery);
