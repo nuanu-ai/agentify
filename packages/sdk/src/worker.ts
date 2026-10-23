@@ -13,9 +13,10 @@
  * unanswered order comes back because the gateway decides on another attempt,
  * and a second retry policy on this side would disagree with it. The same
  * holds for an answer the contract refuses and for a kind with no handler; the
- * merchant is told through the problem reporter. An event this package cannot
- * read, such as one of a kind added after it was released, is skipped with a
- * warning and the rest of the batch is handled. An event is not sent again,
+ * merchant is told through the problem reporter. A message this package cannot
+ * read, such as an order carrying a field added after it was released, is set
+ * aside unanswered with a warning naming the fields, and so is an event of a
+ * kind it does not know; the rest of the batch is handled. An event is not sent again,
  * so a handler that throws on one has lost what it carried. The only retry
  * here is of a poll that failed, with the backoff in `backoff.ts`.
  */
@@ -31,6 +32,7 @@ import {
   QuoteResponseSchema,
   type Read,
   UNKNOWN_WORD,
+  type UnreadEnvelope,
   type UnreadEvent,
   type WorkerEnvelope,
   type WorkerEnvelopeKind,
@@ -38,7 +40,7 @@ import {
 import { retryDelayMs } from "./backoff.js";
 import { contractVersion, speaksContract } from "./contract.js";
 import type { OrderEvent } from "./reading.js";
-import { describeProblems, problemsOf } from "./schema.js";
+import { describeProblems, onlyWhatIsNew, problemsOf, whereItFailed } from "./schema.js";
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 
 /**
@@ -111,6 +113,15 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
    * its own card price, and in the other modes the sale is refused.
    */
   QUOTE_SKIPPED: "quote_skipped",
+  /**
+   * Something arrived that this package cannot read in full, and nothing was
+   * guessed about it: a message on the stream, such as an order carrying a
+   * field added after this release, set aside unanswered while the rest is
+   * handled; or orders read back with a status word this release does not
+   * know. The message names the fields, and says a newer release reads them
+   * only where what failed is something added rather than something broken.
+   */
+  UNREAD: "unread",
   /** The answer was produced and could not be delivered to the gateway. */
   ANSWER_FAILED: "answer_failed",
   /** The gateway would not take the answer: it names an order it cannot close. */
@@ -298,7 +309,7 @@ export const QUIET_POLL_FLOOR_MS = 1_000;
 const HANDLERS_AT_ONCE = 4;
 
 /**
- * The contract version named inside a body the SDK could not parse. It goes
+ * The contract version named inside a body that is not a poll answer. It goes
  * into the merchant's sentence and no further: the body was held to no schema,
  * so a proxy's error page with a field of that name must not stop a worker.
  */
@@ -308,6 +319,57 @@ const versionSpokenIn = (body: unknown): string | undefined => {
   const named = (body as { contract_version?: unknown }).contract_version;
 
   return typeof named === "string" && named !== "" ? named : undefined;
+};
+
+/** A newer release's name, for the sentence that says it reads what this one cannot. */
+const NEWER_RELEASE = "a newer release of @nuanu-ai/agentify";
+
+/**
+ * The warning for a message this package could not read: where it failed, by
+ * field and never by value, and what follows for the work it carried.
+ */
+const unreadWarning = (envelope: UnreadEnvelope): WorkerProblem => {
+  // The merchant's handler is given the payload, so its fields are named from there.
+  const issues = envelope.issues.map((issue) =>
+    issue.path[0] === "payload" ? { ...issue, path: issue.path.slice(1) } : issue,
+  );
+  const where = whereItFailed(issues);
+  const unreadable = `has something this release cannot read (${where}); ${
+    onlyWhatIsNew(issues)
+      ? `${NEWER_RELEASE} reads it`
+      : "nothing here says whether it was sent broken or in a shape added later"
+  }`;
+  const about = envelope.subject;
+
+  switch (envelope.named) {
+    case "order":
+      return {
+        kind: WORKER_PROBLEM_KINDS.UNREAD,
+        fatal: false,
+        ...(about === undefined ? {} : { subject: about }),
+        message: `${about === undefined ? "an order" : `order ${about}`} ${unreadable}, so it was not handed to your handler and nothing was answered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
+      };
+    case "quote_request":
+      return {
+        kind: WORKER_PROBLEM_KINDS.UNREAD,
+        fatal: false,
+        ...(about === undefined ? {} : { subject: about }),
+        message: `${about === undefined ? "a price question" : `price question ${about}`} ${unreadable}, so it was left unanswered, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused`,
+      };
+    case "order_event":
+      return {
+        kind: WORKER_PROBLEM_KINDS.UNREAD,
+        fatal: false,
+        ...(about === undefined ? {} : { subject: about }),
+        message: `${about === undefined ? "an event" : `an event for order ${about}`} ${unreadable}, so it was skipped and nothing here can ask for it again; orders.list({ open: true }) still finds every paid order waiting on you`,
+      };
+    default:
+      return {
+        kind: WORKER_PROBLEM_KINDS.UNREAD,
+        fatal: false,
+        message: `a message${envelope.named === "" ? "" : ` of the kind ${JSON.stringify(envelope.named)}`} ${unreadable}, so it was left unanswered`,
+      };
+  }
 };
 
 const askedForAKnownPurpose = (question: Read<QuoteRequest>): question is QuoteRequest =>
@@ -610,6 +672,9 @@ export const startWorker = (
       case "order_event":
         await handleEvent(envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
         return;
+      case UNKNOWN_WORD:
+        report(unreadWarning(envelope));
+        return;
       default:
         // Unreachable while the contract carries three kinds; a fourth stops
         // this file compiling instead of being dropped in silence.
@@ -711,8 +776,9 @@ export const startWorker = (
 
       if (!answer.ok) {
         // The version a failed body names is passed on as a remark, never as a
-        // verdict: that body was held to no schema, and only a poll answer
-        // that parsed decides a mismatch.
+        // verdict: that body was held to no schema, and only an answer of the
+        // poll's outer shape decides a mismatch. That shape is read whatever
+        // the messages inside it are, so the version decides before they do.
         const spoken = versionSpokenIn(answer.failure.body);
         const remark =
           spoken !== undefined && !speaksContract(spoken)

@@ -67,6 +67,10 @@ const NAMED_AT_MOST = 10;
 const written = (path: readonly PropertyKey[]): string =>
   path.length === 0 ? "the document as a whole" : path.map(String).join(".");
 
+/** Of the shapes a union could take, the one that came closest to fitting. */
+const closestOf = (issue: FoundIssue): readonly FoundIssue[] | undefined =>
+  [...(issue.errors ?? [])].sort((one, other) => one.length - other.length)[0];
+
 const findingsIn = (issue: FoundIssue, under: readonly PropertyKey[]): string[] => {
   const at = [...under, ...issue.path];
 
@@ -77,7 +81,7 @@ const findingsIn = (issue: FoundIssue, under: readonly PropertyKey[]): string[] 
       );
     case "invalid_union": {
       // The shape that came closest says the most about what is wrong.
-      const closest = [...(issue.errors ?? [])].sort((one, other) => one.length - other.length)[0];
+      const closest = closestOf(issue);
 
       return closest === undefined
         ? [`${written(at)} takes none of the shapes this release knows`]
@@ -104,3 +108,17 @@ export const whereItFailed = (issues: readonly FoundIssue[]): string => {
     ? `${named}; and ${found.length - NAMED_AT_MOST} more, not named`
     : named;
 };
+
+/**
+ * Whether every finding is something added rather than something broken: a
+ * field this release does not know, or a kind it was not built with. Only
+ * then may a merchant be told that a newer release reads it.
+ */
+export const onlyWhatIsNew = (issues: readonly FoundIssue[]): boolean =>
+  issues.length > 0 &&
+  issues.every((issue) => {
+    if (issue.code === "unrecognized_keys") return true;
+    if (issue.code !== "invalid_union") return false;
+    const closest = closestOf(issue);
+    return closest === undefined || onlyWhatIsNew(closest);
+  });

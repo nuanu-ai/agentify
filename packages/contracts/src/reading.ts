@@ -9,13 +9,16 @@
  * not know as `unknown`, and reads an event of a kind it does not know as
  * `{ type: "unknown", named }`, so a consumer can skip it and keep the rest of
  * the answer. What an order delivers stays closed, off the stream and read
- * back: a field or a shape there it does not know fails the answer, because
- * dropping it would deliver the order wrongly without a word. Everything the
- * closed schema requires, it still requires.
+ * back: a field or a shape there it does not know fails the order, because
+ * dropping it would deliver the order wrongly without a word. Read back, the
+ * answer fails with it; on the worker stream, only that message is marked
+ * unread, so the version of the answer and the messages beside it are still
+ * read. Everything the closed schema requires, it still requires.
  */
 
 import { z } from "zod";
 import { OrderWithStatusSchema } from "./api.js";
+import { type WorkerEnvelope, WorkerEnvelopeSchema } from "./envelope.js";
 import {
   ORDER_EVENT_TYPES,
   type OrderEvent,
@@ -45,6 +48,21 @@ export interface UnreadEvent {
   readonly order_id?: string;
 }
 
+/**
+ * A message on the worker stream this reader could not read: one of a kind it
+ * does not know, or one whose payload does not fit, such as an order carrying
+ * a field added after this reader was built. It names the kind the message
+ * said it was (empty when it said none), the order or price question it is
+ * about where that could be read, and the schema's findings. A finding's
+ * `message` may hold the value that failed, so it is not for a log.
+ */
+export interface UnreadEnvelope {
+  readonly kind: UnknownWord;
+  readonly named: string;
+  readonly subject?: string;
+  readonly issues: readonly z.core.$ZodIssue[];
+}
+
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 type Opened<T> =
@@ -72,12 +90,37 @@ export type Read<T> =
     ? T | UnknownWord
     : Same<T, OrderEvent> extends true
       ? ReadEach<T> | UnreadEvent
-      : ReadEach<T>;
+      : Same<T, WorkerEnvelope> extends true
+        ? ReadEach<T> | UnreadEnvelope
+        : ReadEach<T>;
 
 const aWord = () => z.string().regex(/\S/, "a word is not blank");
 
 const wordOrUnknown = (words: z.ZodType<string>) =>
   aWord().transform((word) => (words.safeParse(word).success ? word : UNKNOWN_WORD));
+
+/** What an envelope that did not fit says it was about, read with no schema. */
+const unreadEnvelope = (sent: unknown, issues: readonly z.core.$ZodIssue[]): UnreadEnvelope => {
+  const { kind, payload } = (typeof sent === "object" && sent !== null ? sent : {}) as {
+    kind?: unknown;
+    payload?: { id?: unknown; order_id?: unknown; price_id?: unknown };
+  };
+  const subject =
+    kind === "order"
+      ? payload?.id
+      : kind === "order_event"
+        ? payload?.order_id
+        : kind === "quote_request"
+          ? payload?.price_id
+          : undefined;
+
+  return {
+    kind: UNKNOWN_WORD,
+    named: typeof kind === "string" ? kind : "",
+    ...(typeof subject === "string" ? { subject } : {}),
+    issues,
+  };
+};
 
 const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(Object.values(ORDER_EVENT_TYPES));
 
@@ -92,6 +135,16 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
         payment_status: reader(PaymentStatusSchema),
         merchant_closure: reader(OrderWithStatusSchema.shape.merchant_closure),
       }),
+  ],
+  [
+    WorkerEnvelopeSchema,
+    () => {
+      const known = withoutUnknownFields(WorkerEnvelopeSchema);
+      return z.unknown().transform((sent) => {
+        const read = known.safeParse(sent);
+        return read.success ? read.data : unreadEnvelope(sent, read.error.issues);
+      });
+    },
   ],
   [OrderStatusSchema, () => wordOrUnknown(OrderStatusSchema)],
   [PaymentStatusSchema, () => wordOrUnknown(PaymentStatusSchema)],

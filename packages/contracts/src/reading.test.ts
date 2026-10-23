@@ -248,7 +248,9 @@ describe("a reader of the merchant's answers", () => {
 
     const parsed = readerOf(WorkerPollResponseSchema).parse(newer);
 
-    expect(parsed.envelopes.map((envelope) => envelope.payload)).toStrictEqual([
+    expect(
+      parsed.envelopes.map((envelope) => ("payload" in envelope ? envelope.payload : envelope)),
+    ).toStrictEqual([
       { type: "unknown", named: "order.refunded", order_id: "ord_7c1e05" },
       parcel,
       poll.envelopes[1]?.payload,
@@ -342,9 +344,7 @@ describe("a reader of the merchant's answers", () => {
       ],
     };
 
-    expect(readerOf(WorkerPollResponseSchema).parse(asked).envelopes[0]?.payload).toMatchObject({
-      purpose: "unknown",
-    });
+    expect(firstEnvelopeOf(asked)).toMatchObject({ payload: { purpose: "unknown" } });
   });
 
   it("never reads a full address that does not fit as the bare locality, dropping who receives the parcel", () => {
