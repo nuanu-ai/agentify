@@ -1881,16 +1881,17 @@ export class Gateway {
       // what this payment did.
       const why =
         verified.verified === "unknown"
-          ? verified.message
+          ? NO_ANSWER_FROM_THE_CHECK
           : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
-      // The layer's words go to the agent and not the log: they can quote the
+      // A refusal's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
-      // client put in it, newlines included.
+      // client put in it, newlines included. A silence is the other way round:
+      // what failed is the operator's to fix, and says nothing a buyer can use.
       console.warn(
         `[gateway] a payment for ${orderFingerprint(orderId)} did not verify: ${
           verified.verified === false
             ? `refused as ${verified.reason}`
-            : "the payment layer could not be asked, or did not answer"
+            : `the payment layer could not be asked, or gave no answer to rely on: ${verified.failure}`
         }`,
       );
       return {
@@ -2988,6 +2989,10 @@ function briefly(said: string): string {
 }
 
 /** What an agent whose payment was refused does next, by why it was refused. */
+/** What a buyer is told when the payment check could not be asked or did not answer. */
+const NO_ANSWER_FROM_THE_CHECK =
+  "this payment charged nothing: Agentify got no answer it could rely on from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds";
+
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
     "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",

@@ -20,6 +20,7 @@ import {
   type VerifyResponse,
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
+import { failureNamed } from "../../failure-named.js";
 import {
   atomicUnits,
   authorisedUntil,
@@ -73,7 +74,7 @@ export class X402Facilitator implements Facilitator {
       // Our own side of the question could not be built (no payout address,
       // a currency we cannot charge in). That is not a verdict on the payment,
       // so it must not be reported as a refusal.
-      return { verified: "unknown", message: describe(thrown) };
+      return { verified: "unknown", failure: describe(thrown) };
     }
 
     const mismatch = wrongOffer(payload.accepted, requirements);
@@ -128,14 +129,14 @@ export class X402Facilitator implements Facilitator {
         const said = thrown.invalidMessage ?? thrown.invalidReason ?? "no reason was given";
         return { verified: false, reason: shapeOf(thrown.invalidReason), message: said };
       }
-      return { verified: "unknown", message: describe(thrown) };
+      return { verified: "unknown", failure: failureNamed(thrown) };
     }
 
     if (answered.isValid) {
       if (answered.payer && !sameAddress(answered.payer, authorization.payer)) {
         return {
           verified: "unknown",
-          message: "The facilitator named a payer different from the signed authorization.",
+          failure: "The facilitator named a payer different from the signed authorization.",
         };
       }
       return {

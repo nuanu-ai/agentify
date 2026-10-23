@@ -107,8 +107,13 @@ export type VerifyOutcome =
       readonly reason: PaymentVerificationFailure;
       readonly message: string;
     }
-  /** The facilitator could not be asked, or did not answer. Nothing is claimed. */
-  | { readonly verified: "unknown"; readonly message: string };
+  /**
+   * The facilitator could not be asked, or gave no answer that can be relied
+   * on. Nothing is claimed. `failure` is for the operator's log: Agentify's
+   * own sentence where the question could not be put, or the name of what
+   * failed where the facilitator could not be reached. A buyer never reads it.
+   */
+  | { readonly verified: "unknown"; readonly failure: string };
 
 export type SettleOutcome =
   | { readonly settled: true; readonly transaction: string }
