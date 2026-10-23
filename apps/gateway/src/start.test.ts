@@ -71,6 +71,12 @@ describe("the first line of the log", () => {
     }
   });
 
+  it("knows a known facilitator written with a trailing slash, as the live chain's check does", async () => {
+    for (const known of [`${CDP_FACILITATOR_URL}/`, `${PUBLIC_X402_FACILITATOR_URL}//`]) {
+      expect(await firstLineThrough(known), known).toMatch(/settle with test funds/);
+    }
+  });
+
   it("names any other facilitator on a test chain and claims nothing settles through it", async () => {
     // A local stack pointed at a model of a facilitator settles nothing, and
     // an operator reading "test funds" would believe a transfer happened.
