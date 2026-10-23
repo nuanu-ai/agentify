@@ -6,6 +6,7 @@
  * which starts the dashboard beside this.
  */
 
+import { CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL } from "@agentify/core";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
@@ -17,7 +18,12 @@ import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import { RefusedToStart } from "./app/recorded-splits.js";
 import type { Runtime } from "./app/runtime.js";
-import { type GatewayConfig, isSandboxFacilitator, secondAttemptProblem } from "./config.js";
+import {
+  type GatewayConfig,
+  isFacilitatorAt,
+  isSandboxFacilitator,
+  secondAttemptProblem,
+} from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge, widestChallengeOn } from "./http/x402.js";
 import type { Announcer } from "./ports/announcer.js";
@@ -62,10 +68,22 @@ export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Pr
 }
 
 /**
- * The first line of the log, which tells an operator whether this process
- * settles real money, test funds or nothing at all.
+ * The facilitators known to settle on a test chain: the test channel's and the
+ * one the spending smoke commands fall back to. A test chain says the money is
+ * not real, not that anything settles, and a local stack may point at a model
+ * that settles nothing.
  */
-function announceTheEnvironment(config: GatewayConfig): void {
+const SETTLE_ON_A_TEST_CHAIN: readonly string[] = [
+  CDP_FACILITATOR_URL,
+  PUBLIC_X402_FACILITATOR_URL,
+];
+
+/**
+ * The first line of the log, which tells an operator whether this process
+ * settles real money, test funds or nothing at all, or, where it cannot know,
+ * which address its payments go through.
+ */
+export function announceTheEnvironment(config: GatewayConfig): void {
   const { network, facilitatorUrl } = config.payment;
   const where = `${network} through ${facilitatorUrl}`;
 
@@ -79,8 +97,11 @@ function announceTheEnvironment(config: GatewayConfig): void {
       return;
     case "test":
       console.warn(
-        `[gateway] TEST environment on ${where}: payments settle with test funds, every order and ` +
-          "receipt is marked as a test, and every key issued here begins with csk_test_",
+        `[gateway] TEST environment on ${where}: ${
+          SETTLE_ON_A_TEST_CHAIN.some((known) => isFacilitatorAt(facilitatorUrl, known))
+            ? "payments settle with test funds"
+            : "payments go through that address, which Agentify does not know to settle anything"
+        }, every order and receipt is marked as a test, and every key issued here begins with csk_test_`,
       );
       return;
     case "live":

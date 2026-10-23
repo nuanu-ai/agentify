@@ -1,5 +1,5 @@
 import { outcomeFor } from "@agentify/core";
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import type { Card, ShipTo } from "@nuanu-ai/agentify-contracts";
 import {
   CARD_REJECTED,
   CatalogPageSchema,
@@ -2620,6 +2620,303 @@ describe("a poll on a key revoked before it was held", () => {
 
     expect((await held).envelopes).toStrictEqual([]);
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toHaveLength(1);
+  });
+});
+
+describe("a held poll whose key is revoked by another process", () => {
+  // The terminal command revokes a key by writing the store, so nothing in
+  // this process ends the polls already held on it. The harness's own revoke
+  // writes the store the same way.
+  const heldThenRevoked = async (harnessed: Harness) => {
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await harnessed.disableKey(harnessed.merchant.keyId);
+    return { held };
+  };
+
+  /** Buys and pays for one unit of a card charged at purchase. */
+  const paidFor = async (harnessed: Harness, itemId: string): Promise<string> => {
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    return offered.order.order.id;
+  };
+
+  it("hands out no order that arrives after the revocation, and the order waits for a key that works", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const { held } = await heldThenRevoked(harnessed);
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
+  it("hands out no order when the key is revoked between the poll's own read of it and the hand-over", async () => {
+    // Another process's revocation can land at any instant, so a read of the
+    // key followed by a separate write of the hand-over leaves a moment in
+    // which the order goes to a key that no longer works.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    harnessed.store.keysOf = async (merchantId) => {
+      const keys = await read(merchantId);
+      await harnessed.disableKey(harnessed.merchant.keyId);
+      return keys;
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+    expect((await harnessed.store.orderById(orderId))?.order.dispatch.attempts).toBe(1);
+  });
+
+  it("hands out no price question after the revocation, and the question reaches a key that works", async () => {
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "2000" });
+    const priced = await published(harnessed, livePriced(asyncCard));
+    const { held } = await heldThenRevoked(harnessed);
+
+    const buying = harnessed.gateway.beginPurchase(priced, {});
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const question = next.envelopes[0];
+    if (question?.kind !== "quote_request") throw new Error("the question did not come back");
+    await harnessed.gateway.answerQuote(harnessed.merchant.id, question.payload.price_id, {
+      available: true,
+      price: { amount: "13.00", currency: "USD" },
+      as_of: "2026-08-26T12:00:00.000Z",
+    });
+    const offered = await buying;
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    expect(offered.order.order.price?.amount).toBe("13.00");
+  });
+
+  const parcelCard: Card = {
+    merchant_item_id: "beans-1kg",
+    title: "Coffee beans, one kilogram",
+    description: "Roasted in Bali this week and sent by courier.",
+    price: { amount: "18.00", currency: "USD" },
+    fulfillment: "ship",
+    ship_within_seconds: 172_800,
+    price_check: "handler",
+  };
+  const address: ShipTo = {
+    name: "The buyer",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  /**
+   * Has the next read of the merchant's keys revoke the poll's key, by a write
+   * to the store as another process makes it, and then answer what `answer`
+   * says: by default what was read before the revocation, a read that raced it.
+   */
+  const revokedAtTheNextRead = (
+    harnessed: Harness,
+    answer: (
+      stale: Awaited<ReturnType<Harness["store"]["keysOf"]>>,
+    ) => Promise<Awaited<ReturnType<Harness["store"]["keysOf"]>>> = async (stale) => stale,
+  ) => {
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    let revoked = false;
+    harnessed.store.keysOf = async (merchantId) => {
+      const keys = await read(merchantId);
+      if (revoked) return keys;
+      revoked = true;
+      await harnessed.disableKey(harnessed.merchant.keyId);
+      return answer(keys);
+    };
+  };
+
+  it("gives a parcel's price question back to the stream for a key that works", async () => {
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "2000" });
+    const parcel = (
+      await harnessed.store.publishCard(harnessed.merchant.id, parcelCard, harnessed.now())
+    ).id;
+    const { held } = await heldThenRevoked(harnessed);
+
+    const buying = harnessed.gateway.beginPurchase(parcel, {}, address);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    const question = next.envelopes[0];
+    if (question?.kind !== "quote_request") throw new Error("the question did not come back");
+    expect(question.payload.ship_to?.city).toBe("Tabanan");
+    await harnessed.gateway.answerQuote(harnessed.merchant.id, question.payload.price_id, {
+      available: true,
+      price: { amount: "21.00", currency: "USD" },
+      as_of: "2026-08-26T12:00:00.000Z",
+    });
+    const offered = await buying;
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    expect(offered.order.order.price?.amount).toBe("21.00");
+  });
+
+  it("gives a parcel's price question no way back once its order's address is erased", async () => {
+    // A question carries where the parcel goes. Put back after the purchase
+    // ended, it would keep that place on the stream after the erasure.
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "50" });
+    const parcel = (
+      await harnessed.store.publishCard(harnessed.merchant.id, parcelCard, harnessed.now())
+    ).id;
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    let ended: Promise<unknown> = Promise.resolve();
+    revokedAtTheNextRead(harnessed, async () => {
+      await ended;
+      return harnessed.store.keysOf(harnessed.merchant.id);
+    });
+
+    const buying = harnessed.gateway.beginPurchase(parcel, {}, address);
+    ended = buying;
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const offered = await buying;
+    expect(offered.step).not.toBe("pay");
+    const [order] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(order?.shipTo !== undefined && "erasedAt" in order.shipTo).toBe(true);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.filter((envelope) => envelope.kind === "quote_request")).toStrictEqual(
+      [],
+    );
+  });
+
+  it("gives a parcel's price question no way back once its order ended while the answer was still awaited", async () => {
+    // The price check's deadline is a reminder on the order's clock and the
+    // wait for the answer a timer in this process, so the order can end and
+    // its address be erased while the question is still awaited here.
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "500" });
+    const parcel = (
+      await harnessed.store.publishCard(harnessed.merchant.id, parcelCard, harnessed.now())
+    ).id;
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    revokedAtTheNextRead(harnessed, async () => {
+      const [order] = await harnessed.store.orders(harnessed.merchant.id);
+      if (order === undefined) throw new Error("no order was opened");
+      harnessed.advance(501);
+      await harnessed.gateway.runner.apply(order.order.id, {
+        kind: "deadline_expired",
+        deadline: "quote_response",
+        at: order.order.timestamps.createdAt + 500,
+      });
+      return harnessed.store.keysOf(harnessed.merchant.id);
+    });
+
+    const buying = harnessed.gateway.beginPurchase(parcel, {}, address);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    const [order] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(order?.shipTo !== undefined && "erasedAt" in order.shipTo).toBe(true);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.filter((envelope) => envelope.kind === "quote_request")).toStrictEqual(
+      [],
+    );
+    expect((await buying).step).not.toBe("pay");
+  });
+
+  it("gives an order event back to the stream for a key that works", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, syncCard);
+    harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await worker.stop();
+    revokedAtTheNextRead(harnessed);
+
+    const held = await harnessed.gateway.poll(harnessed.merchant.id, 0, {
+      keyId: harnessed.merchant.keyId,
+    });
+
+    expect(held.envelopes).toStrictEqual([]);
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((e) => e.kind === "order_event" && e.payload.type)).toStrictEqual([
+      "order.payment_failed_after_delivery",
+    ]);
+  });
+
+  it("gives back what it drew when the key cannot be read after the draw", async () => {
+    // A drawn envelope never returns to the stream by itself, so a poll that
+    // failed here would lose the order for good.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    harnessed.store.keysOf = async () => {
+      throw new Error("the database went away");
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    harnessed.store.keysOf = read;
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
+  it("gives back an order the hold refused when the key cannot be read to say why", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const read = harnessed.store.keysOf.bind(harnessed.store);
+    let reads = 0;
+    harnessed.store.keysOf = async (merchantId) => {
+      reads += 1;
+      if (reads > 1) throw new Error("the database went away");
+      const keys = await read(merchantId);
+      await harnessed.disableKey(harnessed.merchant.keyId);
+      return keys;
+    };
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes).toStrictEqual([]);
+    harnessed.store.keysOf = read;
+    const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(next.envelopes.map((envelope) => envelope.payload)).toMatchObject([{ id: orderId }]);
+  });
+
+  it("still hands out an order to a poll whose key keeps working", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+
+    const orderId = await paidFor(harnessed, coded);
+
+    expect((await held).envelopes.map((envelope) => envelope.payload)).toMatchObject([
+      { id: orderId },
+    ]);
   });
 });
 

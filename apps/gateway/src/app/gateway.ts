@@ -75,6 +75,7 @@ import { PaymentEdge } from "../http/x402.js";
 import { orderFingerprint } from "../order-fingerprint.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
+import type { NoVerdict } from "../ports/facilitator.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   AnalyticsOf,
@@ -543,9 +544,9 @@ export class Gateway {
   readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
   /**
    * The polls held open right now, by merchant, with the key each came in on,
-   * so revoking a key ends its waiting at once. Otherwise a held poll draws
-   * whatever arrives in its window, and code the merchant had just cut off
-   * would take the next order.
+   * so revoking a key in this process ends their waiting at once rather than
+   * at the end of their window. A revocation by another process is found when
+   * the poll draws (`#drawFor`).
    */
   readonly #held = new Map<string, Set<HeldPoll>>();
   /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
@@ -1881,25 +1882,28 @@ export class Gateway {
       // what this payment did.
       const why =
         verified.verified === "unknown"
-          ? verified.message
+          ? NO_VERDICT_WORDS[verified.cause]
           : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
-      // The layer's words go to the agent and not the log: they can quote the
+      // A refusal's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
-      // client put in it, newlines included.
+      // client put in it, newlines included. A silence is the other way round:
+      // what failed is the operator's to fix, and says nothing a buyer can use.
       console.warn(
         `[gateway] a payment for ${orderFingerprint(orderId)} did not verify: ${
           verified.verified === false
             ? `refused as ${verified.reason}`
-            : "the payment layer could not be asked, or did not answer"
+            : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
         }`,
       );
       return {
         step: "payment_not_verified",
         why,
-        // "unknown" means nobody said no — the layer did not answer or could
-        // not be asked — so trying again may work; "false" means the same
-        // payment will not pass, though a corrected one still may.
-        retryable: verified.verified === "unknown",
+        // Only a silence may pass on a second try. A check that turns
+        // Agentify away, a seller who cannot be paid or a check that
+        // contradicts the payment meets the same payment the same way, and
+        // "false" means the same payment will not pass, though a corrected
+        // one still may.
+        retryable: verified.verified === "unknown" && verified.cause === "no_answer",
       };
     }
 
@@ -2169,9 +2173,9 @@ export class Gateway {
    * and be taken for a silence, spending one of its deliveries. An order that
    * has moved on since it was queued is not handed out.
    *
-   * A poll held open ends with nothing once the key it came in on is revoked
-   * (`#held`), and a merchant selling through an integration other than
-   * `drawing.through` is handed nothing.
+   * A poll hands out nothing once the key it came in on is revoked, by this
+   * process or any other, and a merchant selling through an integration other
+   * than `drawing.through` is handed nothing.
    */
   async poll(
     merchantId: string,
@@ -2207,7 +2211,7 @@ export class Gateway {
       if (through === "api") {
         await this.#noteContact(merchantId);
       }
-      return await this.#drawFor(merchantId, waitMs, signal);
+      return await this.#drawFor(merchantId, waitMs, signal, keyId);
     } finally {
       holding.delete(held);
       if (holding.size === 0 && this.#held.get(merchantId) === holding) {
@@ -2278,6 +2282,23 @@ export class Gateway {
     return keys.some((key) => key.id === keyId && key.disabledAt === null);
   }
 
+  /**
+   * Whether the key still works, read once something has been drawn. A read
+   * that fails counts as a key that does not, because what was drawn never
+   * returns to the stream by itself: given back, it waits for the next poll,
+   * where a thrown poll would lose it.
+   */
+  async #keyConfirmed(merchantId: string, keyId: string): Promise<boolean> {
+    try {
+      return await this.#keyStillWorks(merchantId, keyId);
+    } catch (thrown) {
+      console.error(
+        `[gateway] the key of a poll of ${merchantId} could not be read, so what it drew goes back on the stream: ${failureNamed(thrown)}`,
+      );
+      return false;
+    }
+  }
+
   /** Ends the held polls of one merchant that `which` picks out, with nothing. */
   #letGo(merchantId: string, which: (held: HeldPoll) => boolean): void {
     for (const held of this.#held.get(merchantId) ?? []) {
@@ -2291,6 +2312,7 @@ export class Gateway {
     merchantId: string,
     waitMs: number,
     gone: AbortSignal,
+    keyId: string | null,
   ): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
     // Real time, not the order clock: the window bounds how long a worker's
@@ -2314,9 +2336,21 @@ export class Gateway {
       if (drawn.length === 0) {
         return nothing;
       }
-      const handing = await this.#handOut(merchantId, drawn);
+      // Another process may have revoked the key while the poll waited, and
+      // nothing in this one heard of it. An order's hand-over is checked again
+      // under its hold, which a revocation landing after this read cannot pass.
+      if (keyId !== null && !(await this.#keyConfirmed(merchantId, keyId))) {
+        for (const delivery of drawn) {
+          await this.#giveBack(merchantId, delivery);
+        }
+        return nothing;
+      }
+      const { handing, revoked } = await this.#handOut(merchantId, drawn, keyId);
       if (handing.length > 0) {
         return { contract_version: CONTRACT_VERSION, envelopes: handing };
+      }
+      if (revoked) {
+        return nothing;
       }
       if (passed >= PASSED_AT_MOST || (window > 0 && performance.now() >= until)) {
         return nothing;
@@ -2324,16 +2358,26 @@ export class Gateway {
     }
   }
 
-  /** Records the hand-over of what was drawn, and returns what may go to the worker. */
+  /**
+   * Records the hand-over of what was drawn, and returns what may go to the
+   * worker, and whether the key it came in on turned out revoked, after which
+   * everything left goes back on the stream.
+   */
   async #handOut(
     merchantId: string,
     drawn: readonly DrawnEnvelope[],
-  ): Promise<WorkerPollResponse["envelopes"]> {
+    keyId: string | null,
+  ): Promise<{ handing: WorkerPollResponse["envelopes"]; revoked: boolean }> {
     const { config, queue, clock } = this.runtime;
     const handing: WorkerPollResponse["envelopes"] = [];
     const finished: string[] = [];
+    let revoked = false;
 
     for (const delivery of drawn) {
+      if (revoked) {
+        await this.#giveBack(merchantId, delivery);
+        continue;
+      }
       if (delivery.envelope.kind !== "order") {
         handing.push(delivery.envelope);
         finished.push(delivery.handle);
@@ -2357,7 +2401,7 @@ export class Gateway {
           // order's merchant, so no test covers it. It stays because if the two
           // ever came apart the order would go to the wrong merchant; with it,
           // nobody is given the order, the smaller and more noticeable wrong.
-          { merchantId },
+          { merchantId, ...(keyId === null ? {} : { keyId }) },
         );
       } catch (thrown) {
         // Recording the hand-over failed. The envelope goes back on the
@@ -2377,6 +2421,19 @@ export class Gateway {
         // paid order that never reaches the merchant.
         await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
+        continue;
+      }
+
+      // The hold finds no order through a key revoked before it was taken
+      // either. A revocation is never undone, so a key that does not work now
+      // is the reason.
+      if (
+        applied.outcome === "no_such_order" &&
+        keyId !== null &&
+        !(await this.#keyConfirmed(merchantId, keyId))
+      ) {
+        revoked = true;
+        await this.#giveBack(merchantId, delivery);
         continue;
       }
 
@@ -2410,7 +2467,28 @@ export class Gateway {
       await queue.finish(merchantId, handle);
     }
 
-    return handing;
+    return { handing, revoked };
+  }
+
+  /**
+   * Puts something drawn for a key that turned out revoked back on the stream
+   * at once, for a key that works. A parcel's price question goes back only
+   * under the hold on its order, as it was first sent, and not at all once
+   * nobody waits for its answer.
+   */
+  async #giveBack(merchantId: string, delivery: DrawnEnvelope): Promise<void> {
+    const { envelope } = delivery;
+    if (envelope.kind === "order") {
+      await this.#putBack(merchantId, envelope, this.runtime.clock(), 0);
+    } else if (envelope.kind === "quote_request" && envelope.payload.ship_to !== undefined) {
+      const asked = this.#questions.get(envelope.payload.price_id);
+      if (asked !== undefined) {
+        await this.runner.sendWhileTheAddressIsHeld(asked.orderId, () => envelope);
+      }
+    } else {
+      await this.runtime.queue.publish(merchantId, envelope);
+    }
+    await this.runtime.queue.finish(merchantId, delivery.handle);
   }
 
   /**
@@ -2931,6 +3009,18 @@ function briefly(said: string): string {
 }
 
 /** What an agent whose payment was refused does next, by why it was refused. */
+/** What a buyer is told for a payment that got no verdict, by why. */
+const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
+  no_answer:
+    "this payment charged nothing: Agentify got no answer from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+  refused_agentify:
+    "this payment charged nothing and was not checked: the payment check turned Agentify itself away, so Agentify cannot check payments right now and no payment can be taken until it can",
+  seller_cannot_be_paid:
+    "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
+  payer_contradicted:
+    "this payment charged nothing: the payment check vouched for it but named a different payer from the wallet that signed it, so Agentify did not accept it",
+};
+
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
     "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",

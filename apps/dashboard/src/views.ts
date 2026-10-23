@@ -903,7 +903,7 @@ const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
   refused: "Paid, then your integration refused the order, so nothing was delivered.",
   deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
   charge_confirmed_late:
-    "Paid, but the payment network confirmed the payment only after we had stopped waiting for it, so nothing was delivered.",
+    "Paid, but the payment was confirmed only after Agentify had stopped waiting for it, so the order was never sent to your integration and nothing was delivered.",
 };
 
 const whatHappened = (

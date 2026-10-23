@@ -89,8 +89,9 @@ export type Answer<T> =
 
 /**
  * Why a paid order was left unfulfilled: the merchant refused an order already paid for, its
- * delivery deadline passed, or the payment network confirmed the charge only
- * after the gateway had stopped waiting for it and closed the order.
+ * delivery deadline passed, or the payment was confirmed only after the gateway
+ * had stopped waiting for it and closed the order. Which confirmed it, the
+ * facilitator's late answer or a transfer found on the chain, is not recorded.
  */
 export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed_late";
 

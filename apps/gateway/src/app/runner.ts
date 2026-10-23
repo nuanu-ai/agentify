@@ -789,7 +789,12 @@ export class OrderRunner {
     return this.#runtime.store.withOrder(
       orderId,
       change,
-      scope === undefined ? undefined : { merchantId: scope.merchantId },
+      scope === undefined
+        ? undefined
+        : {
+            merchantId: scope.merchantId,
+            ...(scope.keyId === undefined ? {} : { keyId: scope.keyId }),
+          },
       (before, after) => {
         try {
           const at = this.#runtime.clock();

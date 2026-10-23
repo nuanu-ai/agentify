@@ -78,7 +78,7 @@ describe("what a page says about the stack it belongs to", () => {
     expect(readable(html)).toContain(SURFACE_WORDS.sandbox);
   });
 
-  it("says payments settle with test funds on the test site", () => {
+  it("says payments are in test funds on the test site", () => {
     const html = signIn("test");
 
     expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="test"`);

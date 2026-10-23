@@ -502,6 +502,11 @@ export class MemoryStore implements Store {
     return this.#revoke(found, at);
   }
 
+  #works(keyId: string, merchantId: string): boolean {
+    const key = this.#keys.get(keyId);
+    return key !== undefined && key.merchantId === merchantId && key.disabledAt === null;
+  }
+
   #revoke(found: StoredKey, at: number): StoredKey {
     const stored: StoredKey = Object.freeze({ ...found, disabledAt: found.disabledAt ?? at });
     this.#keys.set(found.id, stored);
@@ -750,7 +755,12 @@ export class MemoryStore implements Store {
       const found = this.#orders.get(id);
       // Ownership is read under the same hold, so there is no window between
       // learning whose the order is and acting on it.
-      if (found === undefined || (scope !== undefined && found.merchantId !== scope.merchantId)) {
+      if (
+        found === undefined ||
+        (scope !== undefined &&
+          (found.merchantId !== scope.merchantId ||
+            (scope.keyId !== undefined && !this.#works(scope.keyId, scope.merchantId))))
+      ) {
         return { found: false };
       }
 
