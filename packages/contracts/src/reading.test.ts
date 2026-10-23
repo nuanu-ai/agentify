@@ -42,6 +42,14 @@ const parcel = {
   },
 };
 
+/** An address in a shape this reader does not know: a carrier's pickup point. */
+const pickup = {
+  pickup_point_id: "pp_4411",
+  carrier: "JNE",
+  city: "Tabanan",
+  country: "ID",
+};
+
 const read = { ...parcel, status: "fulfillment_closed", payment_status: "not_paid" };
 
 const closedRead = {
@@ -164,8 +172,12 @@ const deliversAt = (name: string, path: readonly (string | number)[]): boolean =
   return false;
 };
 
+/** What a reader makes of the first envelope of a poll answer. */
+const firstEnvelopeOf = (answer: unknown): unknown =>
+  readerOf(WorkerPollResponseSchema).parse(answer).envelopes[0];
+
 describe("a reader of the merchant's answers", () => {
-  it("reads an answer with an informational field added at any depth as the answer without it, and refuses one added to what an order delivers", () => {
+  it("reads an answer with an informational field added at any depth as the answer without it, and never reads an order with a field added to what it delivers", () => {
     for (const [name, schema, answer] of ANSWERS) {
       // The premise: each answer is one this gateway may send today.
       const today = schema.safeParse(answer);
@@ -183,7 +195,15 @@ describe("a reader of the merchant's answers", () => {
         // The writing contract stays shut: the same field from this gateway
         // is a leak, and its own check refuses it.
         expect(schema.safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(false);
-        if (deliversAt(name, path)) {
+        if (name === "a poll answer" && deliversAt(name, path)) {
+          // On the stream the order is marked unread and the answer around it
+          // is still read, so one order cannot hold up what came with it.
+          expect(firstEnvelopeOf(newer), `${name} at ${path.join(".")}`).toMatchObject({
+            kind: "unknown",
+            named: "order",
+            subject: parcel.id,
+          });
+        } else if (deliversAt(name, path)) {
           expect(readerOf(schema).safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(
             false,
           );
@@ -248,32 +268,68 @@ describe("a reader of the merchant's answers", () => {
     }
   });
 
-  it("refuses an order whose address takes a shape it does not know, or that carries a field it does not know, rather than hand it over narrowed", () => {
+  it("refuses an order read back whose address takes a shape it does not know, or that carries a field it does not know, rather than hand it over narrowed", () => {
     // A pickup point read as a bare locality, or a quantity dropped, would be
     // delivered wrongly without a word; a refused answer is a loud stop.
-    const pickup = {
-      pickup_point_id: "pp_4411",
-      carrier: "JNE",
-      city: "Tabanan",
-      country: "ID",
-    };
-    const onTheStream = (payload: unknown) => ({
-      ...poll,
-      envelopes: [{ kind: "order", id: "msg_1", sent_at: AT, payload }],
-    });
-
     expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, ship_to: pickup }).success).toBe(
       false,
     );
     expect(readerOf(OrderWithStatusSchema).safeParse({ ...read, quantity: 3 }).success).toBe(false);
-    expect(
-      readerOf(WorkerPollResponseSchema).safeParse(onTheStream({ ...parcel, ship_to: pickup }))
-        .success,
-    ).toBe(false);
-    expect(
-      readerOf(WorkerPollResponseSchema).safeParse(onTheStream({ ...order, quantity: 3 })).success,
-    ).toBe(false);
   });
+
+  it("marks an order on the stream that carries a field or an address shape it does not know as unread, with the fields named, and reads the rest of the answer", () => {
+    // The order is not handed over narrowed, and the price question and the
+    // event that came with it are not lost with it.
+    const unread = readerOf(WorkerPollResponseSchema).parse({
+      ...poll,
+      envelopes: [
+        { kind: "order", id: "msg_0", sent_at: AT, payload: { ...order, quantity: 3 } },
+        { kind: "order", id: "msg_9", sent_at: AT, payload: { ...parcel, ship_to: pickup } },
+        ...poll.envelopes,
+      ],
+    });
+
+    expect(unread.envelopes).toHaveLength(5);
+    expect(unread.envelopes[0]).toMatchObject({
+      kind: "unknown",
+      named: "order",
+      subject: order.id,
+      issues: [{ code: "unrecognized_keys", keys: ["quantity"], path: ["payload"] }],
+    });
+    expect(unread.envelopes[1]).toMatchObject({ kind: "unknown", named: "order" });
+    expect(unread.envelopes.slice(2)).toStrictEqual(poll.envelopes);
+  });
+
+  it("marks a message of a kind it does not know as unread, naming the kind", () => {
+    const unread = firstEnvelopeOf({
+      ...poll,
+      envelopes: [{ kind: "refund_request", id: "msg_0", sent_at: AT, payload: {} }],
+    });
+
+    expect(unread).toMatchObject({ kind: "unknown", named: "refund_request" });
+  });
+
+  it("reads the contract version of an answer whose envelopes it cannot read, so the version decides first", () => {
+    // A gateway of another version may write its messages in a shape this
+    // reader cannot read; its answer must still say which version it speaks.
+    const other = readerOf(WorkerPollResponseSchema).parse({
+      contract_version: "99",
+      envelopes: [{ kind: "order", id: "msg_0", sent_at: AT, payload: { ...order, quantity: 3 } }],
+    });
+
+    expect(other.contract_version).toBe("99");
+  });
+
+  it.each([
+    ["no messages at all", { contract_version: "99", error: "no worker here" }],
+    ["messages that are not a list", { contract_version: "99", envelopes: "none" }],
+    ["a version that is not a word", { contract_version: " ", envelopes: [] }],
+  ])(
+    "refuses a poll answer with %s, so a page that only names a version is no answer",
+    (_what, answer) => {
+      expect(readerOf(WorkerPollResponseSchema).safeParse(answer).success).toBe(false);
+    },
+  );
 
   it("reads a price question for a purpose it does not know as unknown", () => {
     const asked = {
@@ -307,22 +363,23 @@ describe("a reader of the merchant's answers", () => {
     ).toStrictEqual({ city: "Tabanan", country: "ID" });
   });
 
-  it("still refuses an event of a kind it knows that does not fit, rather than skipping it as unknown", () => {
-    // Only a kind added later is skipped; a known notice that does not fit is
-    // a broken answer, and a merchant must not be told a newer release reads it.
+  it("marks an event of a kind it knows that does not fit as unread, never as an event of a kind added later", () => {
+    // Only a kind added later is an unknown event; a known notice that does
+    // not fit is a broken message, and it is not passed off as news.
     const newer = (payload: unknown) => ({
       ...poll,
       envelopes: [{ kind: "order_event", id: "msg_0", sent_at: AT, payload }],
     });
 
-    expect(
-      readerOf(WorkerPollResponseSchema).safeParse(newer({ ...unfulfilled, at: "yesterday" }))
-        .success,
-    ).toBe(false);
-    expect(
-      readerOf(WorkerPollResponseSchema).safeParse(newer({ type: " ", order_id: "ord_1", at: AT }))
-        .success,
-    ).toBe(false);
+    expect(firstEnvelopeOf(newer({ ...unfulfilled, at: "yesterday" }))).toMatchObject({
+      kind: "unknown",
+      named: "order_event",
+      subject: unfulfilled.order_id,
+    });
+    expect(firstEnvelopeOf(newer({ type: " ", order_id: "ord_1", at: AT }))).toMatchObject({
+      kind: "unknown",
+      named: "order_event",
+    });
   });
 
   it("still refuses an answer missing a field it needs, or a status that is not a word", () => {

@@ -494,14 +494,23 @@ describe("a gateway newer than this package", () => {
     expect(gateway?.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: order.id });
   });
 
-  it("fails the poll loudly rather than hand over an order carrying a field this package does not know", async () => {
-    // A quantity dropped would be delivered once without a word. A failed poll
-    // is a loud stop, and the order comes again within its attempts.
+  it("leaves an order carrying a field this release does not know unanswered, names the field and a newer release, and handles the rest of the answer", async () => {
+    // A quantity dropped would be delivered once without a word, so the order
+    // is not handed over; but the order and the event beside it are not held
+    // up by it, and the merchant learns what to upgrade.
     const seen: Order[] = [];
+    const other = { ...order, id: "order-2" };
 
-    const { problems } = await workerOver(
+    const { problems, events } = await workerOver(
       {
-        poll_worker: polling(newerPoll({ ...envelopes.order, payload: { ...order, quantity: 3 } })),
+        poll_worker: polling(
+          newerPoll(
+            { ...envelopes.order, payload: { ...order, quantity: 3 } },
+            { ...envelopes.order, id: "env-4", payload: other },
+            envelopes.event,
+          ),
+        ),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
       },
       {
         order: (given) => {
@@ -511,11 +520,71 @@ describe("a gateway newer than this package", () => {
       },
     );
 
-    await waitUntil(() => problems.length > 0, "the failed poll");
+    await waitUntil(() => events.length === 1, "the event");
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
 
-    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
-    expect(seen).toStrictEqual([]);
-    expect(gateway?.callsTo("answer_order")).toStrictEqual([]);
+    expect(seen.map((given) => given.id)).toStrictEqual([other.id]);
+    expect(gateway?.callsTo("answer_order").map((call) => call.params)).toStrictEqual([
+      { order_id: other.id },
+    ]);
+    expect(events).toStrictEqual([event]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false, subject: order.id });
+    expect(problems[0]?.message).toContain("quantity");
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify");
+  });
+
+  it("takes the next order at once after one it cannot read, without the wait that follows a failed poll", async () => {
+    // The gateway hands one message per poll; an order this release cannot
+    // read must cost the orders behind it nothing.
+    const clock = recordingClock();
+    const problems: WorkerProblem[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.order, payload: { ...order, quantity: 3 } }),
+          batch({ ...envelopes.order, payload: { ...order, id: "order-2" } }),
+        ),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => ({ delivered: { access_url: "https://example.com/a" } }),
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+
+    expect(gateway.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: "order-2" });
+    expect(problems.map((problem) => problem.kind)).toStrictEqual(["unread"]);
+    expect(clock.waits).toStrictEqual([]);
+  });
+
+  it("does not tell the merchant a newer release reads a message that is merely broken", async () => {
+    // A known notice with a timestamp that is not one is not news from a newer
+    // Agentify, and saying it was would send the merchant to upgrade for nothing.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.event, payload: { ...event, at: "yesterday" } }),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => problems.length > 0, "the unread event");
+
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false, subject: event.order_id });
+    expect(problems[0]?.message).toContain("at: ");
+    expect(problems[0]?.message).not.toMatch(/newer release/);
+    expect(problems[0]?.message).not.toContain("yesterday");
   });
 
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
@@ -703,6 +772,46 @@ describe("a gateway speaking another dialect", () => {
     expect(gateway.callsTo("answer_order")).toStrictEqual([]);
   });
 
+  it("stops on another version even when the answer carries an order this release cannot read", async () => {
+    // The version decides before the messages are read: a gateway of another
+    // version may well write orders this release cannot read, and failing
+    // poll after poll on them would never reach the stop.
+    const problems: WorkerProblem[] = [];
+    const seen: Order[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: () => ({
+          text: JSON.stringify({
+            contract_version: "99",
+            envelopes: [{ ...envelopes.order, payload: { ...order, quantity: 3 } }],
+          }),
+        }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: (given) => {
+          seen.push(given);
+          return { delivered: { access_url: "https://example.com/a" } };
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      recordingClock(),
+    );
+    running = worker;
+
+    await waitUntil(() => !worker.running(), "the worker to stop");
+
+    expect(problems.map((one) => [one.kind, one.fatal])).toStrictEqual([
+      [WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH, true],
+    ]);
+    expect(seen).toStrictEqual([]);
+  });
+
   it("passes on the version it saw in an answer it could not read, and keeps going", async () => {
     // The version a body this SDK refuses names is worth telling the merchant,
     // but that body was held to no schema: acted on, a proxy's error page
@@ -740,6 +849,10 @@ describe("a gateway speaking another dialect", () => {
     ["a proxy's own page", { status: 502, text: "<html>bad gateway</html>" }],
     ["an error envelope somebody added", { text: JSON.stringify({ error: "no such worker" }) }],
     ["a version that is not a word", { text: JSON.stringify({ contract_version: 99 }) }],
+    [
+      "a version beside messages that are not a list",
+      { text: JSON.stringify({ contract_version: "99", envelopes: "none" }) },
+    ],
   ])("still blames the transport for %s", async (_what, answer) => {
     // A proxy's page, an error envelope or a field of the wrong type is not
     // another version, and must not stop a worker for good.
