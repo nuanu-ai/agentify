@@ -6054,10 +6054,34 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(screen.html).not.toContain('action="/settings/payout-wallet/cancel"');
   });
 
-  it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
+  /**
+   * A second browser holding a copy of `browser`'s session cookie as it is
+   * now, as one copied by an extension would.
+   */
+  const copyOf = (browser: Browser): Browser => {
+    const token = browser.sessionToken();
+    return browser.withRawCookie(`${COOKIE}=${token}; ${SECURE_COOKIE}=${token}`);
+  };
+
+  /** The pressing browser goes on, on a session other than the one it pressed with, and no copy of that one opens anything. */
+  const renewedAndTheCopyEnded = async (
+    browser: Browser,
+    before: string | null,
+    copy: Browser,
+  ): Promise<void> => {
+    expect(browser.sessionToken()).not.toBeNull();
+    expect(browser.sessionToken()).not.toBe(before);
+    expect((await browser.get("/settings")).status).toBe(200);
+    expect((await copy.get("/settings")).to).toMatch(/^\/sign-in/);
+    expect((await copy.get("/cards")).to).toMatch(/^\/sign-in/);
+  };
+
+  it("cancels with one press, after which neither the old cookie nor a copy of it opens anything, and the pressing browser stays signed in on a new session", async () => {
     const running = await live();
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
     const otherDevice = await running.another();
     await otherDevice.signIn();
     const partner = await running.another();
@@ -6069,12 +6093,29 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(pressed.status).toBe(303);
     expect(pressed.to).toBe("/settings");
     expect(await waitingNow(running)).toBeNull();
-    expect((await running.browser.get("/settings")).status).toBe(200);
+    await renewedAndTheCopyEnded(running.browser, before, copy);
     // A session the person did not press from may be the one that asked, so it
     // ends: theirs on another device, and every other account's at the
     // merchant.
     expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
     expect((await partner.get("/cards")).to).toMatch(/^\/sign-in/);
+  });
+
+  it("leaves the sessions of an account at another merchant alone when a change is cancelled", async () => {
+    const running = await live();
+    await running.identity.make("stranger@example.com", "mer_another");
+    await running.browser.signIn();
+    const stranger = await running.another();
+    await stranger.signIn("stranger@example.com");
+    const theirs = stranger.sessionToken();
+    await aChangeWaits(running);
+
+    await running.browser.post("/settings/payout-wallet/cancel");
+
+    expect(
+      (await running.identity.whoIs(`${COOKIE}=${theirs}; ${SECURE_COOKIE}=${theirs}`))?.person
+        .email,
+    ).toBe("stranger@example.com");
   });
 
   it("signs nobody out when the gateway would not cancel", async () => {
@@ -6124,7 +6165,7 @@ describe("a wallet change waiting on the live deployment", () => {
     expect((await otherDevice.get("/settings")).status).toBe(200);
   });
 
-  it("says a change that took effect before the press did take effect, and still signs the others out", async () => {
+  it("says a change that took effect before the press did take effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // The unwanted change has just landed. It is not cancelled (nothing takes
     // it back at once) and the page must not say so; it signs every other
     // session out and says how the old address comes back.
@@ -6135,6 +6176,8 @@ describe("a wallet change waiting on the live deployment", () => {
     try {
       const running = await live();
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6154,6 +6197,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await waitingNow(running)).toBeNull();
       expect(await paidNow(running)).toBe(WAITING);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(said.join("\n")).not.toMatch(/cancelled/i);
     } finally {
       log.mockRestore();
@@ -6216,7 +6260,7 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(await waitingNow(running)).not.toBeNull();
   });
 
-  it("cancels a waiting change when the address paid now is typed in, and signs the others out", async () => {
+  it("cancels a waiting change when the address paid now is typed in, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // Typing the current address is the same act as Cancel. Leaving the asking
     // session signed in would leave it free to ask again, and calling it a
     // change would misreport what happened.
@@ -6243,6 +6287,8 @@ describe("a wallet change waiting on the live deployment", () => {
         running.harnessed.now(),
       );
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6254,6 +6300,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await waitingNow(running)).toBeNull();
       expect(await paidNow(running)).toBe(PAID);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(readable(typed.html)).toMatch(/cancelled/i);
       expect(said.join("\n")).toMatch(/cancelled a waiting change/);
       expect(said.join("\n")).not.toMatch(/changed the address/);
@@ -6262,7 +6309,7 @@ describe("a wallet change waiting on the live deployment", () => {
     }
   });
 
-  it("says a change that took effect before the old address was typed back took effect, and signs the others out", async () => {
+  it("says a change that took effect before the old address was typed back took effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // Typing the address the page showed as paid, after the change took effect,
     // is the same act as Cancel there, not a new change that leaves the other
     // sessions signed in.
@@ -6273,6 +6320,8 @@ describe("a wallet change waiting on the live deployment", () => {
     try {
       const running = await live();
       await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
       const otherDevice = await running.another();
       await otherDevice.signIn();
       await aChangeWaits(running);
@@ -6289,6 +6338,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(await paidNow(running)).toBe(WAITING);
       expect(await waitingNow(running)).toBeNull();
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      await renewedAndTheCopyEnded(running.browser, before, copy);
       expect(said.join("\n")).not.toMatch(/asked for a change/);
     } finally {
       log.mockRestore();

@@ -727,7 +727,7 @@ if (databaseUrl === null) {
       });
     });
 
-    it("names a merchant's accounts and ends their sessions but the one kept", async () => {
+    it("names a merchant's accounts, ends every session of them, the pressing one included, and gives the pressing browser a new one", async () => {
       // On PostgreSQL the account's merchant is a column the component maps, so
       // the lookup is checked here and not only on the memory store.
       const messages: Message[] = [];
@@ -747,9 +747,19 @@ if (databaseUrl === null) {
         "owner@example.com",
         "partner@example.com",
       ]);
-      expect(await identity.endOtherSessionsOfMerchant(MERCHANT, pressed)).toBe(1);
-      expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      const signedInAt = (await identity.whoIs(pressed))?.signedInAt;
+      const renewed = await identity.endMerchantSessionsAndRenew(MERCHANT, pressed);
+      const fresh = renewed.setCookies.map((line) => line.split(";")[0]).join("; ");
+
+      expect(renewed.ended).toBe(2);
+      expect(fresh).not.toBe(pressed);
+      expect(await identity.whoIs(pressed)).toBeNull();
       expect(await identity.whoIs(partner)).toBeNull();
+      const now = await identity.whoIs(fresh);
+      expect(now?.person.email).toBe("owner@example.com");
+      // Renewed, not signed in again: the moment a rate notice names stays the
+      // sign-in the owner made.
+      expect(now?.signedInAt).toStrictEqual(signedInAt);
       expect((await identity.whoIs(elsewhere))?.person.email).toBe("stranger@example.com");
     });
 
@@ -791,11 +801,10 @@ if (databaseUrl === null) {
 
         if (reach === "person") {
           expect(await identity.endSessionsOfPerson(owner.id)).toBe(2);
-          expect(await identity.whoIs(pressed)).toBeNull();
         } else {
-          expect(await identity.endOtherSessionsOfMerchant(MERCHANT, pressed)).toBe(1);
-          expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+          expect((await identity.endMerchantSessionsAndRenew(MERCHANT, pressed)).ended).toBe(2);
         }
+        expect(await identity.whoIs(pressed)).toBeNull();
         expect(await identity.whoIs(laptop)).toBeNull();
       },
     );
