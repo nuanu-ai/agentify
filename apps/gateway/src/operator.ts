@@ -17,3 +17,21 @@ export type {
   OperatorSplits,
 } from "./ports/operator/index.js";
 export { paymentUnknown } from "./ports/operator/index.js";
+export {
+  askedOn,
+  MERCHANT_LIST_MAX,
+  MERCHANT_PAGE_CUT,
+  MERCHANT_SEGMENTS,
+  type MerchantCard,
+  type MerchantKey,
+  type MerchantList,
+  type MerchantListQuery,
+  type MerchantRecord,
+  type MerchantRow,
+  type MerchantSegment,
+  type MerchantWallet,
+  type OrderWorthALook,
+  SELLING_DAYS,
+  type SellingDay,
+  type SettledSales,
+} from "./ports/operator/merchants.js";
