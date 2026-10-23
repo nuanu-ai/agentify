@@ -687,9 +687,7 @@ async function answerPurchase(
         CONFLICT,
         refusal(
           "not_this_purchase",
-          attempt.taken
-            ? "another payment already took this purchase, and nothing was charged for this one: to buy, start a new purchase"
-            : "this payment does not establish ownership of this purchase, and nothing was charged for it",
+          "another payment already took this purchase, and nothing was charged for this one: to buy, start a new purchase",
         ),
       );
 

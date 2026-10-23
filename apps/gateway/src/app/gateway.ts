@@ -300,11 +300,8 @@ export type PurchaseAttempt =
   | { readonly step: "payment_not_taken"; readonly why: string; readonly retryable: boolean }
   /** The payment layer did not vouch for this payment; nothing was touched. */
   | { readonly step: "payment_not_verified"; readonly why: string; readonly retryable: boolean }
-  /**
-   * This order is somebody else's purchase, and this payment is not its own.
-   * `taken` where another payer's payment owns it.
-   */
-  | { readonly step: "not_this_purchase"; readonly taken: boolean };
+  /** Another payer's payment owns this order, and this payment is not it. */
+  | { readonly step: "not_this_purchase" };
 
 /**
  * How many envelopes one poll draws past without handing anything out before
@@ -1918,7 +1915,7 @@ export class Gateway {
     // wallet could try addresses against a paid parcel. The decision that counts is taken again under
     // the order's lock below; this one only answers sooner.
     if (before.paidBy !== null && before.paidBy !== owner) {
-      return { step: "not_this_purchase", taken: true };
+      return { step: "not_this_purchase" };
     }
 
     // A payment is for the address its order was priced for: one naming
@@ -2031,7 +2028,7 @@ export class Gateway {
       const now = await this.runtime.store.orderById(orderId);
       return now !== null && overWithNothingHeld(now)
         ? noPaymentTakenFor(now.order)
-        : { step: "not_this_purchase", taken: now !== null && now.paidBy !== null };
+        : { step: "not_this_purchase" };
     }
     if (taken.kind === "only_returns") {
       this.runner.purchases.giveUp(key);
