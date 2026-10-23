@@ -114,6 +114,7 @@ export const anOrder = (
     readonly merchantId?: string;
     readonly createdAt?: number;
     readonly paymentRef?: string;
+    readonly buyerKey?: string;
   } = {},
 ): StoredOrder => ({
   order: {
@@ -150,6 +151,7 @@ export const anOrder = (
   itemId: "item_1",
   merchantItemId: "sku-1",
   paymentRef: at.paymentRef ?? `pay_for_${id}`,
+  buyerKey: at.buyerKey ?? `key_for_${id}`,
   params: {},
   priceId: null,
   delivery: null,
@@ -1996,6 +1998,47 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           result: null,
         }));
         expect((await store.orderByPaymentRef("pay_2"))?.order.state).toBe("paid");
+      });
+
+      it("is found by its buyer's key, whoever's it is, and by nothing else", async () => {
+        // The agent's read of its own purchase takes no merchant key, so the
+        // buyer's key is the only thing it finds an order by: the identifier
+        // and the payment reference reach the merchant and the payment side.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "key_1", createdAt: 1_000 }));
+        await store.addOrder(
+          anOrder("ord_2", "quoted", {
+            merchantId: B,
+            buyerKey: "key_2",
+            paymentRef: "pay_2",
+            createdAt: 2_000,
+          }),
+        );
+
+        expect((await store.orderByBuyerKey("key_1"))?.order.id).toBe("ord_1");
+        expect((await store.orderByBuyerKey("key_2"))?.order.id).toBe("ord_2");
+        expect(await store.orderByBuyerKey("ord_2")).toBeNull();
+        expect(await store.orderByBuyerKey("pay_2")).toBeNull();
+        expect(await store.orderByBuyerKey("key_3")).toBeNull();
+
+        // A decision about the order rewrites its document and keeps the key.
+        await store.withOrder("ord_2", (found) => ({
+          save: { ...found, order: { ...found.order, state: "paid" as const } },
+          result: null,
+        }));
+        expect((await store.orderByBuyerKey("key_2"))?.order.state).toBe("paid");
+      });
+
+      it("refuses a second order under a buyer's key another order has", async () => {
+        // Otherwise one key would open either of two orders.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "key_1" }));
+
+        await expect(
+          store.addOrder(anOrder("ord_2", "quoted", { buyerKey: "key_1" })),
+        ).rejects.toThrow(/buyer's key/);
+        expect(await store.orderById("ord_2")).toBeNull();
+        expect((await store.orderByBuyerKey("key_1"))?.order.id).toBe("ord_1");
       });
 
       it("refuses a second order under a payment reference another order has", async () => {

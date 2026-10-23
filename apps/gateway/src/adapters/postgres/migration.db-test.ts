@@ -1593,4 +1593,66 @@ if (databaseUrl === null) {
       ]);
     });
   });
+
+  describe("the migration that gives every order a buyer's key", () => {
+    let connected: ReturnType<typeof connect>;
+    let pool: Pool;
+    beforeAll(async () => {
+      connected = connect(databaseUrl);
+      pool = connected.pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 28)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_keyless','Keyless','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("gives every order written before it a key of its own that opens it, and changes nothing else", async () => {
+      // Nobody holds a key for these orders: their buyers were handed
+      // addresses built from the identifier, which opens nothing any more.
+      const before = (id: string, state: string) => ({
+        order: { id, state, payment: "settled" },
+        merchantId: "mch_keyless",
+        itemId: "itm_old",
+        merchantItemId: "sku",
+        paymentRef: `pay_${id}`,
+        payment: null,
+        paidBy: "0x1111111111111111111111111111111111111111",
+        delivery: { access_code: "SESAME" },
+      });
+      const rows = [before("ord_delivered", "delivered"), before("ord_waiting", "dispatched")];
+      for (const row of rows) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,false,'mch_keyless','itm_old','sku',$3,now(),now())",
+          [row.order.id, row.order.state, JSON.stringify(row)],
+        );
+      }
+
+      for (const statement of await statementsOf("0028_order_buyer_key.sql")) {
+        await pool.query(statement);
+      }
+
+      const records = (
+        await pool.query<{ record: Record<string, unknown> }>(
+          "select record from orders order by id",
+        )
+      ).rows.map((row) => row.record);
+      const keys = records.map((record) => record.buyerKey);
+      for (const key of keys) expect(key).toMatch(/^key_[0-9a-f]{32}$/);
+      expect(new Set(keys).size).toBe(rows.length);
+      expect(records.map(({ buyerKey: _key, ...rest }) => rest)).toStrictEqual([rows[0], rows[1]]);
+      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
+      expect((await store.orderByBuyerKey(String(keys[0])))?.order.id).toBe("ord_delivered");
+      expect(await store.orderByBuyerKey("ord_delivered")).toBeNull();
+    });
+  });
 }

@@ -27,6 +27,7 @@ import {
   loggedWhile,
   type Served,
   serve,
+  statusPathOf,
   testConfig,
   workOnce,
 } from "./testing/harness.js";
@@ -253,6 +254,30 @@ describe("a failure in the gateway's log", () => {
 
     expect(status).toBe(500);
     expect(written).toContain("list_merchant_cards failed");
+    expectNothingCarried(written);
+  });
+
+  it("names the status read that failed, and not the buyer's key it was asked by", async () => {
+    // The key opens the goods, and a failure's own words can quote the value
+    // it failed on, as this one does.
+    const harnessed = await started();
+    served = await serve(harnessed);
+    const orderId = await paid(harnessed);
+    const at = await statusPathOf(harnessed, orderId);
+    const key = decodeURIComponent(at.split("/").at(-2) ?? "");
+    expect(key).not.toBe("");
+    harnessed.store.orderByBuyerKey = async (asked) => {
+      throw new Error(`no order under ${asked}${SECRET}${FORGED}`);
+    };
+
+    let status = 0;
+    const written = await loggedWhile(async () => {
+      status = (await served?.call("GET", at))?.status ?? 0;
+    });
+
+    expect(status).toBe(500);
+    expect(written).toContain("get_order_status failed");
+    expect(written).not.toContain(key);
     expectNothingCarried(written);
   });
 

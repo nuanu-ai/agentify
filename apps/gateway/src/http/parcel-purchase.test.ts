@@ -31,6 +31,7 @@ import {
   harness,
   type Served,
   serve,
+  statusPathOf,
   theMerchantKey,
   workOnce,
   workUntilStopped,
@@ -783,8 +784,11 @@ describe("the shipment", () => {
   const ship = (served: Served, orderId: string, body: unknown) =>
     served.call("POST", `/v0/orders/${orderId}/deliver`, { headers: asMerchant, body });
 
-  const statusOf = async (served: Served, orderId: string) =>
-    (await served.call("GET", `/x402/orders/${orderId}/status`)).body as Record<string, unknown>;
+  const statusOf = async (served: Served, orderId: string) => {
+    if (open === null) throw new Error("no gateway is running");
+    const at = await statusPathOf(open.harnessed, orderId);
+    return (await served.call("GET", at)).body as Record<string, unknown>;
+  };
 
   it("is recorded by the deliver call, and the agent reads that the parcel shipped", async () => {
     const { harnessed, served, orderId } = await takenOn();
@@ -978,7 +982,7 @@ describe("a shipment against a card republished since the sale", () => {
 
     expect(goods?.ok).toBe(false);
     expect(shipped?.ok).toBe(true);
-    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const status = await served.call("GET", await statusPathOf(harnessed, orderId));
     expect(status.status).toBe(200);
     expect((status.body as { status: string }).status).toBe("shipped");
   });
@@ -1016,7 +1020,7 @@ describe("a shipment against a card republished since the sale", () => {
       code: "ABC",
     });
     expect(goods?.ok).toBe(true);
-    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const status = await served.call("GET", await statusPathOf(harnessed, orderId));
     expect(status.status).toBe(200);
     expect((status.body as { status: string }).status).toBe("delivered");
   });

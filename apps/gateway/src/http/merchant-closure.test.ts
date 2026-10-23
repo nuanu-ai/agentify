@@ -1,6 +1,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Harness, harness, type Served, serve } from "../testing/harness.js";
+import { type Harness, harness, type Served, serve, statusPathOf } from "../testing/harness.js";
 
 const card: Card = {
   merchant_item_id: "esim-7d",
@@ -39,7 +39,7 @@ describe("the authenticated merchant closure", () => {
     ).toEqual({ ok: true });
     const pending = await h.store.orderById(id);
     if (pending?.paymentAttempt === undefined) throw new Error("original payment attempt missing");
-    for (const path of [`/v0/orders/${id}`, `/x402/orders/${id}/status`]) {
+    for (const path of [`/v0/orders/${id}`, await statusPathOf(h, id)]) {
       expect((await server.call("GET", path, { headers })).body).toMatchObject({
         status: "payment_unresolved",
         payment_status: "unresolved",
@@ -52,7 +52,7 @@ describe("the authenticated merchant closure", () => {
       { settled: true, transaction: "original-transaction" },
       "facilitator",
     );
-    const completed = await server.call("GET", `/x402/orders/${id}/status`);
+    const completed = await server.call("GET", await statusPathOf(h, id));
     expect(completed.body).toMatchObject({
       status: "fulfillment_closed",
       payment_status: "paid",
@@ -99,7 +99,7 @@ describe("the authenticated merchant closure", () => {
       },
     ]);
     expect(await openIds()).toEqual([id]);
-    const agentReads = (await server.call("GET", `/x402/orders/${id}/status`)).body as {
+    const agentReads = (await server.call("GET", await statusPathOf(h, id))).body as {
       reason?: { code: string; message: string };
     };
     expect(agentReads).toMatchObject({
@@ -147,7 +147,7 @@ describe("the authenticated merchant closure", () => {
       ).body,
     ).toEqual({ ok: true });
 
-    const read = (await server.call("GET", `/x402/orders/${id}/status`)).body as {
+    const read = (await server.call("GET", await statusPathOf(h, id))).body as {
       reason?: { code: string; message: string };
     };
     expect(read).toMatchObject({
@@ -166,7 +166,7 @@ describe("the authenticated merchant closure", () => {
   it("gives no reason of its own on a closed order nobody paid", async () => {
     const id = await order();
     await h.gateway.closeOrder(h.merchant.id, id, {});
-    const read = (await server.call("GET", `/x402/orders/${id}/status`)).body;
+    const read = (await server.call("GET", await statusPathOf(h, id))).body;
     expect(read).toMatchObject({ status: "fulfillment_closed", payment_status: "not_paid" });
     expect(read).not.toHaveProperty("reason");
   });
@@ -184,7 +184,7 @@ describe("the authenticated merchant closure", () => {
       (await server.call("POST", path, { headers, body: { message: "Changed" } })).body,
     ).toEqual({ ok: true });
     expect((await h.store.orderById(id))?.order).toEqual(first?.order);
-    for (const readPath of [`/v0/orders/${id}`, `/x402/orders/${id}/status`]) {
+    for (const readPath of [`/v0/orders/${id}`, await statusPathOf(h, id)]) {
       const response = await server.call("GET", readPath, { headers });
       expect(response.status, JSON.stringify(response.body)).toBe(200);
       expect(response.body).toMatchObject({
@@ -248,7 +248,7 @@ describe("the authenticated merchant closure", () => {
     h.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
     await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
     const headers = { authorization: `Bearer ${h.merchant.key}` };
-    const before = await server.call("GET", `/x402/orders/${id}/status`);
+    const before = await server.call("GET", await statusPathOf(h, id));
     expect(before.body).toMatchObject({ status: "rejected", payment_status: "not_paid" });
 
     const response = await server.call("POST", `/v0/orders/${id}/close`, {
@@ -262,7 +262,7 @@ describe("the authenticated merchant closure", () => {
     expect((response.body as { error: { message: string } }).error.message).toMatch(
       /ended without a charge.*nothing to close/,
     );
-    expect((await server.call("GET", `/x402/orders/${id}/status`)).body).toStrictEqual(before.body);
+    expect((await server.call("GET", await statusPathOf(h, id))).body).toStrictEqual(before.body);
   });
 
   it("refuses to close a delivered order, saying its fulfillment is complete", async () => {

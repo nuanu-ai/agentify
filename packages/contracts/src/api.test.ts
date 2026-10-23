@@ -527,7 +527,7 @@ describe("the status an agent reads", () => {
     price,
     delivered: null,
     test: true,
-    status_url: "https://agentify.ad/x402/orders/ord_7c1e05/status",
+    status_url: "https://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     seller: { name: "Freeland", site: "https://freeland.example" },
   };
 
@@ -620,9 +620,9 @@ describe("the status an agent reads", () => {
     // A path needs a host the agent was never told, and an address in another
     // scheme is not one an HTTP client can call.
     for (const status_url of [
-      "/x402/orders/ord_7c1e05/status",
-      "agentify.ad/x402/orders/ord_7c1e05/status",
-      "ftp://agentify.ad/x402/orders/ord_7c1e05/status",
+      "/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "ftp://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     ]) {
       expect(errorOf(AgentOrderStatusSchema, { ...status, status_url }), status_url).toContain(
         "status_url",
@@ -631,7 +631,7 @@ describe("the status an agent reads", () => {
     expect(
       AgentOrderStatusSchema.safeParse({
         ...status,
-        status_url: "http://localhost:8080/x402/orders/ord_7c1e05/status",
+        status_url: "http://localhost:8080/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
       }).success,
     ).toBe(true);
   });
@@ -650,15 +650,15 @@ describe("the status an agent reads", () => {
       throw new Error("the exported document says nothing about what status_url has to look like");
     }
     const pattern = new RegExp(written);
-    expect(pattern.test("/x402/orders/ord_7c1e05/status")).toBe(false);
+    expect(pattern.test("/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status")).toBe(false);
     expect(pattern.test(status.status_url)).toBe(true);
 
     for (const status_url of [
       status.status_url,
-      "http://localhost:8080/x402/orders/ord_7c1e05/status",
-      "HTTPS://agentify.ad/x402/orders/ord_7c1e05/status",
-      "ftp://agentify.ad/x402/orders/ord_7c1e05/status",
-      "/x402/orders/ord_7c1e05/status",
+      "http://localhost:8080/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "HTTPS://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "ftp://agentify.ad/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
+      "/x402/orders/key_3f9a1c07d2b84e6a9c5d0e1f2a3b4c5d/status",
     ]) {
       expect(pattern.test(status_url), status_url).toBe(
         AgentOrderStatusSchema.safeParse({ ...status, status_url }).success,
@@ -1044,8 +1044,8 @@ describe("the route table", () => {
     [
       "get_order_status",
       "GET",
-      "/x402/orders/:order_id/status",
-      "order_id",
+      "/x402/orders/:buyer_key/status",
+      "buyer_key",
       "-",
       "-",
       "agent_order_status",
@@ -1162,15 +1162,16 @@ describe("the route table", () => {
   });
 
   it("names the door on the one route that is the agent's rather than the merchant's", () => {
-    // An agent has no key, and `none` would be no door at all: knowing the
-    // order's identifier stands in for one, and the word keeps a gateway from
-    // reading it as either of the others.
-    expect(API_ROUTES.get_order_status.auth).toBe("order_id");
-    // The only route behind that door: on a route that takes no order it would
-    // be a door with nothing to check.
+    // An agent has no merchant key, and `none` would be no door at all: the
+    // buyer's key stands in for one, and the word keeps a gateway from reading
+    // it as either of the others.
+    expect(API_ROUTES.get_order_status.auth).toBe("buyer_key");
+    // The route behind that door takes the key and nothing else: an address
+    // that also took the order's identifier, which the merchant and the
+    // payment side hold, would invite a gateway to answer by it.
     for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
-      if (route.auth !== "order_id") continue;
-      expect(pathParamsOf(route.path), name).toContain("order_id");
+      if (route.auth !== "buyer_key") continue;
+      expect(pathParamsOf(route.path), name).toStrictEqual(["buyer_key"]);
     }
   });
 

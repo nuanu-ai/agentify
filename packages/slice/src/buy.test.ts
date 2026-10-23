@@ -28,7 +28,7 @@ import { EUROPE_ESIM } from "./cards.js";
 
 const ITEM = "itm_b47c5b50e4924b9c98f8c9eb10a1e925";
 const ORDER = "ord_2923c69f363f4d3088e0c6a3fee8f68d";
-const STATUS_PATH = `/x402/orders/${ORDER}/status`;
+const STATUS_PATH = "/x402/orders/key_6b1d0e5a2f7c4a98b3e1d2c4f5a6b7c8/status";
 
 /** The goods the merchant hands over late. */
 const GOODS = {

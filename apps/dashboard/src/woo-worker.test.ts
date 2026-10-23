@@ -870,7 +870,7 @@ describe("the whole way through, against a real gateway", () => {
     // of.
     expect(bought.status).toBe(200);
     const started = bought.body as AgentOrderStatus;
-    const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
+    const read = await served.call("GET", new URL(started.status_url).pathname);
     const status = read.body as AgentOrderStatus;
     expect(status.status).toBe("delivered");
     expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
@@ -888,6 +888,11 @@ describe("the whole way through, against a real gateway", () => {
     };
     expect(placed.set_paid).toBe(true);
     expect(placed.transaction_id).toBe(status.order_id);
+    // The shop's order, which every employee and plugin of the shop reads,
+    // carries the identifier and not the buyer's key that opens the goods.
+    const key = (await open.store.orderById(status.order_id))?.buyerKey ?? "";
+    expect(key).not.toBe("");
+    expect(JSON.stringify(shop.orders)).not.toContain(key);
     expect(placed.line_items[0]?.product_id).toBe(11);
     expect(placed.line_items[0]?.total).toBe("25.00");
   });
@@ -3158,13 +3163,13 @@ describe("a parcel the whole way through, against a real gateway", () => {
     // The agent paid goods and rate together, the shop holds a paid order
     // shipping there, and Agentify no longer holds the address.
     expect(bought.status).toBe(200);
-    const orderId = (bought.body as AgentOrderStatus).order_id;
+    const { order_id: orderId, status_url: statusUrl } = bought.body as AgentOrderStatus;
     const paidFor = await gateway.getOrder(orderId);
     expect(paidFor.ok && paidFor.document.price.amount).toBe("23.00");
     expect(paidFor.ok && paidFor.document.ship_to).toMatchObject({ erased_at: expect.any(String) });
     expect(placed).toHaveLength(1);
     expect(placed[0]?.address).toStrictEqual(ADDRESS);
-    const waiting = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const waiting = await served.call("GET", new URL(statusUrl).pathname);
     expect((waiting.body as AgentOrderStatus).status).toBe("in_progress");
 
     // The merchant marks it Completed in their shop.
@@ -3186,7 +3191,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
       }),
     });
 
-    const read = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const read = await served.call("GET", new URL(statusUrl).pathname);
     const status = read.body as Record<string, unknown>;
     expect(status.status).toBe("shipped");
     expect(status.shipment).toMatchObject({ carrier: "Bali courier", tracking_number: null });

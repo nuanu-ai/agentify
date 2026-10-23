@@ -32,7 +32,7 @@ const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
  * The order this server answers for with a proxy's error page instead of a
  * document, so the buyer can be shown one without a proxy in the way.
  */
-const ORDER_BEHIND_A_BAD_PROXY = "ord_a_proxy_ate_it";
+const KEY_BEHIND_A_BAD_PROXY = "key_a_proxy_ate_it";
 
 /**
  * Where this server's purchase answer says the order is collected.
@@ -71,8 +71,8 @@ const listed = (itemId: string): { readonly purchase_url: string } => ({
  * contract's route table: for the tests below that are about what the buyer
  * does with an answer, not about where the address came from.
  */
-const statusAt = (base: string, orderId: string): string =>
-  `${base}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+const statusAt = (base: string, buyerKey: string): string =>
+  `${base}${expandPath(API_ROUTES.get_order_status.path, { buyer_key: buyerKey })}`;
 
 /** One request as it arrived, which is the only thing this file looks at. */
 interface Asked {
@@ -101,7 +101,7 @@ beforeAll(async () => {
     });
     // One order is answered the way something in the middle answers when the
     // gateway is unreachable: a status nobody designed, in HTML.
-    if (request.url?.includes(ORDER_BEHIND_A_BAD_PROXY) === true) {
+    if (request.url?.includes(KEY_BEHIND_A_BAD_PROXY) === true) {
       response.statusCode = 502;
       response.setHeader("content-type", "text/html");
       response.end("<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>");
@@ -278,7 +278,7 @@ describe("an answer that arrived against a call that never landed", () => {
     // somebody is never printed. The money has already moved, so an answer
     // nobody can read must come back as one, distinct from an answer saying the
     // purchase is over.
-    const seen = await buyer.status(statusAt(baseUrl, ORDER_BEHIND_A_BAD_PROXY));
+    const seen = await buyer.status(statusAt(baseUrl, KEY_BEHIND_A_BAD_PROXY));
 
     expect(seen.status).toBe(502);
     // Nothing is invented out of it: no state, no goods.
@@ -300,7 +300,7 @@ describe("an answer that arrived against a call that never landed", () => {
       maxUsd: 50,
     });
 
-    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow(
+    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "key_7c1e05"))).rejects.toThrow(
       /fetch failed/,
     );
   });
@@ -309,13 +309,13 @@ describe("an answer that arrived against a call that never landed", () => {
 describe("what this buyer never sends", () => {
   it("carries no merchant key on any call it makes", async () => {
     // An agent has no account, no registration and no key: the catalog and the
-    // purchase are open doors, and the order status is proved by knowing the
-    // identifier. A buyer that sent a key would be walking doors this one is
+    // purchase are open doors, and the order status is proved by the buyer's
+    // key in its address. A buyer that sent a key would be walking doors this one is
     // not supposed to have, and nothing else here would notice the status route
     // ending up behind the merchant's door.
     await buyer.catalog();
     await buyer.buy(listed("itm_9f2c4a"), {});
-    await buyer.status(statusAt(baseUrl, "ord_7c1e05"));
+    await buyer.status(statusAt(baseUrl, "key_7c1e05"));
 
     expect(asked).toHaveLength(3);
     for (const one of asked) {

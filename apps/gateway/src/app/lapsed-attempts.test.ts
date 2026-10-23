@@ -6,7 +6,14 @@
 
 import { type Card, CardSchema } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  statusPathOf,
+} from "../testing/harness.js";
 import { anOrder } from "../testing/store-contract.js";
 
 const syncCard: Card = CardSchema.parse({
@@ -62,8 +69,9 @@ const theDailyWork = async (harnessed: Harness): Promise<void> => {
   }
 };
 
-const statusOf = (served: Served, orderId: string) =>
-  served.call("GET", `/x402/orders/${orderId}/status`);
+/** The status address an order's buyer holds, read while the order is still there. */
+const addressOf = (harnessed: Harness, orderId: string): Promise<string> =>
+  statusPathOf(harnessed, orderId);
 
 describe("a purchase that lapsed unpaid", () => {
   it("is gone thirty days after it ended and its status reads as an unknown order's, while a paid order of the same age stays", async () => {
@@ -73,16 +81,20 @@ describe("a purchase that lapsed unpaid", () => {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
     const paid = (bought.body as { order_id: string }).order_id;
+    const [lapsedAt, paidAt] = [
+      await addressOf(harnessed, lapsed),
+      await addressOf(harnessed, paid),
+    ];
 
     harnessed.advance(30 * DAY + 60_000);
     await theDailyWork(harnessed);
 
     expect(await harnessed.store.orderById(lapsed)).toBeNull();
-    const unknown = await statusOf(served, "ord_never_made");
-    const forgotten = await statusOf(served, lapsed);
+    const unknown = await served.call("GET", lapsedAt.replace(/key_[^/]+/, "key_never_made"));
+    const forgotten = await served.call("GET", lapsedAt);
     expect(forgotten.status).toBe(unknown.status);
     expect(forgotten.body).toStrictEqual(unknown.body);
-    expect((await statusOf(served, paid)).status).toBe(200);
+    expect((await served.call("GET", paidAt)).status).toBe(200);
     expect(await harnessed.store.receiptForOrder(paid)).not.toBeNull();
   });
 
@@ -94,7 +106,7 @@ describe("a purchase that lapsed unpaid", () => {
     await theDailyWork(harnessed);
 
     expect(await harnessed.store.orderById(lapsed)).not.toBeNull();
-    expect((await statusOf(served, lapsed)).status).toBe(200);
+    expect((await served.call("GET", await addressOf(harnessed, lapsed))).status).toBe(200);
   });
 });
 

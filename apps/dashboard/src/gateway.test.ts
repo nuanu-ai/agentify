@@ -270,6 +270,32 @@ describe("late goods", () => {
   });
 });
 
+describe("the orders a page reads", () => {
+  it("carry the order's identifier and never the buyer's key, which opens its goods", async () => {
+    // The dashboard shows the merchant and their staff everything about an
+    // order, and the key is the one thing about it that is the buyer's alone.
+    const harnessed = await started();
+    const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
+    await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
+    const owner = asTheOwner(harnessed);
+    await owner.deliverOrder(orderId, { activation_code: "LPA:1$X" });
+    const key = (await harnessed.store.orderById(orderId))?.buyerKey ?? "";
+    expect(key).not.toBe("");
+
+    const read = JSON.stringify([
+      await owner.orders(false),
+      await owner.orders(true),
+      await owner.getOrder(orderId),
+      await owner.receipts(),
+      await owner.unfulfilledOrders(),
+      await owner.paidIntoSplits(),
+    ]);
+
+    expect(read).toContain(orderId);
+    expect(read).not.toContain(key);
+  });
+});
+
 describe("a call that does not finish", () => {
   it("is given up on at its deadline, saying what was asked may have been done", async () => {
     // The work behind it is not stopped (a late database still writes), so the

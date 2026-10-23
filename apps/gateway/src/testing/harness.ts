@@ -6,11 +6,13 @@
 
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
-import type {
-  HandlerAnswer,
-  Order,
-  QuoteResponse,
-  WorkerPollResponse,
+import {
+  API_ROUTES,
+  expandPath,
+  type HandlerAnswer,
+  type Order,
+  type QuoteResponse,
+  type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
 import {
   decodePaymentRequiredHeader,
@@ -504,6 +506,20 @@ export async function signedFor(
     payment,
     fingerprint: paymentFingerprint(decodePaymentSignatureHeader(payment), edge.token()),
   };
+}
+
+/**
+ * The path of the address the buyer of `orderId` reads it again at, as the
+ * purchase answer's `status_url` names it, for a test that holds the order's
+ * identifier rather than that answer.
+ */
+export async function statusPathOf(
+  worked: { readonly gateway: Gateway },
+  orderId: string,
+): Promise<string> {
+  const record = await worked.gateway.runtime.store.orderById(orderId);
+  if (record === null) throw new Error(`there is no order ${orderId} to read again`);
+  return expandPath(API_ROUTES.get_order_status.path, { buyer_key: record.buyerKey });
 }
 
 /** The zero address: an offer made out to nobody, in a payment nobody checks. */

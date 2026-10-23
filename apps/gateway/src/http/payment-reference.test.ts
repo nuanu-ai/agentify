@@ -37,6 +37,7 @@ import {
   loggedWhile,
   type Served,
   serve,
+  statusPathOf,
   testConfig,
   workUntilStopped,
 } from "../testing/harness.js";
@@ -315,7 +316,7 @@ const reaching = async (
 
 /**
  * A refusal says what became of the order in the words its status gives,
- * read here by its identifier as its buyer would.
+ * read here at its status address as its buyer would.
  */
 const expectToSayWhatBecameOf = async (
   body: unknown,
@@ -323,7 +324,8 @@ const expectToSayWhatBecameOf = async (
   orderId: string,
   expected: { readonly retryable: boolean },
 ) => {
-  const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+  if (open === null) throw new Error("no gateway is running");
+  const status = await served.call("GET", await statusPathOf(open.harnessed, orderId));
   const reason = (status.body as { reason?: { message: string } }).reason?.message;
   expect(typeof reason).toBe("string");
   const { error } = body as { error: { message: string; retryable: boolean } };
@@ -349,9 +351,12 @@ describe("the order's identifier on the payment side", () => {
       const bought = await present(gateway.served, itemId, payment);
 
       expect(bought.status).toBe(200);
-      const orderId = (bought.body as { order_id: string }).order_id;
-      // The identifier is a real one: it opens the order.
-      const status = await gateway.served.call("GET", `/x402/orders/${orderId}/status`);
+      const { order_id: orderId, status_url: statusUrl } = bought.body as {
+        order_id: string;
+        status_url: string;
+      };
+      // The order is a real one: its address opens it.
+      const status = await gateway.served.call("GET", new URL(statusUrl).pathname);
       expect(status.status).toBe(200);
       // Verified, then charged: two calls, and each carried the reference.
       expect(network.sent).toHaveLength(2);
@@ -512,7 +517,10 @@ describe("a payment reference", () => {
     expect(bought.status).toBe(200);
     const reference = referenceIn(challenge);
     if (typeof reference !== "string") throw new Error("the challenge named no reference");
-    const orderId = (bought.body as { order_id: string }).order_id;
+    const { order_id: orderId, status_url: statusUrl } = bought.body as {
+      order_id: string;
+      status_url: string;
+    };
 
     const answerTo = async (path: string, headers: Record<string, string> = {}) => {
       const answered = await served.call("GET", path, { headers });
@@ -523,8 +531,8 @@ describe("a payment reference", () => {
       };
     };
 
-    // The identifier opens it, so the door is open to the right key.
-    expect((await answerTo(`/x402/orders/${orderId}/status`)).status).toBe(200);
+    // The buyer's key opens it, so the door is open to the right key.
+    expect((await answerTo(new URL(statusUrl).pathname)).status).toBe(200);
     expect(await answerTo(`/x402/orders/${reference}/status`)).toStrictEqual(
       await answerTo("/x402/orders/pay_nobody_issued_this/status"),
     );
@@ -627,6 +635,12 @@ describe("a payer whose answer was lost", () => {
     expect(fresh.status).toBe(200);
     expect((fresh.body as { order_id: string }).order_id).toBe(orderId);
     expect(fresh.body).toMatchObject({ delivered: { access_code: "SESAME" } });
+    // The same address as the answer that was lost: the key it carries is the
+    // only way back to the goods, so a new one would be a new secret to keep
+    // and the old one would still be out there.
+    const lost = (bought.body as { status_url: string }).status_url;
+    expect((fresh.body as { status_url: string }).status_url).toBe(lost);
+    expect((await served.call("GET", new URL(lost).pathname)).status).toBe(200);
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });
@@ -656,7 +670,10 @@ async function deliveredThenTheWalletMoved() {
   const challenge = await challengeFor(shop.served, itemId);
   const bought = await present(shop.served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
   expect(bought.status).toBe(200);
-  const orderId = (bought.body as { order_id: string }).order_id;
+  const { order_id: orderId, status_url: statusUrl } = bought.body as {
+    order_id: string;
+    status_url: string;
+  };
   await setPayoutWallet(
     shop.store,
     shop.config.payoutSplit,
@@ -673,6 +690,7 @@ async function deliveredThenTheWalletMoved() {
     itemId,
     challenge,
     orderId,
+    statusUrl,
     paidTo,
     async close() {
       await worker.stop();
@@ -694,6 +712,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
       expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
       expect(fresh.body).toMatchObject({
         order_id: sold.orderId,
+        status_url: sold.statusUrl,
         delivered: { access_code: "SESAME" },
       });
       expect(sold.network.charged).toStrictEqual([sold.paidTo]);
@@ -1279,8 +1298,11 @@ describe("goods made for a purchase whose charge did not go through", () => {
       itemId,
       await paymentAgainst(challenge, BUYER, "0x01"),
     );
-    const orderId = (bought.body as { order_id: string }).order_id;
-    const status = await shop.served.call("GET", `/x402/orders/${orderId}/status`);
+    const { order_id: orderId, status_url: statusUrl } = bought.body as {
+      order_id: string;
+      status_url: string;
+    };
+    const status = await shop.served.call("GET", new URL(statusUrl).pathname);
     expect(status.body).toMatchObject({
       status: "delivered_unpaid",
       payment_status: "not_paid",
