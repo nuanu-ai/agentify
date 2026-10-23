@@ -214,7 +214,7 @@ describe("a reader of the merchant's answers", () => {
             subject: read.id,
           });
           expect(
-            listed.filter((one) => !("issues" in one)),
+            listed.filter((one) => !("findings" in one)),
             `${name} at ${path.join(".")}`,
           ).toHaveLength(1);
         } else if (deliversAt(name, path)) {
@@ -310,10 +310,52 @@ describe("a reader of the merchant's answers", () => {
       kind: "unknown",
       named: "order",
       subject: order.id,
-      issues: [{ code: "unrecognized_keys", keys: ["quantity"], path: ["payload"] }],
+      findings: [{ code: "unrecognized_keys", keys: ["quantity"], path: ["payload"] }],
     });
     expect(unread.envelopes[1]).toMatchObject({ kind: "unknown", named: "order" });
     expect(unread.envelopes.slice(2)).toStrictEqual(poll.envelopes);
+  });
+
+  it("carries nothing of the values that failed in what it marks unread, only where and what", () => {
+    // What is marked unread ends up in a merchant's logs, so the reader keeps
+    // the values out itself: a key of the parameters is the buyer's data, an
+    // identifier that failed is not one to name, and a name can be any length.
+    const email = "buyer@example.com";
+    const long = "x".repeat(100_000);
+    const unread = readerOf(WorkerPollResponseSchema).parse({
+      ...poll,
+      envelopes: [
+        { kind: "order", id: "msg_0", sent_at: AT, payload: { ...order, params: { [email]: 1 } } },
+        { kind: "order", id: "msg_1", sent_at: AT, payload: { ...order, id: ` ${email} ` } },
+        { kind: "order", id: "msg_2", sent_at: AT, payload: { ...order, [long]: 1 } },
+        { kind: long, id: "msg_3", sent_at: AT, payload: {} },
+      ],
+    });
+    const listed = readerOf(OrderListSchema).parse({
+      orders: [
+        { ...read, params: { [email]: 1 } },
+        { ...read, id: ` ${email} `, quantity: 3 },
+      ],
+    });
+
+    for (const marked of [...unread.envelopes, ...listed.orders]) {
+      const written = JSON.stringify(marked);
+      expect(written).not.toContain(email);
+      expect(written.length).toBeLessThan(1_000);
+      expect(marked).toHaveProperty("findings");
+      for (const finding of (marked as { findings: object[] }).findings) {
+        expect(Object.keys(finding)).not.toContain("message");
+      }
+    }
+    expect(unread.envelopes[0]).toMatchObject({
+      subject: order.id,
+      findings: [{ path: ["payload", "params"], code: "invalid_key" }],
+    });
+    expect(unread.envelopes[1]).not.toHaveProperty("subject");
+    expect(listed.orders[1]).not.toHaveProperty("subject");
+    expect(JSON.stringify(unread.envelopes[2])).toMatch(/cut/);
+    expect(unread.envelopes[3]).toMatchObject({ kind: "unknown" });
+    expect(JSON.stringify(unread.envelopes[3])).toMatch(/cut/);
   });
 
   it("marks a message of a kind it does not know as unread, naming the kind", () => {

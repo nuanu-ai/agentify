@@ -369,6 +369,34 @@ describe("reading orders back", () => {
     expect(said).not.toContain("pp_4411");
   });
 
+  it("keeps a list's problem short and free of values whatever the orders it left out carry", async () => {
+    // Hundreds of orders with names twenty thousand characters long must not
+    // become megabytes in a log, and a parameter key is the buyer's data.
+    const long = "x".repeat(20_000);
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: Array.from({ length: 300 }, (_, index) => ({
+            ...order,
+            id: `order-${index}`,
+            params: { "buyer@example.com": 1 },
+            status: "unfulfilled",
+            payment_status: "paid",
+            [long]: 1,
+          })),
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list();
+
+    expect(problems[0]?.message).not.toContain("buyer@example.com");
+    expect(problems[0]?.message.length ?? 0).toBeLessThan(5_000);
+    expect(problems[0]?.message).toContain("and 290 more, not named");
+  });
+
   it("names at most ten orders it left out of a list and counts the rest", async () => {
     // Two thousand unreadable orders must not become a megabyte in a log.
     const agentify = await gatewayServing({

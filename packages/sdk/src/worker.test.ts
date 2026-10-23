@@ -615,6 +615,37 @@ describe("a gateway newer than this package", () => {
     expect(problems[0]?.message).not.toContain("type: ");
   });
 
+  it("never writes a value into the problem about a message it could not read, and keeps it short", async () => {
+    // A key of the parameters is the buyer's data, an identifier that failed
+    // is not one to name, and a field name or a kind can be any length.
+    const email = "buyer@example.com";
+    const long = "x".repeat(100_000);
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll(
+            { ...envelopes.order, payload: { ...order, params: { [email]: 1 } } },
+            { ...envelopes.order, id: "env-5", payload: { ...order, id: ` ${email} ` } },
+            { ...envelopes.order, id: "env-6", payload: { ...order, [long]: 1 } },
+            { kind: long, id: "env-7", sent_at: AT, payload: {} },
+            { ...envelopes.event, payload: { type: long, order_id: "order-1", at: AT } },
+          ),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => problems.length === 5, "the five problems");
+
+    for (const problem of problems) {
+      expect(problem.message).not.toContain(email);
+      expect(problem.message.length).toBeLessThan(1_000);
+    }
+    expect(problems[0]?.message).toContain("a key under params does not fit");
+    expect(problems[1]?.subject).toBeUndefined();
+    for (const cut of problems.slice(2)) expect(cut.message).toMatch(/cut/);
+  });
+
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
     // No answer is a silent price check, whose outcome per mode is already
     // the contract's; a price guessed for an unknown purpose would not be.
