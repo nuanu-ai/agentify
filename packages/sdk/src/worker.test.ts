@@ -593,6 +593,28 @@ describe("a gateway newer than this package", () => {
     expect(problems[0]?.message).not.toContain("yesterday");
   });
 
+  it("names every field that failed on an event of a kind it knows, never its kind", async () => {
+    // A known notice is read with its own shape, so what is reported is where
+    // that shape failed, not that the kind looked unfamiliar.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({
+            ...envelopes.event,
+            payload: { ...event, at: "yesterday", price: { amount: 5, currency: "USD" } },
+          }),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => problems.length > 0, "the unread event");
+
+    expect(problems[0]?.message).toContain("at: ");
+    expect(problems[0]?.message).toContain("price.amount: expected string");
+    expect(problems[0]?.message).not.toContain("type: ");
+  });
+
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
     // No answer is a silent price check, whose outcome per mode is already
     // the contract's; a price guessed for an unknown purpose would not be.
