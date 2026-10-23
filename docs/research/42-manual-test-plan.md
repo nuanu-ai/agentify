@@ -1291,8 +1291,6 @@ answer, not how often a real provider gives that answer:
 - With any facilitator but the sandbox's configured, the local stack calls
   itself the test channel and says payments settle with test funds (J-08, on
   the local stack).
-- The dashboard says the payment network confirmed a payment when only the
-  facilitator answered that it was settled (J-08, J-10).
 - SDK 0.8.0 skips an open order whose status word it does not know, so it
   delivers neither of such orders (D-08, second variant).
 - SDK 0.8.0 fails every poll when an order carries a field it does not know,

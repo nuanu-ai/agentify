@@ -556,11 +556,11 @@ The payment the agent signs authorizes one transfer from its wallet, valid for
 a short window, and that transfer either happened on the Base network or did
 not. After the payment's response deadline, Agentify looks for it there in the
 background, without sending another charge; a late answer from the facilitator
-settles the order as well. What it finds decides where the order goes:
+settles the order as well. What it learns decides where the order goes:
 
-| What Agentify finds | A synchronous order you delivered | An order charged at purchase | An order whose fulfillment you closed |
+| What Agentify learns | A synchronous order you delivered | An order charged at purchase | An order whose fulfillment you closed |
 | --- | --- | --- | --- |
-| the transfer happened | `delivered`: the goods are released and a receipt is written | `unfulfilled`, and you are sent `order.unfulfilled`; the order never reached your handler, so deliver it from the open list or close fulfillment; a parcel's address is erased by then, so close it | `fulfillment_closed` with `payment_status: 'paid'`, and you are sent `order.unfulfilled` with `paid_after_closure`; no goods are released |
+| the transfer happened, or the facilitator's late answer says the charge went through | `delivered`: the goods are released and a receipt is written | `unfulfilled`, and you are sent `order.unfulfilled`; the order never reached your handler, so deliver it from the open list or close fulfillment; a parcel's address is erased by then, so close it | `fulfillment_closed` with `payment_status: 'paid'`, and you are sent `order.unfulfilled` with `paid_after_closure`; no goods are released |
 | the transfer can no longer happen: the authorization was cancelled, or its window passed unused | `delivered_unpaid`, and the buyer can pay again | `rejected`, with the reason `payment_not_settled` | `fulfillment_closed` with `payment_status: 'not_paid'`; the buyer cannot pay again |
 
 Until Agentify finds one or the other, the order stays `payment_unresolved`.
