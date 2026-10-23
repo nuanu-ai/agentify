@@ -5576,8 +5576,17 @@ describe("a page left open while another address signs in", () => {
       const answer = await asDrawn(fresh, action, fields);
       expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
     }
-    // Last, since it ends the session the rest were sent with.
-    for (const { action, fields } of drawn.filter(({ action }) => SIGNS_OUT.includes(action))) {
+    // Last, since they end the session the rest were sent with, and Sign out
+    // everywhere before the header's sign-out, while it still has a session
+    // to end.
+    const everywhere = drawn.find(({ action }) => action === "/settings/sign-out-everywhere");
+    const ended = await asDrawn(
+      running.browser,
+      everywhere?.action ?? "",
+      everywhere?.fields ?? {},
+    );
+    expect(ended.to).toBe("/sign-in?reason=signed-out-everywhere");
+    for (const { action, fields } of drawn.filter(({ action }) => action === "/sign-out")) {
       const answer = await asDrawn(running.browser, action, fields);
       expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
