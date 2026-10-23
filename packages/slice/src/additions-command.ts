@@ -31,6 +31,7 @@ import {
   listen,
   passThrough,
 } from "./cut-command.js";
+import { loggedPath } from "./logged-path.js";
 
 // ---------------------------------------------------------------------------
 // Reading an answer with the offsets of its parts
@@ -676,7 +677,7 @@ export const runAdditions = async (
     const callerLeft = () => response.destroyed || !request.socket.writable;
     const method = request.method ?? "";
     const path = (request.url ?? "").split("?", 1)[0] ?? "";
-    const log = (words: string) => stamped(`#${n} ${method} ${path} ${words}`);
+    const log = (words: string) => stamped(`#${n} ${method} ${loggedPath(request.url)} ${words}`);
 
     const chunks: Buffer[] = [];
     try {
@@ -746,7 +747,7 @@ export const runAdditions = async (
     sequence += 1;
     const n = sequence;
     exchange(n, request, response).catch((error: unknown) => {
-      const path = (request.url ?? "").split("?", 1)[0] ?? "";
+      const path = loggedPath(request.url);
       stamped(
         `#${n} ${request.method ?? ""} ${path} failed inside the proxy (${codeOf(error)}); the connection was closed`,
       );

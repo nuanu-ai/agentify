@@ -26,6 +26,7 @@ import { request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import { urlToHttpOptions } from "node:url";
 import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } from "node:zlib";
+import { loggedPath } from "./logged-path.js";
 
 const PHASES = ["before-headers", "mid-body"] as const;
 type Phase = (typeof PHASES)[number];
@@ -377,7 +378,7 @@ export const runCut = async (
     const callerLeft = () => response.destroyed || !request.socket.writable;
     const method = request.method ?? "";
     const path = (request.url ?? "").split("?", 1)[0] ?? "";
-    const log = (words: string) => stamped(`#${n} ${method} ${path} ${words}`);
+    const log = (words: string) => stamped(`#${n} ${method} ${loggedPath(request.url)} ${words}`);
 
     let body: Buffer;
     try {
