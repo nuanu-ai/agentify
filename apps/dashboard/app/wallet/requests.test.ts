@@ -324,6 +324,18 @@ describe("waiting for the merchant's wallet", () => {
     return done;
   };
 
+  it("waits ten minutes for a payout, as the page and the portal promise, and not a moment longer", async () => {
+    vi.useFakeTimers();
+    const { answering } = wallet({ hangs: "wallet_sendCalls" });
+
+    const sending = sendPayout(answering, 84532, payout);
+    await vi.advanceTimersByTimeAsync(10 * 60_000 - 1);
+    expect(await settled(sending)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect((await sending).kind).toBe("unanswered");
+  });
+
   it("keeps waiting for an address until the limit, long enough to approve with a passkey", async () => {
     vi.useFakeTimers();
     const { answering } = wallet({ hangs: "eth_requestAccounts" });
