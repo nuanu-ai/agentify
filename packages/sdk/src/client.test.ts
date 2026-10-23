@@ -288,6 +288,57 @@ describe("reading orders back", () => {
     ]);
   });
 
+  it("tells the merchant how many open orders carry a status this release does not know, and decides nothing about them", async () => {
+    // A loop that delivers only on the words it knows skips such an order in
+    // silence, and paid work may be waiting behind it; the orders still come
+    // back as they are, for the merchant's code to leave alone.
+    const listed = (status: string, id: string) => ({
+      ...order,
+      id,
+      status,
+      payment_status: "paid",
+    });
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            listed("on_hold", "order-1"),
+            listed("awaiting_pickup", "order-2"),
+            listed("unfulfilled", "order-3"),
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const open = await agentify.orders.list({ open: true });
+
+    expect(open.map((one) => one.status)).toStrictEqual(["unknown", "unknown", "unfulfilled"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
+    expect(problems[0]?.message).toContain("2 of the 3 open orders");
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify");
+    expect(gateway?.calls.map((call) => call.route)).toStrictEqual(["list_orders"]);
+  });
+
+  it("says nothing about a list whose every status this release knows", async () => {
+    // The negative control: the warning is about words this release lacks,
+    // not about orders being open.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        body: { orders: [{ ...order, status: "unfulfilled", payment_status: "paid" }] },
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list({ open: true });
+    await agentify.orders.list();
+
+    expect(problems).toStrictEqual([]);
+  });
+
   it("refuses an order read carrying a field this package does not know rather than hand it back narrowed", async () => {
     // The open-orders loop delivers from what it reads, so a quantity dropped
     // here would be delivered once without a word.
