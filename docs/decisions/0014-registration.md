@@ -28,10 +28,11 @@ refuses a channel configured to. An operator looks after what exists — lists
 merchants, keys and accounts, disables a key, takes a listing name away, ends a
 person's sessions, moves the operator flag, admits a merchant to live sales and
 withdraws that admission — from the operator's workspace (ADR-0026 §6; the
-product owner, 2026-10-23). A terminal command that does one of these today is
-deleted when the workspace does the same, and none is added. None of these
-permissions implies a staffed order-resolution service. Only the laptop's stack seeds its sandbox
-merchant, so that one command brings it up selling (ADR-0010).
+product owner, 2026-10-23), one action at a time: until an action moves, its
+terminal command stands, and is deleted when the workspace does the same. None
+is added. None of these permissions implies a staffed order-resolution service.
+Only the laptop's stack seeds its sandbox merchant, so that one command brings
+it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant on the dashboard's explicit
 request.** The account appears when a successful sign-in proves an address

@@ -58,10 +58,13 @@ connected from the dashboard. A *card* is one product as an agent reads it. An
 *order* is one purchase of one card, with a state the gateway keeps.
 
 A *split* is a merchant's payout contract. Every payment goes into the split
-of the wallet the merchant had set when the payment was verified, and whenever
-anybody pays a split out it sends 99.9% to that wallet and 0.1% to Agentify's
-commission wallet. A merchant who changes wallets gets a new split; the old
-one keeps whatever was paid into it until somebody pays it out.
+of the wallet the merchant had set when the payment was verified. A payout, a
+transaction anybody may send for the price of gas, distributes what a split
+holds by crediting 99.9% to that wallet and 0.1% to Agentify's commission
+wallet in a warehouse the splits share, and withdraws the merchant's share;
+Agentify's share waits in the warehouse until it is withdrawn the same way. A
+merchant who changes wallets gets a new split, and the old one keeps whatever
+was paid into it until a payout covers it.
 
 A payment's outcome is *unknown* when the facilitator did not say whether the
 money moved and the chain has not yet shown either the transfer or proof that
@@ -135,25 +138,25 @@ moved to the screen where its subject is:
 | `facilitator-key` and `smoke:listing` | Check now, on Health; both stay as engineering's checks too |
 | `pnpm forget <email>`, on the test channel | Forget this account, on the test channel's admin only |
 
-Two commands are not carried over. `woo:recover` binds an existing WooCommerce
-order to its sale acting as the merchant, and the merchant already has their
-own recovery page reached from their Orders; the admin shows that such an
-order waits and says that the merchant recovers it there. `listed-as` with a
-name sets a merchant's seller name for them; the seller name is the merchant's
-own to choose, so the admin only takes a name away, and the merchant chooses
-the next one. Each administrative command is deleted once its counterpart
-ships, so that a power exists in one place only. The two checks are the
-exception, because they change nothing: the release runs the facilitator-key
-check before it activates a revision, and the listing check is one of
-engineering's smoke checks, so both stay where they are, and the admin runs
-the same checks on demand.
+Two commands are not carried over, and are deleted with the rest.
+`woo:recover` binds an existing WooCommerce order to its sale acting as the
+merchant, and the merchant already has their own recovery page reached from
+their Orders; the admin shows that such an order waits and says that the
+merchant recovers it there. `listed-as` with a name sets a merchant's seller
+name for them; the seller name is the merchant's own to choose, so the admin
+only takes a name away, and the merchant chooses the next one. Each
+administrative command is deleted once its counterpart ships, so that a power
+exists in one place only. The two checks are the exception, because they
+change nothing: the release runs the facilitator-key check before it activates
+a revision, and the listing check is one of engineering's smoke checks, so
+both stay where they are, and the admin runs the same checks on demand.
 
 What stays outside the admin is engineering, not administration: taking a
 release, migrating a database, the paid smoke purchases with their spending
-caps, and the nightly privacy clean-up a release installs. A button that
-migrates a database or spends money is the kind of control that can take a
-deployment down without anybody meaning to, and those keep the release process
-and its checks.
+caps, the check of the commission wallet, and the nightly privacy clean-up a
+release installs. A button that migrates a database or spends money is the
+kind of control that can take a deployment down without anybody meaning to,
+and those keep the release process and its checks.
 
 Every action is idempotent, names its consequence on a checkbox that has to be
 ticked, asks for a fresh sign-in, records itself in the journal, and when its
@@ -193,28 +196,51 @@ cookie would be enough. The design keeps the powers and narrows what a session
 alone can do.
 
 Every action asks for a fresh sign-in. An operator who last signed in an hour
-ago is asked to sign in again, by the same email link or Google account, and
-the action goes ahead once that new sign-in exists; the session records when
-it was made, so the check needs nothing new. A stolen cookie can still read
-the admin, but it cannot act without the operator's inbox or Google account.
-This is not a second factor, since it asks for the same thing again; it
-shortens the time in which a lost cookie is dangerous from thirty days to
-fifteen minutes.
+ago is asked to sign in again, by the same email link or Google account. The
+new sign-in brings that browser back to the page the press came from, and the
+operator presses again: nothing is queued while the sign-in is pending, and
+nothing is carried out on the operator's behalf when the link is opened, so a
+stolen cookie cannot leave an action waiting for the real operator's click.
+The mail says that it confirms an administrative action and what to do if
+nobody asked for it. The session records when it was opened, and a renewed
+session keeps that moment, so the check needs nothing new and renewing a
+cookie never makes a sign-in fresh. A stolen cookie can still read the admin
+for as long as its thief keeps using it, since a session slides; it cannot act
+without the operator's inbox or Google account. This is not a second factor,
+since it asks for the same thing again.
+
+Anybody who types an operator's address on the public sign-in form spends that
+address's links, three an hour, and could keep an operator from acting during
+an attack. The link the step asks for is therefore counted apart from the
+public form's, and an operator whose Google account is eligible can use it
+instead.
 
 Every intervention asks for a reason: a withdrawal, a name taken away, a key
 disabled, sessions ended, a flag granted or removed. The reason goes into the
 journal with the action. An admission needs none.
 
-Granting or removing the operator flag mails every operator of the channel, so
-that a new operator cannot appear without the others hearing about it. The
-last operator's flag cannot be removed, so that a channel cannot lock its
-operators out by accident.
+Granting or removing the operator flag mails every operator of the channel and
+the account it changes, so that a new operator cannot appear without the
+others hearing about it. The change waits until the mail has been handed to
+the provider, as a payout wallet change does, and a refused hand-over leaves
+the flag as it was. The mail names what changed and when, in the manner of the
+dashboard's other notices: it says nothing like "you did this" and carries no
+link that acts. Where a channel has one operator, the only inbox told is that
+operator's own, which an attacker who holds it also reads; a second operator
+is the remedy, not the mail. The last operator's flag cannot be removed, and
+whether an operator is the last is decided under one lock, so that two
+removals at once cannot both pass.
 
 One power stays outside the browser on purpose: making the first operator of a
-channel that has none. The channel's configuration names that address; while
-no account holds the flag, the account with that address receives it at its
-next sign-in, and the journal records that it came from the configuration.
-Once any operator exists, the configuration is ignored.
+channel. The channel's configuration names an address; the first time the
+channel has no operator, the account with that address receives the flag at
+its next sign-in, the journal records that it came from the configuration, and
+from then on the configuration is never read again, even if the channel later
+has no operator. The last operator's account cannot be forgotten on the test
+channel, and the scanner's deletion of an account without a merchant keeps an
+operator's account until its flag is removed. A channel that has lost every
+operator anyway is recovered on its host, by the statement `deploy/README.md`
+names for it, which the journal records as the terminal's.
 
 The author's own preference was to keep the operator flag at the terminal, as
 the safest place for a power that creates more power. The product owner's
@@ -242,26 +268,30 @@ would need the frame moved into the shared interface package, and its counts
 would need the gateway's figures in the scanner's process; neither is needed
 for the page to be right.
 
-Every page of the workspace refuses by itself. The dashboard's gate sends a
-visitor who is not signed in to the sign-in page; a signed-in account the flag
-does not confirm, and everybody while the identity service cannot answer, gets
-the site's 404, before anything is read. A form posts only from the
-dashboard's own origin and names the account it was drawn for, as every
-dashboard form does. Nothing in front of the workspace checks the operator
-flag, so a page added later inherits no protection it did not write.
+The workspace's pages sit under a layout of their own inside the dashboard's
+gate, and that layout checks the operator flag before any page's reading or
+action runs, so a page added there is guarded by being there. Every action
+checks the flag again when it is pressed, and a test walks every admin route,
+reading and pressing, as a signed-in account without the flag. A visitor who
+is not signed in meets the gate's sign-in; a signed-in account the flag does
+not confirm gets the site's 404; while the identity service cannot answer, the
+gate answers with its error page, as it does for every dashboard page. A form
+posts only from the dashboard's own origin and names the account it was drawn
+for, as every dashboard form does.
 
 The operator's reads cross merchants. The tenancy decision says every screen
-is scoped to one merchant and names three readers that look across merchants;
-more already do, among them the channel's metrics snapshot, the terminal's
-merchant list and the payment recovery sweep, and the admin adds operator
-screens. The decision's list needs correcting with all of them. The admin's
-reads go through a database role that can only read, which is a privilege
-rather than a connection's default, with a bounded statement time. The
-dashboard hands that reader only to admin pages after the flag check, and a
-test holds that no route a merchant key or a buyer reaches can get it. A split
-waiting behind a merchant's pending wallet change stays inside the registry of
-splits, as the tenancy decision requires: the admin says that a wallet change
-waits and when it lands, never the new split's address.
+of the merchant's dashboard is scoped to one merchant and lists the readers
+that look across merchants on purpose; the admin is among them. Its reads run
+inside read-only transactions with a bounded statement time. The dashboard
+hands its reader only to admin pages, after the flag check, and a test holds
+that no route a merchant key or a buyer reaches can get it. A database role
+that can only read would be a privilege rather than a transaction's mode; it
+needs a role, a secret on both hosts and a change to the deployment, and is
+left for when the channel has more than one person running it. A split waiting
+behind a merchant's pending wallet change stays inside the registry of splits,
+as the tenancy decision requires: the admin says that a wallet change waits
+and when it lands, never the new split's address, and the lookup does not
+resolve it.
 
 The admin speaks the product's own words. A merchant's state is drawn with the
 dashboard's view functions and vocabulary, and an order's state with the
@@ -288,11 +318,13 @@ The journal is a table that only grows. Withdrawing an admission today sets
 the approval back to empty and keeps no trace of it, and the line the
 dashboard logs for an administrative press is a process log that rotates away
 with the container. Each row of the journal says when, which account acted,
-which action, on which merchant or account, the reason given and the outcome.
-Accounts are named by their identifier, never by an address, so that
-forgetting or erasing a person removes their address and leaves the row saying
-that a deleted account acted. A refused attempt, which changes nothing, is
-written too, in a transaction of its own. An action and its row commit
+which action, on which merchant, account or key, the reason given and the
+outcome: done, unchanged where an idempotent repeat found the change already
+made, or refused with its code. Accounts are named by their identifier, never
+by an address, so that forgetting or erasing a person removes their address
+and leaves the row saying that a deleted account acted. Only presses made
+after the flag check write a row; a refused attempt, which changes nothing,
+writes its row in a transaction of its own. An action and its row commit
 together: the dashboard writes its own actions' rows in its own transaction,
 and the gateway's actions take their row into the gateway's transaction, the
 way its analytics outbox does today; withdrawing an admission gets the
@@ -315,20 +347,23 @@ address, and a session's network address and browser. The order screen says
 that such a thing exists and when it was erased, without showing it. A payer's
 wallet is not shown either: where money moved, the transaction link already
 names it, and where it did not, the order holds only the signer of an
-authorization that never executed.
+authorization that never executed; any wallet address inside the facilitator's
+own words is replaced by the words "a wallet". Accounts that signed in without
+making a merchant or holding the flag, most of them people who only opened a
+scanner's report, are counted and not listed.
 
 The admin does not rebuild what the channel's Grafana dashboard already
 answers: request rates, errors and latency, the host's capacity, and the
 delivery of logs and metrics. It links there from the screens where those
 questions arise.
 
-The workspace runs without script, as today's admin pages do. Every page is
-drawn on the server; a chart is an SVG drawn there with its numbers written
-beside it; a search is a form; an action is a form that posts and is answered
-with the page in its new state. An identifier is shown short and opens to its
-whole value, ready to select, instead of a copy button that would need script,
-and a second press of an action is harmless because every action is
-idempotent.
+The workspace runs without script, as the live-sales page does today. Every
+page is drawn on the server; a chart is an SVG drawn there with its numbers
+written beside it; a search is a form; an action is a form that posts and is
+answered with the page in its new state. An identifier is shown short and
+opens to its whole value, ready to select, instead of a copy button that would
+need script, and a second press of an action is harmless because every action
+is idempotent.
 
 At ten times today's data the screens behave the same way. Lists are searched
 and cut, and the cut says which rows of how many are shown. The Payment
@@ -353,12 +388,15 @@ That box is the workspace's most used control, because the usual reason to
 open the admin is a message that quotes something. It reads what is pasted and
 goes straight to the record: an order identifier (`ord_…`) to the order, a
 merchant identifier (`mch_…`) to the merchant, a transaction hash to the order
-it paid for, a wallet or split address to the merchant it belongs to, an email
-address to the account and its merchant, a site's address to the merchant
-selling from it. When the text matches nothing it says so in those words and
-keeps what was typed; when it matches more than one record it lists them. The
-identifiers carry their kind in their prefix, so the box needs no choice of
-what to search for.
+it paid for, a wallet or a split a payment has gone to to the merchant it
+belongs to, an email address to the account and its merchant, a site's address
+to the merchant selling from it. When the text matches more than one record it
+lists them. When it matches nothing it says so in words that claim no more
+than the lookup knows: for a transaction hash, that no order on this channel
+names that transaction yet, since an order whose payment is unknown may hold
+none, with a link to the payments whose outcome is unknown. The identifiers
+carry their kind in their prefix, so the box needs no choice of what to search
+for.
 
 Every section answers one question, and its first screen answers it before any
 scrolling:
@@ -465,11 +503,11 @@ says what follows.
 
 Every action on the page answers the same way. A press without a fresh sign-in
 opens, in place, the step that asks for one: a link mailed to the operator's
-address, or their Google account, and the action is carried out once that
-sign-in exists. The answer is the panel in its new state with the journal row
-that recorded it; a refusal is one sentence under the button; a lost answer
-says the outcome is unknown, that reading the merchant again shows it, and
-that pressing again is safe.
+address, or their Google account, which brings the browser back to this page
+signed in afresh, where the operator presses again. The answer is the panel in
+its new state with the journal row that recorded it; a refusal is one sentence
+under the button; a lost answer says the outcome is unknown, that reading the
+merchant again shows it, and that pressing again is safe.
 
 The right column holds the merchant's selling: cards on sale out of published,
 a thirty-day sparkline of settled sales, the orders that are open, unfulfilled
@@ -515,13 +553,14 @@ record keeps the moments of its steps, not a log of every transition.
 
 Beside the timeline, the payment panel: the amount and the split it was paid
 into, the attempt and its state, the transaction with its link to the chain's
-explorer where money moved, what the facilitator said in its own bounded words
-with the count of any that fell off, and for an unknown outcome how long it
-has been unknown and what recovery has recorded about it so far. Under it, the
-receipt, where the gateway issued one, and for a parcel when its address was
-erased. The page ends with the sentence that names its boundary: Agentify does
-not change an order's outcome from here; the merchant closes fulfillment, and
-a payment's outcome comes from the facilitator or the chain.
+explorer where money moved, what the facilitator said in its own bounded
+words, with any wallet address in them replaced, and the count of any that
+fell off, and for an unknown outcome how long it has been unknown and what
+recovery has recorded about it so far. Under it, the receipt, where the
+gateway issued one, and for a parcel when its address was erased. The page
+ends with the sentence that names its boundary: Agentify does not change an
+order's outcome from here; the merchant closes fulfillment, and a payment's
+outcome comes from the facilitator or the chain.
 
 ### Money
 
@@ -531,20 +570,27 @@ them; the payments whose outcome is unknown, counted apart and never added to
 sales or to failures; and the splits. A settled sale is an order whose payment
 settled, whatever became of the goods: an unfulfilled order counts, because
 its money is in the merchant's split, and the screen shows how much of the
-total such orders make up. A sale is dated by the moment its payment settled,
-which for a payment recovered from the chain is the time of its block, and
-days are counted in UTC; a past day can still grow when a late outcome lands,
-and the chart says so.
+total such orders make up. A sale is dated by the moment the order records it
+as paid: for a payment charged at purchase that is when the money moved, for
+one charged after the goods it is when the payment was verified, and for one
+recovered from the chain it is the time of its block. A sale with no such
+moment recorded is counted in the totals and listed apart from the days, and
+the screen says how many there are. Days are counted in UTC, and a past day
+can still grow when a late outcome lands; the chart says so.
 
 Commission accrues only where a payment went into a split. Live payments made
 before payments went to splits, on 15 October 2026, went straight to the
 merchant's wallet with no commission; the screen counts them apart and adds
 nothing for them. The splits are listed one row per split, not per merchant,
 because every wallet a merchant ever set has its own split and money can wait
-in an old one: each row names its merchant, the wallet it pays, how much has
-settled into it, and its payout transaction, the address and data any wallet
-can send to pay that split out, which is what the terminal's payout listing
-prints today. What a split has already paid out, and so what the commission
+in an old one; each row names its merchant, the wallet it pays and how much
+has settled into it. Under the list stands the operator's payout, the
+transactions the terminal's payout listing prints today: every recorded split
+in parts of twenty, each created where it has no code yet, distributed and its
+merchant's share withdrawn, the commission last, for a person to send from a
+wallet of their own. The admin signs and sends nothing, and refuses to show
+the transactions where the gateway would refuse to start on the registry of
+splits. What a split has already paid out, and so what Agentify's commission
 wallet has received, is on the chain; the screen links to each split on the
 explorer and does not claim a balance.
 
@@ -555,20 +601,20 @@ dashboard's badge, the fact behind it and when it was read. The application
 reads these facts for itself. The release row shows the source revision the
 build wrote into the image, linked to its commit, or "unknown" with no link
 for an image built on a laptop. Payment recovery is either not configured,
-which turns it off, or reads the channel's network from a named endpoint;
-whether its recent attempts reached the chain is in the logs, and the row
-links there. The merchants' workers row says how many connected within the
-gateway's window of ten and a half minutes, and which merchants with cards on
-sale are out of touch, since when. The WooCommerce row counts connected shops
-and the orders whose shop order is uncertain, and on the live channel says
-that the connector is not offered there. The sign-in row counts the sign-in
-and report links sent in the last hour against the channel's ceiling of two
-hundred each. The outbox rows count analytics events and ad reports given up.
-Two rows carry the action "Check now": whether the facilitator accepts the
-channel's key, and whether Coinbase's x402 validator would take the channel's
-paid resources, each with the moment of its last check; neither check buys
-anything. The scanner's health is on the scanner's page, and this list links
-there.
+which turns it off, or reads the channel's network from an endpoint whose host
+it names; whether its recent attempts reached the chain is in the logs, and
+the row links there. The merchants' workers row says how many connected within
+the gateway's window of ten and a half minutes, and which merchants with cards
+on sale are out of touch, since when. The WooCommerce row counts connected
+shops and the orders whose shop order is uncertain, and on the live channel
+says that the connector is not offered there. The sign-in row counts the
+sign-in and report links sent in the last hour against the channel's ceiling
+of two hundred each. The outbox rows count analytics events and ad reports
+given up. Two rows carry the action "Check now": whether the facilitator
+accepts the channel's key, and whether Coinbase's x402 validator would take
+the channel's paid resources, each with the moment of its last check; neither
+check buys anything. The scanner's health is on the scanner's page, and this
+list links there.
 
 Some parts the application cannot see today, and the page says so rather than
 leaving them out. The version tag a release was taken from and the last
@@ -586,29 +632,35 @@ gaps into facts; that is a change to the deployment, with its own review.
 The scanner's page keeps today's content and takes the workspace's
 conventions: the acquisition figures as tiles, the thirty-day chart of landing
 views against scans, the self-check, the abuse controls with their limits and
-today's browser spending, the worker's health by the rules of its own health
-check, and the latest scans as a list whose states are drawn with the
-dashboard's badges instead of capitals in pills. Contact details and raw
-evidence stay absent, as they are today. Two things change. Today's chart
-scales both of its series to the landing views, so a day with more scans than
-measured landing views is cut off at the top; the new chart scales to the
-larger of the two. And the limits shown beside the abuse controls are read
-from the code that enforces them, not written a second time in the page, so
-the page cannot go on showing a limit after the limit changes. The daily
-browser cap lives only in the worker's settings; the page shows it once the
-worker reports it with its heartbeat, and until then shows the spending alone.
+today's browser spending, and the latest scans as a list whose states are
+drawn with the dashboard's badges instead of capitals in pills. Contact
+details and raw evidence stay absent, as they are today. Four things change.
+Today's chart scales both of its series to the landing views, so a day with
+more scans than measured landing views is cut off at the top; the new chart
+scales to the larger of the two. The limits shown beside the abuse controls
+are read from the code that enforces them, not written a second time in the
+page, so the page cannot go on showing a limit after the limit changes. The
+worker's health, which only the scanner's health check reads today, joins the
+page by that check's own rules; the daily browser cap lives only in the
+worker's settings, so the page shows it once the worker reports it with its
+heartbeat, and until then shows the spending alone. And the page counts the
+data requests visitors have made, which the privacy page promises an answer to
+and nothing reads today.
 
 ### Accounts and the journal
 
-Accounts lists everybody who can sign in on the channel: the address, the
-merchant if they made one, whether they hold the operator flag, how many
-sessions are open and when the newest of them began. Segments separate the
-operators, the accounts with a merchant and those without. An account opens to
-its actions: End every session; Make an operator, or Remove the operator flag;
-and on the test channel only, Forget this account, which removes the account
-and its merchant so that the address signs in again as a newcomer, and is
-refused while the merchant has orders or receipts. Each asks for a fresh
-sign-in and a reason, and the flag's two actions mail every operator.
+Accounts lists the accounts that made a merchant or hold the operator flag:
+the address, the merchant if there is one, whether they hold the flag, how
+many sessions are open and when the newest of them began. The accounts that
+only signed in, most of them people who opened a scanner's report, are counted
+and not listed. Segments separate the operators and the accounts with a
+merchant. An account opens to its actions: End every session; Make an
+operator, or Remove the operator flag; and on the test channel only, Forget
+this account, which removes the account and its merchant so that the address
+signs in again as a newcomer, and is refused while the merchant has orders or
+receipts and for the last operator. Each asks for a fresh sign-in and a
+reason, and the flag's two actions mail every operator and the account they
+change.
 
 The journal lists every administrative action, newest first, with the moment,
 who acted, the action, its subject linked to the record, the reason, where it
@@ -707,12 +759,14 @@ moved from the live-sales page, the fresh sign-in and the journal. The last
 two come first because every later action stands on them, and they are built
 once.
 
-The second step moves the terminal's commands into the workspace, one at a
-time, and deletes each command as its counterpart ships: the admission's
-withdrawal, the listing name, the keys, Accounts with sessions and the
-operator flag, the payout transactions, the checks of the facilitator key and
-the listing, and on the test channel forgetting an account. After it the
-terminal holds only the configured first operator and engineering's tools.
+The second step moves the terminal's administrative commands into the
+workspace, one at a time, and deletes each command as its counterpart ships:
+the admission's withdrawal, the listing name, the keys, Accounts with sessions
+and the operator flag, and on the test channel forgetting an account; the two
+commands not carried over are deleted with them. The payout listing moves with
+Money, in the fifth step. After the fifth step the terminal holds only
+engineering's tools, its two checks among them, and the documented statement
+that recovers a channel which lost every operator.
 
 The third step is the lookup box and the orders with their timelines. It
 answers a merchant's message without a database console and without asking the
@@ -722,26 +776,18 @@ The fourth step is the overview and Health, and the fifth Money, the funnel
 and the scanner page's restyling in place. The scanner comes last on purpose:
 it already has a page, and the product's selling path matters more.
 
-## Decisions this design needs
+## Decisions this design records
 
 The product owner's word of 2026-10-23, that the terminal's administrative
-commands move into the admin, is entered today in the registration decision
+commands move into the admin, is entered in the registration decision
 ([ADR-0014](../decisions/0014-registration.md)) and in the decision on one
-identity ([ADR-0026](../decisions/0026-one-way-in.md) §6), which named those
-commands. How the admin carries them, with a fresh sign-in, a reason, the
-journal, the mail to operators and the configured first operator, is a
-security boundary, and goes into ADR-0026 §6 when the first action ships.
-
-The tenancy decision ([ADR-0010](../decisions/0010-merchant-tenancy.md)) needs
-its list of readers that cross merchants corrected with the ones that already
-do, and the admin's read-only role added to it, with the test that keeps
-merchant keys and buyers away from it.
-
-The journal is a table that is never rewritten by the application. It needs a
-decision of its own that fixes what a row holds, that accounts are named by
-identifier and what erasing a person leaves, which application owns the table,
-how a gateway action and its row commit together, and that a terminal command,
-while one remains, writes the terminal as its actor.
+identity ([ADR-0026](../decisions/0026-one-way-in.md) §6), which also carries
+how the admin guards its actions: the fresh sign-in, the reason, the mail to
+operators and the configured first operator. The tenancy decision
+([ADR-0010](../decisions/0010-merchant-tenancy.md)) lists the admin among the
+readers that cross merchants, inside read-only transactions. The journal has a
+decision of its own
+([ADR-0045](../decisions/0045-every-administrative-action-leaves-a-journal-row.md)).
 
 ## Open questions
 
@@ -761,3 +807,7 @@ reading the admin should ask for one too.
 
 Whether the money section should read the splits' balances from the chain, so
 that commission received is a figure and not a link.
+
+Who answers the data requests the scanner records, which its privacy page
+promises an answer to; today the scanner's page will count them and nobody
+reads them.

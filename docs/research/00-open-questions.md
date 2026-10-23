@@ -32,6 +32,7 @@ and git keeps the entries that were here.
 | Whether an operator is told by mail or a message when something in the admin needs a look, or finds it only by opening the admin; nothing in the product alerts anybody today | product owner | `85-operator-admin.md` |
 | How fresh a sign-in an administrative action asks for, fifteen minutes or another window, and whether reading the admin asks for one too | product owner, with the architect | `85-operator-admin.md` |
 | Whether the admin reads the splits' balances from the chain, so that the commission Agentify has received is a figure rather than a link to the explorer | product owner | `85-operator-admin.md` |
+| Who answers the data requests the scanner records and its privacy page promises an answer to; nothing reads them today, and the scanner's admin page will count them | product owner | `85-operator-admin.md` |
 
 ## Money
 
