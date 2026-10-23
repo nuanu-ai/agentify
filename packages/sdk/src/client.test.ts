@@ -789,36 +789,86 @@ describe("a refusal the gateway put into words", () => {
     expect(result.ok === false && result.error.retryable).toBe(true);
   });
 
-  it("still says what came back when the answer is not a refusal either", async () => {
-    // The negative control: JSON that is neither the document nor a refusal
-    // comes back quoted, so a person can see what was sent.
-    const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: JSON.stringify({ trouble: "no code, no words" }) }),
-    });
-
-    const refused = await agentify.orders.get("order-1").then(
+  const thrownBy = (call: Promise<unknown>): Promise<string | null> =>
+    call.then(
       () => null,
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
 
+  it("names the route and the fields that did not fit an answer in JSON, and none of their values", async () => {
+    // The gateway's document carries the buyer's parameters and the price, and
+    // a merchant's failure goes to their logs: what is said is where it broke.
+    const agentify = await gatewayServing({
+      get_order: () => ({
+        text: JSON.stringify({
+          ...order,
+          price: { ...order.price, amount: 5 },
+          status: "in_progress",
+          payment_status: "paid",
+          ship_to: { line_one: "Jl. Raya Kediri 12", city: "Tabanan", country: "ID" },
+        }),
+      }),
+    });
+
+    const refused = await thrownBy(agentify.orders.get("order-1"));
+
+    expect(refused).toContain("get_order");
     expect(refused).toContain("is not the document it promises");
-    expect(refused).toContain("no code, no words");
+    expect(refused).toContain("price.amount");
+    expect(refused).toContain("ship_to");
+    expect(refused).not.toContain("buyer@example.com");
+    expect(refused).not.toContain("Kediri");
+    expect(refused).not.toContain("access-monthly");
   });
 
-  it("does not read a half-written refusal as a refusal", async () => {
-    // A code with no words is not a refusal a caller can act on, so the body
-    // is quoted instead.
+  it("does not read a half-written refusal as a refusal, and quotes nothing of it", async () => {
+    // A code with no words is not a refusal a caller can act on; what it
+    // carried is the gateway's and stays out of the merchant's logs.
     const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: JSON.stringify({ error: { code: "no_message" } }) }),
+      get_order: () => ({
+        status: 409,
+        text: JSON.stringify({ error: { code: "no_message", hint: "buyer@example.com" } }),
+      }),
     });
 
-    const refused = await agentify.orders.get("order-1").then(
-      () => null,
-      (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
-    );
+    const refused = await thrownBy(agentify.orders.get("order-1"));
 
     expect(refused).toContain("is not the document it promises");
-    expect(refused).toContain("no_message");
+    expect(refused).not.toContain("buyer@example.com");
+  });
+
+  it("says how many more fields did not fit than it names, in a long answer", async () => {
+    // A list of two thousand broken orders must not become a megabyte in a log.
+    const broken = { ...order, price: { ...order.price, amount: 5 } };
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: Array.from({ length: 40 }, () => ({
+            ...broken,
+            status: "in_progress",
+            payment_status: "paid",
+          })),
+        }),
+      }),
+    });
+
+    const refused = await thrownBy(agentify.orders.list());
+
+    expect(refused).toMatch(/and 30 more, not named/);
+    expect(refused?.length ?? 0).toBeLessThan(2_000);
+  });
+
+  it("still quotes an answer that is not JSON, such as a proxy's page", async () => {
+    // The negative control: a proxy's error page is not the gateway's document
+    // and often names what is broken.
+    const agentify = await gatewayServing({
+      get_order: () => ({ status: 502, text: "<html>upstream is down</html>" }),
+    });
+
+    const refused = await thrownBy(agentify.orders.get("order-1"));
+
+    expect(refused).toContain("is not JSON");
+    expect(refused).toContain("upstream is down");
   });
 });
 
