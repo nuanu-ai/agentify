@@ -535,10 +535,13 @@ export interface Shown {
   readonly paid: string | null;
 }
 
+/** What a cancel did to the merchant's sessions, said on the page it answers with. */
+const SIGNED_OUT_BUT_THIS_BROWSER =
+  "Every session of your merchant was signed out, a copy of this browser's included; this browser stays signed in on a new one.";
+
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ` +
-  "Every other session of your merchant was signed out.";
+  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ${SIGNED_OUT_BUT_THIS_BROWSER}`;
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
 export const landedBeforePress = (shown: Shown): string =>
@@ -546,7 +549,7 @@ export const landedBeforePress = (shown: Shown): string =>
   (shown.paid === null
     ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
     : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-  "Every other session of your merchant was signed out.";
+  SIGNED_OUT_BUT_THIS_BROWSER;
 
 /**
  * Each value is held to its shape before anything reads it: the post can carry
@@ -761,13 +764,28 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   const toSettings: Outcome<never> = { kind: "redirect", location: `${base}/settings` };
 
   /**
-   * Every other session of every account at the merchant ends but the one the
-   * presser's cookie names, since the change may have come from any of them.
+   * Every session of every account at the merchant ends, the presser's own
+   * included, since the change may have come from any of them, a copy of the
+   * presser's cookie among them; the presser's browser is given a new session
+   * in the same answer, which `renewing` puts on it.
    */
-  const signOutTheOthers = async (person: Person, cookie: string | undefined): Promise<number> =>
-    person.merchant === null
-      ? 0
-      : await identity.endOtherSessionsOfMerchant(person.merchant.id, cookie);
+  const signOutAllButThisBrowser = async (
+    person: Person,
+    cookie: string | undefined,
+  ): Promise<{ ended: number; renewing: <View>(outcome: Outcome<View>) => Outcome<View> }> => {
+    if (person.merchant === null) return { ended: 0, renewing: (outcome) => outcome };
+    const { ended, setCookies } = await identity.endMerchantSessionsAndRenew(
+      person.merchant.id,
+      cookie,
+    );
+    return {
+      ended,
+      renewing: (outcome) =>
+        outcome.kind === "problem" || setCookies.length === 0
+          ? outcome
+          : { ...outcome, setCookies: [...(outcome.setCookies ?? []), ...setCookies] },
+    };
+  };
 
   /**
    * Cancelling is asking the gateway for the address that applies now. Reached
@@ -788,29 +806,33 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   ): Promise<Outcome<SettingsView>> => {
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) return problemOf(cancelled);
-    const ended = await signOutTheOthers(person, cookie);
+    const { ended, renewing } = await signOutAllButThisBrowser(person, cookie);
     if (cancelled.document.pending === null) {
       noted(
         person,
-        `cancelled a waiting change of the wallet their share is paid out to, and ${ended} other sessions of the merchant were ended`,
+        `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return toSettings;
-      return await settingsDrawn(person, {
-        kind: "wallet-notice",
-        notice: cancelledByTyping(applies, pending.payout_wallet),
-      });
+      if (!byTyping) return renewing(toSettings);
+      return renewing(
+        await settingsDrawn(person, {
+          kind: "wallet-notice",
+          notice: cancelledByTyping(applies, pending.payout_wallet),
+        }),
+      );
     }
     noted(
       person,
-      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
+      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return await settingsDrawn(person, {
-      kind: "wallet-notice",
-      notice:
-        `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-        `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-        "Every other session of your merchant was signed out.",
-    });
+    return renewing(
+      await settingsDrawn(person, {
+        kind: "wallet-notice",
+        notice:
+          `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
+          `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
+          SIGNED_OUT_BUT_THIS_BROWSER,
+      }),
+    );
   };
 
   /**
@@ -825,12 +847,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     shown: Shown,
     how: string,
   ): Promise<Outcome<SettingsView>> => {
-    const ended = await signOutTheOthers(person, cookie);
+    const { ended, renewing } = await signOutAllButThisBrowser(person, cookie);
     noted(
       person,
-      `${how} after a change of the wallet their share is paid out to had taken effect, and ${ended} other sessions of the merchant were ended`,
+      `${how} after a change of the wallet their share is paid out to had taken effect; ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) });
+    return renewing(
+      await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) }),
+    );
   };
 
   const registerMerchant = async (): Promise<string | null> => {

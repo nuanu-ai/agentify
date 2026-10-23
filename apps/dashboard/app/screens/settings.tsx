@@ -176,7 +176,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               From <Moment at={pending.from} /> buyers pay into this address's payout contract
               instead. Every account of your merchant was sent a message about it. If nobody at your
               business asked for it, cancel it; cancelling also signs out every session of your
-              merchant but this one.
+              merchant, a copy of this one included, and keeps this browser signed in on a new one.
             </p>
             {pending.split === null ? null : (
               <SplitBeside split={pending.split} label="Buyers will pay into" />
