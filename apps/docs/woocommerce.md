@@ -261,9 +261,14 @@ because a rate nobody was told of could sell your goods for cents unseen.
 Every rate you have saved is kept.
 
 Your rate keeps selling until you change it, however old it is, and also after
-you disconnect the shop and connect it again: the page shows
-when you set it and how far it now stands from Coinbase's, and keeping it
-current is yours. A price a buyer was given holds at the rate it was given at,
+you disconnect the shop and connect it again: the page shows when it was
+entered, when the session that saved it signed in, and how far it now stands
+from Coinbase's, and keeping it current is yours. Neither the page nor the
+message names an address as who entered the rate, because every session of
+your account carries your address, a session somebody copied from your browser
+included; for the same reason a sign-in moment you recognise does not prove it
+was you. Where the moment that session signed in is not recorded, the page
+says so rather than name one. A price a buyer was given holds at the rate it was given at,
 even if you change the rate before the order reaches your shop, because the
 buyer has paid by then. If your shop's currency changes, every purchase is
 refused before payment until you set a rate for the new one; a rate set for
