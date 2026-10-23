@@ -16,6 +16,7 @@ import {
   LINK_CLIENT_LIMIT,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
+  SESSION_DAYS,
 } from "./identity.js";
 import type { Message } from "./mail.js";
 import { type GoogleProfile, googleExchange } from "./testing/google.js";
@@ -753,6 +754,15 @@ if (databaseUrl === null) {
 
       expect(renewed.ended).toBe(2);
       expect(fresh).not.toBe(pressed);
+      // As long as a sign-in's, not a day's, read before any visit could move
+      // its end; the owner's new session is the only live one left.
+      const { rows } = await pool.query<{ days: string }>(
+        `select extract(epoch from s.expires_at - now()) / 86400 as days
+           from dashboard_sessions s join dashboard_accounts a on a.id = s.user_id
+          where a.email = 'owner@example.com' and s.expires_at > now()`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.days)).toBeGreaterThan(SESSION_DAYS - 1);
       expect(await identity.whoIs(pressed)).toBeNull();
       expect(await identity.whoIs(partner)).toBeNull();
       const now = await identity.whoIs(fresh);
