@@ -201,7 +201,7 @@ describe("verifying a payment", () => {
       new Answering({ verify: { isValid: true, payer: other } }),
       edge,
     ).verify(charge(honest()));
-    expect(answered).toMatchObject({ verified: "unknown" });
+    expect(answered).toMatchObject({ verified: "unknown", cause: "payer_contradicted" });
   });
 
   it("refuses Permit2 before verification or settlement", async () => {
@@ -745,6 +745,7 @@ describe("verifying a payment", () => {
     );
 
     if (answered.verified !== "unknown") throw new Error("the silence was taken for a verdict");
+    expect(answered.cause).toBe("no_answer");
     expect(answered.failure).toContain("TypeError");
     expect(answered.failure).toContain("ECONNREFUSED");
   });
@@ -771,6 +772,7 @@ describe("verifying a payment", () => {
 
     expect(answered.verified).toBe("unknown");
     expect(answered).toMatchObject({
+      cause: "seller_cannot_be_paid",
       failure: expect.stringContaining("nowhere to send the money"),
     });
     // And nothing reached the facilitator, because there was no question to put
@@ -831,7 +833,7 @@ describe("verifying a payment", () => {
       edge,
     ).verify(charge(honest()));
 
-    expect(answered).toMatchObject({ verified: "unknown" });
+    expect(answered).toMatchObject({ verified: "unknown", cause: "no_answer" });
   });
 });
 

@@ -835,7 +835,11 @@ describe("the payment challenge", () => {
     const itemId = await publish(served, syncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    harnessed.facilitator.willVerify({ verified: "unknown", failure: "TypeError: fetch failed" });
+    harnessed.facilitator.willVerify({
+      verified: "unknown",
+      cause: "no_answer",
+      failure: "TypeError: fetch failed",
+    });
     const payment = Buffer.from(
       JSON.stringify({
         x402Version: 2,
@@ -869,6 +873,45 @@ describe("the payment challenge", () => {
       harnessed.store.recordedAnalytics.filter(({ event }) => event.name === "agc_payment_result"),
     ).toStrictEqual([]);
   });
+
+  it.each([
+    ["the seller cannot be paid", "seller_cannot_be_paid", /seller cannot be paid/],
+    ["the check named another payer", "payer_contradicted", /different payer/],
+  ] as const)(
+    "does not tell the buyer to present the same payment again when %s",
+    async (_, cause, says) => {
+      // Neither is a silence that passes: the same payment meets the same
+      // missing payout address, or the same contradictory answer.
+      const { served, harnessed } = await started();
+      const itemId = await publish(served, syncCard);
+      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      harnessed.facilitator.willVerify({ verified: "unknown", cause, failure: "our own sentence" });
+      const payment = Buffer.from(
+        JSON.stringify({
+          x402Version: 2,
+          accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+        }),
+        "utf8",
+      ).toString("base64");
+
+      const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+
+      expect(answered.status).toBe(409);
+      const { error } = answered.body as {
+        error: { code: string; message: string; retryable: boolean };
+      };
+      expect(error.code).toBe("payment_not_verified");
+      expect(error.retryable).toBe(false);
+      expect(error.message).toMatch(says);
+      expect(error.message).toContain("charged nothing");
+      expect(error.message).not.toMatch(/same payment again/);
+      expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
+    },
+  );
 
   it("has nothing to sell under an identifier nobody published", async () => {
     const { served } = await started();
@@ -1374,7 +1417,11 @@ describe("whose purchase it is", () => {
 
     // The buyer takes the order first, and their own payment cannot be checked
     // yet because nothing is answering.
-    harnessed.facilitator.willVerify({ verified: "unknown", failure: "not asked yet" });
+    harnessed.facilitator.willVerify({
+      verified: "unknown",
+      cause: "no_answer",
+      failure: "not asked yet",
+    });
     await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
       headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },
