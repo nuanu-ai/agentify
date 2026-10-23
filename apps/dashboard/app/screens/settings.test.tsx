@@ -1021,14 +1021,24 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
   });
 
-  it("sends nothing and says so when the merchant closes Coinbase's window", async () => {
-    coinbase.declines = "wallet_sendCalls";
+  it("sends nothing and says so when the merchant closes Coinbase's window before the payout is asked for", async () => {
+    coinbase.declines = "eth_requestAccounts";
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
 
     await press();
 
     expect(coinbase.sent).toEqual([]);
     expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+  });
+
+  it("never says nothing was sent when the window closes after the payout was asked for, and says to check before sending again", async () => {
+    coinbase.declines = "wallet_sendCalls";
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnconfirmed)).toBeTruthy();
   });
 
   it("says, when the wallet does not move to the payout's chain, that the payout then arrives with Agentify's", async () => {
@@ -1113,7 +1123,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   it("says nothing more was sent, rather than that nothing was, when a later press is closed after a payout went out", async () => {
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await press();
-    coinbase.declines = "wallet_sendCalls";
+    coinbase.declines = "eth_requestAccounts";
 
     await press();
 
@@ -1153,7 +1163,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await press();
     coinbase.loses = undefined;
-    coinbase.declines = "wallet_sendCalls";
+    coinbase.declines = "eth_requestAccounts";
 
     await press();
 

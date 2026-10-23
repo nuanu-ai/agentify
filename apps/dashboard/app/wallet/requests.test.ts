@@ -225,11 +225,10 @@ describe("sending the payout through the merchant's wallet", () => {
     expect(sent).toEqual([]);
   });
 
-  it("says the window was closed when the merchant declines the payout itself", async () => {
-    const { answering, sent } = wallet({ declines: "wallet_sendCalls" });
+  it("does not call a payout declined in the window not sent, since a refusal of it proves nothing either way", async () => {
+    const { answering } = wallet({ declines: "wallet_sendCalls" });
 
-    expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "cancelled" });
-    expect(sent).toEqual([]);
+    expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "unconfirmed" });
   });
 
   it("sends nothing on any chain when the wallet cannot be moved to the channel's", async () => {
