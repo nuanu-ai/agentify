@@ -1441,10 +1441,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return ended;
     },
 
-    async endOtherSessionsOfPerson(personId, keep) {
-      // Read without renewing, as above.
-      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
-      return await endLiveSessionsOf(personId, kept);
+    async endSessionsOfPerson(personId) {
+      return await endLiveSessionsOf(personId, new Set());
     },
 
     async list(now) {

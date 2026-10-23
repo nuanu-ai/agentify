@@ -62,7 +62,6 @@ import {
   NOT_AN_ADDRESS,
   problemOf,
   type SignInView,
-  signedOutOthers,
   whatIsWrongWithTheLabel,
 } from "../src/page-services.js";
 import {
@@ -744,6 +743,16 @@ const SIGNING_IN: GalleryState[] = [
         "A form arrived with a session cookie that no longer names a session, so nothing was saved.",
     },
     "/sign-in?reason=session-ended-unsaved&destination=settings",
+  ),
+  signIn(
+    {
+      id: "dashboard-sign-in-signed-out-everywhere",
+      screen: "Sign in",
+      when: "A merchant presses Sign out everywhere in Settings.",
+      cause:
+        "The press ended every session of the account, the one it was pressed from included, so the merchant signs in again with a new link.",
+    },
+    "/sign-in?reason=signed-out-everywhere",
   ),
   signIn(
     {
@@ -3021,21 +3030,6 @@ const SETTINGS: GalleryState[] = [
       },
     ),
     { path: "/settings/payout-wallet/cancel" },
-  ),
-  settings(
-    {
-      id: "dashboard-settings-signed-out-others",
-      screen: "Settings",
-      when: "A merchant presses Sign out every other device.",
-      cause: "The press ended the account's other sessions and says how many.",
-    },
-    settingsView(
-      "live",
-      WHO,
-      { ...settingsOf(), liveApproval: true },
-      { kind: "account", notice: signedOutOthers(2) },
-    ),
-    { path: "/settings/sign-out-others" },
   ),
   settings(
     {

@@ -38,7 +38,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalDirectory } from "./approval-command.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
-import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -3080,7 +3080,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     const text = readable(screen.html);
     expect(text).toMatch(/get your payout/i);
     expect(text).toMatch(/could not build/i);
-    expect(text).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });
 
@@ -5559,7 +5559,8 @@ describe("a page left open while another address signs in", () => {
       );
     const refusal = await asDrawn(running.browser, STOP_SELLING, {});
     expect(refusal.status).toBe(409);
-    for (const { action, fields } of drawn.filter(({ action }) => action !== "/sign-out")) {
+    const SIGNS_OUT = ["/sign-out", "/settings/sign-out-everywhere"];
+    for (const { action, fields } of drawn.filter(({ action }) => !SIGNS_OUT.includes(action))) {
       const answer = await asDrawn(running.browser, action, fields);
       expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
@@ -5574,6 +5575,11 @@ describe("a page left open while another address signs in", () => {
     for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
       const answer = await asDrawn(fresh, action, fields);
       expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
+    }
+    // Last, since it ends the session the rest were sent with.
+    for (const { action, fields } of drawn.filter(({ action }) => SIGNS_OUT.includes(action))) {
+      const answer = await asDrawn(running.browser, action, fields);
+      expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
   });
 });

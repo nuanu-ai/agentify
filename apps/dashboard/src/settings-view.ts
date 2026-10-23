@@ -8,7 +8,7 @@
 import { readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import type { RecordedPayoutSplit } from "@agentify/gateway";
 import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contracts";
-import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
@@ -68,7 +68,7 @@ export type PayoutView =
 /** What a press did, where it answers with the page rather than sending the browser on. */
 export type SettingsPress =
   | Readonly<{ kind: "name" | "site" | "wallet"; problem: string; typed: string }>
-  | Readonly<{ kind: "wallet-notice" | "account"; notice: string }>;
+  | Readonly<{ kind: "wallet-notice"; notice: string }>;
 
 export interface WalletView {
   readonly purpose: string;
@@ -115,8 +115,7 @@ export interface SettingsView {
   /** Null in the sandbox, where nothing is ever deployed, and where no split can hold money. */
   readonly payout: PayoutView | null;
   readonly account: Readonly<{
-    signOutOthers: string;
-    notice: string | null;
+    signOutEverywhere: string;
     analyticsOptedOut: boolean;
   }>;
 }
@@ -289,8 +288,7 @@ export const settingsView = (
     },
     payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {
-      signOutOthers: SIGN_OUT_EVERY_OTHER_DEVICE,
-      notice: press?.kind === "account" ? press.notice : null,
+      signOutEverywhere: SIGN_OUT_EVERYWHERE,
       analyticsOptedOut: settings.analyticsOptedOut,
     },
   };
