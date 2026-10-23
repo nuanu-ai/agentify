@@ -193,22 +193,28 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
   [QuotePurposeSchema, () => wordOrUnknown(QuotePurposeSchema)],
   [
     OrderEventSchema,
-    () =>
-      z.union([
-        withoutUnknownFields(OrderEventSchema),
-        z
-          .looseObject({
-            type: aWord().refine((type) => !KNOWN_EVENT_TYPES.has(type)),
-            order_id: z.unknown(),
-          })
-          .transform(
-            ({ type, order_id }): UnreadEvent => ({
-              type: UNKNOWN_WORD,
-              named: type,
-              ...(typeof order_id === "string" ? { order_id } : {}),
-            }),
-          ),
-      ]),
+    () => {
+      const known = withoutUnknownFields(OrderEventSchema);
+      const ofAnotherKind = z.looseObject({ type: aWord(), order_id: z.unknown() }).transform(
+        ({ type, order_id }): UnreadEvent => ({
+          type: UNKNOWN_WORD,
+          named: type,
+          ...(typeof order_id === "string" ? { order_id } : {}),
+        }),
+      );
+      // The kind decides which shape an event is held to, so a known event
+      // that fails is reported where its own shape failed, never as a kind
+      // that looked unfamiliar.
+      return z.unknown().transform((sent, ctx) => {
+        const type = (sent as { type?: unknown } | null)?.type;
+        const read = (
+          typeof type === "string" && KNOWN_EVENT_TYPES.has(type) ? known : ofAnotherKind
+        ).safeParse(sent);
+        if (read.success) return read.data;
+        for (const issue of read.error.issues) ctx.addIssue({ ...issue });
+        return z.NEVER;
+      });
+    },
   ],
 ]);
 
