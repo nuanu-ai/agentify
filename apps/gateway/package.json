@@ -9,7 +9,6 @@
     "./analytics": "./src/analytics/index.ts",
     "./announcements": "./src/announcements.ts",
     "./failure-named": "./src/failure-named.ts",
-    "./order-fingerprint": "./src/order-fingerprint.ts",
     "./testing": "./src/testing/harness.ts",
     "./testing/database": "./src/testing/database.ts",
     "./config": "./src/config.ts",

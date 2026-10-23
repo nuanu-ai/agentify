@@ -56,7 +56,6 @@ import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
 import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
-import { orderFingerprint } from "../order-fingerprint.js";
 import { asTimestamp } from "../ports/clock.js";
 import {
   type Facilitator,
@@ -639,7 +638,7 @@ export class OrderRunner {
         // logged so that nobody is left unaware of it.
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not repair ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not repair order ${record.order.id}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -662,7 +661,7 @@ export class OrderRunner {
       } catch (thrown) {
         swept.refused += 1;
         console.error(
-          `[gateway] the sweep could not receipt ${orderFingerprint(record.order.id)}: ${failureNamed(thrown)}`,
+          `[gateway] the sweep could not receipt order ${record.order.id}: ${failureNamed(thrown)}`,
         );
       }
     }
@@ -1064,7 +1063,7 @@ export class OrderRunner {
       });
       if (recorded.found && recorded.result && source === "facilitator") {
         console.error(
-          `[gateway] ${orderFingerprint(orderId)}: the payment layer left the settle unanswered; its words are kept on the order`,
+          `[gateway] order ${orderId}: the payment layer left the settle unanswered; its words are kept on the order`,
         );
       }
       return !recorded.found ? { outcome: "no_such_order" } : { outcome: "moved_on" };

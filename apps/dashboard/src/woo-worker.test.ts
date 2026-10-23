@@ -983,7 +983,6 @@ describe("the whole way through, against a real gateway", () => {
     // The log says which order waits, by the order's identifier, and why.
     expect(written).toMatch(/could not be read.*nothing answered/);
     expect(written).toContain("order ord_1");
-    expect(written).not.toContain("ord_1");
   });
 
   it("keeps a committed order unknown when its successful response body is lost", async () => {
@@ -3698,7 +3697,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
       }
     });
 
-  it("names an order whose answer the gateway did not take by its fingerprint", async () => {
+  it("names an order whose answer the gateway did not take by its identifier", async () => {
     const shop = aShopThatAccepts();
     const gateway = {
       pollWorker: async () => ({
@@ -3734,7 +3733,6 @@ describe("what the worker writes in the merchant's log when something fails", ()
 
     expect(written).toContain("was not accepted: the order is over");
     expect(written).toContain(`order ${anOrder().id}`);
-    expect(written).not.toContain(anOrder().id);
   });
 
   it("names an order whose delivery could not be bound without the buyer's download secrets", async () => {

@@ -213,35 +213,29 @@ collector.
 
 ## Finding an order a log line names
 
-A line about one order names it by a fingerprint: the word `order` and the
-first twelve hex characters of the SHA-256 of the order's identifier, as in
-`order a61ee826a3a0`. Every line about that order, from the gateway and from
-the WooCommerce worker alike, carries the same fingerprint, so searching the
-logs for it follows the order. Its identifier comes from the database, on the
-host of the channel the line came from, with the fingerprint in place of the
-example:
+A line about one order names it by its identifier, as in
+`order ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47`. Every line about that order, from
+the gateway and from the WooCommerce worker alike, carries the same
+identifier, so searching the logs for it follows the order, and it is the
+same identifier the merchant sees in the dashboard, in their own system and on
+the WooCommerce order. The identifier names an order and opens nothing, so it
+may be logged and shared. What opens an order and its goods is the buyer's
+key inside the order's status address, and no log line carries that key or
+that address.
+
+The order behind a line is read from the database, on the host of the channel
+the line came from:
 
 ```sh
 sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T postgres \
-  psql -U agentify -d agentify -c "select id, state, merchant_id from orders where left(encode(sha256(convert_to(id, 'UTF8')), 'hex'), 12) = 'a61ee826a3a0'"
+  psql -U agentify -d agentify -c "select id, state, merchant_id from orders where id = 'ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47'"
 ```
 
-On TEST the path and the channel are `test`. The query computes the fingerprint
-of every order in the table, a full read that grows with it. Two rows mean two
-orders share a fingerprint, and the line's time and what else it says tell
-them apart. No row means no order in the database has it now: an attempt that
-lapsed unpaid is deleted thirty days after it ended. The identifier the query
-prints opens the order, so it stays out of anything shared, this log stack
-included.
-
-The other way round, from an order's identifier to its lines, the
-fingerprint is computed on the operator's own machine, so the identifier goes
-to no service, and the logs are searched for `order` followed by what this
-prints, `order a61ee826a3a0` for the example:
-
-```sh
-printf %s 'ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47' | shasum -a 256 | cut -c1-12
-```
+On TEST the path and the channel are `test`. No row means no order in the
+database has that identifier now: an attempt that lapsed unpaid is deleted
+thirty days after it ended. The query selects no record column, because the
+record holds the buyer's key, and the key stays out of anything shared, this
+log stack included.
 
 ## Local checks
 
