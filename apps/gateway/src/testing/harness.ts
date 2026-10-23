@@ -124,7 +124,14 @@ export interface Harness {
 export const theMerchantKey = (environment: Environment): string =>
   `${keyPrefixFor(environment)}a-merchant-key-long-enough`;
 
-export async function harness(overrides: Record<string, string> = {}): Promise<Harness> {
+export async function harness(
+  overrides: Record<string, string> = {},
+  /**
+   * The identifiers the gateway issues: counted by default so a test can read
+   * them, or as production issues them for a test about what they are.
+   */
+  options: { readonly ids?: Ids } = {},
+): Promise<Harness> {
   // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
   // store stamps payment claims from it too, so `advance` moves those as well.
   let now = Date.parse("2026-08-26T12:00:00.000Z");
@@ -141,7 +148,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   const facilitator = new ScriptedFacilitator();
   const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
   const announcer = new RecordingAnnouncer();
-  const ids = countedIds();
+  const ids = options.ids ?? countedIds();
 
   const runtime: Runtime = {
     config,

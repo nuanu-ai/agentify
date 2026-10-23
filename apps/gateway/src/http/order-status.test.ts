@@ -647,7 +647,7 @@ describe("what the address opens the order by", () => {
 
   it("gives every order a key of its own, which no other order answers to", async () => {
     // Two purchases of one product by one gateway: each address opens its own
-    // order and no other, and neither key can be worked out from the other.
+    // order and no other.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, laterCard);
     const first = await orderTakenOn(harnessed, served, itemId);

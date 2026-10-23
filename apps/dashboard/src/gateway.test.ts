@@ -281,8 +281,24 @@ describe("the orders a page reads", () => {
     await owner.deliverOrder(orderId, { activation_code: "LPA:1$X" });
     const key = (await harnessed.store.orderById(orderId))?.buyerKey ?? "";
     expect(key).not.toBe("");
+    // A purchase priced and never paid, ended when its price ran out: the
+    // Lapsed list reads it apart from the orders.
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error("the card was refused");
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const lapsedId = offered.order.order.id;
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(lapsedId, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    const lapsedKey = (await harnessed.store.orderById(lapsedId))?.buyerKey ?? "";
+    expect(lapsedKey).not.toBe("");
 
     const read = JSON.stringify([
+      await owner.lapsedAttempts(1),
       await owner.orders(false),
       await owner.orders(true),
       await owner.getOrder(orderId),
@@ -292,7 +308,9 @@ describe("the orders a page reads", () => {
     ]);
 
     expect(read).toContain(orderId);
+    expect(read).toContain(lapsedId);
     expect(read).not.toContain(key);
+    expect(read).not.toContain(lapsedKey);
   });
 });
 

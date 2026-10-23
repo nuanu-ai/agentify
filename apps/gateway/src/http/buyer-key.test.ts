@@ -10,6 +10,7 @@
 
 import { type AgentOrderStatus, API_ROUTES, type Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import { randomIds } from "../ports/clock.js";
 import {
   buyOverHttp,
   type Harness,
@@ -108,5 +109,48 @@ describe("the buyer's key", () => {
     expect(JSON.stringify(merchantSees)).not.toContain(key);
     expect(JSON.stringify(paymentSideSees)).not.toContain(key);
     expect(JSON.stringify(harnessed.store.recordedAnalytics)).not.toContain(key);
+  });
+});
+
+/** Whether `a` and `b` share any run of `length` characters. */
+const shareARun = (a: string, b: string, length: number): boolean => {
+  for (let at = 0; at + length <= a.length; at += 1) {
+    if (b.includes(a.slice(at, at + length))) return true;
+  }
+  return false;
+};
+
+describe("the buyer's key, as production issues it", () => {
+  it("cannot be worked out from the order's identifier, or from another order's key", async () => {
+    // The identifier reaches the merchant, their shop, their logs and the
+    // payment side. A key derived from it, or counted along with the orders,
+    // would let whoever holds an identifier, or a key of their own, open
+    // somebody else's goods.
+    const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO }, { ids: randomIds });
+    open = { harnessed, served: await serve(harnessed) };
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, laterCard);
+    if (!published.ok) throw new Error("the card would not publish");
+
+    const orders: { readonly id: string; readonly key: string }[] = [];
+    for (let made = 0; made < 5; made += 1) {
+      const offered = await harnessed.gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+      orders.push({ id: offered.order.order.id, key: offered.order.buyerKey });
+    }
+
+    const randomPart = (value: string) => value.slice(value.indexOf("_") + 1);
+    for (const { id, key } of orders) {
+      expect(key).toMatch(/^bk_[0-9a-f]{32}$/);
+      expect(shareARun(randomPart(key), randomPart(id), 8), `${key} beside ${id}`).toBe(false);
+    }
+    for (const [at, { key }] of orders.entries()) {
+      for (const { key: other } of orders.slice(at + 1)) {
+        expect(shareARun(randomPart(key), randomPart(other), 8), `${key} beside ${other}`).toBe(
+          false,
+        );
+        const apart = BigInt(`0x${randomPart(key)}`) - BigInt(`0x${randomPart(other)}`);
+        expect(apart < 0n ? -apart : apart).toBeGreaterThan(2n ** 64n);
+      }
+    }
   });
 });
