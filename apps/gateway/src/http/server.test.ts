@@ -1256,7 +1256,7 @@ describe("whose purchase it is", () => {
   };
 
   it("hands the goods to exactly one of two racing payments and refuses the other", async () => {
-    // The order's payment reference is public: it is in the challenge.
+    // The order's identifier is public: it is in the challenge.
     // Synchronous goods reach only the parked call, so a second call under the
     // same order must not take the first one's place.
     const { served, harnessed } = await started(RACE_TIMING);
@@ -1388,8 +1388,8 @@ describe("whose purchase it is", () => {
   });
 
   it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // An order's payment reference is in every challenge for it, and a listing
-    // can publish it, so holding one does not make a wallet the buyer.
+    // An order's identifier is in every challenge for it, and a listing can
+    // publish it, so holding one does not make a wallet the buyer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,

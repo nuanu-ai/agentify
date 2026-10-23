@@ -870,10 +870,10 @@ describe("the shipment", () => {
       expect(repeated.status).toBe(httpStatus);
       if (status === "rejected") {
         // An order over with nothing taken is answered without the order:
-        // whoever presents its payment reference has not paid, and the buyer
-        // already holds the order from its first answer.
+        // whoever presents its identifier has not paid, and the buyer already
+        // holds the order from its first answer.
         expect(repeated.body).toMatchObject({ error: { code: "payment_not_taken" } });
-        expect(JSON.stringify(repeated.body)).not.toContain(orderId);
+        expect(JSON.stringify(repeated.body)).not.toContain("status_url");
       } else {
         expect(repeated.body).toStrictEqual(beforeRepeat);
       }

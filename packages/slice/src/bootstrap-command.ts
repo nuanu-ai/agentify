@@ -484,7 +484,7 @@ const USAGE = [
   "",
   "  AGENTIFY_SMOKE=1        say out loud that this touches the network",
   "  GATEWAY_URL             the gateway to buy from",
-  "  SMOKE_BUYER_KEY         the buyer's private key, 0x and 64 hex characters",
+  "  SMOKE_BUYER_KEY         the buyer wallet's private key, 0x and 64 hex characters",
   `  SMOKE_MAX_USD           ceiling on one purchase (default $${DEFAULT_MAX_USD})`,
   `  SMOKE_TOTAL_USD         ceiling on the whole run (default $${DEFAULT_TOTAL_USD})`,
   "  SMOKE_ALLOW_MAINNET=1   consent to a chain where the money is real",
@@ -555,7 +555,7 @@ export function readSettings(
     return {
       ok: false,
       why: [
-        "set SMOKE_BUYER_KEY to the buyer's private key — there is nothing to pay with otherwise.",
+        "set SMOKE_BUYER_KEY to the buyer wallet's private key — there is nothing to pay with otherwise.",
         "It must not be the merchant's own payout wallet: the facilitator refuses a payment whose",
         "payer and payee are the same address, and says self_send_not_allowed.",
       ],

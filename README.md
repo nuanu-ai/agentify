@@ -235,7 +235,7 @@ end is the test suite's own fixture.
 
 The stand is our own instrument for walking a purchase from all three seats —
 catalogue, agent and merchant — in one local console, with a log threaded by
-the order. It is not a product surface and it needs a throwaway buyer key in
+the order. It is not a product surface and it needs a throwaway buyer wallet key in
 `.env.stand` as `STAND_BUYER_KEY`; `pnpm stand` starts it on `127.0.0.1:8787`.
 Its merchant half is written to be read by somebody integrating against the
 SDK, in `packages/slice/src/stand-merchant.ts`, and
@@ -322,7 +322,7 @@ money — and are kept apart for that reason:
 | `pnpm scanner:test:start` | a scanner build | starts the build the way its image does, with nothing installed beside it, and stops it |
 | `pnpm --filter @agentify/dashboard budget`, `pnpm --filter @agentify/web budget` | a build | no page's first visit asks for more compressed script than its limit: 100 KB on the dashboard, 105 KB on a scanner page a stranger lands on, 130 KB on one reached by somebody already using the scanner |
 | `pnpm smoke:listing <https address>` | the network | asks Coinbase whether our resource would be listed, and reports no verdict rather than a pass when it cannot reach us |
-| `pnpm smoke` | `AGENTIFY_SMOKE=1`, a buyer key holding testnet USDC, and the facilitator's credentials | the same buyer and mock merchant against the real facilitator on Base Sepolia; a dry run unless `--confirm` is given, every payment capped at `SMOKE_MAX_USD`, and everything it needs listed in the header of `packages/slice/src/smoke.ts` |
+| `pnpm smoke` | `AGENTIFY_SMOKE=1`, a buyer wallet key holding testnet USDC, and the facilitator's credentials | the same buyer and mock merchant against the real facilitator on Base Sepolia; a dry run unless `--confirm` is given, every payment capped at `SMOKE_MAX_USD`, and everything it needs listed in the header of `packages/slice/src/smoke.ts` |
 | `pnpm mutate <package>` | nothing but patience | Stryker over one workspace package, printing the survivors: a triage tool for the hand-over ritual, not a gate |
 
 The Chromium is put there once with

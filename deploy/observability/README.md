@@ -27,12 +27,12 @@ contain SQL values, and the scanner's structured diagnostics already describe
 database connectivity without those values.
 
 Loki labels are `app`, `environment`, `job`, `service`, and JSON severity when
-present. Request and scan identifiers stay in the log body. An order's
-identifier does not, nor its status address, because whoever holds either can
-read the order and its goods, and these logs are read by more people than the
-database; how a line names an order instead is under
-[Finding an order a log line names](#finding-an-order-a-log-line-names).
-Neither does a WooCommerce order key (`wc_order_…`) or a download link: in a
+present. Request, scan and order identifiers stay in the log body; how to read
+the order a line names is under
+[Finding an order a log line names](#finding-an-order-a-log-line-names). An
+order's status address does not, nor the buyer's key it carries, because
+whoever holds it can read the order and its goods, and these logs are read by
+more people than the database. Neither does a WooCommerce order key (`wc_order_…`) or a download link: in a
 link, `order` and `uid` are that one buyer's secrets, while its `key` is the
 file's download identifier, which every buyer of the product shares. TEST's
 sandbox email is excluded: its first line is dropped explicitly, and commerce

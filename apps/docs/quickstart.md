@@ -377,7 +377,7 @@ Install the x402 client and the library that signs with the key:
 npm install @x402/core @x402/evm @x402/fetch viem
 ```
 
-Make the buyer's key with that library, in the same directory. The command
+Make the buyer's wallet key with that library, in the same directory. The command
 prints a fresh private key, as the line `.env` takes, and the address it
 controls:
 
