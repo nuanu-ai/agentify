@@ -48,10 +48,14 @@ export function SiteTop({ end }: Readonly<{ end?: ReactNode }>) {
   );
 }
 
-/** The site footer as the scanner draws it: its own pages followed in place, with the privacy choices. */
-export function SiteFooter() {
+/**
+ * The site footer as the scanner draws it: its own pages followed in place,
+ * then `children`, the links only this page needs, and the privacy choices.
+ */
+export function SiteFooter({ children }: Readonly<{ children?: ReactNode }>) {
   return (
     <Footer surface="scanner" link={SiteLink}>
+      {children}
       <PrivacyChoicesButton className="foot-action" />
     </Footer>
   );

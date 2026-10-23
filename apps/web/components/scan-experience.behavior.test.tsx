@@ -303,6 +303,16 @@ describe("a scan's states", () => {
     expect(screen.queryByLabelText("Email")).toBeNull();
   });
 
+  it("leads the owner of a site that blocked the reader to how the scanner names itself", async () => {
+    apiAnswers(() => json(200, blockedScan));
+
+    visit();
+
+    await waitFor(() => expect(document.querySelector("h1[data-access-blocked]")).not.toBeNull());
+    const link = document.querySelector('main a[href="/docs/scanner#identity"]');
+    expect(link?.textContent?.trim()).toBeTruthy();
+  });
+
   it("shows a finished scan's level and score, and the ask for the full report", async () => {
     apiAnswers(() => json(200, finishedScan));
 

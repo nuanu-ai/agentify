@@ -98,8 +98,11 @@ describe("ScanExperience teaser actions", () => {
     const finished = await drawn(fixtureAt("teaser", "2026-10-13T23:30:00.000Z"));
     const running = await drawn(fixtureAt("running", "2026-10-13T23:30:00.000Z"));
 
+    // The scan's own part of the page; the site's footer carries the year of its copyright.
+    const scan = running.slice(running.indexOf("<main"), running.indexOf("</main>"));
     expect(finished).toContain("Oct 13, 2026");
-    expect(running).not.toContain("2026");
+    expect(scan).toContain("example.com");
+    expect(scan).not.toContain("2026");
   });
 
   it("says a scan that ended without a result has none, not that it failed a check", async () => {

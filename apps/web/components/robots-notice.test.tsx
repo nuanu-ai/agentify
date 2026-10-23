@@ -21,4 +21,12 @@ describe("RobotsNotice", () => {
     expect(markup).toContain('data-robots-notice="unassessed"');
     expect(markup).toContain("1 check ");
   });
+
+  it("leads the owner to how the scanner reads robots.txt, whatever kept a check out", () => {
+    for (const robots of ["disallowed", "unassessed"] as const) {
+      const markup = renderToStaticMarkup(<RobotsNotice checks={[{ id: 9, robots }]} />);
+
+      expect(markup, robots).toMatch(/<a href="\/docs\/scanner#robots">[^<]+<\/a>/);
+    }
+  });
 });

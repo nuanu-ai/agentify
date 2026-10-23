@@ -1,4 +1,3 @@
-import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ReportView } from "../lib/report-view";
 import { BrowserObservations } from "./browser-observations";
 import { CheckRow } from "./check-row";
@@ -10,7 +9,7 @@ import styles from "./report-page.module.css";
 import { ResultHead } from "./result-head";
 import layout from "./result-layout.module.css";
 import { RobotsNotice } from "./robots-notice";
-import { SiteTop } from "./site-chrome";
+import { SiteFooter, SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -128,11 +127,9 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
           </div>
         </div>
       </main>
-      <nav aria-label="Your data" className={layout.foot}>
+      <SiteFooter>
         <SiteLink to="/email/unsubscribe">Email preferences</SiteLink>
-        <SiteLink to="/data-request">Access or deletion request</SiteLink>
-        <PrivacyChoicesButton />
-      </nav>
+      </SiteFooter>
     </div>
   );
 }
