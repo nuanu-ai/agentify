@@ -6,7 +6,7 @@ import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../l
 import { press } from "../lib/press";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
-import { SiteDoors } from "./site-chrome";
+import { SiteDoors, SiteFooter } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
@@ -145,51 +145,51 @@ export function PendingScanExperience({
 
   const starting = state === "starting";
   return (
-    <main className={styles.page}>
-      <div className={styles.brandWrap}>
-        <Brand />
-        <SiteDoors />
-      </div>
-      <section className={styles.card}>
-        <header className={styles.header}>
-          <span>Private website diagnostic</span>
-          <span className={styles.status} data-state={state}>
-            {SAID[state].label}
-          </span>
-        </header>
-        <div className={styles.body}>
-          <h1>{SAID[state].title}</h1>
-          <p aria-live="polite" className={styles.message} role="status">
-            {message}
-          </p>
-          {state === "challenge" ? (
-            <div className={styles.challenge}>
-              <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
-            </div>
-          ) : null}
-          {!starting && state !== "challenge" ? (
-            <div className={styles.actions}>
-              {request && state !== "hard-limit" && retryable ? (
-                <button
-                  className="button button-primary"
-                  onClick={() => void startScan(request)}
-                  type="button"
-                >
-                  Retry scan
-                </button>
-              ) : null}
-              <SiteLink className="button button-secondary" to="/">
-                Enter another website
-              </SiteLink>
-            </div>
-          ) : null}
+    <>
+      <main className={styles.page}>
+        <div className={styles.brandWrap}>
+          <Brand />
+          <SiteDoors />
         </div>
-      </section>
-      <nav aria-label="Scan help" className={styles.helpLinks}>
-        <a href="/docs/scanner">Scanner identity</a>
+        <section className={styles.card}>
+          <header className={styles.header}>
+            <span>Private website diagnostic</span>
+            <span className={styles.status} data-state={state}>
+              {SAID[state].label}
+            </span>
+          </header>
+          <div className={styles.body}>
+            <h1>{SAID[state].title}</h1>
+            <p aria-live="polite" className={styles.message} role="status">
+              {message}
+            </p>
+            {state === "challenge" ? (
+              <div className={styles.challenge}>
+                <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
+              </div>
+            ) : null}
+            {!starting && state !== "challenge" ? (
+              <div className={styles.actions}>
+                {request && state !== "hard-limit" && retryable ? (
+                  <button
+                    className="button button-primary"
+                    onClick={() => void startScan(request)}
+                    type="button"
+                  >
+                    Retry scan
+                  </button>
+                ) : null}
+                <SiteLink className="button button-secondary" to="/">
+                  Enter another website
+                </SiteLink>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </main>
+      <SiteFooter>
         <a href="/docs/scanner/methodology">Methodology</a>
-        <SiteLink to="/privacy">Privacy</SiteLink>
-      </nav>
-    </main>
+      </SiteFooter>
+    </>
   );
 }

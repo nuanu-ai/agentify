@@ -1,4 +1,3 @@
-import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { Badge } from "@agentify/ui";
 import {
@@ -18,7 +17,7 @@ import { lazyPart, useHere } from "./lazy-part";
 import layout from "./result-layout.module.css";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
-import { SiteTop } from "./site-chrome";
+import { SiteFooter, SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -233,12 +232,9 @@ export function ScanExperience({
           </ScanCard>
         )}
       </main>
-      <nav aria-label="Scan help" className={layout.foot}>
-        <a href="/docs/scanner">Scanner identity</a>
+      <SiteFooter>
         <a href="/docs/scanner/methodology">Methodology</a>
-        <SiteLink to="/privacy">Privacy</SiteLink>
-        <PrivacyChoicesButton />
-      </nav>
+      </SiteFooter>
     </div>
   );
 }

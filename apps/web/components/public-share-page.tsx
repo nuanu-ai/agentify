@@ -1,10 +1,8 @@
-import { PrivacyChoicesButton } from "@agentify/consent";
 import type { PublicResultPreview } from "../lib/share-copy";
 import styles from "./public-share-page.module.css";
 import { ResultHead } from "./result-head";
 import layout from "./result-layout.module.css";
-import { SiteTop } from "./site-chrome";
-import { SiteLink } from "./site-link";
+import { SiteFooter, SiteTop } from "./site-chrome";
 import { UrlScanForm } from "./url-scan-form";
 
 /** A published result at its public link, with the way to scan one's own site under it. */
@@ -33,13 +31,9 @@ export function PublicSharePage({ preview }: Readonly<{ preview: PublicResultPre
           </section>
         </div>
       </main>
-      <footer>
-        <nav aria-label="Public result information" className={layout.foot}>
-          <a href="/docs/scanner/methodology">Methodology</a>
-          <SiteLink to="/privacy">Privacy</SiteLink>
-          <PrivacyChoicesButton />
-        </nav>
-      </footer>
+      <SiteFooter>
+        <a href="/docs/scanner/methodology">Methodology</a>
+      </SiteFooter>
     </div>
   );
 }
