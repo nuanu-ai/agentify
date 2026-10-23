@@ -175,7 +175,7 @@ than the engineer.
 This is an early `0.x` pilot surface and the names in it can still change. A
 release keeps working when Agentify adds to what it sends: a field it does not
 know beside an order is left out of what your code receives, an event of a kind
-it does not know is skipped with an `event_skipped` problem, and an order's
+it does not know is skipped with an `unread` problem, and an order's
 status or payment word, an event's reason, a call's result word or a price
 question's purpose it does not know reads `unknown`
 ([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).

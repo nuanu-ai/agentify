@@ -103,23 +103,13 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   /** Something arrived that nobody had registered a handler for. */
   NO_HANDLER: "no_handler",
   /**
-   * An event this package cannot read, most often of a kind added after it was
-   * released, was skipped. The rest of the batch is handled.
-   */
-  EVENT_SKIPPED: "event_skipped",
-  /**
-   * A price question for a purpose this package does not know was left
-   * unanswered. It counts as a silent price check: a synchronous card sells at
-   * its own card price, and in the other modes the sale is refused.
-   */
-  QUOTE_SKIPPED: "quote_skipped",
-  /**
-   * Something arrived that this package cannot read in full, and nothing was
-   * guessed about it: a message on the stream, such as an order carrying a
-   * field added after this release, set aside unanswered while the rest is
-   * handled; or orders read back with a status word this release does not
-   * know. The message names the fields, and says a newer release reads them
-   * only where what failed is something added rather than something broken.
+   * Something arrived that this package could not read in full, so it was set
+   * aside and nothing was guessed about it: a message on the stream, such as
+   * an event of a kind or a price question for a purpose added after this
+   * release, or an order carrying a field the contract version it speaks does
+   * not allow, left unanswered while the rest is handled; or orders read back
+   * with a status word this release does not know. The message names what it
+   * could not read, without its values, and what follows for the work.
    */
   UNREAD: "unread",
   /** The answer was produced and could not be delivered to the gateway. */
@@ -639,10 +629,10 @@ export const startWorker = (
   ): Promise<void> => {
     if (event.type === UNKNOWN_WORD) {
       report({
-        kind: WORKER_PROBLEM_KINDS.EVENT_SKIPPED,
+        kind: WORKER_PROBLEM_KINDS.UNREAD,
         fatal: false,
         ...(event.order_id === undefined ? {} : { subject: event.order_id }),
-        message: `an event this package cannot read, "${event.named}", arrived and was skipped; a newer release of @nuanu-ai/agentify handles it, and orders.list({ open: true }) still finds every paid order waiting on you`,
+        message: `an event of a kind this release does not know, "${event.named}", arrived and was skipped; ${NEWER_RELEASE} reads it, and orders.list({ open: true }) still finds every paid order waiting on you`,
       });
       return;
     }
@@ -685,10 +675,10 @@ export const startWorker = (
           await handleQuote(envelope.payload);
         } else {
           report({
-            kind: WORKER_PROBLEM_KINDS.QUOTE_SKIPPED,
+            kind: WORKER_PROBLEM_KINDS.UNREAD,
             fatal: false,
             subject: envelope.payload.price_id,
-            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused; a newer release of @nuanu-ai/agentify answers it`,
+            message: `a price question for ${envelope.payload.merchant_item_id} came for a purpose this package does not know and was left unanswered, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused; ${NEWER_RELEASE} answers it`,
           });
         }
         return;

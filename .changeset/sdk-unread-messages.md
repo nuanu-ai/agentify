@@ -15,6 +15,11 @@ The worker reads a poll answer's contract version before its messages, so a
 gateway of another version stops it with `contract_version_mismatch` even when
 the messages inside are ones this release cannot read.
 
+An event of a kind this release does not know, and a price question for a
+purpose it does not know, are reported as `unread` too: the problem kinds
+`event_skipped` and `quote_skipped` are removed, and code that branches on them
+branches on `unread` instead.
+
 `orders.list` reports one `unread` problem counting the orders whose status is
 a word this release does not know, which read `unknown` and which a loop over
 open orders leaves alone.

@@ -745,8 +745,8 @@ package you installed reads past what was added:
   delivers is the exception, below.
 - An event of a kind your package does not know is skipped. The rest of the
   poll it came in is handled as usual, and your problem handler receives one
-  `event_skipped` problem, not fatal, naming the event's `type` and saying that
-  a newer release handles it. An event can be lost in any case, as [Events on
+  `unread` problem, not fatal, naming the event's `type` and saying that a
+  newer release reads it. An event can be lost in any case, as [Events on
   the same subscription](#events-on-the-same-subscription) says, so nothing
   depends on it: a paid order that needs you stays on `orders.list({ open:
   true })` whether its event arrived, was lost or was skipped.
@@ -763,7 +763,8 @@ package you installed reads past what was added:
 - A delivery, refusal or acceptance answered `ok: true` with a `result` word
   your package does not know succeeded, and the word reads `unknown`.
 - A price question for a `purpose` your package does not know is left
-  unanswered, with one `quote_skipped` problem, not fatal. It counts as a
+  unanswered, with one `unread` problem, not fatal, saying that a newer
+  release answers it. It counts as a
   silent price check: a synchronous card sells at its own card price, and in
   the other modes the sale is refused ([What can go wrong](/failures)).
 
