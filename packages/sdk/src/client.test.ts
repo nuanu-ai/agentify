@@ -397,6 +397,33 @@ describe("reading orders back", () => {
     expect(problems[0]?.message).toContain("and 290 more, not named");
   });
 
+  it("does not say a newer release may read an order a list left out for a value that is merely broken", async () => {
+    // A price written as a number is not news from a newer Agentify, and
+    // saying it was would send the merchant to upgrade for nothing.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            {
+              ...order,
+              price: { ...order.price, amount: 5 },
+              status: "unfulfilled",
+              payment_status: "paid",
+            },
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    await agentify.orders.list({ open: true });
+
+    expect(problems[0]?.message).toContain("price.amount: expected string");
+    expect(problems[0]?.message).not.toMatch(/newer release/);
+    expect(problems[0]?.message).toContain("sent broken");
+  });
+
   it("names at most ten orders it left out of a list and counts the rest", async () => {
     // Two thousand unreadable orders must not become a megabyte in a log.
     const agentify = await gatewayServing({

@@ -646,6 +646,53 @@ describe("a gateway newer than this package", () => {
     for (const cut of problems.slice(2)) expect(cut.message).toMatch(/cut/);
   });
 
+  it("leaves a price question that does not fit unanswered, names it, and says it counts as a silent price check", async () => {
+    // The merchant may have set stock aside under the question's identifier,
+    // and the consequence for the sale is the contract's, so both are said.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll({ ...envelopes.quote, payload: { ...question, expires_at: "soon" } }),
+        ),
+      },
+      {
+        order: () => ({ delivered: { access_url: "https://example.com/a" } }),
+        quote: (given) => given.unavailable(),
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the unread question");
+
+    expect(problems[0]).toMatchObject({ kind: "unread", subject: question.price_id });
+    expect(problems[0]?.message).toContain("expires_at");
+    expect(problems[0]?.message).toContain("silent price check");
+    expect(gateway?.callsTo("answer_quote")).toStrictEqual([]);
+  });
+
+  it("names the kind of a message it does not know, and may only say a newer release reads one that names a kind", async () => {
+    // A kind that is a word may be one added later; a message with no kind,
+    // or a kind that is not a word, is broken, and is not passed off as news.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(
+          newerPoll(
+            { kind: "refund_request", id: "env-7", sent_at: AT, payload: {} },
+            { id: "env-8", sent_at: AT, payload: {} },
+            { kind: 7, id: "env-9", sent_at: AT, payload: {} },
+          ),
+        ),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
+    );
+
+    await waitUntil(() => problems.length === 3, "the three unread messages");
+
+    expect(problems[0]?.message).toContain('"refund_request"');
+    expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify may read it");
+    expect(problems[1]?.message).not.toMatch(/newer release/);
+    expect(problems[2]?.message).not.toMatch(/newer release/);
+  });
+
   it("skips a price question for a purpose it does not know, says so once, and answers nothing", async () => {
     // No answer is a silent price check, whose outcome per mode is already
     // the contract's; a price guessed for an unknown purpose would not be.
