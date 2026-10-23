@@ -18,6 +18,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import type { Ids } from "../ports/clock.js";
+import type { JournalPress } from "../ports/journal.js";
 import type { AnalyticsOf, Store, StoredKey, StoredMerchant } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -76,12 +77,13 @@ export async function setServiceName(
   serviceName: string | null,
   at: number,
   analytics?: AnalyticsOf<StoredMerchant>,
+  journal?: JournalPress,
 ): Promise<StoredMerchant | null> {
   if (serviceName !== null) {
     // Throws with the schema's own words, which name the rule and the number.
     ServiceNameSchema.parse(serviceName);
   }
-  return store.setServiceName(merchantId, serviceName, at, analytics);
+  return store.setServiceName(merchantId, serviceName, at, analytics, journal);
 }
 
 /**
@@ -161,20 +163,27 @@ export interface LiveApprovalChange {
  * decision. Null means no such merchant; `changed: false` means already
  * admitted. The grant that admits the merchant is recorded for product
  * analytics as the operator's, through the dashboard, where both of those
- * callers live; a repeat records nothing.
+ * callers live; a repeat records nothing. `journal` is the operator's press,
+ * committed with the grant.
  */
 export async function grantLiveApproval(
   store: Store,
   merchantId: string,
   at: number,
+  journal?: JournalPress,
 ): Promise<LiveApprovalChange | null> {
-  return store.grantLiveApproval(merchantId, at, {
-    name: "agc_setup_result",
-    actor: "operator",
-    source: "dashboard",
-    refs: { merchant: merchantId },
-    fields: { step: "live_approval", integration: "none", outcome: "completed" },
-  });
+  return store.grantLiveApproval(
+    merchantId,
+    at,
+    {
+      name: "agc_setup_result",
+      actor: "operator",
+      source: "dashboard",
+      refs: { merchant: merchantId },
+      fields: { step: "live_approval", integration: "none", outcome: "completed" },
+    },
+    journal,
+  );
 }
 
 /**
@@ -182,13 +191,15 @@ export async function grantLiveApproval(
  * a merchant never approved, so nothing new of theirs is published or sold
  * live, while orders already opened play out as under a pause. Only the
  * operator's terminal command calls this. Null means no such merchant;
- * `changed: false` means there was no approval to withdraw.
+ * `changed: false` means there was no approval to withdraw. `journal` is the
+ * operator's press, committed with the withdrawal.
  */
 export async function withdrawLiveApproval(
   store: Store,
   merchantId: string,
+  journal?: JournalPress,
 ): Promise<LiveApprovalChange | null> {
-  return store.withdrawLiveApproval(merchantId);
+  return store.withdrawLiveApproval(merchantId, journal);
 }
 
 /**

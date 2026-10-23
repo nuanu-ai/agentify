@@ -16,6 +16,7 @@
 import type { Order } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
+import type { JournalEntry, JournalPress, JournalSubject } from "../ports/journal.js";
 import type {
   PayoutWalletWrite,
   RecordedPayoutSplit,
@@ -2351,5 +2352,226 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.receipts(B)).toStrictEqual([]);
       });
     });
+
+    describe("the operator's journal", () => {
+      const press = (
+        action: JournalPress["action"],
+        subject: JournalSubject,
+        at: number,
+        reason: string | null = "Asked by the owner",
+      ): JournalPress => ({
+        at,
+        actor: { kind: "account", id: OPERATOR },
+        action,
+        subject,
+        reason,
+      });
+      const refused = (subject: JournalSubject, at: number, code: string): JournalEntry => ({
+        ...press("withdraw", subject, at),
+        outcome: { kind: "refused", code },
+      });
+      const outcomes = async (store: Store) =>
+        (await store.journal({ limit: 50 })).rows.map((row) => [row.action, row.outcome.kind]);
+
+      it("commits an admission with its row, and a repeat as unchanged without moving the instant", async () => {
+        const store = await twoMerchants();
+
+        await store.grantLiveApproval(A, 3_000, undefined, press("admit", merchantA, 3_000, null));
+        await store.grantLiveApproval(A, 4_000, undefined, press("admit", merchantA, 4_000, null));
+
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(3_000);
+        const { rows } = await store.journal({ limit: 10 });
+        expect(rows.map((row) => [row.at, row.outcome])).toStrictEqual([
+          [4_000, { kind: "unchanged" }],
+          [3_000, { kind: "done" }],
+        ]);
+        expect(rows[1]).toMatchObject({
+          actor: { kind: "account", id: OPERATOR },
+          action: "admit",
+          subject: merchantA,
+          reason: null,
+        });
+      });
+
+      it("commits a withdrawal, a name taken away and a key disabled each with its row", async () => {
+        const store = await twoMerchants();
+        await store.grantLiveApproval(A, 1_500);
+        await store.setServiceName(A, "Freeland", 1_600);
+        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_700);
+        const key: JournalSubject = { kind: "key", id: "mk_a", merchantId: A };
+
+        await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_000));
+        await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_100));
+        await store.setServiceName(
+          A,
+          null,
+          3_000,
+          undefined,
+          press("take_listing_name", merchantA, 3_000),
+        );
+        await store.setServiceName(
+          A,
+          null,
+          3_100,
+          undefined,
+          press("take_listing_name", merchantA, 3_100),
+        );
+        await store.disableKeyOf(A, "mk_a", 4_000, press("disable_key", key, 4_000));
+        await store.disableKeyOf(A, "mk_a", 4_100, press("disable_key", key, 4_100));
+
+        expect(await store.merchantById(A)).toMatchObject({
+          liveApprovedAt: null,
+          serviceName: null,
+        });
+        expect((await store.keysOf(A))[0]?.disabledAt).toBe(4_000);
+        expect(await outcomes(store)).toStrictEqual([
+          ["disable_key", "unchanged"],
+          ["disable_key", "done"],
+          ["take_listing_name", "unchanged"],
+          ["take_listing_name", "done"],
+          ["withdraw", "unchanged"],
+          ["withdraw", "done"],
+        ]);
+      });
+
+      it("writes no row for a merchant or a key that is not there", async () => {
+        // The caller records that press as refused; a row saying "done" to
+        // nothing would claim an action that never had a subject.
+        const store = await twoMerchants();
+        await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_700);
+        const nobody: JournalSubject = { kind: "merchant", id: "mch_nobody" };
+
+        expect(
+          await store.grantLiveApproval(
+            "mch_nobody",
+            2_000,
+            undefined,
+            press("admit", nobody, 2_000),
+          ),
+        ).toBeNull();
+        expect(
+          await store.withdrawLiveApproval("mch_nobody", press("withdraw", nobody, 2_000)),
+        ).toBeNull();
+        expect(
+          await store.setServiceName(
+            "mch_nobody",
+            null,
+            2_000,
+            undefined,
+            press("take_listing_name", nobody, 2_000),
+          ),
+        ).toBeNull();
+        // B's key, asked for as A's.
+        expect(
+          await store.disableKeyOf(
+            A,
+            "mk_b",
+            2_000,
+            press("disable_key", { kind: "key", id: "mk_b", merchantId: A }, 2_000),
+          ),
+        ).toBeNull();
+
+        expect((await store.keysOf(B))[0]?.disabledAt).toBeNull();
+        expect((await store.journal({ limit: 10 })).total).toBe(0);
+      });
+
+      it("writes nothing of a change whose row the journal refuses, the change included", async () => {
+        const store = await twoMerchants();
+        const unwritable = { ...press("withdraw", merchantA, 2_000), reason: "   " };
+        await store.grantLiveApproval(A, 1_000);
+
+        await expect(store.withdrawLiveApproval(A, unwritable)).rejects.toThrow();
+        await expect(
+          store.grantLiveApproval(B, 2_000, undefined, {
+            ...press("admit", { kind: "merchant", id: B }, 2_000),
+            reason: "x".repeat(2_001),
+          }),
+        ).rejects.toThrow();
+
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(1_000);
+        expect((await store.merchantById(B))?.liveApprovedAt).toBeNull();
+        expect((await store.journal({ limit: 10 })).total).toBe(0);
+      });
+
+      it("records a refused press on its own, and refuses a row without what the journal needs", async () => {
+        const store = await twoMerchants();
+
+        const row = await store.recordJournal(refused(merchantA, 2_000, "no_reason"));
+
+        expect(row).toMatchObject({ at: 2_000, outcome: { kind: "refused", code: "no_reason" } });
+        expect(row.sequence).toBeTypeOf("number");
+        const broken: JournalEntry[] = [
+          { ...refused(merchantA, 2_000, "no_reason"), outcome: { kind: "refused", code: "" } },
+          { ...refused(merchantA, 2_000, "no_reason"), actor: { kind: "account", id: "" } },
+          { ...refused({ kind: "merchant", id: "" }, 2_000, "no_reason") },
+          { ...refused({ kind: "key", id: "mk_a", merchantId: "" }, 2_000, "no_reason") },
+          { ...refused(merchantA, 2_000, "no_reason"), reason: "<b>bold</b>" },
+          {
+            ...refused(merchantA, 2_000, "no_reason"),
+            action: "move_money" as JournalPress["action"],
+          },
+          { ...refused(merchantA, Number.NaN, "no_reason") },
+        ];
+        for (const entry of broken) {
+          await expect(store.recordJournal(entry), JSON.stringify(entry)).rejects.toThrow();
+        }
+        expect((await store.journal({ limit: 10 })).total).toBe(1);
+      });
+
+      it("reads newest first, a page at a time, with the total and where the next page starts", async () => {
+        const store = await twoMerchants();
+        for (const at of [1_000, 2_000, 3_000, 4_000, 5_000]) {
+          await store.recordJournal(refused(merchantA, at, "no_reason"));
+        }
+
+        const first = await store.journal({ limit: 2 });
+        expect(first.rows.map((row) => row.at)).toStrictEqual([5_000, 4_000]);
+        expect(first.total).toBe(5);
+        expect(first.next).not.toBeNull();
+        const second = await store.journal({ limit: 2, before: first.next ?? 0 });
+        expect(second.rows.map((row) => row.at)).toStrictEqual([3_000, 2_000]);
+        expect(second.total).toBe(5);
+        const last = await store.journal({ limit: 2, before: second.next ?? 0 });
+        expect(last.rows.map((row) => row.at)).toStrictEqual([1_000]);
+        expect(last.next).toBeNull();
+      });
+
+      it("reads one merchant's history with its keys' rows, one account's, and one action's", async () => {
+        const store = await twoMerchants();
+        await store.recordJournal(refused(merchantA, 1_000, "no_reason"));
+        await store.recordJournal(
+          refused({ kind: "key", id: "mk_a", merchantId: A }, 2_000, "no_reason"),
+        );
+        await store.recordJournal(refused({ kind: "merchant", id: B }, 3_000, "no_reason"));
+        await store.recordJournal({
+          ...press("end_sessions", { kind: "account", id: "acc_1" }, 4_000),
+          outcome: { kind: "done" },
+        });
+
+        const ofA = await store.journal({ about: { merchant: A }, limit: 10 });
+        expect(ofA.rows.map((row) => row.at)).toStrictEqual([2_000, 1_000]);
+        expect(ofA.total).toBe(2);
+        const ofAccount = await store.journal({ about: { account: "acc_1" }, limit: 10 });
+        expect(ofAccount.rows.map((row) => row.action)).toStrictEqual(["end_sessions"]);
+        expect((await store.journal({ about: { account: A }, limit: 10 })).total).toBe(0);
+        const ended = await store.journal({ action: "end_sessions", limit: 10 });
+        expect(ended.rows.map((row) => row.at)).toStrictEqual([4_000]);
+        expect(
+          (await store.journal({ action: "withdraw", about: { merchant: B }, limit: 10 })).total,
+        ).toBe(1);
+      });
+
+      it("hands back at most its page's most however many are asked for", async () => {
+        const store = await twoMerchants();
+        await store.recordJournal(refused(merchantA, 1_000, "no_reason"));
+
+        expect((await store.journal({ limit: 0 })).rows).toHaveLength(1);
+        expect((await store.journal({ limit: 10_000 })).rows).toHaveLength(1);
+      });
+    });
   });
 }
+
+/** The operator every press in the journal's cases is made by. */
+const OPERATOR = "acc_operator";
+const merchantA: JournalSubject = { kind: "merchant", id: A };

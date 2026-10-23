@@ -22,6 +22,13 @@ import type {
 import type { AnalyticsEvent } from "../analytics/events.js";
 import type { PayoutSplit } from "../split/parameters.js";
 import type { PaymentRecoveryContext } from "./facilitator.js";
+import type {
+  JournalEntry,
+  JournalPage,
+  JournalPress,
+  JournalQuery,
+  JournalRow,
+} from "./journal.js";
 import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
@@ -620,21 +627,26 @@ export interface Store {
    * call writes `at`; every later call while the grant stands returns the
    * original instant with `changed:false`. Null means the merchant is absent.
    * It does not move the merchant's `updated_at`. `analytics` is recorded only
-   * with a call that writes the grant.
+   * with a call that writes the grant. `journal`, the operator's press, is
+   * written in the same transaction for a merchant that exists, done where the
+   * call wrote the grant and unchanged where it stood already.
    */
   grantLiveApproval(
     id: string,
     at: number,
     analytics?: AnalyticsOf<{ readonly merchant: StoredMerchant; readonly changed: boolean }>,
+    journal?: JournalPress,
   ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /**
    * Clears the operator's grant, so the merchant stands as one never approved.
    * A call that finds no grant changes nothing and says `changed:false`. Null
    * means the merchant is absent. It does not move the merchant's `updated_at`.
+   * `journal` is written in the same transaction, as for a grant.
    */
   withdrawLiveApproval(
     id: string,
+    journal?: JournalPress,
   ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /** Every merchant, for the command that lists them. */
@@ -644,13 +656,16 @@ export interface Store {
    * Sets or clears one merchant's listing name and returns the merchant as they
    * now stand, or null where there is no such merchant. The value must already
    * be validated, by `setServiceName` in `app/merchants.ts`. `analytics` is
-   * recorded only when the name the row held is a different one.
+   * recorded only when the name the row held is a different one. `journal` is
+   * the operator taking the name away, written in the same transaction for a
+   * merchant that exists: done where the row held a name, unchanged where not.
    */
   setServiceName(
     id: string,
     serviceName: string | null,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
+    journal?: JournalPress,
   ): Promise<StoredMerchant | null>;
 
   /**
@@ -816,9 +831,32 @@ export interface Store {
    * learn which belong to others. The merchant is in the write's predicate
    * rather than checked after a read, so there is no window between learning
    * whose a key is and writing to it. A key already disabled keeps its first
-   * revocation instant.
+   * revocation instant. `journal` is an operator's press, written in the same
+   * transaction for a key this merchant has: done where this call stopped it,
+   * unchanged where it was stopped already.
    */
-  disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null>;
+  disableKeyOf(
+    merchantId: string,
+    id: string,
+    at: number,
+    journal?: JournalPress,
+  ): Promise<StoredKey | null>;
+
+  // --- the operator's journal -----------------------------------------------
+
+  /**
+   * Writes one row on its own, in a transaction of its own: a press refused
+   * after the operator flag confirmed who pressed, which changed nothing.
+   * Throws on a row the journal's rules refuse (`checkedJournalEntry`).
+   */
+  recordJournal(entry: JournalEntry): Promise<JournalRow>;
+
+  /**
+   * The rows a query asks for, newest first, with how many match in all and
+   * where the next page starts. Across merchants: only the operator's
+   * workspace reads it, after the flag check.
+   */
+  journal(query: JournalQuery): Promise<JournalPage>;
 
   // --- the catalog ----------------------------------------------------------
 

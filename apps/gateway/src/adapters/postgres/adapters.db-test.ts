@@ -77,7 +77,7 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  */
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
-  " payout_splits, commerce_analytics_events";
+  " payout_splits, commerce_analytics_events, operator_journal";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
