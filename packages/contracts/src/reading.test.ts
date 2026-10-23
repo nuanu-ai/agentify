@@ -203,6 +203,18 @@ describe("a reader of the merchant's answers", () => {
             named: "order",
             subject: parcel.id,
           });
+        } else if (name === "the order list" && deliversAt(name, path)) {
+          // In a list the order is marked unread and the orders beside it are
+          // still read, so one order cannot hide the rest.
+          const listed = readerOf(OrderListSchema).parse(newer).orders;
+          expect(listed[Number(path[1])], `${name} at ${path.join(".")}`).toMatchObject({
+            kind: "unknown",
+            subject: read.id,
+          });
+          expect(
+            listed.filter((one) => !("issues" in one)),
+            name,
+          ).toHaveLength(1);
         } else if (deliversAt(name, path)) {
           expect(readerOf(schema).safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(
             false,

@@ -322,6 +322,77 @@ describe("reading orders back", () => {
     expect(gateway?.calls.map((call) => call.route)).toStrictEqual(["list_orders"]);
   });
 
+  it("returns every order it can read, leaves out the ones it cannot, and names them in one problem without throwing", async () => {
+    // The restart loop reads this list; one order this release cannot read
+    // must not hide the paid orders beside it, and what was left out is said.
+    const listed = (id: string, extra: Record<string, unknown> = {}) => ({
+      ...order,
+      id,
+      status: "unfulfilled",
+      payment_status: "paid",
+      ...extra,
+    });
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: [
+            listed("order-1"),
+            listed("order-2", { quantity: 3 }),
+            listed("order-3", {
+              ship_to: {
+                pickup_point_id: "pp_4411",
+                carrier: "JNE",
+                city: "Tabanan",
+                country: "ID",
+              },
+            }),
+            listed("order-4", { status: "on_hold" }),
+          ],
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const open = await agentify.orders.list({ open: true });
+
+    expect(open.map((one) => one.id)).toStrictEqual(["order-1", "order-4"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false });
+    const said = problems[0]?.message ?? "";
+    expect(said).toContain("left out 2 of the 4 open orders listed");
+    expect(said).toContain("order-2 (quantity is a field");
+    expect(said).toContain("order-3 (ship_to.pickup_point_id");
+    expect(said).toContain("a newer release of @nuanu-ai/agentify may read them");
+    expect(said).toContain("of the 4 open orders listed, 1 has a status");
+    expect(said).not.toContain("buyer@example.com");
+    expect(said).not.toContain("pp_4411");
+  });
+
+  it("names at most ten orders it left out of a list and counts the rest", async () => {
+    // Two thousand unreadable orders must not become a megabyte in a log.
+    const agentify = await gatewayServing({
+      list_orders: () => ({
+        text: JSON.stringify({
+          orders: Array.from({ length: 15 }, (_, index) => ({
+            ...order,
+            id: `order-${index}`,
+            status: "unfulfilled",
+            payment_status: "paid",
+            quantity: 3,
+          })),
+        }),
+      }),
+    });
+    const problems: WorkerProblem[] = [];
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    expect(await agentify.orders.list()).toStrictEqual([]);
+    expect(problems[0]?.message).toContain("left out 15 of the 15 orders listed");
+    expect(problems[0]?.message).toContain("and 5 more, not named");
+    expect(problems[0]?.message).not.toContain("order-12");
+  });
+
   it("says nothing about a list whose every status this release knows", async () => {
     // The negative control: the warning is about words this release lacks,
     // not about orders being open.
@@ -354,6 +425,7 @@ describe("reading orders back", () => {
     });
 
     await expect(agentify.orders.get("order-1")).rejects.toThrow(AgentifyError);
+    await expect(agentify.orders.get("order-1")).rejects.toThrow(/quantity is a field/);
   });
 
   it("names a release only out of this package's own manifest, never a bundle's", () => {
