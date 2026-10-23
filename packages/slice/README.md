@@ -557,9 +557,10 @@ paid: the opposite of what `settle-lost`, and a late success that reached
 nobody, claim in the model. That was not tried here.
 
 A gateway whose facilitator is anything but the sandbox's is no longer a
-sandbox. It takes itself for a test channel: its first log line and the
-dashboard's banner say that payments settle on Base Sepolia with test funds,
-which is not true here, every key it issues begins with `csk_test_`, and a
+sandbox. It takes itself for a test channel: the dashboard's banner says that
+payments are in test funds on Base Sepolia, its first log line says that
+payments go through the control's address, which Agentify does not know to
+settle anything, every key it issues begins with `csk_test_`, and a
 merchant sells only once they have a seller name and a payout wallet, set in
 the dashboard as on the test channel. The sandbox's placeholder wallet no
 longer stands in for one. Any address will do, such as a well-known

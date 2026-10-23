@@ -1288,9 +1288,6 @@ change. Items marked "decision" wait for the product owner, not for a fix.
 Seen with a controlled instrument, which shows what the product does with an
 answer, not how often a real provider gives that answer:
 
-- With any facilitator but the sandbox's configured, the local stack calls
-  itself the test channel and says payments settle with test funds (J-08, on
-  the local stack).
 - SDK 0.8.0 skips an open order whose status word it does not know, so it
   delivers neither of such orders (D-08, second variant).
 - SDK 0.8.0 fails every poll when an order carries a field it does not know,

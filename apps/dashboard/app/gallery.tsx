@@ -855,7 +855,7 @@ const SIGNING_IN: GalleryState[] = [
       screen: "Sign in",
       when: "Somebody opens the dashboard on the test site.",
       cause:
-        "Every page of the test site carries the band that says payments there settle with test funds.",
+        "Every page of the test site carries the band that says payments there are in test funds.",
     },
     {
       path: "/sign-in",
@@ -2058,7 +2058,7 @@ const RECEIPTS: GalleryState[] = [
       id: "dashboard-receipts-test",
       screen: "Receipts",
       when: "A merchant on the test site looks at the receipts of their trial purchases.",
-      cause: "Every receipt there is a test purchase, settled with test funds on Base Sepolia.",
+      cause: "Every receipt there is a test purchase, paid in test funds on Base Sepolia.",
     },
     receiptsView(
       seenBy("test"),
