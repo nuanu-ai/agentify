@@ -27,7 +27,6 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
 import { Gateway } from "../app/gateway.js";
 import { setPayoutWallet, setServiceName } from "../app/merchants.js";
-import { orderFingerprint } from "../order-fingerprint.js";
 import { nobodyAnnounces } from "../ports/announcer.js";
 import { randomIds } from "../ports/clock.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
@@ -1008,9 +1007,10 @@ describe("a payment the payment layer refuses", () => {
       await worker.stop();
     }
   });
-  it("is logged by its order's fingerprint, never by the identifier that opens the order", async () => {
+  it("is logged by its order's identifier, never by the buyer's key that opens the order", async () => {
     // A stranger holding the public payment request can make this line be
-    // written as often as they like, about an order they cannot read.
+    // written as often as they like, about an order they cannot read. The
+    // identifier opens nothing, so the operator finds the order by it.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, syncCard);
     const worker = workUntilStopped(harnessed, {
@@ -1029,8 +1029,8 @@ describe("a payment the payment layer refuses", () => {
 
       const logged = await loggedWhile(() => present(served, itemId, madeUp));
 
-      expect(logged).toContain(orderFingerprint(orderId));
-      expect(logged).not.toContain(orderId);
+      expect(logged).toContain(`order ${orderId}`);
+      expect(logged).not.toContain((bought.body as { status_url: string }).status_url);
       expect(logged).not.toContain("/x402/orders/");
     } finally {
       await worker.stop();

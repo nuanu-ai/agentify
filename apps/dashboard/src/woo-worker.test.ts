@@ -8,7 +8,6 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   buyOverHttp,
   type Harness,
@@ -981,9 +980,9 @@ describe("the whole way through, against a real gateway", () => {
 
     expect(answer).toBeNull();
     expect(shop.placed).toStrictEqual([]);
-    // The log says which order waits, by the order's fingerprint, and why.
+    // The log says which order waits, by the order's identifier, and why.
     expect(written).toMatch(/could not be read.*nothing answered/);
-    expect(written).toContain(orderFingerprint("ord_1"));
+    expect(written).toContain("order ord_1");
     expect(written).not.toContain("ord_1");
   });
 
@@ -3734,7 +3733,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
     const written = await loggedWhile(() => turnOnce(connection(), parts));
 
     expect(written).toContain("was not accepted: the order is over");
-    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).toContain(`order ${anOrder().id}`);
     expect(written).not.toContain(anOrder().id);
   });
 
@@ -3769,7 +3768,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
 
     expect(answer).toBeNull();
     expect(written).toContain("not durably bound");
-    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).toContain(`order ${anOrder().id}`);
     expect(written).not.toContain("wc_order_");
     expect(written).not.toContain("download_file");
   });
