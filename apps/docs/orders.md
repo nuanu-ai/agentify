@@ -804,7 +804,10 @@ kind or a word such as a price question's purpose, does the problem say that a
 newer release reads it. Neither problem, nor any failure your package
 reports about an answer it could not read, repeats what that answer carried:
 the buyer's parameters and the prices stay out of your logs, and only the
-names of the fields and what was expected there are given. An answer that is
+names of the fields and what was expected there are given. A name that could
+itself be data, such as a key among the buyer's parameters, is not written, a
+long one is cut and says so, and an order or a price question is named by its
+identifier only where that identifier is not itself what failed. An answer that is
 not JSON at all, such as a proxy's error page, is quoted, cut short where it is
 long.
 

@@ -38,3 +38,10 @@ A failure about an answer that was JSON but not the route's document names the
 route and the fields that did not fit, with what was expected there, and no
 longer quotes the answer, which could carry the buyer's parameters. An answer
 that is not JSON is still quoted.
+
+What the contracts' reader marks unread carries `findings` made by the new
+`findingsOf`, which hold where and what failed and never a value: a name not
+shaped like one is not written, a long one is cut and says so, a record key
+that does not fit is reported against its record, and an identifier is named
+only where it did not itself fail. The SDK no longer exports the `OrderList`
+type, which no call of it returns.
