@@ -3165,7 +3165,7 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(saved.status).toBe(200);
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
         rate: "18000",
-        setBy: PERSON,
+        sessionSignedInAt: expect.any(Date),
         reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
         confirmed: false,
       });
@@ -3175,6 +3175,44 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(notice?.to).toBe(PERSON);
       expect(notice?.body).toContain("18000 IDR per US dollar");
       expect(notice?.body).toContain("No rate was set before");
+    });
+
+    it("names no address as who entered a rate, and says when the session that saved it signed in, as its notice does", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      const signedIn = /signed in to this account at ([^.]+?)\./.exec(
+        rateNotices(running)[0]?.body ?? "",
+      )?.[1];
+
+      const text = readable((await running.get("/woocommerce")).html);
+      const told = /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+
+      expect(signedIn).toBeDefined();
+      expect(told).toContain(`signed in to this account at ${signedIn}`);
+      expect(told).not.toContain(PERSON);
+      expect(told).not.toContain("@");
+    });
+
+    it("says so, rather than name a moment, where the sign-in of the session that saved a rate is not recorded", async () => {
+      const running = await started(inRupiah);
+      await connectedIn(running);
+      await running.shops.saveRate(running.accountId, SHOP, {
+        currency: "IDR",
+        rate: "18000",
+        setAt: new Date("2026-10-20T08:00:00.000Z"),
+        sessionSignedInAt: null,
+        reference: null,
+        confirmed: false,
+      });
+
+      const text = readable((await running.get("/woocommerce")).html);
+      const told = /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+
+      expect(told).toContain("2026-10-20 08:00:00 UTC");
+      expect(told).not.toMatch(/signed in to this account at/);
+      expect(told).toMatch(/not recorded/);
+      expect(told).not.toContain(PERSON);
     });
 
     it("keeps a rate saved while the shop is being imported, and asks for an import once that one ends", async () => {

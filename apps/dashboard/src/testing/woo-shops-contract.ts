@@ -25,7 +25,7 @@ const RUPIAH = {
   currency: "IDR",
   rate: "18000",
   setAt: NOW,
-  setBy: "owner@example.com",
+  sessionSignedInAt: new Date("2026-10-19T07:30:00.000Z"),
   reference: { rate: "18035.292596", source: "Coinbase", readAt: NOW },
   confirmed: false,
 };
@@ -624,6 +624,7 @@ export const wooShopsContract = (
           ...RUPIAH,
           rate: "17950.5",
           setAt: LATER,
+          sessionSignedInAt: null,
           reference: null,
           confirmed: true,
         });
@@ -633,6 +634,7 @@ export const wooShopsContract = (
           ...RUPIAH,
           rate: "17950.5",
           setAt: LATER,
+          sessionSignedInAt: null,
           reference: null,
           confirmed: true,
         });

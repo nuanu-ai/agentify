@@ -35,7 +35,7 @@ const RATE: RateEntry = {
   currency: "IDR",
   rate: "18000",
   setAt: SET,
-  setBy: "owner@example.com",
+  sessionSignedInAt: new Date("2026-10-09T09:00:00.000Z"),
   reference: { rate: "18035.292596", source: "Coinbase", readAt: SET },
   confirmed: false,
 };
