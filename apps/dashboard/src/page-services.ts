@@ -25,6 +25,7 @@ import {
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
+import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
   type DashboardDestination,
@@ -100,7 +101,7 @@ export type Outcome<View> =
       headers?: Readonly<Record<string, string>>;
       setCookies?: readonly string[];
     }>
-  | Readonly<{ kind: "problem"; problem: Problem }>;
+  | Readonly<{ kind: "problem"; problem: Problem; setCookies?: readonly string[] }>;
 
 /**
  * A page that could not be drawn or a form that was not done. The page itself
@@ -772,18 +773,30 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   const signOutAllButThisBrowser = async (
     person: Person,
     cookie: string | undefined,
-  ): Promise<{ ended: number; renewing: <View>(outcome: Outcome<View>) => Outcome<View> }> => {
-    if (person.merchant === null) return { ended: 0, renewing: (outcome) => outcome };
-    const { ended, setCookies } = await identity.endMerchantSessionsAndRenew(
-      person.merchant.id,
-      cookie,
-    );
+  ): Promise<{
+    ended: number;
+    renewing: <View>(answering: () => Promise<Outcome<View>>) => Promise<Outcome<View>>;
+  }> => {
+    const { ended, setCookies } =
+      person.merchant === null
+        ? { ended: 0, setCookies: [] }
+        : await identity.endMerchantSessionsAndRenew(person.merchant.id, cookie);
     return {
       ended,
-      renewing: (outcome) =>
-        outcome.kind === "problem" || setCookies.length === 0
+      // The old session has ended by now, so whatever the answer, a failure
+      // among them, it carries the new one.
+      renewing: async (answering) => {
+        let outcome: Awaited<ReturnType<typeof answering>>;
+        try {
+          outcome = await answering();
+        } catch (thrown) {
+          if (setCookies.length === 0) throw thrown;
+          throw new FailedAfterSettingCookies(setCookies);
+        }
+        return setCookies.length === 0
           ? outcome
-          : { ...outcome, setCookies: [...(outcome.setCookies ?? []), ...setCookies] },
+          : { ...outcome, setCookies: [...(outcome.setCookies ?? []), ...setCookies] };
+      },
     };
   };
 
@@ -812,26 +825,28 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         person,
         `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return renewing(toSettings);
-      return renewing(
-        await settingsDrawn(person, {
-          kind: "wallet-notice",
-          notice: cancelledByTyping(applies, pending.payout_wallet),
-        }),
+      if (!byTyping) return await renewing(async () => toSettings);
+      return await renewing(
+        async () =>
+          await settingsDrawn(person, {
+            kind: "wallet-notice",
+            notice: cancelledByTyping(applies, pending.payout_wallet),
+          }),
       );
     }
     noted(
       person,
       `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return renewing(
-      await settingsDrawn(person, {
-        kind: "wallet-notice",
-        notice:
-          `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-          `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-          SIGNED_OUT_BUT_THIS_BROWSER,
-      }),
+    return await renewing(
+      async () =>
+        await settingsDrawn(person, {
+          kind: "wallet-notice",
+          notice:
+            `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
+            `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
+            SIGNED_OUT_BUT_THIS_BROWSER,
+        }),
     );
   };
 
@@ -852,8 +867,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       person,
       `${how} after a change of the wallet their share is paid out to had taken effect; ${ended} sessions of the merchant were ended and this browser was given a new one`,
     );
-    return renewing(
-      await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) }),
+    return await renewing(
+      async () =>
+        await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) }),
     );
   };
 

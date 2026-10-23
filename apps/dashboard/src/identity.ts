@@ -1438,12 +1438,19 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           query: { disableRefresh: true },
         });
         if (found === null || personFrom(found.user).merchant?.id !== merchantId) continue;
-        const renewed = await auth.api.renewSession({
-          headers: asHeaders(value),
-          returnHeaders: true,
-        });
-        kept.add(renewed.response.token);
-        setCookies = renewed.headers.getSetCookie();
+        try {
+          const renewed = await auth.api.renewSession({
+            headers: asHeaders(value),
+            returnHeaders: true,
+          });
+          kept.add(renewed.response.token);
+          setCookies = renewed.headers.getSetCookie();
+        } catch {
+          // The session can end between the read and the renewal, as when
+          // another tab signs out everywhere; failing here would end nothing,
+          // so every session ends and the browser signs in again.
+          console.error("[dashboard] a session could not be renewed, so none was kept");
+        }
         break;
       }
       const people = await (await contextOf()).adapter.findMany<{ id: string }>({
