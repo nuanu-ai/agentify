@@ -2,7 +2,8 @@
 
 Date: 2026-09-24
 Status: accepted (the product owner, 2026-08-28 to 2026-09-25; Google sign-in,
-2026-10-15); merges what were ADR-0009 and ADR-0024
+2026-10-15; signing out everywhere, revised 2026-10-23); merges what were
+ADR-0009 and ADR-0024
 
 ## Context
 
@@ -54,7 +55,9 @@ merchant, its account. Sign-in and deletion serialize on that same address.
 
 **3. Headers and sign-out belong to the whole site.** Headers name the signed-in
 address and offer sign-out; shared caches keep no answer carrying an address.
-Sign-out ends this browser's session, and settings can end all its other ones.
+Sign-out ends this browser's session, and settings can end every session of
+the account, this browser's included: a session copied from this browser
+carries the same token, so keeping this one would keep the copy.
 Every dashboard form behind the gate and scanner account form names the address
 it was drawn for; another address or no address is refused without action.
 
