@@ -56,6 +56,14 @@ WooCommerce is never refused for it, because its orders are filled inside
 Agentify; a shop that fails answers its price question with the failure.
 Both refusals are retryable, and neither charges anything.
 
+An order your package cannot read, such as one carrying a field added after
+your release, goes the way of a handler that threw: it is not handed to your
+handler, nothing is answered, and it comes again within its attempts, while
+everything else on the subscription goes on. Your problem handler receives an
+`unread` problem naming the order and the fields it could not read, and
+upgrading the package is what reads it ([When Agentify is newer than your
+package](/orders#when-agentify-is-newer-than-your-package)).
+
 What each status word means and which of them stay on the list of open orders
 is in [Finding out where an order stands](/orders#finding-out-where-an-order-stands);
 how long each wait lasts is in [Every time limit](/orders#every-time-limit);

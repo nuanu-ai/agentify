@@ -179,11 +179,16 @@ it does not know is skipped with an `event_skipped` problem, and an order's
 status or payment word, an event's reason, a call's result word or a price
 question's purpose it does not know reads `unknown`
 ([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).
-What an order delivers is read exactly, and an unknown field or address shape
-there fails loudly rather than reaching your handler narrowed. A rename, a
+What an order delivers is read exactly: an order carrying an unknown field or
+address shape never reaches your handler narrowed, and is set aside with an
+`unread` problem naming the fields while the rest of the subscription goes on.
+`orders.list` counts the orders whose status word this release does not know in
+an `unread` problem too, and no failure this package reports quotes an answer
+that was JSON, so the buyer's details stay out of your logs. A rename, a
 removal, a changed meaning or anything added to what an order delivers moves
 the contract version, and a
-process whose version Agentify does not share stops before it takes an order.
+process whose version Agentify does not share stops at the first poll answer,
+before it takes an order.
 Every call names the package's release in its `user-agent`. What changed in each
 release is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md). Register `agentify.on('problem', …)`, which is where you
