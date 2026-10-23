@@ -10,8 +10,11 @@
  */
 
 import type { Gateway } from "@agentify/gateway";
+import type { OperatorReader } from "@agentify/gateway/operator";
 import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
+import { type AdminServices, adminServicesFor } from "./admin/index.js";
+import type { DashboardJournal } from "./admin/journal.js";
 import type { ApprovalDirectory } from "./approval-command.js";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
@@ -64,6 +67,15 @@ export interface DashboardParts {
   readonly shop?: ShopCalls;
   /** The connector's own messages; the dashboard's mail where absent, as a deployment leaves it. */
   readonly postman?: Postman;
+  /**
+   * What the operator's workspace reads and writes with: the reader across
+   * merchants and the journal a dashboard action writes its row through.
+   * Absent, the workspace is not built and every page of it answers as one
+   * that is not there; nothing else in the dashboard is handed either.
+   */
+  readonly admin?: Readonly<{ reader: OperatorReader; journal: DashboardJournal }>;
+  /** Only tests pass another, to stand at a moment of their own. */
+  readonly now?: () => Date;
 }
 
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
@@ -189,6 +201,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
                 gateway: parts.gateway,
               }),
             }),
+        ...(parts.admin === undefined
+          ? {}
+          : { admin: adminServicesOver(config, parts, parts.admin) }),
         identity,
         clientFor,
         registrar: parts.registrar ?? registrarFor(parts.gateway),
@@ -235,6 +250,32 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   );
 
   return app;
+}
+
+/**
+ * The workspace's services, the one place the operator's reader is handed to:
+ * every refused press is written to the journal through the gateway's store.
+ */
+function adminServicesOver(
+  config: DashboardConfig,
+  parts: DashboardParts,
+  admin: Readonly<{ reader: OperatorReader; journal: DashboardJournal }>,
+): AdminServices {
+  const now = parts.now ?? (() => new Date());
+  const store = parts.gateway.runtime.store;
+  return adminServicesFor({
+    config,
+    identity: parts.identity,
+    gateway: parts.gateway,
+    reader: admin.reader,
+    journal: admin.journal,
+    now,
+    pressing: {
+      now,
+      googleEnabled: parts.identity.googleEnabled,
+      refused: (entry) => store.recordJournal(entry),
+    },
+  });
 }
 
 /**
