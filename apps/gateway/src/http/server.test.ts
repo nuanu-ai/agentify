@@ -879,6 +879,7 @@ describe("the payment challenge", () => {
   it.each([
     ["the seller cannot be paid", "seller_cannot_be_paid", /seller cannot be paid/],
     ["the check named another payer", "payer_contradicted", /different payer/],
+    ["the check refused Agentify itself", "refused_agentify", /cannot check payments right now/],
   ] as const)(
     "does not tell the buyer to present the same payment again when %s",
     async (_, cause, says) => {

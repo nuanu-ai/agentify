@@ -1,5 +1,7 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
-import type { FacilitatorClient } from "@x402/core/server";
+import { type FacilitatorClient, HTTPFacilitatorClient } from "@x402/core/server";
 import {
   FacilitatorTimeoutError,
   type PaymentPayload,
@@ -10,7 +12,7 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
 import type { Charge } from "../../ports/facilitator.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
@@ -834,7 +836,73 @@ describe("verifying a payment", () => {
     ).verify(charge(honest()));
 
     expect(answered).toMatchObject({ verified: "unknown", cause: "no_answer" });
+    if (answered.verified === "unknown") expect(answered.failure).toContain("500");
   });
+});
+
+describe("a facilitator that answers a check with a failure status and no verdict", () => {
+  // The real client, on a server on this machine: the status reaches the
+  // gateway only in the shape the client raises it, and that is what is read.
+  const closing: (() => Promise<void>)[] = [];
+  afterEach(async () => {
+    await Promise.all(closing.splice(0).map((close) => close()));
+  });
+
+  const answeringWith = async (status: number, body: string): Promise<FacilitatorClient> => {
+    const server = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(body);
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    closing.push(() => new Promise((resolve) => server.close(() => resolve())));
+    return new HTTPFacilitatorClient({
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    });
+  };
+
+  const NOT_A_VERDICT = JSON.stringify({ error: "a body the log must not carry" });
+
+  it.each([401, 403, 404])(
+    "reads %i as the check refusing Agentify, naming the status for the log and not the body",
+    async (status) => {
+      const answered = await facilitatorFor(
+        await answeringWith(status, NOT_A_VERDICT),
+        edge,
+      ).verify(charge(honest()));
+
+      if (answered.verified !== "unknown")
+        throw new Error("a refusal of Agentify became a verdict");
+      expect(answered.cause).toBe("refused_agentify");
+      expect(answered.failure).toContain(String(status));
+      expect(answered.failure).not.toContain("must not carry");
+    },
+  );
+
+  it("reads a refusal of Agentify the same way when its body is not even JSON", async () => {
+    const answered = await facilitatorFor(await answeringWith(401, "Unauthorized"), edge).verify(
+      charge(honest()),
+    );
+
+    expect(answered).toMatchObject({ verified: "unknown", cause: "refused_agentify" });
+  });
+
+  it.each([429, 500, 503])(
+    "reads %i as no answer that asking again may cure, naming the status for the log",
+    async (status) => {
+      const answered = await facilitatorFor(
+        await answeringWith(status, NOT_A_VERDICT),
+        edge,
+      ).verify(charge(honest()));
+
+      if (answered.verified !== "unknown") throw new Error("a silence became a verdict");
+      expect(answered.cause).toBe("no_answer");
+      expect(answered.failure).toContain(String(status));
+    },
+  );
 });
 
 describe("executing a charge", () => {
