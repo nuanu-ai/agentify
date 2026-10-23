@@ -6101,6 +6101,119 @@ describe("a wallet change waiting on the live deployment", () => {
     expect((await partner.get("/cards")).to).toMatch(/^\/sign-in/);
   });
 
+  /** The settings fail to draw while `failing.now` holds, as a store that stopped answering. */
+  const drawingFails = (failing: { now: boolean }): Starting => ({
+    identity: (real) => ({
+      ...real,
+      analyticsOptedOut: async (personId) => {
+        if (failing.now) throw new Error("the store stopped answering");
+        return await real.analyticsOptedOut(personId);
+      },
+    }),
+  });
+
+  it.each([
+    ["the address paid now is typed in", false],
+    ["the address paid before is typed back after the change took effect", true],
+  ] as const)(
+    "keeps this browser signed in on its new session when %s and the page then fails to draw",
+    async (_how, landed) => {
+      const failing = { now: false };
+      const running = await live(drawingFails(failing));
+      await running.browser.signIn();
+      const before = running.browser.sessionToken();
+      const copy = copyOf(running.browser);
+      await aChangeWaits(running);
+      const screen = await running.browser.get("/settings");
+      if (landed) running.harnessed.advance(48 * 60 * 60 * 1_000);
+      failing.now = true;
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        ...(landed ? fromTheWalletForm(screen) : {}),
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+      failing.now = false;
+
+      expect(typed.status).toBe(500);
+      expect(await waitingNow(running)).toBeNull();
+      await renewedAndTheCopyEnded(running.browser, before, copy);
+    },
+  );
+
+  it("keeps this browser signed in on its new session when the change landed before the press and the page then fails to draw", async () => {
+    const failing = { now: false };
+    const running = await live(drawingFails(failing));
+    await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
+    await aChangeWaits(running);
+    const screen = await running.browser.get("/settings");
+    running.harnessed.advance(48 * 60 * 60 * 1_000);
+    failing.now = true;
+
+    const pressed = await running.browser.post(
+      "/settings/payout-wallet/cancel",
+      fromTheScreen(screen),
+    );
+    failing.now = false;
+
+    expect(pressed.status).toBe(500);
+    await renewedAndTheCopyEnded(running.browser, before, copy);
+  });
+
+  it("keeps this browser signed in on its new session when a read of the gateway fails after the cancel", async () => {
+    const failing = { now: false };
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        payoutSplits: async () => (failing.now ? lateAnswer(10) : await real.payoutSplits()),
+      }),
+    });
+    await running.browser.signIn();
+    const before = running.browser.sessionToken();
+    const copy = copyOf(running.browser);
+    await aChangeWaits(running);
+    failing.now = true;
+
+    const typed = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: running.harnessed.merchant.wallet,
+    });
+    failing.now = false;
+
+    expect(typed.status).toBeGreaterThanOrEqual(500);
+    expect(await waitingNow(running)).toBeNull();
+    await renewedAndTheCopyEnded(running.browser, before, copy);
+  });
+
+  it("sets the new session's cookie as a sign-in sets it, to last as long", async () => {
+    const running = await live();
+    await running.browser.signIn();
+    await aChangeWaits(running);
+    const attributesOfTheSession = (lines: readonly string[]): string[] => {
+      const line = lines
+        .filter((one) => one.startsWith(`${COOKIE}=`) || one.startsWith(`${SECURE_COOKIE}=`))
+        .at(-1);
+      return (line ?? "")
+        .split(";")
+        .slice(1)
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => !part.startsWith("expires="))
+        .sort();
+    };
+    rewindLinkSends(running.rows);
+    await running.identity.requestLink(PERSON, "default", { client: "192.0.2.10" });
+    const opened = await running.identity.openLink(
+      actionIn(running.mails.at(-1)).searchParams.get("token") ?? "",
+    );
+    if (opened.status !== "opened") throw new Error("the link did not open");
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+
+    const signedIn = attributesOfTheSession(opened.setCookies);
+    expect(signedIn).toContainEqual(expect.stringMatching(/^max-age=\d+$/));
+    expect(attributesOfTheSession(pressed.headers.getSetCookie())).toStrictEqual(signedIn);
+  });
+
   it("leaves the sessions of an account at another merchant alone when a change is cancelled", async () => {
     const running = await live();
     await running.identity.make("stranger@example.com", "mer_another");
