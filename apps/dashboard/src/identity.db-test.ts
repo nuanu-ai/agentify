@@ -789,14 +789,14 @@ if (databaseUrl === null) {
         );
         const pressed = await signedIn("owner@example.com");
 
-        const ended =
-          reach === "person"
-            ? await identity.endOtherSessionsOfPerson(owner.id, pressed)
-            : await identity.endOtherSessionsOfMerchant(MERCHANT, pressed);
-
-        expect(ended).toBe(1);
+        if (reach === "person") {
+          expect(await identity.endSessionsOfPerson(owner.id)).toBe(2);
+          expect(await identity.whoIs(pressed)).toBeNull();
+        } else {
+          expect(await identity.endOtherSessionsOfMerchant(MERCHANT, pressed)).toBe(1);
+          expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+        }
         expect(await identity.whoIs(laptop)).toBeNull();
-        expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
       },
     );
 
@@ -817,17 +817,18 @@ if (databaseUrl === null) {
         [owner.id],
       );
 
-      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(150);
+      expect(await identity.endSessionsOfPerson(owner.id)).toBe(151);
       expect(
         (
           await pool.query("select count(*)::int as n from dashboard_sessions where user_id = $1", [
             owner.id,
           ])
         ).rows[0],
-      ).toStrictEqual({ n: 1 });
+      ).toStrictEqual({ n: 0 });
+      expect(await identity.whoIs(pressed)).toBeNull();
     });
 
-    it("ends every other session of one account and leaves another account's alone", async () => {
+    it("ends every session of one account, the pressing one included, and leaves another account's alone", async () => {
       // On PostgreSQL the sessions are rows the component reads by account, so
       // the reach of the call is checked here and not only on the memory store.
       const messages: Message[] = [];
@@ -846,8 +847,8 @@ if (databaseUrl === null) {
       const laptop = await signedIn("owner@example.com");
       const partner = await signedIn("partner@example.com");
 
-      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(1);
-      expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      expect(await identity.endSessionsOfPerson(owner.id)).toBe(2);
+      expect(await identity.whoIs(pressed)).toBeNull();
       expect(await identity.whoIs(laptop)).toBeNull();
       expect((await identity.whoIs(partner))?.person.email).toBe("partner@example.com");
     });
