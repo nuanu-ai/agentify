@@ -165,6 +165,24 @@ describe("additions that only inform", () => {
     expect((await json("/x402/orders/ord_1/status")).status).toBe("added_status");
   });
 
+  it("log an order's status read by its route, never by the buyer's key its address carries", async () => {
+    // The key in the address opens the order and its goods, and a run's log
+    // is read by more people than the buyer.
+    const to = await upstream({
+      "GET /x402/orders/bk_9d41c0a7e2/status": {
+        body: '{"order_id":"ord_1","status":"in_progress","payment_status":"paid"}',
+      },
+    });
+    const { base, lines } = await proxied(to, "status-word");
+
+    expect((await fetch(`${base}/x402/orders/bk_9d41c0a7e2/status`)).status).toBe(200);
+
+    const logged = lines.filter((line) => / #\d+ GET /.test(line));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("GET /x402/orders/:buyer_key/status");
+    expect(lines.join("\n")).not.toContain("bk_9d41c0a7e2");
+  });
+
   it("narrowed to a path pattern, reach only the answers whose path it matches", async () => {
     const read = '{"id":"ord_1","status":"in_progress"}';
     const to = await upstream({
