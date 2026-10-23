@@ -625,6 +625,33 @@ describe("a buyer whose payment came second", () => {
   });
 });
 
+describe("a payer who signs the kept challenge again from another wallet", () => {
+  it("is told that a fresh payment from the wallet that paid returns the purchase, not only to buy again", async () => {
+    // An agent that lost its answer and holds several wallets may sign again
+    // from the wrong one. Sent only to start a new purchase, it would pay a
+    // second time for goods it already owns.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const bought = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+    expect(bought.status).toBe(200);
+
+    const fromAnother = await present(
+      served,
+      itemId,
+      await paymentAgainst(challenge, STRANGER, "0x02"),
+    );
+
+    expect(fromAnother.status).toBe(409);
+    const { error } = fromAnother.body as { error: { code: string; message: string } };
+    expect(error.code).toBe("not_this_purchase");
+    expect(error.message).toMatch(/nothing was charged/i);
+    expect(error.message).toMatch(/fresh payment from that wallet returns it/i);
+    expectNoKeyIn(fromAnother.body);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
 describe("a payer whose answer was lost", () => {
   it("cannot collect goods with the public used authorization, and a fresh verified payment returns them uncharged", async () => {
     // The identifier in the challenge opens nothing, so paying again is how a
