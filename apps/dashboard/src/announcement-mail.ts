@@ -39,7 +39,7 @@ const askedIn = (asked: AskedInTheDashboard): string =>
   `in the dashboard, from a session signed in as ${asked.email}`;
 
 const IF_NOT_YOU =
-  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs every other session out.";
+  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs out every session of your merchant, a copy of yours included, and keeps you signed in on a new one.";
 
 /**
  * The order matters: the stop is immediate; signing out everywhere ends a

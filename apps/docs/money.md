@@ -220,8 +220,10 @@ Everybody who signs in to your merchant's dashboard is sent a message first,
 saying the change was asked for and from which account's session, and the new
 address takes effect forty-eight hours after the messages went out. Until then
 buyers pay into the old contract, and your Settings screen shows the waiting
-address, the moment it takes effect and a button that cancels the change,
-which also signs every other session out. So if you can no longer trust the
+address, the moment it takes effect and a button that cancels the change.
+Cancelling also signs out every session of your merchant, including a copy
+somebody may have taken of your own browser's, and keeps the browser you
+cancel from signed in on a new session. So if you can no longer trust the
 old wallet, replace it at once and pause selling for those two days.
 
 A change that cannot be announced to every account is not recorded at all, and

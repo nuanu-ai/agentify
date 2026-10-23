@@ -14,6 +14,7 @@ import {
   redirectDocument,
   useRouteLoaderData,
 } from "react-router";
+import { cookiesCarriedBy } from "../src/carried-cookies.js";
 import type { Outcome, Surface } from "../src/page-services.js";
 import { services } from "./services.js";
 
@@ -145,7 +146,10 @@ export function answer<View>(outcome: Outcome<View>, { request, url, context }: 
     said: outcome.problem.said,
     ...(request.method === "GET" ? { again: `${url.pathname}${url.search}` } : {}),
   };
-  throw data(trouble, { status: outcome.problem.status });
+  throw data(trouble, {
+    status: outcome.problem.status,
+    headers: headersOf(undefined, outcome.setCookies),
+  });
 }
 
 /**
@@ -159,10 +163,11 @@ export async function acted<View>(run: () => Promise<Outcome<View>>, asked: Aske
   let outcome: Outcome<View>;
   try {
     outcome = await run();
-  } catch {
+  } catch (thrown) {
     console.error("[dashboard] a request failed");
     throw data({ kind: "broken", chrome: chromeOf(asked.context) } satisfies Trouble, {
       status: 500,
+      headers: headersOf(undefined, cookiesCarriedBy(thrown)),
     });
   }
   return answer(outcome, asked);
