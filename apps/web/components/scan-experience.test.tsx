@@ -101,6 +101,7 @@ describe("ScanExperience teaser actions", () => {
     // The scan's own part of the page; the site's footer carries the year of its copyright.
     const scan = running.slice(running.indexOf("<main"), running.indexOf("</main>"));
     expect(finished).toContain("Oct 13, 2026");
+    expect(scan).toContain("example.com");
     expect(scan).not.toContain("2026");
   });
 
