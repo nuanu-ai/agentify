@@ -1,0 +1,43 @@
+/**
+ * How every read of the operator's reader runs on Postgres: inside a
+ * transaction opened read only, so the database refuses any write a read might
+ * attempt, with a statement time of its own, so a slow page is cut off rather
+ * than holding connections the money path needs. The handle a read is given
+ * can select and run raw SQL; whatever it tries, the transaction can only read.
+ */
+
+import { sql } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+
+/** How long one statement of an operator's read may run before the database cancels it. */
+export const OPERATOR_STATEMENT_MS = 5_000;
+
+type Transaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
+
+/** What a read is handed: a read-only transaction's ways of reading. */
+export type ReadOnlyTransaction = Pick<
+  Transaction,
+  "select" | "selectDistinct" | "$count" | "execute"
+>;
+
+/** Runs one read of the operator's reader. */
+export type ReadOnly = <T>(read: (tx: ReadOnlyTransaction) => Promise<T>) => Promise<T>;
+
+export function readOnlyOn(
+  db: NodePgDatabase,
+  statementMs: number = OPERATOR_STATEMENT_MS,
+): ReadOnly {
+  if (!Number.isInteger(statementMs) || statementMs <= 0) {
+    throw new Error("an operator's read needs a statement time of a whole number of milliseconds");
+  }
+  return async (read) =>
+    await db.transaction(
+      async (tx) => {
+        // `local`: the bound ends with the transaction and never stays on the
+        // pooled connection for whoever borrows it next.
+        await tx.execute(sql.raw(`set local statement_timeout = ${statementMs}`));
+        return await read(tx);
+      },
+      { accessMode: "read only" },
+    );
+}

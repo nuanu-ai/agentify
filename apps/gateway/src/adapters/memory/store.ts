@@ -101,6 +101,19 @@ const noEnvelopes: Envelopes = {
   },
 };
 
+/** What `MemoryStore#holdings` hands the operator's memory reader. */
+export interface MemoryHoldings {
+  readonly merchants: readonly StoredMerchant[];
+  readonly keys: readonly StoredKey[];
+  readonly cards: readonly StoredCard[];
+  /** Each order with when it was last written, as Postgres stamps `updated_at`. */
+  readonly orders: readonly { readonly record: StoredOrder; readonly writtenAt: number }[];
+  readonly receipts: readonly { readonly merchantId: string; readonly receipt: Receipt }[];
+  readonly splits: readonly RecordedPayoutSplit[];
+  /** The latest poll recorded for each merchant. */
+  readonly contact: ReadonlyMap<string, number>;
+}
+
 interface MerchantRow {
   readonly id: string;
   readonly name: string;
@@ -543,6 +556,27 @@ export class MemoryStore implements Store {
     const stored: StoredKey = Object.freeze({ ...found, disabledAt: found.disabledAt ?? at });
     this.#keys.set(found.id, stored);
     return stored;
+  }
+
+  // --- the operator's reads -------------------------------------------------
+
+  /**
+   * Everything this store holds, every merchant's, for the operator's memory
+   * reader alone, which reads across merchants as the Postgres one does.
+   */
+  holdings(): MemoryHoldings {
+    return {
+      merchants: [...this.#merchants.values()].map((row) => this.#storedMerchantOf(row)),
+      keys: [...this.#keys.values()],
+      cards: [...this.#cards.values()],
+      orders: [...this.#orders.values()].map((record) => ({
+        record,
+        writtenAt: this.#written.get(record.order.id) ?? 0,
+      })),
+      receipts: [...this.#receipts.values()],
+      splits: [...this.#splits],
+      contact: new Map(this.#contact),
+    };
   }
 
   // --- the operator's journal -----------------------------------------------
