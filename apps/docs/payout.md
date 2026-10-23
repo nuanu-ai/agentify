@@ -15,6 +15,23 @@ fee. Why it works that way is on
    approve the transaction; nothing is sent until you do.
 3. Approve it. Your share reaches your wallet in that same transaction.
 
+Once you approve it, Settings says that Coinbase Wallet sent the payout. That
+means the wallet accepted the transaction, not yet that the network has
+carried it out. Otherwise Settings says it does not know whether the payout
+went out: when Coinbase's window closes without confirming the payout, when
+the wallet's answer cannot be read, and when no answer comes within ten
+minutes, after which the page stops waiting. You may have approved the payout
+in Coinbase's window before it went away, so in each of these cases look at
+your payout contract before you send another. Its page on the block explorer,
+linked beside your wallet on Settings, lists the transactions that reached it
+and the USDC it holds now.
+
+Settings says that nothing was sent only when the wallet stopped before the
+payout was asked for: you closed Coinbase's window while it asked to connect,
+the wallet did not move to the payout's network, or the page could not open
+Coinbase Wallet at all. Then you can press again, or send the payout from
+another wallet as described below.
+
 A wallet that holds nothing yet may have nothing to pay the fee with. Then
 that first payout arrives when Agentify next pays out every payout contract.
 

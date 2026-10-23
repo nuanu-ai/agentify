@@ -8,4 +8,4 @@ export const STOP_ALL_SELLING = "Pause all sales";
 
 export const RESUME_ALL_SELLING = "Resume all sales";
 
-export const SIGN_OUT_EVERY_OTHER_DEVICE = "Sign out every other device";
+export const SIGN_OUT_EVERYWHERE = "Sign out everywhere";

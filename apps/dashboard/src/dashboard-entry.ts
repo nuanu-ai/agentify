@@ -194,13 +194,11 @@ export interface DashboardIdentity {
   endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
 
   /**
-   * Ends every live session of this one account except the ones the `keep`
-   * Cookie header carries, and returns how many ended. `keep` is the raw Cookie
-   * header of the presser's request, not a token: anything else keeps nothing
-   * and signs the presser out too. Another account naming the same merchant is
+   * Ends every live session of this one account, the one asking included, and
+   * returns how many ended. Another account naming the same merchant is
    * somebody else's, and its sessions are not this person's to end.
    */
-  endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
+  endSessionsOfPerson(personId: string): Promise<number>;
 
   /**
    * Records a product analytics observation that has no transaction of its

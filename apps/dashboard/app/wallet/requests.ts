@@ -16,6 +16,7 @@
  */
 
 import { getAddress, isAddress } from "viem";
+import { WALLET_ANSWERS_WITHIN_MS } from "./waiting.js";
 
 /** An EIP-1193 provider, as far as the dashboard uses one. */
 export interface Wallet {
@@ -27,15 +28,19 @@ export interface Wallet {
   disconnect?(): Promise<void> | void;
 }
 
-/** The merchant closed the wallet's window or declined; nothing happened. */
+/** The merchant closed the wallet's window or declined it before any payout was asked for; nothing happened. */
 export interface Cancelled {
   readonly kind: "cancelled";
 }
 
-/** The wallet failed, in its own words where it gave any. */
+/**
+ * The wallet failed before any payout was asked for. What it said of the
+ * failure is not kept: a wallet's words, or the browser's where the wallet's
+ * code itself broke, are not written for the merchant and can say something
+ * untrue of the payout.
+ */
 export interface Failed {
   readonly kind: "failed";
-  readonly reason: string;
 }
 
 /**
@@ -47,20 +52,47 @@ export interface Lost {
   readonly kind: "lost";
 }
 
+/**
+ * The wallet answered the payout with a refusal. A wallet's window can say it
+ * was closed and still carry out what it was approved to do, so a refusal of
+ * a payout already asked for does not show that nothing was sent.
+ */
+export interface Unconfirmed {
+  readonly kind: "unconfirmed";
+}
+
+/**
+ * The wallet gave no answer within `WALLET_ANSWERS_WITHIN_MS`: the page stopped
+ * waiting and ended the session with the wallet's window, so whatever the
+ * window answers after is not read as an address.
+ */
+export interface Unanswered {
+  readonly kind: "unanswered";
+}
+
+/**
+ * A payout the wallet gave no answer to within `WALLET_ANSWERS_WITHIN_MS`,
+ * which may still go out. `late` comes true if the wallet acknowledges the
+ * batch after all, and false on any other answer, or on none.
+ */
+export interface PayoutUnanswered extends Unanswered {
+  readonly late: Promise<boolean>;
+}
+
 /** EIP-1193's code for a request the person turned down. */
 const DECLINED = 4001;
 
 /** EIP-1193's code for a request the provider is not authorised for, as an answer from a session it no longer has. */
 const UNAUTHORISED = 4100;
 
+const codeOf = (thrown: unknown): unknown =>
+  typeof thrown === "object" && thrown !== null ? (thrown as { code?: unknown }).code : undefined;
+
 const outcomeOf = (thrown: unknown): Cancelled | Failed | Lost => {
-  const { code, message } = (thrown ?? {}) as { code?: unknown; message?: unknown };
+  const code = codeOf(thrown);
   if (code === DECLINED) return { kind: "cancelled" };
   if (code === UNAUTHORISED) return { kind: "lost" };
-  return {
-    kind: "failed",
-    reason: typeof message === "string" && message !== "" ? message : "the wallet gave no reason",
-  };
+  return { kind: "failed" };
 };
 
 /**
@@ -73,7 +105,7 @@ const accountOf = async (wallet: Wallet): Promise<string> => {
   const accounts = await wallet.request({ method: "eth_requestAccounts" });
   const first = Array.isArray(accounts) ? (accounts[0] as unknown) : undefined;
   if (typeof first !== "string" || !isAddress(first)) {
-    throw { message: "the wallet answered with no address" };
+    throw new Error("the wallet answered with no address");
   }
   return getAddress(first);
 };
@@ -96,33 +128,53 @@ const disconnected = (wallet: Wallet): Promise<void> =>
 /**
  * `ask` from a wallet just disconnected, with what it threw read as an outcome,
  * and the wallet disconnected again after unless `alone` says a later request
- * has begun, whose session that would end.
+ * has begun, whose session that would end. Past `WALLET_ANSWERS_WITHIN_MS` the
+ * wallet is disconnected at once on the same condition, `ask`'s `waiting`
+ * turns false, and `late` is what `ask` comes to, if it ever does.
  */
-const forgotten = async <T>(
+const forgotten = async <T extends { readonly kind: string }>(
   wallet: Wallet,
   alone: () => boolean,
-  ask: () => Promise<T>,
-): Promise<T | Cancelled | Failed | Lost> => {
-  try {
-    await disconnected(wallet);
-    return await ask();
-  } catch (thrown) {
-    return outcomeOf(thrown);
-  } finally {
-    if (alone()) await disconnected(wallet);
-  }
+  ask: (waiting: () => boolean) => Promise<T>,
+): Promise<
+  | T
+  | Cancelled
+  | Failed
+  | Lost
+  | { readonly kind: "unanswered"; readonly late: Promise<T | Cancelled | Failed | Lost> }
+> => {
+  await disconnected(wallet);
+  let waiting = true;
+  const asking = ask(() => waiting)
+    .catch(outcomeOf)
+    .finally(async () => {
+      if (alone()) await disconnected(wallet);
+    });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), WALLET_ANSWERS_WITHIN_MS);
+  });
+  const first = await Promise.race([asking, deadline]);
+  clearTimeout(timer);
+  if (first !== null) return first;
+  waiting = false;
+  if (alone()) await disconnected(wallet);
+  return { kind: "unanswered", late: asking };
 };
 
 /** `alone` says whether no later request has begun on this page; by default none has. */
 export async function askAddress(
   wallet: Wallet,
   alone: () => boolean = () => true,
-): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed | Lost> {
-  return forgotten(
+): Promise<
+  { readonly kind: "address"; readonly address: string } | Cancelled | Failed | Lost | Unanswered
+> {
+  const asked = await forgotten(
     wallet,
     alone,
     async () => ({ kind: "address", address: await accountOf(wallet) }) as const,
   );
+  return asked.kind === "unanswered" ? { kind: "unanswered" } : asked;
 }
 
 /**
@@ -131,30 +183,46 @@ export async function askAddress(
  * on the chain the wallet is on, and Multicall3 sits at the same address on
  * most chains: sent elsewhere, it can succeed, pay out nothing and still cost
  * a fee. `sent` means the wallet acknowledged the batch, not that the network
- * has included it; an acknowledgment naming no batch is `lost`.
+ * has included it. Once the payout has been asked for, nothing the wallet
+ * answers shows that it was not sent: a refusal is `unconfirmed`, and any
+ * other failure, or an acknowledgment naming no batch, is `lost`; and no
+ * answer within `WALLET_ANSWERS_WITHIN_MS` is `unanswered`, after which the
+ * payout is never asked for if it has not been yet.
  */
 export async function sendPayout(
   wallet: Wallet,
   chainId: number,
   payout: Readonly<{ to: string; data: string }>,
   alone: () => boolean = () => true,
-): Promise<{ readonly kind: "sent" } | Cancelled | Failed | Lost> {
+): Promise<{ readonly kind: "sent" } | Cancelled | Failed | Unconfirmed | Lost | PayoutUnanswered> {
   const chain = `0x${chainId.toString(16)}`;
-  return forgotten(wallet, alone, async () => {
+  const sent = await forgotten(wallet, alone, async (waiting) => {
     const from = await accountOf(wallet);
+    if (!waiting()) return { kind: "failed" } as const;
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
-    const acknowledged = await wallet.request({
-      method: "wallet_sendCalls",
-      params: [
-        {
-          version: "2.0.0",
-          from,
-          chainId: chain,
-          atomicRequired: true,
-          calls: [{ to: payout.to, value: "0x0", data: payout.data }],
-        },
-      ],
-    });
+    if (!waiting()) return { kind: "failed" } as const;
+    let acknowledged: unknown;
+    try {
+      acknowledged = await wallet.request({
+        method: "wallet_sendCalls",
+        params: [
+          {
+            version: "2.0.0",
+            from,
+            chainId: chain,
+            atomicRequired: true,
+            calls: [{ to: payout.to, value: "0x0", data: payout.data }],
+          },
+        ],
+      });
+    } catch (thrown) {
+      return codeOf(thrown) === DECLINED
+        ? ({ kind: "unconfirmed" } as const)
+        : ({ kind: "lost" } as const);
+    }
     return namesABatch(acknowledged) ? ({ kind: "sent" } as const) : ({ kind: "lost" } as const);
   });
+  return sent.kind === "unanswered"
+    ? { kind: "unanswered", late: sent.late.then((late) => late.kind === "sent") }
+    : sent;
 }

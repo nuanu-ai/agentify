@@ -10,7 +10,7 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@ag
 import type { Announcement } from "@agentify/gateway/announcements";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
-import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
 import type { CommissionRate } from "./shares.js";
@@ -177,18 +177,18 @@ describe("what a message advises and claims", () => {
       },
     ],
   ] as const)(
-    "advises stopping selling, signing out every other device, then an address of one's own, after %s",
+    "advises stopping selling, signing out everywhere, then an address of one's own, after %s",
     async (_what, request) => {
       const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
 
       await tell(request satisfies Announcement);
 
       // In this order, by the names the screens give the controls: the stop is
-      // immediate, the sign-out keeps an intruder from undoing what comes next,
-      // and the address waits and is announced.
+      // immediate, the sign-out ends an intruder's session before it can undo
+      // what comes next, and the address waits and is announced.
       const body = sent[0]?.body ?? "";
       const stop = body.indexOf(STOP_ALL_SELLING);
-      const signOut = body.indexOf(SIGN_OUT_EVERY_OTHER_DEVICE);
+      const signOut = body.indexOf(SIGN_OUT_EVERYWHERE);
       const address = body.search(/set your own address/i);
       expect(stop).toBeGreaterThan(-1);
       expect(signOut).toBeGreaterThan(stop);

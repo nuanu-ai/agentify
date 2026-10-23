@@ -31,6 +31,7 @@ import { readable } from "../../src/testing/html.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { WALLET_WORDS } from "../wallet/buttons.js";
 import type { Wallet } from "../wallet/requests.js";
+import { WALLET_ANSWERS_WITHIN_MS } from "../wallet/waiting.js";
 import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
 
 /**
@@ -63,6 +64,13 @@ const coinbase = vi.hoisted(() => ({
   breaks: undefined as string | undefined,
   /** A request whose answer the provider can no longer read. */
   loses: undefined as string | undefined,
+  /** The next payout waits in `answerLater` to be answered by hand, as a window left open or a vanished one. */
+  holdsPayout: false,
+  answerLater: [] as Readonly<{ acknowledge: () => void; decline: () => void }>[],
+  /** Whether the keys of a session with Coinbase's window are kept in the page's storage. */
+  keys: false,
+  /** A request the provider answers by throwing `thrown`, which need not be an error EIP-1193 describes. */
+  throws: undefined as Readonly<{ at: string; thrown: unknown }> | undefined,
   chain: "0x2105",
   sent: [] as Readonly<{ chainId: string; calls: readonly unknown[] }>[],
   provider: undefined as Wallet | undefined,
@@ -74,9 +82,11 @@ vi.mock("../wallet/coinbase.js", async () => {
     async disconnect() {
       coinbase.remembered = null;
       coinbase.session += 1;
+      coinbase.keys = false;
     },
     async request({ method, params }) {
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
+      if (method === coinbase.throws?.at) throw coinbase.throws.thrown;
       if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
       if (method === coinbase.loses) {
         throw {
@@ -86,6 +96,7 @@ vi.mock("../wallet/coinbase.js", async () => {
       }
       if (method === "eth_requestAccounts") {
         if (coinbase.remembered !== null) return coinbase.remembered;
+        coinbase.keys = true;
         if (coinbase.holding > 0) {
           coinbase.holding -= 1;
           const asked = coinbase.session;
@@ -128,6 +139,18 @@ vi.mock("../wallet/coinbase.js", async () => {
       if (method === "wallet_sendCalls") {
         const batch = params?.[0] as { chainId: string; calls: readonly unknown[] };
         if (batch.chainId !== coinbase.chain) throw { code: 4901, message: "Chain mismatch" };
+        if (coinbase.holdsPayout) {
+          coinbase.holdsPayout = false;
+          return new Promise((resolve, reject) => {
+            coinbase.answerLater.push({
+              acknowledge: () => {
+                coinbase.sent.push(batch);
+                resolve({ id: "0x00b47c4" });
+              },
+              decline: () => reject({ code: 4001, message: "User rejected the request." }),
+            });
+          });
+        }
         coinbase.sent.push(batch);
         return { id: "0x00b47c4" };
       }
@@ -278,13 +301,18 @@ const shownText = (html: string): string => readable(html.replaceAll(/<\/?span[^
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   Object.assign(coinbase, {
+    holdsPayout: false,
+    answerLater: [],
+    keys: false,
     opened: true,
     remembered: null,
     session: 0,
     holding: 0,
     held: [],
     loses: undefined,
+    throws: undefined,
     provider: undefined,
     declines: undefined,
     breaks: undefined,
@@ -859,7 +887,24 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await press(button());
 
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(WALLET_WORDS.connectFailed("the page could not open it"))).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.connectNotOpened)).toBeTruthy();
+  });
+
+  it("says in words of its own, never the wallet's or the browser's, that no address came", async () => {
+    for (const thrown of [
+      { code: -32603, message: "insufficient funds for gas" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "eth_requestAccounts", thrown };
+      render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+
+      await press(button());
+
+      expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.connectFailed)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
   });
 
   it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
@@ -927,6 +972,43 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     });
 
     expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
+  });
+
+  it("stops waiting once Coinbase Wallet has not answered within the limit, says to press again, and leaves no keys of its session in the page", async () => {
+    vi.useFakeTimers();
+    coinbase.holding = 1;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    fireEvent.change(box(), { target: { value: "0x1234" } });
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(() => vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1));
+    expect(screen.getByText(WALLET_WORDS.waiting)).toBeTruthy();
+
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
+    expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
+    expect(coinbase.keys).toBe(false);
+    expect(box().value).toBe("0x1234");
+  });
+
+  it("puts no address into the box that arrives after it stopped waiting", async () => {
+    vi.useFakeTimers();
+    coinbase.holding = 1;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    fireEvent.change(box(), { target: { value: "0x1234" } });
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(() => vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS));
+
+    await act(async () => {
+      coinbase.held[0]?.accept();
+    });
+
+    expect(box().value).toBe("0x1234");
+    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
   });
 
   it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
@@ -1017,8 +1099,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
   });
 
-  it("sends nothing and says so when the merchant closes Coinbase's window", async () => {
-    coinbase.declines = "wallet_sendCalls";
+  it("sends nothing and says so when the merchant closes Coinbase's window before the payout is asked for", async () => {
+    coinbase.declines = "eth_requestAccounts";
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
 
     await press();
@@ -1027,13 +1109,41 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
   });
 
-  it("says, when the wallet does not send it, that the payout then arrives with Agentify's", async () => {
-    coinbase.breaks = "wallet_sendCalls";
+  it("never says nothing was sent when the window closes after the payout was asked for, and says to check before sending again", async () => {
+    coinbase.declines = "wallet_sendCalls";
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutFailed("insufficient funds for gas"))).toBeTruthy();
+    expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnconfirmed)).toBeTruthy();
+  });
+
+  it("says in words of its own, never the wallet's or the browser's, that nothing was sent when the wallet stops before the payout is asked for", async () => {
+    for (const thrown of [
+      { code: -32603, message: "insufficient funds for gas" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "wallet_switchEthereumChain", thrown };
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+      await press();
+
+      expect(coinbase.sent).toEqual([]);
+      expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
+  });
+
+  it("says nothing was sent when Coinbase Wallet cannot be opened", async () => {
+    coinbase.opened = false;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
   });
 
   it("takes a second press while the first is still unanswered, and says what it sent", async () => {
@@ -1109,7 +1219,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   it("says nothing more was sent, rather than that nothing was, when a later press is closed after a payout went out", async () => {
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await press();
-    coinbase.declines = "wallet_sendCalls";
+    coinbase.declines = "eth_requestAccounts";
 
     await press();
 
@@ -1127,12 +1237,29 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
+  it("never says the payout was not sent when the wallet's answer to it is a failure the page cannot read", async () => {
+    for (const thrown of [
+      { message: "The operation failed for an operation-specific reason" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "wallet_sendCalls", thrown };
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+      await press();
+
+      expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
+  });
+
   it("keeps saying it does not know when a later press is closed", async () => {
     coinbase.loses = "wallet_sendCalls";
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await press();
     coinbase.loses = undefined;
-    coinbase.declines = "wallet_sendCalls";
+    coinbase.declines = "eth_requestAccounts";
 
     await press();
 
@@ -1189,6 +1316,67 @@ describe("sending the payout from a Coinbase Wallet", () => {
     coinbase.declines = "eth_requestAccounts";
 
     await press();
+
+    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+  });
+
+  /** A payout pressed whose window then gives no answer for as long as the page waits. */
+  const unansweredFor = async (ms: number) => {
+    vi.useFakeTimers();
+    coinbase.holdsPayout = true;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(() => vi.advanceTimersByTimeAsync(ms));
+  };
+
+  it("keeps waiting for a payout until the limit, long enough to approve it with a passkey", async () => {
+    await unansweredFor(WALLET_ANSWERS_WITHIN_MS - 1);
+
+    expect(screen.getByText(WALLET_WORDS.waiting)).toBeTruthy();
+    expect(coinbase.keys).toBe(true);
+  });
+
+  it("says it does not know whether the payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
+    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+
+    expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull();
+    expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
+    expect(coinbase.keys).toBe(false);
+  });
+
+  it("says the payout was sent when the wallet acknowledges it after the limit", async () => {
+    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+
+    await act(async () => {
+      coinbase.answerLater[0]?.acknowledge();
+    });
+
+    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
+  });
+
+  it("keeps saying it does not know when the wallet refuses the payout after the limit", async () => {
+    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+
+    await act(async () => {
+      coinbase.answerLater[0]?.decline();
+    });
+
+    expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
+  });
+
+  it("does not say nothing was sent on a later press that is closed, once a payout went unanswered", async () => {
+    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+    coinbase.declines = "eth_requestAccounts";
+
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(() => vi.advanceTimersByTimeAsync(0));
 
     expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();

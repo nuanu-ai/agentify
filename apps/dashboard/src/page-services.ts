@@ -317,7 +317,8 @@ export interface PageServices {
     page(person: Person): Promise<Outcome<SettingsView>>;
     name(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     site(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
-    signOutOthers(person: Person, cookie: string | undefined): Promise<Outcome<SettingsView>>;
+    /** Ends every session of the account, the presser's own included, and leads to the sign-in. */
+    signOutEverywhere(person: Person): Promise<Outcome<never>>;
     /** The account's own choice about product analytics, never another account's. */
     analytics(person: Person, form: FormData): Promise<Outcome<SettingsView>>;
     wallet(
@@ -404,6 +405,12 @@ const SESSION_ENDED =
  */
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
+const SIGNED_OUT_EVERYWHERE_REASON = "signed-out-everywhere";
+
+const SIGNED_OUT_EVERYWHERE =
+  "Every device signed in to your account was signed out, this one included. " +
+  "Send yourself a new link to sign in again.";
+
 /**
  * A value named once, as a form or an address names it; named twice it is
  * nobody's choice, and is read as not named at all.
@@ -436,7 +443,12 @@ export const askViewOf = (
       : said === "unsaved"
         ? UNSAVED
         : undefined;
-  const reason = said === "session-ended" ? SESSION_ENDED : undefined;
+  const reason =
+    said === "session-ended"
+      ? SESSION_ENDED
+      : said === SIGNED_OUT_EVERYWHERE_REASON
+        ? SIGNED_OUT_EVERYWHERE
+        : undefined;
   return {
     screen: "ask",
     destination: dashboardDestinationIn(once(query.getAll("destination"))),
@@ -522,14 +534,6 @@ export interface Shown {
   readonly from: string | null;
   readonly paid: string | null;
 }
-
-/** How many other sessions of the account a press ended, the one thing its presser cannot see. */
-export const signedOutOthers = (ended: number): string =>
-  ended === 0
-    ? "No other session of this account was signed in, so none was signed out."
-    : ended === 1
-      ? "1 other session of this account was signed out."
-      : `${ended} other sessions of this account were signed out.`;
 
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
@@ -1504,12 +1508,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
 
       // The answer to a session left open somewhere or held by somebody else.
-      // It ends no other account's sessions and touches no key, and says how
-      // many it ended, the one thing the person could not otherwise see.
-      async signOutOthers(person, cookie) {
-        const ended = await identity.endOtherSessionsOfPerson(person.id, cookie);
-        noted(person, `signed out every other device of their account, ${ended} sessions in all`);
-        return await settingsDrawn(person, { kind: "account", notice: signedOutOthers(ended) });
+      // The presser's own session ends too: one copied from this browser
+      // carries the same token, and keeping this one would keep the copy. It
+      // ends no other account's sessions and touches no key.
+      async signOutEverywhere(person) {
+        const ended = await identity.endSessionsOfPerson(person.id);
+        noted(person, `signed out everywhere, ${ended} sessions in all`);
+        return {
+          kind: "redirect",
+          location: `${base}/sign-in?reason=${SIGNED_OUT_EVERYWHERE_REASON}`,
+          setCookies: clearingLines(identity, config.cookieSecure),
+        };
       },
 
       // Bound to the account signed in, never to one a form names: the gate

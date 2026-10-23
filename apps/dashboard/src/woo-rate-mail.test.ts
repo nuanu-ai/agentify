@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
+import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import { type RateNotice, rateNoticeMessage } from "./woo-rate-mail.js";
 
 const OWNER = "owner@example.com";
@@ -53,7 +53,7 @@ describe("the notice of a new exchange rate", () => {
 
     expect(sent.body).toContain("The previous rate was 18000 IDR per US dollar");
     expect(sent.body).toContain(STOP_ALL_SELLING);
-    expect(sent.body).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(sent.body).toContain(SIGN_OUT_EVERYWHERE);
     expect(sent.body).toContain("set your own rate again");
     expect(sent.html).toContain(`href="${SCREEN}"`);
     expect(sent.body).not.toMatch(/token=/);
