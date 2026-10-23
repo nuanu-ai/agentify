@@ -451,7 +451,9 @@ Because an order left alone that way may be paid work waiting on you,
 `orders.list` tells your problem handler how many of the orders it returned
 carry a status your package does not know, in one `unread` problem that is not
 fatal. It decides nothing about those orders; upgrading the package is what
-reads them.
+reads them. The same problem names any order the list left out because your
+package could not read it at all ([When Agentify is newer than your
+package](#when-agentify-is-newer-than-your-package)).
 
 ```ts
 const order = await agentify.orders.get(orderId)
@@ -783,8 +785,14 @@ version does not allow, and a newer release may read it, which is a
 possibility rather than a promise. Nothing is answered for that order, so it
 comes again while it has attempts left and its deadline allows, and otherwise
 ends undelivered; once paid, it stays on the open list.
-Read back, the same order fails `orders.get`, and fails `orders.list` as a
-whole, with a thrown `AgentifyError` that names the fields.
+Read back, the same order fails `orders.get` with a thrown `AgentifyError`
+that names the fields. `orders.list` does not throw for it: it returns every
+order it can read and leaves such an order out, and your problem handler
+receives one `unread` problem saying how many of the orders listed were left
+out and naming each by its identifier and the fields it could not read, the
+first ten of them, with the rest counted. A list is therefore never shorter
+than what Agentify sent without that problem saying so, and a loop over open
+orders goes on with the orders it can deliver.
 
 A message on the subscription that does not fit for another reason, such as a
 timestamp that is not one, is set aside in the same way with an `unread`

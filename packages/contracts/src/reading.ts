@@ -10,14 +10,20 @@
  * `{ type: "unknown", named }`, so a consumer can skip it and keep the rest of
  * the answer. What an order delivers stays closed, off the stream and read
  * back: a field or a shape there it does not know fails the order, because
- * dropping it would deliver the order wrongly without a word. Read back, the
- * answer fails with it; on the worker stream, only that message is marked
- * unread, so the version of the answer and the messages beside it are still
- * read. Everything the closed schema requires, it still requires.
+ * dropping it would deliver the order wrongly without a word. One order read
+ * back fails with it; in a list of orders and on the worker stream, only that
+ * order or message is marked unread, so the orders beside it, and the version
+ * of a poll answer, are still read. Everything the closed schema requires, it
+ * still requires.
  */
 
 import { z } from "zod";
-import { OrderWithStatusSchema } from "./api.js";
+import {
+  type OrderList,
+  OrderListSchema,
+  type OrderWithStatus,
+  OrderWithStatusSchema,
+} from "./api.js";
 import { type WorkerEnvelope, WorkerEnvelopeSchema } from "./envelope.js";
 import {
   ORDER_EVENT_TYPES,
@@ -63,6 +69,17 @@ export interface UnreadEnvelope {
   readonly issues: readonly z.core.$ZodIssue[];
 }
 
+/**
+ * An order in a list this reader could not read, such as one carrying a field
+ * added after this reader was built: its identifier where that could be read,
+ * and the schema's findings, whose `message` may hold the value that failed.
+ */
+export interface UnreadOrder {
+  readonly kind: UnknownWord;
+  readonly subject?: string;
+  readonly issues: readonly z.core.$ZodIssue[];
+}
+
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 type Opened<T> =
@@ -92,7 +109,9 @@ export type Read<T> =
       ? ReadEach<T> | UnreadEvent
       : Same<T, WorkerEnvelope> extends true
         ? ReadEach<T> | UnreadEnvelope
-        : ReadEach<T>;
+        : Same<T, OrderList> extends true
+          ? { orders: (Read<OrderWithStatus> | UnreadOrder)[] }
+          : ReadEach<T>;
 
 const aWord = () => z.string().regex(/\S/, "a word is not blank");
 
@@ -143,6 +162,27 @@ const READ_AS: ReadonlyMap<z.ZodType, () => z.ZodType> = new Map<z.ZodType, () =
       return z.unknown().transform((sent) => {
         const read = known.safeParse(sent);
         return read.success ? read.data : unreadEnvelope(sent, read.error.issues);
+      });
+    },
+  ],
+  [
+    OrderListSchema,
+    () => {
+      const each = reader(OrderWithStatusSchema);
+      return z.object({
+        orders: z.array(
+          z.unknown().transform((sent): unknown => {
+            const read = each.safeParse(sent);
+            if (read.success) return read.data;
+            const id = (sent as { id?: unknown } | null)?.id;
+            const unread: UnreadOrder = {
+              kind: UNKNOWN_WORD,
+              ...(typeof id === "string" ? { subject: id } : {}),
+              issues: read.error.issues,
+            };
+            return unread;
+          }),
+        ),
       });
     },
   ],

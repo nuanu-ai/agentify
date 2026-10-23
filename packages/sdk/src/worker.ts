@@ -25,6 +25,7 @@ import {
   type HandlerAnswer,
   HandlerAnswerSchema,
   type Order,
+  type OrderWithStatus,
   PROTOTYPE_KEY_IS_DROPPED,
   priceProblemsOf,
   type QuoteRequest,
@@ -34,6 +35,7 @@ import {
   UNKNOWN_WORD,
   type UnreadEnvelope,
   type UnreadEvent,
+  type UnreadOrder,
   type WorkerEnvelope,
   type WorkerEnvelopeKind,
 } from "@nuanu-ai/agentify-contracts";
@@ -211,27 +213,60 @@ export const acceptanceArgumentWarning = (orderId: string): WorkerProblem => ({
   message: `order ${orderId} was accepted with an argument, and an acceptance carries nothing: whatever was passed was not sent (eta_seconds was removed), so call accepted() or accept() with nothing in it`,
 });
 
+/** How many orders one warning about a list names before it counts the rest. */
+const ORDERS_NAMED_AT_MOST = 10;
+
 /**
- * The warning for orders read back with a status word this release does not
- * know. Such an order reads `unknown`, and a loop over open orders rightly
- * leaves it alone, so without this nothing would say that paid work may be
- * waiting among them. It counts them and decides nothing about them.
+ * The warning about a list of orders read back, or null when it holds nothing
+ * to warn about. It names the orders left out because this release could not
+ * read them, by identifier and where each failed but never by value, so the
+ * list is never shorter in silence; and it counts the orders whose status word
+ * this release does not know, which read `unknown` and which a loop over open
+ * orders rightly leaves alone, so that paid work waiting among them is said.
+ * It decides nothing about any of them.
  */
-export const unknownStatusWarning = (
-  listed: readonly { readonly status: string }[],
+export const listWarning = (
+  listed: readonly (Read<OrderWithStatus> | UnreadOrder)[],
   open: boolean,
 ): WorkerProblem | null => {
-  const unknown = listed.filter((order) => order.status === UNKNOWN_WORD).length;
+  const ofThem = `of the ${listed.length} ${open ? "open " : ""}orders listed`;
+  const unread = listed.filter((one): one is UnreadOrder => "issues" in one);
+  const unknown = listed.filter((one) => !("issues" in one) && one.status === UNKNOWN_WORD).length;
+  const said: string[] = [];
 
-  if (unknown === 0) return null;
+  if (unread.length > 0) {
+    const them = unread.length === 1 ? "it" : "them";
+    const named = unread
+      .slice(0, ORDERS_NAMED_AT_MOST)
+      .map(
+        (one) =>
+          `${one.subject === undefined ? "an order whose identifier could not be read" : `order ${one.subject}`} (${whereItFailed(one.issues)})`,
+      )
+      .join("; ");
+    const rest =
+      unread.length > ORDERS_NAMED_AT_MOST
+        ? `; and ${unread.length - ORDERS_NAMED_AT_MOST} more, not named`
+        : "";
+    const next = unread.every((one) => onlyWhatIsNew(one.issues))
+      ? `${NEWER_RELEASE} may read ${them}`
+      : `nothing here says whether ${unread.length === 1 ? "it was" : "they were"} sent broken or in a shape added later`;
 
-  const them = unknown === 1 ? "it" : "them";
+    said.push(
+      `orders.list left out ${unread.length} ${ofThem}, because each has something contract version ${contractVersion}, which this release speaks, does not allow: ${named}${rest}. Nothing here guesses whether to deliver ${them}, orders.get throws naming the same fields, and ${next}`,
+    );
+  }
 
-  return {
-    kind: WORKER_PROBLEM_KINDS.UNREAD,
-    fatal: false,
-    message: `of the ${listed.length} ${open ? "open " : ""}orders listed, ${unknown} ${unknown === 1 ? "has" : "have"} a status this release does not know, read as unknown: nothing here guesses whether to deliver ${them}, paid work may be waiting among ${them}, and ${NEWER_RELEASE} reads ${them}`,
-  };
+  if (unknown > 0) {
+    const them = unknown === 1 ? "it" : "them";
+
+    said.push(
+      `${ofThem}, ${unknown} ${unknown === 1 ? "has" : "have"} a status this release does not know, read as unknown: nothing here guesses whether to deliver ${them}, paid work may be waiting among ${them}, and ${NEWER_RELEASE} reads ${them}`,
+    );
+  }
+
+  return said.length === 0
+    ? null
+    : { kind: WORKER_PROBLEM_KINDS.UNREAD, fatal: false, message: said.join(". ") };
 };
 
 /**

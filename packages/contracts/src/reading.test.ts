@@ -126,7 +126,9 @@ const refused = {
 
 const ANSWERS: readonly (readonly [string, ZodType, unknown])[] = [
   ["an order read back", OrderWithStatusSchema, closedRead],
-  ["the order list", OrderListSchema, { orders: [read, closedRead] }],
+  // Copied apart, since the two share their price and a field added to one
+  // must not land in the other.
+  ["the order list", OrderListSchema, { orders: [read, structuredClone(closedRead)] }],
   ["a poll answer", WorkerPollResponseSchema, poll],
   ["the merchant's cards", MerchantCardListSchema, cards],
   ["the receipts", ReceiptListSchema, receipts],
@@ -213,7 +215,7 @@ describe("a reader of the merchant's answers", () => {
           });
           expect(
             listed.filter((one) => !("issues" in one)),
-            name,
+            `${name} at ${path.join(".")}`,
           ).toHaveLength(1);
         } else if (deliversAt(name, path)) {
           expect(readerOf(schema).safeParse(newer).success, `${name} at ${path.join(".")}`).toBe(

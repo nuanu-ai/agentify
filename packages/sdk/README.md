@@ -182,8 +182,9 @@ question's purpose it does not know reads `unknown`
 What an order delivers is read exactly: an order carrying an unknown field or
 address shape never reaches your handler narrowed, and is set aside with an
 `unread` problem naming the fields while the rest of the subscription goes on.
-`orders.list` counts the orders whose status word this release does not know in
-an `unread` problem too, and no failure this package reports quotes an answer
+`orders.list` returns every order it can read, and its `unread` problem names
+the orders it left out and counts those whose status word this release does not
+know. No failure this package reports quotes an answer
 that was JSON, so the buyer's details stay out of your logs. A rename, a
 removal, a changed meaning or anything added to what an order delivers moves
 the contract version, and a

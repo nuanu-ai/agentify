@@ -961,21 +961,20 @@ describe("a refusal the gateway put into words", () => {
   });
 
   it("says how many more fields did not fit than it names, in a long answer", async () => {
-    // A list of two thousand broken orders must not become a megabyte in a log.
-    const broken = { ...order, price: { ...order.price, amount: 5 } };
+    // An answer with forty fields that do not fit must not become a page of
+    // log; past ten, the rest are counted.
     const agentify = await gatewayServing({
-      list_orders: () => ({
+      get_order: () => ({
         text: JSON.stringify({
-          orders: Array.from({ length: 40 }, () => ({
-            ...broken,
-            status: "in_progress",
-            payment_status: "paid",
-          })),
+          ...order,
+          status: "in_progress",
+          payment_status: "paid",
+          ...Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`added_${index}`, 1])),
         }),
       }),
     });
 
-    const refused = await thrownBy(agentify.orders.list());
+    const refused = await thrownBy(agentify.orders.get("order-1"));
 
     expect(refused).toMatch(/and 30 more, not named/);
     expect(refused?.length ?? 0).toBeLessThan(2_000);

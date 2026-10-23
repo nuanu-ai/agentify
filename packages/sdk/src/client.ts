@@ -52,13 +52,13 @@ import {
   droppedFieldWarning,
   type EventHandler,
   type HandlerRegistry,
+  listWarning,
   type ProblemReporter,
   REGISTERED_AS,
   type RunningWorker,
   reportSafely,
   type StreamHandlerKind,
   startWorker,
-  unknownStatusWarning,
   type WorkerProblem,
 } from "./worker.js";
 
@@ -268,10 +268,15 @@ export interface OrdersNamespace {
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it until it is deleted: an order that ended
    * rejected or expired with nothing charged or held is deleted thirty days
-   * after it was last written, and then leaves every list. An order whose
-   * status is a word this release does not know reads `unknown`, and the
-   * problem reporter is told how many such orders the list holds, as one
-   * `unread` problem. Throws `AgentifyError` when the call fails.
+   * after it was last written, and then leaves every list.
+   *
+   * An order this release cannot read, such as one carrying a field the
+   * contract version it speaks does not allow, is left out rather than
+   * returned narrowed, and the rest are returned. An order whose status is a
+   * word this release does not know is returned reading `unknown`. Either
+   * way the problem reporter is told, in one `unread` problem naming the
+   * orders left out and counting the unknown words. Throws `AgentifyError`
+   * when the call fails.
    */
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }
@@ -676,10 +681,12 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
           query: query?.open === undefined ? {} : { open: query.open ? "true" : "false" },
         });
 
-        const unread = unknownStatusWarning(listed.orders, query?.open === true);
-        if (unread !== null) reportSafely(registry.problem, unread);
+        const warning = listWarning(listed.orders, query?.open === true);
+        if (warning !== null) reportSafely(registry.problem, warning);
 
-        return listed.orders.map((order) => withCalls(order));
+        return listed.orders
+          .filter((one): one is OrderWithStatus => !("issues" in one))
+          .map((order) => withCalls(order));
       },
     },
 
