@@ -37,7 +37,7 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
-import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { ORDER_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 const parcelCard: Card = CardSchema.parse({
   merchant_item_id: "beans-1kg",
@@ -253,7 +253,7 @@ describe("buying a parcel", () => {
   });
 
   it("does not tell a payment that is not one whether an address is the one priced", async () => {
-    // The payment's reference can be published, so a payment carrying only
+    // The order a payment names can be published, so a payment carrying only
     // that must not be a way to try addresses against the order.
     const { harnessed, served, itemId } = await started();
     const worker = workUntilStopped(harnessed, { onQuote: () => priced });
@@ -261,9 +261,8 @@ describe("buying a parcel", () => {
       body: { params: {}, ship_to: address },
     });
     await worker.stop();
-    const reference = decodePaymentRequiredHeader(
-      challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    ).accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+    const named = decodePaymentRequiredHeader(challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
+      .accepts[0]?.extra?.[ORDER_IN_EXTRA];
     harnessed.facilitator.willRefuseVerification("signature", "that is not a payment");
 
     const tried = async (shipTo: ShipTo) => {
@@ -272,7 +271,7 @@ describe("buying a parcel", () => {
         headers: {
           [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
             x402Version: 2,
-            accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: reference } } as never,
+            accepted: { extra: { [ORDER_IN_EXTRA]: named } } as never,
             payload: {},
           }),
         },
@@ -1047,7 +1046,6 @@ describe("a shipment against a card republished since the sale", () => {
     const orderId = "ord_written_before_orders_kept_a_result";
     await harnessed.store.addOrder({
       ...older,
-      paymentRef: harnessed.runtime.ids("pay"),
       buyerKey: harnessed.runtime.ids("bk"),
       order: { ...older.order, id: orderId },
     });

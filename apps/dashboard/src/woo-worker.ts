@@ -380,18 +380,14 @@ export const fillFromTheShop = async (
     // Nothing is answered and the claim stays: the request may have reached the
     // shop, so the next attempt must meet "we do not know" rather than a clean
     // slate.
-    console.error(
-      `[dashboard] order ${order.id} has no usable WooCommerce creation result`,
-    );
+    console.error(`[dashboard] order ${order.id} has no usable WooCommerce creation result`);
     return null;
   }
 
   // A response after POST is not proof the shop did not commit, so the
   // obligation stays `create_unknown` and needs exact-id recovery, rather than
   // turning a rewritten 4xx into a second POST.
-  console.error(
-    `[dashboard] order ${order.id} has no verifiable WooCommerce creation result`,
-  );
+  console.error(`[dashboard] order ${order.id} has no verifiable WooCommerce creation result`);
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
@@ -719,9 +715,7 @@ const UNREADABLE_PRODUCT =
  * reason carries no address.
  */
 const unreadable = (orderId: string, why: string): void => {
-  console.error(
-    `[dashboard] order ${orderId} is refused, the shop's answer unread: ${why}`,
-  );
+  console.error(`[dashboard] order ${orderId} is refused, the shop's answer unread: ${why}`);
 };
 
 const samePermission = (left: WooPermission, right: WooPermission): boolean =>

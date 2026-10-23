@@ -136,7 +136,6 @@ const acceptedOrderWithoutApproval = async (
     merchantId: historical.merchantId,
     itemId: historical.itemId,
     merchantItemId: body.merchant_item_id,
-    paymentRef: harnessed.runtime.ids("pay"),
     buyerKey: harnessed.runtime.ids("bk"),
     order: { ...offered.order.order, id: orderId },
   });

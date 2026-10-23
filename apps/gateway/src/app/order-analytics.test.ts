@@ -596,7 +596,7 @@ describe("what an order's analytics carry", () => {
     ]);
     const secrets = [
       orderId,
-      order.paymentRef,
+      order.buyerKey,
       "PAYMENT-AUTHORIZATION",
       "fp-secret",
       order.settlement?.transaction ?? "no transaction",

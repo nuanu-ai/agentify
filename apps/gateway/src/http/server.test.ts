@@ -19,7 +19,7 @@ import {
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { buildApp, refusal } from "./server.js";
-import { PAYMENT_REF_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { ORDER_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /**
  * The files that hold every refusal this gateway sends, read as source text
@@ -557,7 +557,7 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.amount).toBe("1");
   });
 
-  it("prices a POST against an order it opened, and names that order by its payment reference", async () => {
+  it("prices a POST against an order it opened, and names that order by its identifier", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -569,10 +569,10 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    const named = challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+    const named = challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.paymentRef);
+    expect(named).toBe(orders[0]?.order.id);
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
@@ -594,10 +594,10 @@ describe("the payment challenge", () => {
 
     expect(bought.status).toBe(402);
     const named = decodePaymentRequiredHeader(bought.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
-      .accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA];
+      .accepts[0]?.extra?.[ORDER_IN_EXTRA];
     const orders = await harnessed.store.orders(harnessed.merchant.id);
     expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.paymentRef);
+    expect(named).toBe(orders[0]?.order.id);
   });
 
   it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
@@ -614,7 +614,7 @@ describe("the payment challenge", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -631,7 +631,7 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.extra?.[PAYMENT_REF_IN_EXTRA]).toBeUndefined();
+    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
@@ -737,7 +737,7 @@ describe("the payment challenge", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
+        extra: { [ORDER_IN_EXTRA]: "ord_from_nowhere" },
       },
       payload: {},
     });
@@ -804,7 +804,7 @@ describe("the payment challenge", () => {
     const nonsense = Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepted: { extra: { [PAYMENT_REF_IN_EXTRA]: offered.order.paymentRef } },
+        accepted: { extra: { [ORDER_IN_EXTRA]: offered.order.order.id } },
       }),
       "utf8",
     ).toString("base64");
@@ -891,7 +891,7 @@ describe("a card whose payment challenge would be too large to read", () => {
         amount: "1",
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
-        extra: { [PAYMENT_REF_IN_EXTRA]: "pay_from_nowhere" },
+        extra: { [ORDER_IN_EXTRA]: "ord_from_nowhere" },
       },
       payload: {},
     });

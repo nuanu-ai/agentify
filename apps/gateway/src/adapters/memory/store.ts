@@ -645,16 +645,6 @@ export class MemoryStore implements Store {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
-    // A record without a reference shares it with no other, as on Postgres,
-    // where a missing reference reads as null.
-    if (
-      record.paymentRef !== undefined &&
-      [...this.#orders.values()].some((held) => held.paymentRef === record.paymentRef)
-    ) {
-      throw new Error(
-        `the order ${record.order.id} names a payment reference another order already has`,
-      );
-    }
     if ([...this.#orders.values()].some((held) => held.buyerKey === record.buyerKey)) {
       throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
     }
@@ -703,10 +693,6 @@ export class MemoryStore implements Store {
 
   async orderById(id: string): Promise<StoredOrder | null> {
     return this.#orders.get(id) ?? null;
-  }
-
-  async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
-    return [...this.#orders.values()].find((record) => record.paymentRef === paymentRef) ?? null;
   }
 
   async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {

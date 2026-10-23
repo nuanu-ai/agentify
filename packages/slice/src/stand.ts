@@ -449,17 +449,17 @@ const recordAnswer = (on: Exchange, answer: Answered): void => {
     const view = readChallenge(answer.challenge);
     on.challenge = answer.challenge;
     on.challengeView = view;
-    // The challenge names its order by a payment reference only; the order's
-    // identifier, and with it the feed's thread, comes with the paid answer.
+    // The challenge names its order by its identifier; the feed's thread, and
+    // the address the order is read again at, come with the paid answer.
     beat(
       on,
       "gateway",
       view === null
         ? "Answered with a challenge this console could not read."
-        : view.paymentRef === null
+        : view.orderId === null
           ? "Answered with a challenge for the card alone. No order was opened."
-          : "Opened an order and answered with a challenge naming it by its payment reference.",
-      view?.paymentRef ?? "",
+          : "Opened an order and answered with a challenge naming it by its identifier.",
+      view?.orderId ?? "",
       answer.challenge,
     );
     return;

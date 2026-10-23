@@ -912,11 +912,6 @@ export class PostgresStore implements Store {
       if (refused.constraint === ORDER_IDENTIFIER_TAKEN) {
         throw new Error(`the order ${record.order.id} is already written down`);
       }
-      if (refused.constraint === PAYMENT_REF_TAKEN) {
-        throw new Error(
-          `the order ${record.order.id} names a payment reference another order already has`,
-        );
-      }
       if (refused.constraint === BUYER_KEY_TAKEN) {
         throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
       }
@@ -965,16 +960,6 @@ export class PostgresStore implements Store {
       .select({ record: orders.record })
       .from(orders)
       .where(eq(orders.id, id))
-      .limit(1);
-    return row?.record ?? null;
-  }
-
-  async orderByPaymentRef(paymentRef: string): Promise<StoredOrder | null> {
-    // Spelled as the index is, or the planner reads every order to answer.
-    const [row] = await this.#db
-      .select({ record: orders.record })
-      .from(orders)
-      .where(sql`(${orders.record} ->> 'paymentRef') = ${paymentRef}`)
       .limit(1);
     return row?.record ?? null;
   }
@@ -1365,7 +1350,6 @@ export class PostgresStore implements Store {
  * database. Renaming one in a migration must be matched here.
  */
 const ORDER_IDENTIFIER_TAKEN = "orders_pkey";
-const PAYMENT_REF_TAKEN = "orders_payment_ref_unique";
 const BUYER_KEY_TAKEN = "orders_buyer_key_unique";
 const KEY_IDENTIFIER_TAKEN = "merchant_keys_pkey";
 const KEY_DIGEST_TAKEN = "merchant_keys_digest_unique";

@@ -560,7 +560,7 @@ describe("the discovery declaration a challenge carries", () => {
       }),
     );
 
-    expect(forOrder.accepts[0]?.extra?.payment_ref).toBe("ord_1");
+    expect(forOrder.accepts[0]?.extra?.order_id).toBe("ord_1");
   });
 });
 

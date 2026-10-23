@@ -921,7 +921,6 @@ describe("the goods against the card that sold them", () => {
     const oldId = "ord_written_before_the_promise";
     await harnessed.store.addOrder({
       ...older,
-      paymentRef: harnessed.runtime.ids("pay"),
       buyerKey: harnessed.runtime.ids("bk"),
       order: { ...older.order, id: oldId },
     });

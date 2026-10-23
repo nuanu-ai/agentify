@@ -15,7 +15,7 @@
  * model. A chain other than Base Sepolia is refused without a verdict, so
  * even a gateway on the wrong chain hears nothing it could read as money.
  *
- * The log names the payment reference, the payer, the payee, the amount and
+ * The log names the order, the payer, the payee, the amount and
  * the first characters of the authorization's nonce. It never prints a
  * signature, the one part of a payment that could be sent on to a real
  * facilitator and spent.
@@ -147,7 +147,7 @@ interface Presented {
   readonly asset: string | null;
   readonly amount: string | null;
   readonly payTo: string | null;
-  readonly paymentRef: string | null;
+  readonly orderId: string | null;
   readonly payer: string | null;
   readonly nonce: string | null;
 }
@@ -174,7 +174,7 @@ const presentedIn = (document: unknown): Presented => {
     asset: textAt(requirements, "asset"),
     amount: textAt(requirements, "amount"),
     payTo: textAt(requirements, "payTo"),
-    paymentRef: textAt(objectAt(requirements, "extra"), "payment_ref"),
+    orderId: textAt(objectAt(requirements, "extra"), "order_id"),
     payer: textAt(authorization, "from"),
     nonce: textAt(authorization, "nonce"),
   };
@@ -196,7 +196,7 @@ const amountOf = (presented: Presented): string => {
 
 const describe = (presented: Presented): string =>
   [
-    `payment_ref ${presented.paymentRef ?? "(none)"}`,
+    `order ${presented.orderId ?? "(none)"}`,
     `${amountOf(presented)} from ${presented.payer ?? "an unnamed payer"} to ${presented.payTo ?? "an unnamed payee"}`,
     `authorization ${presented.nonce === null ? "(no nonce)" : `${presented.nonce.slice(0, 10)}…`}`,
   ].join(", ");

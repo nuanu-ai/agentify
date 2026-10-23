@@ -495,7 +495,7 @@ export async function signedFor(
   // An order not paid yet has no address of its own, so the test names one.
   const requirements = edge.requirementsFor(
     price,
-    order.paymentRef,
+    order.order.id,
     order.payTo ?? terms.payTo ?? null,
   );
   const payment = await signedPayment(wallet, requirements, {

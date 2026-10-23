@@ -195,16 +195,15 @@ describe("the authenticated merchant closure", () => {
           message: "We agreed an offset.",
         },
       });
-      expect(JSON.stringify(response.body)).not.toContain(first?.paymentRef);
     }
   });
 
-  it("requires the owner's key and hides both a private payment reference and other merchants' orders", async () => {
+  it("requires the owner's key and hides other merchants' orders, whether named by identifier or by buyer's key", async () => {
     const id = await order();
     const stranger = await h.addMerchant("Another merchant");
     const ownOrder = await h.store.orderById(id);
     if (ownOrder === null) throw new Error("order missing");
-    const privateRef = ownOrder.paymentRef;
+    const privateRef = ownOrder.buyerKey;
     const unknown = await server.call("POST", "/v0/orders/ord_missing/close", {
       headers: { authorization: `Bearer ${stranger.key}` },
       body: {},

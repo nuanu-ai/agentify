@@ -62,7 +62,6 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
   merchantId: A,
   itemId: "item_1",
   merchantItemId: "sku-1",
-  paymentRef: `pay_for_${id}`,
   buyerKey: `bk_for_${id}`,
   params: {},
   priceId: null,

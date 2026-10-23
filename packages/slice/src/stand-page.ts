@@ -332,7 +332,7 @@ const requirements = (view: ChallengeView): string => `<div class="reqs">
   <div><div class="k">network</div><div class="v">${escaped(view.network)}</div></div>
   <div><div class="k">pay to</div><div class="v">${escaped(view.payTo)}</div></div>
   <div><div class="k">scheme</div><div class="v">${escaped(view.scheme)}</div></div>
-  <div><div class="k">payment reference</div><div class="v">${view.paymentRef === null ? "none — this challenge is for the card alone" : escaped(view.paymentRef)}</div></div>
+  <div><div class="k">order</div><div class="v">${view.orderId === null ? "none — this challenge is for the card alone" : escaped(view.orderId)}</div></div>
 </div>${view.said === null ? "" : `<p class="aside">The gateway says: “${escaped(view.said)}”</p>`}`;
 
 const exchangePanel = (view: ExchangeView): string => {
@@ -347,7 +347,7 @@ const exchangePanel = (view: ExchangeView): string => {
           ${form("pay_badly", "", "Send an unreadable payment")}
           ${form("walk_away", "", "Walk away")}
         </div>
-        <p class="aside">The challenge names its order by a payment reference, so signing this pays that order rather than opening a second one. Walking away leaves it to expire, which is a scenario of its own.</p>
+        <p class="aside">The challenge names its order by its identifier, so signing this pays that order rather than opening a second one. Walking away leaves it to expire, which is a scenario of its own.</p>
       </div>
     </div>`
       : "";

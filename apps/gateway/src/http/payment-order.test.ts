@@ -989,7 +989,6 @@ describe("a payment the payment layer refuses", () => {
       const beforeTheSale = await present(served, itemId, madeUp);
       const bought = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
       expect(bought.status).toBe(200);
-      const orderId = (bought.body as { order_id: string }).order_id;
       const afterTheSale = await present(served, itemId, madeUp);
 
       for (const answered of [beforeTheSale, afterTheSale]) {

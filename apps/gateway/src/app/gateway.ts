@@ -1676,7 +1676,6 @@ export class Gateway {
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
-      paymentRef: this.runtime.ids("pay"),
       buyerKey: this.runtime.ids("bk"),
       // What the agent was promised, kept with the order so a card republished
       // since cannot change what this sale is held to. A parcel's card declares
@@ -1744,7 +1743,7 @@ export class Gateway {
     // An order that is over with no goods held takes no payment and is not
     // verified for one: a refusal could only tell the agent to pay again for a
     // price that is gone. The answer names no order, because the payment has
-    // not been checked and the reference it carries can be published. A buyer
+    // not been checked and the identifier it carries can be published. A buyer
     // who lost its first answer learns from it all the order would tell it:
     // that nothing was charged, or that whether anything was is not known.
     if (overWithNothingHeld(before)) {
@@ -1859,7 +1858,7 @@ export class Gateway {
     const verified =
       checkedHere ??
       (await this.runtime.facilitator.verify({
-        paymentRef: before.paymentRef,
+        orderId,
         amount: price.amount,
         currency: price.currency,
         payment,
@@ -2101,16 +2100,6 @@ export class Gateway {
   /** The order a buyer's key opens, whoever it belongs to; only the agent's status read asks. */
   async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderByBuyerKey(buyerKey);
-  }
-
-  /**
-   * The order a payment is for, by the payment reference its challenge
-   * carried, whoever it belongs to. Only the purchase route asks: the
-   * reference names the order to the payment side, and no other route reads
-   * one.
-   */
-  async orderForPayment(paymentRef: string): Promise<StoredOrder | null> {
-    return this.runtime.store.orderByPaymentRef(paymentRef);
   }
 
   /** One of this merchant's orders. Another merchant's is not found. */

@@ -1217,16 +1217,6 @@ if (databaseUrl === null) {
       expect((await recordOf("ord_kept")).paymentRef).toBe("pay_kept");
       expect((await recordOf("ord_null")).paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
     });
-
-    it("finds a migrated order by the reference it was given", async () => {
-      await writtenBefore("ord_unpaid", "delivered_unpaid", true);
-
-      await run("0018_order_payment_ref.sql");
-
-      const given = (await recordOf("ord_unpaid")).paymentRef;
-      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
-      expect((await store.orderByPaymentRef(String(given)))?.order.id).toBe("ord_unpaid");
-    });
   });
 
   describe("the migration retaining accepted payment authorizations", () => {

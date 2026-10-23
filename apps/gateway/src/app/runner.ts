@@ -501,7 +501,7 @@ export class OrderRunner {
         const events = eventsForVerifiedPayment(found.order, at);
         if (events.length === 0) {
           // A merchant may close an unpaid order while payment verification is
-          // outside this lock. Its public payment reference establishes no owner.
+          // outside this lock. Its public identifier establishes no owner.
           if (found.paidBy !== owner) {
             return { result: { kind: "not_owner", state: found.order.state } };
           }
@@ -986,7 +986,7 @@ export class OrderRunner {
     }
 
     const outcome = await this.#runtime.facilitator.settle({
-      paymentRef: record.paymentRef,
+      orderId: record.order.id,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1198,7 +1198,7 @@ export class OrderRunner {
     const recovery = await recoveryFor.call(
       this.#runtime.facilitator,
       {
-        paymentRef: record.paymentRef,
+        orderId: record.order.id,
         payment: record.payment,
         payTo: record.payTo,
         amount: price.amount,

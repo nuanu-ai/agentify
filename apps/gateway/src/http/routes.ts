@@ -459,10 +459,9 @@ const isEmptyDocument = (body: unknown): boolean =>
  * anything.
  *
  * A POST with the purchase document and no payment opens and prices an order
- * and answers with the challenge. With a payment it drives the order whose
- * payment reference the payment carries; a payment naming no order we hold
- * by its reference gets a fresh challenge, so the agent pays against a price
- * we actually issued.
+ * and answers with the challenge. With a payment it drives the order the
+ * payment names; a payment naming no order we hold gets a fresh challenge, so
+ * the agent pays against a price we actually issued.
  */
 async function purchase(
   gateway: Gateway,
@@ -505,8 +504,8 @@ async function purchase(
 
   const held = hold(PurchaseRequestSchema, body);
 
-  if (presented !== null && presented !== "unreadable" && presented.paymentRef !== null) {
-    const named = await gateway.orderForPayment(presented.paymentRef);
+  if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
+    const named = await gateway.orderById(presented.orderId);
     if (named !== null) {
       // A paid request's body is read only for the parameters and address sent
       // again, which must be the ones the order was priced for. A malformed one
@@ -666,7 +665,7 @@ async function answerPurchase(
     case "payment_already_spent":
       // One authorisation may not buy two orders. Nothing is said of the other
       // order, not even whether it is over: anyone can read a used
-      // authorization off the chain and point it at any reference. Its buyer
+      // authorization off the chain and point it at any order. Its buyer
       // already holds that order's own answer, which says where it stands.
       return written(
         response,
@@ -678,10 +677,9 @@ async function answerPurchase(
       );
 
     case "not_this_purchase":
-      // The order already belongs to another payer. Its payment reference is
-      // in every challenge for it and a listing can publish it, so holding it
-      // proves nothing; the wording names no order and says nothing about how
-      // far along it is.
+      // The order already belongs to another payer. Its identifier is in every
+      // challenge for it and a listing can publish it, so holding it proves
+      // nothing; the wording says nothing about how far along it is.
       return written(
         response,
         CONFLICT,
@@ -725,7 +723,7 @@ async function answerPurchase(
         PAYMENT_REQUIRED_HEADER,
         edge.challengeFor(
           price,
-          attempt.order.paymentRef,
+          attempt.order.order.id,
           {
             itemId: offered.stored.id,
             card: offered.stored.card,

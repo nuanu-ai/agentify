@@ -51,15 +51,15 @@ export interface ChallengeView {
    */
   readonly said: string | null;
   /**
-   * The payment reference this challenge names its order by, where it was
-   * issued for one. The order's identifier is not in a challenge: it comes
-   * with the answer to the payment.
+   * The identifier of the order this challenge names, where it was issued for
+   * one. It opens nothing; the address the order is read again at comes with
+   * the answer to the payment.
    *
    * A challenge for a card alone — the GET a crawler makes — names no order,
    * because there is none behind it. The difference is the whole reason this
    * console offers two probes rather than one.
    */
-  readonly paymentRef: string | null;
+  readonly orderId: string | null;
 }
 
 export interface StandBuyer {
@@ -98,15 +98,15 @@ export interface StandBuyerOptions {
   readonly fetch: typeof fetch;
 }
 
-/** Where in a challenge's requirements the order it prices is named, by its payment reference. */
-const PAYMENT_REF_IN_EXTRA = "payment_ref";
+/** Where in a challenge's requirements the order it prices is named, by its identifier. */
+const ORDER_IN_EXTRA = "order_id";
 
 /** Reads a challenge into the six things worth putting on a screen. */
 export const readChallenge = (challenge: PaymentRequired): ChallengeView | null => {
   const first = challenge.accepts[0];
   if (first === undefined) return null;
   const extra = first.extra as Record<string, unknown> | undefined;
-  const reference = extra?.[PAYMENT_REF_IN_EXTRA];
+  const named = extra?.[ORDER_IN_EXTRA];
   const said = (challenge as { error?: unknown }).error;
   return {
     amount: first.amount,
@@ -115,7 +115,7 @@ export const readChallenge = (challenge: PaymentRequired): ChallengeView | null 
     payTo: first.payTo,
     scheme: first.scheme,
     said: typeof said === "string" && said !== "" ? said : null,
-    paymentRef: typeof reference === "string" ? reference : null,
+    orderId: typeof named === "string" ? named : null,
   };
 };
 
