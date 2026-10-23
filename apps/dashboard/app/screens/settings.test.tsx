@@ -863,7 +863,24 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await press(button());
 
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(WALLET_WORDS.connectFailed("the page could not open it"))).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.connectNotOpened)).toBeTruthy();
+  });
+
+  it("says in words of its own, never the wallet's or the browser's, that no address came", async () => {
+    for (const thrown of [
+      { code: -32603, message: "insufficient funds for gas" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "eth_requestAccounts", thrown };
+      render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+
+      await press(button());
+
+      expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.connectFailed)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
   });
 
   it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
@@ -1041,13 +1058,31 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutUnconfirmed)).toBeTruthy();
   });
 
-  it("says, when the wallet does not move to the payout's chain, that the payout then arrives with Agentify's", async () => {
-    coinbase.breaks = "wallet_switchEthereumChain";
+  it("says in words of its own, never the wallet's or the browser's, that nothing was sent when the wallet stops before the payout is asked for", async () => {
+    for (const thrown of [
+      { code: -32603, message: "insufficient funds for gas" },
+      new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
+    ]) {
+      coinbase.throws = { at: "wallet_switchEthereumChain", thrown };
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+      await press();
+
+      expect(coinbase.sent).toEqual([]);
+      expect(screen.queryByText(new RegExp(thrown.message))).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
+      cleanup();
+      coinbase.provider = undefined;
+    }
+  });
+
+  it("says nothing was sent when Coinbase Wallet cannot be opened", async () => {
+    coinbase.opened = false;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutFailed("insufficient funds for gas"))).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.payoutNotSent)).toBeTruthy();
   });
 
   it("takes a second press while the first is still unanswered, and says what it sent", async () => {

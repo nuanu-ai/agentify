@@ -159,22 +159,16 @@ describe("asking the merchant's wallet for its address", () => {
     expect((await askAddress(answering)).kind).toBe("failed");
   });
 
-  it("refuses an address whose capitals disagree with its checksum, in words of its own", async () => {
+  it("refuses an address whose capitals disagree with its checksum", async () => {
     const { answering } = wallet({ windows: [["0x5AAeb6053f3e94c9b9a09f33669435e7ef1beaed"]] });
 
-    expect(await askAddress(answering)).toEqual({
-      kind: "failed",
-      reason: "the wallet answered with no address",
-    });
+    expect(await askAddress(answering)).toEqual({ kind: "failed" });
   });
 
-  it("passes on the wallet's own words when it fails for a reason of its own", async () => {
+  it("hands back none of the wallet's own words when it fails for a reason of its own", async () => {
     const { answering } = wallet({ breaks: "eth_requestAccounts" });
 
-    expect(await askAddress(answering)).toEqual({
-      kind: "failed",
-      reason: "Something went wrong at Coinbase",
-    });
+    expect(await askAddress(answering)).toEqual({ kind: "failed" });
   });
 });
 
@@ -234,10 +228,7 @@ describe("sending the payout through the merchant's wallet", () => {
   it("sends nothing on any chain when the wallet cannot be moved to the channel's", async () => {
     const { answering, sent } = wallet({ breaks: "wallet_switchEthereumChain" });
 
-    expect(await sendPayout(answering, 84532, payout)).toEqual({
-      kind: "failed",
-      reason: "Something went wrong at Coinbase",
-    });
+    expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "failed" });
     expect(sent).toEqual([]);
   });
 
