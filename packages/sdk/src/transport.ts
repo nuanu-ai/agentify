@@ -28,6 +28,7 @@ import {
   readerOf,
 } from "@nuanu-ai/agentify-contracts";
 import { userAgent } from "./contract.js";
+import { whereItFailed } from "./schema.js";
 
 /** Where the gateway is and which key opens its doors. */
 export interface Gateway {
@@ -150,9 +151,11 @@ export interface CallOptions {
 }
 
 /**
- * How much of an unreadable answer is quoted back in the failure. A proxy's
- * error page often names what is broken, but a whole one can be a megabyte in
- * a merchant's log; what is cut is said in the same sentence.
+ * How much of an answer that is not JSON is quoted back in the failure. A
+ * proxy's error page often names what is broken, but a whole one can be a
+ * megabyte in a merchant's log; what is cut is said in the same sentence. An
+ * answer that is JSON is never quoted, since it may be the gateway's document
+ * with the buyer's parameters in it.
  */
 const QUOTED_CHARACTERS = 200;
 
@@ -308,7 +311,7 @@ export const callRoute = async <N extends RouteName>(
 
   return failure(
     name,
-    `${name} at ${url.href} answered ${response.status} with something that is not the document it promises: ${quote(text)}`,
+    `${name} at ${url.href} answered ${response.status} with JSON that is not the document it promises; where it does not fit, without the values: ${whereItFailed(parsed.error.issues)}`,
     REACH.ANSWERED,
     body,
   );
