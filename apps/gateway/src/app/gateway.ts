@@ -1898,10 +1898,11 @@ export class Gateway {
       return {
         step: "payment_not_verified",
         why,
-        // Only a silence may pass on a second try. A seller who cannot be
-        // paid, or a check that contradicts the payment, meets the same
-        // payment the same way, and "false" means the same payment will not
-        // pass, though a corrected one still may.
+        // Only a silence may pass on a second try. A check that turns
+        // Agentify away, a seller who cannot be paid or a check that
+        // contradicts the payment meets the same payment the same way, and
+        // "false" means the same payment will not pass, though a corrected
+        // one still may.
         retryable: verified.verified === "unknown" && verified.cause === "no_answer",
       };
     }
@@ -3012,6 +3013,8 @@ function briefly(said: string): string {
 const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
   no_answer:
     "this payment charged nothing: Agentify got no answer from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+  refused_agentify:
+    "this payment charged nothing and was not checked: the payment check turned Agentify itself away, so Agentify cannot check payments right now and no payment can be taken until it can",
   seller_cannot_be_paid:
     "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
   payer_contradicted:

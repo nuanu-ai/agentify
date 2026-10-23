@@ -129,7 +129,16 @@ export class X402Facilitator implements Facilitator {
         const said = thrown.invalidMessage ?? thrown.invalidReason ?? "no reason was given";
         return { verified: false, reason: shapeOf(thrown.invalidReason), message: said };
       }
-      return { verified: "unknown", cause: "no_answer", failure: failureNamed(thrown) };
+      const status =
+        thrown instanceof VerifyError ? thrown.statusCode : statusOfFailedCheck(thrown);
+      return {
+        verified: "unknown",
+        cause: status !== null && REFUSING_AGENTIFY.has(status) ? "refused_agentify" : "no_answer",
+        failure:
+          status === null
+            ? failureNamed(thrown)
+            : `the facilitator answered HTTP ${status}; ${failureNamed(thrown)}`,
+      };
     }
 
     if (answered.isValid) {
@@ -345,6 +354,26 @@ function shapeOf(reason: string | undefined): PaymentVerificationFailure {
  */
 function refused(status: number): boolean {
   return status >= 400 && status < 500;
+}
+
+/**
+ * The statuses with which a facilitator turns Agentify itself away: its
+ * credentials, or the address it was sent to. The same payment meets them
+ * until an operator acts, while a timeout, 429 or 5xx may pass on its own.
+ */
+const REFUSING_AGENTIFY: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/**
+ * The status of a check the client failed with no verdict in its body. The
+ * client raises those as a plain error carrying the status only in its words,
+ * so they are read exactly; a client that words it otherwise yields null,
+ * read as no answer. The rest of the words quote the facilitator's body and
+ * are never kept.
+ */
+function statusOfFailedCheck(thrown: unknown): number | null {
+  const status =
+    thrown instanceof Error ? /^Facilitator verify failed \((\d{3})\):/.exec(thrown.message) : null;
+  return status?.[1] === undefined ? null : Number(status[1]);
 }
 
 function describe(thrown: unknown): string {
