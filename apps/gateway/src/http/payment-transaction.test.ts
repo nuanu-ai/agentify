@@ -9,7 +9,14 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentResponseHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SettleOutcome } from "../ports/facilitator.js";
-import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  statusPathOf,
+} from "../testing/harness.js";
 import { PAYMENT_RESPONSE_HEADER } from "./x402.js";
 
 const TRANSACTION = `0x${"a".repeat(64)}`;
@@ -42,7 +49,12 @@ afterEach(async () => {
 
 /** The order as its buyer reads it. */
 const buyerStatus = async (served: Served, orderId: string) =>
-  (await served.call("GET", `/x402/orders/${orderId}/status`)).body as Record<string, unknown>;
+  (await served.call("GET", await statusPathOf(open?.harnessed ?? noGateway(), orderId)))
+    .body as Record<string, unknown>;
+
+const noGateway = (): never => {
+  throw new Error("no gateway is running");
+};
 
 /** The transaction the standard payment response header names, or null where there is none. */
 const transactionInHeader = (answer: { headers: Headers }): string | null => {

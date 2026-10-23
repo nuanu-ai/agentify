@@ -12,7 +12,7 @@
  * The facilitator is real: it verifies and settles against Base Sepolia through
  * the CDP endpoint with the credentials in the environment. The store and the
  * queue are in memory, so nothing the run writes outlives the process. The
- * buyer's key is read from the environment, never printed and never written
+ * buyer's wallet key is read from the environment, never printed and never written
  * down.
  *
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… pnpm smoke
@@ -403,7 +403,7 @@ async function main(): Promise<void> {
 if (import.meta.main) {
   main().catch((error: unknown) => {
     // The message only, never the whole error object: a payment client's error
-    // can carry request details in tow, and the buyer's key is not something to
+    // can carry request details in tow, and the buyer's wallet key is not something to
     // risk printing even by accident.
     console.error(
       `[smoke] the smoke command failed: ${error instanceof Error ? error.message : String(error)}`,

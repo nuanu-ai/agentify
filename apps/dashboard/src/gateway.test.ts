@@ -270,6 +270,50 @@ describe("late goods", () => {
   });
 });
 
+describe("the orders a page reads", () => {
+  it("carry the order's identifier and never the buyer's key, which opens its goods", async () => {
+    // The dashboard shows the merchant and their staff everything about an
+    // order, and the key is the one thing about it that is the buyer's alone.
+    const harnessed = await started();
+    const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
+    await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
+    const owner = asTheOwner(harnessed);
+    await owner.deliverOrder(orderId, { activation_code: "LPA:1$X" });
+    const key = (await harnessed.store.orderById(orderId))?.buyerKey ?? "";
+    expect(key).not.toBe("");
+    // A purchase priced and never paid, ended when its price ran out: the
+    // Lapsed list reads it apart from the orders.
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error("the card was refused");
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const lapsedId = offered.order.order.id;
+    harnessed.advance(31_000);
+    await harnessed.gateway.runner.apply(lapsedId, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "quote_expiry",
+    });
+    const lapsedKey = (await harnessed.store.orderById(lapsedId))?.buyerKey ?? "";
+    expect(lapsedKey).not.toBe("");
+
+    const read = JSON.stringify([
+      await owner.lapsedAttempts(1),
+      await owner.orders(false),
+      await owner.orders(true),
+      await owner.getOrder(orderId),
+      await owner.receipts(),
+      await owner.unfulfilledOrders(),
+      await owner.paidIntoSplits(),
+    ]);
+
+    expect(read).toContain(orderId);
+    expect(read).toContain(lapsedId);
+    expect(read).not.toContain(key);
+    expect(read).not.toContain(lapsedKey);
+  });
+});
+
 describe("a call that does not finish", () => {
   it("is given up on at its deadline, saying what was asked may have been done", async () => {
     // The work behind it is not stopped (a late database still writes), so the

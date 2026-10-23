@@ -8,7 +8,6 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { orderFingerprint } from "@agentify/gateway/order-fingerprint";
 import {
   buyOverHttp,
   type Harness,
@@ -870,7 +869,7 @@ describe("the whole way through, against a real gateway", () => {
     // of.
     expect(bought.status).toBe(200);
     const started = bought.body as AgentOrderStatus;
-    const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
+    const read = await served.call("GET", new URL(started.status_url).pathname);
     const status = read.body as AgentOrderStatus;
     expect(status.status).toBe("delivered");
     expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
@@ -888,6 +887,11 @@ describe("the whole way through, against a real gateway", () => {
     };
     expect(placed.set_paid).toBe(true);
     expect(placed.transaction_id).toBe(status.order_id);
+    // The shop's order, which every employee and plugin of the shop reads,
+    // carries the identifier and not the buyer's key that opens the goods.
+    const key = (await open.store.orderById(status.order_id))?.buyerKey ?? "";
+    expect(key).not.toBe("");
+    expect(JSON.stringify(shop.orders)).not.toContain(key);
     expect(placed.line_items[0]?.product_id).toBe(11);
     expect(placed.line_items[0]?.total).toBe("25.00");
   });
@@ -976,10 +980,9 @@ describe("the whole way through, against a real gateway", () => {
 
     expect(answer).toBeNull();
     expect(shop.placed).toStrictEqual([]);
-    // The log says which order waits, by the order's fingerprint, and why.
+    // The log says which order waits, by the order's identifier, and why.
     expect(written).toMatch(/could not be read.*nothing answered/);
-    expect(written).toContain(orderFingerprint("ord_1"));
-    expect(written).not.toContain("ord_1");
+    expect(written).toContain("order ord_1");
   });
 
   it("keeps a committed order unknown when its successful response body is lost", async () => {
@@ -3158,13 +3161,13 @@ describe("a parcel the whole way through, against a real gateway", () => {
     // The agent paid goods and rate together, the shop holds a paid order
     // shipping there, and Agentify no longer holds the address.
     expect(bought.status).toBe(200);
-    const orderId = (bought.body as AgentOrderStatus).order_id;
+    const { order_id: orderId, status_url: statusUrl } = bought.body as AgentOrderStatus;
     const paidFor = await gateway.getOrder(orderId);
     expect(paidFor.ok && paidFor.document.price.amount).toBe("23.00");
     expect(paidFor.ok && paidFor.document.ship_to).toMatchObject({ erased_at: expect.any(String) });
     expect(placed).toHaveLength(1);
     expect(placed[0]?.address).toStrictEqual(ADDRESS);
-    const waiting = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const waiting = await served.call("GET", new URL(statusUrl).pathname);
     expect((waiting.body as AgentOrderStatus).status).toBe("in_progress");
 
     // The merchant marks it Completed in their shop.
@@ -3186,7 +3189,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
       }),
     });
 
-    const read = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const read = await served.call("GET", new URL(statusUrl).pathname);
     const status = read.body as Record<string, unknown>;
     expect(status.status).toBe("shipped");
     expect(status.shipment).toMatchObject({ carrier: "Bali courier", tracking_number: null });
@@ -3694,7 +3697,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
       }
     });
 
-  it("names an order whose answer the gateway did not take by its fingerprint", async () => {
+  it("names an order whose answer the gateway did not take by its identifier", async () => {
     const shop = aShopThatAccepts();
     const gateway = {
       pollWorker: async () => ({
@@ -3729,8 +3732,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
     const written = await loggedWhile(() => turnOnce(connection(), parts));
 
     expect(written).toContain("was not accepted: the order is over");
-    expect(written).toContain(orderFingerprint(anOrder().id));
-    expect(written).not.toContain(anOrder().id);
+    expect(written).toContain(`order ${anOrder().id}`);
   });
 
   it("names an order whose delivery could not be bound without the buyer's download secrets", async () => {
@@ -3764,7 +3766,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
 
     expect(answer).toBeNull();
     expect(written).toContain("not durably bound");
-    expect(written).toContain(orderFingerprint(anOrder().id));
+    expect(written).toContain(`order ${anOrder().id}`);
     expect(written).not.toContain("wc_order_");
     expect(written).not.toContain("download_file");
   });

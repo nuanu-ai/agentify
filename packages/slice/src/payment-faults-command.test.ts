@@ -176,7 +176,7 @@ const payment = (network: string, nonce = `0x${"11".repeat(32)}`) => ({
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     amount: "3500000",
     payTo: "0x9B653320BFA220e6d394f7cD324EF20c65f91e32",
-    extra: { payment_ref: "pay_1" },
+    extra: { order_id: "ord_1" },
   },
 });
 

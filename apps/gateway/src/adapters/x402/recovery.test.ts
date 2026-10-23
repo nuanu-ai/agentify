@@ -138,7 +138,7 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     });
     const payment = encodePaymentSignatureHeader({
       x402Version: 2,
-      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "pay_1", PAY_TO),
+      accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
       payload: {
         signature: "0x12",
         authorization: {
@@ -152,7 +152,7 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       },
     });
     const charge = {
-      paymentRef: "pay_1",
+      orderId: "ord_1",
       amount: "80.00",
       currency: "USD",
       payTo: PAY_TO,

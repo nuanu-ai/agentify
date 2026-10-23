@@ -114,10 +114,10 @@ something only the caller can tell. The line after it says that the rule is
 spent. Apart from the name of a content coding, the log never prints a
 header, a body or a query string, because merchant keys and payment
 signatures travel in headers and goods and buyers' addresses in bodies. Order
-ids do appear, in the paths and in that field, and an order id is a buyer's
-proof of purchase: knowing it is enough to read the order and collect its
-goods. A log from a run against a real channel belongs with the private
-evidence of that run, not in an issue or in this repository.
+ids do appear, in the paths and in that field, and they open nothing. An
+order's status address is logged as its route's template,
+`/x402/orders/:buyer_key/status`, so the buyer's key it carries, which opens
+the order and its goods, never reaches the log.
 
 The order document a purchase is answered with names its own address in
 `status_url`, and that address is built from the address the gateway is
@@ -655,12 +655,12 @@ refusal marked retryable, and a settle that meets it is unknown, as with
 
 The log is one line per call on standard output, and more for a settle the
 fault holds or cuts: the time, a sequence number, verify or settle, the
-payment reference, the amount, the payer, the address paid, the first
+order the payment names, the amount, the payer, the address paid, the first
 characters of the authorisation's nonce, and what was answered and after how
 long. A line also says when the gateway stopped waiting while an answer was
-held. The payment reference is the name the 402 challenge gives an order and
-opens nothing; the order's own identifier never reaches a facilitator and is
-not in the log. The payee is the merchant's payout contract, which is how a
+held. The order is named by its identifier, which the 402 challenge carries and
+which opens nothing; the buyer's key never reaches a facilitator and is not in
+the log. The payee is the merchant's payout contract, which is how a
 story about a changed wallet reads which address a charge was made out to.
 
 The model counts one transfer per authorisation. A second settle of an
@@ -800,9 +800,9 @@ through, passed through unchanged and why, or sent with its new size and the
 additions it carried, each with the places it went to and how many times, such
 as `field (envelope ×2; top), event-kind (beside the order of order ord_…)`.
 As in the cut proxy, the log never prints a header, a body or a query string.
-It names orders and price questions, and an order identifier is a buyer's
-proof of purchase, so a log from a run against a real channel belongs with the
-private evidence of that run.
+It names orders and price questions by their identifiers, which open nothing,
+and logs the status read it adds to as its route's template, never with the
+buyer's key its address carries.
 
 ### What it cannot do
 
@@ -1290,8 +1290,7 @@ request is not counted as sent and spends no shift. A cut says both that
 the shop answered and that the caller got nothing. The log never prints a
 header, a body or a query string, because the connector's keys travel in
 headers and an order's body carries the merchant's address and the buyer's
-delivery address. Agentify order identifiers do appear, and as with the cut
-proxy's log, a log from a run belongs with that run's private evidence. In a
+delivery address. Agentify order identifiers do appear, and open nothing. In a
 copy of the lab the edge's log is also the shop's request log: the copy's
 Caddy only stands in for `lab.sh`, so `./lab.sh requests` there shows nothing.
 

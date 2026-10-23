@@ -1217,16 +1217,6 @@ if (databaseUrl === null) {
       expect((await recordOf("ord_kept")).paymentRef).toBe("pay_kept");
       expect((await recordOf("ord_null")).paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
     });
-
-    it("finds a migrated order by the reference it was given", async () => {
-      await writtenBefore("ord_unpaid", "delivered_unpaid", true);
-
-      await run("0018_order_payment_ref.sql");
-
-      const given = (await recordOf("ord_unpaid")).paymentRef;
-      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
-      expect((await store.orderByPaymentRef(String(given)))?.order.id).toBe("ord_unpaid");
-    });
   });
 
   describe("the migration retaining accepted payment authorizations", () => {
@@ -1591,6 +1581,123 @@ if (databaseUrl === null) {
       expect((await pool.query("select count(*)::int as count from orders")).rows).toStrictEqual([
         { count: rows.length },
       ]);
+    });
+  });
+
+  describe("the migration that gives every order a buyer's key", () => {
+    let connected: ReturnType<typeof connect>;
+    let pool: Pool;
+    beforeAll(async () => {
+      connected = connect(databaseUrl);
+      pool = connected.pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 28)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_keyless','Keyless','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("gives every order written before it a key of its own that opens it, and changes nothing else", async () => {
+      // Nobody holds a key for these orders: their buyers were handed
+      // addresses built from the identifier, which opens nothing any more.
+      const keyless = (id: string, state: string) => ({
+        order: { id, state, payment: "settled" },
+        merchantId: "mch_keyless",
+        itemId: "itm_old",
+        merchantItemId: "sku",
+        paymentRef: `pay_${id}`,
+        payment: null,
+        paidBy: "0x1111111111111111111111111111111111111111",
+        delivery: { access_code: "SESAME" },
+      });
+      const rows = [keyless("ord_delivered", "delivered"), keyless("ord_waiting", "dispatched")];
+      for (const row of rows) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,false,'mch_keyless','itm_old','sku',$3,now(),now())",
+          [row.order.id, row.order.state, JSON.stringify(row)],
+        );
+      }
+
+      for (const statement of await statementsOf("0028_order_buyer_key.sql")) {
+        await pool.query(statement);
+      }
+
+      const records = (
+        await pool.query<{ record: Record<string, unknown> }>(
+          "select record from orders order by id",
+        )
+      ).rows.map((row) => row.record);
+      const keys = records.map((record) => record.buyerKey);
+      for (const key of keys) expect(key).toMatch(/^bk_[0-9a-f]{32}$/);
+      expect(new Set(keys).size).toBe(rows.length);
+      expect(records.map(({ buyerKey: _key, ...rest }) => rest)).toStrictEqual([rows[0], rows[1]]);
+      const store = PostgresStore.over(connected.db, "eip155:84532", countedIds());
+      expect((await store.orderByBuyerKey(String(keys[0])))?.order.id).toBe("ord_delivered");
+      expect(await store.orderByBuyerKey("ord_delivered")).toBeNull();
+    });
+  });
+
+  describe("the migration that drops the payment reference", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 29)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_ref','Ref','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("takes the reference out of every order and changes nothing else, the buyer's key included", async () => {
+      // A payment names its order by the identifier now, so a reference left
+      // in a document would be a second name nothing reads.
+      const kept = (id: string) => ({
+        order: { id, state: "delivered", payment: "settled" },
+        merchantId: "mch_ref",
+        buyerKey: `bk_${id}`,
+        payment: null,
+        paidBy: "0x1111111111111111111111111111111111111111",
+      });
+      for (const id of ["ord_a", "ord_b"]) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,'delivered',false,'mch_ref','itm_old','sku',$2,now(),now())",
+          [id, JSON.stringify({ ...kept(id), paymentRef: `pay_${id}` })],
+        );
+      }
+
+      for (const statement of await statementsOf("0029_order_drops_payment_ref.sql")) {
+        await pool.query(statement);
+      }
+
+      expect((await pool.query("select record from orders order by id")).rows).toStrictEqual([
+        { record: kept("ord_a") },
+        { record: kept("ord_b") },
+      ]);
+      expect(
+        (
+          await pool.query(
+            "select indexname from pg_indexes where tablename = 'orders' and indexname like 'orders_%_unique' order by indexname",
+          )
+        ).rows,
+      ).toStrictEqual([{ indexname: "orders_buyer_key_unique" }]);
     });
   });
 }

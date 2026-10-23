@@ -1,12 +1,12 @@
 /**
  * Fails the test during which anything is written to the console that opens
- * an order or its goods to whoever reads it: an order identifier, an address
- * of a route an order identifier authorises (the status address), a
- * WooCommerce order key (`wc_order_…`), or a WooCommerce download link. In
- * such a link `order` and `uid` are that one buyer's secrets; its `key` is the
- * file's download identifier, which every buyer of the product shares. Logs
- * are read by more people than the database, so a line names an order by a
- * fingerprint instead.
+ * an order or its goods to whoever reads it: a buyer's key, an address of a
+ * route a buyer's key authorises (the status address), a WooCommerce order key
+ * (`wc_order_…`), or a WooCommerce download link. In such a link `order` and
+ * `uid` are that one buyer's secrets; its `key` is the file's download
+ * identifier, which every buyer of the product shares. Logs are read by more
+ * people than the database. An order's identifier opens nothing and is left
+ * alone: a line names its order by it.
  *
  * Every console method that writes something is watched, each call rendered
  * the way the console renders it: `log`, `info`, `warn`, `error`, `debug`,
@@ -17,15 +17,15 @@
  * or collects the console with a spy is watched as well. The record is checked
  * after each test and after each file, where nothing under test can catch it.
  *
- * An identifier is any token of the shape the gateway gives one: `ord_` and
+ * A buyer's key is any token of the shape the gateway gives one: `bk_` and
  * identifier characters, not preceded by a letter or digit. That takes in the
- * short ones fixtures make up (`ord_1`), since code that logs those logs the
- * real ones too; a freshly issued identifier is checked to fit. An order key
- * is read the same way, and a status address whatever identifier it carries.
+ * short ones fixtures make up (`bk_1`), since code that logs those logs the
+ * real ones too; a freshly issued key is checked to fit. An order key is read
+ * the same way, and a status address whatever value it carries.
  * A download link is recognised with its query separators written plainly or
  * escaped for HTML (`&amp;`, `&#38;`, `&#x26;`).
  *
- * Left alone: an identifier spelled some other way (percent-encoded, split
+ * Left alone: a key spelled some other way (percent-encoded, split
  * across calls), a write after a file's last hook has run, a write straight to
  * `process.stdout` or `process.stderr`, a console imported from
  * `node:console`, what a spawned process prints, and the console methods that
@@ -38,22 +38,22 @@ import { afterAll, afterEach } from "vitest";
 import { randomIds } from "./apps/gateway/src/ports/clock.js";
 import { API_ROUTES } from "./packages/contracts/src/api.js";
 
-const ORDER_ID = /(?<![A-Za-z0-9])ord_[A-Za-z0-9][A-Za-z0-9_-]*/;
+const BUYER_KEY = /(?<![A-Za-z0-9])bk_[A-Za-z0-9][A-Za-z0-9_-]*/;
 
-if (!ORDER_ID.test(randomIds("ord"))) {
+if (!BUYER_KEY.test(randomIds("bk"))) {
   throw new Error(
-    `an order identifier the gateway issues, such as ${randomIds("ord")}, no longer has the ` +
+    `a buyer's key the gateway issues, such as ${randomIds("bk")}, no longer has the ` +
       "shape this guard looks for, so it would let every one of them through to the log",
   );
 }
 
 const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A path parameter filled in with a value, not left as `:order_id` or `{order_id}`. */
+/** A path parameter filled in with a value, not left as `:buyer_key` or `{buyer_key}`. */
 const A_VALUE = String.raw`[^/?#\s:{][^/?#\s]*`;
 
 const BEARER_ROUTES = Object.values(API_ROUTES)
-  .filter((route) => route.auth === "order_id")
+  .filter((route) => route.auth === "buyer_key")
   .map((route) => new RegExp(escaped(route.path).replace(/:[a-z][a-z0-9_]*/g, A_VALUE)));
 
 const ORDER_KEY = /(?<![A-Za-z0-9])wc_order_[A-Za-z0-9]+/;
@@ -64,7 +64,7 @@ const DOWNLOAD_FILE = new RegExp(`${SEPARATOR}download_file=`, "i");
 const BUYERS_SECRET = new RegExp(`${SEPARATOR}(?:order|uid)=[^&\\s]`, "i");
 
 const opensAnOrder = (text: string): string | null => {
-  if (ORDER_ID.test(text)) return "an order identifier";
+  if (BUYER_KEY.test(text)) return "a buyer's key";
   if (BEARER_ROUTES.some((route) => route.test(text))) return "a status address";
   if (ORDER_KEY.test(text)) return "a WooCommerce order key";
   if (DOWNLOAD_FILE.test(text) && BUYERS_SECRET.test(text)) return "a WooCommerce download link";
@@ -151,7 +151,7 @@ const failIfLeaked = (when: string): void => {
   leaked.clear();
   throw new Error(
     `${when} something was written to the console that opens an order to whoever reads ` +
-      `the log:\n  ${lines}\nName an order in a log line by its fingerprint, and write no ` +
+      `the log:\n  ${lines}\nName an order in a log line by its identifier, and write no ` +
       "address, key or link that opens an order.",
   );
 };

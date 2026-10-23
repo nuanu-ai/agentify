@@ -1,67 +1,64 @@
-# 0011. The order identifier is the agent's proof
+# 0011. A buyer's key opens an order; its identifier only names it
 
 Date: 2026-08-27
 Status: accepted; revised 2026-10-19 (the product owner): fit for a public
-audience wherever the gateway that keeps the identifier out of the payment
-requirements runs; revised 2026-10-20: what the status shows of a paid order
+audience; revised 2026-10-20: what the status shows of a paid order; revised
+2026-10-23 (the product owner): the identifier names an order, a buyer key
+opens it
 
 ## Context
 
 An agent that buys an asynchronous product receives an order before the goods
-exist and collects them later from `GET /x402/orders/:order_id/status`, so that
-route needs a rule for who may ask. Merchants have keys; buyers deliberately
-do not, as registering would undo buying with no prior relationship. The
-payment requirements reach the payment facilitator at every verification and
-charge, and the x402 Bazaar (ADR-0012) publishes a listed resource's
-requirements with `extra` as the last paying request carried it.
+exist and collects them later from the order's status route, so that route
+needs a rule for who may ask. Merchants have keys; buyers deliberately do not,
+as registering would undo buying with no prior relationship. The order's
+identifier reaches the merchant's code, dashboard, receipts and shop, and
+merchants pass it on as an idempotency key, so it ends up in logs, CRMs and
+suppliers' inboxes. The payment requirements reach the payment facilitator,
+and the x402 Bazaar (ADR-0012) publishes a listed resource's requirements with
+`extra` as the last paying request carried it.
 
 ## Decision
 
-Knowing the order identifier is the proof, on both channels. Whoever presents
-it is answered about that order and no other. The identifier is random and
-impractical to guess. It comes in the purchase's answer, never in the payment
-request, and the merchant has it too. It is a key to one order, not proof of
-having paid for it, which comes only from the verified payer.
+Every order is created with a buyer's key, random and as hard to guess as a
+version-4 UUID, kept beside the order as issued. It reaches only the agent
+that bought, as the one variable segment of `status_url` in the purchase's
+answer and in the status document, and holding that address is the proof on
+both channels. The status route finds an order by the key alone and answers an
+order identifier, or any other value, exactly as a key that names no order,
+with `Cache-Control: no-store`. A buyer who lost the purchase answer and signs
+the kept challenge again receives the original answer, with the same address.
+The key is never written into anything the merchant reads, the payment
+requirements, the facilitator's calls, analytics or a log line.
 
-The payment requirements carry a payment reference instead,
-`accepts[].extra.payment_ref`, random like the identifier and kept with the
-order. A paid request is bound to the order whose reference it carries back;
-one authorisation presented again under another order's reference is refused
-once checked, as a payment buys one order. Nothing answers a reference with
-the order: the status route answers it as any unknown identifier, a payment
-for an order that is over is refused in words naming no order, and a payer
-who is not the buyer of a paid order is turned away before its address is
-compared. So a listing may publish it.
-
-The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the
-document the purchase returns, built field by field so that nothing reaches it
-unwritten: the state and price, the original payment's status and, once it
-has gone through, the transaction that paid it, the goods once delivered, a parcel's shipment once shipped, whether the sale was a test, who
-sold it, the merchant's words where it refused, the merchant's closure and its
-message where they closed fulfillment, and Agentify's reason where Agentify
-ended the order, fulfillment is overdue, a paid order was closed
-(`merchant_closed`, ADR-0028), or goods are held because their charge did not
-go through (`delivered_unpaid`). It leaves out the merchant's product key,
-what the buyer sent and every other order. An identifier naming no order gets the same
-`no_such_order` as any other, every answer tells caches to keep nothing
-(`Cache-Control: no-store`), and the order document's description and
-`llms.txt` tell the agent the identifier is the key to its goods.
+The identifier is a plain reference: it names the order, opens nothing, and may
+be logged and passed on freely. The status document keeps `order_id` as what
+the buyer quotes to the seller; its description and `llms.txt` say that
+`status_url` is the key and not to be shared, while `order_id` is not a secret.
+The payment requirements name the order by it, `accepts[].extra.order_id`, and
+a paid request is bound to the order it names; an order belongs to the payer
+bound to its first verified payment, so a published identifier buys nothing.
+The document carries what the buyer may know and never the merchant's product
+key, what the buyer sent or any other order.
 
 ## Consequences
 
-Anyone who obtains an identifier through a log, a proxy or an agent's own
-store can read that order, though not change it, act as its payer or list
-other orders: for a parcel its tracking number and link, whose carrier page
-may show the buyer's city or who signed for it (ADR-0033), for every order
-the seller's name and site (ADR-0034), and for a paid one the transaction that
-paid it, which on the public chain leads to the buyer's wallet. A listing is not such a place.
+Anyone who obtains a status address can read that order, though not change it,
+act as its payer or list other orders: for a parcel its tracking (ADR-0033),
+for every order the seller's name and site (ADR-0034), and for a paid one the
+transaction that paid it, which leads to the buyer's wallet. Anyone who learns
+an unpaid order's identifier can pay for it at its full price before its buyer
+does, and for a parcel then receives its tracking; the buyer's payment is
+refused, saying that nothing was charged, that buying needs a new purchase, and
+that a fresh payment from the wallet that paid returns it.
 
 ## Alternatives rejected
 
-Leaving the route unmounted takes money for an asynchronous product that an
-agent cannot collect. Accounts and keys for buyers turn buying into signing
-up. A secret token in `status_url`, with the identifier left in the
-requirements, changes what every agent and merchant reads to repair what only
-the payment side carries. Proving control of the paying address with x402's
-Sign-In-With-X remains the long-term direction; not now, as it asks every
-buyer's client for a second signature that few are known to give.
+The identifier as the proof, with a separate payment reference in the
+requirements: every party that saw the identifier, the merchant, their shop,
+logs, the payment side, needed its own patch to keep it secret. Keeping the
+reference beside the identifier once neither is secret is a second name nothing
+needs. Accounts and keys for buyers turn buying into signing up. Proving
+control of the paying address with x402's Sign-In-With-X remains the long-term
+direction; not now, as it asks every buyer's client for a second signature that
+few are known to give.

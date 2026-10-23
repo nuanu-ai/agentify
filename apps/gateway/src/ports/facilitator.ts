@@ -16,11 +16,11 @@ import type { PaymentVerificationFailure } from "@agentify/core";
  */
 export interface Charge {
   /**
-   * The order's payment reference, the one name for the order the payment
-   * layer is given: what it is sent can be published by a discovery listing,
-   * and the order's identifier opens its goods.
+   * The order's identifier, the one name for the order the payment layer is
+   * given. What it is sent can be published by a discovery listing, so it
+   * carries nothing that opens the order.
    */
-  readonly paymentRef: string;
+  readonly orderId: string;
   readonly amount: string;
   readonly currency: string;
   readonly payment: string;

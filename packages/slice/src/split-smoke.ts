@@ -9,7 +9,7 @@
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAYOUT_KEY=0x… pnpm smoke:split
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAYOUT_KEY=0x… pnpm smoke:split --confirm
  *
- * The buyer's key holds test USDC. The payout key holds test ETH, sends the
+ * The buyer's wallet key holds test USDC. The payout key holds test ETH, sends the
  * payouts, and its address is the test merchant's wallet, so it pays out its
  * own share the way a merchant would. SMOKE_PRICE_USD (0.01) is each payment,
  * SMOKE_MAX_USD (0.05) the most the run pays in all, SMOKE_MAX_GAS_ETH

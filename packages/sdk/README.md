@@ -95,7 +95,9 @@ await agentify.start()
 The same order can arrive twice, after a dropped connection or a restart of
 yours, so its `id` is also its idempotency key: pass it into your own delivery
 system and the second arrival hands back the first result instead of delivering
-again.
+again. The identifier is an ordinary reference that opens nothing, so it is
+safe to log, to store and to pass to a supplier; what opens the buyer's goods
+is a key only the buyer's agent is given.
 
 Up to four messages can be unfinished at once. Handlers for different orders
 may overlap and finish out of order, so one slow order need not hold up the

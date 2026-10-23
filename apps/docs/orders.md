@@ -112,7 +112,7 @@ sequenceDiagram
 
 | What | What it is for |
 | --- | --- |
-| `id` | the order's identifier, and its idempotency key: the same across every repeat |
+| `id` | the order's identifier, and its idempotency key: the same across every repeat. It is an ordinary reference that opens nothing, so you can log it, keep it in your systems and pass it to a supplier |
 | `merchant_item_id` | your own key for the product, the one it has in your database |
 | `params` | the purchase parameters, already checked against the card's declaration |
 | `price` | the sale price: `amount`, `currency`, `at` — the moment that price was fixed for this sale — and `as_of`, the moment the price it was worked out from was true |
@@ -637,10 +637,9 @@ By the order's identifier: it is the same across every repeat, and your side
 answers with the earlier result under it instead of delivering a second time.
 Orders are delivered at least once, so a repeat is ordinary traffic; it does
 not mean that anything broke. On the agent's side we recognise a repeat by the
-payment: the payment request we issue names the order by a payment reference,
-separate from its identifier, and that reference comes back in the payment the
-agent signs, so a repeat names the order it repeats and we carry that order on
-from where it stopped.
+payment: the payment request we issue names the order by the same identifier,
+and it comes back in the payment the agent signs, so a repeat names the order
+it repeats and we carry that order on from where it stopped.
 
 To recover a lost answer, the agent signs a new payment for that same payment
 request from the same wallet, and once Agentify has checked that signature,

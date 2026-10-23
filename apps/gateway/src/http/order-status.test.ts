@@ -1,7 +1,8 @@
 /**
  * The agent's own route: where a buyer comes back for an order whose goods come
- * later. Knowing the order's identifier is the proof, so the call takes no key
- * and answers about that order and no other.
+ * later. The buyer's key in the status address is the proof, so the call takes
+ * no merchant key and answers about that order and no other. The order's
+ * identifier, which the merchant and the payment side hold too, opens nothing.
  *
  * Each of these breaks quietly. A key check attached to an address prefix,
  * rather than read off the route's own `auth`, shuts the agent out. Reading an
@@ -26,6 +27,7 @@ import {
   type SeededMerchant,
   type Served,
   serve,
+  statusPathOf,
   theMerchantKey,
 } from "../testing/harness.js";
 
@@ -97,8 +99,25 @@ const orderTakenOn = async (
   return (bought.body as AgentOrderStatus).order_id;
 };
 
+/**
+ * The order read again at the address its purchase answer named. A test holds
+ * the order's identifier, which opens nothing, so the address is looked up the
+ * way the buyer would hold it.
+ */
 const statusOf = async (served: Served, orderId: string, headers?: Record<string, string>) =>
-  served.call("GET", `/x402/orders/${orderId}/status`, headers === undefined ? {} : { headers });
+  served.call(
+    "GET",
+    await statusPathOf(open?.harnessed ?? never(), orderId),
+    headers === undefined ? {} : { headers },
+  );
+
+/** The status address with `value` where the buyer's key goes. */
+const presenting = (value: string): string =>
+  expandPath(API_ROUTES.get_order_status.path, { buyer_key: value });
+
+const never = (): never => {
+  throw new Error("no gateway is running");
+};
 
 /**
  * The production shape: TLS ends at the proxy in front, and the process behind
@@ -107,8 +126,8 @@ const statusOf = async (served: Served, orderId: string, headers?: Record<string
 const PUBLIC_BASE = "https://agentify.ad";
 
 /** Where one order is collected, as the route table spells it under that base. */
-const collectedAt = (orderId: string): string =>
-  `${PUBLIC_BASE}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+const collectedAt = async (orderId: string): Promise<string> =>
+  `${PUBLIC_BASE}${await statusPathOf(open?.harnessed ?? never(), orderId)}`;
 
 /**
  * The gateway under test listens on loopback, not at the public address it
@@ -166,9 +185,9 @@ const arrivingWith = (served: Served, claimed: Readonly<Record<string, string>>)
 
 describe("where an agent that paid comes back to", () => {
   it("names the address in the purchase answer, and the goods are collected there", async () => {
-    // The agent holds the purchase answer and nothing else, and guessing an
-    // address from the order identifier answers `no_such_route`, so the named
-    // address has to be enough on its own.
+    // The agent holds the purchase answer and nothing else, and an address
+    // built from the order identifier opens nothing, so the named address has
+    // to be enough on its own.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, laterCard);
 
@@ -179,7 +198,7 @@ describe("where an agent that paid comes back to", () => {
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
     const answered = bought.body as Record<string, unknown>;
     const orderId = String(answered.order_id);
-    expect(answered.status_url).toBe(collectedAt(orderId));
+    expect(answered.status_url).toBe(await collectedAt(orderId));
 
     const waiting = await served.call("GET", onThisGateway(answered.status_url));
     expect(waiting.status).toBe(200);
@@ -212,19 +231,19 @@ describe("where an agent that paid comes back to", () => {
 
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
     const orderId = String((bought.body as Record<string, unknown>).order_id);
-    expect((bought.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+    expect((bought.body as Record<string, unknown>).status_url).toBe(await collectedAt(orderId));
 
     const later = await statusOf(served, orderId);
 
     expect(later.status).toBe(200);
-    expect((later.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+    expect((later.body as Record<string, unknown>).status_url).toBe(await collectedAt(orderId));
   });
 
   it("builds the address from its own configuration, whatever a call says about where it arrived", async () => {
     // Behind the TLS-ending proxy the request says http and names whichever
     // host was forwarded to, and the forwarding headers are whatever the caller
     // wrote. An address built from any of them could send a paid order's
-    // identifier over plain http or to a host of the caller's choosing.
+    // key over plain http or to a host of the caller's choosing.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, laterCard);
     const elsewhere = arrivingWith(served, {
@@ -239,15 +258,12 @@ describe("where an agent that paid comes back to", () => {
 
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
     const orderId = String((bought.body as Record<string, unknown>).order_id);
-    expect((bought.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+    expect((bought.body as Record<string, unknown>).status_url).toBe(await collectedAt(orderId));
 
-    const later = await elsewhere.call(
-      "GET",
-      expandPath(API_ROUTES.get_order_status.path, { order_id: orderId }),
-    );
+    const later = await elsewhere.call("GET", await statusPathOf(harnessed, orderId));
 
     expect(later.status).toBe(200);
-    expect((later.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+    expect((later.body as Record<string, unknown>).status_url).toBe(await collectedAt(orderId));
   });
 });
 
@@ -577,7 +593,7 @@ describe("what the answer carries", () => {
 
 describe("what is kept of the answer", () => {
   it("asks every cache to keep nothing, since whoever holds the answer holds the goods", async () => {
-    // The identifier is the only key to the order and its goods. A copy kept
+    // The buyer's key is the only key to the order and its goods. A copy kept
     // by a proxy, a browser or an agent's HTTP client would hand them to
     // whoever reads that copy, so no answer of this route may be stored, and
     // the refusal is answered alike so it tells no order apart.
@@ -590,7 +606,7 @@ describe("what is kept of the answer", () => {
     });
 
     const collected = await statusOf(served, orderId);
-    const unknown = await statusOf(served, "ord_nothing_here");
+    const unknown = await served.call("GET", presenting("bk_nothing_here"));
 
     expect((collected.body as AgentOrderStatus).status).toBe("delivered");
     expect(collected.headers.get("cache-control")).toBe("no-store");
@@ -599,45 +615,76 @@ describe("what is kept of the answer", () => {
   });
 });
 
-describe("an identifier that names nothing", () => {
-  it("answers it exactly as it answers any other, saying only that there is no such order", async () => {
-    // The route tells nobody apart, so it must not tell identifiers apart
-    // either: two guesses come back byte for byte the same, and neither says
-    // whether the string was ever an order of anybody's.
-    const { served } = await started();
-
-    const first = await statusOf(served, "ord_nothing_here");
-    const second = await statusOf(served, "ord_nor_here");
-
-    expect(first.status).toBe(404);
-    expect(first.body).toStrictEqual({
-      error: { code: "no_such_order", message: "there is no such order", retryable: false },
+describe("what the address opens the order by", () => {
+  it("answers the order at the address its purchase named, and the order's identifier exactly as a key that names nothing", async () => {
+    // The identifier reaches the merchant, their shop, their logs and the
+    // payment side, so it must open nothing here: presented where the key
+    // goes, it gets the very answer an invented key gets, header for header.
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
+    const itemId = await publish(served, laterCard);
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ accepted: {} }),
     });
-    expect(second.body).toStrictEqual(first.body);
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    const { order_id: orderId, status_url: address } = bought.body as AgentOrderStatus;
+
+    const real = await served.call("GET", onThisGateway(address));
+    const byIdentifier = await served.call("GET", presenting(orderId));
+    const invented = await served.call("GET", presenting("bk_nothing_here"));
+
+    expect(real.status).toBe(200);
+    expect((real.body as AgentOrderStatus).order_id).toBe(orderId);
+    expect(address).not.toContain(orderId);
+    expect(invented.status).toBe(404);
+    for (const answered of [byIdentifier, invented]) {
+      expect(answered.status).toBe(404);
+      expect(answered.body).toStrictEqual({
+        error: { code: "no_such_order", message: "there is no such order", retryable: false },
+      });
+      expect(answered.headers.get("cache-control")).toBe("no-store");
+    }
   });
 
-  it("has one refusal and not two, so an unknown identifier is never told from a forbidden one", async () => {
-    // The route cannot hide that a real identifier names an order: the
-    // identifier is the proof, so a real one is answered, and only its being
-    // long and random keeps walking them from finding anything. What it does
-    // hide is a second refusal: nothing here is scoped to a caller, so there is
-    // no "exists and is not yours", only one refusal for whatever does not
-    // resolve.
+  it("gives every order a key of its own, which no other order answers to", async () => {
+    // Two purchases of one product by one gateway: each address opens its own
+    // order and no other.
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
+    const itemId = await publish(served, laterCard);
+    const first = await orderTakenOn(harnessed, served, itemId);
+    const second = await orderTakenOn(harnessed, served, itemId);
+
+    const [firstAt, secondAt] = [
+      await statusPathOf(harnessed, first),
+      await statusPathOf(harnessed, second),
+    ];
+
+    expect(firstAt).not.toBe(secondAt);
+    expect(((await served.call("GET", firstAt)).body as AgentOrderStatus).order_id).toBe(first);
+    expect(((await served.call("GET", secondAt)).body as AgentOrderStatus).order_id).toBe(second);
+  });
+
+  it("answers a value that names nothing exactly as any other, saying only that there is no such order", async () => {
+    // The route tells nobody apart, so it must not tell values apart either:
+    // a near-miss of a real key, a string never shaped like one and an order
+    // identifier come back byte for byte the same, and none says whether the
+    // string was ever anybody's.
     const { served, harnessed } = await started();
     const itemId = await publish(served, laterCard);
     const orderId = await orderTakenOn(harnessed, served, itemId);
+    const realAt = await statusPathOf(harnessed, orderId);
 
-    const real = await statusOf(served, orderId);
-    const invented = await statusOf(served, `${orderId}_no`);
-    const nothingLikeOne = await statusOf(served, "not-an-order-at-all");
+    const real = await served.call("GET", realAt);
+    const nearMiss = await served.call("GET", realAt.replace(/\/status$/, "_no/status"));
+    const nothingLikeOne = await served.call("GET", presenting("not-an-order-at-all"));
+    const identifier = await served.call("GET", presenting(orderId));
 
     expect(real.status).toBe(200);
-    // Every identifier that resolves to nothing gets the one refusal, whatever
-    // it looks like: a near-miss of a real order and a string that was never
-    // shaped like one are not told apart either.
-    expect(invented.status).toBe(404);
-    expect(nothingLikeOne.body).toStrictEqual(invented.body);
-    expect((invented.body as { error: { code: string } }).error.code).toBe("no_such_order");
+    expect(nearMiss.status).toBe(404);
+    expect(nearMiss.body).toStrictEqual({
+      error: { code: "no_such_order", message: "there is no such order", retryable: false },
+    });
+    expect(nothingLikeOne.body).toStrictEqual(nearMiss.body);
+    expect(identifier.body).toStrictEqual(nearMiss.body);
   });
 });
 
@@ -667,7 +714,7 @@ describe("the goods as the merchant wrote them", () => {
 
     expect((await statusOf(served, orderId)).body).toStrictEqual({
       order_id: orderId,
-      status_url: collectedAt(orderId),
+      status_url: await collectedAt(orderId),
       status: "delivered",
       payment_status: "paid",
       price: {

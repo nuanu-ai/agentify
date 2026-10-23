@@ -72,7 +72,6 @@ import type {
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
 import { PaymentEdge } from "../http/x402.js";
-import { orderFingerprint } from "../order-fingerprint.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { NoVerdict } from "../ports/facilitator.js";
@@ -302,7 +301,7 @@ export type PurchaseAttempt =
   | { readonly step: "payment_not_taken"; readonly why: string; readonly retryable: boolean }
   /** The payment layer did not vouch for this payment; nothing was touched. */
   | { readonly step: "payment_not_verified"; readonly why: string; readonly retryable: boolean }
-  /** This order is somebody else's purchase, and this payment is not its own. */
+  /** Another payer's payment owns this order, and this payment is not it. */
   | { readonly step: "not_this_purchase" };
 
 /**
@@ -580,7 +579,7 @@ export class Gateway {
         // the queue's retry is what delivers it again. Catching and re-arming
         // here would mean writing to the database whose failure just threw.
         console.error(
-          `[gateway] a reminder failed (${reminder.kind}, ${orderFingerprint(reminder.orderId)}): ${failureNamed(thrown)}`,
+          `[gateway] a reminder failed (${reminder.kind}, order ${reminder.orderId}): ${failureNamed(thrown)}`,
         );
         throw thrown;
       }
@@ -1678,7 +1677,7 @@ export class Gateway {
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
-      paymentRef: this.runtime.ids("pay"),
+      buyerKey: this.runtime.ids("bk"),
       // What the agent was promised, kept with the order so a card republished
       // since cannot change what this sale is held to. A parcel's card declares
       // none: its order is held to a shipment.
@@ -1745,7 +1744,7 @@ export class Gateway {
     // An order that is over with no goods held takes no payment and is not
     // verified for one: a refusal could only tell the agent to pay again for a
     // price that is gone. The answer names no order, because the payment has
-    // not been checked and the reference it carries can be published. A buyer
+    // not been checked and the identifier it carries can be published. A buyer
     // who lost its first answer learns from it all the order would tell it:
     // that nothing was charged, or that whether anything was is not known.
     if (overWithNothingHeld(before)) {
@@ -1860,7 +1859,7 @@ export class Gateway {
     const verified =
       checkedHere ??
       (await this.runtime.facilitator.verify({
-        paymentRef: before.paymentRef,
+        orderId,
         amount: price.amount,
         currency: price.currency,
         payment,
@@ -1889,7 +1888,7 @@ export class Gateway {
       // client put in it, newlines included. A silence is the other way round:
       // what failed is the operator's to fix, and says nothing a buyer can use.
       console.warn(
-        `[gateway] a payment for ${orderFingerprint(orderId)} did not verify: ${
+        `[gateway] a payment for order ${orderId} did not verify: ${
           verified.verified === false
             ? `refused as ${verified.reason}`
             : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
@@ -2102,14 +2101,9 @@ export class Gateway {
     return this.runtime.store.orderById(orderId);
   }
 
-  /**
-   * The order a payment is for, by the payment reference its challenge
-   * carried, whoever it belongs to. Only the purchase route asks: the
-   * reference names the order to the payment side, and no other route reads
-   * one.
-   */
-  async orderForPayment(paymentRef: string): Promise<StoredOrder | null> {
-    return this.runtime.store.orderByPaymentRef(paymentRef);
+  /** The order a buyer's key opens, whoever it belongs to; only the agent's status read asks. */
+  async orderByBuyerKey(buyerKey: string): Promise<StoredOrder | null> {
+    return this.runtime.store.orderByBuyerKey(buyerKey);
   }
 
   /** One of this merchant's orders. Another merchant's is not found. */
@@ -2408,7 +2402,7 @@ export class Gateway {
         // stream rather than being lost with a failed response, and the poll
         // draws past it to whatever is next.
         console.error(
-          `[gateway] could not record the hand-over of ${orderFingerprint(orderId)}: ${failureNamed(thrown)}`,
+          `[gateway] could not record the hand-over of order ${orderId}: ${failureNamed(thrown)}`,
         );
         await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
@@ -2443,7 +2437,7 @@ export class Gateway {
           // that is not this merchant's. That cannot happen while envelopes
           // reach only their own merchant's stream, so it is logged loudly.
           console.error(
-            `[gateway] ${merchantId} drew an envelope for ${orderFingerprint(orderId)}, which is not their order`,
+            `[gateway] ${merchantId} drew an envelope for order ${orderId}, which is not their order`,
           );
         }
         // The machine refused the hand-over, so nobody is given the order:

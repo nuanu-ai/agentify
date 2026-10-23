@@ -19,7 +19,6 @@ import {
   PgBoss,
 } from "pg-boss";
 import { failureNamed } from "../../failure-named.js";
-import { orderFingerprint } from "../../order-fingerprint.js";
 import {
   type DrawnEnvelope,
   type Queue,
@@ -388,7 +387,7 @@ export class PgBossQueue implements Queue {
             // its table and so in every dump of the database.
             const named = failureNamed(error);
             console.error(
-              `[gateway] a ${job.data.kind} reminder for ${orderFingerprint(job.data.orderId)} failed; it is tried again on its own while it has attempts left: ${named}`,
+              `[gateway] a ${job.data.kind} reminder for order ${job.data.orderId} failed; it is tried again on its own while it has attempts left: ${named}`,
             );
             results.push({ id: job.id, status: "failed", output: { message: named } });
           }
