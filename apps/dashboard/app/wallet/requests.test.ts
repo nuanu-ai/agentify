@@ -6,7 +6,8 @@
  * of calls only on the chain it is on. The promises are to the merchant: the
  * box gets the address of the wallet they chose in the window and nothing
  * else, the payout sent is the one the screen shows, on the channel's chain,
- * and a closed window reads as a closed window.
+ * a payout is called not sent only when it was never asked for, and a window
+ * that does not answer is waited for only so long.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
