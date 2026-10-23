@@ -1303,25 +1303,11 @@ answer, not how often a real provider gives that answer:
   variant).
 - Both SDKs quote the start of an answer they cannot read, an order id and a
   price among it, in the problem they report (D-08).
-- A payout answer the dashboard cannot read is shown as "did not send the
-  payout", when the page cannot know whether it went (M-04).
-- An acknowledgement that arrives after the wallet window said it closed is
-  shown as "Nothing was sent" (M-04).
-- The merchant is shown raw JavaScript error text when the wallet answers
-  outside its protocol (M-04, A-02).
-- A wallet window that vanishes leaves the Settings page waiting with no limit,
-  and the wallet SDK's session keys stay in the browser (M-04, E-04).
 - With Coinbase silent, saving an exchange rate takes about six seconds,
   because the save reads Coinbase twice (H-23).
 
 Left open by earlier changes:
 
-- Decision: the WooCommerce screen shows a rate as set "by" the account's own
-  address, which ADR-0044 records as who saved it, though it cannot tell one
-  session of the account from another (H-20).
-- Decision: Sign out every other device keeps the current browser signed in,
-  so the steps the rate and payout notices give do not remove a session copied
-  from that same browser (H-20, E-04).
 - No screen lists an account's sessions, so a merchant cannot check the
   sign-in moment a rate notice names (H-20).
 - A dollar shop's decimals refusal, and the import's refusal of a product
