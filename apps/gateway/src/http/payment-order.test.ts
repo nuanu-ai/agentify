@@ -599,6 +599,32 @@ describe("the order a payment names", () => {
   );
 });
 
+describe("a buyer whose payment came second", () => {
+  it("is told that nothing was charged and that buying needs a new purchase", async () => {
+    // Anyone who saw the order's identifier can pay it first. The buyer who
+    // loses that race holds a challenge for an order that is no longer theirs,
+    // and has to know both that their money is untouched and what to do.
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, asyncCard);
+    const challenge = await challengeFor(served, itemId);
+    const first = await present(served, itemId, await paymentAgainst(challenge, STRANGER, "0x01"));
+    expect(first.status).toBe(200);
+
+    const second = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02"));
+
+    expect(second.status).toBe(409);
+    const { error } = second.body as {
+      error: { code: string; message: string; retryable: boolean };
+    };
+    expect(error.code).toBe("not_this_purchase");
+    expect(error.message).toMatch(/nothing was charged/i);
+    expect(error.message).toMatch(/new purchase/i);
+    expect(error.retryable).toBe(false);
+    expectNoKeyIn(second.body);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
 describe("a payer whose answer was lost", () => {
   it("cannot collect goods with the public used authorization, and a fresh verified payment returns them uncharged", async () => {
     // The identifier in the challenge opens nothing, so paying again is how a
