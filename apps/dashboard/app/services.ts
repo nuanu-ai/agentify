@@ -7,7 +7,7 @@
 
 import { createContext, type RouterContextProvider } from "react-router";
 import type { Operator } from "../src/admin/access.js";
-import type { AdminServices } from "../src/admin/index.js";
+import type { AdminServices, Workspace } from "../src/admin/index.js";
 import type { Person } from "../src/dashboard-entry.js";
 import type { Refusal } from "../src/form-post.js";
 import type { PageServices } from "../src/page-services.js";
@@ -32,25 +32,20 @@ export const visit = createContext(false);
 export const signedIn = createContext<Person>();
 
 /**
- * Set by the operator's workspace's layout once the flag confirmed the
- * request's session; read only by the workspace's pages nested under it. It
- * has no default, so a page outside the layout that reads it fails rather
- * than acting for nobody.
+ * Set by the operator's workspace's layout from the door it opened, once the
+ * flag confirmed the request's session; the only way to the workspace's
+ * services. It has no default, so a page outside the layout that reads it
+ * fails rather than reaching them.
  */
-export const operating = createContext<Operator>();
+export const workspace = createContext<Workspace>();
 
 /**
  * The workspace's services and the operator the layout confirmed, for a page
- * under the workspace's layout; the layout answers "no such page" before any
- * page runs where the workspace is not built.
+ * under the workspace's layout.
  */
 export const workspaceIn = (
   context: Readonly<RouterContextProvider>,
-): Readonly<{ admin: AdminServices; operator: Operator }> => {
-  const admin = context.get(services).admin;
-  if (admin === null) throw new Error("an admin page ran where the workspace is not built");
-  return { admin, operator: context.get(operating) };
-};
+): Readonly<{ admin: AdminServices; operator: Operator }> => context.get(workspace);
 
 /**
  * Who the gate let through, or null for a page outside it or one the gate did

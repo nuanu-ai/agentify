@@ -191,40 +191,54 @@ describe("an administrative press", () => {
 });
 
 describe("a dashboard action's change and its row", () => {
-  it("are written together, and the row is not written for a change that failed or changed nothing", async () => {
+  const ENDED: JournalPress = {
+    at: NOW.getTime(),
+    actor: { kind: "account", id: PERSON.id },
+    action: "end_sessions",
+    subject: { kind: "account", id: "acc_someone" },
+    reason: "A stolen laptop",
+  };
+
+  it("are written together, done or unchanged as the change settles it", async () => {
     const store = new MemoryStore("eip155:84532", () => "id");
     const journal = memoryJournal(store);
-    const row: JournalEntry = {
-      at: NOW.getTime(),
-      actor: { kind: "account", id: PERSON.id },
-      action: "end_sessions",
-      subject: { kind: "account", id: "acc_someone" },
-      reason: "A stolen laptop",
-      outcome: { kind: "done" },
-    };
+
+    expect(await journal.along(ENDED, async () => ({ result: 3, changed: true }))).toBe(3);
+    await journal.along(ENDED, async () => ({ result: 0, changed: false }));
+
+    expect((await store.journal({ limit: 10 })).rows.map((row) => row.outcome)).toStrictEqual([
+      { kind: "unchanged" },
+      { kind: "done" },
+    ]);
+  });
+
+  it("refuses a change whose row the journal refuses before the change runs", async () => {
+    const store = new MemoryStore("eip155:84532", () => "id");
+    const journal = memoryJournal(store);
+    let ran = false;
 
     await expect(
-      journal.along(
-        async () => {
-          throw new Error("the change failed");
-        },
-        () => row,
-      ),
-    ).rejects.toThrow("the change failed");
-    expect(
-      await journal.along(
-        async () => 0,
-        () => null,
-      ),
-    ).toBe(0);
-    expect((await store.journal({ limit: 10 })).total).toBe(0);
+      journal.along({ ...ENDED, reason: "<b>no</b>" }, async () => {
+        ran = true;
+        return { result: 1, changed: true };
+      }),
+    ).rejects.toThrow();
 
-    expect(
-      await journal.along(
-        async () => 3,
-        () => row,
-      ),
-    ).toBe(3);
-    expect((await store.journal({ limit: 10 })).rows).toMatchObject([row]);
+    expect(ran).toBe(false);
+    expect((await store.journal({ limit: 10 })).total).toBe(0);
+  });
+
+  it("writes no row for a change that failed or found nothing to act on", async () => {
+    const store = new MemoryStore("eip155:84532", () => "id");
+    const journal = memoryJournal(store);
+
+    await expect(
+      journal.along(ENDED, async () => {
+        throw new Error("the change failed");
+      }),
+    ).rejects.toThrow("the change failed");
+    expect(await journal.along(ENDED, async () => ({ result: 0, changed: null }))).toBe(0);
+
+    expect((await store.journal({ limit: 10 })).total).toBe(0);
   });
 });
