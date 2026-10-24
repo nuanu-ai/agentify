@@ -23,7 +23,7 @@ export interface Person {
  * stored claim and the redirect. Anything else a browser sends becomes the
  * start, and a stored claim naming anything else opens nothing.
  */
-export const DASHBOARD_DESTINATIONS = [
+const DASHBOARD_DESTINATIONS = [
   "default",
   "orders",
   "receipts",
@@ -33,10 +33,35 @@ export const DASHBOARD_DESTINATIONS = [
   "woocommerce",
 ] as const;
 
-export type DashboardDestination = (typeof DASHBOARD_DESTINATIONS)[number];
+/** A section of the merchant's dashboard a sign-in can return to. */
+export type SectionDestination = (typeof DASHBOARD_DESTINATIONS)[number];
+
+/**
+ * A page of the operator's workspace a sign-in returns to, its path under the
+ * dashboard's prefix: a section, or one record by its identifier.
+ */
+export type AdminDestination = `admin${string}`;
+
+export type DashboardDestination = SectionDestination | AdminDestination;
+
+/**
+ * One closed shape per page of the workspace, a record's identifier held to
+ * the shape the product gives one; the lookup is none, since what it was asked
+ * does not travel.
+ */
+const ADMIN_PAGES =
+  /^admin(?:\/(?:money|health|journal|(?:merchants|orders|accounts)(?:\/[A-Za-z0-9_-]{1,64})?))?$/;
+
+/** The workspace's page a value names, or null for anything else. */
+export const adminDestinationIn = (value: unknown): AdminDestination | null =>
+  typeof value === "string" && ADMIN_PAGES.test(value) ? (value as AdminDestination) : null;
+
+/** The destination a value names exactly, or null where it names none. */
+export const destinationNamed = (value: unknown): DashboardDestination | null =>
+  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? adminDestinationIn(value);
 
 export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
-  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? "default";
+  destinationNamed(value) ?? "default";
 
 /** A closed set, recorded with the token when the link is asked for. */
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
@@ -163,6 +188,14 @@ export interface DashboardIdentity {
     asker: LinkAsker,
   ): Promise<LinkRequestResult>;
   /**
+   * A link an operator asks for from their own session to confirm an
+   * administrative action: the mail says so, and the link signs in the browser
+   * it is opened in and returns it to `destination`. It is counted apart from
+   * the public form's links, so typing an operator's address there spends none
+   * of these; the address's own minute and hour still hold.
+   */
+  requestStepUpLink(email: string, destination: AdminDestination): Promise<LinkRequestResult>;
+  /**
    * Read without spending the link; null for a link that no longer opens
    * anything.
    */
@@ -218,4 +251,59 @@ export interface DashboardIdentity {
    * merchant keeps its own.
    */
   setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
+  /**
+   * How many links of each purpose the channel sent in the rolling hour
+   * before `now`, which the channel's ceiling counts. For the operator's
+   * workspace alone.
+   */
+  linksSentInTheHour(now: Date): Promise<Readonly<Record<LinkPurpose, number>>>;
+  /**
+   * The accounts with one of these identifiers or naming one of these
+   * merchants, each with its address and merchant. For the operator's
+   * workspace alone, which names who acted and who owns a merchant.
+   */
+  accountsNamed(
+    named: Readonly<{ accountIds?: readonly string[]; merchantIds?: readonly string[] }>,
+  ): Promise<readonly NamedAccount[]>;
+  /**
+   * How the sign-up reports to the ad network stand: those settled since
+   * `since` by how they ended, and those still waiting to leave. For the
+   * operator's workspace alone.
+   */
+  adReportsSince(since: Date): Promise<AdReportCounts>;
+  /**
+   * The account with this address, in any case, with its merchant; null where
+   * nobody signed in with it. For the operator's lookup alone.
+   */
+  accountWithEmail(email: string): Promise<NamedAccount | null>;
+  /**
+   * The accounts whose address contains this text, ignoring case; none for a
+   * blank text. The read looks at no more than `ACCOUNTS_FOUND_MAX` addresses,
+   * and `cut` says where it stopped there, so an account past them may be
+   * missing. For the operator's workspace alone, whose search finds a merchant
+   * by the address its owner pasted.
+   */
+  accountsWithEmailContaining(
+    text: string,
+  ): Promise<Readonly<{ accounts: readonly NamedAccount[]; cut: boolean }>>;
+}
+
+/** The most addresses one `accountsWithEmailContaining` read looks at. */
+export const ACCOUNTS_FOUND_MAX = 200;
+
+/** What a link is sent for, each counted against the channel's ceiling of its own. */
+export type LinkPurpose = "dashboard" | "report" | "step-up";
+
+export interface NamedAccount {
+  readonly id: string;
+  readonly email: string;
+  readonly merchantId: string | null;
+}
+
+export interface AdReportCounts {
+  readonly delivered: number;
+  readonly refused: number;
+  readonly givenUp: number;
+  /** Waiting for a click or for their turn to leave, whenever they were made. */
+  readonly waiting: number;
 }

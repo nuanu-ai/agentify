@@ -47,10 +47,10 @@ connector is offered on the test channel only, until its orders pass end to
 end there. Either way the first sale happens on the test channel, where
 payments settle on Base Sepolia with test funds. Publishing there needs a
 seller name and a payout wallet, and live publication also needs the
-operator's approval of that merchant, given from `/admin` or with
-`pnpm approve <email>` and withdrawn with `pnpm approve --withdraw <email>`;
-publication lists whatever is still missing. The approval publishes nothing and
-bypasses no seller or payout check.
+operator's admission of that merchant, given and withdrawn on the merchant's
+page in the operator's workspace at `/dashboard/admin/merchants`; publication
+lists whatever is still missing. The admission publishes nothing and bypasses
+no seller or payout check.
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
 `/`, the merchant documentation at `/docs`, the dashboard at `/dashboard`, the

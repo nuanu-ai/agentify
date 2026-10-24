@@ -6,6 +6,8 @@
  */
 
 import { createContext, type RouterContextProvider } from "react-router";
+import type { Operator } from "../src/admin/access.js";
+import type { AdminServices, Workspace } from "../src/admin/index.js";
 import type { Person } from "../src/dashboard-entry.js";
 import type { Refusal } from "../src/form-post.js";
 import type { PageServices } from "../src/page-services.js";
@@ -28,6 +30,22 @@ export const visit = createContext(false);
 
 /** Set by the gate; read only by the pages nested under it in `routes.ts`. */
 export const signedIn = createContext<Person>();
+
+/**
+ * Set by the operator's workspace's layout from the door it opened, once the
+ * flag confirmed the request's session; the only way to the workspace's
+ * services. It has no default, so a page outside the layout that reads it
+ * fails rather than reaching them.
+ */
+export const workspace = createContext<Workspace>();
+
+/**
+ * The workspace's services and the operator the layout confirmed, for a page
+ * under the workspace's layout.
+ */
+export const workspaceIn = (
+  context: Readonly<RouterContextProvider>,
+): Readonly<{ admin: AdminServices; operator: Operator }> => context.get(workspace);
 
 /**
  * Who the gate let through, or null for a page outside it or one the gate did

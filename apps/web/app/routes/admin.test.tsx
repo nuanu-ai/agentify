@@ -12,12 +12,17 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OperatorDashboard } from "../../components/operator-dashboard.server";
+import {
+  OperatorDashboard,
+  OperatorDashboardStatus,
+} from "../../components/operator-dashboard.server";
 import type { OperatorDashboard as Numbers } from "../../lib/server/operator-dashboard";
+import { SCAN_LIMITS } from "../../lib/server/scan-limits";
 import { ask } from "../../testing/scanner";
 
 const SESSION = "agentify.session_token";
-const HEADING = "Agentify operating dashboard";
+const HEADING = "Landing views and scans";
+const TITLE = "Scanner for the operator";
 const BANNER = 'aria-label="Privacy choices"';
 let sellerDashboard: Server;
 let sellerDashboardAt = "";
@@ -98,7 +103,7 @@ async function expectTheMissingPage(headers: Record<string, string>): Promise<vo
   }
   for (const body of bodies) {
     expect(body).not.toContain(HEADING);
-    expect(body).not.toContain("Operator dashboard");
+    expect(body).not.toContain(TITLE);
   }
 }
 
@@ -144,8 +149,21 @@ describe("the operator's dashboard at /admin", () => {
   });
 });
 
+const READ_AT = "2026-10-13T08:00:00.000Z";
+const WORKER_READY = { ready: true, queue_connected: true, database_connected: true };
+const HEALTHY_SIGNALS = {
+  queued_scans: 0,
+  queue_age_seconds: 0,
+  stale_running: 0,
+  accepted_15m: 20,
+  failed_15m: 1,
+  outbox_pending: 2,
+  outbox_age_seconds: 12,
+  outbox_dead_letters: 0,
+};
+
 const NUMBERS: Numbers = {
-  generatedAt: "2026-10-13T08:00:00.000Z",
+  generatedAt: READ_AT,
   turnstileEnforced: true,
   overview: {
     visitorsTotal: 48_210,
@@ -161,16 +179,11 @@ const NUMBERS: Numbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
+  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   daily: [
-    {
-      day: "2026-10-13",
-      visitors: 40,
-      landingViews: 70,
-      scans: 21,
-      completedScans: 20,
-      verifiedRegistrations: 1,
-      shares: 0,
-    },
+    { day: "2026-10-11", landingViews: 70, scans: 21 },
+    { day: "2026-10-12", landingViews: 0, scans: 0 },
+    { day: "2026-10-13", landingViews: 24, scans: 90 },
   ],
   recentScans: [
     {
@@ -180,32 +193,215 @@ const NUMBERS: Numbers = {
       status: "completed",
       score: 72,
       coverage: 0.94,
-      level: "ahead_of_market",
       acceptedAt: "2026-10-13T07:58:00.000Z",
-      finishedAt: "2026-10-13T07:59:10.000Z",
-      durationSeconds: 70,
-      browserStatus: "completed",
     },
   ],
   selfScan: null,
+  worker: {
+    heartbeat: { heartbeat_at: "2026-10-13T07:59:56.000Z", metadata: WORKER_READY },
+    signals: HEALTHY_SIGNALS,
+  },
 };
 
-describe("the operator's dashboard, drawn", () => {
-  const drawn = renderToStaticMarkup(<OperatorDashboard data={NUMBERS} />);
-  const metric = (label: string) =>
-    drawn.match(new RegExp(`<article[^>]*><p>${label}</p>[\\s\\S]*?</article>`))?.[0] ?? "";
+const draw = (data: Numbers) => renderToStaticMarkup(<OperatorDashboard data={data} />);
+const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
-  it("shows the numbers it was given", () => {
-    expect(metric("Visitors")).toContain("1,234");
-    expect(metric("Scans")).toContain("640");
-    expect(drawn).toContain("$1.2345");
+/** The markup from the first opening tag that matches up to its element's close. */
+function part(html: string, opening: RegExp, tag: string): string {
+  const at = html.search(opening);
+  if (at < 0) return "";
+  let depth = 0;
+  const tags = new RegExp(`<(/?)${tag}\\b[^>]*>`, "g");
+  tags.lastIndex = at;
+  for (let found = tags.exec(html); found; found = tags.exec(html)) {
+    depth += found[1] === "/" ? -1 : 1;
+    if (depth === 0) return html.slice(at, tags.lastIndex);
+  }
+  return html.slice(at);
+}
+
+/** A figure's tile, found by its label. */
+const tile = (html: string, label: string) =>
+  text(part(html, new RegExp(`<div[^>]*>(?=<p[^>]*>${label}</p>)`), "div"));
+const section = (html: string, id: string) =>
+  part(html, new RegExp(`<section[^>]*aria-labelledby="${id}"`), "section");
+
+/** Each bar of the chart: where its top is, how tall it is, and what it says. */
+function barsOf(html: string) {
+  return [
+    ...html.matchAll(
+      /<rect\b[^>]*\by="([\d.]+)"[^>]*\bheight="([\d.]+)"[^>]*>(?:<title>([^<]*)<\/title>)?/g,
+    ),
+  ].map(([, y, height, title]) => ({ y: Number(y), height: Number(height), title: title ?? "" }));
+}
+
+/** The worker panel's heading line, where its verdict stands. */
+const workerVerdict = (data: Numbers) =>
+  text(part(section(draw(data), "worker-title"), /<div[^>]*>(?=<h2)/, "div"));
+
+describe("the operator's dashboard, drawn", () => {
+  const drawn = draw(NUMBERS);
+
+  it("shows the figures it was given", () => {
+    expect(tile(drawn, "Visitors")).toContain("1,234");
+    expect(tile(drawn, "Scans")).toContain("640");
+    expect(tile(drawn, "Verified registrations")).toContain("32");
   });
 
-  it("says beside a number read from the analytics events that it counts only those who allowed measurement", () => {
-    for (const label of ["Landing views", "Reports shared"]) {
-      expect(metric(label), label).toContain("Only visitors who allowed measurement");
-    }
-    expect(metric("Scans")).not.toContain("allowed measurement");
+  it("says beside a figure read from the analytics events that it counts only those who allowed measurement", () => {
+    expect(tile(drawn, "Landing views")).toContain("Only visitors who allowed measurement");
+    expect(tile(drawn, "Verified registrations")).toContain(
+      "11 reports shared by visitors who allowed measurement",
+    );
+    expect(tile(drawn, "Scans")).not.toContain("allowed measurement");
+  });
+
+  it("draws a day with more scans than measured landing views whole, both series on one scale", () => {
+    const chart = section(drawn, "trend-title");
+    const bars = barsOf(chart);
+    const top = Math.min(
+      ...[...chart.matchAll(/<line\b[^>]*\by1="([\d.]+)"/g)].map(([, y]) => Number(y)),
+    );
+    const ninety = bars.find((bar) => bar.title.endsWith(": 90 scans"));
+    const seventy = bars.find((bar) => bar.title.endsWith(": 70 landing views"));
+    if (!ninety || !seventy) throw new Error("the chart does not label its bars");
+
+    for (const bar of bars) expect(bar.y, bar.title).toBeGreaterThanOrEqual(top);
+    expect(ninety.height / seventy.height).toBeCloseTo(90 / 70, 2);
+  });
+
+  it("labels every bar with its day and value, and draws a day with nothing as a bar, not a gap", () => {
+    const bars = barsOf(section(drawn, "trend-title"));
+    const titles = bars.map((bar) => bar.title);
+
+    expect(bars).toHaveLength(NUMBERS.daily.length * 2);
+    expect(titles).toContain("11 Oct: 70 landing views");
+    expect(titles).toContain("12 Oct: 0 scans");
+    // The last day is today, read part of the way through.
+    expect(titles).toContain("13 Oct, until 08:00 UTC: 90 scans");
+    for (const bar of bars) expect(bar.height, bar.title).toBeGreaterThan(0);
+    // A screen reader is read the same days in words, the picture being hidden from it.
+    expect(text(section(drawn, "trend-title"))).toContain(
+      "13 Oct, until 08:00 UTC: 24 landing views, 90 scans",
+    );
+  });
+
+  it("writes the figures the chart sums beside it", () => {
+    expect(text(section(drawn, "trend-title"))).toContain(
+      "94 landing views and 111 scans from 11 Oct to today; on 1 day scans outnumbered measured landing views",
+    );
+  });
+
+  it("draws a day with a little taller than a day with nothing, however large the other series", () => {
+    const skewed = draw({
+      ...NUMBERS,
+      daily: [
+        { day: "2026-10-12", landingViews: 0, scans: 0 },
+        { day: "2026-10-13", landingViews: 10_000, scans: 1 },
+      ],
+    });
+    const bars = barsOf(section(skewed, "trend-title"));
+    const height = (title: string) => bars.find((bar) => bar.title.endsWith(title))?.height ?? 0;
+
+    expect(height("13 Oct, until 08:00 UTC: 1 scan")).toBeGreaterThan(height("12 Oct: 0 scans"));
+  });
+
+  it("states the scan limits the rate check enforces", () => {
+    const controls = text(section(drawn, "abuse-title"));
+
+    expect(controls).toContain(
+      `Free anonymous scans ${SCAN_LIMITS.freePerAddressHour} per address per rolling hour`,
+    );
+    expect(controls).toContain(
+      `Hard ceiling per address ${SCAN_LIMITS.perAddressHour} per rolling hour`,
+    );
+    expect(controls).toContain(`Hard ceiling per site ${SCAN_LIMITS.perSiteDay} per UTC day`);
+  });
+
+  it("offers no free scans before a challenge it does not enforce, nor counts its passes", () => {
+    const controls = text(section(draw({ ...NUMBERS, turnstileEnforced: false }), "abuse-title"));
+
+    expect(controls).toContain("Turnstile not enforced");
+    expect(controls).not.toContain(
+      `${SCAN_LIMITS.freePerAddressHour} per address per rolling hour`,
+    );
+    expect(controls).toContain("Verified challenges · rolling hour Not enforced");
+  });
+
+  it("shows today's browser spending to the hundredth of a cent, and no cap, which the worker does not report", () => {
+    expect(text(section(drawn, "abuse-title"))).toContain(
+      "Browser spending today 1.2345 USD; no cap shown: the worker does not report it",
+    );
+  });
+
+  it("calls the worker healthy by its health check's rules, and degraded once one of them fails", () => {
+    const at = (heartbeat_at: string) => ({ heartbeat_at, metadata: WORKER_READY });
+    const signals = (changed: Partial<typeof HEALTHY_SIGNALS>) => ({
+      ...NUMBERS,
+      worker: { ...NUMBERS.worker, signals: { ...HEALTHY_SIGNALS, ...changed } },
+    });
+
+    expect(workerVerdict(NUMBERS)).toContain("Healthy");
+    expect(
+      workerVerdict({
+        ...NUMBERS,
+        worker: { ...NUMBERS.worker, heartbeat: at("2026-10-13T07:59:30.000Z") },
+      }),
+    ).toContain("Degraded");
+    expect(workerVerdict(signals({ queued_scans: 1, queue_age_seconds: 11 }))).toContain(
+      "Degraded",
+    );
+    expect(workerVerdict(signals({ stale_running: 1 }))).toContain("Degraded");
+    expect(workerVerdict(signals({ outbox_dead_letters: 1 }))).toContain("Degraded");
+  });
+
+  it("says how old the worker's heartbeat is, and why the worker is not ready", () => {
+    const worker = text(section(drawn, "worker-title"));
+    expect(worker).toContain("Last heartbeat 4 s ago");
+    expect(worker).toContain("Ready to take scans Ready");
+
+    const queueless = {
+      ...NUMBERS,
+      worker: {
+        ...NUMBERS.worker,
+        heartbeat: {
+          heartbeat_at: "2026-10-13T07:59:56.000Z",
+          metadata: { ...WORKER_READY, queue_connected: false },
+        },
+      },
+    };
+    expect(text(section(draw(queueless), "worker-title"))).toMatch(
+      /Not ready\W+its queue is not connected/,
+    );
+  });
+
+  it("says no heartbeat was ever recorded rather than giving an age", () => {
+    const silent = { ...NUMBERS, worker: { ...NUMBERS.worker, heartbeat: null } };
+
+    expect(text(section(draw(silent), "worker-title"))).toContain("Last heartbeat None recorded");
+    expect(workerVerdict(silent)).toContain("Degraded");
+  });
+
+  it("counts the data access requests waiting for an answer, with the oldest", () => {
+    expect(tile(drawn, "Data access requests")).toMatch(
+      /Data access requests 2 Oldest 30 September 2026/,
+    );
+    expect(
+      tile(
+        draw({ ...NUMBERS, dataAccess: { waiting: 0, oldestAt: null } }),
+        "Data access requests",
+      ),
+    ).toContain("None waiting");
+  });
+
+  it("draws a scan's state as a badge in words", () => {
+    const scans = part(drawn, /<ul[^>]*aria-label="Latest scans"/, "ul");
+
+    expect(scans).toContain('<span class="badge badge-pass">Completed</span>');
+  });
+
+  it("says how many of all the scans the list shows", () => {
+    expect(text(drawn)).toContain("The latest 1 of 9,870 scans");
   });
 
   it("draws a scanned site's hostname as text, whatever it holds", () => {
@@ -215,5 +411,11 @@ describe("the operator's dashboard, drawn", () => {
 
   it("says no self-check has completed rather than drawing an empty one", () => {
     expect(drawn).toContain("No Agentify self-scan has completed yet.");
+  });
+
+  it("leads the operator from its header to the workspace", () => {
+    const header = renderToStaticMarkup(<OperatorDashboardStatus data={NUMBERS} />);
+
+    expect(header).toMatch(/<a[^>]*href="\/dashboard\/admin"/);
   });
 });

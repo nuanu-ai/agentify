@@ -10,9 +10,12 @@
  */
 
 import type { Gateway } from "@agentify/gateway";
+import type { OperatorReader } from "@agentify/gateway/operator";
 import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
-import type { ApprovalDirectory } from "./approval-command.js";
+import type { AccountsDirectory } from "./admin/accounts.js";
+import { type WorkspaceDoor, workspaceDoorFor } from "./admin/index.js";
+import type { DashboardJournal } from "./admin/journal.js";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
 import {
@@ -22,7 +25,6 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
-import { liveSalesFor } from "./live-sales.js";
 import type { Postman } from "./mail.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
@@ -31,7 +33,6 @@ import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import { type WooShops, wooOfferedOn } from "./woo-shops.js";
 
 export interface DashboardParts {
-  readonly approvalDirectory?: ApprovalDirectory;
   /** The pages, built ahead of time in a deployment or compiled from source. */
   readonly pages: Pages;
   /**
@@ -64,6 +65,15 @@ export interface DashboardParts {
   readonly shop?: ShopCalls;
   /** The connector's own messages; the dashboard's mail where absent, as a deployment leaves it. */
   readonly postman?: Postman;
+  /**
+   * What the operator's workspace reads and writes with: the reader across
+   * merchants and the journal a dashboard action writes its row through.
+   * Absent, the workspace is not built and every page of it answers as one
+   * that is not there; nothing else in the dashboard is handed either.
+   */
+  readonly admin?: AdminDoorParts;
+  /** Only tests pass another, to stand at a moment of their own. */
+  readonly now?: () => Date;
 }
 
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
@@ -180,15 +190,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     pagesHandler(
       parts.pages,
       pageServicesFor(config, {
-        ...(parts.approvalDirectory === undefined
+        ...(parts.admin === undefined
           ? {}
-          : {
-              liveSales: liveSalesFor(config, {
-                identity,
-                directory: parts.approvalDirectory,
-                gateway: parts.gateway,
-              }),
-            }),
+          : { workspace: workspaceDoorOver(config, parts, parts.admin) }),
         identity,
         clientFor,
         registrar: parts.registrar ?? registrarFor(parts.gateway),
@@ -235,6 +239,45 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   );
 
   return app;
+}
+
+/**
+ * What the workspace reads and writes with beyond the dashboard's own parts:
+ * the reader across merchants, the journal a dashboard action writes its row
+ * through, and the accounts' operator-side reads and changes.
+ */
+type AdminDoorParts = Readonly<{
+  reader: OperatorReader;
+  journal: DashboardJournal;
+  accounts: AccountsDirectory;
+}>;
+
+/**
+ * The workspace's services, the one place the operator's reader is handed to:
+ * every refused press is written to the journal through the gateway's store.
+ */
+function workspaceDoorOver(
+  config: DashboardConfig,
+  parts: DashboardParts,
+  admin: AdminDoorParts,
+): WorkspaceDoor {
+  const now = parts.now ?? (() => new Date());
+  const store = parts.gateway.runtime.store;
+  return workspaceDoorFor({
+    config,
+    identity: parts.identity,
+    gateway: parts.gateway,
+    reader: admin.reader,
+    journal: admin.journal,
+    accounts: admin.accounts,
+    now,
+    shops: parts.wooShops ?? null,
+    pressing: {
+      now,
+      googleEnabled: parts.identity.googleEnabled,
+      refused: (entry) => store.recordJournal(entry),
+    },
+  });
 }
 
 /**

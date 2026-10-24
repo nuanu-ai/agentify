@@ -2624,7 +2624,7 @@ describe("a poll on a key revoked before it was held", () => {
 });
 
 describe("a held poll whose key is revoked by another process", () => {
-  // The terminal command revokes a key by writing the store, so nothing in
+  // A key revoked from another process is written to the store, so nothing in
   // this process ends the polls already held on it. The harness's own revoke
   // writes the store the same way.
   const heldThenRevoked = async (harnessed: Harness) => {
@@ -2935,8 +2935,54 @@ describe("a merchant's standing in one read", () => {
       // polled, nor for purchases waiting, of which there are none.
       outOfTouch: null,
       busy: false,
+      // The test channel asks for no admission, so nothing is withdrawn there.
+      withdrawn: null,
     };
   };
+
+  it("says when an operator withdrew a live merchant's admission and the note they wrote, while it stands", async () => {
+    const harnessed = await started({
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+      CDP_API_KEY_ID: "key-id",
+      CDP_API_KEY_SECRET: "key-secret",
+    });
+    const id = harnessed.merchant.id;
+    const note = "Your seller name copies another shop's; choose your own.";
+    const press = (action: "withdraw" | "admit", at: number) =>
+      ({
+        at,
+        actor: { kind: "account", id: "acc_operator" },
+        action,
+        subject: { kind: "merchant", id },
+        reason: action === "withdraw" ? note : null,
+      }) as const;
+    expect((await harnessed.gateway.standingOf(id)).withdrawn).toBeNull();
+
+    await harnessed.store.withdrawLiveApproval(id, press("withdraw", 5_000));
+    const withdrawn = await harnessed.gateway.standingOf(id);
+    await harnessed.store.grantLiveApproval(id, 6_000, undefined, press("admit", 6_000));
+    const admitted = await harnessed.gateway.standingOf(id);
+
+    expect(withdrawn).toMatchObject({ liveApproved: false, withdrawn: { at: 5_000, note } });
+    expect(admitted).toMatchObject({ liveApproved: true, withdrawn: null });
+  });
+
+  it("says nothing withdrawn on the test channel, which asks for no admission, whatever the journal holds", async () => {
+    const harnessed = await started();
+    const id = harnessed.merchant.id;
+    await harnessed.store.grantLiveApproval(id, 4_000);
+    await harnessed.store.withdrawLiveApproval(id, {
+      at: 5_000,
+      actor: { kind: "account", id: "acc_operator" },
+      action: "withdraw",
+      subject: { kind: "merchant", id },
+      reason: "a note",
+    });
+    expect((await harnessed.store.standingWithdrawal(id))?.reason).toBe("a note");
+
+    expect((await harnessed.gateway.standingOf(id)).withdrawn).toBeNull();
+  });
 
   it("says what the separate reads say, before and after the selling, the integration, the name and the approval change", async () => {
     const harnessed = await started();

@@ -51,6 +51,7 @@ import {
   loadReportPage,
   revokePublicShare,
 } from "./reporting";
+import { SCAN_LIMITS } from "./scan-limits";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
@@ -2100,22 +2101,24 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
   });
 
-  it("atomically gates the fourth scan and commits both buckets together", async () => {
+  it("atomically gates the scan after the free ones, at the limits the operator page states, and commits both buckets together", async () => {
     const suffix = createUuidV7();
     const ipKey = `rate-ip-${suffix}`;
     const targetKey = `rate-target-${suffix}`;
     const initial = await Promise.all(
-      Array.from({ length: 5 }, () =>
+      Array.from({ length: SCAN_LIMITS.freePerAddressHour + 2 }, () =>
         consumeScanRateLimits({ ipKey, targetKey, challengePassed: false }),
       ),
     );
-    expect(initial.filter((result) => result.verdict === "allowed")).toHaveLength(3);
+    expect(initial.filter((result) => result.verdict === "allowed")).toHaveLength(
+      SCAN_LIMITS.freePerAddressHour,
+    );
     expect(initial.filter((result) => result.verdict === "challenge_required")).toHaveLength(2);
-    expect(await readRateCount(ipKey, "scan_ip_hour")).toBe(3);
-    expect(await readRateCount(targetKey, "scan_target_day")).toBe(3);
+    expect(await readRateCount(ipKey, "scan_ip_hour")).toBe(SCAN_LIMITS.freePerAddressHour);
+    expect(await readRateCount(targetKey, "scan_target_day")).toBe(SCAN_LIMITS.freePerAddressHour);
 
     const challenged = await Promise.all(
-      Array.from({ length: 7 }, () =>
+      Array.from({ length: SCAN_LIMITS.perAddressHour - SCAN_LIMITS.freePerAddressHour }, () =>
         consumeScanRateLimits({ ipKey, targetKey, challengePassed: true }),
       ),
     );

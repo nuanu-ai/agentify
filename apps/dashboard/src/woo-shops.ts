@@ -10,7 +10,7 @@
 import type { SurfaceMode } from "@agentify/core";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
@@ -185,11 +185,10 @@ type OrderClaim =
   | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
-// The ledger only moves forward: absent may become precreate_refused or
-// create_unknown; only explicit recovery moves precreate_refused to
-// create_unknown; only validated binding moves create_unknown to placed; a
-// placed download never changes, and a placed parcel moves once more, to
-// shipped or closed. The store methods below are the only transitions.
+// The ledger only moves forward: absent may become precreate_refused, which
+// stays, or create_unknown; only validated binding moves create_unknown to
+// placed; a placed download never changes, and a placed parcel moves once
+// more, to shipped or closed. The store methods below are the only transitions.
 
 export interface WooShops {
   /**
@@ -320,11 +319,11 @@ export interface WooShops {
    */
   endParcel(orderId: string, phase: "shipped" | "closed", now: Date): Promise<boolean>;
   /**
-   * Reopens a definite pre-create refusal as `create_unknown`, and only under a
-   * different grant: a connection revision other than the one that refused.
-   * The compare-and-set keeps two operator commands to one POST.
+   * How many orders an attempt sent to their shop and never heard back about,
+   * so nobody here knows whether the shop holds them. For the operator's
+   * workspace alone.
    */
-  beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
+  uncertainOrders(): Promise<number>;
 }
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
@@ -889,23 +888,12 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return ended.length === 1;
     },
 
-    async beginPrecreateRecovery(orderId, revision, now) {
-      const reopened = await db
-        .update(wooOrders)
-        .set({
-          phase: "create_unknown",
-          attemptedAt: now,
-          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', cast(${revision} as text))`,
-        })
-        .where(
-          and(
-            eq(wooOrders.orderId, orderId),
-            eq(wooOrders.phase, "precreate_refused"),
-            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
-          ),
-        )
-        .returning({ orderId: wooOrders.orderId });
-      return reopened.length === 1;
+    async uncertainOrders() {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(wooOrders)
+        .where(eq(wooOrders.phase, "create_unknown"));
+      return row?.count ?? 0;
     },
   };
 };
@@ -1206,22 +1194,8 @@ export const memoryWooShops = (): WooShops & {
       return true;
     },
 
-    async beginPrecreateRecovery(orderId, revision, now) {
-      const found = orders.get(orderId);
-      if (
-        found === undefined ||
-        found.phase !== "precreate_refused" ||
-        found.facts.connectionRevision === revision
-      ) {
-        return false;
-      }
-      orders.set(orderId, {
-        ...found,
-        phase: "create_unknown",
-        attemptedAt: now,
-        facts: { ...found.facts, connectionRevision: revision },
-      });
-      return true;
+    async uncertainOrders() {
+      return [...orders.values()].filter((order) => order.phase === "create_unknown").length;
     },
   };
 };

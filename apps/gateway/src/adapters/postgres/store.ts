@@ -32,6 +32,14 @@ import type { DrizzleTransactionLike } from "pg-boss";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
+import {
+  type JournalEntry,
+  type JournalPage,
+  type JournalPress,
+  type JournalQuery,
+  type JournalRow,
+  settledPress,
+} from "../../ports/journal.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AnalyticsOf,
@@ -65,6 +73,7 @@ import {
 import type { PayoutSplit } from "../../split/parameters.js";
 import { failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
+import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
   cards,
   merchantContact,
@@ -143,6 +152,15 @@ async function recordWith<R>(
 ): Promise<void> {
   const event = analyticsEventOf(analytics, committed);
   if (event !== null) await recordAlong(tx, event, at);
+}
+
+/** Writes the row a press settles as in the write's own transaction, where one was handed in. */
+async function journalWith(
+  tx: Transaction,
+  press: JournalPress | undefined,
+  changed: boolean,
+): Promise<void> {
+  if (press !== undefined) await journalAlong(tx, settledPress(press, changed));
 }
 
 /**
@@ -238,6 +256,7 @@ export class PostgresStore implements Store {
     id: string,
     at: number,
     analytics?: AnalyticsOf<{ merchant: StoredMerchant; changed: boolean }>,
+    journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
     return await this.#db.transaction(async (tx) => {
       // One statement, so two operators granting at once cannot both replace
@@ -256,22 +275,31 @@ export class PostgresStore implements Store {
       }
       const answer = { merchant, changed: granted !== undefined };
       if (answer.changed) await recordWith(tx, analytics, answer, new Date(at));
+      await journalWith(tx, journal, answer.changed);
       return answer;
     });
   }
 
   async withdrawLiveApproval(
     id: string,
+    journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
-    // Conditional on a grant standing, so of two withdrawals at once exactly
-    // one reports the change.
-    const [withdrawn] = await this.#db
-      .update(merchants)
-      .set({ liveApprovedAt: null })
-      .where(and(eq(merchants.id, id), isNotNull(merchants.liveApprovedAt)))
-      .returning({ id: merchants.id });
-    const merchant = await this.merchantById(id);
-    return merchant === null ? null : { merchant, changed: withdrawn !== undefined };
+    return await this.#db.transaction(async (tx) => {
+      // Conditional on a grant standing, so of two withdrawals at once exactly
+      // one reports the change.
+      const [withdrawn] = await tx
+        .update(merchants)
+        .set({ liveApprovedAt: null })
+        .where(and(eq(merchants.id, id), isNotNull(merchants.liveApprovedAt)))
+        .returning({ id: merchants.id });
+      const [merchant] = await this.#merchantsWhere(tx, eq(merchants.id, id));
+      if (merchant === undefined) {
+        return null;
+      }
+      const changed = withdrawn !== undefined;
+      await journalWith(tx, journal, changed);
+      return { merchant, changed };
+    });
   }
 
   async merchants(): Promise<readonly StoredMerchant[]> {
@@ -606,15 +634,45 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedKeyOf(row);
   }
 
-  async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
+  async disableKeyOf(
+    merchantId: string,
+    id: string,
+    at: number,
+    journal?: JournalPress,
+  ): Promise<{ readonly key: StoredKey; readonly changed: boolean } | null> {
     // The merchant is in the predicate: another merchant's key is answered as
     // missing, with no window between checking ownership and writing.
-    const [row] = await this.#db
-      .update(merchantKeys)
-      .set({ disabledAt: revokedAt(at) })
-      .where(and(eq(merchantKeys.id, id), eq(merchantKeys.merchantId, merchantId)))
-      .returning();
-    return row === undefined ? null : storedKeyOf(row);
+    const ofTheMerchant = and(eq(merchantKeys.id, id), eq(merchantKeys.merchantId, merchantId));
+    return await this.#db.transaction(async (tx) => {
+      // Only a working key is written, so of two presses at once exactly one
+      // stops it and the other finds it stopped.
+      const [stopped] = await tx
+        .update(merchantKeys)
+        .set({ disabledAt: new Date(at) })
+        .where(and(ofTheMerchant, isNull(merchantKeys.disabledAt)))
+        .returning();
+      const [row] =
+        stopped === undefined
+          ? await tx.select().from(merchantKeys).where(ofTheMerchant)
+          : [stopped];
+      if (row === undefined) return null;
+      if (journal !== undefined) await journalWith(tx, journal, stopped !== undefined);
+      return { key: storedKeyOf(row), changed: stopped !== undefined };
+    });
+  }
+
+  // --- the operator's journal -----------------------------------------------
+
+  async recordJournal(entry: JournalEntry): Promise<JournalRow> {
+    return await journalAlong(this.#db, entry);
+  }
+
+  async journal(query: JournalQuery): Promise<JournalPage> {
+    return await readJournal(this.#db, query);
+  }
+
+  async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
+    return await readStandingWithdrawal(this.#db, merchantId);
   }
 
   // --- the catalog ----------------------------------------------------------

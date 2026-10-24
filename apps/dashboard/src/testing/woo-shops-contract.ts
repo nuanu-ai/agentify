@@ -277,6 +277,25 @@ export const wooShopsContract = (
     });
   });
 
+  describe(`${name}: orders whose shop order nobody knows about`, () => {
+    it("counts every claim still waiting for its shop's answer, and none placed or refused before", async () => {
+      await using(async (shops, accounts) => {
+        expect(await shops.uncertainOrders()).toBe(0);
+        await shops.claimOrder(accounts.one, "ord_waiting", FACTS, NOW);
+        await shops.claimOrder(accounts.other, "ord_waiting_too", FACTS, NOW);
+        await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_placed",
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
+          NOW,
+        );
+        await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
+
+        expect(await shops.uncertainOrders()).toBe(2);
+      });
+    });
+  });
+
   describe(`${name}: what the shop's orders total`, () => {
     it("keeps, for a sale from a shop in another currency, the shop's amount and the rate it was paid at", async () => {
       await using(async (shops, accounts) => {
@@ -879,23 +898,6 @@ export const wooShopsContract = (
           id: "13",
           number: "WOO-13",
           permission: PERMISSION,
-        });
-      });
-    });
-
-    it("reopens a definite refusal once, only under a fresh connection", async () => {
-      await using(async (shops, accounts) => {
-        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, NOW);
-        expect(await shops.beginPrecreateRecovery("ord_1", "grant_1", LATER)).toBe(false);
-        expect(await shops.beginPrecreateRecovery("ord_1", "grant_2", LATER)).toBe(true);
-        expect(await shops.beginPrecreateRecovery("ord_1", "grant_3", LATER)).toBe(false);
-
-        expect(await shops.recoveryOrder("ord_1")).toMatchObject({
-          orderId: "ord_1",
-          accountId: accounts.one,
-          phase: "create_unknown",
-          facts: { connectionRevision: "grant_2" },
-          placed: null,
         });
       });
     });

@@ -9,12 +9,14 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import type { Store } from "@agentify/gateway";
 import {
   type AnalyticsEvent,
   type AuthResult,
   recordAlong,
   recordObserved,
 } from "@agentify/gateway/analytics";
+import { journalAlong } from "@agentify/gateway/journal";
 import { countedClient } from "@agentify/scanner/ip";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
@@ -30,20 +32,27 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { isAPIError } from "better-auth/api";
 import { getCookies } from "better-auth/cookies";
 import { magicLink } from "better-auth/plugins/magic-link";
-import { and, asc, desc, eq, gt, isNull, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
+import { channelOf } from "./admin/frame.js";
+import type { JournalTransaction } from "./admin/journal.js";
+import { operatorFlagMessage } from "./admin/operator-mail.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  ACCOUNTS_FOUND_MAX,
   type AttachMerchantResult,
-  DASHBOARD_DESTINATIONS,
+  adminDestinationIn,
   type DashboardDestination,
   type DashboardIdentity,
   type DashboardLinkResult,
+  dashboardDestinationIn,
+  destinationNamed,
   type GoogleFinishResult,
   type GoogleStartResult,
   type LinkAsker,
   type LinkDestination,
+  type LinkPurpose,
   type LinkRequestResult,
   type LinkWall,
   type LiveSession,
@@ -55,6 +64,25 @@ import { boundedGoogleExchange } from "./google-exchange.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { suppressWaitingAbout } from "./nuanu-analytics.js";
+import {
+  type AccountSummary,
+  type AccountsListing,
+  endSessionsIn,
+  endSessionsInMemory,
+  type FlagChange,
+  type Forgetting,
+  firstOperatorIn,
+  firstOperatorInMemory,
+  forgetIn,
+  forgetInMemory,
+  listedIn,
+  listedInMemory,
+  type Statements,
+  setFlagIn,
+  setFlagInMemory,
+  summaryIn,
+  summaryInMemoryOf,
+} from "./operator-accounts.js";
 import { renewedSession } from "./renewed-session.js";
 import { reportLinkMessage } from "./report-mail.js";
 import {
@@ -68,13 +96,15 @@ import {
   verifications,
 } from "./schema.js";
 
-interface AccountSummary {
-  readonly email: string;
-  readonly createdAt: Date;
-  readonly sessions: number;
-  readonly merchant: string | null;
-  readonly confirmed: boolean;
-  readonly operator: boolean;
+/**
+ * A change of the operator flag that was not made because a mail to an
+ * operator, or to the account changed, was not handed to the provider: the
+ * flag is as it was.
+ */
+export class OperatorMailRefused extends Error {
+  constructor() {
+    super("a mail about the operator flag was not handed to the provider");
+  }
 }
 
 /** Operator-only operations, kept out of the page-facing port. */
@@ -87,15 +117,42 @@ export interface Identity extends DashboardIdentity {
   make(email: string, merchantId: string): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
-  endEverySessionFor(email: string): Promise<number>;
-  /**
-   * Sessions are left as they are: the flag is read on every session read, so
-   * the next request already sees the change.
-   */
-  setOperator(email: string, operator: boolean): Promise<boolean>;
   /** For an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
-  list(now: Date): Promise<readonly AccountSummary[]>;
+  /** The accounts that made a merchant or hold the flag, and how many others only signed in. */
+  operatorAccounts(now: Date): Promise<AccountsListing>;
+  /** One account, listed or not, as the workspace shows it; null where there is none. */
+  operatorAccount(accountId: string, now: Date): Promise<AccountSummary | null>;
+  /**
+   * Ends every session of one account, on the journal's transaction `tx` (null
+   * in memory), keeping the account.
+   */
+  endSessionsIn(
+    tx: JournalTransaction | null,
+    accountId: string,
+    now: Date,
+  ): Promise<"ended" | "none" | "no-account">;
+  /**
+   * Grants or removes the operator flag on `tx`, under the one lock every
+   * change of who holds the flag takes, so the last operator's flag is never
+   * removed. Before it returns, a mail about the change has been handed over
+   * to every operator there was and to the account changed; a refused
+   * hand-over throws `OperatorMailRefused` and the flag stays as it was.
+   */
+  setOperatorIn(
+    tx: JournalTransaction | null,
+    accountId: string,
+    on: boolean,
+    asked: Readonly<{ at: Date; by: string }>,
+  ): Promise<FlagChange>;
+  /**
+   * Removes one account and the merchant it names on `tx`, under the same
+   * lock, so the address next signs in as a newcomer; refused for an account
+   * holding the operator flag and for a merchant with money history or
+   * another account. Only
+   * the test channel's workspace calls it.
+   */
+  forgetIn(tx: JournalTransaction | null, accountId: string): Promise<Forgetting>;
   sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
   deleteUnattachedPerson(
     request: DeleteUnattachedPersonRequest,
@@ -103,7 +160,7 @@ export interface Identity extends DashboardIdentity {
   close(): Promise<void>;
 }
 
-export const emailAs = (raw: string): string => raw.trim().toLowerCase();
+const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
 /**
  * Sliding: a person who keeps coming back does not meet the sign-in form again.
@@ -150,6 +207,12 @@ export interface IdentityParts {
   readonly pool?: Pool;
   readonly rows?: MemoryRows;
   readonly postman?: Postman;
+  /**
+   * In memory, where the journal is the gateway's memory store: the configured
+   * first operator is given the flag only with one, and its row goes there.
+   * On Postgres the journal is the database's own table.
+   */
+  readonly journal?: Pick<Store, "journal" | "recordJournal">;
 }
 
 /**
@@ -161,6 +224,11 @@ type LinkClaim = Readonly<{
   destination: LinkDestination;
   request: string | null;
   clickId?: string;
+  /**
+   * Asked from an operator's own session to confirm an administrative action:
+   * the mail says so, and the link returns to the admin page it was asked on.
+   */
+  stepUp?: true;
 }>;
 
 type AdReport = typeof adReports.$inferInsert;
@@ -390,7 +458,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         ...(forGoogle ? { validateUserInfo: validateGoogleInfo } : {}),
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
-          // Closed to input: only the terminal command writes it.
+          // Closed to input: only the operator's workspace and the first
+          // operator's configuration write it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
           // Closed to input: only the settings' own press writes it.
           analyticsOptOut: {
@@ -480,9 +549,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
             active.handed = await postman(
-              typeof claim.destination === "string"
-                ? dashboardLinkMessage(email, action.toString())
-                : reportLinkMessage(email, action.toString()),
+              typeof claim.destination !== "string"
+                ? reportLinkMessage(email, action.toString())
+                : claim.stepUp === true
+                  ? stepUpLinkMessage(email, action.toString())
+                  : dashboardLinkMessage(email, action.toString()),
             );
           },
         }),
@@ -556,19 +627,14 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
   const requestWith = async (
     bound: typeof auth,
-    email: string,
-    destination: DashboardDestination,
-    clickId: string | undefined,
+    claim: LinkClaim,
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
-    const active: LinkSend = {
-      claim: { email, destination, request: null, ...(clickId === undefined ? {} : { clickId }) },
-      handed: "refused",
-    };
+    const active: LinkSend = { claim, handed: "refused" };
     await sending.run(active, async () => {
       await bound.api.signInMagicLink({
         headers: originHeaders,
-        body: { email, metadata: active.claim },
+        body: { email: claim.email, metadata: active.claim },
       });
     });
     if (active.handed !== "accepted") throw new DeliveryRefused();
@@ -722,9 +788,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const location = response.headers.get("location");
       if (location === null) throw new GoogleTransactionRefused();
       const redirected = new URL(location, base);
-      const destination =
-        DASHBOARD_DESTINATIONS.find((value) => value === redirected.searchParams.get("next")) ??
-        "default";
+      const destination = dashboardDestinationIn(redirected.searchParams.get("next"));
       const clickId = reporting ? clickIdIn(redirected) : undefined;
       const error = redirected.searchParams.get("error");
       if (error !== null) {
@@ -806,6 +870,52 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const asHeaders = (value: string): Headers =>
     new Headers({ cookie: `${sessionCookie}=${value}` });
   const contextOf = async () => await auth.$context;
+
+  /** A change of accounts outside a journal's transaction: only in memory, inside its queued copy. */
+  const memoryOnly = async <T>(work: (rows: MemoryRows) => Promise<T>): Promise<T> => {
+    if (parts.pool !== undefined) {
+      throw new Error("a change of an account on Postgres runs on the journal's transaction");
+    }
+    return await inMemoryTransaction(async (_bound, rows) => await work(rows));
+  };
+
+  /**
+   * Gives the configured first operator the flag at their sign-in, journaled
+   * as the configuration's, where the channel has never had an operator. A
+   * failure leaves the sign-in as it is, and the next one tries again.
+   */
+  const firstOperatorAt = async (person: Person): Promise<void> => {
+    if (config.firstOperator === null || person.email !== config.firstOperator) return;
+    const rowFor = (id: string) =>
+      ({
+        at: Date.now(),
+        actor: { kind: "configuration" },
+        action: "first_operator",
+        subject: { kind: "account", id },
+        reason: null,
+        outcome: { kind: "done" },
+      }) as const;
+    try {
+      if (parts.pool === undefined) {
+        const journal = parts.journal;
+        if (journal === undefined) return;
+        const touched = (await journal.journal({ actions: FLAG_ACTIONS, limit: 1 })).total > 0;
+        const given = await inMemoryTransaction(async (_bound, rows) =>
+          firstOperatorInMemory(rows, person.email, touched),
+        );
+        if (given !== null) await journal.recordJournal(rowFor(given));
+        return;
+      }
+      await drizzle(parts.pool).transaction(async (tx) => {
+        const given = await firstOperatorIn(tx, person.email);
+        if (given !== null) await journalAlong(tx, rowFor(given));
+      });
+    } catch {
+      console.error(
+        "[dashboard] the configured first operator could not be given the flag; their next sign-in tries again",
+      );
+    }
+  };
   /**
    * The component moves a session's end at most once a day and says so with a
    * cookie of its own; dropping that line would extend the row while the
@@ -887,6 +997,24 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           limit: LINK_UNKNOWN_CLIENT_LIMIT,
           wall: "shared",
         };
+    return await sentCounted(
+      { email, destination, request: null, ...(clickId === undefined ? {} : { clickId }) },
+      "dashboard",
+      asking,
+    );
+  };
+
+  /**
+   * Sends the link `claim` names once the limits of `purpose` let it: the
+   * address's minute and hour, the client's hour where one is counted, and the
+   * channel's ceiling, each counted among the sends of that purpose alone.
+   */
+  const sentCounted = async (
+    claim: LinkClaim,
+    purpose: "dashboard" | "step-up",
+    asking: ClientCount | null,
+  ): Promise<LinkRequestResult> => {
+    const email = claim.email;
     try {
       if (parts.pool === undefined) {
         await inMemoryTransaction(async (_bound, rows) => {
@@ -894,31 +1022,32 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
         return await inMemoryTransaction(async (bound, rows) => {
           const rated = watchCeiling(
-            "dashboard",
-            memoryRate(rows, rateKey(config.authSecret, email), "dashboard", asking),
+            purpose,
+            memoryRate(rows, rateKey(config.authSecret, email), purpose, asking),
           );
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-          return await requestWith(bound, email, destination, clickId, rated.retryAt);
+          return await requestWith(bound, claim, rated.retryAt);
         });
       }
       const db = drizzle(parts.pool, {
         schema: { accounts, credentials, linkSends, sessions, verifications },
       });
+      // The sweep of old links runs in a transaction of its own, first: inside
+      // the one that waits on the mail provider it would hold other requests up
+      // behind a send, and a refused send would undo it.
       await db.transaction(async (tx) => {
         await cleanupOldLinksInPostgres(tx, new Date());
       });
       return await db.transaction(async (tx) => {
         await lockEmail(tx, email);
         const rated = watchCeiling(
-          "dashboard",
-          await postgresRate(tx, rateKey(config.authSecret, email), "dashboard", asking),
+          purpose,
+          await postgresRate(tx, rateKey(config.authSecret, email), purpose, asking),
         );
         if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
         return await requestWith(
           authFor(drizzleAdapter(tx, { provider: "pg", schema })),
-          email,
-          destination,
-          clickId,
+          claim,
           rated.retryAt,
         );
       });
@@ -1076,12 +1205,21 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       if (finished.status === "refused" && told.why !== null) {
         void observe(signInRefused("google", "verify", told.why));
       }
+      if (finished.status === "opened") await firstOperatorAt(finished.person);
       return finished;
     },
 
-    // The sweep of old links runs in a transaction of its own, first: inside
-    // the one that waits on the mail provider it would hold other requests up
-    // behind a send, and a refused send would undo it.
+    async requestStepUpLink(rawEmail, destination) {
+      // Counted under a purpose of its own, so the public form, where anybody
+      // can type an operator's address, spends none of these sends. No client
+      // is counted: the asker is an operator's session, not a visitor.
+      return await sentCounted(
+        { email: emailAs(rawEmail), destination, request: null, stepUp: true },
+        "step-up",
+        null,
+      );
+    },
+
     async requestLink(rawEmail, destination, asker) {
       const requested = await linkRequested(rawEmail, destination, asker);
       if (requested.status === "cooldown") {
@@ -1159,34 +1297,38 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async openLink(token) {
-      try {
-        if (parts.pool === undefined) {
-          return await inMemoryTransaction(
-            async (bound, rows) =>
-              await openWith(bound, token, {
-                register: async (reports) => registerInMemory(rows, reports),
-                record: async (event) => recordInMemory(rows, event),
-              }),
-          );
-        }
-        const db = drizzle(parts.pool);
-        return await db.transaction(async (tx) => {
-          const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
-          return await openWith(bound, token, {
-            lockEmail: async (email) => await lockEmail(tx, email),
-            register: async (reports) => {
-              await tx.insert(adReports).values([...reports]);
-            },
-            record: async (event) => await recordAlong(tx, event, new Date()),
+      const opened = await (async (): Promise<DashboardLinkResult> => {
+        try {
+          if (parts.pool === undefined) {
+            return await inMemoryTransaction(
+              async (bound, rows) =>
+                await openWith(bound, token, {
+                  register: async (reports) => registerInMemory(rows, reports),
+                  record: async (event) => recordInMemory(rows, event),
+                }),
+            );
+          }
+          const db = drizzle(parts.pool);
+          return await db.transaction(async (tx) => {
+            const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
+            return await openWith(bound, token, {
+              lockEmail: async (email) => await lockEmail(tx, email),
+              register: async (reports) => {
+                await tx.insert(adReports).values([...reports]);
+              },
+              record: async (event) => await recordAlong(tx, event, new Date()),
+            });
           });
-        });
-      } catch (thrown) {
-        if (thrown instanceof VerificationRefused) {
-          void observe(signInRefused("email_link", "verify", thrown.why));
-          return { status: "refused" };
+        } catch (thrown) {
+          if (thrown instanceof VerificationRefused) {
+            void observe(signInRefused("email_link", "verify", thrown.why));
+            return { status: "refused" };
+          }
+          throw thrown;
         }
-        throw thrown;
-      }
+      })();
+      if (opened.status === "opened") await firstOperatorAt(opened.person);
+      return opened;
     },
 
     async deleteUnattachedPerson(request) {
@@ -1265,7 +1407,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           await tx.select().from(accounts).where(eq(accounts.email, request.email)).for("update")
         )[0];
         const result: DeleteResult =
-          row === undefined ? "already_absent" : row.merchantId === null ? "deleted" : "retained";
+          row === undefined
+            ? "already_absent"
+            : row.merchantId === null && !row.operator
+              ? "deleted"
+              : "retained";
         const proofs = await tx
           .select({ id: verifications.id, value: verifications.value })
           .from(verifications);
@@ -1401,24 +1547,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return found === null || found === undefined ? null : personFrom(found);
     },
 
-    async endEverySessionFor(email) {
-      const context = await contextOf();
-      const found = await context.internalAdapter.findUserByEmail(emailAs(email));
-      if (found === null) return 0;
-      const open = await context.internalAdapter.listSessions(found.user.id);
-      await context.internalAdapter.deleteUserSessions(found.user.id);
-      return open.length;
-    },
-
-    async setOperator(email, operator) {
-      const written = await (await contextOf()).adapter.update<{ operator?: unknown }>({
-        model: "user",
-        where: [{ field: "email", value: emailAs(email) }],
-        update: { operator },
-      });
-      return written !== null && written !== undefined;
-    },
-
     async emailsNaming(merchantId) {
       const people = await (await contextOf()).adapter.findMany<{ email: string }>({
         model: "user",
@@ -1468,23 +1596,60 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return await endLiveSessionsOf(personId, new Set());
     },
 
-    async list(now) {
-      const context = await contextOf();
-      const everybody = await context.internalAdapter.listUsers();
-      const rows: AccountSummary[] = [];
-      for (const one of everybody) {
-        const person = personFrom(one as PersonRow);
-        const open = await context.internalAdapter.listSessions(person.id);
-        rows.push({
-          email: person.email,
-          createdAt: (one as { createdAt: Date }).createdAt,
-          sessions: open.filter((session) => session.expiresAt > now).length,
-          merchant: person.merchant?.id ?? null,
-          confirmed: person.confirmed,
-          operator: operatorOn(one),
-        });
+    async operatorAccounts(now) {
+      if (parts.pool === undefined) {
+        return await inMemoryTurn(async () => listedInMemory(memoryRows, now));
       }
-      return rows.sort((one, other) => one.email.localeCompare(other.email));
+      return await readingAccounts(parts.pool, async (tx) => await listedIn(tx, now));
+    },
+
+    async operatorAccount(accountId, now) {
+      if (parts.pool === undefined) {
+        return await inMemoryTurn(async () => summaryInMemoryOf(memoryRows, accountId, now));
+      }
+      return await readingAccounts(parts.pool, async (tx) => await summaryIn(tx, accountId, now));
+    },
+
+    async endSessionsIn(tx, accountId, now) {
+      if (tx === null) {
+        return await memoryOnly(async (rows) => endSessionsInMemory(rows, accountId, now));
+      }
+      return await endSessionsIn(tx, accountId, now);
+    },
+
+    async setOperatorIn(tx, accountId, on, asked) {
+      const channel = channelOf(config);
+      const tell = async (
+        before: readonly Readonly<{ id: string; email: string }>[],
+        changed: Readonly<{ id: string; email: string }>,
+      ) => {
+        const told = new Set([...before.map((one) => one.email), changed.email]);
+        // Handed over side by side, since the channel's lock is held meanwhile.
+        const handed = await Promise.all(
+          [...told].map((to) =>
+            postman(
+              operatorFlagMessage(to, {
+                email: changed.email,
+                granted: on,
+                at: asked.at,
+                askedBy: asked.by,
+                channel: `${channel.name.toLowerCase()} (${channel.line})`,
+                accounts: `${base}/admin/accounts`,
+              }),
+            ),
+          ),
+        );
+        if (handed.some((one) => one !== "accepted")) throw new OperatorMailRefused();
+      };
+      if (tx === null) {
+        return await memoryOnly(async (rows) => await setFlagInMemory(rows, accountId, on, tell));
+      }
+      return await setFlagIn(tx, accountId, on, tell);
+    },
+
+    async forgetIn(tx, accountId) {
+      if (tx === null) return await memoryOnly(async (rows) => forgetInMemory(rows, accountId));
+      return await forgetIn(tx, accountId, config.authSecret);
     },
 
     observe,
@@ -1526,7 +1691,137 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     async close() {
       await parts.pool?.end();
     },
+
+    async linksSentInTheHour(now) {
+      const since = now.getTime() - LINK_RATE_WINDOW_MS;
+      const counted: Record<LinkPurpose, number> = { dashboard: 0, report: 0, "step-up": 0 };
+      const purposes = Object.keys(counted);
+      if (parts.pool === undefined) {
+        for (const row of memoryRows.dashboard_link_sends ?? []) {
+          const sentAt = new Date(row.sentAt as Date).getTime();
+          if (sentAt > since && sentAt <= now.getTime() && purposes.includes(String(row.purpose))) {
+            counted[row.purpose as LinkPurpose] += 1;
+          }
+        }
+        return counted;
+      }
+      const rows = await drizzle(parts.pool)
+        .select({ purpose: linkSends.purpose, sent: sql<number>`count(*)::int` })
+        .from(linkSends)
+        .where(and(gt(linkSends.sentAt, new Date(since)), lte(linkSends.sentAt, now)))
+        .groupBy(linkSends.purpose);
+      for (const row of rows) {
+        if (purposes.includes(row.purpose)) counted[row.purpose as LinkPurpose] = row.sent;
+      }
+      return counted;
+    },
+
+    async accountsNamed(named) {
+      const ids = named.accountIds ?? [];
+      const merchantIds = named.merchantIds ?? [];
+      if (ids.length === 0 && merchantIds.length === 0) return [];
+      if (parts.pool === undefined) {
+        return (memoryRows.dashboard_accounts ?? [])
+          .filter(
+            (row) =>
+              ids.includes(String(row.id)) ||
+              (typeof row.merchantId === "string" && merchantIds.includes(row.merchantId)),
+          )
+          .map((row) => ({
+            id: String(row.id),
+            email: String(row.email),
+            merchantId: typeof row.merchantId === "string" ? row.merchantId : null,
+          }));
+      }
+      const either = [
+        ...(ids.length === 0 ? [] : [inArray(accounts.id, [...ids])]),
+        ...(merchantIds.length === 0 ? [] : [inArray(accounts.merchantId, [...merchantIds])]),
+      ];
+      return await drizzle(parts.pool)
+        .select({ id: accounts.id, email: accounts.email, merchantId: accounts.merchantId })
+        .from(accounts)
+        .where(or(...either));
+    },
+
+    async adReportsSince(since) {
+      const counted = { delivered: 0, refused: 0, givenUp: 0, waiting: 0 };
+      const settledAs: Readonly<Record<string, keyof typeof counted>> = {
+        delivered: "delivered",
+        refused: "refused",
+        given_up: "givenUp",
+      };
+      const tally = (state: string, settledAt: Date | null, many = 1) => {
+        if (state === "waiting" || state === "pending") counted.waiting += many;
+        const as = settledAs[state];
+        if (as !== undefined && settledAt !== null && settledAt.getTime() >= since.getTime()) {
+          counted[as] += many;
+        }
+      };
+      if (parts.pool === undefined) {
+        for (const row of memoryRows.dashboard_ad_reports ?? []) {
+          tally(String(row.state), row.settledAt == null ? null : new Date(row.settledAt as Date));
+        }
+        return counted;
+      }
+      const rows = await drizzle(parts.pool)
+        .select({
+          state: adReports.state,
+          settled: sql<number>`(count(*) filter (where ${adReports.settledAt} >= ${since}))::int`,
+          all: sql<number>`count(*)::int`,
+        })
+        .from(adReports)
+        .groupBy(adReports.state);
+      for (const row of rows) {
+        if (row.state === "waiting" || row.state === "pending") tally(row.state, null, row.all);
+        else tally(row.state, since, row.settled);
+      }
+      return counted;
+    },
+
+    async accountWithEmail(email) {
+      const found = await (await contextOf()).internalAdapter.findUserByEmail(emailAs(email));
+      if (found === null) return null;
+      const person = personFrom(found.user);
+      return { id: person.id, email: person.email, merchantId: person.merchant?.id ?? null };
+    },
+
+    async accountsWithEmailContaining(text) {
+      const wanted = text.trim().toLowerCase();
+      if (wanted === "") return { accounts: [], cut: false };
+      const { adapter } = await contextOf();
+      const rows = await adapter.findMany<{ id: string; email: string; merchantId?: unknown }>({
+        model: "user",
+        where: [{ field: "email", operator: "contains", value: wanted }],
+        limit: ACCOUNTS_FOUND_MAX,
+      });
+      // The adapter's own match reads `%` and `_` as wildcards, so what it
+      // finds is held to the text exactly; where it found as many as it reads,
+      // an account matching exactly may be among those it did not read.
+      const accounts = rows
+        .filter((row) => row.email.toLowerCase().includes(wanted))
+        .map((row) => ({
+          id: row.id,
+          email: row.email,
+          merchantId:
+            typeof row.merchantId === "string" && row.merchantId !== "" ? row.merchantId : null,
+        }));
+      return { accounts, cut: rows.length >= ACCOUNTS_FOUND_MAX };
+    },
   };
+}
+
+/** The journal's actions that show the channel's flag was ever given or taken. */
+const FLAG_ACTIONS = ["first_operator", "grant_operator", "remove_operator"] as const;
+
+/** A read of the accounts: read only, and cut off rather than holding the database. */
+async function readingAccounts<T>(pool: Pool, read: (tx: Statements) => Promise<T>): Promise<T> {
+  return await drizzle(pool).transaction(
+    async (tx) => {
+      await tx.execute(sql`select set_config('statement_timeout', '5000', true)`);
+      return await read(tx);
+    },
+    { accessMode: "read only" },
+  );
 }
 
 type PersonRow = {
@@ -1599,9 +1894,18 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   const clickId = value.clickId === undefined ? undefined : clickIdOf(value.clickId);
   if (clickId === null) return null;
   const destination = value.destination;
+  if (value.stepUp !== undefined) {
+    // Only an operator's own session asks for one, for a page of the
+    // workspace, with no click and no report request beside it.
+    const page = adminDestinationIn(destination);
+    if (value.stepUp !== true || page === null || clickId !== undefined || request !== null) {
+      return null;
+    }
+    return { email: value.email, destination: page, request: null, stepUp: true };
+  }
   if (typeof destination === "string") {
-    const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
-    if (known === undefined) return null;
+    const known = destinationNamed(destination);
+    if (known === null) return null;
     return {
       email: value.email,
       destination: known,
@@ -1668,6 +1972,7 @@ function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
     one.email === other.email &&
     one.request === other.request &&
     one.clickId === other.clickId &&
+    one.stepUp === other.stepUp &&
     (typeof one.destination === "string" || typeof other.destination === "string"
       ? one.destination === other.destination
       : one.destination.report === other.destination.report)
@@ -1687,7 +1992,11 @@ function goesWithTheDeletion(
   return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
 }
 
-/** `pnpm forget` clears an address's link sends by this same key. */
+/**
+ * What a link is for, each counted apart: a sign-in from the public form, a
+ * scanner's report, or an operator's fresh sign-in asked from the workspace.
+ */
+/** Forgetting an account clears its address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
@@ -1799,7 +2108,7 @@ function waitAfter(sentAt: readonly Date[], now: Date): Date {
 function memoryRate(
   rows: MemoryRows,
   emailHash: string,
-  purpose: "dashboard" | "report",
+  purpose: LinkPurpose,
   asking: ClientCount | null,
 ): LinkRate {
   const now = new Date();
@@ -1846,7 +2155,7 @@ function memoryRate(
   return { sent: true, retryAt: waitAfter([...address, now], now) };
 }
 
-const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
+const CEILING_WORDS = { dashboard: "sign-in", report: "report", "step-up": "step-up" } as const;
 
 /**
  * Writes one warning line when the channel's ceiling of a purpose first
@@ -1854,8 +2163,8 @@ const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
  * so an alert can hang on it without counting refusals. Each process keeps its
  * own note, so every process writes its own line. The line names no address.
  */
-function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => LinkRate {
-  const full = new Set<"dashboard" | "report">();
+function ceilingWatch(): (purpose: LinkPurpose, rated: LinkRate) => LinkRate {
+  const full = new Set<LinkPurpose>();
   return (purpose, rated) => {
     if (rated.sent) {
       full.delete(purpose);
@@ -1883,7 +2192,7 @@ function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => L
 async function postgresRate(
   tx: DashboardTransaction,
   emailHash: string,
-  purpose: "dashboard" | "report",
+  purpose: LinkPurpose,
   asking: ClientCount | null,
 ): Promise<LinkRate> {
   const now = new Date();
@@ -2023,7 +2332,9 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
   if (account === undefined) result = "already_absent";
   else {
     const person = personFrom(account as PersonRow);
-    result = person.merchant === null ? "deleted" : "retained";
+    // An operator's account stays until its flag is removed, so the channel
+    // cannot lose its operators this way.
+    result = person.merchant === null && account.operator !== true ? "deleted" : "retained";
   }
   rows.dashboard_verifications = (rows.dashboard_verifications ?? []).filter(
     (proof) => !goesWithTheDeletion(claimFrom(String(proof.value)), email, result),
@@ -2065,6 +2376,38 @@ function registerInMemory(rows: MemoryRows, reports: readonly AdReport[]): void 
     }
   }
   for (const report of reports) registered.push({ lastOutcome: null, settledAt: null, ...report });
+}
+
+/**
+ * The link an operator asks for from the workspace to confirm an action. It
+ * signs in the browser it is opened in and returns there to the page it was
+ * asked on, where the action is pressed again; it carries out nothing itself.
+ */
+function stepUpLinkMessage(to: string, link: string): Message {
+  const title = "Confirm it is you";
+  const lead =
+    "An administrative action in the Agentify operator's workspace asked for a fresh sign-in." +
+    " Open this link in the browser you are working in; it signs that browser in and returns" +
+    " you to the page you were on, where you press the action again.";
+  const lifetime =
+    "This link opens once and expires an hour after it was sent. It changes nothing by itself.";
+  const unasked =
+    "If you did not ask for this, do not open the link: somebody may be using a session of" +
+    " yours. Tell the other operators of this channel, who can end every session of your account.";
+  return {
+    to,
+    subject: "Confirm an administrative action on Agentify",
+    body: `Agentify\n\n${title}\n\n${lead}\n\n${link}\n\n${lifetime}\n\n${unasked}`,
+    html: transactionalEmailHtml({
+      preview: "Confirm the administrative action you were taking.",
+      eyebrow: "Operator's workspace",
+      title,
+      lead,
+      action: "Sign in and go back",
+      link,
+      paragraphs: [lifetime, unasked],
+    }),
+  };
 }
 
 function dashboardLinkMessage(to: string, link: string): Message {

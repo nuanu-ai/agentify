@@ -4,11 +4,11 @@ import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
 import { type Outcome, problemOf } from "./page-services.js";
 import {
-  type MerchantWooRecoveryParts,
   matchesSavedWooSale,
   ownWooRecoveryOrder,
   type RecoveryGateway,
   recoverWooOrderAs,
+  type WooRecoveryParts,
 } from "./woo-recovery.js";
 import { money } from "./words.js";
 
@@ -32,7 +32,7 @@ export interface WooRecoveryPages {
   recover(person: Person, orderId: string, form: FormData): Promise<Outcome<WooRecoveryView>>;
 }
 
-export type WooRecoveryPageParts = Omit<MerchantWooRecoveryParts, "gatewayFor"> & {
+export type WooRecoveryPageParts = Omit<WooRecoveryParts, "gatewayFor"> & {
   readonly gatewayFor: (acting: Acting) => RecoveryGateway & Pick<GatewayClient, "cards">;
 };
 

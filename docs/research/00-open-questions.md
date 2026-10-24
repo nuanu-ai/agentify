@@ -28,6 +28,12 @@ and git keeps the entries that were here.
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
 | A seller's name and site are read as they are now, also in orders already delivered, so a renamed seller shows the new name on an old order | product owner | ADR-0034 |
 | How a merchant completes full offboarding without staff, preserving accepted orders and payment history; pausing and revoking keys do not delete an account | product owner | `54-self-service.md` |
+| Whether a merchant is also told by mail when they are admitted, when their admission is withdrawn, with its note, or when a key of theirs is disabled; their dashboard shows a withdrawal and its note | product owner | `85-operator-admin.md` |
+| Whether a merchant whose admission was withdrawn stays under "Needs you", where they count again today because they have a seller name and a payout wallet and are not admitted | product owner | `85-operator-admin.md` |
+| Whether an operator is told by mail or a message when something in the admin needs a look, or finds it only by opening the admin; nothing in the product alerts anybody today | product owner | `85-operator-admin.md` |
+| How fresh a sign-in an administrative action asks for, fifteen minutes or another window, and whether reading the admin asks for one too | product owner, with the architect | `85-operator-admin.md` |
+| Whether the admin reads the splits' balances from the chain, so that the commission Agentify has received is a figure rather than a link to the explorer | product owner | `85-operator-admin.md` |
+| Who answers the access requests the scanner records through the route its privacy page names; the scanner's page counts them and nothing records an answer | product owner | `85-operator-admin.md` |
 
 ## Money
 

@@ -11,6 +11,17 @@ import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { AnalyticsEvent } from "../../analytics/events.js";
 import type { Clock, Ids } from "../../ports/clock.js";
+import {
+  answersQuery,
+  checkedJournalEntry,
+  type JournalEntry,
+  type JournalPage,
+  type JournalPress,
+  type JournalQuery,
+  type JournalRow,
+  journalLimitOf,
+  settledPress,
+} from "../../ports/journal.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AnalyticsOf,
@@ -90,6 +101,21 @@ const noEnvelopes: Envelopes = {
   },
 };
 
+/** What `MemoryStore#holdings` hands the operator's memory reader. */
+export interface MemoryHoldings {
+  readonly merchants: readonly StoredMerchant[];
+  readonly keys: readonly StoredKey[];
+  readonly cards: readonly StoredCard[];
+  /** Each order with when it was last written, as Postgres stamps `updated_at`. */
+  readonly orders: readonly { readonly record: StoredOrder; readonly writtenAt: number }[];
+  readonly receipts: readonly { readonly merchantId: string; readonly receipt: Receipt }[];
+  readonly splits: readonly RecordedPayoutSplit[];
+  /** The latest poll recorded for each merchant. */
+  readonly contact: ReadonlyMap<string, number>;
+  /** Every analytics event recorded, none of which this store ever sends. */
+  readonly analytics: readonly { readonly event: AnalyticsEvent; readonly at: Date }[];
+}
+
 interface MerchantRow {
   readonly id: string;
   readonly name: string;
@@ -133,6 +159,8 @@ export class MemoryStore implements Store {
   readonly #envelopes: Envelopes;
   /** Every analytics event recorded, in the order recorded. */
   readonly #analytics: { readonly event: AnalyticsEvent; readonly at: Date }[] = [];
+  /** The operator's journal, oldest first, frozen. */
+  readonly #journal: JournalRow[] = [];
 
   constructor(
     network: string,
@@ -204,27 +232,35 @@ export class MemoryStore implements Store {
     id: string,
     at: number,
     analytics?: AnalyticsOf<{ merchant: StoredMerchant; changed: boolean }>,
+    journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
     const changed = row.liveApprovedAt === null;
+    // Checked before anything moves, so a row the journal refuses leaves the
+    // merchant as it was, as the rolled-back transaction does in Postgres.
+    const entry = this.#checkedPress(journal, changed);
     row.liveApprovedAt ??= at;
     const granted = { merchant: this.#storedMerchantOf(row), changed };
     if (changed) await this.#recordWith(analytics, granted, at);
+    this.#append(entry);
     return granted;
   }
 
   async withdrawLiveApproval(
     id: string,
+    journal?: JournalPress,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
     const changed = row.liveApprovedAt !== null;
+    const entry = this.#checkedPress(journal, changed);
     row.liveApprovedAt = null;
+    this.#append(entry);
     return { merchant: this.#storedMerchantOf(row), changed };
   }
 
@@ -492,14 +528,23 @@ export class MemoryStore implements Store {
     return found === undefined ? null : this.#revoke(found, at);
   }
 
-  async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
+  async disableKeyOf(
+    merchantId: string,
+    id: string,
+    at: number,
+    journal?: JournalPress,
+  ): Promise<{ readonly key: StoredKey; readonly changed: boolean } | null> {
     const found = this.#keys.get(id);
     // Another merchant's key is not found rather than refused, so a refusal
     // says nothing about whose keys exist.
     if (found === undefined || found.merchantId !== merchantId) {
       return null;
     }
-    return this.#revoke(found, at);
+    const changed = found.disabledAt === null;
+    const entry = this.#checkedPress(journal, changed);
+    const revoked = this.#revoke(found, at);
+    this.#append(entry);
+    return { key: revoked, changed };
   }
 
   #works(keyId: string, merchantId: string): boolean {
@@ -511,6 +556,75 @@ export class MemoryStore implements Store {
     const stored: StoredKey = Object.freeze({ ...found, disabledAt: found.disabledAt ?? at });
     this.#keys.set(found.id, stored);
     return stored;
+  }
+
+  // --- the operator's reads -------------------------------------------------
+
+  /**
+   * Everything this store holds, every merchant's, for the operator's memory
+   * reader alone, which reads across merchants as the Postgres one does.
+   */
+  holdings(): MemoryHoldings {
+    return {
+      merchants: [...this.#merchants.values()].map((row) => this.#storedMerchantOf(row)),
+      keys: [...this.#keys.values()],
+      cards: [...this.#cards.values()],
+      orders: [...this.#orders.values()].map((record) => ({
+        record,
+        writtenAt: this.#written.get(record.order.id) ?? 0,
+      })),
+      receipts: [...this.#receipts.values()],
+      splits: [...this.#splits],
+      contact: new Map(this.#contact),
+      analytics: [...this.#analytics],
+    };
+  }
+
+  // --- the operator's journal -----------------------------------------------
+
+  /** The row a press settles as, checked; null where the call was handed none. */
+  #checkedPress(press: JournalPress | undefined, changed: boolean): JournalEntry | null {
+    return press === undefined ? null : checkedJournalEntry(settledPress(press, changed));
+  }
+
+  #append(entry: JournalEntry | null): void {
+    if (entry !== null) this.#appended(entry);
+  }
+
+  #appended(entry: JournalEntry): JournalRow {
+    const row: JournalRow = Object.freeze({ ...entry, sequence: this.#journal.length + 1 });
+    this.#journal.push(row);
+    return row;
+  }
+
+  async recordJournal(entry: JournalEntry): Promise<JournalRow> {
+    return this.#appended(checkedJournalEntry(entry));
+  }
+
+  async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
+    // A grant made with no row still admits: the merchant's own column decides.
+    if ((this.#merchants.get(merchantId)?.liveApprovedAt ?? null) !== null) return null;
+    const last = this.#journal.findLast(
+      (row) =>
+        row.subject.kind === "merchant" &&
+        row.subject.id === merchantId &&
+        row.outcome.kind === "done" &&
+        (row.action === "withdraw" || row.action === "admit"),
+    );
+    return last?.action === "withdraw" ? last : null;
+  }
+
+  async journal(query: JournalQuery): Promise<JournalPage> {
+    const matching = this.#journal.filter((row) => answersQuery(row, query)).reverse();
+    const before = query.before;
+    const from = before === undefined ? matching : matching.filter((row) => row.sequence < before);
+    const rows = from.slice(0, journalLimitOf(query));
+    const last = rows.at(-1);
+    return {
+      rows,
+      total: matching.length,
+      next: last !== undefined && from.length > rows.length ? last.sequence : null,
+    };
   }
 
   // --- the catalog ----------------------------------------------------------

@@ -36,14 +36,11 @@
 # merchant. Google sign-in is also available when its credentials are supplied;
 # no command makes an account or a merchant.
 #
-# The operator's commands look after the accounts there are:
-#
-#   docker compose exec app \
-#     pnpm --filter @agentify/dashboard account list
-#
-# `list` inspects accounts and `revoke` ends their sessions.
-# `operator you@example.com` lets an address that has signed in once read the
-# operator's dashboard at /admin, and `--off` takes that away.
+# The operator's workspace at http://localhost:8080/dashboard/admin looks after
+# the accounts there are. It opens for an account carrying the operator flag:
+# set FIRST_OPERATOR_EMAIL to your address before your first sign-in and the
+# account it makes receives the flag; an operator then grants it to others in
+# the workspace's Accounts.
 #
 # Nothing is bought by itself. A purchase is an explicit command, so a sale in
 # the dashboard is one somebody made:
@@ -230,6 +227,11 @@ services:
       # sign-in alone; one credential without the other is refused at start-up.
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET-}"
+      # The address whose account becomes the channel's first operator at its
+      # next sign-in, while no account holds the flag and the journal records
+      # no grant or removal of it; the journal names the configuration as the
+      # actor. From then on it changes nothing. Empty names nobody.
+      FIRST_OPERATOR_EMAIL: "${FIRST_OPERATOR_EMAIL-}"
       # Off unless the host's file turns it on. On, the dashboard tells the ad
       # tracker once that a person its ad sent signed up, for each whose sign-in
       # from the ad is their address's first, and once that they connected a

@@ -934,9 +934,9 @@ if (databaseUrl === null) {
       expect((await identity.whoIs(partner))?.person.email).toBe("partner@example.com");
     });
 
-    it("keeps the operator flag off until the terminal sets it, and a session reads it afresh", async () => {
-      // A sign-in writes the row without the flag; only the terminal's call
-      // sets it, and an open session sees the change on its next read.
+    it("keeps the operator flag off at a sign-in, and a session reads it afresh", async () => {
+      // A sign-in writes the row without the flag, and an open session sees a
+      // change of the flag on its next read.
       const messages: Message[] = [];
       const identity = identityOn(messages);
       await identity.requestLink("operator@example.com", "default", ONE_CLIENT);
@@ -949,16 +949,17 @@ if (databaseUrl === null) {
       ]);
       expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
 
-      await expect(identity.setOperator(" Operator@Example.com ", true)).resolves.toBe(true);
+      await pool.query(`update dashboard_accounts set "operator" = true`);
       expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(true);
       expect(
-        (await identity.list(new Date())).map(({ email, operator }) => ({ email, operator })),
+        (await identity.operatorAccounts(new Date())).listed.map(({ email, operator }) => ({
+          email,
+          operator,
+        })),
       ).toStrictEqual([{ email: "operator@example.com", operator: true }]);
 
-      await expect(identity.setOperator("operator@example.com", false)).resolves.toBe(true);
+      await pool.query(`update dashboard_accounts set "operator" = false`);
       expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
-
-      await expect(identity.setOperator("nobody@example.com", true)).resolves.toBe(false);
       expect(
         (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 1 });

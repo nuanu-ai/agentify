@@ -516,22 +516,21 @@ from the revision `current` names.
 
 Agentify's 0.1% stays credited to its commission wallet in the shared 0xSplits
 warehouse until somebody pays the splits out; nothing does that on a timer. The
-operator's payout command prints, for every split recorded on the channel's
-network, the transactions that create each split if it has no code yet,
-distribute it, withdraw each merchant's share to their wallet and, last in each,
-withdraw the commission; it reads the database and nothing else, and sends
-nothing:
+operator's workspace shows the payout on its Money page, under the splits, at
+`/dashboard/admin/money`: for every split recorded on the channel's network,
+the transactions that create each split if it has no code yet, distribute it,
+withdraw each merchant's share to their wallet and, last in each, withdraw the
+commission. The page reads the database and nothing else, and sends nothing; it
+shows no transaction where the gateway would refuse to start on the recorded
+splits, and says why.
 
-```sh
-ssh -t agentify "sudo docker exec agentify-app-1 pnpm --silent --filter @agentify/gateway payout"
-```
-
-Each transaction it prints is sent by hand, on Base only, from any wallet that
+Each transaction it shows is sent by hand, on Base only, from any wallet that
 holds a little ETH for the fee (in MetaMask with Show hex data turned on, under
-Settings → Transactions): To, Amount 0 and the Data as printed. The commission
-arrives at the Safe; the merchants' shares go to their own wallets in the same
-transaction. On TEST the same command, against `agentify-test`, prints Base
-Sepolia transactions whose commission goes to the test channel's wallet. A
+Settings → Transactions): To, Value 0 and the Data as shown, opened to its whole
+value. The commission arrives at the Safe; the merchants' shares go to their
+own wallets in the same transaction. On TEST the same page, on the test
+channel's workspace, shows Base Sepolia transactions whose commission goes to
+the test channel's wallet. A
 payout costs gas whether or not a split holds anything, so it is worth sending
 when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
 «Выплата вручную»).
@@ -975,102 +974,102 @@ merchant, and check sign-out and an intelligible return after cancellation.
 The email-link route must still work. These checks require the channel's
 Google client and real acceptance accounts; offline tests do not prove them.
 
-## Live sales approval in the admin screen
+## Who opens the operator's workspace
 
-Sign in on the live site with an account carrying the administrative flag
-below. Open `/admin`, follow **Manage live sales approval**, and find the seller
-by their account email. Check the displayed seller name and merchant ID, then
-confirm **Allow this merchant to sell for real money** and press **Approve live
-sales**. The account must already have a merchant. Approval creates none,
-changes no order and moves no money. The seller must still meet all other
-publication and selling requirements.
+The operator's workspace at `/dashboard/admin`, and the scanner's page at
+`/admin`, open for a session whose account carries the operator flag, and
+answer everybody else with the site's 404 page (ADR-0026 §6). An operator
+gives the flag to another account, or takes it away, in the workspace's
+Accounts: the press asks for a sign-in made in the last fifteen minutes and a
+reason, is written to the journal, and waits until a mail to every operator of
+the channel and to the account changed has been handed to the provider. The
+last operator's flag cannot be removed there.
 
-Only live grants approval; a test or sandbox screen explains that none is
-needed there. A repeated grant preserves the original approval time. If the
-write's answer is lost, the result is unknown: find the merchant again to read
-the status, or repeat the same approval safely. The existing `pnpm approve
-<email>` terminal command grants the same permission. Neither route proves that
-a particular payment occurred. The screen does not withdraw an approval; the
-terminal command below does.
-
-## Who opens /admin
-
-The operator's dashboard at `/admin` opens for a session whose account carries
-the operator flag, and answers everybody else with the site's 404 page
-(ADR-0026 §6). Nobody is flagged on a new channel, so it opens for nobody until
-somebody is. The person who is to read it signs in once at
-`/dashboard/sign-in`, which makes their account. The link arrives by mail
-where the channel names a mail provider; a channel without one writes its mail
-to the application's log rather than sending it, and the link is then read
-with `deploy/stack.sh <channel> logs app` from the newest checkout. They are then
-flagged on the host of that channel:
+A new channel has no operator. Its first one is named in the channel's
+root-owned environment file:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+FIRST_OPERATOR_EMAIL=you@example.com
 ```
 
-The scanner's header then shows them an Admin link, on the next page they
-open, without signing in again. `account list` says who is an operator, and
-`account operator you@example.com --off` takes the flag away.
+That person then signs in once at `/dashboard/sign-in`. The link arrives by
+mail where the channel names a mail provider; a channel without one writes its
+mail to the application's log rather than sending it, and the link is then
+read with `deploy/stack.sh <channel> logs app` from the newest checkout. The
+account receives the flag at that sign-in, and the journal records the
+configuration as the one that gave it. This happens only while no account holds
+the flag and the journal records no grant or removal of it, so from then on the
+value changes nothing, whether it stays in the file or not.
 
-## Approving a merchant for live sales
-
-A merchant publishes on PRODUCTION only once the operator has approved them,
-once, and that is an application command rather than a release. From an
-operator's checkout:
+A channel that has lost every operator anyway, which no press in the workspace
+can bring about, is recovered on its host. An account must exist for the
+address, so its person signs in once first. Then, from the newest checkout of
+that channel, open the database:
 
 ```sh
-pnpm approve <email>
+sudo "$(ls -dt /var/lib/agentify/<channel>/checkouts/*/ | head -n 1)deploy/stack.sh" <channel> exec postgres psql -U agentify -d agentify
 ```
 
-It reaches PRODUCTION over SSH through the `agentify` alias, resolves the
-merchant of that address's dashboard account inside the running application
-and records the approval; it says so when the approval already exists or the
-account is unknown. Approval publishes nothing and supplies no missing seller
-name or payout wallet, and TEST never needs it. When SSH does not complete,
-the outcome is unknown, and running the same command again shows it.
+and run this one statement, with the address in lower case as a sign-in keeps
+it. It gives the flag only while no account holds it, and writes the journal's
+row naming the terminal in the same statement; `INSERT 0 1` says it was given,
+and `INSERT 0 0` that an account already holds the flag or none has that
+address.
 
-The approval is withdrawn the same way:
-
-```sh
-pnpm approve --withdraw <email>
+```sql
+with granted as (
+  update dashboard_accounts set operator = true, updated_at = now()
+   where email = 'you@example.com'
+     and not exists (select 1 from dashboard_accounts where operator)
+  returning id)
+insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, outcome)
+select now(), 'terminal', 'grant_operator', 'account', id, 'done' from granted;
 ```
 
-It finds the merchant by the same address and clears the approval, and says
-whether there was one to clear; running it again changes nothing and says so in
-the same words each time. From then on the merchant stands as one the operator
-never approved: a new live purchase from them is refused before any payment is
+## Admitting a merchant to live sales
+
+A merchant sells on PRODUCTION only once an operator has admitted them, and
+that is an action in the operator's workspace rather than a release or a
+command. Sign in on the live site with an account carrying the operator flag,
+open `/dashboard/admin/merchants` and open the merchant; the list puts first
+every merchant that has a seller name and a payout wallet and waits for
+admission. On the merchant's page, tick the box that names what follows and
+press **Admit to live sales**. Every action in the workspace asks for a
+sign-in made in the last fifteen minutes, by the same email link or Google
+account; the step that asks for one returns the browser to the merchant's
+page, where the operator presses again. Admission publishes nothing and
+supplies no missing seller name or payout wallet, and TEST never needs it. A
+repeated admission keeps the first time. Where the answer is lost, the page
+says the outcome is unknown; reading the merchant again shows it, and pressing
+again is safe.
+
+The admission is withdrawn on the same page with **Withdraw admission**, which
+asks for a note. The merchant reads that note on their own dashboard while the
+withdrawal stands, beside the moment it was made, so it says what they can do
+about it and names no buyer. From then on the merchant stands as one never
+admitted: a new live purchase from them is refused before any payment is
 asked for, their cards leave the live catalogue, and publishing lists
 `no_operator_approval`. It is a pause rather than a cancellation, and stops
 what is new exactly where pausing all selling does: orders already opened keep
 their fulfilment, the merchant still delivers them, and nothing is refunded or
 closed. An order already priced can still be paid within what remains of its
 price window: at most thirty seconds, or thirty-five for a card that asks the
-merchant for its price. `pnpm approve <email>` admits the merchant again, with
-a new approval time, and their cards sell again without being republished. An
-unknown address is refused with words and nothing is written. The command
-reaches only a revision deployed with it; an older one refuses it for want of
-the script and changes nothing.
+merchant for its price. Admitting them again on the same page lets their
+cards sell again without being republished. Every admission, withdrawal and
+refused press is a row of the operator's journal, which the merchant's page
+shows as its history.
 
 ## Starting an address over on TEST
 
 An address that has signed in on TEST can be made new again, so it signs in
-as if for the first time. From an operator's checkout:
-
-```sh
-pnpm forget <email>
-```
-
-It reaches TEST over SSH through the `agentify-test` alias and removes that
-address's dashboard account together with the merchant it names, the
-merchant's keys and cards, and the wait before the address's next sign-in
-link. It refuses, and says why, when the merchant has an order or a receipt,
-when another account names the same merchant, or when no account has the
-address; on a deployment whose payment network is live it refuses before it
-reads anything. An operator flag goes with the account, and a WooCommerce
-connection it drops keeps its key in that shop until somebody revokes it
-there.
+as if for the first time: an operator opens its account in the TEST
+workspace's Accounts and presses Forget this account. It removes the account
+together with the merchant it names, the merchant's keys and cards, and the
+wait before the address's next sign-in link, and writes the journal's row.
+It is refused, and says why, when the merchant has an order or a receipt, when
+another account names the same merchant, and for the channel's last operator;
+the live channel's workspace does not offer it. A WooCommerce connection it
+drops keeps its key in that shop until somebody revokes it there.
 
 ## The Woo acceptance route on TEST
 

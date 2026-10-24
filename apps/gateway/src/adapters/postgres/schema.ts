@@ -26,6 +26,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { JOURNAL_ACTIONS, JOURNAL_REASON_MAX } from "../../ports/journal.js";
 import { type StoredOrder, WAITING_FOR_PAYMENT } from "../../ports/store.js";
 
 /**
@@ -393,5 +394,61 @@ export const analyticsEvents = pgTable(
     index("commerce_analytics_events_settled_idx")
       .on(table.settledAt)
       .where(sql`${table.state} <> 'pending'`),
+  ],
+);
+
+/**
+ * The operator's journal: one row for every administrative action and every
+ * refused press at one, which the application only ever adds to. Accounts and
+ * merchants are named by identifier, with no foreign key, so forgetting a
+ * merchant or erasing a person leaves the rows that name them. A key's row
+ * carries its merchant too, so a merchant's history reads by one column. The
+ * checks are the journal's rules, and a row that breaks one fails the
+ * transaction of the action it records, which is the point.
+ */
+export const operatorJournal = pgTable(
+  "operator_journal",
+  {
+    sequence: bigint("sequence", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    at: timestamp("at", { withTimezone: true, mode: "date" }).notNull(),
+    actorKind: text("actor_kind").notNull(),
+    actorId: text("actor_id"),
+    action: text("action").notNull(),
+    subjectKind: text("subject_kind").notNull(),
+    subjectId: text("subject_id").notNull(),
+    subjectMerchant: text("subject_merchant"),
+    reason: text("reason"),
+    outcome: text("outcome").notNull(),
+    refusal: text("refusal"),
+  },
+  (table) => [
+    check(
+      "operator_journal_actor",
+      sql`${table.actorKind} in ('account', 'terminal', 'configuration') and (${table.actorKind} = 'account') = (${table.actorId} is not null)`,
+    ),
+    check(
+      "operator_journal_action",
+      sql.raw(`"action" in (${JOURNAL_ACTIONS.map((action) => `'${action}'`).join(", ")})`),
+    ),
+    check(
+      "operator_journal_subject",
+      sql`(${table.subjectKind} = 'merchant' and ${table.subjectMerchant} = ${table.subjectId}) or (${table.subjectKind} = 'key' and ${table.subjectMerchant} is not null) or (${table.subjectKind} = 'account' and ${table.subjectMerchant} is null)`,
+    ),
+    check(
+      "operator_journal_outcome",
+      sql`${table.outcome} in ('done', 'unchanged', 'refused') and (${table.outcome} = 'refused') = (${table.refusal} is not null)`,
+    ),
+    check(
+      "operator_journal_reason",
+      sql.raw(`"reason" is null or (char_length("reason") between 1 and ${JOURNAL_REASON_MAX})`),
+    ),
+    // A merchant's history, newest first, its keys' rows among it.
+    index("operator_journal_merchant_idx")
+      .on(table.subjectMerchant, table.sequence)
+      .where(sql`${table.subjectMerchant} is not null`),
+    // An account's history, newest first.
+    index("operator_journal_account_idx")
+      .on(table.subjectId, table.sequence)
+      .where(sql`${table.subjectKind} = 'account'`),
   ],
 );

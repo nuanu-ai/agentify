@@ -25,6 +25,7 @@ import { encryptSensitiveValue, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
 import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
+import { updateAccountState } from "./reporting";
 import {
   requestScannerIdentityDeletion,
   retryPendingScannerIdentityDeletions,
@@ -467,6 +468,8 @@ describe("the operator page", () => {
   it("reads a database the migrations built, with nothing installed beside them", async () => {
     const dashboard = await getOperatorDashboard();
     expect(dashboard.daily).toHaveLength(30);
+    // The days are UTC days, whatever the zone of the database or of the process.
+    expect(dashboard.daily.at(-1)?.day).toBe(new Date().toISOString().slice(0, 10));
     expect(dashboard.overview.scansTotal).toBeGreaterThan(0);
     expect(dashboard.recentScans.length).toBeLessThanOrEqual(50);
   });
@@ -474,15 +477,31 @@ describe("the operator page", () => {
   it("counts a registration from its record, whether or not an event was kept for it", async () => {
     // A visitor who allowed no measurement registers and leaves the record of
     // the registration and no event; the operator still counts them.
-    const registrations = (dashboard: Awaited<ReturnType<typeof getOperatorDashboard>>) => [
-      dashboard.overview.verifiedRegistrations30d,
-      dashboard.daily.reduce((sum, day) => sum + day.verifiedRegistrations, 0),
-    ];
-    const [overviewBefore, dailyBefore] = registrations(await getOperatorDashboard());
+    const before = (await getOperatorDashboard()).overview.verifiedRegistrations30d;
     await createLeadFixture("operator-counted-registration");
-    expect(registrations(await getOperatorDashboard())).toEqual([
-      (overviewBefore ?? 0) + 1,
-      (dailyBefore ?? 0) + 1,
-    ]);
+    expect((await getOperatorDashboard()).overview.verifiedRegistrations30d).toBe(before + 1);
+  });
+
+  it("counts a data access request as waiting until its address is deleted", async () => {
+    const waiting = async () => (await getOperatorDashboard()).dataAccess.waiting;
+    const { leadId } = await createLeadFixture("operator-counted-access-request");
+    const before = await waiting();
+
+    await updateAccountState(leadId, "access");
+    expect(await waiting()).toBe(before + 1);
+    const { oldestAt } = (await getOperatorDashboard()).dataAccess;
+    expect(oldestAt).not.toBeNull();
+    // Asking again does not make the wait look shorter.
+    await getDatabase()
+      .db.update(leads)
+      .set({ dataAccessRequestedAt: new Date(Date.parse(oldestAt ?? "") - 86_400_000 * 400) })
+      .where(eq(leads.id, leadId));
+    const asked = (await getOperatorDashboard()).dataAccess.oldestAt;
+    await updateAccountState(leadId, "access");
+    expect(await waiting()).toBe(before + 1);
+    expect((await getOperatorDashboard()).dataAccess.oldestAt).toBe(asked);
+
+    await requestScannerIdentityDeletion({ leadId });
+    expect(await waiting()).toBe(before);
   });
 });

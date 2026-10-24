@@ -187,7 +187,7 @@ const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 const SWEEP_DISPATCH_GRACE_MS = 5 * 60 * 1_000;
 
 /** The chain a gateway takes payments on where `PAYMENT_NETWORK` names none. */
-export const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
+const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
 
 /**
  * The environment is an external boundary like any request, so it is parsed

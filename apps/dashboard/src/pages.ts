@@ -4,8 +4,8 @@
  * answers that path with that method; a path that matches no other route
  * matches the page that says there is no such page. What falls through to the
  * listener's last answer is a request no route takes: a method other than a
- * read or a post, a post to a page that does not act, and a path that cannot
- * be decoded.
+ * read or a post, a post to a page that does not act (unless a layout around
+ * it takes every post), and a path that cannot be decoded.
  *
  * What the pages need from the process — the session lookup, the gateway as
  * the signed-in merchant, the configuration — reaches their loaders through the
@@ -198,6 +198,13 @@ interface Served {
    * is held now.
    */
   readonly keepsData: boolean;
+  /**
+   * Whether this layout's middleware is handed every post to a page inside it,
+   * one to a page that does not act included, as `takesEveryPost` in its
+   * `handle` says: so that whoever it refuses meets its refusal rather than an
+   * answer that says the page is there.
+   */
+  readonly takesEveryPost: boolean;
 }
 
 /**
@@ -236,7 +243,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         loader?: unknown;
         action?: unknown;
         middleware?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean; takesEveryPost?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
@@ -250,6 +257,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
               module.middleware !== undefined
             : method === "POST" && module.action !== undefined),
         keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
+        takesEveryPost: module.handle?.takesEveryPost === true,
       };
       const shared = {
         id: route.id,
@@ -419,7 +427,10 @@ export function pagesHandler(
       const data = url.pathname.endsWith(".data");
       const matches = matchRoutes(routes, pageOf(url.pathname), basename) ?? [];
       const served = matches.at(-1)?.route.handle as Served | undefined;
-      if (served === undefined || !served.answers(request.method)) {
+      const taken =
+        request.method === "POST" &&
+        matches.some((match) => (match.route.handle as Served).takesEveryPost);
+      if (served === undefined || !(served.answers(request.method) || taken)) {
         next();
         return;
       }

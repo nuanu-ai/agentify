@@ -16,6 +16,7 @@ import {
 } from "react-router";
 import { cookiesCarriedBy } from "../src/carried-cookies.js";
 import type { Outcome, Surface } from "../src/page-services.js";
+import type { FrameView } from "../src/views.js";
 import { services } from "./services.js";
 
 /** What every page needs to be drawn, including one drawn for an error. */
@@ -28,9 +29,20 @@ export interface Chrome {
 /** What a page that could not be drawn is drawn from instead. */
 export type Trouble =
   | Readonly<{ kind: "problem"; chrome: Chrome; said: string; again?: string }>
+  /**
+   * The dashboard's page for an address it does not have, drawn where no
+   * loader ran, with what the gate and the merchant's pages' layout read.
+   */
+  | Readonly<{ kind: "no-such-page"; chrome: Chrome; drawn: DrawnFor }>
   | Readonly<{ kind: "unread"; chrome: Chrome; again: string }>
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>
   | Readonly<{ kind: "broken"; chrome: Chrome }>;
+
+/** What a page behind the gate is drawn with: the address signed in, and the merchant's pages' frame. */
+export interface DrawnFor {
+  readonly who: string;
+  readonly framed: FrameView;
+}
 
 export const chromeOf = (context: Readonly<RouterContextProvider>): Chrome => {
   const pages = context.get(services);

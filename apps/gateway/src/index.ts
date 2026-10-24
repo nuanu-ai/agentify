@@ -30,7 +30,6 @@ export {
   withdrawLiveApproval,
 } from "./app/merchants.js";
 export type { Runtime } from "./app/runtime.js";
-export { openCommandApplication } from "./command-application.js";
 export { type GatewayConfig, loadConfig } from "./config.js";
 export {
   bodyRefused,
@@ -46,7 +45,7 @@ export { PaymentEdge, widestChallengeOn } from "./http/x402.js";
 export { nobodyAnnounces } from "./ports/announcer.js";
 export { randomIds, systemClock } from "./ports/clock.js";
 export type { Facilitator } from "./ports/facilitator.js";
-export type { Integration, RecordedPayoutSplit, StoredOrder } from "./ports/store.js";
+export type { Integration, RecordedPayoutSplit, Store, StoredOrder } from "./ports/store.js";
 export {
   PAYOUT_SPLIT_NETWORKS,
   type PayoutSplitNetwork,

@@ -12,11 +12,6 @@
     "build": "react-router build && tsx src/precompress.ts",
     "budget": "tsx src/budget.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "account": "tsx src/account.ts",
-    "approve": "tsx src/approve.ts",
-    "withdraw-approval": "tsx src/approve.ts --withdraw",
-    "forget": "tsx src/forget.ts",
-    "woo:recover": "tsx src/woo-recover.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts"
   },

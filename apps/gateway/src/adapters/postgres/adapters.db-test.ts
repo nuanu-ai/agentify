@@ -77,7 +77,7 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  */
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants," +
-  " payout_splits, commerce_analytics_events";
+  " payout_splits, commerce_analytics_events, operator_journal";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
@@ -546,7 +546,7 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("makes a revocation from another client wait for a hand-over recorded through that key", async () => {
-      // The terminal command revokes a key from a process of its own. Were the
+      // A key can be revoked from a process other than the gateway's. Were the
       // hand-over to read the key and then write, a revocation committed in
       // between would let the order go to code the merchant had just cut off;
       // under the hold, the revocation either lands first and the hand-over
@@ -599,7 +599,7 @@ if (databaseUrl === null) {
 
         expect(heldUp).toBe(true);
         expect(await handOver).toStrictEqual({ found: true, result: "handed over" });
-        expect((await revoked)?.disabledAt).not.toBeNull();
+        expect((await revoked)?.key.disabledAt).not.toBeNull();
         expect(
           await store.withOrder("ord_held", () => ({ result: "again" }), {
             merchantId: A,

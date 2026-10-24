@@ -348,7 +348,7 @@ export const SILENT_AFTER_MS = 10 * 60_000;
  * before ten minutes without a poll, and every one is within half a minute
  * after.
  */
-const CONTACT_WRITTEN_EVERY_MS = 30_000;
+export const CONTACT_WRITTEN_EVERY_MS = 30_000;
 
 /**
  * How seldom a seller turned away for their waiting purchases is said in the
@@ -357,7 +357,7 @@ const CONTACT_WRITTEN_EVERY_MS = 30_000;
 const SELLER_BUSY_LOGGED_EVERY_MS = 60_000;
 
 /** Whether a seller whose process last polled at `polled` is silent at `at`. */
-const silentAt = (polled: number | null, at: number): boolean =>
+export const silentAt = (polled: number | null, at: number): boolean =>
   polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
 
 /** What an agent is told of a product that went off sale as its order was made. */
@@ -980,8 +980,10 @@ export class Gateway {
    * for live sales, and, while purchases of theirs that charge before their
    * goods are refused for that silence, when their process last polled (null
    * where it never has), and whether as many of their purchases wait for
-   * payment as the door allows, so that the next is refused. Each answer is
-   * the one the call that reads it alone gives.
+   * payment as the door allows, so that the next is refused; and, on the live
+   * channel while an operator's withdrawal of their admission stands, when it
+   * was withdrawn and the note the operator wrote for them. Each answer is the
+   * one the call that reads it alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -991,6 +993,7 @@ export class Gateway {
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly busy: boolean;
+    readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
@@ -1011,7 +1014,21 @@ export class Gateway {
           at,
           WAITING_FOR_PAYMENT_AT_MOST,
         )) >= WAITING_FOR_PAYMENT_AT_MOST,
+      withdrawn: await this.#standingWithdrawal(merchant),
     };
+  }
+
+  /**
+   * The withdrawal of this merchant's admission that stands, read only on the
+   * live channel, the one that asks for admission, and only while they are not
+   * admitted. Its reason is the note the operator wrote for them to read.
+   */
+  async #standingWithdrawal(
+    merchant: StoredMerchant,
+  ): Promise<{ readonly at: number; readonly note: string | null } | null> {
+    if (this.runtime.config.surfaceMode !== "live" || merchant.liveApprovedAt !== null) return null;
+    const row = await this.runtime.store.standingWithdrawal(merchant.id);
+    return row === null ? null : { at: row.at, note: row.reason };
   }
 
   /**
@@ -1254,13 +1271,35 @@ export class Gateway {
 
   /**
    * Every split recorded on this network, every merchant's, for the
-   * operator's payout command, in the order they were recorded: any of them
+   * operator's payout, in the order they were recorded: any of them
    * may hold money, and a payout of one that holds nothing costs only gas.
+   * A split waiting behind a wallet change not yet in force is left out and
+   * counted, unless it can hold money already: until the change lands nobody
+   * is asked to pay into it, and its address is the merchant's new wallet.
    * Across merchants on purpose, so nothing reachable from a request may call
    * it.
    */
-  async splitsToPayOut(): Promise<readonly RecordedPayoutSplit[]> {
-    return this.runtime.store.payoutSplitsOn(this.runtime.config.payoutSplit.network);
+  async splitsToPayOut(): Promise<{
+    readonly splits: readonly RecordedPayoutSplit[];
+    readonly waiting: number;
+  }> {
+    const { store, config, clock } = this.runtime;
+    const network = config.payoutSplit.network;
+    const at = clock();
+    const waiting: string[] = [];
+    for (const merchant of await store.merchants()) {
+      const split = payoutWalletAt(merchant.payoutWallet, at).pending?.split;
+      if (split == null) continue;
+      const holding = await store.splitsToPayOutFor(network, merchant.id, at);
+      if (!holding.some((each) => isSameAddress(each.address, split.address))) {
+        waiting.push(split.address);
+      }
+    }
+    const recorded = await store.payoutSplitsOn(network);
+    const splits = recorded.filter(
+      (split) => !waiting.some((address) => isSameAddress(address, split.address)),
+    );
+    return { splits, waiting: recorded.length - splits.length };
   }
 
   /**
@@ -1582,7 +1621,7 @@ export class Gateway {
       return null;
     }
     this.#letGo(merchantId, (held) => held.keyId === keyId);
-    return merchantKeyOf(disabled);
+    return merchantKeyOf(disabled.key);
   }
 
   // --- buying ---------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import type { Ids } from "../ports/clock.js";
+import type { JournalPress } from "../ports/journal.js";
 import type { AnalyticsOf, Store, StoredKey, StoredMerchant } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -156,39 +157,47 @@ export interface LiveApprovalChange {
 }
 
 /**
- * Admits one merchant to live publication. The protected administrative screen
- * and terminal command call this; no merchant-key route can make this
- * decision. Null means no such merchant; `changed: false` means already
- * admitted. The grant that admits the merchant is recorded for product
- * analytics as the operator's, through the dashboard, where both of those
- * callers live; a repeat records nothing.
+ * Admits one merchant to live publication. Only the operator's workspace calls
+ * this; no merchant-key route can make this decision. Null means no such
+ * merchant; `changed: false` means already admitted. The grant that admits
+ * the merchant is recorded for product analytics as the operator's, through
+ * the dashboard, where the workspace lives; a repeat records nothing. `journal` is the operator's press,
+ * committed with the grant.
  */
 export async function grantLiveApproval(
   store: Store,
   merchantId: string,
   at: number,
+  journal?: JournalPress,
 ): Promise<LiveApprovalChange | null> {
-  return store.grantLiveApproval(merchantId, at, {
-    name: "agc_setup_result",
-    actor: "operator",
-    source: "dashboard",
-    refs: { merchant: merchantId },
-    fields: { step: "live_approval", integration: "none", outcome: "completed" },
-  });
+  return store.grantLiveApproval(
+    merchantId,
+    at,
+    {
+      name: "agc_setup_result",
+      actor: "operator",
+      source: "dashboard",
+      refs: { merchant: merchantId },
+      fields: { step: "live_approval", integration: "none", outcome: "completed" },
+    },
+    journal,
+  );
 }
 
 /**
  * Withdraws one merchant's admission to live sales: from then on they stand as
  * a merchant never approved, so nothing new of theirs is published or sold
  * live, while orders already opened play out as under a pause. Only the
- * operator's terminal command calls this. Null means no such merchant;
- * `changed: false` means there was no approval to withdraw.
+ * operator's workspace calls this. Null means no such merchant;
+ * `changed: false` means there was no approval to withdraw. `journal` is the
+ * operator's press, committed with the withdrawal.
  */
 export async function withdrawLiveApproval(
   store: Store,
   merchantId: string,
+  journal?: JournalPress,
 ): Promise<LiveApprovalChange | null> {
-  return store.withdrawLiveApproval(merchantId);
+  return store.withdrawLiveApproval(merchantId, journal);
 }
 
 /**
@@ -318,9 +327,9 @@ export async function seedSandboxKey(
   }
 
   // Only the run that issues the key writes the listing name. On a database
-  // that already has the key, a missing name means somebody un-listed the
-  // sandbox on purpose (`merchant listed-as the_merchant --none`), and a
-  // restart must not undo that; an existing name is likewise left alone.
+  // that already has the key, a missing name means somebody cleared it in the
+  // database on purpose, and a restart must not undo that; an existing name is
+  // likewise left alone.
   const merchant = await store.merchantById(SEEDED_MERCHANT.id);
   const wanted = seededServiceNameFor(mode);
   const listedAs = merchant !== null && merchant.serviceName === null ? wanted : null;

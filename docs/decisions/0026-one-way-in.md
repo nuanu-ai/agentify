@@ -2,8 +2,10 @@
 
 Date: 2026-09-24
 Status: accepted (the product owner, 2026-08-28 to 2026-09-25; Google sign-in,
-2026-10-15; signing out everywhere, revised 2026-10-23); merges what were
-ADR-0009 and ADR-0024
+2026-10-15; signing out everywhere, revised 2026-10-23; administration moves
+from the terminal to the operator's workspace, 2026-10-23; the admission as the
+one lever over a merchant, with a note the merchant reads, 2026-10-24); merges
+what were ADR-0009 and ADR-0024
 
 ## Context
 
@@ -71,17 +73,42 @@ wallet for settled payments (ADR-0020), and administrative approval on live.
 The commission is the price; no subscription replaces this approval.
 Publishing tells an integrator what is missing.
 
-**6. Operators use the same sign-in.** `/admin` needs the account flag set only
-by `pnpm account operator`, read on every session request. The header shows its
-link to operators. Everybody else, including while identity is unavailable, gets
-the site's 404; the edge neither marks nor guards this read-only path. The page
-links to `/dashboard/admin/live-sales`, which checks the same flag on each
-request and admits one existing merchant after explicit confirmation. Its forms
-also pass the dashboard's origin and account checks; the operator needs no
-merchant of their own. Approval is live-only, granting and withdrawing it are
-both idempotent, and a merchant withdrawn at the terminal stands as one never
-approved, a pause rather than a cancellation. Neither bypasses another selling
-guard or asserts a payment outcome; no staff queue is promised by this permission.
+**6. Operators use the same sign-in.** `/admin` needs the account flag, read on
+every session request, and so does the operator's workspace under
+`/dashboard/admin`, whose layout checks it before any of its pages reads or
+acts. The header shows its link to operators. On `/admin` everybody else,
+including while identity is unavailable, gets the site's 404. In the workspace
+a person the flag does not confirm gets the 404, a signed-out visitor meets the
+sign-in, and while identity cannot answer nothing of it is drawn: the gate's
+error page or the 404. The edge neither marks nor guards these paths. The
+workspace admits one existing merchant to live sales after explicit
+confirmation; its forms also pass the dashboard's origin and account checks,
+and the operator needs no merchant of their own. Approval is live-only,
+granting and withdrawing it are both idempotent, and a merchant whose approval
+is withdrawn stands as one not approved, a pause rather than a cancellation;
+their dashboard says since when their live sales are stopped and shows the
+operator's note. The approval is the one lever the operator holds over a
+merchant: the workspace never sets or takes away a merchant's seller name
+(the product owner, 2026-10-24).
+Neither bypasses another selling guard or asserts a payment outcome; no staff
+queue is promised by this permission. The product owner decided on 2026-10-23
+that every administrative action at the terminal, the operator flag's included,
+moves into the operator's workspace (`docs/research/85-operator-admin.md`).
+None is left at the terminal but the statement `deploy/README.md` documents for
+a channel that lost every operator, which writes its journal row naming the
+terminal. In
+the workspace every administrative action needs a session signed in within the
+last fifteen minutes, by the sign-in moment a renewed session keeps; an older
+session is asked to sign in again, by link or Google, which returns that browser
+to the page it pressed on, where the operator presses again; nothing is queued
+for the sign-in to carry out, and the step's link is counted apart from the
+public form's. Each intervention carries the operator's reason, and every action
+and refused attempt is journaled (ADR-0045). Granting or removing the flag waits
+until a mail to every operator of the channel and to the account changed has
+been handed over, and the last operator's flag cannot be removed nor its account
+forgotten. A channel takes its first operator from its configuration, once, at
+the configured address's next sign-in while no account holds the flag, and never
+reads that configuration again.
 
 **7. One gate protects dashboard pages.** Its exceptions are sign-in, sign-out,
 the link landing page, Google start and callback, styles and built scripts,

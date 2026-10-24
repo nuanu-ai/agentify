@@ -9,6 +9,8 @@
     "./analytics": "./src/analytics/index.ts",
     "./announcements": "./src/announcements.ts",
     "./failure-named": "./src/failure-named.ts",
+    "./journal": "./src/journal.ts",
+    "./operator": "./src/operator.ts",
     "./testing": "./src/testing/harness.ts",
     "./testing/database": "./src/testing/database.ts",
     "./config": "./src/config.ts",
@@ -16,9 +18,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "merchant": "tsx src/merchant.ts",
     "facilitator-key": "tsx src/facilitator-key.ts",
-    "payout": "tsx src/payout.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "listing": "tsx src/listing.ts"

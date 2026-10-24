@@ -31,8 +31,6 @@
     "smoke:listing": "pnpm --filter @agentify/gateway run listing",
     "smoke:bootstrap": "pnpm --filter @agentify/slice run bootstrap",
     "outside": "./scripts/outside.sh",
-    "approve": "node scripts/approve.mjs",
-    "forget": "node scripts/forget.mjs",
     "buy": "pnpm --filter @agentify/slice run buy",
     "stand": "pnpm --filter @agentify/slice run stand",
     "cut": "pnpm --filter @agentify/slice run cut",

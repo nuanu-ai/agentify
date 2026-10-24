@@ -13,6 +13,7 @@ import {
   REPORT_IDENTITY_PATH,
   startReportIdentityServer,
 } from "./report-identity-server.js";
+import { flagRow } from "./testing/account-rows.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const SECRET = "a-dedicated-private-secret-at-least-32-characters";
@@ -198,10 +199,10 @@ describe("the dashboard's internal route for the scanner", () => {
 
   it("says whether the session's account is an operator, as the flag stands at each question", async () => {
     // The scanner opens the operator's dashboard on this answer alone, so a
-    // flag set or cleared at the terminal has to reach the very next question
+    // flag set or cleared in the workspace has to reach the very next question
     // about an open session.
     const messages: Message[] = [];
-    const { identity, url } = await serve(async (message) => {
+    const { identity, rows, url } = await serve(async (message) => {
       messages.push(message);
       return "accepted";
     });
@@ -217,9 +218,9 @@ describe("the dashboard's internal route for the scanner", () => {
       ).operator;
 
     expect(await operatorNow()).toBe(false);
-    await identity.setOperator(EMAIL, true);
+    flagRow(rows, EMAIL, true);
     expect(await operatorNow()).toBe(true);
-    await identity.setOperator(EMAIL, false);
+    flagRow(rows, EMAIL, false);
     expect(await operatorNow()).toBe(false);
   });
 

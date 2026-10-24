@@ -302,11 +302,10 @@ describe("seeding the sandbox", () => {
   });
 
   it("does not put back a listing name somebody took away", async () => {
-    // `merchant listed-as the_merchant --none` is how somebody takes the sandbox
-    // out of a catalogue, and this is the next boot. A listing name that is
-    // missing on a database where the key is already there is not a default
-    // waiting to be filled in — it is a choice somebody made at a terminal, and
-    // a choice a restart undoes is not a choice.
+    // A listing name that is missing on a database where the key is already
+    // there is not a default waiting to be filled in: whoever cleared it in
+    // the database chose to take the sandbox out of a catalogue, and a choice a
+    // restart undoes is not a choice. This is the next boot.
     const store = aStore();
     const ids = countedIds();
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");

@@ -5,6 +5,7 @@
  */
 
 import {
+  adminDestinationIn,
   type DashboardDestination,
   type DashboardIdentity,
   dashboardDestinationIn,
@@ -24,8 +25,23 @@ const LATEST_REPORT = "/report/latest";
 export const startOf = (base: string, person: Person): string =>
   person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
 
-export const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
+const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
   `${base}/${destination === "default" ? "cards" : destination}`;
+
+/**
+ * Where a sign-in that opened leads `person`: the destination's page, except
+ * that somebody with no merchant goes to the control that makes one instead of
+ * a section about a merchant's selling. A page of the operator's workspace
+ * needs no merchant, and its own check decides who it answers.
+ */
+export const pathAfterSignIn = (
+  base: string,
+  person: Person,
+  destination: DashboardDestination,
+): string =>
+  person.merchant === null && adminDestinationIn(destination) === null
+    ? `${base}/merchant`
+    : dashboardPathFor(base, destination);
 
 /**
  * Every cookie the sign-in component sets, not only the session, or the others
@@ -79,9 +95,11 @@ export function gateFor(base: string, identity: DashboardIdentity, cookieSecure:
       const reason = reading ? "session-ended" : "session-ended-unsaved";
       // Where the person was going (a bookmark, a screen a message links to, or
       // the section of an unsaved form) is carried through the sign-in so the
-      // mailed link returns them there. An address outside the sections leads
-      // to the start.
-      const going = dashboardDestinationIn(path.slice(`${base}/`.length).split("/", 1)[0]);
+      // mailed link returns them there: a section of the dashboard, or a page
+      // of the operator's workspace whole. An address outside them leads to
+      // the start.
+      const asked = path.slice(`${base}/`.length);
+      const going = adminDestinationIn(asked) ?? dashboardDestinationIn(asked.split("/", 1)[0]);
       // A form sent without a cookie is told it was not kept.
       const query = [
         carriesIdentityCookie(cookie) ? `reason=${reason}` : reading ? "" : "reason=unsaved",

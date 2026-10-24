@@ -16,6 +16,7 @@ import {
   type MerchantCardList,
   type OrderList,
   type OrderStatus,
+  type PaymentStatus,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
 import type { AccountNote } from "./account-banner.js";
@@ -90,7 +91,7 @@ const cardPrice = (entry: MerchantCard): CardPrice =>
   entry.card.price_check === undefined ? { since: momentView(entry.as_of) } : { asked: true };
 
 /** A span of seconds in the largest whole unit that says it exactly. */
-const spanOf = (seconds: number): string => {
+export const spanOf = (seconds: number): string => {
   const [count, unit] =
     seconds % 86_400 === 0
       ? [seconds / 86_400, "day"]
@@ -612,6 +613,28 @@ const inTheShopOf = (paid: string, shop: ShopTotal | undefined): string | null =
   );
 };
 
+/**
+ * Where an order stands as the merchant's Orders words it: paid after their
+ * closure while it is still on their open list (`reopened`), closed by them,
+ * or the status's own word.
+ */
+export const merchantOrderWord = (
+  order: Pick<OrderList["orders"][number], "status" | "merchant_closure">,
+  reopened: boolean,
+): Word =>
+  reopened
+    ? { text: "Paid after closure", tone: "warn" }
+    : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
+      ? { text: "Closed by you", tone: "quiet" }
+      : ORDER_WORDS[order.status];
+
+/** The original payment, as the merchant's Orders says it. */
+export const PAYMENT_WORDS: Readonly<Record<PaymentStatus, string>> = Object.freeze({
+  paid: "Paid",
+  unresolved: "Outcome unknown",
+  not_paid: "Not paid",
+});
+
 export const ordersView = (
   mode: SurfaceMode,
   cards: MerchantCardList,
@@ -634,19 +657,10 @@ export const ordersView = (
     amount: money(order.price),
     test: order.test,
     shares: sharesIn(order.price, paidInto[order.id]),
-    state: reopened(order)
-      ? { text: "Paid after closure", tone: "warn" as const }
-      : order.status === "fulfillment_closed" && order.merchant_closure !== undefined
-        ? { text: "Closed by you", tone: "quiet" as const }
-        : ORDER_WORDS[order.status],
+    state: merchantOrderWord(order, reopened(order)),
     paymentUnresolved: order.payment_status === "unresolved",
     opened: query.get("details") === order.id,
-    payment:
-      order.payment_status === "paid"
-        ? "Paid"
-        : order.payment_status === "unresolved"
-          ? "Outcome unknown"
-          : "Not paid",
+    payment: PAYMENT_WORDS[order.payment_status],
     closure:
       order.merchant_closure === undefined
         ? null

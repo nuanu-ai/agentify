@@ -34,7 +34,34 @@ export default [
   layout("routes/gate.tsx", [
     index("routes/start.ts"),
     route("merchant", "routes/merchant.tsx"),
-    route("admin/live-sales", "routes/admin-live-sales.tsx"),
+    // The operator's workspace: the layout answers only an account the
+    // operator flag confirms, before any page under it runs.
+    layout("routes/admin/only.tsx", [
+      route("admin", "routes/admin/index.tsx"),
+      route("admin/merchants", "routes/admin/merchants.tsx"),
+      route("admin/merchants/:merchant_id", "routes/admin/merchant.tsx"),
+      route("admin/merchants/:merchant_id/admit", "routes/admin/merchant-admit.tsx"),
+      route("admin/merchants/:merchant_id/withdraw", "routes/admin/merchant-withdraw.tsx"),
+      route(
+        "admin/merchants/:merchant_id/keys/:key_id/disable",
+        "routes/admin/merchant-key-disable.tsx",
+      ),
+      route("admin/orders", "routes/admin/orders.tsx"),
+      route("admin/orders/:order_id", "routes/admin/order.tsx"),
+      route("admin/find", "routes/admin/find.tsx"),
+      route("admin/money", "routes/admin/money.tsx"),
+      route("admin/health", "routes/admin/health.tsx"),
+      route("admin/accounts", "routes/admin/accounts.tsx"),
+      route("admin/accounts/:account_id", "routes/admin/account.tsx", [
+        // One address per action, all answered by one module.
+        ...(["end-sessions", "grant-operator", "remove-operator", "forget"] as const).map((act) =>
+          route(act, "routes/admin/account-press.tsx", { id: `routes/admin/account-${act}` }),
+        ),
+      ]),
+      route("admin/journal", "routes/admin/journal.tsx"),
+      route("admin/sign-in-again", "routes/admin/sign-in-again.tsx"),
+      route("admin/*", "routes/admin/no-such-page.tsx"),
+    ]),
     layout("routes/merchant-only.tsx", [
       route("choose-name", "routes/choose-name.tsx"),
       route("cards", "routes/cards.tsx"),

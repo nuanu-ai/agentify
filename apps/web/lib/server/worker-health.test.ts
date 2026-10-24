@@ -55,10 +55,12 @@ describe("public worker dependency health", () => {
 
 describe("operational health thresholds", () => {
   const healthy = {
+    queued_scans: 0,
     queue_age_seconds: 0,
     stale_running: 0,
     accepted_15m: 20,
     failed_15m: 1,
+    outbox_pending: 0,
     outbox_age_seconds: 0,
     outbox_dead_letters: 0,
   };

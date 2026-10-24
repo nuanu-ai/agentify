@@ -400,7 +400,7 @@ async function main(): Promise<void> {
               booted.config.payoutSplitNetworks,
             ),
           operator: async () => {
-            const theirs = (await booted.gateway.splitsToPayOut()).filter(
+            const theirs = (await booted.gateway.splitsToPayOut()).splits.filter(
               (one) => one.merchantId === merchantId,
             );
             const [only, ...more] = operatorPayouts(

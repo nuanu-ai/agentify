@@ -459,9 +459,9 @@ const sellerInTheChallenge = async (
 
 /**
  * One card on sale whose merchant is listed under no name. The merchant's own
- * route will not clear a name and publishing needs one, so the only way here is
- * an operator running `merchant listed-as <id> --none` after the publish; this
- * makes the call that command makes.
+ * route will not clear a name, publishing needs one and nobody else may change
+ * it, so the only way here is a database cleared by hand after the publish;
+ * this makes that write through the store.
  */
 const soldUnderNoName = async (
   harnessed: Harness,

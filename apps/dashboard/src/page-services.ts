@@ -25,6 +25,7 @@ import {
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
+import type { WorkspaceDoor } from "./admin/index.js";
 import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
@@ -35,7 +36,7 @@ import {
   type LinkWall,
   type Person,
 } from "./dashboard-entry.js";
-import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
+import { clearingLines, type Gate, gateFor, pathAfterSignIn, startOf } from "./gate.js";
 import {
   type Acting,
   type Answer,
@@ -46,7 +47,6 @@ import {
 import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
-import type { LiveSalesPages } from "./live-sales.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -254,7 +254,12 @@ export interface PageServices {
     status: number,
     userAgent: string | null,
   ) => void;
-  readonly liveSales: LiveSalesPages | null;
+  /**
+   * The door to the operator's workspace, which only its layout opens, or null
+   * where the workspace is not built, which answers every page of it as one
+   * that is not there.
+   */
+  readonly workspace: WorkspaceDoor | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
   readonly surface: Surface;
@@ -349,7 +354,7 @@ export interface PageServices {
 }
 
 export interface PageParts {
-  readonly liveSales?: LiveSalesPages;
+  readonly workspace?: WorkspaceDoor;
   readonly identity: DashboardIdentity;
   /**
    * The gateway's application called as the merchant on the signed-in
@@ -913,9 +918,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       ? `/report/${encodeURIComponent(destination.report)}`
       : destination === "default"
         ? startOf(base, person)
-        : person.merchant === null
-          ? `${base}/merchant`
-          : dashboardPathFor(base, destination);
+        : pathAfterSignIn(base, person, destination);
 
   const ordersScreen = async (
     person: Person,
@@ -1007,7 +1010,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         });
       }
     },
-    liveSales: parts.liveSales ?? null,
+    workspace: parts.workspace ?? null,
     base,
     surface: {
       attribute: SURFACE_MARKER_ATTRIBUTE,
@@ -1024,10 +1027,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (signedIn !== null) {
           return {
             kind: "redirect",
-            location:
-              signedIn.person.merchant === null
-                ? `${base}/merchant`
-                : dashboardPathFor(base, destination),
+            location: pathAfterSignIn(base, signedIn.person, destination),
             setCookies: signedIn.setCookies,
           };
         }
@@ -1493,6 +1493,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   selling: standing.value.selling,
                   through: standing.value.through,
                   busy: standing.value.busy,
+                  ...(standing.value.withdrawn === null
+                    ? {}
+                    : {
+                        withdrawn: {
+                          at: new Date(standing.value.withdrawn.at).toISOString(),
+                          note: standing.value.withdrawn.note,
+                        },
+                      }),
                   ...(standing.value.outOfTouch === null
                     ? {}
                     : {

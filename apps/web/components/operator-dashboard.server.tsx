@@ -1,26 +1,48 @@
+import type { ReactNode } from "react";
 import type {
-  OperatorDailyFunnel,
   OperatorDashboard as OperatorDashboardData,
+  OperatorDay,
 } from "../lib/server/operator-dashboard";
+import { SCAN_LIMITS } from "../lib/server/scan-limits";
+import {
+  evaluateOperationalSignals,
+  evaluateWorkerHeartbeat,
+  HEARTBEAT_FRESH_MS,
+} from "../lib/server/worker-health";
 
 import styles from "./operator-dashboard.module.css";
 
 const number = new Intl.NumberFormat("en-US");
-const percent = new Intl.NumberFormat("en-US", {
-  style: "percent",
-  maximumFractionDigits: 1,
-});
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
-});
-const dateTime = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
+const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
+// A browser run costs cents, so the hundredth of a cent is kept rather than
+// rounded away.
+const usd = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/**
+ * Moments and days as the operator's workspace writes them, so the scanner's
+ * page reads like the rest of it: a moment in UTC to the second, a day written
+ * out, and a chart's day as the workspace's charts label it.
+ */
+const moment = (at: Date): string => `${at.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+const day = (at: Date): string =>
+  `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
+const chartDay = (at: Date): string =>
+  `${at.getUTCDate()} ${(MONTHS[at.getUTCMonth()] ?? "").slice(0, 3)}`;
+const clock = (at: Date): string => at.toISOString().slice(11, 16);
 
 /**
  * Said beside every number read from the analytics events, which hold only the
@@ -31,275 +53,504 @@ const MEASURED_ONLY = "Only visitors who allowed measurement";
 const ratio = (value: number, denominator: number) =>
   denominator > 0 ? percent.format(value / denominator) : "—";
 
-function Metric({ label, value, note }: Readonly<{ label: string; value: string; note: string }>) {
+const counted = (count: number, one: string, many: string) =>
+  `${number.format(count)} ${count === 1 ? one : many}`;
+
+/** A span of time in the largest unit that keeps it readable. */
+function span(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds));
+  if (whole < 90) return `${whole} s`;
+  const minutes = Math.round(whole / 60);
+  if (minutes < 90) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} days`;
+}
+
+type Tone = "pass" | "partial" | "fail" | "notice" | "progress" | "quiet";
+
+/** A scan's, a check's or a browser run's state, as a badge says it. */
+const STATES: Readonly<Record<string, readonly [Tone, string]>> = {
+  pass: ["pass", "Pass"],
+  partial: ["partial", "Partial"],
+  fail: ["fail", "Fail"],
+  completed: ["pass", "Completed"],
+  failed: ["fail", "Failed"],
+  blocked: ["fail", "Blocked"],
+  budget_skipped: ["notice", "Skipped: budget spent"],
+  accepted: ["progress", "Accepted"],
+  queued: ["progress", "Queued"],
+  pending: ["progress", "Pending"],
+  starting: ["progress", "Starting"],
+  running: ["progress", "Running"],
+  unavailable: ["quiet", "Unavailable"],
+  not_applicable: ["quiet", "Not applicable"],
+};
+
+function Badge({ tone, children }: Readonly<{ tone: Tone; children: string }>) {
+  return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+function State({ status, none }: Readonly<{ status: string | null; none: string }>) {
+  if (status === null) return <Badge tone="quiet">{none}</Badge>;
+  const [tone, words] = STATES[status] ?? [
+    "quiet",
+    `${status.charAt(0).toUpperCase()}${status.slice(1).replaceAll("_", " ")}`,
+  ];
+  return <Badge tone={tone}>{words}</Badge>;
+}
+
+function Tile({
+  label,
+  figure,
+  aside,
+}: Readonly<{ label: string; figure: string; aside: string }>) {
   return (
-    <article className={styles.metric}>
-      <p>{label}</p>
-      <strong>{value}</strong>
-      <span>{note}</span>
-    </article>
+    <div className={styles.tile}>
+      <p className={styles.label}>{label}</p>
+      <p className={styles.figure}>{figure}</p>
+      <p className={styles.aside}>{aside}</p>
+    </div>
   );
 }
 
-function DailyBars({ rows }: Readonly<{ rows: OperatorDailyFunnel[] }>) {
-  const max = Math.max(1, ...rows.map((row) => row.landingViews));
+function Fact({ term, children }: Readonly<{ term: string; children: ReactNode }>) {
   return (
-    <section className={styles.bars} aria-label="Daily traffic and scan volume">
-      {rows.map((row) => (
-        <div className={styles.barColumn} key={row.day} title={row.day}>
-          <div className={styles.barTrack}>
-            <span
-              className={styles.landingBar}
-              style={{
-                height: `${Math.max(3, (row.landingViews / max) * 100)}%`,
-              }}
-            />
-            <span
-              className={styles.scanBar}
-              style={{ height: `${Math.max(0, (row.scans / max) * 100)}%` }}
-            />
-          </div>
-          <span>{row.day.slice(8)}</span>
-        </div>
-      ))}
+    <div>
+      <dt>{term}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+const CHART = { width: 760, height: 240, left: 44, right: 752, top: 14, base: 206 } as const;
+const BAR = 9;
+/** How tall a day with nothing is drawn, so it reads as a day rather than a gap. */
+const EMPTY_BAR = 2;
+const round = (value: number) => Math.round(value * 10) / 10;
+
+/** The top of the scale: four steps of 1, 2, 2.5 or 5 times a power of ten, reaching `largest`. */
+function scaleTop(largest: number): number {
+  const rough = largest / 4;
+  if (rough <= 1) return 4;
+  const power = 10 ** Math.floor(Math.log10(rough));
+  const step =
+    [1, 2, 2.5, 5, 10].map((factor) => factor * power).find((candidate) => candidate >= rough) ??
+    10 * power;
+  return Math.ceil(step) * 4;
+}
+
+/**
+ * Landing views against scans per day. Both series share one scale, the larger
+ * of the two, so a day with more scans than measured landing views is drawn
+ * whole rather than cut off at the top.
+ */
+function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: string }>) {
+  const top = scaleTop(Math.max(0, ...rows.map((row) => Math.max(row.landingViews, row.scans))));
+  const plot = CHART.base - CHART.top;
+  const slot = (CHART.right - CHART.left) / Math.max(1, rows.length);
+  const dayOf = (row: OperatorDay, at: number) =>
+    `${chartDay(new Date(`${row.day}T00:00:00Z`))}${
+      at === rows.length - 1 ? `, until ${clock(new Date(readAt))} UTC` : ""
+    }`;
+  const bar = (value: number, x: number, series: string, label: string, soft: boolean) => {
+    // However small beside the other series, a day with something stands taller than one with nothing.
+    const height = value > 0 ? Math.max(EMPTY_BAR + 1, round((value / top) * plot)) : EMPTY_BAR;
+    const kind = value > 0 ? (soft ? styles.barSoft : styles.bar) : styles.barEmpty;
+    return (
+      <rect
+        className={kind}
+        x={round(x)}
+        y={round(CHART.base - height)}
+        width={BAR}
+        height={height}
+        rx={2}
+      >
+        <title>{`${label}: ${counted(value, series, `${series}s`)}`}</title>
+      </rect>
+    );
+  };
+  const landings = rows.reduce((sum, row) => sum + row.landingViews, 0);
+  const scans = rows.reduce((sum, row) => sum + row.scans, 0);
+  const outnumbered = rows.filter((row) => row.scans > row.landingViews).length;
+  const first = rows[0];
+  const last = rows.at(-1);
+  const summary =
+    first && last
+      ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
+          outnumbered > 0
+            ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
+            : ""
+        }`
+      : "No days to draw";
+
+  // The picture is for the eye; a screen reader is read the same days as words.
+  return (
+    <figure className={styles.chartFigure}>
+      <svg
+        aria-hidden="true"
+        className={styles.chart}
+        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+      >
+        {[0, 1, 2, 3, 4].map((step) => {
+          const y = round(CHART.base - (plot * step) / 4);
+          return (
+            <g key={step}>
+              <line
+                className={step === 0 ? styles.base : styles.grid}
+                x1={CHART.left}
+                y1={y}
+                x2={CHART.right}
+                y2={y}
+              />
+              <text className={styles.right} x={CHART.left - 8} y={y + 4}>
+                {number.format((top * step) / 4)}
+              </text>
+            </g>
+          );
+        })}
+        {rows.map((row, at) => {
+          const x = CHART.left + at * slot + (slot - 2 * BAR - 2) / 2;
+          const label = dayOf(row, at);
+          return (
+            <g key={row.day}>
+              {bar(row.landingViews, x, "landing view", label, true)}
+              {bar(row.scans, x + BAR + 2, "scan", label, false)}
+            </g>
+          );
+        })}
+        {rows.map((row, at) =>
+          at === rows.length - 1 || (at % 7 === 0 && rows.length - 1 - at > 3) ? (
+            <text
+              className={at === rows.length - 1 ? styles.today : styles.mid}
+              key={row.day}
+              x={round(CHART.left + at * slot + slot / 2)}
+              y={CHART.height - 12}
+            >
+              {at === rows.length - 1 ? "Today" : chartDay(new Date(`${row.day}T00:00:00Z`))}
+            </text>
+          ) : null,
+        )}
+      </svg>
+      <ul className="sr-only">
+        {rows.map((row, at) => (
+          <li key={row.day}>
+            {`${dayOf(row, at)}: ${counted(row.landingViews, "landing view", "landing views")}, ${counted(row.scans, "scan", "scans")}`}
+          </li>
+        ))}
+      </ul>
+      <figcaption className={styles.chartSum}>{summary}</figcaption>
+    </figure>
+  );
+}
+
+/** Why the health check would not call the worker ready, in its own order. */
+function notReadyBecause(
+  heartbeat: OperatorDashboardData["worker"]["heartbeat"],
+  worker: ReturnType<typeof evaluateWorkerHeartbeat>,
+): string {
+  if (heartbeat === null) return "no heartbeat recorded";
+  if (!worker.heartbeatFresh) return `no heartbeat in the last ${span(HEARTBEAT_FRESH_MS / 1000)}`;
+  const reasons = [
+    ...(worker.databaseConnected ? [] : ["its database is not connected"]),
+    ...(worker.queueConnected ? [] : ["its queue is not connected"]),
+  ];
+  return reasons.length > 0 ? reasons.join("; ") : "it reports itself not ready";
+}
+
+function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
+  const { heartbeat, signals } = data.worker;
+  const readAt = new Date(data.generatedAt);
+  const worker = evaluateWorkerHeartbeat(heartbeat ?? undefined, readAt);
+  const health = evaluateOperationalSignals(signals);
+  const healthy = worker.ready && health.scannerCapacity && health.analyticsOutbox;
+  const queued = Number(signals.queued_scans);
+  const stuck = Number(signals.stale_running);
+  const pending = Number(signals.outbox_pending);
+  const deadLetters = Number(signals.outbox_dead_letters);
+  const heartbeatAge =
+    heartbeat === null
+      ? null
+      : (readAt.getTime() - new Date(heartbeat.heartbeat_at).getTime()) / 1000;
+
+  return (
+    <section className={styles.panel} aria-labelledby="worker-title">
+      <div className={styles.panelHead}>
+        <h2 id="worker-title">The scanner's worker</h2>
+        <p>By the rules of its own health check</p>
+        <Badge tone={healthy ? "pass" : "fail"}>{healthy ? "Healthy" : "Degraded"}</Badge>
+      </div>
+      <div className={styles.panelBody}>
+        <dl className={styles.facts}>
+          <Fact term="Last heartbeat">
+            {heartbeatAge === null ? (
+              <Badge tone="fail">None recorded</Badge>
+            ) : (
+              <Badge
+                tone={worker.heartbeatFresh ? "pass" : "fail"}
+              >{`${span(heartbeatAge)} ago`}</Badge>
+            )}
+          </Fact>
+          <Fact term="Ready to take scans">
+            {worker.ready ? (
+              <Badge tone="pass">Ready</Badge>
+            ) : (
+              <>
+                <Badge tone="fail">Not ready</Badge>{" "}
+                <span className={styles.why}>{notReadyBecause(heartbeat, worker)}</span>
+              </>
+            )}
+          </Fact>
+          <Fact term="Scan capacity">
+            <Badge tone={health.scannerCapacity ? "pass" : "fail"}>
+              {health.scannerCapacity ? "Keeping up" : "Not keeping up"}
+            </Badge>
+          </Fact>
+          <Fact term="Oldest queued scan">
+            {queued > 0
+              ? `${span(Number(signals.queue_age_seconds))}, ${counted(queued, "scan", "scans")} queued`
+              : "Nothing queued"}
+          </Fact>
+          <Fact term="Scans stuck running">{stuck > 0 ? number.format(stuck) : "None"}</Fact>
+          <Fact term="Failed · 15 min">
+            {`${number.format(Number(signals.failed_15m))} of ${counted(Number(signals.accepted_15m), "scan", "scans")} accepted`}
+          </Fact>
+          <Fact term="Analytics outbox">
+            <Badge tone={health.analyticsOutbox ? "pass" : "fail"}>
+              {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
+            </Badge>{" "}
+            <span className={styles.why}>
+              {`${deadLetters > 0 ? `${counted(deadLetters, "event", "events")} given up` : "No event given up"}; ${
+                pending > 0
+                  ? `longest overdue ${span(Number(signals.outbox_age_seconds))}`
+                  : "nothing waiting"
+              }`}
+            </span>
+          </Fact>
+        </dl>
+      </div>
+      <p className={styles.panelFoot}>
+        An analytics event is given up, a dead letter, when the analytics service refuses it or it
+        runs out of attempts; it is never sent again.
+      </p>
     </section>
   );
 }
 
-const statusClass = (status: string | null) => {
-  if (status === "pass" || status === "completed") return styles.good;
-  if (status === "partial" || status === "running") return styles.warn;
-  if (status === "fail" || status === "failed" || status === "blocked") return styles.bad;
-  return styles.neutral;
-};
-
-/** What the page's header says beside the brand: that the view is live, and as of when. */
+/** What the page's header says beside the brand: whose page this is, as of when, and the way to the workspace. */
 export function OperatorDashboardStatus({ data }: Readonly<{ data: OperatorDashboardData }>) {
   return (
     <>
-      <span className={styles.liveDot} aria-hidden="true" />
-      Live operator view · refreshed {dateTime.format(new Date(data.generatedAt))} UTC
+      <span className={styles.mark}>Operator</span>
+      <span className={styles.headerEnd}>
+        <span>Read {moment(new Date(data.generatedAt))}</span>
+        <a href="/dashboard/admin">Operator workspace</a>
+      </span>
     </>
   );
 }
 
 /** Everything on the page under its header, from the numbers the loader read. */
 export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardData }>) {
-  const { overview, selfScan } = data;
+  const { overview, selfScan, dataAccess } = data;
+  const shown = data.recentScans.length;
+  const total = Math.max(shown, overview.scansTotal);
 
   return (
     <>
-      <section className={styles.hero}>
-        <p className="eyebrow">Private · read-only</p>
-        <h1>Agentify operating dashboard</h1>
-        <p>
-          Traffic, conversion, scanned sites, scanner health, and the latest self-check. Contact
-          details and raw evidence are deliberately absent.
-        </p>
-        <div className={styles.actions}>
-          <a className="button button-secondary" href="/admin">
-            Refresh data
-          </a>
-          <a className="button button-secondary" href="/dashboard/admin/live-sales">
-            Live sales approval
-          </a>
-        </div>
-      </section>
+      <h1 className={styles.title}>Scanner</h1>
+      <p className={styles.asof}>
+        Last 30 days · contact details and raw evidence are not shown · the rest of the operator's
+        work is in the workspace
+      </p>
 
-      <section aria-labelledby="overview-title">
-        <div className={styles.sectionHeading}>
-          <div>
-            <p className="eyebrow">Last 30 days</p>
-            <h2 id="overview-title">Acquisition overview</h2>
-          </div>
-          <p>{number.format(overview.visitorsTotal)} visitors all time</p>
-        </div>
-        <div className={styles.metrics}>
-          <Metric
-            label="Visitors"
-            value={number.format(overview.visitors30d)}
-            note="Counted once they make a privacy choice or start a scan"
-          />
-          <Metric
-            label="Landing views"
-            value={number.format(overview.landingViews30d)}
-            note={MEASURED_ONLY}
-          />
-          <Metric
-            label="Scans"
-            value={number.format(overview.scans30d)}
-            note={`${number.format(overview.scansTotal)} accepted all time`}
-          />
-          <Metric
-            label="Sites checked"
-            value={number.format(overview.uniqueSites30d)}
-            note={`${number.format(overview.completedScans30d)} completed or partial`}
-          />
-          <Metric
-            label="Verified registrations"
-            value={number.format(overview.verifiedRegistrations30d)}
-            note={`${ratio(overview.verifiedRegistrations30d, overview.scans30d)} of scans`}
-          />
-          <Metric
-            label="Reports shared"
-            value={number.format(overview.shares30d)}
-            note={MEASURED_ONLY}
-          />
-        </div>
-      </section>
+      <div className={styles.figures}>
+        <Tile
+          label="Visitors"
+          figure={number.format(overview.visitors30d)}
+          aside={`Counted once they make a privacy choice or start a scan; ${number.format(overview.visitorsTotal)} all time`}
+        />
+        <Tile
+          label="Landing views"
+          figure={number.format(overview.landingViews30d)}
+          aside={MEASURED_ONLY}
+        />
+        <Tile
+          label="Scans"
+          figure={number.format(overview.scans30d)}
+          aside={`${counted(overview.uniqueSites30d, "site", "sites")}; ${number.format(overview.completedScans30d)} completed or partial; ${number.format(overview.scansTotal)} all time`}
+        />
+        <Tile
+          label="Verified registrations"
+          figure={number.format(overview.verifiedRegistrations30d)}
+          aside={`${ratio(overview.verifiedRegistrations30d, overview.scans30d)} of scans; ${counted(overview.shares30d, "report", "reports")} shared by visitors who allowed measurement`}
+        />
+        <Tile
+          label="Data access requests"
+          figure={number.format(dataAccess.waiting)}
+          aside={
+            dataAccess.waiting > 0 && dataAccess.oldestAt !== null
+              ? `Oldest ${day(new Date(dataAccess.oldestAt))}. Nothing records an answer, so a request stays counted until its address is deleted.`
+              : "None waiting."
+          }
+        />
+      </div>
 
       <section className={styles.panel} aria-labelledby="trend-title">
-        <div className={styles.sectionHeading}>
-          <div>
-            <p className="eyebrow">30-day trend</p>
-            <h2 id="trend-title">Landing views vs scans</h2>
-          </div>
+        <div className={styles.panelHead}>
+          <h2 id="trend-title">Landing views and scans</h2>
           <div className={styles.legend}>
             <span>
-              <i className={styles.legendLanding} />
+              <i className={styles.swatchSoft} />
               Landing views · {MEASURED_ONLY.toLowerCase()}
             </span>
             <span>
-              <i className={styles.legendScan} />
+              <i className={styles.swatch} />
               Scans · every visitor
             </span>
           </div>
         </div>
-        <DailyBars rows={data.daily} />
+        <div className={styles.panelBody}>
+          <DailyChart rows={data.daily} readAt={data.generatedAt} />
+        </div>
+        <p className={styles.panelFoot}>
+          Both series share one scale, the larger of the two, so a day with more scans than measured
+          landing views is drawn whole.
+        </p>
       </section>
 
-      <div className={styles.twoColumn}>
+      <div className={styles.two}>
         <section className={styles.panel} aria-labelledby="self-title">
-          <p className="eyebrow">Agentify checks Agentify</p>
-          <h2 id="self-title">Can agents read our site?</h2>
-          {selfScan ? (
-            <>
-              <div className={styles.selfScore}>
-                <strong>{selfScan.score ?? "—"}</strong>
-                <span>/ 100 · {selfScan.level?.replaceAll("_", " ") ?? selfScan.status}</span>
-              </div>
-              <dl className={styles.definitionList}>
-                <div>
-                  <dt>Substantive initial HTML</dt>
-                  <dd className={statusClass(selfScan.substantiveHtmlStatus)}>
-                    {selfScan.substantiveHtmlStatus ?? "not assessed"}
-                  </dd>
+          <div className={styles.panelHead}>
+            <h2 id="self-title">Can agents read agentify.ad?</h2>
+            {selfScan ? <p>The latest self-scan, {moment(new Date(selfScan.acceptedAt))}</p> : null}
+          </div>
+          <div className={styles.panelBody}>
+            {selfScan ? (
+              <>
+                <div className={styles.score}>
+                  <strong>{selfScan.score ?? "—"}</strong>
+                  <span>
+                    {[
+                      "of 100",
+                      selfScan.level?.replaceAll("_", " ") ?? selfScan.status,
+                      ...(selfScan.coverage === null
+                        ? []
+                        : [`coverage ${percent.format(selfScan.coverage)}`]),
+                    ].join(" · ")}
+                  </span>
                 </div>
-                <div>
-                  <dt>ChatGPT-User / Claude-User compatibility</dt>
-                  <dd className={statusClass(selfScan.agentUserAgentStatus)}>
-                    {selfScan.agentUserAgentStatus ?? "not assessed"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Passive browser observation</dt>
-                  <dd className={statusClass(selfScan.browserStatus)}>
-                    {selfScan.browserStatus ?? "not sampled"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Coverage</dt>
-                  <dd>{selfScan.coverage === null ? "—" : percent.format(selfScan.coverage)}</dd>
-                </div>
-              </dl>
-              <p className={styles.caveat}>
-                A pass proves public HTTP compatibility at scan time. It does not prove that a model
-                indexed, cited, or recommended Agentify.
-              </p>
-            </>
-          ) : (
-            <p>No Agentify self-scan has completed yet.</p>
-          )}
+                <dl className={styles.facts}>
+                  <Fact term="Substantive initial HTML">
+                    <State status={selfScan.substantiveHtmlStatus} none="Not assessed" />
+                  </Fact>
+                  <Fact term="ChatGPT-User and Claude-User compatibility">
+                    <State status={selfScan.agentUserAgentStatus} none="Not assessed" />
+                  </Fact>
+                  <Fact term="Passive browser observation">
+                    <State status={selfScan.browserStatus} none="Not sampled" />
+                  </Fact>
+                </dl>
+              </>
+            ) : (
+              <p>No Agentify self-scan has completed yet.</p>
+            )}
+          </div>
+          <p className={styles.panelFoot}>
+            A pass proves public HTTP compatibility at scan time. It does not prove that a model
+            indexed, cited or recommended Agentify.
+          </p>
         </section>
 
-        <section className={styles.panel} aria-labelledby="protection-title">
-          <p className="eyebrow">Budget protection</p>
-          <h2 id="protection-title">Abuse controls</h2>
-          <div className={styles.protectionState}>
-            <span className={data.turnstileEnforced ? styles.good : styles.warn}>
-              {data.turnstileEnforced ? "Turnstile enforced" : "Turnstile keys pending"}
-            </span>
+        <section className={styles.panel} aria-labelledby="abuse-title">
+          <div className={styles.panelHead}>
+            <h2 id="abuse-title">Abuse controls</h2>
+            <Badge tone={data.turnstileEnforced ? "pass" : "notice"}>
+              {data.turnstileEnforced ? "Turnstile enforced" : "Turnstile not enforced"}
+            </Badge>
           </div>
-          <dl className={styles.definitionList}>
-            <div>
-              <dt>Free anonymous scans</dt>
-              <dd>3 / IP / rolling hour</dd>
-            </div>
-            <div>
-              <dt>Hard IP ceiling</dt>
-              <dd>10 / rolling hour</dd>
-            </div>
-            <div>
-              <dt>Hard target ceiling</dt>
-              <dd>10 / site / day</dd>
-            </div>
-            <div>
-              <dt>Accepted requests · 24h</dt>
-              <dd>{number.format(overview.acceptedRequests24h)}</dd>
-            </div>
-            <div>
-              <dt>Verified challenges · rolling hour</dt>
-              <dd>{data.turnstileEnforced ? number.format(overview.challengePasses1h) : "—"}</dd>
-            </div>
-            <div>
-              <dt>Browser cost · today</dt>
-              <dd>{money.format(overview.browserUsageUsdToday)}</dd>
-            </div>
-          </dl>
-          <p className={styles.caveat}>
-            Hard ceilings remain active even when the third-party challenge is unavailable, so one
-            source cannot drain the browser budget.
+          <div className={styles.panelBody}>
+            <dl className={styles.facts}>
+              <Fact term="Free anonymous scans">
+                {data.turnstileEnforced
+                  ? `${SCAN_LIMITS.freePerAddressHour} per address per rolling hour, then the challenge`
+                  : "Every scan up to the ceilings: the challenge is not enforced"}
+              </Fact>
+              <Fact term="Hard ceiling per address">
+                {`${SCAN_LIMITS.perAddressHour} per rolling hour`}
+              </Fact>
+              <Fact term="Hard ceiling per site">{`${SCAN_LIMITS.perSiteDay} per UTC day`}</Fact>
+              <Fact term="Accepted requests · 24 h">
+                {number.format(overview.acceptedRequests24h)}
+              </Fact>
+              <Fact term="Verified challenges · rolling hour">
+                {data.turnstileEnforced
+                  ? number.format(overview.challengePasses1h)
+                  : "Not enforced"}
+              </Fact>
+              <Fact term="Browser spending today">
+                {`${usd.format(overview.browserUsageUsdToday)} USD; no cap shown: the worker does not report it`}
+              </Fact>
+            </dl>
+          </div>
+          <p className={styles.panelFoot}>
+            Turnstile is Cloudflare's challenge that tells a person from a script; a visitor meets
+            it after the free scans. The limits are read from the code that enforces them, and the
+            hard ceilings hold even when Turnstile is down.
           </p>
         </section>
       </div>
 
-      <section className={styles.panel} aria-labelledby="scans-title">
-        <div className={styles.sectionHeading}>
-          <div>
-            <p className="eyebrow">Latest 50</p>
-            <h2 id="scans-title">Recently checked sites</h2>
-          </div>
-          <p>Hostnames only · no submitted query strings</p>
+      <WorkerPanel data={data} />
+
+      <section className={styles.group} aria-labelledby="scans-title">
+        <div className={styles.groupHead}>
+          <h2 id="scans-title">Latest scans</h2>
+          <p>Hostnames only, never the submitted address</p>
         </div>
-        <section
-          aria-label="Recently checked sites table"
-          className={styles.tableWrap}
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: the overflowing table must be reachable for keyboard scrolling
-          tabIndex={0}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>Site</th>
-                <th>Segment</th>
-                <th>Status</th>
-                <th>Score</th>
-                <th>Coverage</th>
-                <th>Browser</th>
-                <th>Duration</th>
-                <th>Accepted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentScans.map((scan) => (
-                <tr key={scan.scanId}>
-                  <td>
-                    <strong>{scan.targetHost}</strong>
-                  </td>
-                  <td>{scan.segment}</td>
-                  <td>
-                    <span className={statusClass(scan.status)}>{scan.status}</span>
-                  </td>
-                  <td>{scan.score ?? "—"}</td>
-                  <td>{scan.coverage === null ? "—" : percent.format(scan.coverage)}</td>
-                  <td>{scan.browserStatus ?? "—"}</td>
-                  <td>{scan.durationSeconds === null ? "—" : `${scan.durationSeconds}s`}</td>
-                  <td>{dateTime.format(new Date(scan.acceptedAt))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <div className={styles.listBox}>
+          <ul className={styles.list} aria-label="Latest scans">
+            <li className={styles.listHead} aria-hidden="true">
+              <span>Site</span>
+              <span>Segment</span>
+              <span>State</span>
+              <span className={styles.num}>Score</span>
+              <span className={styles.num}>Coverage</span>
+              <span>Accepted</span>
+            </li>
+            {data.recentScans.map((scan) => (
+              <li className={styles.listRow} key={scan.scanId}>
+                <div className={styles.site}>{scan.targetHost}</div>
+                <div className={styles.soft}>
+                  <span className={styles.said}>Segment </span>
+                  {scan.segment}
+                </div>
+                <div>
+                  <State status={scan.status} none="Not known" />
+                </div>
+                <div className={styles.num}>
+                  <span className={styles.said}>Score </span>
+                  {scan.score ?? "—"}
+                </div>
+                <div className={styles.num}>
+                  <span className={styles.said}>Coverage </span>
+                  {scan.coverage === null ? "—" : percent.format(scan.coverage)}
+                </div>
+                <div className={styles.fact}>
+                  <span className={styles.said}>Accepted </span>
+                  {moment(new Date(scan.acceptedAt))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className={styles.cut}>
+          {shown === 0
+            ? "No scan has been accepted yet"
+            : shown < total
+              ? `The latest ${number.format(shown)} of ${counted(total, "scan", "scans")}`
+              : `All ${counted(shown, "scan", "scans")}`}
+        </p>
       </section>
     </>
   );
