@@ -16,21 +16,38 @@ import { FRESH_SIGN_IN_MS } from "./access.js";
 const OPERATOR = "operator@example.com";
 const MERCHANT = "owner@example.com";
 
-/** Every path the workspace's layout holds, its parameters filled in. */
-const adminPaths = (): string[] => {
+/** What a path's parameters are filled with where a test names nothing else. */
+const SOMEBODY: Readonly<Record<string, string>> = {
+  merchant_id: "mch_somebody",
+  order_id: "ord_something",
+  account_id: "acc_somebody",
+  key_id: "mk_somebody",
+};
+
+/**
+ * Every path the workspace's layout holds, nested ones included, each
+ * parameter filled from `ids` (one it does not name gets its own name) and a
+ * splat with a path nothing answers.
+ */
+const adminPaths = (ids: Readonly<Record<string, string>> = SOMEBODY): string[] => {
   const layout = (entries: readonly RouteConfigEntry[]): RouteConfigEntry | undefined =>
     entries
       .map((entry) =>
         entry.file === "routes/admin/only.tsx" ? entry : layout(entry.children ?? []),
       )
       .find((found) => found !== undefined);
-  const under = layout(routes)?.children ?? [];
-  return under.map(
-    (entry) =>
-      `/${(entry.path ?? "")
-        .replace(":merchant_id", "mch_somebody")
-        .replace(":order_id", "ord_something")
-        .replace(":account_id", "acc_somebody")
+  const pathsOf = (entries: readonly RouteConfigEntry[], above: string): string[] =>
+    entries.flatMap((entry) => {
+      const here = [above, entry.path ?? ""].filter((part) => part !== "").join("/");
+      return [
+        ...(entry.path === undefined && entry.index !== true ? [] : [here]),
+        ...pathsOf(entry.children ?? [], here),
+      ];
+    });
+  return pathsOf(layout(routes)?.children ?? [], "").map(
+    (path) =>
+      `/${path
+        .replace(/:([a-z_]+)/g, (_, name: string) => ids[name] ?? name)
         .replace("*", "nothing-here")}`,
   );
 };
@@ -207,5 +224,56 @@ describe("signing in again before an action", () => {
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
 
     expect((await operator.get("/admin/sign-in-again")).to).toBe(`${ADMIN_BASE}/admin`);
+  });
+});
+
+describe("a press made with a sign-in older than fifteen minutes", () => {
+  /**
+   * Everything a press could change: the gateway's rows, the journal's rows
+   * that record a change, and the accounts with their sessions. The links the
+   * step-up itself sends are left out, since asking for one is its answer.
+   */
+  const stateOf = async (workspace: AdminServed) => {
+    const holdings = workspace.harnessed.store.holdings();
+    const journal = await workspace.harnessed.store.journal({ limit: 200 });
+    return JSON.stringify({
+      ...holdings,
+      contact: [...holdings.contact],
+      changes: journal.rows.filter((row) => row.outcome.kind !== "refused"),
+      accounts: workspace.rows.dashboard_accounts,
+      sessions: (workspace.rows.dashboard_sessions ?? []).map((row) => row.userId),
+    });
+  };
+
+  it("is answered on every page of the workspace with the step-up, or refused, and changes nothing", async () => {
+    // Every route the areas add is walked here as it lands, with real records
+    // to act on, so a press that skips the fresh sign-in changes something
+    // and fails this test.
+    const workspace = await serve({ channel: "live" });
+    const { harnessed, identity } = workspace;
+    const seller = harnessed.merchant;
+    await harnessed.store.grantLiveApproval(seller.id, harnessed.now());
+    await identity.make(MERCHANT, seller.id);
+    const account = (await identity.byEmail(MERCHANT))?.id ?? "acc_missing";
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
+    const ids = { merchant_id: seller.id, key_id: seller.keyId, account_id: account };
+    const before = await stateOf(workspace);
+
+    for (const path of adminPaths(ids)) {
+      const pressed = await operator.post(path, {
+        confirm: "yes",
+        reason: "Walked by the test of every page",
+        destination: "admin",
+        ...ids,
+      });
+
+      // A page with no press of its own is not handed a post at all; the
+      // address that is no page is answered as none.
+      const refused = pressed.status === 404 || pressed.status === 405;
+      const steppedUp = readable(pressed.html).includes("Confirm it is you");
+      expect(refused || steppedUp, `POST ${path} answered ${pressed.status}`).toBe(true);
+    }
+    expect(await stateOf(workspace)).toBe(before);
   });
 });

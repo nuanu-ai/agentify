@@ -509,15 +509,23 @@ const report = (
 
 const NOT_FOUND = new ErrorResponseImpl(404, "Not Found", null);
 
+/** Thirty days of landing views and scans, the last one, today, read at eight. */
+const DAYS = Array.from({ length: 30 }, (_, back) => {
+  const day = new Date(Date.UTC(2026, 9, 13 - (29 - back))).toISOString().slice(0, 10);
+  const landingViews = back === 29 ? 31 : 48 + ((back * 37) % 41);
+  const scans = back === 19 ? 64 : back === 29 ? 9 : 13 + ((back * 11) % 17);
+  return { day, landingViews: back === 19 ? 24 : landingViews, scans };
+});
+
 const NUMBERS: OperatorNumbers = {
   generatedAt: "2026-10-13T08:00:00.000Z",
   turnstileEnforced: true,
   overview: {
     visitorsTotal: 48_210,
     visitors30d: 1_234,
-    landingViews30d: 2_051,
+    landingViews30d: DAYS.reduce((sum, day) => sum + day.landingViews, 0),
     scansTotal: 9_870,
-    scans30d: 640,
+    scans30d: DAYS.reduce((sum, day) => sum + day.scans, 0),
     completedScans30d: 598,
     uniqueSites30d: 512,
     verifiedRegistrations30d: 32,
@@ -526,17 +534,8 @@ const NUMBERS: OperatorNumbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  daily: ["2026-10-13", "2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09"].map(
-    (day, back) => ({
-      day,
-      visitors: 40 + back * 3,
-      landingViews: 70 + back * 5,
-      scans: 21 - back,
-      completedScans: 20 - back,
-      verifiedRegistrations: back % 2,
-      shares: back === 1 ? 1 : 0,
-    }),
-  ),
+  dataAccess: { waiting: 0, oldestAt: null },
+  daily: DAYS,
   recentScans: [
     {
       targetHost: "shop.example",
@@ -553,19 +552,67 @@ const NUMBERS: OperatorNumbers = {
       score: null,
       coverage: null,
     },
+    {
+      targetHost: "store.example",
+      segment: "store",
+      status: "running",
+      score: null,
+      coverage: null,
+    },
   ].map((scanned, back) => ({
     ...scanned,
     scanId: uuidOf(`a recent scan ${back}`),
-    level:
-      scanned.score === null || scanned.coverage === null
-        ? null
-        : levelForScore(scanned.score, scanned.coverage),
     acceptedAt: `2026-10-13T07:${String(58 - back * 9).padStart(2, "0")}:00.000Z`,
-    finishedAt: `2026-10-13T07:${String(59 - back * 9).padStart(2, "0")}:10.000Z`,
-    durationSeconds: 70 - back * 12,
-    browserStatus: scanned.status === "failed" ? null : "completed",
   })),
+  selfScan: {
+    scanId: uuidOf("the latest self-scan"),
+    targetHost: "agentify.ad",
+    segment: "owner",
+    status: "completed",
+    score: 88,
+    coverage: 0.94,
+    level: levelForScore(88, 0.94),
+    acceptedAt: "2026-10-13T06:00:00.000Z",
+    finishedAt: "2026-10-13T06:01:10.000Z",
+    substantiveHtmlStatus: "pass",
+    agentUserAgentStatus: "pass",
+    browserStatus: "partial",
+  },
+  worker: {
+    heartbeat: {
+      heartbeat_at: "2026-10-13T07:59:56.000Z",
+      metadata: { ready: true, queue_connected: true, database_connected: true },
+    },
+    signals: {
+      queued_scans: 0,
+      queue_age_seconds: 0,
+      stale_running: 0,
+      accepted_15m: 6,
+      failed_15m: 0,
+      outbox_pending: 1,
+      outbox_age_seconds: 12,
+      outbox_dead_letters: 0,
+    },
+  },
+};
+
+/**
+ * The same page on a bad morning: the worker has gone quiet with a scan
+ * waiting, the challenge is off, nothing has checked the site yet, and two
+ * people wait for a copy of their data.
+ */
+const TROUBLED: OperatorNumbers = {
+  ...NUMBERS,
+  turnstileEnforced: false,
+  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   selfScan: null,
+  worker: {
+    heartbeat: {
+      heartbeat_at: "2026-10-13T07:41:00.000Z",
+      metadata: { ready: true, queue_connected: true, database_connected: true },
+    },
+    signals: { ...NUMBERS.worker.signals, queued_scans: 1, queue_age_seconds: 640 },
+  },
 };
 
 const account = (told: Told, path: string, file: string, scene: BrowserScene | null) =>
@@ -1380,24 +1427,39 @@ const ACCOUNT: GalleryState[] = [
       shows: "cannot tell whether this went through",
     },
   ),
-  at(
-    {
-      id: "scanner-admin",
-      screen: "Operator dashboard",
-      when: "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
-      cause:
-        "The seller dashboard confirms the signed-in account as an operator; the numbers here are examples.",
-    },
-    {
-      path: "/admin",
-      loaded: {
-        "routes/admin": {
-          title: "Operator dashboard",
-          status: renderToStaticMarkup(<OperatorDashboardStatus data={NUMBERS} />),
-          html: renderToStaticMarkup(<OperatorDashboard data={NUMBERS} />),
+  ...(
+    [
+      [
+        "scanner-admin",
+        "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
+        NUMBERS,
+      ],
+      [
+        "scanner-admin-troubled",
+        "An operator opens /admin while the worker has gone quiet, the challenge is not enforced, no self-scan has completed and data access requests wait.",
+        TROUBLED,
+      ],
+    ] as const
+  ).map(([id, when, numbers]) =>
+    at(
+      {
+        id,
+        screen: "Scanner for the operator",
+        when,
+        cause:
+          "The seller dashboard confirms the signed-in account as an operator; the numbers here are examples.",
+      },
+      {
+        path: "/admin",
+        loaded: {
+          "routes/admin": {
+            title: "Scanner for the operator",
+            status: renderToStaticMarkup(<OperatorDashboardStatus data={numbers} />),
+            html: renderToStaticMarkup(<OperatorDashboard data={numbers} />),
+          },
         },
       },
-    },
+    ),
   ),
 ];
 

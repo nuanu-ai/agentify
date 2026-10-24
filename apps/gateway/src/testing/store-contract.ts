@@ -2571,12 +2571,29 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.standingWithdrawal(A))?.reason).toBe("Stopped again");
       });
 
+      it("hands no withdrawal to a merchant admitted again by a grant that wrote no row", async () => {
+        // A grant from outside the workspace writes no journal row; the merchant
+        // it admits must not be told its sales are stopped.
+        const store = await twoMerchants();
+        await store.grantLiveApproval(A, 1_000, undefined, press("admit", merchantA, 1_000, null));
+        await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_000));
+
+        await store.grantLiveApproval(A, 3_000);
+
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(3_000);
+        expect(await store.standingWithdrawal(A)).toBeNull();
+      });
+
       it("hands back at most its page's most however many are asked for", async () => {
         const store = await twoMerchants();
         await store.recordJournal(refused(merchantA, 1_000, "no_reason"));
 
         expect((await store.journal({ limit: 0 })).rows).toHaveLength(1);
         expect((await store.journal({ limit: 10_000 })).rows).toHaveLength(1);
+        // A limit read from a malformed address is no number at all.
+        for (const limit of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+          expect((await store.journal({ limit })).rows, String(limit)).toHaveLength(1);
+        }
       });
     });
   });
