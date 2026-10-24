@@ -6,6 +6,7 @@
 
 import type { OperatorReader } from "../../../ports/operator/index.js";
 import type { MemoryStore } from "../store.js";
+import { memoryOperatorAccounts } from "./accounts.js";
 import { memoryOperatorFigures } from "./figures.js";
 import { memoryOperatorMerchants } from "./merchants.js";
 import { memoryOperatorOrders } from "./orders.js";
@@ -24,5 +25,6 @@ export function memoryOperatorReader(store: MemoryStore): OperatorReader {
     orders: memoryOperatorOrders(scope),
     figures: memoryOperatorFigures(scope),
     splits: memoryOperatorSplits(scope),
+    accounts: memoryOperatorAccounts(scope),
   };
 }

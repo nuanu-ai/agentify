@@ -47,7 +47,12 @@ export default [
       route("admin/money", "routes/admin/money.tsx"),
       route("admin/health", "routes/admin/health.tsx"),
       route("admin/accounts", "routes/admin/accounts.tsx"),
-      route("admin/accounts/:account_id", "routes/admin/account.tsx"),
+      route("admin/accounts/:account_id", "routes/admin/account.tsx", [
+        // One address per action, all answered by one module.
+        ...(["end-sessions", "grant-operator", "remove-operator", "forget"] as const).map((act) =>
+          route(act, "routes/admin/account-press.tsx", { id: `routes/admin/account-${act}` }),
+        ),
+      ]),
       route("admin/journal", "routes/admin/journal.tsx"),
       route("admin/sign-in-again", "routes/admin/sign-in-again.tsx"),
       route("admin/*", "routes/admin/no-such-page.tsx"),

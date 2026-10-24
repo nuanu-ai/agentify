@@ -2507,7 +2507,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(last.next).toBeNull();
       });
 
-      it("reads one merchant's history with its keys' rows, one account's, and one action's", async () => {
+      it("reads one merchant's history with its keys' rows, one account's, and some kinds of action's", async () => {
         const store = await twoMerchants();
         await store.recordJournal(refused(merchantA, 1_000, "no_reason"));
         await store.recordJournal(
@@ -2525,11 +2525,24 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const ofAccount = await store.journal({ about: { account: "acc_1" }, limit: 10 });
         expect(ofAccount.rows.map((row) => row.action)).toStrictEqual(["end_sessions"]);
         expect((await store.journal({ about: { account: A }, limit: 10 })).total).toBe(0);
-        const ended = await store.journal({ action: "end_sessions", limit: 10 });
+        const ended = await store.journal({ actions: ["end_sessions"], limit: 10 });
         expect(ended.rows.map((row) => row.at)).toStrictEqual([4_000]);
         expect(
-          (await store.journal({ action: "withdraw", about: { merchant: B }, limit: 10 })).total,
+          (await store.journal({ actions: ["withdraw"], about: { merchant: B }, limit: 10 })).total,
         ).toBe(1);
+        const either = await store.journal({ actions: ["end_sessions", "withdraw"], limit: 10 });
+        expect(either.rows.map((row) => row.at)).toStrictEqual([4_000, 3_000, 2_000, 1_000]);
+        expect(either.total).toBe(4);
+        expect(
+          (await store.journal({ actions: ["admit", "end_sessions"], limit: 10 })).rows.map(
+            (row) => row.at,
+          ),
+        ).toStrictEqual([4_000]);
+        expect(await store.journal({ actions: [], limit: 10 })).toStrictEqual({
+          rows: [],
+          total: 0,
+          next: null,
+        });
       });
 
       it("hands a merchant the withdrawal that stands, with its note, and nothing once it is admitted again", async () => {

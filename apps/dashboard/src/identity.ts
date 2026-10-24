@@ -9,12 +9,14 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import type { Store } from "@agentify/gateway";
 import {
   type AnalyticsEvent,
   type AuthResult,
   recordAlong,
   recordObserved,
 } from "@agentify/gateway/analytics";
+import { journalAlong } from "@agentify/gateway/journal";
 import { countedClient } from "@agentify/scanner/ip";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
@@ -33,6 +35,9 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
+import { channelOf } from "./admin/frame.js";
+import type { JournalTransaction } from "./admin/journal.js";
+import { operatorFlagMessage } from "./admin/operator-mail.js";
 import type { DashboardConfig } from "./config.js";
 import {
   type AttachMerchantResult,
@@ -58,6 +63,25 @@ import { boundedGoogleExchange } from "./google-exchange.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { suppressWaitingAbout } from "./nuanu-analytics.js";
+import {
+  type AccountSummary,
+  type AccountsListing,
+  endSessionsIn,
+  endSessionsInMemory,
+  type FlagChange,
+  type Forgetting,
+  firstOperatorIn,
+  firstOperatorInMemory,
+  forgetIn,
+  forgetInMemory,
+  listedIn,
+  listedInMemory,
+  type Statements,
+  setFlagIn,
+  setFlagInMemory,
+  summaryIn,
+  summaryInMemoryOf,
+} from "./operator-accounts.js";
 import { renewedSession } from "./renewed-session.js";
 import { reportLinkMessage } from "./report-mail.js";
 import {
@@ -71,13 +95,15 @@ import {
   verifications,
 } from "./schema.js";
 
-interface AccountSummary {
-  readonly email: string;
-  readonly createdAt: Date;
-  readonly sessions: number;
-  readonly merchant: string | null;
-  readonly confirmed: boolean;
-  readonly operator: boolean;
+/**
+ * A change of the operator flag that was not made because a mail to an
+ * operator, or to the account changed, was not handed to the provider: the
+ * flag is as it was.
+ */
+export class OperatorMailRefused extends Error {
+  constructor() {
+    super("a mail about the operator flag was not handed to the provider");
+  }
 }
 
 /** Operator-only operations, kept out of the page-facing port. */
@@ -90,15 +116,49 @@ export interface Identity extends DashboardIdentity {
   make(email: string, merchantId: string): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
+  /** No route calls it, and nothing journals it; it is how a test ends a person's sessions. */
   endEverySessionFor(email: string): Promise<number>;
   /**
-   * Sessions are left as they are: the flag is read on every session read, so
-   * the next request already sees the change.
+   * No route calls it, and nothing journals it: it is how a test arranges who
+   * holds the flag. Sessions are left as they are: the flag is read on every
+   * session read, so the next request already sees the change.
    */
   setOperator(email: string, operator: boolean): Promise<boolean>;
   /** For an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
-  list(now: Date): Promise<readonly AccountSummary[]>;
+  /** The accounts that made a merchant or hold the flag, and how many others only signed in. */
+  operatorAccounts(now: Date): Promise<AccountsListing>;
+  /** One account, listed or not, as the workspace shows it; null where there is none. */
+  operatorAccount(accountId: string, now: Date): Promise<AccountSummary | null>;
+  /**
+   * Ends every session of one account, on the journal's transaction `tx` (null
+   * in memory), keeping the account.
+   */
+  endSessionsIn(
+    tx: JournalTransaction | null,
+    accountId: string,
+    now: Date,
+  ): Promise<"ended" | "none" | "no-account">;
+  /**
+   * Grants or removes the operator flag on `tx`, under the one lock every
+   * change of who holds the flag takes, so the last operator's flag is never
+   * removed. Before it returns, a mail about the change has been handed over
+   * to every operator there was and to the account changed; a refused
+   * hand-over throws `OperatorMailRefused` and the flag stays as it was.
+   */
+  setOperatorIn(
+    tx: JournalTransaction | null,
+    accountId: string,
+    on: boolean,
+    asked: Readonly<{ at: Date; by: string }>,
+  ): Promise<FlagChange>;
+  /**
+   * Removes one account and the merchant it names on `tx`, under the same
+   * lock, so the address next signs in as a newcomer; refused for the last
+   * operator and for a merchant with money history or another account. Only
+   * the test channel's workspace calls it.
+   */
+  forgetIn(tx: JournalTransaction | null, accountId: string): Promise<Forgetting>;
   sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
   deleteUnattachedPerson(
     request: DeleteUnattachedPersonRequest,
@@ -153,6 +213,12 @@ export interface IdentityParts {
   readonly pool?: Pool;
   readonly rows?: MemoryRows;
   readonly postman?: Postman;
+  /**
+   * In memory, where the journal is the gateway's memory store: the configured
+   * first operator is given the flag only with one, and its row goes there.
+   * On Postgres the journal is the database's own table.
+   */
+  readonly journal?: Pick<Store, "journal" | "recordJournal">;
 }
 
 /**
@@ -398,7 +464,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         ...(forGoogle ? { validateUserInfo: validateGoogleInfo } : {}),
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
-          // Closed to input: only the terminal command writes it.
+          // Closed to input: only the operator's workspace and the first
+          // operator's configuration write it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
           // Closed to input: only the settings' own press writes it.
           analyticsOptOut: {
@@ -809,6 +876,52 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const asHeaders = (value: string): Headers =>
     new Headers({ cookie: `${sessionCookie}=${value}` });
   const contextOf = async () => await auth.$context;
+
+  /** A change of accounts outside a journal's transaction: only in memory, inside its queued copy. */
+  const memoryOnly = async <T>(work: (rows: MemoryRows) => Promise<T>): Promise<T> => {
+    if (parts.pool !== undefined) {
+      throw new Error("a change of an account on Postgres runs on the journal's transaction");
+    }
+    return await inMemoryTransaction(async (_bound, rows) => await work(rows));
+  };
+
+  /**
+   * Gives the configured first operator the flag at their sign-in, journaled
+   * as the configuration's, where the channel has never had an operator. A
+   * failure leaves the sign-in as it is, and the next one tries again.
+   */
+  const firstOperatorAt = async (person: Person): Promise<void> => {
+    if (config.firstOperator === null || person.email !== config.firstOperator) return;
+    const rowFor = (id: string) =>
+      ({
+        at: Date.now(),
+        actor: { kind: "configuration" },
+        action: "first_operator",
+        subject: { kind: "account", id },
+        reason: null,
+        outcome: { kind: "done" },
+      }) as const;
+    try {
+      if (parts.pool === undefined) {
+        const journal = parts.journal;
+        if (journal === undefined) return;
+        const touched = (await journal.journal({ actions: FLAG_ACTIONS, limit: 1 })).total > 0;
+        const given = await inMemoryTransaction(async (_bound, rows) =>
+          firstOperatorInMemory(rows, person.email, touched),
+        );
+        if (given !== null) await journal.recordJournal(rowFor(given));
+        return;
+      }
+      await drizzle(parts.pool).transaction(async (tx) => {
+        const given = await firstOperatorIn(tx, person.email);
+        if (given !== null) await journalAlong(tx, rowFor(given));
+      });
+    } catch {
+      console.error(
+        "[dashboard] the configured first operator could not be given the flag; their next sign-in tries again",
+      );
+    }
+  };
   /**
    * The component moves a session's end at most once a day and says so with a
    * cookie of its own; dropping that line would extend the row while the
@@ -1098,6 +1211,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       if (finished.status === "refused" && told.why !== null) {
         void observe(signInRefused("google", "verify", told.why));
       }
+      if (finished.status === "opened") await firstOperatorAt(finished.person);
       return finished;
     },
 
@@ -1189,34 +1303,38 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async openLink(token) {
-      try {
-        if (parts.pool === undefined) {
-          return await inMemoryTransaction(
-            async (bound, rows) =>
-              await openWith(bound, token, {
-                register: async (reports) => registerInMemory(rows, reports),
-                record: async (event) => recordInMemory(rows, event),
-              }),
-          );
-        }
-        const db = drizzle(parts.pool);
-        return await db.transaction(async (tx) => {
-          const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
-          return await openWith(bound, token, {
-            lockEmail: async (email) => await lockEmail(tx, email),
-            register: async (reports) => {
-              await tx.insert(adReports).values([...reports]);
-            },
-            record: async (event) => await recordAlong(tx, event, new Date()),
+      const opened = await (async (): Promise<DashboardLinkResult> => {
+        try {
+          if (parts.pool === undefined) {
+            return await inMemoryTransaction(
+              async (bound, rows) =>
+                await openWith(bound, token, {
+                  register: async (reports) => registerInMemory(rows, reports),
+                  record: async (event) => recordInMemory(rows, event),
+                }),
+            );
+          }
+          const db = drizzle(parts.pool);
+          return await db.transaction(async (tx) => {
+            const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
+            return await openWith(bound, token, {
+              lockEmail: async (email) => await lockEmail(tx, email),
+              register: async (reports) => {
+                await tx.insert(adReports).values([...reports]);
+              },
+              record: async (event) => await recordAlong(tx, event, new Date()),
+            });
           });
-        });
-      } catch (thrown) {
-        if (thrown instanceof VerificationRefused) {
-          void observe(signInRefused("email_link", "verify", thrown.why));
-          return { status: "refused" };
+        } catch (thrown) {
+          if (thrown instanceof VerificationRefused) {
+            void observe(signInRefused("email_link", "verify", thrown.why));
+            return { status: "refused" };
+          }
+          throw thrown;
         }
-        throw thrown;
-      }
+      })();
+      if (opened.status === "opened") await firstOperatorAt(opened.person);
+      return opened;
     },
 
     async deleteUnattachedPerson(request) {
@@ -1295,7 +1413,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           await tx.select().from(accounts).where(eq(accounts.email, request.email)).for("update")
         )[0];
         const result: DeleteResult =
-          row === undefined ? "already_absent" : row.merchantId === null ? "deleted" : "retained";
+          row === undefined
+            ? "already_absent"
+            : row.merchantId === null && !row.operator
+              ? "deleted"
+              : "retained";
         const proofs = await tx
           .select({ id: verifications.id, value: verifications.value })
           .from(verifications);
@@ -1498,23 +1620,60 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return await endLiveSessionsOf(personId, new Set());
     },
 
-    async list(now) {
-      const context = await contextOf();
-      const everybody = await context.internalAdapter.listUsers();
-      const rows: AccountSummary[] = [];
-      for (const one of everybody) {
-        const person = personFrom(one as PersonRow);
-        const open = await context.internalAdapter.listSessions(person.id);
-        rows.push({
-          email: person.email,
-          createdAt: (one as { createdAt: Date }).createdAt,
-          sessions: open.filter((session) => session.expiresAt > now).length,
-          merchant: person.merchant?.id ?? null,
-          confirmed: person.confirmed,
-          operator: operatorOn(one),
-        });
+    async operatorAccounts(now) {
+      if (parts.pool === undefined) {
+        return await inMemoryTurn(async () => listedInMemory(memoryRows, now));
       }
-      return rows.sort((one, other) => one.email.localeCompare(other.email));
+      return await readingAccounts(parts.pool, async (tx) => await listedIn(tx, now));
+    },
+
+    async operatorAccount(accountId, now) {
+      if (parts.pool === undefined) {
+        return await inMemoryTurn(async () => summaryInMemoryOf(memoryRows, accountId, now));
+      }
+      return await readingAccounts(parts.pool, async (tx) => await summaryIn(tx, accountId, now));
+    },
+
+    async endSessionsIn(tx, accountId, now) {
+      if (tx === null) {
+        return await memoryOnly(async (rows) => endSessionsInMemory(rows, accountId, now));
+      }
+      return await endSessionsIn(tx, accountId, now);
+    },
+
+    async setOperatorIn(tx, accountId, on, asked) {
+      const channel = channelOf(config);
+      const tell = async (
+        before: readonly Readonly<{ id: string; email: string }>[],
+        changed: Readonly<{ id: string; email: string }>,
+      ) => {
+        const told = new Set([...before.map((one) => one.email), changed.email]);
+        // Handed over side by side, since the channel's lock is held meanwhile.
+        const handed = await Promise.all(
+          [...told].map((to) =>
+            postman(
+              operatorFlagMessage(to, {
+                email: changed.email,
+                granted: on,
+                at: asked.at,
+                askedBy: asked.by,
+                channel: `${channel.name.toLowerCase()} (${channel.line})`,
+                accounts: `${base}/admin/accounts`,
+              }),
+            ),
+          ),
+        );
+        if (handed.some((one) => one !== "accepted")) throw new OperatorMailRefused();
+      };
+      if (tx === null) {
+        return await memoryOnly(async (rows) => await setFlagInMemory(rows, accountId, on, tell));
+      }
+      return await setFlagIn(tx, accountId, on, tell);
+    },
+
+    async forgetIn(tx, accountId) {
+      if (tx === null) return await memoryOnly(async (rows) => forgetInMemory(rows, accountId));
+      return await forgetIn(tx, accountId, config.authSecret);
     },
 
     observe,
@@ -1650,6 +1809,20 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return { id: person.id, email: person.email, merchantId: person.merchant?.id ?? null };
     },
   };
+}
+
+/** The journal's actions that show the channel's flag was ever given or taken. */
+const FLAG_ACTIONS = ["first_operator", "grant_operator", "remove_operator"] as const;
+
+/** A read of the accounts: read only, and cut off rather than holding the database. */
+async function readingAccounts<T>(pool: Pool, read: (tx: Statements) => Promise<T>): Promise<T> {
+  return await drizzle(pool).transaction(
+    async (tx) => {
+      await tx.execute(sql`select set_config('statement_timeout', '5000', true)`);
+      return await read(tx);
+    },
+    { accessMode: "read only" },
+  );
 }
 
 type PersonRow = {
@@ -1824,7 +1997,7 @@ function goesWithTheDeletion(
  * What a link is for, each counted apart: a sign-in from the public form, a
  * scanner's report, or an operator's fresh sign-in asked from the workspace.
  */
-/** `pnpm forget` clears an address's link sends by this same key. */
+/** Forgetting an account clears its address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
@@ -2160,7 +2333,9 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
   if (account === undefined) result = "already_absent";
   else {
     const person = personFrom(account as PersonRow);
-    result = person.merchant === null ? "deleted" : "retained";
+    // An operator's account stays until its flag is removed, so the channel
+    // cannot lose its operators this way.
+    result = person.merchant === null && account.operator !== true ? "deleted" : "retained";
   }
   rows.dashboard_verifications = (rows.dashboard_verifications ?? []).filter(
     (proof) => !goesWithTheDeletion(claimFrom(String(proof.value)), email, result),

@@ -1,13 +1,12 @@
 /**
- * The workspace's journal page, owned by the accounts area, which
- * replaces the placeholder with its screen. The layout above confirmed the
- * operator before this runs.
+ * The workspace's Journal: every administrative action on the channel, newest
+ * first. The layout above confirmed the operator before this runs.
  */
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
-import { Placeholder } from "../../components/admin/placeholder.js";
 import { AdminFrame } from "../../components/admin-frame.js";
+import { JournalScreen } from "../../screens/admin/journal.js";
 import { workspaceIn } from "../../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -20,7 +19,7 @@ export default function Journal() {
   const view = useLoaderData<typeof loader>();
   return (
     <AdminFrame section="journal" title="Journal">
-      <Placeholder view={view} />
+      <JournalScreen view={view} />
     </AdminFrame>
   );
 }

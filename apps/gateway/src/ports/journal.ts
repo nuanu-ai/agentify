@@ -140,12 +140,13 @@ export const settledPress = (press: JournalPress, changed: boolean): JournalEntr
 
 /**
  * Which rows to read: about one merchant (its keys' rows included) or one
- * account, of one action, newest first, at most `limit` of them, starting
- * after the row `before` names.
+ * account, of any of `actions`, newest first, at most `limit` of them,
+ * starting after the row `before` names.
  */
 export interface JournalQuery {
   readonly about?: Readonly<{ merchant: string }> | Readonly<{ account: string }>;
-  readonly action?: JournalAction;
+  /** The kinds of action to read, every one where absent; none at all reads no row. */
+  readonly actions?: readonly JournalAction[];
   readonly limit: number;
   /** The `sequence` of the last row of the page before, whose `next` it is. */
   readonly before?: number;
@@ -175,7 +176,7 @@ export const journalLimitOf = (query: JournalQuery): number =>
 
 /** Whether a row answers a query's filters, as the SQL's predicate does. */
 export const answersQuery = (row: JournalEntry, query: JournalQuery): boolean => {
-  if (query.action !== undefined && row.action !== query.action) return false;
+  if (query.actions !== undefined && !query.actions.includes(row.action)) return false;
   const about = query.about;
   if (about === undefined) return true;
   return "merchant" in about

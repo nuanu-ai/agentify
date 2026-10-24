@@ -1,0 +1,7 @@
+/*
+ * Accounts and the Journal have more segments than a phone's row holds, so
+ * theirs wrap onto a second line rather than reaching past the window.
+ */
+.tools :global(.segments) {
+  flex-wrap: wrap;
+}

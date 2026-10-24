@@ -992,26 +992,57 @@ the status, or repeat the same approval safely. The existing `pnpm approve
 a particular payment occurred. The screen does not withdraw an approval; the
 terminal command below does.
 
-## Who opens /admin
+## Who opens the operator's workspace
 
-The operator's dashboard at `/admin` opens for a session whose account carries
-the operator flag, and answers everybody else with the site's 404 page
-(ADR-0026 §6). Nobody is flagged on a new channel, so it opens for nobody until
-somebody is. The person who is to read it signs in once at
-`/dashboard/sign-in`, which makes their account. The link arrives by mail
-where the channel names a mail provider; a channel without one writes its mail
-to the application's log rather than sending it, and the link is then read
-with `deploy/stack.sh <channel> logs app` from the newest checkout. They are then
-flagged on the host of that channel:
+The operator's workspace at `/dashboard/admin`, and the scanner's page at
+`/admin`, open for a session whose account carries the operator flag, and
+answer everybody else with the site's 404 page (ADR-0026 §6). An operator
+gives the flag to another account, or takes it away, in the workspace's
+Accounts: the press asks for a sign-in made in the last fifteen minutes and a
+reason, is written to the journal, and waits until a mail to every operator of
+the channel and to the account changed has been handed to the provider. The
+last operator's flag cannot be removed there.
+
+A new channel has no operator. Its first one is named in the channel's
+root-owned environment file:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+FIRST_OPERATOR_EMAIL=you@example.com
 ```
 
-The scanner's header then shows them an Admin link, on the next page they
-open, without signing in again. `account list` says who is an operator, and
-`account operator you@example.com --off` takes the flag away.
+That person then signs in once at `/dashboard/sign-in`. The link arrives by
+mail where the channel names a mail provider; a channel without one writes its
+mail to the application's log rather than sending it, and the link is then
+read with `deploy/stack.sh <channel> logs app` from the newest checkout. The
+account receives the flag at that sign-in, and the journal records the
+configuration as the one that gave it. This happens only while no account holds
+the flag and the journal records no grant or removal of it, so from then on the
+value changes nothing, whether it stays in the file or not.
+
+A channel that has lost every operator anyway, which no press in the workspace
+can bring about, is recovered on its host. An account must exist for the
+address, so its person signs in once first. Then, from the newest checkout of
+that channel, open the database:
+
+```sh
+sudo "$(ls -dt /var/lib/agentify/<channel>/checkouts/*/ | head -n 1)deploy/stack.sh" <channel> exec postgres psql -U agentify -d agentify
+```
+
+and run this one statement, with the address in lower case as a sign-in keeps
+it. It gives the flag only while no account holds it, and writes the journal's
+row naming the terminal in the same statement; `INSERT 0 1` says it was given,
+and `INSERT 0 0` that an account already holds the flag or none has that
+address.
+
+```sql
+with granted as (
+  update dashboard_accounts set operator = true, updated_at = now()
+   where email = 'you@example.com'
+     and not exists (select 1 from dashboard_accounts where operator)
+  returning id)
+insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, outcome)
+select now(), 'terminal', 'grant_operator', 'account', id, 'done' from granted;
+```
 
 ## Approving a merchant for live sales
 
@@ -1055,21 +1086,14 @@ the script and changes nothing.
 ## Starting an address over on TEST
 
 An address that has signed in on TEST can be made new again, so it signs in
-as if for the first time. From an operator's checkout:
-
-```sh
-pnpm forget <email>
-```
-
-It reaches TEST over SSH through the `agentify-test` alias and removes that
-address's dashboard account together with the merchant it names, the
-merchant's keys and cards, and the wait before the address's next sign-in
-link. It refuses, and says why, when the merchant has an order or a receipt,
-when another account names the same merchant, or when no account has the
-address; on a deployment whose payment network is live it refuses before it
-reads anything. An operator flag goes with the account, and a WooCommerce
-connection it drops keeps its key in that shop until somebody revokes it
-there.
+as if for the first time: an operator opens its account in the TEST
+workspace's Accounts and presses Forget this account. It removes the account
+together with the merchant it names, the merchant's keys and cards, and the
+wait before the address's next sign-in link, and writes the journal's row.
+It is refused, and says why, when the merchant has an order or a receipt, when
+another account names the same merchant, and for the channel's last operator;
+the live channel's workspace does not offer it. A WooCommerce connection it
+drops keeps its key in that shop until somebody revokes it there.
 
 ## The Woo acceptance route on TEST
 

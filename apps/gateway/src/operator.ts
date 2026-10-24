@@ -52,6 +52,9 @@ export {
   WAITING_NAMED_AT_MOST,
 } from "./ports/operator/figures.js";
 export type {
+  MoneyHistory,
+  NamedMerchant,
+  OperatorAccounts,
   OperatorFigures,
   OperatorMerchants,
   OperatorOrders,

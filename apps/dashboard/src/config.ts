@@ -133,6 +133,22 @@ const environmentSchema = z.object({
     )
     .default(SANDBOX_MAIL),
 
+  /**
+   * The address whose account is given the operator flag at its next sign-in
+   * while no account on the channel holds it and the journal records no grant
+   * or removal of it, so once only; the journal records that too. From then
+   * on a sign-in by this address is like any other.
+   */
+  FIRST_OPERATOR_EMAIL: emptyIsAbsent(
+    z
+      .string()
+      .transform((value) => value.trim().toLowerCase())
+      .refine(
+        (value) => /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(value),
+        "must be an address of the shape someone@example.com",
+      ),
+  ),
+
   /** Nothing to set in the sandbox. */
   MAIL_API_KEY: emptyIsAbsent(z.string().min(1)),
 
@@ -212,6 +228,11 @@ export interface DashboardConfig {
   readonly databaseUrl: string;
   /** Never printed, never on a page. */
   readonly authSecret: string;
+  /**
+   * The address that receives the operator flag at its next sign-in while the
+   * channel has never had an operator, or null where none is named.
+   */
+  readonly firstOperator: string | null;
   /** Both absent disables Google; a partial pair is refused before startup. */
   readonly google: Readonly<{ clientId: string; clientSecret: string }> | null;
   readonly reportIdentitySecret: string | null;
@@ -417,6 +438,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
+    firstOperator: values.FIRST_OPERATOR_EMAIL ?? null,
     google:
       values.GOOGLE_CLIENT_ID !== undefined && values.GOOGLE_CLIENT_SECRET !== undefined
         ? { clientId: values.GOOGLE_CLIENT_ID, clientSecret: values.GOOGLE_CLIENT_SECRET }

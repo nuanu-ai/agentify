@@ -2,7 +2,8 @@
  * The dashboard's identity, registration and WooCommerce tables. They share a
  * database with the gateway's, so the names are prefixed with their owner. The
  * ad reports read the gateway's `cards` by name and write nothing there; only
- * the test channel's forget command writes a gateway table. Migration
+ * forgetting an account in the test channel's workspace writes a gateway
+ * table. Migration
  * bookkeeping is kept in its own table, for the reason `src/database.ts` gives.
  */
 
@@ -47,8 +48,9 @@ export const accounts = pgTable(
      */
     merchantId: text("merchant_id"),
     /**
-     * Only `pnpm account operator` at the server's terminal sets this: the
-     * component is told the field is closed to input, and no page writes it.
+     * Only the operator's workspace sets this, and the channel's configured
+     * first operator once: the component is told the field is closed to input,
+     * and no merchant's page writes it.
      */
     operator: boolean("operator").notNull().default(false),
     /**

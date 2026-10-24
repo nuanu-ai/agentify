@@ -221,6 +221,34 @@ describe("a privacy deletion asked for by the scanner", () => {
     expect(await p2.identity.openLink(unconsumed.token)).toStrictEqual({ status: "refused" });
   });
 
+  it("keeps an operator's account that owns no merchant until its flag is removed", async () => {
+    // Otherwise a request from the scanner could take a channel's last
+    // operator away, which no press in the workspace can.
+    const one = fixture();
+    const opened = await one.identity.openLink((await sendReport(one)).token);
+    if (opened.status !== "opened") throw new Error("the report link did not open");
+    await one.identity.setOperator(EMAIL, true);
+
+    await expect(
+      one.identity.deleteUnattachedPerson({
+        operation: "delete",
+        operation_id: OPERATION_ONE,
+        email: EMAIL,
+      }),
+    ).resolves.toStrictEqual({ status: "retained" });
+    expect(await one.identity.byEmail(EMAIL)).not.toBeNull();
+
+    await one.identity.setOperator(EMAIL, false);
+    await expect(
+      one.identity.deleteUnattachedPerson({
+        operation: "delete",
+        operation_id: OPERATION_TWO,
+        email: EMAIL,
+      }),
+    ).resolves.toStrictEqual({ status: "deleted" });
+    expect(await one.identity.byEmail(EMAIL)).toBeNull();
+  });
+
   it("replays a terminal delete without touching a person made afterward", async () => {
     const one = fixture();
     const operationId = OPERATION_ONE;

@@ -138,6 +138,7 @@ async function served(
       gateway: harnessed.gateway,
       reader: (options.reader ?? ((r) => r))(real),
       journal: memoryJournal(harnessed.store),
+      accounts: identity,
       pressing: {
         now: () => new Date(harnessed.now()),
         googleEnabled: false,
