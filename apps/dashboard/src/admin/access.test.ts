@@ -10,6 +10,7 @@ import { loadConfig } from "../config.js";
 import type { DashboardIdentity } from "../dashboard-entry.js";
 import { identityFor } from "../identity.js";
 import type { Message } from "../mail.js";
+import { flagRow } from "../testing/account-rows.js";
 import { ONE_CLIENT } from "../testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "../testing/secrets.js";
 import { FRESH_SIGN_IN_MS, operatorOf, signedInFreshly } from "./access.js";
@@ -51,8 +52,8 @@ const signedIn = async () => {
 
 describe("who the operator's workspace answers", () => {
   it("answers an account the operator flag confirms, with the moment its session was signed in", async () => {
-    const { identity, cookie } = await signedIn();
-    await identity.setOperator(PERSON, true);
+    const { identity, cookie, rows } = await signedIn();
+    flagRow(rows, PERSON, true);
 
     const operator = await operatorOf(identity, cookie);
 
@@ -62,14 +63,14 @@ describe("who the operator's workspace answers", () => {
   });
 
   it("answers nobody for an account without the flag, a session that ended, no cookie, or a flag taken away", async () => {
-    const { identity, cookie } = await signedIn();
+    const { identity, cookie, rows } = await signedIn();
 
     expect(await operatorOf(identity, cookie)).toBeNull();
     expect(await operatorOf(identity, undefined)).toBeNull();
-    await identity.setOperator(PERSON, true);
-    await identity.setOperator(PERSON, false);
+    flagRow(rows, PERSON, true);
+    flagRow(rows, PERSON, false);
     expect(await operatorOf(identity, cookie)).toBeNull();
-    await identity.setOperator(PERSON, true);
+    flagRow(rows, PERSON, true);
     await identity.signOut(cookie);
     expect(await operatorOf(identity, cookie)).toBeNull();
     await identity.close();
@@ -88,8 +89,8 @@ describe("who the operator's workspace answers", () => {
 
 describe("when an operator may act", () => {
   it("only within fifteen minutes of signing in", async () => {
-    const { identity, cookie } = await signedIn();
-    await identity.setOperator(PERSON, true);
+    const { identity, cookie, rows } = await signedIn();
+    flagRow(rows, PERSON, true);
     const operator = await operatorOf(identity, cookie);
     if (operator === null) throw new Error("the operator was not confirmed");
     const at = operator.signedInAt.getTime();
@@ -106,7 +107,7 @@ describe("when an operator may act", () => {
     // The session row's creation moment stands for the sign-in; a renewed
     // session is written with the old one's, so this is what renewal carries.
     const { identity, cookie, rows } = await signedIn();
-    await identity.setOperator(PERSON, true);
+    flagRow(rows, PERSON, true);
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
     for (const row of rows.dashboard_sessions ?? []) row.createdAt = hourAgo;
 

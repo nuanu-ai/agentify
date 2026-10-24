@@ -818,7 +818,7 @@ describe("an expired session returning to WooCommerce", () => {
   it("keeps WooCommerce as a closed signed-link destination", async () => {
     const running = await started();
     await running.signIn();
-    await running.identity.endEverySessionFor(PERSON);
+    await running.identity.endSessionsIn(null, running.accountId, new Date());
 
     const expired = await running.get("/woocommerce");
 

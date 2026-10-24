@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { flagRow } from "./testing/account-rows.js";
 import { ONE_CLIENT, rewindLinkSends } from "./testing/link-sends.js";
 
 const EMAIL = "owner@example.com";
@@ -227,7 +228,7 @@ describe("a privacy deletion asked for by the scanner", () => {
     const one = fixture();
     const opened = await one.identity.openLink((await sendReport(one)).token);
     if (opened.status !== "opened") throw new Error("the report link did not open");
-    await one.identity.setOperator(EMAIL, true);
+    flagRow(one.rows, EMAIL, true);
 
     await expect(
       one.identity.deleteUnattachedPerson({
@@ -238,7 +239,7 @@ describe("a privacy deletion asked for by the scanner", () => {
     ).resolves.toStrictEqual({ status: "retained" });
     expect(await one.identity.byEmail(EMAIL)).not.toBeNull();
 
-    await one.identity.setOperator(EMAIL, false);
+    flagRow(one.rows, EMAIL, false);
     await expect(
       one.identity.deleteUnattachedPerson({
         operation: "delete",

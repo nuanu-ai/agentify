@@ -55,7 +55,6 @@ describe("Accounts", () => {
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     await workspace.signedIn(MERCHANT);
     await workspace.identity.make(READER, "mch_placeholder");
-    await workspace.identity.setOperator(READER, false);
     // An account that only signed in names no merchant.
     workspace.rows.dashboard_accounts = (workspace.rows.dashboard_accounts ?? []).map((row) =>
       row.email === READER ? { ...row, merchantId: null } : row,

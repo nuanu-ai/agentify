@@ -16,6 +16,7 @@ import { DRAWN_FOR } from "../drawn-for.js";
 import { type Identity, identityFor } from "../identity.js";
 import type { Handover, Message } from "../mail.js";
 import { buildApp } from "../server.js";
+import { flagRow } from "./account-rows.js";
 import { rewindLinkSends } from "./link-sends.js";
 import { testPages } from "./pages.js";
 import { TEST_AUTH_SECRET } from "./secrets.js";
@@ -172,7 +173,7 @@ export async function adminServed(
         const merchant = await harnessed.addMerchant(`Merchant of ${email}`);
         await identity.make(email, merchant.id);
       }
-      await identity.setOperator(email, as.operator === true);
+      flagRow(rows, email, as.operator === true);
       rewindLinkSends(rows);
       await identity.requestLink(email, "default", { client: "192.0.2.10" });
       const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");

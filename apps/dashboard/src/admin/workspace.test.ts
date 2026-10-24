@@ -9,6 +9,7 @@ import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, describe, expect, it } from "vitest";
 import routes from "../../app/routes.js";
 import type { Identity } from "../identity.js";
+import { flagRow } from "../testing/account-rows.js";
 import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
 import { FRESH_SIGN_IN_MS } from "./access.js";
@@ -159,11 +160,11 @@ describe("who the operator's workspace answers", () => {
   });
 
   it("answers no such page to an operator whose flag was taken away, from the next request", async () => {
-    const { signedIn, identity } = await serve();
+    const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
     expect((await operator.get("/admin/merchants")).status).toBe(200);
 
-    await identity.setOperator(OPERATOR, false);
+    flagRow(rows, OPERATOR, false);
 
     expect((await operator.get("/admin/merchants")).status).toBe(404);
   });

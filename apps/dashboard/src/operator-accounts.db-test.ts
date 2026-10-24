@@ -114,7 +114,7 @@ if (databaseUrl === null) {
 
   const operator = async (email: string): Promise<Person> => {
     const person = await signIn(email);
-    await identity.setOperator(email, true);
+    await pool.query("update dashboard_accounts set operator = true where email = $1", [email]);
     return person;
   };
 
@@ -530,7 +530,7 @@ if (databaseUrl === null) {
       expect(await deleting()).toStrictEqual({ status: "retained" });
       expect(await flagOf(boss.id)).toBe(true);
 
-      await identity.setOperator(OPERATOR, false);
+      await pool.query("update dashboard_accounts set operator = false where id = $1", [boss.id]);
       expect(await deleting()).toStrictEqual({ status: "deleted" });
       expect(await identity.byEmail(OPERATOR)).toBeNull();
     });
