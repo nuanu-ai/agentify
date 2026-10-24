@@ -5,6 +5,7 @@
  * or to the merchant that breaks when it fails.
  */
 
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import { afterEach, describe, expect, it } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
@@ -76,10 +77,32 @@ describe("a merchant's page", () => {
     expect((await operator.get("/admin/merchants/mch_nobody")).status).toBe(404);
   });
 
-  it("shows the wallet whole and its split, but never a waiting wallet's split", async () => {
+  it("says a wallet change waits, but never shows the waiting wallet or its split", async () => {
     served = await adminServed({ channel: "live" });
-    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const { harnessed } = served;
+    const merchant = await harnessed.addMerchant("Coffee Roasters");
     const operator = await served.signedIn(OPERATOR, { operator: true });
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
+    const now = await harnessed.store.merchantById(merchant.id);
+    const paid = now?.payoutWallet.address ?? "";
+    const waiting = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+    const waitingSplit = payoutSplitFor(network, merchant.id, waiting);
+    const written = await harnessed.store.setPayoutWallet(
+      merchant.id,
+      now?.payoutWallet ?? { address: null, pending: null },
+      {
+        address: paid,
+        split: payoutSplitFor(network, merchant.id, paid),
+        pending: {
+          address: waiting,
+          // On the clock the workspace reads, which is the dashboard's own.
+          takesEffectAt: Date.now() + 48 * 3_600_000,
+          split: waitingSplit,
+        },
+      },
+      harnessed.now(),
+    );
+    expect(typeof written).toBe("object");
 
     const page = await operator.get(`/admin/merchants/${merchant.id}`);
 
@@ -87,8 +110,25 @@ describe("a merchant's page", () => {
     const said = text(page.html);
     expect(said).toContain("Coffee Roasters, as buyers and their agents read it");
     expect(said).toContain("Pays out from the split");
-    expect(said).toContain("No change of wallet waits.");
-    expect(said).toContain("Admitted");
+    expect(said).toContain("A change of wallet waits and lands");
+    for (const hidden of [waiting, waitingSplit.address]) {
+      expect(page.html.toLowerCase()).not.toContain(hidden.toLowerCase().slice(2));
+    }
+  });
+
+  it("answers a press without the operator flag as no such page, changing nothing", async () => {
+    served = await adminServed({ channel: "live" });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const somebody = await served.signedIn("owner@shop.example");
+
+    const pressed = await somebody.post(`/admin/merchants/${merchant.id}/withdraw`, {
+      ...TICKED,
+      [REASON_FIELD]: "a reason",
+    });
+
+    expect(pressed.status).toBe(404);
+    expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
+    expect(await rowsAbout(served, merchant.id)).toStrictEqual([]);
   });
 });
 

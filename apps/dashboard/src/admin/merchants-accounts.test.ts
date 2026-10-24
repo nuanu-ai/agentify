@@ -27,7 +27,7 @@ describe("the accounts found by their address", () => {
     const coffee = await accountOf(served, "owner_1@coffee.example");
     await accountOf(served, "owner21@tours.example");
     const found = async (text: string) =>
-      (await served?.identity.accountsWithEmailContaining(text))?.map((one) => [
+      (await served?.identity.accountsWithEmailContaining(text))?.accounts.map((one) => [
         one.email,
         one.merchantId,
       ]);
@@ -49,7 +49,8 @@ describe("the accounts found by their address", () => {
 
     const found = await served.identity.accountsWithEmailContaining("nowhere");
 
-    expect(found.map((one) => [one.email, one.merchantId])).toStrictEqual([
+    expect(found.cut).toBe(false);
+    expect(found.accounts.map((one) => [one.email, one.merchantId])).toStrictEqual([
       ["visitor@nowhere.example", null],
     ]);
   });

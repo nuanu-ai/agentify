@@ -314,6 +314,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
             disabledAt: instantOrNull(key.disabled_at),
           })),
           total: Number(head.keys_issued),
+          working: Number(head.keys_working),
         },
         cards: {
           rows: cards.map((card) => ({

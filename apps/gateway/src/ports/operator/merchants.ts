@@ -205,8 +205,8 @@ export interface MerchantRecord extends Omit<MerchantRow, "keys" | "cards" | "th
   readonly liveApprovedAt: number | null;
   /** Null where the merchant never set a wallet. */
   readonly wallet: MerchantWallet | null;
-  /** Newest first. */
-  readonly keys: Cut<MerchantKey>;
+  /** Newest first, with how many of them all still work. */
+  readonly keys: Cut<MerchantKey> & { readonly working: number };
   /** By the merchant's own item identifier. */
   readonly cards: Cut<MerchantCard> & { readonly onSale: number };
   readonly thirtyDays: ThirtyDays & {

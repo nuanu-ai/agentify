@@ -2968,6 +2968,22 @@ describe("a merchant's standing in one read", () => {
     expect(admitted).toMatchObject({ liveApproved: true, withdrawn: null });
   });
 
+  it("says nothing withdrawn on the test channel, which asks for no admission, whatever the journal holds", async () => {
+    const harnessed = await started();
+    const id = harnessed.merchant.id;
+    await harnessed.store.grantLiveApproval(id, 4_000);
+    await harnessed.store.withdrawLiveApproval(id, {
+      at: 5_000,
+      actor: { kind: "account", id: "acc_operator" },
+      action: "withdraw",
+      subject: { kind: "merchant", id },
+      reason: "a note",
+    });
+    expect((await harnessed.store.standingWithdrawal(id))?.reason).toBe("a note");
+
+    expect((await harnessed.gateway.standingOf(id)).withdrawn).toBeNull();
+  });
+
   it("says what the separate reads say, before and after the selling, the integration, the name and the approval change", async () => {
     const harnessed = await started();
     const id = harnessed.merchant.id;

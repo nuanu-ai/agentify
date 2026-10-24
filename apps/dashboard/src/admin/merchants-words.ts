@@ -35,7 +35,8 @@ export const CHECK_WORDS = Object.freeze({
 
 /** What the dots say in words: every check held, or which are missing. */
 export const checksSaid = (missing: readonly string[], asked: number): string => {
-  if (missing.length === 0) return asked === 3 ? "All three hold" : "Both hold";
+  if (missing.length === 0)
+    return asked === 3 ? "All three hold" : asked === 2 ? "Both hold" : "It holds";
   const named = missing.join(", ");
   return `${named.slice(0, 1).toUpperCase()}${named.slice(1)} missing`;
 };
@@ -57,6 +58,13 @@ export const DOTS_EXPLAINED_LIVE =
 
 export const DOTS_EXPLAINED_TEST =
   "The two dots are the checks this channel runs before it sells a merchant's card, in order: seller name and payout wallet. A hollow dot is missing; the words beside the dots say which. Admission is the live channel's alone.";
+
+export const DOT_EXPLAINED_SANDBOX =
+  "The dot is the one check the sandbox runs before it sells a merchant's card: the seller name. A hollow dot is missing.";
+
+/** Where the search of addresses stopped at the most it reads. */
+export const ACCOUNTS_CUT =
+  "Many accounts' addresses hold these words, and the search looked at the first two hundred only; type more of the address to find the rest.";
 
 /** Where the search could not look at accounts' addresses. */
 export const ACCOUNTS_UNREAD =

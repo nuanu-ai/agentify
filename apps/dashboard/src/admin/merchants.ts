@@ -87,6 +87,8 @@ export interface MerchantsView {
   readonly cut: string;
   /** True where the accounts could not be read: no address is shown, and the search did not look at them. */
   readonly accountsUnread: boolean;
+  /** True where the search of addresses stopped at the most it reads, so a match may be missing. */
+  readonly accountsCut: boolean;
 }
 
 /** The account a merchant's row names, or how many where several accounts name it. */
@@ -241,7 +243,8 @@ export interface MerchantView {
       admittedAt: MomentView | null;
       /** Who admitted, as the history names them, where the journal holds it. */
       admittedBy: string | null;
-      withdrawn: Readonly<{ at: MomentView; by: string; note: string | null }> | null;
+      /** Null where none stands, "unread" where whether one stands could not be read. */
+      withdrawn: Readonly<{ at: MomentView; by: string; note: string | null }> | null | "unread";
       admit: ActionAnswer | null;
       withdraw: ActionAnswer | null;
     }> | null;
@@ -256,7 +259,9 @@ export interface MerchantView {
   readonly cards: Readonly<{ rows: readonly CardLine[]; cut: string | null }>;
   readonly worth: Readonly<{ rows: readonly WorthLine[]; cut: string | null }>;
   /** The journal's rows about this merchant, newest first, or null where it could not be read. */
-  readonly history: readonly HistoryLine[] | null;
+  readonly history: Readonly<{ rows: readonly HistoryLine[]; cut: string | null }> | null;
+  /** True where which orders worth a look have an uncertain shop order could not be read. */
+  readonly shopOrdersUnread: boolean;
 }
 
 /** Who acted, as the history names them: the operator reading it, or another account by identifier. */
@@ -314,6 +319,8 @@ export interface MerchantsRead {
   readonly accounts: ReadonlyMap<string, readonly NamedAccount[]> | null;
   /** True where the accounts could not be read or searched. */
   readonly accountsUnread: boolean;
+  /** True where the search of addresses stopped at the most it reads. */
+  readonly accountsCut: boolean;
 }
 
 /** The Merchants list, from what was read. */
@@ -324,6 +331,7 @@ export function merchantsViewOf({
   found,
   accounts,
   accountsUnread,
+  accountsCut,
 }: MerchantsRead): MerchantsView {
   const listed = askedIn(query, SEGMENT_KEYS);
   const rows = found.rows.map((row) => listRowOf(row, mode, accounts?.get(row.id) ?? null));
@@ -373,6 +381,7 @@ export function merchantsViewOf({
     listing,
     cut: cutSaid(rows.length, found.total),
     accountsUnread: accountsUnread || accounts === null,
+    accountsCut,
   };
 }
 
@@ -388,12 +397,15 @@ export interface MerchantRead {
   /** The accounts' addresses, or null where they could not be read. */
   readonly emails: readonly string[] | null;
   readonly shop: ShopFacts | null | "unread";
-  /** The journal's rows about the merchant, newest first, or null where they could not be read. */
-  readonly history: readonly JournalRow[] | null;
-  /** The withdrawal that stands, whose reason is the note the merchant reads, or null. */
-  readonly withdrawal: JournalRow | null;
-  /** The orders worth a look whose shop order may or may not exist. */
-  readonly uncertainIds: readonly string[];
+  /**
+   * The journal's newest rows about the merchant and how many there are in
+   * all, or null where they could not be read.
+   */
+  readonly history: Readonly<{ rows: readonly JournalRow[]; total: number }> | null;
+  /** The withdrawal that stands, whose reason is the note the merchant reads; null for none, "unread" where it could not be read. */
+  readonly withdrawal: JournalRow | null | "unread";
+  /** The orders worth a look whose shop order may or may not exist, or "unread" where that could not be read. */
+  readonly uncertainIds: readonly string[] | "unread";
   readonly answers: Answers;
 }
 
@@ -413,7 +425,10 @@ export function merchantViewOf({
 }: MerchantRead): MerchantView {
   const called = record.serviceName ?? "this merchant";
   const keyLabels = new Map(record.keys.rows.map((key) => [key.id, key.label]));
-  const admittedRow = history?.find((row) => row.action === "admit" && row.outcome.kind === "done");
+  const admittedRow = history?.rows.find(
+    (row) => row.action === "admit" && row.outcome.kind === "done",
+  );
+  const stands = withdrawal === "unread" ? null : withdrawal;
   const live = mode === "live";
   return {
     mode,
@@ -424,7 +439,7 @@ export function merchantViewOf({
     site: record.sellerSite,
     emails,
     since: at(record.createdAt),
-    state: withdrawal !== null ? WITHDRAWN_WORD : stateOf(record.segment),
+    state: stands !== null ? WITHDRAWN_WORD : stateOf(record.segment),
     ready: {
       sellerName: record.serviceName,
       wallet:
@@ -445,7 +460,7 @@ export function merchantViewOf({
           ...record,
           keys: {
             issued: record.keys.total,
-            working: record.keys.rows.filter((key) => key.disabledAt === null).length,
+            working: record.keys.working,
           },
         }),
         keys: record.keys.rows.map((key) => ({
@@ -470,8 +485,8 @@ export function merchantViewOf({
                 ? null
                 : whoOf(admittedRow, operatorId),
             withdrawn:
-              withdrawal === null
-                ? null
+              withdrawal === null || withdrawal === "unread"
+                ? withdrawal
                 : {
                     at: at(withdrawal.at),
                     by: whoOf(withdrawal, operatorId),
@@ -518,15 +533,24 @@ export function merchantViewOf({
         title: order.title ?? "A card no longer published",
         price: dollars(order.price.amount),
         when: at(order.createdAt),
-        shopUncertain: uncertainIds.includes(order.id),
+        shopUncertain: uncertainIds !== "unread" && uncertainIds.includes(order.id),
       })),
       cut:
         record.worthALook.rows.length === record.worthALook.total
           ? null
           : `${record.worthALook.rows.length} of ${record.worthALook.total} shown, the newest first`,
     },
+    shopOrdersUnread: uncertainIds === "unread",
     history:
-      history === null ? null : history.map((row) => historyLineOf(row, operatorId, keyLabels)),
+      history === null
+        ? null
+        : {
+            rows: history.rows.map((row) => historyLineOf(row, operatorId, keyLabels)),
+            cut:
+              history.rows.length === history.total
+                ? null
+                : `The newest ${history.rows.length} of ${history.total} rows; the Journal holds every one.`,
+          },
   };
 }
 
@@ -574,8 +598,11 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   const shopOf = async (accounts: readonly NamedAccount[] | null) => {
     const { shops } = parts;
     if (shops === null) return { shop: null, uncertain: async () => [] };
+    if (accounts === null) {
+      return { shop: "unread" as const, uncertain: async (): Promise<readonly string[]> => [] };
+    }
     try {
-      for (const account of accounts ?? []) {
+      for (const account of accounts) {
         const connection = await shops.connectionOf(account.id);
         if (connection === null) continue;
         return {
@@ -604,25 +631,28 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     const accounts = await accountsOf([record.id]);
     const own = accounts?.get(record.id) ?? (accounts === null ? null : []);
     const { shop, uncertain } = await shopOf(own);
-    let history: readonly JournalRow[] | null;
+    let history: MerchantRead["history"];
     try {
-      history = (await store.journal({ about: { merchant: record.id }, limit: HISTORY_ROWS })).rows;
+      const page = await store.journal({ about: { merchant: record.id }, limit: HISTORY_ROWS });
+      history = { rows: page.rows, total: page.total };
     } catch {
       console.error("[dashboard] a merchant's history could not be read");
       history = null;
     }
-    let withdrawal: JournalRow | null = null;
+    let withdrawal: MerchantRead["withdrawal"] = null;
     try {
       withdrawal =
         record.liveApprovedAt === null ? await store.standingWithdrawal(record.id) : null;
     } catch {
       console.error("[dashboard] a merchant's standing withdrawal could not be read");
+      withdrawal = "unread";
     }
-    let uncertainIds: readonly string[] = [];
+    let uncertainIds: MerchantRead["uncertainIds"] = [];
     try {
       uncertainIds = await uncertain(record.worthALook.rows.map((order) => order.id));
     } catch {
       console.error("[dashboard] a merchant's uncertain shop orders could not be read");
+      uncertainIds = "unread";
     }
 
     return merchantViewOf({
@@ -682,12 +712,15 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       const listed = askedIn(query, SEGMENT_KEYS);
       const segment = listed.show === "all" ? undefined : (listed.show as MerchantSegment);
       let accountsUnread = false;
+      let accountsCut = false;
       let alsoIds: readonly string[] = [];
       if (listed.q !== "") {
         try {
-          alsoIds = (await identity.accountsWithEmailContaining(listed.q)).flatMap((account) =>
+          const found = await identity.accountsWithEmailContaining(listed.q);
+          alsoIds = found.accounts.flatMap((account) =>
             account.merchantId === null ? [] : [account.merchantId],
           );
+          accountsCut = found.cut;
         } catch {
           console.error("[dashboard] the accounts behind merchants could not be searched");
           accountsUnread = true;
@@ -704,7 +737,15 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       const accounts = await accountsOf(found.rows.map((row) => row.id));
       return {
         kind: "view",
-        view: merchantsViewOf({ mode, readAt, query, found, accounts, accountsUnread }),
+        view: merchantsViewOf({
+          mode,
+          readAt,
+          query,
+          found,
+          accounts,
+          accountsUnread,
+          accountsCut,
+        }),
       };
     },
 

@@ -234,6 +234,7 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
             disabledAt,
           })),
         total: keys.length,
+        working: row.keys.working,
       },
       cards: { rows: cardRows, total: cards.length, onSale: row.cards.onSale },
       thirtyDays: { ...thirtyDays, days },

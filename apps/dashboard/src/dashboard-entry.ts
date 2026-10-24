@@ -272,15 +272,18 @@ export interface DashboardIdentity {
    */
   adReportsSince(since: Date): Promise<AdReportCounts>;
   /**
-   * The accounts whose address contains this text, ignoring case, at most
-   * `ACCOUNTS_FOUND_MAX` of them; none for a blank text. For the operator's
-   * workspace alone, whose search finds a merchant by the address its owner
-   * pasted.
+   * The accounts whose address contains this text, ignoring case; none for a
+   * blank text. The read looks at no more than `ACCOUNTS_FOUND_MAX` addresses,
+   * and `cut` says where it stopped there, so an account past them may be
+   * missing. For the operator's workspace alone, whose search finds a merchant
+   * by the address its owner pasted.
    */
-  accountsWithEmailContaining(text: string): Promise<readonly NamedAccount[]>;
+  accountsWithEmailContaining(
+    text: string,
+  ): Promise<Readonly<{ accounts: readonly NamedAccount[]; cut: boolean }>>;
 }
 
-/** The most accounts one `accountsWithEmailContaining` read hands back. */
+/** The most addresses one `accountsWithEmailContaining` read looks at. */
 export const ACCOUNTS_FOUND_MAX = 200;
 
 /** What a link is sent for, each counted against the channel's ceiling of its own. */

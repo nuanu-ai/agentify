@@ -59,7 +59,9 @@ if (databaseUrl === null) {
       await identity.make("owner21@tours.example", "mch_tours");
       await identity.make("Owner%x@prints.example", "mch_prints");
       const found = async (text: string) =>
-        (await identity.accountsWithEmailContaining(text)).map((one) => one.merchantId).sort();
+        (await identity.accountsWithEmailContaining(text)).accounts
+          .map((one) => one.merchantId)
+          .sort();
 
       expect(await found("owner_1")).toStrictEqual(["mch_coffee"]);
       expect(await found("%X@")).toStrictEqual(["mch_prints"]);

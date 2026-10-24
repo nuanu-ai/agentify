@@ -17,8 +17,10 @@ import type {
   SellingDayView,
 } from "../../../src/admin/merchants.js";
 import {
+  ACCOUNTS_CUT,
   ACCOUNTS_UNREAD,
   boundSaid,
+  DOT_EXPLAINED_SANDBOX,
   DOTS_EXPLAINED_LIVE,
   DOTS_EXPLAINED_TEST,
   READY_SAID_LIVE,
@@ -139,6 +141,7 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
         placeholder="Search by name, site or account email"
       />
       {view.accountsUnread ? <p className="problem">{ACCOUNTS_UNREAD}</p> : null}
+      {view.accountsCut ? <p className="search-cut">{ACCOUNTS_CUT}</p> : null}
       {listing.rows.length === 0 && listing.nothing === null ? (
         <p className="quiet">No merchant has been made on this channel yet.</p>
       ) : (
@@ -171,7 +174,12 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
         <span>{SORTED}</span>
       </p>
       <p className="note">
-        {live ? DOTS_EXPLAINED_LIVE : DOTS_EXPLAINED_TEST} <span className="op-asof">Read </span>
+        {live
+          ? DOTS_EXPLAINED_LIVE
+          : view.mode === "test"
+            ? DOTS_EXPLAINED_TEST
+            : DOT_EXPLAINED_SANDBOX}{" "}
+        <span className="op-asof">Read </span>
         <Moment at={view.readAt} />
       </p>
     </>
@@ -400,7 +408,10 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
               </Check>
               <Check
                 title="Integration"
-                held={integration.connection.at !== null || integration.shop !== null}
+                held={
+                  integration.connection.at !== null ||
+                  (integration.shop !== null && integration.shop !== "unread")
+                }
                 badge={
                   integration.connection.at !== null ||
                   (integration.shop !== null && integration.shop !== "unread")
@@ -471,6 +482,11 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                       <span>
                         {admission.withdrawn === null ? (
                           "Not admitted."
+                        ) : admission.withdrawn === "unread" ? (
+                          <>
+                            Not admitted. Whether a withdrawal stands, and the note the merchant
+                            reads, <CouldNotBeRead />
+                          </>
                         ) : (
                           <>
                             Withdrawn <Moment at={admission.withdrawn.at} /> by{" "}
@@ -558,6 +574,11 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 </ul>
               )}
               {view.worth.cut === null ? null : <p className="op-sub">{view.worth.cut}</p>}
+              {view.shopOrdersUnread ? (
+                <p className="op-sub">
+                  Which of these have a shop order nobody is sure of <CouldNotBeRead />
+                </p>
+              ) : null}
             </div>
           </section>
           <section className="op-panel" aria-labelledby="cards-title">
@@ -611,11 +632,11 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 <p>
                   The history <CouldNotBeRead />
                 </p>
-              ) : view.history.length === 0 ? (
+              ) : view.history.rows.length === 0 ? (
                 <p className="quiet">No administrative action on this merchant yet.</p>
               ) : (
                 <ul className="op-mini">
-                  {view.history.map((line, at) => (
+                  {view.history.rows.map((line, at) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: the journal's rows only grow, newest first
                     <li key={at}>
                       <span>{line.what}</span>
@@ -627,6 +648,7 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                   ))}
                 </ul>
               )}
+              {view.history?.cut == null ? null : <p className="op-sub">{view.history.cut}</p>}
             </div>
           </section>
         </div>

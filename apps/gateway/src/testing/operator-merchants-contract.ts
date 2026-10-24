@@ -432,6 +432,7 @@ export function describeOperatorMerchants(
             { id: "mk_old", label: "old", createdAt: 1_000, lastUsedAt: null, disabledAt: 2_500 },
           ],
           total: 2,
+          working: 1,
         });
         expect(record.cards.total).toBe(2);
         expect(record.cards.onSale).toBe(1);
@@ -591,7 +592,7 @@ export function describeOperatorMerchants(
           liveApprovedAt: null,
           segment: "setting_up",
           missing: ["no_seller_name", "no_payout_wallet", "no_operator_approval"],
-          keys: { rows: [], total: 0 },
+          keys: { rows: [], total: 0, working: 0 },
           cards: { rows: [], total: 0, onSale: 0 },
           worthALook: { rows: [], total: 0 },
           lastContactAt: null,

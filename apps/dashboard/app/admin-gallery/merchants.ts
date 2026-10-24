@@ -148,6 +148,7 @@ const listState = (
         found: read.found ?? listed(ROWS, 23),
         accounts: read.unread === true ? null : ACCOUNTS,
         accountsUnread: read.unread === true,
+        accountsCut: false,
       }),
     },
   };
@@ -212,6 +213,7 @@ const ADMITTED: MerchantRecord = {
       },
     ],
     total: 3,
+    working: 2,
   },
   cards: {
     rows: [
@@ -305,7 +307,7 @@ const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): Mer
   record,
   emails: ["owner@tours.example"],
   shop: null,
-  history: HISTORY,
+  history: { rows: HISTORY, total: 34 },
   withdrawal: null,
   uncertainIds: [],
   answers: {},
@@ -371,6 +373,7 @@ const WAITING: MerchantRecord = {
       },
     ],
     total: 1,
+    working: 1,
   },
   cards: {
     rows: ["10", "25", "50", "100"].map((amount) => ({
@@ -520,7 +523,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "Admission is the one check missing; its four cards are published and off sale, and a wallet change waits.",
     },
-    pageRead(WAITING, { emails: ["owner@giftcards.example"], history: [] }),
+    pageRead(WAITING, { emails: ["owner@giftcards.example"], history: { rows: [], total: 0 } }),
   ),
   pageState(
     {
@@ -529,7 +532,10 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "The withdrawal stands, so the admission line says when, by whom and the note the merchant reads, beside Admit.",
     },
-    pageRead(WITHDRAWN, { withdrawal: WITHDRAWAL, history: [WITHDRAWAL, ...HISTORY] }),
+    pageRead(WITHDRAWN, {
+      withdrawal: WITHDRAWAL,
+      history: { rows: [WITHDRAWAL, ...HISTORY], total: 35 },
+    }),
     "withdraw",
   ),
   pageState(
@@ -541,7 +547,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(WAITING, {
       emails: ["owner@giftcards.example"],
-      history: [],
+      history: { rows: [], total: 0 },
       ...answered({ admit: STEP_UP }),
     }),
     "admit",
@@ -572,7 +578,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(WAITING, {
       emails: ["owner@giftcards.example"],
-      history: [],
+      history: { rows: [], total: 0 },
       ...answered({ admit: { kind: "unknown" } }),
     }),
     "admit",
@@ -589,24 +595,28 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         ...ADMITTED,
         keys: {
           ...ADMITTED.keys,
+          working: 1,
           rows: ADMITTED.keys.rows.map((key) =>
             key.label === "ci" ? { ...key, disabledAt: NOW } : key,
           ),
         },
       },
       {
-        history: [
-          row(
-            3,
-            NOW,
-            "disable_key",
-            { kind: "key", id: "mk_9f2c41d8e07b", merchantId: TOURS },
-            "the merchant reported the key leaked",
-            { kind: "done" },
-            { kind: "account", id: OPERATOR_ID },
-          ),
-          ...HISTORY,
-        ],
+        history: {
+          total: 35,
+          rows: [
+            row(
+              3,
+              NOW,
+              "disable_key",
+              { kind: "key", id: "mk_9f2c41d8e07b", merchantId: TOURS },
+              "the merchant reported the key leaked",
+              { kind: "done" },
+              { kind: "account", id: OPERATOR_ID },
+            ),
+            ...HISTORY,
+          ],
+        },
         ...answered({ key: { id: "mk_9f2c41d8e07b", answer: { kind: "done" } } }),
       },
     ),
@@ -624,7 +634,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         ...ADMITTED,
         integration: "woocommerce",
         lastContactAt: null,
-        keys: { rows: [], total: 0 },
+        keys: { rows: [], total: 0, working: 0 },
       },
       {
         mode: "test",
@@ -635,7 +645,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
           permissions: "read_write",
         },
         uncertainIds: ["ord_17ff09b24ce67de3"],
-        history: [],
+        history: { rows: [], total: 0 },
       },
     ),
   ),
@@ -646,6 +656,9 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "The merchant's own records were read; the account and the history say they could not be read rather than none.",
     },
-    pageRead(ADMITTED, { emails: null, history: null }),
+    pageRead(
+      { ...ADMITTED, integration: "woocommerce" },
+      { emails: null, history: null, shop: "unread", uncertainIds: "unread" },
+    ),
   ),
 ];
