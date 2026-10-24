@@ -8,11 +8,12 @@
 
 import {
   type ActionFunctionArgs,
+  Link,
   type MiddlewareFunction,
   redirectDocument,
   useActionData,
 } from "react-router";
-import type { MerchantIntent, MerchantView } from "../../../src/admin/merchants.js";
+import type { MerchantIntent, MerchantView, PressedUnread } from "../../../src/admin/merchants.js";
 import { acted, formOf } from "../../answer.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { MerchantScreen } from "../../screens/admin/merchants.js";
@@ -52,8 +53,31 @@ export const pressing =
 /** The merchant's page, as the press answered it. */
 export function MerchantPressed() {
   // Every press route's action is `pressing`'s, which answers with this view.
-  const view = useActionData() as MerchantView | undefined;
+  const view = useActionData() as MerchantView | PressedUnread | undefined;
   if (view === undefined) throw new Error("a merchant's press was drawn without its answer");
+  if ("unread" in view) {
+    return (
+      <AdminFrame section="merchants" title="The merchant's page could not be read again">
+        <div className="lede">
+          <div>
+            <p>{view.said}</p>
+            <p>
+              The merchant's page could not be read again after the press. Open it to see where the
+              merchant stands now.
+            </p>
+          </div>
+        </div>
+        <div className="connect-actions">
+          <Link
+            className="button button-primary"
+            to={`/admin/merchants/${encodeURIComponent(view.merchantId)}`}
+          >
+            Open the merchant's page
+          </Link>
+        </div>
+      </AdminFrame>
+    );
+  }
   return (
     <AdminFrame section="merchants" title={view.name}>
       <MerchantScreen view={view} />

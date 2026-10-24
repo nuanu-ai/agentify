@@ -333,6 +333,43 @@ describe("a merchant's history", () => {
   });
 });
 
+describe("a press whose page cannot be read again", () => {
+  it("is answered as done, saying the page could not be read again, rather than as a broken page", async () => {
+    // The change committed with its journal row; a page drawn as broken would
+    // send the operator to press again on a change already made.
+    let reads = 0;
+    served = await adminServed({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: {
+          ...real.merchants,
+          merchant: async () => {
+            reads += 1;
+            throw new Error("the database is not answering");
+          },
+        },
+      }),
+    });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+
+    expect((await served.harnessed.store.merchantById(merchant.id))?.liveApprovedAt).not.toBeNull();
+
+    const pressed = await operator.post(`/admin/merchants/${merchant.id}/withdraw`, {
+      ...TICKED,
+      [REASON_FIELD]: "it leaked",
+    });
+
+    expect(reads).toBe(1);
+    expect(pressed.status).toBe(200);
+    expect(text(pressed.html)).toContain("Withdrew the admission.");
+    expect(text(pressed.html)).toContain("could not be read again");
+    expect(text(pressed.html)).not.toContain("Something went wrong");
+    expect((await served.harnessed.store.merchantById(merchant.id))?.liveApprovedAt).toBeNull();
+  });
+});
+
 describe("a merchant's uncertain shop orders", () => {
   const failing = async (): Promise<never> => {
     throw new Error("the database is not answering");

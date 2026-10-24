@@ -8,7 +8,7 @@
  */
 
 import type { AddressInfo } from "node:net";
-import { memoryOperatorReader } from "@agentify/gateway/operator";
+import { memoryOperatorReader, type OperatorReader } from "@agentify/gateway/operator";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { memoryJournal } from "../admin/journal.js";
 import { type DashboardConfig, loadConfig } from "../config.js";
@@ -66,6 +66,8 @@ export async function adminServed(
     channel?: keyof typeof CHANNELS;
     /** A decorator, for a test about an identity that fails; the rest goes to the real one. */
     identity?: (real: Identity) => Identity;
+    /** A decorator, for a test about an operator's read that fails; the rest goes to the real one. */
+    reader?: (real: OperatorReader) => OperatorReader;
     /** More of the dashboard's configuration, such as the channel's first operator. */
     environment?: Readonly<Record<string, string>>;
     /** What the mail provider answers a message; it takes every one where absent. */
@@ -110,7 +112,7 @@ export async function adminServed(
     gateway: harnessed.gateway,
     identity: served,
     admin: {
-      reader: memoryOperatorReader(harnessed.store),
+      reader: (options.reader ?? ((real) => real))(memoryOperatorReader(harnessed.store)),
       journal: memoryJournal(harnessed.store),
       accounts: served,
     },
