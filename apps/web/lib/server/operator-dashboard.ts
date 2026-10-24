@@ -17,7 +17,8 @@ import {
  * The analytics events hold only visitors who allowed optional measurement,
  * so a number read from them counts those visitors and no others, and the page
  * says so beside it. Scans and registrations are read from their own records.
- * The browser's spending is summed over the UTC day the worker's budget counts.
+ * Days are UTC days, as the browser budget's are, whatever the zone of the
+ * database session or of this process.
  * A data access request waits on its lead until the address is deleted,
  * which clears it: nothing records an answer to it.
  */
@@ -39,21 +40,23 @@ const OVERVIEW = `
     (select min(data_access_requested_at) from public.leads where data_access_requested_at is not null) as data_access_oldest_at`;
 
 const DAILY = `
-  with days as (
-    select generate_series(current_date - interval '29 days', current_date, interval '1 day')::date as day
+  with today as (
+    select (now() at time zone 'UTC')::date as day
+  ), days as (
+    select generate_series(today.day - 29, today.day, interval '1 day')::date as day from today
   ), landings as (
-    select occurred_at::date as day, count(*)::bigint as landing_views
-    from public.analytics_events
-    where name = 'landing_view' and occurred_at >= current_date - interval '29 days'
+    select (occurred_at at time zone 'UTC')::date as day, count(*)::bigint as landing_views
+    from public.analytics_events, today
+    where name = 'landing_view' and occurred_at >= (today.day - 29)::timestamp at time zone 'UTC'
     group by 1
   ), scan_totals as (
-    select accepted_at::date as day, count(*)::bigint as scans
-    from public.scans
-    where accepted_at >= current_date - interval '29 days'
+    select (accepted_at at time zone 'UTC')::date as day, count(*)::bigint as scans
+    from public.scans, today
+    where accepted_at >= (today.day - 29)::timestamp at time zone 'UTC'
     group by 1
   )
   select
-    days.day,
+    days.day::text as day,
     coalesce(landings.landing_views, 0)::bigint as landing_views,
     coalesce(scan_totals.scans, 0)::bigint as scans
   from days
@@ -213,7 +216,7 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
         overview.data_access_oldest_at === null ? null : asIso(overview.data_access_oldest_at),
     },
     daily: dailyResult.rows.map((row) => ({
-      day: asIso(row.day).slice(0, 10),
+      day: String(row.day),
       landingViews: asNumber(row.landing_views),
       scans: asNumber(row.scans),
     })),

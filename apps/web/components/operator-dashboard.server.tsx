@@ -140,7 +140,8 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
       at === rows.length - 1 ? `, until ${clock.format(new Date(readAt))} UTC` : ""
     }`;
   const bar = (value: number, x: number, series: string, label: string, soft: boolean) => {
-    const height = value > 0 ? round((value / top) * plot) : EMPTY_BAR;
+    // However small beside the other series, a day with something stands taller than one with nothing.
+    const height = value > 0 ? Math.max(EMPTY_BAR + 1, round((value / top) * plot)) : EMPTY_BAR;
     const kind = value > 0 ? (soft ? styles.barSoft : styles.bar) : styles.barEmpty;
     return (
       <rect
@@ -288,7 +289,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
           </Fact>
           <Fact term="Scan capacity">
             <Badge tone={health.scannerCapacity ? "pass" : "fail"}>
-              {health.scannerCapacity ? "Keeping up" : "Falling behind"}
+              {health.scannerCapacity ? "Keeping up" : "Not keeping up"}
             </Badge>
           </Fact>
           <Fact term="Oldest queued scan">
@@ -302,13 +303,13 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
           </Fact>
           <Fact term="Analytics outbox">
             <Badge tone={health.analyticsOutbox ? "pass" : "fail"}>
-              {health.analyticsOutbox ? "Delivering" : "Behind"}
+              {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
             </Badge>{" "}
             <span className={styles.why}>
               {`${deadLetters > 0 ? counted(deadLetters, "dead letter", "dead letters") : "No dead letters"}; ${
                 pending > 0
-                  ? `oldest pending ${span(Number(signals.outbox_age_seconds))}`
-                  : "nothing pending"
+                  ? `longest overdue ${span(Number(signals.outbox_age_seconds))}`
+                  : "nothing waiting"
               }`}
             </span>
           </Fact>
@@ -371,8 +372,8 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           figure={number.format(dataAccess.waiting)}
           aside={
             dataAccess.waiting > 0 && dataAccess.oldestAt !== null
-              ? `Oldest ${date.format(new Date(dataAccess.oldestAt))}. The privacy page promises an answer; nothing here records one, so a request stays counted until its address is deleted.`
-              : "None waiting. The privacy page promises an answer to each one."
+              ? `Oldest ${date.format(new Date(dataAccess.oldestAt))}. Nothing records an answer, so a request stays counted until its address is deleted.`
+              : "None waiting."
           }
         />
       </div>
@@ -472,7 +473,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                   : "Not enforced"}
               </Fact>
               <Fact term="Browser spending today">
-                {`${usd.format(overview.browserUsageUsdToday)} USD; the cap shows once the worker reports it`}
+                {`${usd.format(overview.browserUsageUsdToday)} USD; no cap shown: the worker does not report it`}
               </Fact>
             </dl>
           </div>

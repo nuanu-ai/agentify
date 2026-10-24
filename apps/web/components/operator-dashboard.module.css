@@ -259,6 +259,13 @@
   fill: var(--line);
 }
 
+/* The chart's captions scale with its width, so a phone's narrow chart sets them larger to stay readable. */
+@media (max-width: 560px) {
+  .chart text {
+    font-size: 1.75rem;
+  }
+}
+
 .chart .right {
   text-anchor: end;
 }
