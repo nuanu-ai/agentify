@@ -89,14 +89,48 @@ const order = (
   return { ...made, ...rest, order: { ...made.order, ...change } };
 };
 
-/** A receipt: money moved for `orderId` at `paidAt`, priced `amount` in `currency`. */
-const receipt = (orderId: string, paidAt: number, amount: string, currency = "USD"): Receipt => ({
+/**
+ * A settled sale of `merchantId`'s: an order whose payment settled, priced
+ * `amount` dollars, paid at `paidAt` (or with no moment recorded), in `state`,
+ * and seen on the chain at `executedAt` where given. Made long before the
+ * thirty days, so it counts as a sale there and not as an order.
+ */
+const sale = (
+  id: string,
+  merchantId: string,
+  paidAt: number | null,
+  amount: string,
+  { state = "delivered", executedAt }: { state?: Order["state"]; executedAt?: number } = {},
+): StoredOrder => {
+  const made = anOrder(id, state, { merchantId, createdAt: 1_000 });
+  return {
+    ...made,
+    ...(executedAt === undefined
+      ? {}
+      : {
+          paymentAttempt: {
+            id: `pa_${id}`,
+            startedAt: 1_000,
+            completion: { settled: true, transaction: `0x${id}`, executedAt, source: "chain" },
+          },
+        }),
+    order: {
+      ...made.order,
+      payment: "settled",
+      price: { amount, currency: "USD", asOf: 1_000 },
+      timestamps: { ...made.order.timestamps, paidAt },
+    },
+  };
+};
+
+/** A receipt for an order that holds no settled payment, which makes no sale by itself. */
+const receiptAlone = (orderId: string, paidAt: number): Receipt => ({
   id: `rcp_${orderId}`,
   order_id: orderId,
   item_id: "item_1",
   price: {
-    amount,
-    currency,
+    amount: "7.00",
+    currency: "USD",
     at: new Date(paidAt).toISOString(),
     as_of: new Date(paidAt).toISOString(),
   },
@@ -104,6 +138,8 @@ const receipt = (orderId: string, paidAt: number, amount: string, currency = "US
   outcome: "delivered",
   test: true,
 });
+
+const NO_SALES = { amount: "0.00", count: 0 } as const;
 
 const LIVE = { at: AT, surface: "live" } as const satisfies { at: number; surface: SurfaceMode };
 
@@ -199,8 +235,8 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_never_old", 3_000, SELLS);
         await merchant(store, "mch_never_new", 4_000, SELLS);
         await merchant(store, "mch_waits", 500, { name: "Waits", wallet: W1 });
-        await store.putReceipt("mch_old_sale", receipt("ord_old", AT - 40 * DAY, "1.00"));
-        await store.putReceipt("mch_new_sale", receipt("ord_new", AT - DAY, "1.00"));
+        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        await store.addOrder(sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
 
         const list = await merchants.list({ ...LIVE, limit: 50 });
 
@@ -272,12 +308,19 @@ export function describeOperatorMerchants(
         await store.addOrder(order("ord_before", "mch_a", FROM - 1, "delivered"));
         await store.addOrder(order("ord_lapsed", "mch_a", AT - DAY, "expired"));
         await store.addOrder(order("ord_b", "mch_b", AT - DAY, "delivered"));
-        await store.putReceipt("mch_a", receipt("ord_in", AT - DAY, "8.00"));
-        await store.putReceipt("mch_a", receipt("ord_2", FROM, "2.5"));
-        await store.putReceipt("mch_a", receipt("ord_3", AT - 2 * DAY, "0.000000000000000001"));
-        await store.putReceipt("mch_a", receipt("ord_4", AT - 3 * DAY, "3.00", "EUR"));
-        await store.putReceipt("mch_a", receipt("ord_old", FROM - 1, "100.00"));
-        await store.putReceipt("mch_b", receipt("ord_b", AT, "9.00"));
+        await store.addOrder(sale("ord_s1", "mch_a", AT - DAY, "8.00"));
+        await store.addOrder(sale("ord_s2", "mch_a", FROM, "2.5"));
+        // Settled whatever became of the goods: unfulfilled, or closed by the merchant.
+        await store.addOrder(
+          sale("ord_s3", "mch_a", AT - 2 * DAY, "0.000001", { state: "unfulfilled" }),
+        );
+        await store.addOrder(
+          sale("ord_s4", "mch_a", AT - 3 * DAY, "3.00", { state: "fulfillment_closed" }),
+        );
+        await store.addOrder(sale("ord_s5", "mch_a", FROM - 1, "100.00"));
+        await store.addOrder(sale("ord_s6", "mch_a", null, "50.00"));
+        await store.putReceipt("mch_a", receiptAlone("ord_in", AT));
+        await store.addOrder(sale("ord_sb", "mch_b", AT, "9.00"));
 
         const list = await merchants.list({ ...LIVE, limit: 50 });
         const a = list.rows.find((row) => row.id === "mch_a");
@@ -296,23 +339,25 @@ export function describeOperatorMerchants(
           thirtyDays: {
             from: FROM,
             orders: 1,
-            settled: {
-              count: 4,
-              sums: [
-                { amount: "3.00", currency: "EUR" },
-                { amount: "10.500000000000000001", currency: "USD" },
-              ],
-            },
+            settled: { amount: "13.500001", count: 4 },
           },
           lastSaleAt: AT - DAY,
         });
         const b = list.rows.find((row) => row.id === "mch_b");
         expect(b?.keys).toStrictEqual({ issued: 1, working: 1 });
         expect(b?.lastContactAt).toBeNull();
-        expect(b?.thirtyDays.settled).toStrictEqual({
-          count: 1,
-          sums: [{ amount: "9.00", currency: "USD" }],
-        });
+        expect(b?.thirtyDays.settled).toStrictEqual({ amount: "9.00", count: 1 });
+      });
+
+      it("fails a read rather than adding a settled order that carries no price", async () => {
+        const under = await open();
+        const { store, merchants } = under;
+        await merchant(store, "mch_a", 1_000, SELLS);
+        const priceless = sale("ord_priceless", "mch_a", AT - DAY, "1.00");
+        await store.addOrder({ ...priceless, order: { ...priceless.order, price: null } });
+
+        await expect(merchants.list({ ...LIVE, limit: 50 })).rejects.toThrow();
+        await expect(merchants.merchant("mch_a", LIVE)).rejects.toThrow();
       });
 
       it("reads a merchant who sold nothing as zero sales, not as missing figures", async () => {
@@ -324,7 +369,7 @@ export function describeOperatorMerchants(
         expect(row?.thirtyDays).toStrictEqual({
           from: FROM,
           orders: 0,
-          settled: { count: 0, sums: [] },
+          settled: NO_SALES,
         });
         expect(row?.lastSaleAt).toBeNull();
         expect(row?.keys).toStrictEqual({ issued: 0, working: 0 });
@@ -444,27 +489,24 @@ export function describeOperatorMerchants(
         const under = await open();
         const { store, merchants } = under;
         await merchant(store, "mch_a", 1_000, SELLS);
-        await store.putReceipt("mch_a", receipt("ord_1", FROM, "1.00"));
-        await store.putReceipt("mch_a", receipt("ord_2", FROM + DAY - 1, "2.00"));
-        await store.putReceipt("mch_a", receipt("ord_3", AT, "0.10"));
-        await store.putReceipt("mch_a", receipt("ord_4", AT - 60_000, "0.20"));
-        await store.putReceipt("mch_a", receipt("ord_5", FROM - 1, "50.00"));
+        await store.addOrder(sale("ord_1", "mch_a", FROM, "1.00"));
+        await store.addOrder(sale("ord_2", "mch_a", FROM + DAY - 1, "2.00"));
+        // Dated by the block's time where the chain was seen, not by when it was paid.
+        await store.addOrder(sale("ord_3", "mch_a", FROM - 1, "0.10", { executedAt: AT }));
+        await store.addOrder(sale("ord_4", "mch_a", AT - 60_000, "0.20"));
+        await store.addOrder(sale("ord_5", "mch_a", FROM - 1, "50.00"));
+        await store.addOrder(sale("ord_6", "mch_a", null, "60.00"));
 
-        const days = (await merchants.merchant("mch_a", LIVE))?.thirtyDays.days ?? [];
+        const record = await merchants.merchant("mch_a", LIVE);
+        const days = record?.thirtyDays.days ?? [];
 
         expect(days).toHaveLength(30);
-        expect(days[0]).toStrictEqual({
-          day: "2026-09-24",
-          count: 2,
-          sums: [{ amount: "3.00", currency: "USD" }],
-        });
-        expect(days[1]).toStrictEqual({ day: "2026-09-25", count: 0, sums: [] });
-        expect(days[29]).toStrictEqual({
-          day: "2026-10-23",
-          count: 2,
-          sums: [{ amount: "0.30", currency: "USD" }],
-        });
+        expect(days[0]).toStrictEqual({ day: "2026-09-24", amount: "3.00", count: 2 });
+        expect(days[1]).toStrictEqual({ day: "2026-09-25", ...NO_SALES });
+        expect(days[29]).toStrictEqual({ day: "2026-10-23", amount: "0.30", count: 2 });
         expect(days.reduce((sum, day) => sum + day.count, 0)).toBe(4);
+        expect(record?.thirtyDays.settled).toStrictEqual({ amount: "3.30", count: 4 });
+        expect(record?.lastSaleAt).toBe(AT);
       });
 
       it("names the orders worth a look, newest first, and no other merchant's", async () => {
@@ -553,7 +595,7 @@ export function describeOperatorMerchants(
           lastSaleAt: null,
         });
         expect(record?.thirtyDays.orders).toBe(0);
-        expect(record?.thirtyDays.settled).toStrictEqual({ count: 0, sums: [] });
+        expect(record?.thirtyDays.settled).toStrictEqual(NO_SALES);
         expect(record?.thirtyDays.days.every((day) => day.count === 0)).toBe(true);
       });
     });

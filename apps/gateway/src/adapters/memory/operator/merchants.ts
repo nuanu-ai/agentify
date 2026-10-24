@@ -1,10 +1,8 @@
 /** The merchants area's reads across merchants, in memory, over the store's holdings. */
 
 import { readinessOf, type SurfaceMode } from "@agentify/core";
-import type { Money, Receipt } from "@nuanu-ai/agentify-contracts";
 import { payoutWalletAt } from "../../../app/runtime.js";
 import {
-  amountOfScaled,
   dayOf,
   MERCHANT_PAGE_CUT,
   MERCHANT_SEGMENTS,
@@ -18,37 +16,31 @@ import {
   type OrderWorthALook,
   SELLING_DAYS,
   type SellingDay,
-  type SettledSales,
-  scaledAmount,
   searchOf,
   segmentOf,
   sellingFrom,
   WORTH_A_LOOK_STATES,
 } from "../../../ports/operator/merchants.js";
+import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
 import { lapsedAttempt, type StoredMerchant } from "../../../ports/store.js";
 import type { MemoryHoldings } from "../store.js";
+import { type SettledSale, settledSales } from "./figures-standing.js";
 import type { MemoryScope } from "./index.js";
 
 const DAY_MS = 86_400_000;
 
-/** Payments whose money moved, summed exactly in each currency. */
-function settledOf(receipts: readonly Receipt[]): SettledSales {
-  const sums = new Map<string, bigint>();
-  for (const { price } of receipts) {
-    sums.set(price.currency, (sums.get(price.currency) ?? 0n) + scaledAmount(price.amount));
-  }
-  const sorted: Money[] = [...sums.entries()]
-    .sort(([one], [other]) => (one < other ? -1 : one > other ? 1 : 0))
-    .map(([currency, scaled]) => ({ amount: amountOfScaled(scaled), currency }));
-  return { count: receipts.length, sums: sorted };
-}
-
-const paidAtOf = (receipt: Receipt): number => Date.parse(receipt.paid_at);
+/** What a merchant's settled sales come to, as the figures add them. */
+const tallied = (sales: readonly SettledSale[]): Tally =>
+  tallyOf(
+    sales.reduce((sum, sale) => sum + sale.micros, 0n),
+    sales.length,
+  );
 
 /** Everything one merchant's row and page are drawn from, as of `at` on `surface`. */
 function factsOf(
   holdings: MemoryHoldings,
+  network: string,
   merchant: StoredMerchant,
   at: number,
   surface: SurfaceMode,
@@ -70,15 +62,17 @@ function factsOf(
   const keys = holdings.keys.filter((key) => key.merchantId === merchant.id);
   const from = sellingFrom(at);
   const counted = (instant: number) => instant >= from && instant <= at;
-  const receipts = holdings.receipts
-    .filter((held) => held.merchantId === merchant.id)
-    .map((held) => held.receipt);
-  const inDays = receipts.filter((receipt) => counted(paidAtOf(receipt)));
-  const orders = holdings.orders
-    .map((held) => held.record)
-    .filter((record) => record.merchantId === merchant.id);
-  const lastSale = receipts.reduce<number | null>(
-    (latest, receipt) => Math.max(latest ?? Number.NEGATIVE_INFINITY, paidAtOf(receipt)),
+  const own = holdings.orders.filter(({ record }) => record.merchantId === merchant.id);
+  const orders = own.map((held) => held.record);
+  // Over this merchant's orders alone, so an order of another merchant's that
+  // cannot be added fails that merchant's read and not this one's.
+  const sales = settledSales({ ...holdings, orders: own }, network);
+  const inDays = sales.filter((sale) => sale.settledAt !== null && counted(sale.settledAt));
+  const lastSale = sales.reduce<number | null>(
+    (latest, sale) =>
+      sale.settledAt === null
+        ? latest
+        : Math.max(latest ?? Number.NEGATIVE_INFINITY, sale.settledAt),
     null,
   );
   const row: MerchantRow = {
@@ -103,7 +97,7 @@ function factsOf(
       orders: orders.filter(
         (record) => !lapsedAttempt(record) && counted(record.order.timestamps.createdAt),
       ).length,
-      settled: settledOf(inDays),
+      settled: tallied(inDays),
     },
     lastSaleAt: lastSale,
   };
@@ -126,6 +120,9 @@ const byText = (one: string, other: string): number => (one < other ? -1 : one >
 export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants => ({
   async list(query: MerchantListQuery): Promise<MerchantList> {
     const holdings = scope.holdings();
+    // As the figures do: the list orders every merchant by their sales, so a
+    // settled order anywhere that cannot be added fails the read.
+    settledSales(holdings, scope.network);
     const search = searchOf(query);
     const also = new Set(query.alsoIds ?? []);
     const found = holdings.merchants
@@ -137,7 +134,7 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
             text?.toLowerCase().includes(search),
           ),
       )
-      .map((merchant) => factsOf(holdings, merchant, query.at, query.surface).row);
+      .map((merchant) => factsOf(holdings, scope.network, merchant, query.at, query.surface).row);
     const segments = Object.fromEntries([
       ["all", found.length],
       ...MERCHANT_SEGMENTS.map((segment) => [
@@ -160,6 +157,7 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
     if (merchant === undefined) return null;
     const { row, wallet, cards, onSale, keys, inDays, orders, from } = factsOf(
       holdings,
+      scope.network,
       merchant,
       at,
       surface,
@@ -170,7 +168,9 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
       const day = dayOf(from + n * DAY_MS);
       days.push({
         day,
-        ...settledOf(inDays.filter((receipt) => dayOf(paidAtOf(receipt)) === day)),
+        ...tallied(
+          inDays.filter((sale) => sale.settledAt !== null && dayOf(sale.settledAt) === day),
+        ),
       });
     }
 

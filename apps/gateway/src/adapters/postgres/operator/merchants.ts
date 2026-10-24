@@ -7,10 +7,9 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import type { Card, MerchantFinding, Money } from "@nuanu-ai/agentify-contracts";
+import type { Card, MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import { type SQL, sql } from "drizzle-orm";
 import {
-  amountOfScaled,
   askedOn,
   dayOf,
   MERCHANT_PAGE_CUT,
@@ -23,13 +22,13 @@ import {
   merchantLimitOf,
   type OperatorMerchants,
   SELLING_DAYS,
-  type SettledSales,
-  scaledAmount,
   searchOf,
   sellingFrom,
   WORTH_A_LOOK_STATES,
 } from "../../../ports/operator/merchants.js";
+import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import type { Integration } from "../../../ports/store.js";
+import { listOf, microsOfSum, refuseUnaddable, SETTLED, settledSales } from "./figures-sql.js";
 import { PAYMENT_UNKNOWN } from "./predicates.js";
 import type { ReadOnlyTransaction } from "./read-only.js";
 import type { OperatorScope } from "./scope.js";
@@ -62,6 +61,7 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
   const now = new Date(at);
   const from = new Date(sellingFrom(at));
   return sql`
+    sales as (${settledSales(scope.network)}),
     standing as (
       select m.id, m.service_name, m.seller_site, m.created_at, m.integration, m.selling,
         m.live_approved_at, m.payout_wallet, m.pending_payout_wallet_from,
@@ -90,8 +90,7 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
         (select count(*)::int from orders o
           where o.merchant_id = s.id and not o.lapsed
             and o.created_at between ${from} and ${now}) as orders_counted,
-        (select ${ms("max((r.receipt ->> 'paid_at')::timestamptz)")} from receipts r
-          where r.merchant_id = s.id) as last_sale
+        (select max(sa.settled_at) from sales sa where sa.merchant_id = s.id) as last_sale
       from standing s
     ),
     missing as (
@@ -133,37 +132,33 @@ function found(query: MerchantListQuery): SQL {
 const missingOf = (row: Row, surface: SurfaceMode): MerchantFinding[] =>
   askedOn(surface).filter((finding) => row[finding] === true);
 
-/** Settled sales as the database added them, by currency, written back as the memory reader writes them. */
-function settledFrom(rows: readonly Row[]): SettledSales {
-  const sums = new Map<string, bigint>();
-  for (const row of rows) {
-    const currency = String(row.currency);
-    sums.set(currency, (sums.get(currency) ?? 0n) + scaledAmount(String(row.amount)));
-  }
-  return {
-    count: rows.reduce((sum, row) => sum + Number(row.n), 0),
-    sums: [...sums.entries()]
-      .sort(([one], [other]) => (one < other ? -1 : one > other ? 1 : 0))
-      .map(([currency, scaled]): Money => ({ amount: amountOfScaled(scaled), currency })),
-  };
-}
+/** Settled sales as the database counted and added them, written as the memory reader writes them. */
+const tallyFrom = (rows: readonly Row[]): Tally =>
+  tallyOf(
+    rows.reduce((sum, row) => sum + microsOfSum(row.amount as string | null), 0n),
+    rows.reduce((sum, row) => sum + Number(row.n), 0),
+  );
 
-/** Settled sales between `from` and `at`, by merchant and currency, and by `per` besides where given. */
-const settledSql = (
+/**
+ * Settled sales dated between `from` and `at`, by merchant, and by UTC day
+ * besides where `byDay`. The caller has refused any it could not add.
+ */
+const settledIn = (
+  scope: OperatorScope,
   merchantIds: readonly string[],
   from: number,
   at: number,
-  per?: SQL,
+  byDay = false,
 ): SQL => sql`
-  select r.merchant_id, r.receipt -> 'price' ->> 'currency' as currency,
-    count(*)::int as n, sum((r.receipt -> 'price' ->> 'amount')::numeric)::text as amount
-    ${per === undefined ? sql`` : sql`, ${per} as per`}
-  from receipts r
-  where r.merchant_id in (select jsonb_array_elements_text(${JSON.stringify(merchantIds)}::jsonb))
-    and (r.receipt ->> 'paid_at')::timestamptz between ${new Date(from)} and ${new Date(at)}
-  group by 1, 2${per === undefined ? sql`` : sql`, 5`}`;
+  with sales as (${settledSales(scope.network)})
+  select merchant_id,
+    ${byDay ? sql`to_char(to_timestamp(settled_at / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')` : sql`''`} as per,
+    count(*)::int as n, sum(amount::numeric)::text as amount
+  from sales
+  where merchant_id in ${listOf(merchantIds)} and settled_at between ${from} and ${at}
+  group by merchant_id, per`;
 
-function rowOf(row: Row, surface: SurfaceMode, settled: SettledSales, from: number): MerchantRow {
+function rowOf(row: Row, surface: SurfaceMode, settled: Tally, from: number): MerchantRow {
   return {
     id: String(row.id),
     serviceName: row.service_name as string | null,
@@ -184,12 +179,13 @@ function rowOf(row: Row, surface: SurfaceMode, settled: SettledSales, from: numb
   };
 }
 
-const NO_SALES: SettledSales = { count: 0, sums: [] };
-
 export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchants => ({
   async list(query) {
     const from = sellingFrom(query.at);
     return await scope.read(async (tx): Promise<MerchantList> => {
+      // As the figures do: the list orders every merchant by their sales, so a
+      // settled order anywhere that cannot be added fails the read.
+      await refuseUnaddable(tx, SETTLED);
       const facts = judged(scope, query.at, query.surface);
       const counted = await rowsOf(
         tx,
@@ -213,7 +209,8 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
       );
       const sales = await rowsOf(
         tx,
-        settledSql(
+        settledIn(
+          scope,
           rows.map((row) => String(row.id)),
           from,
           query.at,
@@ -224,7 +221,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
           rowOf(
             row,
             query.surface,
-            settledFrom(sales.filter((sale) => sale.merchant_id === row.id)),
+            tallyFrom(sales.filter((sale) => sale.merchant_id === row.id)),
             from,
           ),
         ),
@@ -242,6 +239,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
         sql`with ${judged(scope, at, surface, id)} select j.* from judged j`,
       );
       if (head === undefined) return null;
+      await refuseUnaddable(tx, sql`${SETTLED} and orders.merchant_id = ${id}`);
       const missing = missingOf(head, surface);
       const sells = missing.length === 0 && head.selling === "open";
 
@@ -261,15 +259,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
           order by merchant_item_id collate "C"
           limit ${MERCHANT_PAGE_CUT.cards}`,
       );
-      const byDay = await rowsOf(
-        tx,
-        settledSql(
-          [id],
-          from,
-          at,
-          sql`to_char((r.receipt ->> 'paid_at')::timestamptz at time zone 'UTC', 'YYYY-MM-DD')`,
-        ),
-      );
+      const byDay = await rowsOf(tx, settledIn(scope, [id], from, at, true));
       const worthy = sql`orders.merchant_id = ${id} and (${PAYMENT_UNKNOWN}
         or orders.state in (select jsonb_array_elements_text(${JSON.stringify(WORTH_A_LOOK_STATES)}::jsonb)))`;
       const worth = await rowsOf(
@@ -292,14 +282,14 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
       for (let n = 0; n < SELLING_DAYS; n += 1) {
         const day = dayOf(from + n * DAY_MS);
         const sold = byDay.filter((row) => row.per === day);
-        days.push({ day, ...(sold.length === 0 ? NO_SALES : settledFrom(sold)) });
+        days.push({ day, ...tallyFrom(sold) });
       }
       const {
         keys: _keys,
         cards: counts,
         thirtyDays,
         ...facts
-      } = rowOf(head, surface, settledFrom(byDay), from);
+      } = rowOf(head, surface, tallyFrom(byDay), from);
       const wallet = head.wallet as string | null;
       const pendingFrom = instantOrNull(head.pending_from_ms);
 

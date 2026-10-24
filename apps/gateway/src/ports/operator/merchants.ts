@@ -19,6 +19,7 @@ import {
 } from "@agentify/core";
 import type { Card, MerchantFinding, Money } from "@nuanu-ai/agentify-contracts";
 import type { Integration } from "../store.js";
+import type { Tally } from "./money.js";
 
 /**
  * Where a merchant stands, as the list's segments split them:
@@ -80,24 +81,19 @@ export function segmentOf(facts: SegmentFacts): MerchantSegment {
   return "selling";
 }
 
-/**
- * Settled sales: payments whose money moved, one per receipt, with the sum in
- * each currency they were priced in, every amount an exact decimal written as
- * text with at least two places.
- */
-export interface SettledSales {
-  readonly count: number;
-  readonly sums: readonly Money[];
-}
-
 /** A merchant's selling over the thirty days that end at the read's instant. */
 export interface ThirtyDays {
   /** The first instant counted. */
   readonly from: number;
   /** Orders made in those days, attempts that lapsed unpaid left out. */
   readonly orders: number;
-  /** Payments whose money moved in those days, by when it moved. */
-  readonly settled: SettledSales;
+  /**
+   * Settled sales in those days, in dollars: orders whose payment settled,
+   * whatever became of the goods, dated as the figures date them (the block's
+   * time where the chain was seen, otherwise when the order was paid). A sale
+   * with no moment is in none of them.
+   */
+  readonly settled: Tally;
 }
 
 /** One merchant as the list draws them. */
@@ -117,7 +113,7 @@ export interface MerchantRow {
   readonly lastContactAt: number | null;
   readonly cards: { readonly onSale: number; readonly published: number };
   readonly thirtyDays: ThirtyDays;
-  /** When the money of their latest settled sale moved, or null where none ever did. */
+  /** The moment of their latest dated settled sale, or null where there is none. */
   readonly lastSaleAt: number | null;
 }
 
@@ -200,7 +196,7 @@ export interface Cut<T> {
 }
 
 /** One UTC day of a merchant's settled sales; a day without any reads zero. */
-export interface SellingDay extends SettledSales {
+export interface SellingDay extends Tally {
   readonly day: string;
 }
 
@@ -249,26 +245,3 @@ export const searchOf = (query: MerchantListQuery): string | null => {
   const text = query.search?.trim().toLowerCase() ?? "";
   return text === "" ? null : text;
 };
-
-// --- exact sums ---------------------------------------------------------------
-
-/** The places every amount is held to while summed: the most an amount may carry. */
-const PLACES = 18;
-const SCALE = 10n ** BigInt(PLACES);
-
-/** An exact decimal written as text, as an integer of its smallest places. */
-export function scaledAmount(amount: string): bigint {
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(amount);
-  if (match === null) throw new Error(`"${amount}" is not an amount`);
-  const [, whole = "0", fraction = ""] = match;
-  if (fraction.length > PLACES)
-    throw new Error(`"${amount}" carries more places than an amount may`);
-  return BigInt(whole) * SCALE + BigInt(fraction.padEnd(PLACES, "0"));
-}
-
-/** A scaled integer written back as an amount, with at least two places and no trailing zeros past them. */
-export function amountOfScaled(scaled: bigint): string {
-  const whole = scaled / SCALE;
-  const fraction = (scaled % SCALE).toString().padStart(PLACES, "0").replace(/0+$/, "");
-  return `${whole}.${fraction.padEnd(2, "0")}`;
-}

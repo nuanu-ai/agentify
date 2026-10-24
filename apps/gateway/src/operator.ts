@@ -75,7 +75,6 @@ export {
   type OrderWorthALook,
   SELLING_DAYS,
   type SellingDay,
-  type SettledSales,
 } from "./ports/operator/merchants.js";
 export type { Dollars, Tally } from "./ports/operator/money.js";
 export type { SplitRow, Splits } from "./ports/operator/splits.js";
