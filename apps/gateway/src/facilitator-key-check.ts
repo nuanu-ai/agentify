@@ -6,7 +6,12 @@
  * material and no wallet address can be in it.
  */
 
-import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
+import {
+  askCoinbaseAboutTheKey,
+  CANNOT_SIGN,
+  facilitatorClientFor,
+  refusedWith,
+} from "./adapters/x402/client.js";
 import { isCdpFacilitator, type PaymentConfig } from "./config.js";
 
 export type FacilitatorKeyCheck = {
@@ -38,29 +43,52 @@ export async function checkFacilitatorKey(
   post: typeof fetch = fetch,
   clock: () => number = Date.now,
 ): Promise<FacilitatorKeyCheck> {
+  const notCoinbase = `${payment.facilitatorUrl} is not Coinbase's facilitator, so there is no key to ask Coinbase about`;
   if (!isCdpFacilitator(payment.facilitatorUrl)) {
-    return {
-      checkedAt: clock(),
-      outcome: "not_coinbase",
-      said: `${payment.facilitatorUrl} is not Coinbase's facilitator, so there is no key to ask Coinbase about`,
-    };
+    return { checkedAt: clock(), outcome: "not_coinbase", said: notCoinbase };
   }
+  let client: ReturnType<typeof facilitatorClientFor>;
   try {
-    const unconfirmed = await refuseUnlessCoinbaseTakesTheKey(facilitatorClientFor(payment), post);
-    return unconfirmed === null
-      ? {
-          checkedAt: clock(),
-          outcome: "taken",
-          said:
-            "Coinbase let the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET through: it judged the " +
-            "empty payment instead of refusing the key",
-        }
-      : { checkedAt: clock(), outcome: "unconfirmed", said: unconfirmed };
-  } catch (thrown) {
-    return {
-      checkedAt: clock(),
-      outcome: "refused",
-      said: thrown instanceof Error ? thrown.message : String(thrown),
-    };
+    client = facilitatorClientFor(payment);
+  } catch (unbuilt) {
+    // Only this repository's own sentence about the missing variables is thrown here.
+    const said = unbuilt instanceof Error ? unbuilt.message : String(unbuilt);
+    return { checkedAt: clock(), outcome: "refused", said };
+  }
+  const answer = await askCoinbaseAboutTheKey(client, post);
+  const checkedAt = clock();
+  switch (answer.kind) {
+    case "taken":
+      return {
+        checkedAt,
+        outcome: "taken",
+        said:
+          "Coinbase let the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET through: it judged the " +
+          "empty payment instead of refusing the key",
+      };
+    case "not_coinbase":
+      return { checkedAt, outcome: "not_coinbase", said: notCoinbase };
+    case "cannot_sign":
+      return {
+        checkedAt,
+        outcome: "refused",
+        said: `The facilitator credentials do not work, and nothing was sent to Coinbase: ${CANNOT_SIGN}`,
+      };
+    case "refused":
+      return {
+        checkedAt,
+        outcome: "refused",
+        said:
+          `Coinbase refuses the facilitator credentials: ${refusedWith(answer.status)}. While it ` +
+          "does, every purchase fails at verify",
+      };
+    case "unconfirmed":
+      return {
+        checkedAt,
+        outcome: "unconfirmed",
+        said:
+          "The key in CDP_API_KEY_ID and CDP_API_KEY_SECRET is unconfirmed: Coinbase could not " +
+          `say whether it takes it (${answer.why}), which says nothing about the key either way`,
+      };
   }
 }
