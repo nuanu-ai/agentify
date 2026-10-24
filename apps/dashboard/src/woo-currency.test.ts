@@ -10,7 +10,6 @@
 import type { Order } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
-import { recoverWooOrder } from "./woo-recovery.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   createTheOrderInTheShop,
@@ -696,76 +695,6 @@ describe("a price bound to a rate of another currency than the shop's amount", (
     );
 
     expect(await shops.quotedSale("acc_1", "prc_mixed", ITEM)).toBeNull();
-  });
-});
-
-describe("recovering a converted download refused before its order was made", () => {
-  it("makes the shop's order at the rupiah amount and the rate the price was bound to", async () => {
-    const shops = memoryWooShops();
-    await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
-    await shops.saveRate("acc_1", SHOP, RATE);
-    await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
-    const refusedFirst = await fillFromTheShop(
-      anOrder(),
-      { ...CONNECTION, permissions: "read" },
-      EMAIL,
-      parts(shops),
-      null,
-    );
-    expect(refusedFirst).toMatchObject({ refused: { code: "cannot_fulfill" } });
-    await shops.connect({ ...CONNECTION, revision: "grant_2" });
-    const made: SoldItem[] = [];
-
-    const recovered = await recoverWooOrder(
-      { orderId: "ord_idr" },
-      {
-        shops,
-        identity: {
-          byId: async () => ({
-            id: "acc_1",
-            email: EMAIL,
-            confirmed: true,
-            merchant: { id: "m_1" },
-          }),
-        },
-        gatewayFor: () => ({
-          getOrder: async () => ({
-            ok: true as const,
-            document: {
-              ...anOrder(),
-              payment_status: "paid" as const,
-              status: "unfulfilled" as const,
-            },
-          }),
-          deliverOrder: async () => ({
-            ok: true as const,
-            document: { ok: true as const, result: "delivered_late" as const },
-          }),
-          paidInto: async () => ({ ok: true as const, document: null }),
-        }),
-        inspectProduct: async () => ({ ok: true, product: A_DOWNLOAD }),
-        createOrder: async (_keys, sold): Promise<OrderMade> => {
-          made.push(sold);
-          return {
-            ok: true,
-            id: "79",
-            number: "79",
-            orderKey: "wc_order_79",
-            downloadId: sold.download.id,
-            total: sold.price.amount,
-          };
-        },
-        now: () => NOW,
-      },
-    );
-
-    expect(recovered.ok === false && recovered.why).not.toContain("does not match");
-    expect(made).toMatchObject([
-      {
-        price: { amount: "240000", currency: "IDR" },
-        converted: { paid: { amount: "13.34", currency: "USD" }, rate: { rate: "18000" } },
-      },
-    ]);
   });
 });
 

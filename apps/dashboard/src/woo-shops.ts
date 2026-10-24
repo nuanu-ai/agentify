@@ -10,7 +10,7 @@
 import type { SurfaceMode } from "@agentify/core";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
@@ -319,12 +319,6 @@ export interface WooShops {
    * can no longer be. Once only: the answer says whether this call ended it.
    */
   endParcel(orderId: string, phase: "shipped" | "closed", now: Date): Promise<boolean>;
-  /**
-   * Reopens a definite pre-create refusal as `create_unknown`, and only under a
-   * different grant: a connection revision other than the one that refused.
-   * The compare-and-set keeps two operator commands to one POST.
-   */
-  beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
   /**
    * How many orders an attempt sent to their shop and never heard back about,
    * so nobody here knows whether the shop holds them. For the operator's
@@ -895,25 +889,6 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return ended.length === 1;
     },
 
-    async beginPrecreateRecovery(orderId, revision, now) {
-      const reopened = await db
-        .update(wooOrders)
-        .set({
-          phase: "create_unknown",
-          attemptedAt: now,
-          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', cast(${revision} as text))`,
-        })
-        .where(
-          and(
-            eq(wooOrders.orderId, orderId),
-            eq(wooOrders.phase, "precreate_refused"),
-            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
-          ),
-        )
-        .returning({ orderId: wooOrders.orderId });
-      return reopened.length === 1;
-    },
-
     async uncertainOrders() {
       const [row] = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -1217,24 +1192,6 @@ export const memoryWooShops = (): WooShops & {
       const found = orders.get(orderId);
       if (found?.phase !== "placed" || found.placed?.permission !== null) return false;
       orders.set(orderId, { ...found, phase });
-      return true;
-    },
-
-    async beginPrecreateRecovery(orderId, revision, now) {
-      const found = orders.get(orderId);
-      if (
-        found === undefined ||
-        found.phase !== "precreate_refused" ||
-        found.facts.connectionRevision === revision
-      ) {
-        return false;
-      }
-      orders.set(orderId, {
-        ...found,
-        phase: "create_unknown",
-        attemptedAt: now,
-        facts: { ...found.facts, connectionRevision: revision },
-      });
       return true;
     },
 

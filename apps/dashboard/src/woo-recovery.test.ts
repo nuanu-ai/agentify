@@ -5,14 +5,12 @@ import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify
 import { afterEach, describe, expect, it } from "vitest";
 import { percentOf, sharesOf } from "./shares.js";
 import { merchantItemIdFor } from "./woo-catalog.js";
-import { recoverWooOrder, recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
+import { recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
 import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
 import {
   type EligibleWooProduct,
   inspectProductInTheShop,
-  type OrderMade,
   readTheOrderInTheShop,
-  type SoldItem,
   type WooOrderRead,
 } from "./woo-shop.js";
 import { memoryWooShops, type WooOrderFacts } from "./woo-shops.js";
@@ -151,28 +149,10 @@ const parts = (
   facts = FACTS,
 ) => {
   let delivered = 0;
-  let created = 0;
   let read = 0;
   let status: "unfulfilled" | "delivered" = "unfulfilled";
-  const sold: SoldItem[] = [];
-  const made: OrderMade = {
-    ok: true,
-    id: "13",
-    number: "WOO-13",
-    orderKey: "wc_order_13",
-    downloadId: PRODUCT.downloadId,
-    total: FACTS.amount,
-  };
   const value: Parts = {
     shops,
-    identity: {
-      byId: async () => ({
-        id: "acc_1",
-        email: EMAIL,
-        confirmed: true,
-        merchant: { id: "m_1" },
-      }),
-    },
     gatewayFor: () => ({
       getOrder: async () => {
         return {
@@ -188,15 +168,9 @@ const parts = (
           document: { ok: true as const, result: "delivered_late" as const },
         };
       },
-      paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
       cards: async () => ({ ok: true as const, document: CARDS }),
     }),
     inspectProduct: async () => ({ ok: true, product: PRODUCT }),
-    createOrder: async (_keys, item) => {
-      created += 1;
-      sold.push(item);
-      return made;
-    },
     readOrder: async () => {
       read += 1;
       return { ok: true, order: shopOrder() };
@@ -204,7 +178,7 @@ const parts = (
     now: () => NOW,
     ...overrides,
   };
-  return { value, counts: () => ({ delivered, created, read }), sold };
+  return { value, counts: () => ({ delivered, read }) };
 };
 
 const OWNER = {
@@ -240,23 +214,17 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect(foreign).toEqual(missing);
     expect(foreign).toMatchObject({ ok: false, state: "refused" });
     expect(gatewayCalls).toBe(0);
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
-  it("uses the authenticated merchant and never creates a shop order", async () => {
+  it("binds the exact shop order for the authenticated merchant", async () => {
     const shops = await setup("create_unknown");
-    const test = parts(shops, {
-      identity: {
-        byId: async () => {
-          throw new Error("the saved account is not authority");
-        },
-      },
-    });
+    const test = parts(shops);
 
     expect(
       await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
     ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
-    expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 1 });
+    expect(test.counts()).toEqual({ delivered: 1, read: 1 });
   });
 
   it("does not expose pre-create retry as a merchant recovery action", async () => {
@@ -267,7 +235,7 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
       ok: false,
       state: "refused",
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
   });
 
@@ -281,7 +249,7 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect(
       await recoverWooOrderAs(OWNER, { ...request, wooOrderId: "14" }, test.value),
     ).toMatchObject({ ok: false, state: "refused" });
-    expect(test.counts()).toEqual({ delivered: 2, created: 0, read: 1 });
+    expect(test.counts()).toEqual({ delivered: 2, read: 1 });
     expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
   });
 
@@ -328,7 +296,6 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
     available = true;
     expect(await recoverWooOrderAs(OWNER, request, test.value)).toMatchObject({ ok: true });
-    expect(test.counts().created).toBe(0);
   });
 });
 
@@ -353,7 +320,7 @@ describe("merchant recovery pages", () => {
       kind: "problem",
       problem: { status: 404 },
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("only reads our saved sale on GET and tells the merchant which exact shop ID to enter", async () => {
@@ -373,7 +340,7 @@ describe("merchant recovery pages", () => {
         wooOrderId: "",
       },
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("says a refused shop order under its box and keeps what was typed, with nothing linked", async () => {
@@ -443,7 +410,6 @@ describe("merchant recovery pages", () => {
       },
     });
     expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
-    expect(test.counts().created).toBe(0);
   });
 
   it("does not call an unreadable gateway result a missing sale", async () => {
@@ -460,7 +426,7 @@ describe("merchant recovery pages", () => {
       kind: "problem",
       problem: { status: 504 },
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("uses confirmed delivered readback after the delivery response was lost", async () => {
@@ -519,68 +485,11 @@ describe("merchant recovery pages", () => {
 });
 
 describe("exact Woo order recovery", () => {
-  it("retries a definite pre-create refusal once after a same-origin reconnect", async () => {
-    const shops = await setup("precreate_refused");
-    const test = parts(shops);
-
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toEqual({
-      ok: true,
-      state: "delivered",
-      orderId: "ord_1",
-      wooOrderId: "13",
-    });
-    expect(test.counts()).toEqual({ delivered: 1, created: 1, read: 0 });
-    expect(await shops.recoveryOrder("ord_1")).toMatchObject({ phase: "placed" });
-  });
-
-  it("makes the order again with the payout contract the sale's payment went to, for its commission lines", async () => {
-    const shops = await setup("precreate_refused");
-    const test = parts(shops);
-
-    await recoverWooOrder({ orderId: "ord_1" }, test.value);
-
-    expect(test.sold.map((item) => item.paidInto)).toStrictEqual([PAID_INTO]);
-  });
-
-  it("makes no order where it cannot read where the payment went, and can be asked again", async () => {
-    const shops = await setup("precreate_refused");
-    const base = parts(shops);
-    const test = parts(shops, {
-      gatewayFor: (acting) => ({
-        ...base.value.gatewayFor(acting),
-        paidInto: async () => ({ ok: false as const, status: 0, why: "nothing answered" }),
-      }),
-    });
-
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
-      ok: false,
-      state: "unresolved",
-    });
-    expect(test.counts()).toMatchObject({ created: 0 });
-  });
-
-  it("does not reopen a definite refusal under the same grant", async () => {
-    const shops = await setup("precreate_refused");
-    const sameGrant = await shops.connectionOf("acc_1");
-    if (sameGrant === null) throw new Error("the test shop was not connected");
-    await shops.connect({
-      ...sameGrant,
-      revision: "grant_1",
-    });
-    const test = parts(shops);
-
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
-      ok: false,
-      state: "refused",
-    });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
-  });
-
   it("leaves a recovery unresolved while the shop does not answer, rather than refused", async () => {
     // "Refused" would say the product no longer matches, which nobody knows of
     // a shop that timed out; "unresolved" lets the same recovery be asked
     // again.
-    const shops = await setup("precreate_refused");
+    const shops = await setup("create_unknown");
     const test = parts(shops, {
       inspectProduct: async () => ({
         ok: false,
@@ -589,15 +498,15 @@ describe("exact Woo order recovery", () => {
       }),
     });
 
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
       ok: false,
       state: "unresolved",
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("leaves a recovery unresolved when the shop's product answer broke off, without calling the shop silent", async () => {
-    const shops = await setup("precreate_refused");
+    const shops = await setup("create_unknown");
     const test = parts(shops, {
       inspectProduct: (keys) =>
         inspectProductInTheShop(
@@ -611,11 +520,11 @@ describe("exact Woo order recovery", () => {
         ),
     });
 
-    const recovered = await recoverWooOrder({ orderId: "ord_1" }, test.value);
+    const recovered = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value);
 
     expect(recovered).toMatchObject({ ok: false, state: "unresolved" });
     expect(JSON.stringify(recovered)).not.toMatch(/did not answer/i);
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("leaves a recovery unresolved when the shop's product answer could not be read, rather than saying the product changed", async () => {
@@ -629,7 +538,7 @@ describe("exact Woo order recovery", () => {
       ],
       ["a page that is not JSON", () => new Response("not-json", { status: 200 })],
     ] as const) {
-      const shops = await setup("precreate_refused");
+      const shops = await setup("create_unknown");
       const test = parts(shops, {
         // The fixture's item id is not one the shop would name, so the check is
         // asked of this shop's own id for the product.
@@ -639,15 +548,15 @@ describe("exact Woo order recovery", () => {
           ),
       });
 
-      expect(await recoverWooOrder({ orderId: "ord_1" }, test.value), what).toMatchObject({
+      expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value), what).toMatchObject({
         ok: false,
         state: "unresolved",
       });
-      expect(test.counts(), what).toEqual({ delivered: 0, created: 0, read: 0 });
+      expect(test.counts(), what).toEqual({ delivered: 0, read: 0 });
     }
 
     // The shop's own no is still a refusal.
-    const shops = await setup("precreate_refused");
+    const shops = await setup("create_unknown");
     const test = parts(shops, {
       inspectProduct: async () => ({
         ok: false,
@@ -656,14 +565,14 @@ describe("exact Woo order recovery", () => {
         saidNo: true,
       }),
     });
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
       ok: false,
       state: "refused",
     });
   });
 
   it("does not recover a changed download that no longer matches the accepted quote", async () => {
-    const shops = await setup("precreate_refused");
+    const shops = await setup("create_unknown");
     const test = parts(shops, {
       inspectProduct: async () => ({
         ok: true,
@@ -671,21 +580,21 @@ describe("exact Woo order recovery", () => {
       }),
     });
 
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
       ok: false,
       state: "refused",
     });
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
   it("binds an unknown committed create by one verified Woo order id without another POST", async () => {
     const shops = await setup("create_unknown");
     const test = parts(shops);
 
-    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
-      { ok: true, state: "delivered", wooOrderId: "13" },
-    );
-    expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 1 });
+    expect(
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
+    expect(test.counts()).toEqual({ delivered: 1, read: 1 });
   });
 
   it("delivers an already-bound result after the shop is disconnected", async () => {
@@ -711,11 +620,11 @@ describe("exact Woo order recovery", () => {
     await shops.forget("acc_1");
     const test = parts(shops);
 
-    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
       ok: true,
       state: "delivered",
     });
-    expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 0 });
+    expect(test.counts()).toEqual({ delivered: 1, read: 0 });
   });
 
   /**
@@ -819,10 +728,10 @@ describe("exact Woo order recovery", () => {
       }),
     });
 
-    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
-      { ok: false, state: "refused" },
-    );
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    ).toMatchObject({ ok: false, state: "refused" });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
     expect(await shops.recoveryOrder("ord_1")).toMatchObject({
       phase: "create_unknown",
       placed: null,
@@ -838,10 +747,10 @@ describe("exact Woo order recovery", () => {
       }),
     });
 
-    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
-      { ok: false, state: "refused" },
-    );
-    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    ).toMatchObject({ ok: false, state: "refused" });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
     expect(await shops.recoveryOrder("ord_1")).toMatchObject({
       phase: "create_unknown",
       placed: null,
@@ -855,14 +764,12 @@ describe("a parcel's order", () => {
     // an order from.
     const shops = memoryWooShops();
     await shops.recordPrecreateRefusal("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
+    const test = parts(shops);
 
-    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+    const outcome = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value);
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      state: "refused",
-      why: expect.stringContaining("parcel"),
-    });
+    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 });
 
@@ -878,14 +785,14 @@ describe("a parcel's order the shop holds", () => {
       NOW,
     );
 
-    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+    const outcome = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, parts(shops).value);
 
     expect(outcome).toMatchObject({ ok: false, state: "refused" });
     expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
   });
 });
 
-describe("an operator-named shop order, read back", () => {
+describe("a shop order the merchant names, read back", () => {
   // Orders made before the commission lines existed carry none, and those
   // made after carry two; neither is a fact of the sale the recovery matches.
   let stand: Server | null = null;
@@ -950,7 +857,11 @@ describe("an operator-named shop order, read back", () => {
           readTheOrderInTheShop({ ...keys, shopUrl }, wooOrderId, fetch),
       });
 
-      const outcome = await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value);
+      const outcome = await recoverWooOrderAs(
+        OWNER,
+        { orderId: "ord_1", wooOrderId: "13" },
+        test.value,
+      );
 
       expect(outcome).toMatchObject(binds ? { ok: true, state: "delivered" } : { ok: false });
     });
