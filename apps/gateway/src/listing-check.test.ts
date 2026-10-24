@@ -5,9 +5,11 @@
  * network.
  */
 
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
 import { describe, expect, it } from "vitest";
-import { checkListingNow, type Reach } from "./listing-check.js";
+import { checkListingNow, overTheNetwork, type Reach } from "./listing-check.js";
 
 const AT = Date.parse("2026-10-24T09:00:00.000Z");
 const BASE = "https://agentify.example";
@@ -63,6 +65,56 @@ describe("checking the listing now", () => {
     expect(shown).not.toMatch(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/);
     expect(shown).toContain("payTo a wallet is not accepted");
     expect(shown).toContain(TRANSACTION);
+  });
+
+  it("stops when its time is up, and names every product it did not check rather than passing them", async () => {
+    // The operator's request waits on this check; a catalog of any size, or a
+    // door that never answers, must not hold it open.
+    const stalled: Reach = {
+      ...reachWith({ valid: true }),
+      catalog: async () => ({ items: [{ id: "itm_1" }, { id: "itm_2" }, { id: "itm_3" }] }),
+      door: async (resource) =>
+        resource.includes("itm_2")
+          ? await new Promise<never>(() => undefined)
+          : { kind: "answered", status: 402, challenge },
+    };
+
+    const checked = await checkListingNow(BASE, stalled, () => AT, 100);
+
+    expect(checked.kind).toBe("checked");
+    if (checked.kind !== "checked") return;
+    expect(checked.passed).toBe(false);
+    expect(checked.unchecked).toStrictEqual(["itm_2", "itm_3"]);
+    expect(checked.resources.map((each) => each.itemId)).toStrictEqual(["itm_1"]);
+  });
+
+  it("says the catalog could not be read when it does not answer in time", async () => {
+    const stalled: Reach = {
+      ...reachWith({ valid: true }),
+      catalog: async () => await new Promise<never>(() => undefined),
+    };
+
+    const checked = await checkListingNow(BASE, stalled, () => AT, 100);
+
+    expect(checked.kind).toBe("catalog_unreadable");
+  });
+
+  it("gives up on a fetch that does not answer in time, as no verdict, and on a catalog that does not", async () => {
+    const silent = createServer(() => undefined);
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const at = `http://127.0.0.1:${(silent.address() as AddressInfo).port}`;
+    try {
+      const reach = overTheNetwork(100);
+
+      expect(await reach.door(`${at}/x402/itm_1/purchase`)).toMatchObject({
+        kind: "unreachable",
+        why: "no answer within 0.1 seconds",
+      });
+      await expect(reach.catalog(at)).rejects.toThrow("no answer within 0.1 seconds");
+    } finally {
+      silent.closeAllConnections();
+      await new Promise((resolve) => silent.close(resolve));
+    }
   });
 
   it("says the catalog could not be read rather than checking nothing quietly", async () => {

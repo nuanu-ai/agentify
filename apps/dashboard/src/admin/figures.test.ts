@@ -27,6 +27,7 @@ import {
   chartOf,
   figuresFor,
   type HealthView,
+  listingRowOf,
   type MoneyView,
   type OverviewView,
   payoutViewOf,
@@ -237,6 +238,34 @@ describe("money", () => {
     expect(listed?.parts).toHaveLength(1);
     expect(listed?.parts[0]?.pays.join(" ")).toContain(harnessed.merchant.wallet);
     expect(view.splits.kind === "read" && view.splits.value.count).toBe(1);
+  });
+
+  it("says how many splits waiting behind a wallet change the payout leaves out, so an absent split is not read as none", () => {
+    const chain = { id: "eip155:84532", name: "Base Sepolia" };
+    const listed = payoutViewOf({ kind: "listed", chain, splits: 0, waiting: 2, parts: [] });
+    const none = payoutViewOf({ kind: "nothing_recorded", chain, waiting: 1 });
+
+    expect(listed.kind === "listed" && listed.intro).toContain(
+      "2 splits waiting behind a wallet change",
+    );
+    expect(none.kind === "said" && none.said).toContain("1 split waiting behind a wallet change");
+  });
+
+  it("says which products the listing check ran out of time before, never as passed", () => {
+    const row = listingRowOf({
+      kind: "checked",
+      base: "https://agentify.example",
+      checkedAt: Date.parse("2026-10-24T09:00:00.000Z"),
+      resources: [],
+      probes: 0,
+      refused: [],
+      unanswered: [],
+      unchecked: ["itm_2", "itm_3"],
+      passed: false,
+    });
+
+    expect(row.badge.tone).not.toBe("pass");
+    expect(row.fact.join(" ")).toContain("itm_2, itm_3");
   });
 
   it("shows no transaction where the gateway would refuse to start on the splits, and says why", () => {

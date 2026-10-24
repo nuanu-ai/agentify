@@ -117,14 +117,6 @@ export interface Identity extends DashboardIdentity {
   make(email: string, merchantId: string): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
-  /** No route calls it, and nothing journals it; it is how a test ends a person's sessions. */
-  endEverySessionFor(email: string): Promise<number>;
-  /**
-   * No route calls it, and nothing journals it: it is how a test arranges who
-   * holds the flag. Sessions are left as they are: the flag is read on every
-   * session read, so the next request already sees the change.
-   */
-  setOperator(email: string, operator: boolean): Promise<boolean>;
   /** For an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
   /** The accounts that made a merchant or hold the flag, and how many others only signed in. */
@@ -155,8 +147,9 @@ export interface Identity extends DashboardIdentity {
   ): Promise<FlagChange>;
   /**
    * Removes one account and the merchant it names on `tx`, under the same
-   * lock, so the address next signs in as a newcomer; refused for the last
-   * operator and for a merchant with money history or another account. Only
+   * lock, so the address next signs in as a newcomer; refused for an account
+   * holding the operator flag and for a merchant with money history or
+   * another account. Only
    * the test channel's workspace calls it.
    */
   forgetIn(tx: JournalTransaction | null, accountId: string): Promise<Forgetting>;
@@ -1552,24 +1545,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     async byId(personId) {
       const found = await (await contextOf()).internalAdapter.findUserById(personId);
       return found === null || found === undefined ? null : personFrom(found);
-    },
-
-    async endEverySessionFor(email) {
-      const context = await contextOf();
-      const found = await context.internalAdapter.findUserByEmail(emailAs(email));
-      if (found === null) return 0;
-      const open = await context.internalAdapter.listSessions(found.user.id);
-      await context.internalAdapter.deleteUserSessions(found.user.id);
-      return open.length;
-    },
-
-    async setOperator(email, operator) {
-      const written = await (await contextOf()).adapter.update<{ operator?: unknown }>({
-        model: "user",
-        where: [{ field: "email", value: emailAs(email) }],
-        update: { operator },
-      });
-      return written !== null && written !== undefined;
     },
 
     async emailsNaming(merchantId) {

@@ -784,6 +784,11 @@ const stateWords = (state: string): string =>
 /** The day payments began to go into splits, before which live payments went straight to the wallet. */
 const SPLITS_SINCE = "15 October 2026";
 
+const waitingLeftOut = (waiting: number): string =>
+  waiting === 0
+    ? ""
+    : ` ${plural(waiting, "split")} waiting behind a wallet change ${waiting === 1 ? "is" : "are"} left out until the change lands.`;
+
 export function payoutViewOf(listing: PayoutListing): PayoutView {
   switch (listing.kind) {
     case "sandbox":
@@ -802,13 +807,16 @@ export function payoutViewOf(listing: PayoutListing): PayoutView {
       return {
         kind: "said",
         badge: { tone: "quiet", word: "Nothing to pay out" },
-        said: `No payout split is recorded on ${listing.chain.name}, so there is nothing to pay out.`,
+        said:
+          listing.waiting === 0
+            ? `No payout split is recorded on ${listing.chain.name}, so there is nothing to pay out.`
+            : `Nothing is to pay out on ${listing.chain.name}:${waitingLeftOut(listing.waiting)}`,
       };
     case "listed":
       return {
         kind: "listed",
         network: listing.chain.name,
-        intro: `${listing.parts.length === 1 ? "One transaction" : `${listing.parts.length} transactions`} for all ${plural(listing.splits, "recorded split")}, in parts of twenty: each split is created where it has no code yet, distributed, and its merchant's share withdrawn; the commission comes last. Send ${listing.parts.length === 1 ? "it" : "each"} on ${listing.chain.name} only, from a wallet of your own, which pays the gas. Agentify signs and sends nothing.`,
+        intro: `${listing.parts.length === 1 ? "One transaction" : `${listing.parts.length} transactions`} for all ${plural(listing.splits, "recorded split")}, in parts of twenty: each split is created where it has no code yet, distributed, and its merchant's share withdrawn; the commission comes last. Send ${listing.parts.length === 1 ? "it" : "each"} on ${listing.chain.name} only, from a wallet of your own, which pays the gas. Agentify signs and sends nothing.${waitingLeftOut(listing.waiting)}`,
         parts: listing.parts.map((part, index) => ({
           title: `Payout ${index + 1} of ${listing.parts.length}`,
           network: listing.chain.name,
@@ -1059,13 +1067,20 @@ export function listingRowOf(
           : [
               `${check.unanswered.length} of ${check.probes} got no verdict, so nothing is proven about them: ${check.unanswered.join("; ")}`,
             ]),
+        ...(check.unchecked.length === 0
+          ? []
+          : [
+              `the check ran out of time before ${plural(check.unchecked.length, "product")}, so nothing is said about ${check.unchecked.length === 1 ? "it" : "them"}: ${check.unchecked.slice(0, 10).join(", ")}${check.unchecked.length > 10 ? ` and ${check.unchecked.length - 10} more` : ""}`,
+            ]),
       ].join(". ");
       return {
         ...base,
         badge:
           check.refused.length > 0
             ? { tone: "fail", word: `${check.refused.length} refused` }
-            : { tone: "partial", word: "No verdict" },
+            : check.unanswered.length > 0
+              ? { tone: "partial", word: "No verdict" }
+              : { tone: "partial", word: "Partly checked" },
         fact: [`${asked}: ${said || "some products had no address to check"}.`],
         read,
       };

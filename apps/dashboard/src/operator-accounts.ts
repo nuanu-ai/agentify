@@ -44,7 +44,7 @@ export type FlagChange = "changed" | "unchanged" | "no-account" | "last-operator
 /** What forgetting an account found, and what it removed. */
 export type Forgetting =
   | Readonly<{ kind: "no-account" }>
-  | Readonly<{ kind: "last-operator" }>
+  | Readonly<{ kind: "operator" }>
   | Readonly<{ kind: "money-history"; merchantId: string; orders: number; receipts: number }>
   | Readonly<{ kind: "shared-merchant"; merchantId: string; others: number }>
   | Readonly<{
@@ -188,9 +188,11 @@ export async function setFlagIn(
  * go from the outbox, sent or not. A merchant's recorded payout splits stay,
  * since money may still sit at one.
  *
- * Refused, removing nothing, for the last operator, for a merchant with an
- * order or a receipt (money history is never deleted to make a test
- * repeatable), and for a merchant another account names too.
+ * Refused, removing nothing, for an account that holds the operator flag
+ * (removing the flag first takes its mail and its check for the last
+ * operator), for a merchant with an order or a receipt (money history is
+ * never deleted to make a test repeatable), and for a merchant another
+ * account names too.
  */
 export async function forgetIn(
   tx: Statements,
@@ -219,7 +221,7 @@ export async function forgetIn(
           from dashboard_accounts where id = ${accountId} for update`,
   );
   if (account === undefined) return { kind: "no-account" };
-  if (account.operator && (await operatorsIn(tx)).length === 1) return { kind: "last-operator" };
+  if (account.operator) return { kind: "operator" };
 
   let merchant: Extract<Forgetting, { kind: "forgotten" }>["merchant"] = null;
   if (account.merchantId !== null) {
@@ -384,9 +386,7 @@ export async function setFlagInMemory(
 export function forgetInMemory(rows: Rows, accountId: string): Forgetting {
   const account = accountRows(rows).find((one) => one.id === accountId);
   if (account === undefined) return { kind: "no-account" };
-  if (account.operator === true && operatorsInMemory(rows).length === 1) {
-    return { kind: "last-operator" };
-  }
+  if (account.operator === true) return { kind: "operator" };
   const merchantId = typeof account.merchantId === "string" ? account.merchantId : null;
   if (merchantId !== null) {
     const others = accountRows(rows).filter(

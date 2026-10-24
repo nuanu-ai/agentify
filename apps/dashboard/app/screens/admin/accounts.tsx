@@ -410,8 +410,10 @@ function Forget({
   switch (forget.kind) {
     case "live-channel":
       return null;
-    case "last-operator":
-      return <p className="op-sub">The last operator's account cannot be forgotten.</p>;
+    case "operator":
+      return (
+        <p className="op-sub">An operator's account cannot be forgotten: remove the flag first.</p>
+      );
     case "money-history":
       return (
         <p className="op-sub">

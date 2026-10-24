@@ -9,6 +9,7 @@ import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, describe, expect, it } from "vitest";
 import routes from "../../app/routes.js";
 import type { Identity } from "../identity.js";
+import { flagRow } from "../testing/account-rows.js";
 import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
 import { FRESH_SIGN_IN_MS } from "./access.js";
@@ -52,6 +53,14 @@ const adminPaths = (ids: Readonly<Record<string, string>> = SOMEBODY): string[] 
   );
 };
 
+/** A browser signed in as an account that made no merchant, which its first sign-in makes. */
+const signedInWithoutMerchant = async (workspace: AdminServed, email: string) => {
+  await workspace.identity.requestLink(email, "default", { client: "192.0.2.12" });
+  const link = new URL(/(https?:\/\/\S+)/.exec(workspace.mails.at(-1)?.body ?? "")?.[1] ?? "");
+  await workspace.identity.openLink(link.searchParams.get("token") ?? "");
+  return await workspace.signedIn(email);
+};
+
 let served: AdminServed | null = null;
 const serve = async (options?: Parameters<typeof adminServed>[0]) => {
   served = await adminServed(options);
@@ -81,19 +90,30 @@ describe("who the operator's workspace answers", () => {
     );
   });
 
-  it("answers a signed-in account the flag does not confirm with no such page, on every page, read or pressed", async () => {
-    const { signedIn } = await serve();
-    const merchant = await signedIn(MERCHANT);
+  it("answers a signed-in account the flag does not confirm exactly as an address the dashboard does not have, on every page, read or pressed", async () => {
+    // Anything that told the two apart would tell a merchant the workspace is there.
+    const workspace = await serve();
+    const merchant = await workspace.signedIn(MERCHANT);
+    const withoutMerchant = await signedInWithoutMerchant(workspace, "visitor@nowhere.example");
+    const answered = async (browser: typeof merchant, method: "get" | "post", path: string) => {
+      const answer =
+        method === "get"
+          ? await browser.get(path)
+          : await browser.post(path, { confirm: "yes", reason: "Anything" });
+      // What the person is shown and sent to; the markup carries the asked
+      // address and the scripts of whichever route drew it, which they do not see.
+      return { status: answer.status, to: answer.to, page: readable(answer.html) };
+    };
 
-    for (const path of adminPaths()) {
-      const read = await merchant.get(path);
-      const pressed = await merchant.post(path, { confirm: "yes", reason: "Anything" });
-
-      expect(read.status, `GET ${path}`).toBe(404);
-      expect(pressed.status, `POST ${path}`).toBe(404);
-      expect(readable(read.html), path).toContain("There is no such page");
-      expect(read.html, path).not.toContain("op-channel");
+    for (const browser of [merchant, withoutMerchant]) {
+      for (const method of ["get", "post"] as const) {
+        const nowhere = await answered(browser, method, "/zzz-nothing");
+        for (const path of adminPaths()) {
+          expect(await answered(browser, method, path), `${method} ${path}`).toStrictEqual(nowhere);
+        }
+      }
     }
+    expect((await answered(merchant, "get", "/zzz-nothing")).status).toBe(404);
   });
 
   it("sends a visitor with no session to the sign-in, which returns them to the page", async () => {
@@ -140,11 +160,11 @@ describe("who the operator's workspace answers", () => {
   });
 
   it("answers no such page to an operator whose flag was taken away, from the next request", async () => {
-    const { signedIn, identity } = await serve();
+    const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
     expect((await operator.get("/admin/merchants")).status).toBe(200);
 
-    await identity.setOperator(OPERATOR, false);
+    flagRow(rows, OPERATOR, false);
 
     expect((await operator.get("/admin/merchants")).status).toBe(404);
   });

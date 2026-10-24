@@ -149,6 +149,13 @@ const withIdentity = async (
   return { identity, forgetMerchant, rows };
 };
 
+/** Ends every session of the account at `email`, as the workspace's press does. */
+const endSessionsOf = async (identity: Identity, email: string): Promise<void> => {
+  const person = await identity.byEmail(email);
+  if (person === null) throw new Error(`no account has the address ${email}`);
+  await identity.endSessionsIn(null, person.id, new Date());
+};
+
 /** Exposed only by the deterministic memory adapter. */
 const sessionRows = (): Record<string, unknown>[] => open?.rows.dashboard_sessions ?? [];
 
@@ -5321,7 +5328,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     await browser.signIn();
     expect((await browser.get("/cards")).status).toBe(200);
 
-    await identity.endEverySessionFor(PERSON);
+    await endSessionsOf(identity, PERSON);
 
     const refused = await browser.post(STOP_SELLING);
     expect(refused.status).toBe(303);
@@ -6587,7 +6594,7 @@ describe("the screen a signed-out person was going to", () => {
   it("is kept for a session that ran out, beside the word that it did", async () => {
     const running = await started();
     await running.browser.signIn();
-    await running.identity.endEverySessionFor(PERSON);
+    await endSessionsOf(running.identity, PERSON);
 
     const arrived = await running.browser.get("/orders");
 
@@ -6622,7 +6629,7 @@ describe("the screen a signed-out person was going to", () => {
   it("is kept for a form sent there after the session ended, beside the word that it was not saved", async () => {
     const running = await started();
     await running.browser.signIn();
-    await running.identity.endEverySessionFor(PERSON);
+    await endSessionsOf(running.identity, PERSON);
 
     const sent = await running.browser.post("/keys", { label: "the stock worker" });
 

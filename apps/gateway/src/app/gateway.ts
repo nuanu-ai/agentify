@@ -1273,11 +1273,33 @@ export class Gateway {
    * Every split recorded on this network, every merchant's, for the
    * operator's payout, in the order they were recorded: any of them
    * may hold money, and a payout of one that holds nothing costs only gas.
+   * A split waiting behind a wallet change not yet in force is left out and
+   * counted, unless it can hold money already: until the change lands nobody
+   * is asked to pay into it, and its address is the merchant's new wallet.
    * Across merchants on purpose, so nothing reachable from a request may call
    * it.
    */
-  async splitsToPayOut(): Promise<readonly RecordedPayoutSplit[]> {
-    return this.runtime.store.payoutSplitsOn(this.runtime.config.payoutSplit.network);
+  async splitsToPayOut(): Promise<{
+    readonly splits: readonly RecordedPayoutSplit[];
+    readonly waiting: number;
+  }> {
+    const { store, config, clock } = this.runtime;
+    const network = config.payoutSplit.network;
+    const at = clock();
+    const waiting: string[] = [];
+    for (const merchant of await store.merchants()) {
+      const split = payoutWalletAt(merchant.payoutWallet, at).pending?.split;
+      if (split == null) continue;
+      const holding = await store.splitsToPayOutFor(network, merchant.id, at);
+      if (!holding.some((each) => isSameAddress(each.address, split.address))) {
+        waiting.push(split.address);
+      }
+    }
+    const recorded = await store.payoutSplitsOn(network);
+    const splits = recorded.filter(
+      (split) => !waiting.some((address) => isSameAddress(address, split.address)),
+    );
+    return { splits, waiting: recorded.length - splits.length };
   }
 
   /**

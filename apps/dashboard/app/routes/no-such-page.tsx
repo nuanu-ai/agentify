@@ -6,18 +6,21 @@
  * way, since nothing here acts.
  */
 
-import { data } from "react-router";
-import { useChrome } from "../answer.js";
+import { data, useRouteLoaderData } from "react-router";
+import type { Chrome, DrawnFor } from "../answer.js";
 import { Frame } from "../components/frame.js";
 
 export const loader = () => data(null, { status: 404 });
 
 export const action = loader;
 
-export default function NoSuchPage() {
-  const { base } = useChrome();
+/** `drawn` is what the loaders would have read, for this page drawn where none ran. */
+export function NoSuchPage({
+  drawn,
+}: Readonly<{ drawn?: DrawnFor & Readonly<{ chrome: Chrome }> }>) {
+  const base = (useRouteLoaderData<Chrome>("root") ?? drawn?.chrome)?.base ?? "";
   return (
-    <Frame title="There is no such page">
+    <Frame title="There is no such page" {...(drawn === undefined ? {} : { drawn })}>
       <div className="lede">
         <div>
           <p>
@@ -33,4 +36,8 @@ export default function NoSuchPage() {
       </div>
     </Frame>
   );
+}
+
+export default function NoSuchPageRoute() {
+  return <NoSuchPage />;
 }

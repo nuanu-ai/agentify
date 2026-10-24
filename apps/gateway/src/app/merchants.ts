@@ -157,12 +157,11 @@ export interface LiveApprovalChange {
 }
 
 /**
- * Admits one merchant to live publication. The protected administrative screen
- * and terminal command call this; no merchant-key route can make this
- * decision. Null means no such merchant; `changed: false` means already
- * admitted. The grant that admits the merchant is recorded for product
- * analytics as the operator's, through the dashboard, where both of those
- * callers live; a repeat records nothing. `journal` is the operator's press,
+ * Admits one merchant to live publication. Only the operator's workspace calls
+ * this; no merchant-key route can make this decision. Null means no such
+ * merchant; `changed: false` means already admitted. The grant that admits
+ * the merchant is recorded for product analytics as the operator's, through
+ * the dashboard, where the workspace lives; a repeat records nothing. `journal` is the operator's press,
  * committed with the grant.
  */
 export async function grantLiveApproval(
@@ -189,7 +188,7 @@ export async function grantLiveApproval(
  * Withdraws one merchant's admission to live sales: from then on they stand as
  * a merchant never approved, so nothing new of theirs is published or sold
  * live, while orders already opened play out as under a pause. Only the
- * operator's terminal command calls this. Null means no such merchant;
+ * operator's workspace calls this. Null means no such merchant;
  * `changed: false` means there was no approval to withdraw. `journal` is the
  * operator's press, committed with the withdrawal.
  */

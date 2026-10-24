@@ -3,7 +3,9 @@
  * dashboard's admin services, behind the operator flag, and the code that
  * builds them, and nothing a merchant's key or a buyer reaches. The reader is
  * handed over by construction, never found through a shared object, so a
- * module that does not import it cannot hold it. If this fails, a route a
+ * module that does not import it cannot hold it. The payout listing, built
+ * from every merchant's splits, is held to the same reach, and the contracts
+ * the adapters are tested against count as their own. If this fails, a route a
  * merchant's key or a buyer calls may be able to read another merchant's
  * orders and money.
  */
@@ -29,14 +31,18 @@ const importsOf = (file: string): string[] =>
   );
 
 describe("the operator's reader", () => {
-  it("is imported by no module of the gateway's but its own", () => {
+  it("is imported by no module of the gateway's but its own, nor is the payout built from every merchant's splits", () => {
     const gateway = join(apps, "gateway", "src");
     const own = (path: string) =>
-      /^(ports\/operator\/|adapters\/(memory|postgres)\/operator\/|operator\.ts$)/.test(path);
+      /^(ports\/operator\/|adapters\/(memory|postgres)\/operator\/|operator\.ts$|payout-listing\.ts$|testing\/operator-[a-z]+-contract\.ts$)/.test(
+        path,
+      );
+    // Any module in an `operator` folder, the folder's index, `operator.ts`, or the payout listing.
+    const guarded = /(^|\/)(operator(\/|(\.[jt]s)?$)|payout-listing(\.[jt]s)?$)/;
     const reaching = sourcesIn(gateway).filter(
       (file) =>
         !own(relative(gateway, file)) &&
-        importsOf(file).some((specifier) => /(^|\/)operator(\/|\/index)?(\.js)?$/.test(specifier)),
+        importsOf(file).some((specifier) => guarded.test(specifier)),
     );
 
     expect(reaching.map((file) => relative(gateway, file))).toStrictEqual([]);

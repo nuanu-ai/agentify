@@ -213,8 +213,9 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
           <p>
             Every administrative action on this channel, newest first, with the reason given. A row
             commits with its action, so an action without its row does not exist, and the
-            application never changes or removes a row. Rows from the terminal name the terminal,
-            because a command does not know who typed it.
+            application never changes or removes a row. A row naming the terminal comes from the one
+            statement that gives the flag back to a channel left with no operator, run on its host,
+            which does not know who typed it.
           </p>
         </div>
       </div>

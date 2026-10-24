@@ -971,7 +971,9 @@ describe("the splits a payout covers", () => {
       first,
       splitOf(harnessed, A_WALLET).address,
     ]);
-    expect((await harnessed.gateway.splitsToPayOut()).map((split) => split.address)).toStrictEqual([
+    expect(
+      (await harnessed.gateway.splitsToPayOut()).splits.map((split) => split.address),
+    ).toStrictEqual([
       first,
       splitOf(harnessed, other.wallet, other.id).address,
       splitOf(harnessed, A_WALLET).address,

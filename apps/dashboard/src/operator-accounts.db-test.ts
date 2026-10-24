@@ -114,7 +114,7 @@ if (databaseUrl === null) {
 
   const operator = async (email: string): Promise<Person> => {
     const person = await signIn(email);
-    await identity.setOperator(email, true);
+    await pool.query("update dashboard_accounts set operator = true where email = $1", [email]);
     return person;
   };
 
@@ -475,8 +475,9 @@ if (databaseUrl === null) {
       expect(await store.merchantById(seller.merchantId)).not.toBeNull();
     });
 
-    it("refuses to forget the last operator's account, and a merchant another account names", async () => {
+    it("refuses to forget any account holding the operator flag, and a merchant another account names", async () => {
       const boss = await operator(OPERATOR);
+      const deputy = await operator("deputy@example.com");
       const seller = await withMerchant(MERCHANT);
       const colleague = await signIn(SECOND);
       await identity.attachMerchant(colleague.id, async () => seller.merchantId);
@@ -488,10 +489,12 @@ if (databaseUrl === null) {
           () => null,
         );
 
-      expect(await forget(boss.id)).toStrictEqual({ kind: "last-operator" });
+      expect(await forget(deputy.id)).toStrictEqual({ kind: "operator" });
+      expect(await forget(boss.id)).toStrictEqual({ kind: "operator" });
       expect(await forget(seller.person.id)).toMatchObject({ kind: "shared-merchant", others: 1 });
       expect(await forget("acc_nobody")).toStrictEqual({ kind: "no-account" });
       expect(await identity.byEmail(OPERATOR)).not.toBeNull();
+      expect(await identity.byEmail("deputy@example.com")).not.toBeNull();
       expect(await identity.byEmail(MERCHANT)).not.toBeNull();
     });
 
@@ -527,7 +530,7 @@ if (databaseUrl === null) {
       expect(await deleting()).toStrictEqual({ status: "retained" });
       expect(await flagOf(boss.id)).toBe(true);
 
-      await identity.setOperator(OPERATOR, false);
+      await pool.query("update dashboard_accounts set operator = false where id = $1", [boss.id]);
       expect(await deleting()).toStrictEqual({ status: "deleted" });
       expect(await identity.byEmail(OPERATOR)).toBeNull();
     });

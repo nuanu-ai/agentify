@@ -314,6 +314,7 @@ const PAYOUT: PayoutListing = {
   kind: "listed",
   chain: { id: "eip155:8453", name: "Base" },
   splits: 3,
+  waiting: 0,
   parts: [
     {
       to: "0xcA11bde05977b3631167028862bE2a173976CA11",
@@ -590,6 +591,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
           payout: read({
             kind: "nothing_recorded",
             chain: { id: "eip155:84532", name: "Base Sepolia" },
+            waiting: 0,
           }),
         }),
       ),
@@ -675,6 +677,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
             probes: 4,
             refused: ["POST https://agentify.ad/x402/itm_2/purchase"],
             unanswered: [],
+            unchecked: [],
             passed: false,
           },
         }),

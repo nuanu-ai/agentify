@@ -44,6 +44,7 @@ import {
   WITHDRAWN_WORD,
 } from "./merchants-words.js";
 import type { AdminParts } from "./parts.js";
+import { LOST_ANSWER } from "./words.js";
 
 const PATH = "/admin/merchants";
 const SEGMENT_KEYS = ["all", ...MERCHANT_SEGMENTS] as const;
@@ -545,7 +546,7 @@ export interface MerchantsPages {
     merchantId: string,
     intent: MerchantIntent,
     form: FormData,
-  ): Promise<Outcome<MerchantView>>;
+  ): Promise<Outcome<MerchantView | PressedUnread>>;
   /** The Merchants section's count in the sidebar: who waits for admission. */
   counts(operator: Operator): Promise<SectionCounts>;
 }
@@ -553,6 +554,38 @@ export interface MerchantsPages {
 const missing: Outcome<never> = {
   kind: "problem",
   problem: { status: 404, said: "There is no such merchant." },
+};
+
+/** A press answered without its page, which could not be read again after the change. */
+export interface PressedUnread {
+  readonly unread: true;
+  readonly merchantId: string;
+  /** What the press came to. */
+  readonly said: string;
+}
+
+/** A press on a merchant's page, in the Journal's verbs, done or only asked. */
+const PRESS_WORDS = {
+  admit: { done: "Admitted to live sales", asked: "Asked to admit to live sales" },
+  withdraw: { done: "Withdrew the admission", asked: "Asked to withdraw the admission" },
+  disable_key: { done: "Disabled the key", asked: "Asked to disable the key" },
+} as const;
+
+/** What a press on a merchant's page came to, said without the page. */
+const pressSaid = (action: keyof typeof PRESS_WORDS, answer: ActionAnswer): string => {
+  const words = PRESS_WORDS[action];
+  switch (answer.kind) {
+    case "done":
+      return `${words.done}.`;
+    case "unchanged":
+      return `${words.asked}: it already stood so, and nothing changed.`;
+    case "refused":
+      return answer.said;
+    case "unknown":
+      return LOST_ANSWER;
+    case "step-up":
+      return "Nothing changed: the press asks for a fresh sign-in first.";
+  }
 };
 
 export function merchantsFor(parts: AdminParts): MerchantsPages {
@@ -571,12 +604,14 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     }
   };
 
+  /** Which of these orders have a shop order nobody is sure of, where the shop could not be read. */
+  const unread = async (orderIds: readonly string[]): Promise<readonly string[] | "unread"> =>
+    orderIds.length === 0 ? [] : "unread";
+
   const shopOf = async (accounts: readonly NamedAccount[] | null) => {
     const { shops } = parts;
     if (shops === null) return { shop: null, uncertain: async () => [] };
-    if (accounts === null) {
-      return { shop: "unread" as const, uncertain: async (): Promise<readonly string[]> => [] };
-    }
+    if (accounts === null) return { shop: "unread" as const, uncertain: unread };
     try {
       for (const account of accounts) {
         const connection = await shops.connectionOf(account.id);
@@ -594,7 +629,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       return { shop: null, uncertain: async () => [] };
     } catch {
       console.error("[dashboard] a merchant's connected shop could not be read");
-      return { shop: "unread" as const, uncertain: async () => [] };
+      return { shop: "unread" as const, uncertain: unread };
     }
   };
 
@@ -683,6 +718,30 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     return { kind: "view", view: await pageOf(record, answers, readAt), status };
   }
 
+  /**
+   * The page in its state after a press, or, where it cannot be read again,
+   * what the press came to and that the page was not read: the change has
+   * committed by then, and a broken page would read as a press to repeat.
+   */
+  async function pageAfter(
+    merchantId: string,
+    action: "admit" | "withdraw" | "disable_key",
+    answer: ActionAnswer,
+    answers: Answers,
+  ): Promise<Outcome<MerchantView | PressedUnread>> {
+    const status = answer.kind === "refused" ? 409 : 200;
+    try {
+      return await page(merchantId, answers, status);
+    } catch {
+      console.error("[dashboard] a merchant's page could not be read again after a press");
+      return {
+        kind: "view",
+        view: { unread: true, merchantId, said: pressSaid(action, answer) },
+        status,
+      };
+    }
+  }
+
   /** The admission's change through the press, refused off the live channel. */
   const admission =
     (merchantId: string, grant: boolean) =>
@@ -767,11 +826,9 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           parts.pressing,
           admission(merchantId, intent.kind === "admit"),
         );
-        return await page(
-          merchantId,
-          { [intent.kind]: answer },
-          answer.kind === "refused" ? 409 : 200,
-        );
+        return await pageAfter(merchantId, intent.kind, answer, {
+          [intent.kind]: answer,
+        });
       }
       {
         const keyId = intent.keyId;
@@ -798,11 +855,9 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
             return { kind: disabled.changed ? "done" : "unchanged" };
           },
         );
-        return await page(
-          merchantId,
-          { key: { id: keyId, answer } },
-          answer.kind === "refused" ? 409 : 200,
-        );
+        return await pageAfter(merchantId, "disable_key", answer, {
+          key: { id: keyId, answer },
+        });
       }
     },
 

@@ -6,10 +6,15 @@
  */
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
+import { memoryOperatorReader, type OperatorReader } from "@agentify/gateway/operator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
+import { memoryWooShops } from "../woo-shops.js";
+import type { Operator } from "./access.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
+import { merchantsFor } from "./merchants.js";
 import { WITHDRAWAL_NOTE } from "./merchants-words.js";
+import type { AdminParts } from "./parts.js";
 
 let served: AdminServed | null = null;
 
@@ -329,5 +334,109 @@ describe("a merchant's history", () => {
       expect(history).toContain(verb);
       expect(journal).toContain(verb);
     }
+  });
+});
+
+describe("a press whose page cannot be read again", () => {
+  it("is answered as done, saying the page could not be read again, rather than as a broken page", async () => {
+    // The change committed with its journal row; a page drawn as broken would
+    // send the operator to press again on a change already made.
+    let reads = 0;
+    served = await adminServed({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: {
+          ...real.merchants,
+          merchant: async () => {
+            reads += 1;
+            throw new Error("the database is not answering");
+          },
+        },
+      }),
+    });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+
+    expect((await served.harnessed.store.merchantById(merchant.id))?.liveApprovedAt).not.toBeNull();
+
+    const pressed = await operator.post(`/admin/merchants/${merchant.id}/withdraw`, {
+      ...TICKED,
+      [REASON_FIELD]: "it leaked",
+    });
+
+    expect(reads).toBe(1);
+    expect(pressed.status).toBe(200);
+    expect(text(pressed.html)).toContain("Withdrew the admission.");
+    expect(text(pressed.html)).toContain("could not be read again");
+    expect(text(pressed.html)).not.toContain("Something went wrong");
+    expect((await served.harnessed.store.merchantById(merchant.id))?.liveApprovedAt).toBeNull();
+  });
+});
+
+describe("a merchant's uncertain shop orders", () => {
+  const failing = async (): Promise<never> => {
+    throw new Error("the database is not answering");
+  };
+
+  /** The page's view of a merchant with one order worth a look, over parts whose accounts or shops fail as the case says. */
+  const viewWith = async (fails: "accounts" | "shop" | "nothing") => {
+    served = await adminServed();
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    await served.identity.make("owner@coffee.example", merchant.id);
+    const real = memoryOperatorReader(served.harnessed.store);
+    const reader: OperatorReader = {
+      ...real,
+      merchants: {
+        ...real.merchants,
+        merchant: async (id, asked) => {
+          const record = await real.merchants.merchant(id, asked);
+          return record === null
+            ? null
+            : {
+                ...record,
+                worthALook: {
+                  rows: [
+                    {
+                      id: "ord_8c2e5d07a3f141a9",
+                      status: "payment_unresolved",
+                      price: { amount: "24.00", currency: "USD" },
+                      createdAt: Date.now() - 60_000,
+                      itemId: "itm_old_town",
+                      title: null,
+                    },
+                  ],
+                  total: 1,
+                },
+              };
+        },
+      },
+    };
+    const identity = served.identity;
+    const pages = merchantsFor({
+      config: served.config,
+      gateway: served.harnessed.gateway,
+      reader,
+      identity:
+        fails === "accounts"
+          ? ({ ...identity, accountsNamed: failing } as unknown as AdminParts["identity"])
+          : identity,
+      shops: { ...memoryWooShops(), ...(fails === "shop" ? { connectionOf: failing } : {}) },
+      now: () => new Date(),
+    } as unknown as AdminParts);
+    const answered = await pages.one({ person: { id: "acc_op" } } as Operator, merchant.id);
+    return answered.kind === "view" ? answered.view : null;
+  };
+
+  it("are said to be unread where the merchant's accounts could not be read, never drawn as none", async () => {
+    expect((await viewWith("accounts"))?.shopOrdersUnread).toBe(true);
+  });
+
+  it("are said to be unread where the merchant's shop record could not be read, never drawn as none", async () => {
+    expect((await viewWith("shop"))?.shopOrdersUnread).toBe(true);
+  });
+
+  it("are not said to be unread where everything was read", async () => {
+    expect((await viewWith("nothing"))?.shopOrdersUnread).toBe(false);
   });
 });

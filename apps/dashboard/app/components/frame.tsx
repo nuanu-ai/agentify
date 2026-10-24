@@ -21,7 +21,7 @@ import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
-import { useChrome } from "../answer.js";
+import type { Chrome, DrawnFor } from "../answer.js";
 import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
 import { SurfaceNote } from "./surface-note.js";
@@ -46,7 +46,8 @@ const TABS: readonly (readonly [Tab, string])[] = [
  * `action` a control about the whole page, drawn at the bar's end at every
  * width, so a phone reaches it without scrolling past the page. The banner is
  * the merchant's pages' layout's, read once for every section; a page drawn
- * outside that layout draws none.
+ * outside that layout draws none. A page drawn where no loader ran is handed
+ * what the root, the gate and that layout would have read, as `drawn`.
  */
 export function Frame({
   tab,
@@ -54,6 +55,7 @@ export function Frame({
   heading = title,
   action,
   navigation,
+  drawn,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections. */
@@ -63,10 +65,16 @@ export function Frame({
   action?: ReactNode;
   /** The administrative workspace uses the same frame with its own sections. */
   navigation?: Readonly<{ label: string; sections: readonly Section[] }>;
+  drawn?: DrawnFor & Readonly<{ chrome: Chrome }>;
   children: ReactNode;
 }>) {
-  const chrome = useChrome();
-  const gate = useRouteLoaderData<{ who: string }>("routes/gate");
+  const chrome = useRouteLoaderData<Chrome>("root") ?? drawn?.chrome;
+  if (chrome === undefined) {
+    throw new Error("a page was drawn without the root's chrome, which every page loads first");
+  }
+  const gate =
+    useRouteLoaderData<{ who: string }>("routes/gate") ??
+    (drawn === undefined ? undefined : { who: drawn.who });
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
@@ -77,7 +85,7 @@ export function Frame({
       : (TABS.find(
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
-  const framed = useRouteLoaderData<FrameView>("routes/merchant-only");
+  const framed = useRouteLoaderData<FrameView>("routes/merchant-only") ?? drawn?.framed;
   const sections: readonly Section[] =
     navigation?.sections ??
     TABS.map(([key, label]) => ({
