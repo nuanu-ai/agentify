@@ -1555,6 +1555,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     async close() {
       await parts.pool?.end();
     },
+
+    async personBy(asked) {
+      const adapter = (await contextOf()).internalAdapter;
+      if ("email" in asked) {
+        const found = await adapter.findUserByEmail(emailAs(asked.email));
+        return found === null ? null : personFrom(found.user);
+      }
+      const found = await adapter.findUserById(asked.id);
+      return found === null || found === undefined ? null : personFrom(found);
+    },
   };
 }
 

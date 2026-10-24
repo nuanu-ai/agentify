@@ -251,4 +251,9 @@ export interface DashboardIdentity {
    * merchant keeps its own.
    */
   setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
+  /**
+   * The account with this address, in any case, or with this identifier, and
+   * the merchant it made; null where there is none. For the operator's lookup.
+   */
+  personBy(asked: Readonly<{ email: string } | { id: string }>): Promise<Person | null>;
 }
