@@ -161,6 +161,14 @@ describe("a read of the orders that fails", () => {
   });
 });
 
+describe("an order identifier no order can have", () => {
+  it("is answered as no such order without being read", async () => {
+    const orders = ordersFor(partsWith({ order: failing }));
+
+    expect(await orders.one(OP, "ord_a\u0000")).toMatchObject({ view: { kind: "none" } });
+  });
+});
+
 describe("the lookup's halves the dashboard holds", () => {
   const owner: Person = {
     id: "acc_owner",

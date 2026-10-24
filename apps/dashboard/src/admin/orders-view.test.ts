@@ -148,6 +148,32 @@ describe("the orders list", () => {
       before: null,
     });
   });
+
+  it("reads a cursor past the last moment a date holds, and control characters, as nothing asked", () => {
+    expect(asked("before=9999999999999999.ord_x").before).toBeNull();
+    expect(asked("before=8640000000000000.ord_x").before).toStrictEqual({
+      createdAt: 8.64e15,
+      id: "ord_x",
+    });
+    expect(asked("q=%00esim%1f&merchant=%20mch_a%00")).toMatchObject({
+      q: "esim",
+      merchantId: "mch_a",
+    });
+  });
+
+  it("says a segment holds none of what was searched, not that the channel has none", () => {
+    expect(
+      ordersListView(
+        asked("show=unfulfilled&q=esim"),
+        aPage({ counts: counts({ ended: 3 }) }),
+        READ_AT,
+      ).result,
+    ).toMatchObject({ kind: "none", said: "No order among the unfulfilled matches “esim”." });
+    expect(
+      ordersListView(asked("show=unfulfilled"), aPage({ counts: counts({ ended: 3 }) }), READ_AT)
+        .result,
+    ).toMatchObject({ kind: "none", said: "No order is unfulfilled." });
+  });
 });
 
 describe("one order", () => {
@@ -203,10 +229,10 @@ describe("one order", () => {
     expect(steps.find((step) => step.what === "Time ran out")?.said).toBe(
       "The delivery window ran out.",
     );
-    expect(steps.map((step) => step.who).filter((who) => who.includes(" by "))).toStrictEqual([
-      "Payment · by the facilitator's answer",
-      "Closure · by the merchant",
-    ]);
+    // Every caption is checked: the words recorded about a payment are not all the facilitator's.
+    expect(
+      steps.map((step) => step.who).filter((who) => /facilitator| by /.test(who)),
+    ).toStrictEqual(["Payment · by the facilitator's answer", "Closure · by the merchant"]);
   });
 
   it("links the split and the transaction to the channel's explorer, and none where it has no explorer", () => {

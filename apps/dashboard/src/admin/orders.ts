@@ -17,6 +17,7 @@ import {
   orderPageView,
   ordersAskedIn,
   ordersListView,
+  typedIn,
 } from "./orders-view.js";
 import type { AdminParts } from "./parts.js";
 
@@ -41,7 +42,7 @@ export function ordersFor(parts: AdminParts): OrdersPages {
 
   /** The records a pasted text names, from the gateway, the identity and the shops. */
   async function lookedUp(q: string, at: Date): Promise<readonly (Found | AccountFound)[]> {
-    if (q.includes("@")) {
+    if (lookupOf(q).kind === "email") {
       const person = await parts.identity.personBy({ email: q });
       return person === null ? [] : [{ kind: "account", id: person.id, email: person.email }];
     }
@@ -77,14 +78,19 @@ export function ordersFor(parts: AdminParts): OrdersPages {
         failed("orders");
         page = null;
       }
-      return { kind: "view", view: ordersListView(asked, page, readAt) };
+      return {
+        kind: "view",
+        view: ordersListView(asked, page, readAt),
+        ...(page === null ? { status: 503 } : {}),
+      };
     },
 
     async one(_operator, orderId) {
       const readAt = parts.now();
       let order: Awaited<ReturnType<typeof reader.order>> | "unread";
       try {
-        order = await reader.order(orderId);
+        // An identifier holding what no identifier holds names no order, and is not read.
+        order = typedIn(orderId, 200) === orderId ? await reader.order(orderId) : null;
       } catch {
         failed("order");
         order = "unread";
@@ -98,7 +104,7 @@ export function ordersFor(parts: AdminParts): OrdersPages {
     },
 
     async find(_operator, query) {
-      const q = (query.get("q") ?? "").trim().slice(0, LOOKUP_AT_MOST);
+      const q = typedIn(query.get("q"), LOOKUP_AT_MOST);
       let found: readonly (Found | AccountFound)[] | "unread" = [];
       if (q !== "") {
         try {

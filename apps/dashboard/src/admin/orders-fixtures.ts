@@ -109,10 +109,10 @@ export const closedOrder = (): OperatorOrder => ({
   timeline: [
     { kind: "created", at: T },
     { kind: "priced", at: T, price: { amount: "12.00", currency: "USD" } },
-    { kind: "facilitator_said", at: T + 2_000, about: "verify", said: "valid" },
+    { kind: "payment_word", at: T + 2_000, about: "verify", said: "valid" },
     { kind: "charge_sent", at: T + 2_000 },
     { kind: "paid", at: T + 4_000 },
-    { kind: "facilitator_said", at: T + 4_000, about: "settle", said: "success" },
+    { kind: "payment_word", at: T + 4_000, about: "settle", said: "success" },
     { kind: "payment_completed", at: null, settled: true, source: "facilitator" },
     { kind: "handed_over", at: T + 1_806_000, times: 2, takenOn: false },
     {
@@ -180,7 +180,7 @@ export const unknownOrder = (): OperatorOrder => {
       { kind: "created", at: sent - 2_000 },
       { kind: "priced", at: sent - 2_000, price: { amount: "8.00", currency: "USD" } },
       {
-        kind: "facilitator_said",
+        kind: "payment_word",
         at: sent - 1_000,
         about: "verify",
         said: "valid, signed by a wallet",

@@ -108,6 +108,9 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
             defaultValue={view.merchantId ?? ""}
           >
             <option value="">Every merchant</option>
+            {view.merchants === null && view.merchantId !== null ? (
+              <option value={view.merchantId}>{view.merchantId}</option>
+            ) : null}
             {(view.merchants ?? []).map((merchant) => (
               <option key={merchant.id} value={merchant.id}>
                 {merchant.name}
@@ -313,7 +316,7 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
                   <dd>{payment.attempt}</dd>
                 </div>
                 <div>
-                  <dt>The facilitator said</dt>
+                  <dt>Recorded about the payment</dt>
                   <dd>
                     {payment.words.length === 0 ? "Nothing recorded." : null}
                     {payment.words.map((word) => (

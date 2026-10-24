@@ -31,6 +31,16 @@ export const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["all", "All"],
 ];
 
+/** A segment named inside a sentence. */
+const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
+  payment_unknown: "those whose payment is unknown",
+  unfulfilled: "the unfulfilled",
+  delivered_unpaid: "those delivered and not paid",
+  in_progress: "those in progress",
+  ended: "those that ended",
+  lapsed: "the lapsed attempts",
+};
+
 const EMPTY_SEGMENT: Readonly<Record<OrderSegment, string>> = {
   payment_unknown: "No order's payment outcome is unknown.",
   unfulfilled: "No order is unfulfilled.",
@@ -55,10 +65,26 @@ const SEARCH_AT_MOST = 200;
 /** A cursor as the list's address carries it: the moment, a dot, the identifier. */
 const CURSOR = /^(\d{1,16})\.([A-Za-z0-9_-]{1,128})$/;
 
+/** The latest moment a date can hold: a cursor past it names no order. */
+const LAST_MOMENT = 8.64e15;
+
 export const cursorIn = (query: URLSearchParams): OrdersCursor | null => {
   const matched = CURSOR.exec(query.get("before") ?? "");
-  return matched === null ? null : { createdAt: Number(matched[1]), id: matched[2] ?? "" };
+  const createdAt = Number(matched?.[1]);
+  return matched === null || !Number.isSafeInteger(createdAt) || createdAt > LAST_MOMENT
+    ? null
+    : { createdAt, id: matched[2] ?? "" };
 };
+
+/**
+ * A text as an address carried it, without the control characters no
+ * identifier, product or site holds and a database refuses, trimmed.
+ */
+export const typedIn = (text: string | null, atMost: number): string =>
+  (text ?? "").replaceAll(CONTROL, "").trim().slice(0, atMost);
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it takes out
+const CONTROL = /[\u0000-\u001f\u007f]/g;
 
 const cursorOf = (cursor: OrdersCursor): string => `${cursor.createdAt}.${cursor.id}`;
 
@@ -72,10 +98,10 @@ export interface OrdersAsked {
 
 export const ordersAskedIn = (query: URLSearchParams): OrdersAsked => {
   const show = query.get("show") ?? "all";
-  const merchant = query.get("merchant") ?? "";
+  const merchant = typedIn(query.get("merchant"), SEARCH_AT_MOST);
   return {
     shown: SEGMENTS.some(([key]) => key === show) ? (show as OrdersShown) : "all",
-    q: (query.get("q") ?? "").trim().slice(0, SEARCH_AT_MOST),
+    q: typedIn(query.get("q"), SEARCH_AT_MOST),
     merchantId: merchant === "" ? null : merchant,
     before: cursorIn(query),
   };
@@ -205,7 +231,11 @@ export function ordersListView(
             : `No order matches “${asked.q}”.`
         : asked.before !== null || asked.shown === "all"
           ? "No earlier order is in this segment."
-          : EMPTY_SEGMENT[asked.shown];
+          : narrowed
+            ? `No order among ${SEGMENT_NAMES[asked.shown]} matches ${
+                asked.q === "" ? "this merchant" : `“${asked.q}”`
+              }.`
+            : EMPTY_SEGMENT[asked.shown];
     return { ...common, merchants, result: { kind: "none", said, clear } };
   }
   const from = page.newer + 1;
@@ -331,7 +361,7 @@ function endingOf(
     case "payment_not_settled":
       return {
         what: "Charge did not go through",
-        said: "The facilitator said the charge did not go through.",
+        said: "The payment layer said the charge did not go through.",
       };
     case "payment_outcome_unknown":
       return {
@@ -376,10 +406,10 @@ function stepView(step: OrderStep, order: OperatorOrder, merchant: string): Step
         at: when,
         dot: null,
       };
-    case "facilitator_said":
+    case "payment_word":
       return {
-        who: "Payment · the facilitator said",
-        what: step.about === "verify" ? "Verification" : "Settlement",
+        who: "Payment · words recorded",
+        what: step.about === "verify" ? "About the verification" : "About the charge",
         said: `“${step.said}”`,
         at: when,
         dot: null,
@@ -446,7 +476,15 @@ function stepView(step: OrderStep, order: OperatorOrder, merchant: string): Step
       };
     case "ended": {
       const ending = endingOf(step.closure);
-      return { who: "Ending", what: ending.what, said: ending.said, at: null, dot: "fail" };
+      // An unfulfilled order keeps the reason it became so, and stays open to a late delivery.
+      return {
+        who:
+          order.state === "unfulfilled" ? "Unfulfilled · still open to a late delivery" : "Ending",
+        what: ending.what,
+        said: ending.said,
+        at: null,
+        dot: "fail",
+      };
     }
     case "closed_by_merchant":
       return {
@@ -641,7 +679,7 @@ export function orderPageView(
         ? {
             head: "None",
             facts: [],
-            said: "The gateway writes a receipt for a delivered or shipped order only.",
+            said: "No receipt is issued yet: one is written once a delivered or shipped order's payment is recorded.",
           }
         : {
             head: "Issued",
