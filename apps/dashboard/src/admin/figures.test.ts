@@ -27,6 +27,7 @@ import {
   chartOf,
   figuresFor,
   type HealthView,
+  listingRowOf,
   type MoneyView,
   type OverviewView,
   payoutViewOf,
@@ -248,6 +249,23 @@ describe("money", () => {
       "2 splits waiting behind a wallet change",
     );
     expect(none.kind === "said" && none.said).toContain("1 split waiting behind a wallet change");
+  });
+
+  it("says which products the listing check ran out of time before, never as passed", () => {
+    const row = listingRowOf({
+      kind: "checked",
+      base: "https://agentify.example",
+      checkedAt: Date.parse("2026-10-24T09:00:00.000Z"),
+      resources: [],
+      probes: 0,
+      refused: [],
+      unanswered: [],
+      unchecked: ["itm_2", "itm_3"],
+      passed: false,
+    });
+
+    expect(row.badge.tone).not.toBe("pass");
+    expect(row.fact.join(" ")).toContain("itm_2, itm_3");
   });
 
   it("shows no transaction where the gateway would refuse to start on the splits, and says why", () => {

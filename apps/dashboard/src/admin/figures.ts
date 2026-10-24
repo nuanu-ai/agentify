@@ -1069,13 +1069,20 @@ export function listingRowOf(
           : [
               `${check.unanswered.length} of ${check.probes} got no verdict, so nothing is proven about them: ${check.unanswered.join("; ")}`,
             ]),
+        ...(check.unchecked.length === 0
+          ? []
+          : [
+              `the check ran out of time before ${plural(check.unchecked.length, "product")}, so nothing is said about ${check.unchecked.length === 1 ? "it" : "them"}: ${check.unchecked.slice(0, 10).join(", ")}${check.unchecked.length > 10 ? ` and ${check.unchecked.length - 10} more` : ""}`,
+            ]),
       ].join(". ");
       return {
         ...base,
         badge:
           check.refused.length > 0
             ? { tone: "fail", word: `${check.refused.length} refused` }
-            : { tone: "partial", word: "No verdict" },
+            : check.unanswered.length > 0
+              ? { tone: "partial", word: "No verdict" }
+              : { tone: "partial", word: "Partly checked" },
         fact: [`${asked}: ${said || "some products had no address to check"}.`],
         read,
       };

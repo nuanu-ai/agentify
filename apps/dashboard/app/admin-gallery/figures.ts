@@ -635,6 +635,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
             probes: 4,
             refused: ["POST https://agentify.ad/x402/itm_2/purchase"],
             unanswered: [],
+            unchecked: [],
             passed: false,
           },
         }),

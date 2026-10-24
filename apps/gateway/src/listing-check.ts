@@ -25,6 +25,12 @@ const CATALOG_IDENTIFIERS = z.object({
 
 type CatalogIdentifiers = z.infer<typeof CATALOG_IDENTIFIERS>;
 
+/** How long one fetch of the check waits for its whole answer. */
+export const FETCH_WAIT_MS = 10_000;
+
+/** How long the check the operator runs from Health may take in all. */
+export const LISTING_CHECK_MS = 20_000;
+
 /** Public: it takes no key and costs nothing. */
 const VALIDATE_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
 
@@ -95,25 +101,62 @@ export type ListingCheck =
       readonly refused: readonly string[];
       /** The probes nobody gave a verdict on, each with why. */
       readonly unanswered: readonly string[];
+      /** The products the check's time ran out before, which nothing is said about. */
+      readonly unchecked: readonly string[];
       /** Whether every probe of every product was accepted. */
       readonly passed: boolean;
     };
 
+const OUT_OF_TIME = Symbol("out of time");
+
+/** What `work` came to, or `OUT_OF_TIME` where the moment `until` came first; with no moment, it waits. */
+async function before<T>(
+  until: number | null,
+  work: () => Promise<T>,
+): Promise<T | typeof OUT_OF_TIME> {
+  if (until === null) return await work();
+  const left = until - Date.now();
+  if (left <= 0) return OUT_OF_TIME;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<typeof OUT_OF_TIME>((resolve) => {
+        timer = setTimeout(() => resolve(OUT_OF_TIME), left);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Checks the products `named`, or with none named every card in the catalog
- * at `base`, which carries no trailing slash.
+ * at `base`, which carries no trailing slash. Given `withinMs`, it stops when
+ * that time is up and names the products it did not reach; a product whose
+ * probes the time cut is counted among them, not judged on half its probes.
  */
 export async function listingCheckOf(
   base: string,
   named: readonly string[],
   reach: Reach,
+  withinMs: number | null = null,
 ): Promise<ListingCheck> {
+  const until = withinMs === null ? null : Date.now() + withinMs;
   let items: readonly string[];
   if (named.length > 0) {
     items = named;
   } else {
     try {
-      items = (await reach.catalog(base)).items.map((item) => item.id);
+      const catalog = await before(until, () => reach.catalog(base));
+      if (catalog === OUT_OF_TIME) {
+        return {
+          kind: "catalog_unreadable",
+          base,
+          why: `no answer within ${secondsOf(withinMs ?? 0)} seconds`,
+        };
+      }
+      items = catalog.items.map((item) => item.id);
     } catch (thrown) {
       return { kind: "catalog_unreadable", base, why: messageOf(thrown) };
     }
@@ -123,7 +166,12 @@ export async function listingCheckOf(
   const resources: ResourceCheck[] = [];
   const refused: string[] = [];
   const unanswered: string[] = [];
+  const unchecked: string[] = [];
   for (const itemId of items) {
+    if (unchecked.length > 0) {
+      unchecked.push(itemId);
+      continue;
+    }
     // An identifier from the catalog may be something no address can be made
     // of, such as a dot; it is reported apart and the rest is still checked.
     let resource: string;
@@ -134,21 +182,34 @@ export async function listingCheckOf(
       continue;
     }
 
-    // Our own knock first: it is the cheaper question, and whatever the catalog
-    // says, an agent that finds this resource fetches it like this.
-    const door = doorVerdictOf(await reach.door(resource));
-    if (door.said === "invalid") refused.push(`GET ${resource}: ${door.why}`);
-    if (door.said === "no answer") unanswered.push(`GET ${resource}: ${door.why}`);
+    const probed = await before(until, async () => {
+      const itemRefused: string[] = [];
+      const itemUnanswered: string[] = [];
+      // Our own knock first: it is the cheaper question, and whatever the catalog
+      // says, an agent that finds this resource fetches it like this.
+      const door = doorVerdictOf(await reach.door(resource));
+      if (door.said === "invalid") itemRefused.push(`GET ${resource}: ${door.why}`);
+      if (door.said === "no answer") itemUnanswered.push(`GET ${resource}: ${door.why}`);
 
-    const validator = [];
-    for (const method of PROBED_METHODS) {
-      const answer = await reach.validate(resource, method);
-      const verdict = verdictOf(answer);
-      if (verdict.said === "invalid") refused.push(`${method} ${resource}`);
-      if (verdict.said === "no answer") unanswered.push(`${method} ${resource}: ${verdict.why}`);
-      validator.push({ method, verdict, answer });
+      const validator = [];
+      for (const method of PROBED_METHODS) {
+        const answer = await reach.validate(resource, method);
+        const verdict = verdictOf(answer);
+        if (verdict.said === "invalid") itemRefused.push(`${method} ${resource}`);
+        if (verdict.said === "no answer") {
+          itemUnanswered.push(`${method} ${resource}: ${verdict.why}`);
+        }
+        validator.push({ method, verdict, answer });
+      }
+      return { door, validator, itemRefused, itemUnanswered };
+    });
+    if (probed === OUT_OF_TIME) {
+      unchecked.push(itemId);
+      continue;
     }
-    resources.push({ itemId, resource, door, validator });
+    refused.push(...probed.itemRefused);
+    unanswered.push(...probed.itemUnanswered);
+    resources.push({ itemId, resource, door: probed.door, validator: probed.validator });
   }
 
   const built = resources.filter((each) => "resource" in each).length;
@@ -159,9 +220,22 @@ export async function listingCheckOf(
     probes: built * (PROBED_METHODS.length + 1),
     refused,
     unanswered,
-    passed: refused.length === 0 && unanswered.length === 0 && built === items.length,
+    unchecked,
+    passed:
+      refused.length === 0 &&
+      unanswered.length === 0 &&
+      unchecked.length === 0 &&
+      built === items.length,
   };
 }
+
+const secondsOf = (ms: number): string => String(ms / 1_000);
+
+/** Why a fetch came back with nothing, in words: its own wait running out, or what fetch threw. */
+const whyUnreached = (thrown: unknown, waitMs: number): string =>
+  thrown instanceof Error && thrown.name === "TimeoutError"
+    ? `no answer within ${secondsOf(waitMs)} seconds`
+    : messageOf(thrown);
 
 /**
  * A wallet's address, which a validator's answer may carry for the address a
@@ -185,14 +259,16 @@ function withWalletsHidden(value: unknown): unknown {
  * The listing check the operator runs from Health against the channel's own
  * public address: what was checked, what came back and when, with every
  * wallet address in what the validator and the gateway's door said replaced
- * by the words "a wallet".
+ * by the words "a wallet". The operator's request waits on it, so it stops
+ * after `withinMs` and names what it did not check.
  */
 export async function checkListingNow(
   base: string,
   reach: Reach,
   clock: () => number = Date.now,
+  withinMs: number = LISTING_CHECK_MS,
 ): Promise<ListingCheck & { readonly checkedAt: number }> {
-  const checked = await listingCheckOf(base.replace(/\/+$/, ""), [], reach);
+  const checked = await listingCheckOf(base.replace(/\/+$/, ""), [], reach, withinMs);
   return { ...(withWalletsHidden(checked) as ListingCheck), checkedAt: clock() };
 }
 
@@ -279,27 +355,41 @@ export function messageOf(thrown: unknown): string {
 }
 
 /**
- * A probe that cannot reach its endpoint is turned into an answer rather than
- * thrown, so it is one line in the report instead of the end of the run.
+ * A probe that cannot reach its endpoint, or gets no whole answer within
+ * `waitMs`, is turned into an answer rather than thrown, so it is one line in
+ * the report instead of the end of the run.
  */
-export const overTheNetwork = (): Reach => ({
+export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
   catalog: async (baseUrl) => {
     const at = `${baseUrl}${API_ROUTES.list_catalog.path}`;
-    const answered = await fetch(at, { headers: { accept: "application/json" } });
-    if (!answered.ok) {
-      throw new Error(`${at} answered ${answered.status}`);
+    try {
+      const answered = await fetch(at, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(waitMs),
+      });
+      if (!answered.ok) {
+        throw new Error(`${at} answered ${answered.status}`);
+      }
+      // Parsed rather than cast, so JSON that is not a catalog (a proxy, a login
+      // page) is refused here instead of failing further down. Only the
+      // identifiers are held, because this runs from a local checkout against a
+      // deployment that may be newer and carry fields this copy does not know.
+      return CATALOG_IDENTIFIERS.parse(await answered.json());
+    } catch (thrown) {
+      if (thrown instanceof Error && thrown.name === "TimeoutError") {
+        throw new Error(`${at} gave ${whyUnreached(thrown, waitMs)}`);
+      }
+      throw thrown;
     }
-    // Parsed rather than cast, so JSON that is not a catalog (a proxy, a login
-    // page) is refused here instead of failing further down. Only the
-    // identifiers are held, because this runs from a local checkout against a
-    // deployment that may be newer and carry fields this copy does not know.
-    return CATALOG_IDENTIFIERS.parse(await answered.json());
   },
   door: async (resource) => {
     try {
       // No payment header, no body, no special accept: this is the fetch an
       // agent makes before it has decided to buy.
-      const answered = await fetch(resource, { method: "GET" });
+      const answered = await fetch(resource, {
+        method: "GET",
+        signal: AbortSignal.timeout(waitMs),
+      });
       // Read and dropped: a body left unread holds its connection open.
       await answered.text();
       return {
@@ -308,7 +398,7 @@ export const overTheNetwork = (): Reach => ({
         challenge: answered.headers.get(PAYMENT_REQUIRED_HEADER),
       };
     } catch (thrown) {
-      return { kind: "unreachable", why: messageOf(thrown) };
+      return { kind: "unreachable", why: whyUnreached(thrown, waitMs) };
     }
   },
   validate: async (resource, method) => {
@@ -317,6 +407,7 @@ export const overTheNetwork = (): Reach => ({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resource, method }),
+        signal: AbortSignal.timeout(waitMs),
       });
       const text = await answered.text();
       let body: unknown;
@@ -329,7 +420,7 @@ export const overTheNetwork = (): Reach => ({
       }
       return { kind: "answered", status: answered.status, body };
     } catch (thrown) {
-      return { kind: "unreachable", why: messageOf(thrown) };
+      return { kind: "unreachable", why: whyUnreached(thrown, waitMs) };
     }
   },
 });
