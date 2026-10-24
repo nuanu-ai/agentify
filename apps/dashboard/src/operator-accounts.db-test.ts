@@ -65,6 +65,8 @@ if (databaseUrl === null) {
   const journal = postgresJournal(pool);
   const messages: Message[] = [];
   let handing: Handover = "accepted";
+  /** How long the provider takes over a mail about the flag. */
+  let handingMs = 0;
   const identityWith = (environment: Record<string, string> = {}): Identity =>
     identityFor(
       loadConfig({
@@ -78,7 +80,9 @@ if (databaseUrl === null) {
         pool,
         postman: async (message) => {
           messages.push(message);
-          return message.subject.includes("operator") ? handing : "accepted";
+          if (!message.subject.includes("operator")) return "accepted";
+          await new Promise((resolve) => setTimeout(resolve, handingMs));
+          return handing;
         },
       },
     );
@@ -91,6 +95,7 @@ if (databaseUrl === null) {
   beforeEach(async () => {
     messages.length = 0;
     handing = "accepted";
+    handingMs = 0;
     await pool.query("drop schema public cascade");
     await pool.query("drop schema if exists drizzle cascade");
     await pool.query("create schema public");
@@ -297,6 +302,9 @@ if (databaseUrl === null) {
           (result) => (result === "changed" ? true : null),
         );
 
+      // A slow provider holds the first removal open while the second is
+      // pressed, so both would see two operators without the one lock.
+      handingMs = 300;
       const answers = await Promise.all([removing(one.id), removing(other.id)]);
 
       expect([...answers].sort()).toStrictEqual(["changed", "last-operator"]);
