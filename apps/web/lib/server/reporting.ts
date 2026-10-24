@@ -370,7 +370,11 @@ export async function updateAccountState(
     return "requested";
   }
   if (action === "access") {
-    await db.update(leads).set({ dataAccessRequestedAt: now }).where(eq(leads.id, leadId));
+    // A repeated request keeps the first moment, so the wait is not reset.
+    await db
+      .update(leads)
+      .set({ dataAccessRequestedAt: sql`coalesce(${leads.dataAccessRequestedAt}, ${now})` })
+      .where(eq(leads.id, leadId));
     return "requested";
   }
   return await requestScannerIdentityDeletion({ leadId });
