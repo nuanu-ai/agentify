@@ -140,7 +140,7 @@ export type JournalLines =
 export type ForgetStanding =
   | Readonly<{ kind: "allowed" }>
   | Readonly<{ kind: "live-channel" }>
-  | Readonly<{ kind: "last-operator" }>
+  | Readonly<{ kind: "operator" }>
   | Readonly<{ kind: "money-history"; history: MoneyHistory }>
   | Readonly<{ kind: "could-not-be-read" }>;
 
@@ -199,6 +199,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   reason_refused: "the reason could not be kept as written; nothing changed",
   no_such_account: "no account has that identifier; nothing changed",
   last_operator: "it is the channel's last operator; nothing changed",
+  holds_flag: "the account holds the operator flag; remove the flag first; nothing changed",
   mail_not_handed:
     "a mail to an operator was not handed to the provider; the flag stayed as it was",
   live_channel: "accounts are forgotten only on the test channel; nothing changed",
@@ -343,10 +344,10 @@ export function accountsFor(parts: AdminParts): AccountsPages {
 
   const forgetStanding = async (
     merchantId: string | null,
-    lastOperator: boolean,
+    holdsFlag: boolean,
   ): Promise<ForgetStanding> => {
     if (!forgettingHere) return { kind: "live-channel" };
-    if (lastOperator) return { kind: "last-operator" };
+    if (holdsFlag) return { kind: "operator" };
     if (merchantId === null) return { kind: "allowed" };
     try {
       const history = await reader.accounts.historyOf(merchantId);
@@ -430,8 +431,8 @@ export function accountsFor(parts: AdminParts): AccountsPages {
               return { kind: "done" };
             case "no-account":
               return refused("no_such_account");
-            case "last-operator":
-              return refused("last_operator");
+            case "operator":
+              return refused("holds_flag");
             case "money-history":
               return refused("money_history");
             case "shared-merchant":
@@ -512,7 +513,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           readAt: momentOf(now),
           account: { ...rowOf(operator, named, found), createdAt: momentOf(found.createdAt) },
           lastOperator,
-          forget: await forgetStanding(found.merchantId, lastOperator),
+          forget: await forgetStanding(found.merchantId, found.operator),
           history: await historyOfAccount(found.id),
           pressed: pressedNow,
         },

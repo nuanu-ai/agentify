@@ -475,8 +475,9 @@ if (databaseUrl === null) {
       expect(await store.merchantById(seller.merchantId)).not.toBeNull();
     });
 
-    it("refuses to forget the last operator's account, and a merchant another account names", async () => {
+    it("refuses to forget any account holding the operator flag, and a merchant another account names", async () => {
       const boss = await operator(OPERATOR);
+      const deputy = await operator("deputy@example.com");
       const seller = await withMerchant(MERCHANT);
       const colleague = await signIn(SECOND);
       await identity.attachMerchant(colleague.id, async () => seller.merchantId);
@@ -488,10 +489,12 @@ if (databaseUrl === null) {
           () => null,
         );
 
-      expect(await forget(boss.id)).toStrictEqual({ kind: "last-operator" });
+      expect(await forget(deputy.id)).toStrictEqual({ kind: "operator" });
+      expect(await forget(boss.id)).toStrictEqual({ kind: "operator" });
       expect(await forget(seller.person.id)).toMatchObject({ kind: "shared-merchant", others: 1 });
       expect(await forget("acc_nobody")).toStrictEqual({ kind: "no-account" });
       expect(await identity.byEmail(OPERATOR)).not.toBeNull();
+      expect(await identity.byEmail("deputy@example.com")).not.toBeNull();
       expect(await identity.byEmail(MERCHANT)).not.toBeNull();
     });
 

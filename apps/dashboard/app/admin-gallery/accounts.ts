@@ -205,7 +205,7 @@ const MY_PAGE: Extract<AccountPageView, { kind: "found" }> = {
   ...SELLER_PAGE,
   account: { ...(ROWS[0] as AccountRowView), createdAt: momentView("2026-09-12T08:40:00Z") },
   lastOperator: true,
-  forget: { kind: "last-operator" },
+  forget: { kind: "operator" },
   history: { lines: LINES.filter((one) => one.subject.id === ME), total: 2 },
 };
 

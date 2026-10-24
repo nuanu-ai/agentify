@@ -307,12 +307,26 @@ describe("forgetting an account", () => {
     expect(await workspace.identity.byEmail(MERCHANT)).not.toBeNull();
 
     const mine = await idOf(workspace, OPERATOR);
-    expect(readable((await operator.get(`/admin/accounts/${mine}`)).html)).toContain(
-      "The last operator's account cannot be forgotten",
-    );
     const own = await operator.post(`/admin/accounts/${mine}/forget`, asOperator);
-    expect(readable(own.html)).toContain("It is the channel's last operator");
+    expect(readable(own.html)).toContain("remove the flag first");
     expect(await workspace.identity.byEmail(OPERATOR)).not.toBeNull();
+  });
+
+  it("is refused for any account that holds the operator flag, not only the last, and says to remove the flag first", async () => {
+    // An operator's account names no merchant, so nothing else would refuse it:
+    // forgetting it would remove a person who holds every merchant's rows
+    // without the mail and the lock a removal of the flag takes.
+    const workspace = await serve({ channel: "test" });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    await workspace.signedIn(SECOND, { operator: true });
+    const colleague = await idOf(workspace, SECOND);
+
+    const page = readable((await operator.get(`/admin/accounts/${colleague}`)).html);
+    const pressed = await operator.post(`/admin/accounts/${colleague}/forget`, asOperator);
+
+    expect(page).toContain("remove the flag first");
+    expect(readable(pressed.html)).toContain("remove the flag first");
+    expect((await workspace.identity.operatorAccount(colleague, new Date()))?.operator).toBe(true);
   });
 });
 
