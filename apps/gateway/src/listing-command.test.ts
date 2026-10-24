@@ -18,9 +18,9 @@ import {
   type DoorAnswer,
   overTheNetwork,
   type Reach,
-  runListingCheck,
   type ValidateAnswer,
-} from "./listing-command.js";
+} from "./listing-check.js";
+import { runListingCheck } from "./listing-command.js";
 
 const card = (id: string): PublicCard => ({
   id,
