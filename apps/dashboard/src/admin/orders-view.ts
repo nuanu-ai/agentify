@@ -97,7 +97,7 @@ export interface OrdersAsked {
 }
 
 export const ordersAskedIn = (query: URLSearchParams): OrdersAsked => {
-  const show = query.get("show") ?? "all";
+  const show = (query.get("segment") ?? "all").replaceAll("-", "_");
   const merchant = typedIn(query.get("merchant"), SEARCH_AT_MOST);
   return {
     shown: SEGMENTS.some(([key]) => key === show) ? (show as OrdersShown) : "all",
@@ -107,11 +107,14 @@ export const ordersAskedIn = (query: URLSearchParams): OrdersAsked => {
   };
 };
 
+/** A segment as an address names it, `payment-unknown`, as every link to it is written. */
+export const segmentInAddress = (shown: OrdersShown): string => shown.replaceAll("_", "-");
+
 /** The list's address for a segment, keeping the search and the merchant. */
 const placeOf = (asked: OrdersAsked, change: Partial<OrdersAsked>): string => {
   const next = { ...asked, ...change };
   const fields = new URLSearchParams();
-  if (next.shown !== "all") fields.set("show", next.shown);
+  if (next.shown !== "all") fields.set("segment", segmentInAddress(next.shown));
   if (next.q !== "") fields.set("q", next.q);
   if (next.merchantId !== null) fields.set("merchant", next.merchantId);
   if (next.before !== null) fields.set("before", cursorOf(next.before));

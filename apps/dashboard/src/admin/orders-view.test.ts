@@ -56,7 +56,8 @@ describe("the orders list", () => {
       clear: "/admin/orders",
     });
     expect(
-      ordersListView(asked("show=lapsed"), aPage({ counts: counts({ ended: 3 }) }), READ_AT).result,
+      ordersListView(asked("segment=lapsed"), aPage({ counts: counts({ ended: 3 }) }), READ_AT)
+        .result,
     ).toMatchObject({
       kind: "none",
       said: "No lapsed attempt is kept: the gateway forgets them after thirty days.",
@@ -65,7 +66,7 @@ describe("the orders list", () => {
 
   it("lists the segments in the note's order with their counts, the one shown marked, each keeping the search", () => {
     const view = ordersListView(
-      asked("show=unfulfilled&q=esim&merchant=mch_a"),
+      asked("segment=unfulfilled&q=esim&merchant=mch_a"),
       aPage({ counts: counts({ payment_unknown: 2, unfulfilled: 1, ended: 50, lapsed: 6 }) }),
       READ_AT,
     );
@@ -79,7 +80,9 @@ describe("the orders list", () => {
       ["Lapsed", 6, false],
       ["All", 59, false],
     ]);
-    expect(view.segments[0]?.to).toBe("/admin/orders?show=payment_unknown&q=esim&merchant=mch_a");
+    expect(view.segments[0]?.to).toBe(
+      "/admin/orders?segment=payment-unknown&q=esim&merchant=mch_a",
+    );
     expect(view.segments[6]?.to).toBe("/admin/orders?q=esim&merchant=mch_a");
   });
 
@@ -141,7 +144,7 @@ describe("the orders list", () => {
   });
 
   it("reads an unknown segment, a malformed cursor and an overlong search as the plain list", () => {
-    expect(asked(`show=nonsense&before=yesterday&q=${"x".repeat(500)}`)).toStrictEqual({
+    expect(asked(`segment=nonsense&before=yesterday&q=${"x".repeat(500)}`)).toStrictEqual({
       shown: "all",
       q: "x".repeat(200),
       merchantId: null,
@@ -164,13 +167,13 @@ describe("the orders list", () => {
   it("says a segment holds none of what was searched, not that the channel has none", () => {
     expect(
       ordersListView(
-        asked("show=unfulfilled&q=esim"),
+        asked("segment=unfulfilled&q=esim"),
         aPage({ counts: counts({ ended: 3 }) }),
         READ_AT,
       ).result,
     ).toMatchObject({ kind: "none", said: "No order among the unfulfilled matches “esim”." });
     expect(
-      ordersListView(asked("show=unfulfilled"), aPage({ counts: counts({ ended: 3 }) }), READ_AT)
+      ordersListView(asked("segment=unfulfilled"), aPage({ counts: counts({ ended: 3 }) }), READ_AT)
         .result,
     ).toMatchObject({ kind: "none", said: "No order is unfulfilled." });
   });

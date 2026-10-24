@@ -19,6 +19,7 @@ import {
   BOUNDARY,
   FIND_READS,
   ORDERS_NOTE,
+  segmentInAddress,
   TIMELINE_NOTE,
 } from "../../../src/admin/orders-view.js";
 import { useChrome } from "../../answer.js";
@@ -96,7 +97,9 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
             defaultValue={view.q}
           />
         </search>
-        {view.show === "all" ? null : <input type="hidden" name="show" value={view.show} />}
+        {view.show === "all" ? null : (
+          <input type="hidden" name="segment" value={segmentInAddress(view.show)} />
+        )}
         <div className="field">
           <label className="field-label sr-only" htmlFor="by-merchant">
             Merchant
@@ -463,7 +466,9 @@ export function FindScreen({ view }: Readonly<{ view: FindView }>) {
           {view.unknown === null ? null : (
             <p>
               {view.unknown}{" "}
-              <Link to="/admin/orders?show=payment_unknown">Payments whose outcome is unknown</Link>
+              <Link to="/admin/orders?segment=payment-unknown">
+                Payments whose outcome is unknown
+              </Link>
             </p>
           )}
         </ListEmpty>

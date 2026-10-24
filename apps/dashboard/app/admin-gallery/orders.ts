@@ -124,11 +124,11 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
     screen: "Orders",
     when: "An operator opens the orders whose payment outcome is unknown.",
     cause: "The segment reads the payments still settling and those whose answer was lost.",
-    path: "/admin/orders?show=payment_unknown",
+    path: "/admin/orders?segment=payment-unknown",
     mode: "live",
     loaded: loadedList(
       list(
-        "show=payment_unknown",
+        "segment=payment-unknown",
         aPage({
           ...busy,
           rows: busy.rows.filter((row) => row.segment === "payment_unknown"),
