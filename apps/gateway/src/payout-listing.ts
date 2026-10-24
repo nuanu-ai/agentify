@@ -1,6 +1,7 @@
 /**
  * The operator's payout: the transactions that pay out every payout split
- * recorded on this gateway's network, since any of them may hold money, in
+ * recorded on this gateway's network, since any of them may hold money, but
+ * one waiting behind a wallet change not yet in force, which is counted, in
  * parts of twenty, each split created where it has no code yet, distributed
  * and its merchant's share withdrawn, and the commission last, for a person to
  * send from a wallet of their own. Building it sends nothing, signs nothing,
@@ -44,12 +45,19 @@ export type PayoutListing =
   | { readonly kind: "sandbox" }
   /** No transaction is listed, and `why` says what the gateway refuses. */
   | { readonly kind: "refused"; readonly why: string }
-  | { readonly kind: "nothing_recorded"; readonly chain: PayoutChain }
+  | {
+      readonly kind: "nothing_recorded";
+      readonly chain: PayoutChain;
+      /** How many splits wait behind a wallet change not yet in force, which are not listed. */
+      readonly waiting: number;
+    }
   | {
       readonly kind: "listed";
       readonly chain: PayoutChain;
       /** How many recorded splits the parts pay out between them. */
       readonly splits: number;
+      /** How many splits wait behind a wallet change not yet in force, which are not listed. */
+      readonly waiting: number;
       readonly parts: readonly PayoutPart[];
     };
 
@@ -69,8 +77,8 @@ export async function payoutListing(application: Gateway): Promise<PayoutListing
   }
 
   const chain = { id: network.network, name: CHAIN_NAMES[network.network] ?? network.network };
-  const splits = await application.splitsToPayOut();
-  if (splits.length === 0) return { kind: "nothing_recorded", chain };
+  const { splits, waiting } = await application.splitsToPayOut();
+  if (splits.length === 0) return { kind: "nothing_recorded", chain, waiting };
 
   let parts: readonly PayoutTransaction[];
   try {
@@ -83,6 +91,7 @@ export async function payoutListing(application: Gateway): Promise<PayoutListing
     kind: "listed",
     chain,
     splits: splits.length,
+    waiting,
     parts: parts.map((part) => ({
       ...part,
       commissionWallets: [...new Set(part.splits.map((split) => split.commissionWallet))],

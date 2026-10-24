@@ -128,7 +128,7 @@ describe("the operator's payout, listed", () => {
     await aMerchantPaidAt(database, "mch_a", walletNumber(1));
     await aMerchantPaidAt(database, "mch_b", walletNumber(2));
     const gateway = aGatewayOver(database);
-    const splits = await gateway.splitsToPayOut();
+    const { splits } = await gateway.splitsToPayOut();
 
     const listing = await payoutListing(gateway);
 
@@ -168,6 +168,63 @@ describe("the operator's payout, listed", () => {
     ).toStrictEqual([payoutSplitFor(T1_TEST, merchant, walletNumber(1)).address]);
   });
 
+  it("leaves out a split waiting behind a wallet change not yet in force, and counts it, since it holds nothing yet and its address is the merchant's new wallet", async () => {
+    const database = aDatabase();
+    const merchant = await aMerchantPaidAt(database, "mch_a", walletNumber(1));
+    const waiting = payoutSplitFor(T1_TEST, merchant, walletNumber(2));
+    await database.store.setPayoutWallet(
+      merchant,
+      { address: walletNumber(1), pending: null },
+      {
+        address: walletNumber(1),
+        split: payoutSplitFor(T1_TEST, merchant, walletNumber(1)),
+        pending: { address: walletNumber(2), takesEffectAt: NOW + 3_600_000, split: waiting },
+      },
+      NOW,
+    );
+    const gateway = aGatewayOver(database);
+
+    const listing = await payoutListing(gateway);
+
+    const paid = partsIn(listing).flatMap((part) => part.splits);
+    expect(paid.map((split) => split.address)).toStrictEqual([
+      payoutSplitFor(T1_TEST, merchant, walletNumber(1)).address,
+    ]);
+    expect(paid.map((split) => split.merchantWallet)).not.toContain(walletNumber(2));
+    expect(listing.kind === "listed" && listing.waiting).toBe(1);
+  });
+
+  it("still lists a split a wallet change waits to return to, where a sale was paid into it before", async () => {
+    // The merchant was paid at the first wallet, moved to a second, and asked
+    // to go back: the first wallet's split holds that sale's money.
+    const database = aDatabase();
+    const merchant = await aMerchantPaidAt(database, "mch_a", walletNumber(1));
+    const gateway = aGatewayOver(database);
+    const stored = await database.store.publishCard(merchant, lateGoods, NOW);
+    await gateway.poll(merchant, 0);
+    const offered = await gateway.beginPurchase(stored.id, {});
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    const first = payoutSplitFor(T1_TEST, merchant, walletNumber(1));
+    await database.store.setPayoutWallet(
+      merchant,
+      { address: walletNumber(1), pending: null },
+      {
+        address: walletNumber(2),
+        split: payoutSplitFor(T1_TEST, merchant, walletNumber(2)),
+        pending: { address: walletNumber(1), takesEffectAt: NOW + 3_600_000, split: first },
+      },
+      NOW,
+    );
+
+    const listing = await payoutListing(gateway);
+
+    expect(partsIn(listing).flatMap((part) => part.splits.map((split) => split.address))).toContain(
+      first.address,
+    );
+    expect(listing.kind === "listed" && listing.waiting).toBe(0);
+  });
+
   it("lists a payout too large for one transaction as several, each whole and each in its turn", async () => {
     const database = aDatabase();
     for (let n = 1; n <= 21; n += 1) {
@@ -177,7 +234,7 @@ describe("the operator's payout, listed", () => {
 
     const listing = await payoutListing(gateway);
 
-    const built = operatorPayouts(T1_TEST, await gateway.splitsToPayOut(), T1);
+    const built = operatorPayouts(T1_TEST, (await gateway.splitsToPayOut()).splits, T1);
     expect(built).toHaveLength(2);
     expect(partsIn(listing).map((part) => part.data)).toStrictEqual(built.map((part) => part.data));
     expect(listing.kind === "listed" && listing.splits).toBe(21);
@@ -190,6 +247,7 @@ describe("the operator's payout, listed", () => {
     expect(await payoutListing(gateway)).toStrictEqual({
       kind: "nothing_recorded",
       chain: { id: "eip155:84532", name: "Base Sepolia" },
+      waiting: 0,
     });
   });
 
@@ -282,7 +340,7 @@ describe("a payout over a split that would hand a share to an address no wallet 
       NOW,
     );
     expect(moved, "the wallet moved on").not.toBe("moved");
-    expect((await gateway.splitsToPayOut()).map((split) => split.merchantWallet)).toContain(
+    expect((await gateway.splitsToPayOut()).splits.map((split) => split.merchantWallet)).toContain(
       T1_TEST.multicall3,
     );
 

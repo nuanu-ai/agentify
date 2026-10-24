@@ -239,6 +239,17 @@ describe("money", () => {
     expect(view.splits.kind === "read" && view.splits.value.count).toBe(1);
   });
 
+  it("says how many splits waiting behind a wallet change the payout leaves out, so an absent split is not read as none", () => {
+    const chain = { id: "eip155:84532", name: "Base Sepolia" };
+    const listed = payoutViewOf({ kind: "listed", chain, splits: 0, waiting: 2, parts: [] });
+    const none = payoutViewOf({ kind: "nothing_recorded", chain, waiting: 1 });
+
+    expect(listed.kind === "listed" && listed.intro).toContain(
+      "2 splits waiting behind a wallet change",
+    );
+    expect(none.kind === "said" && none.said).toContain("1 split waiting behind a wallet change");
+  });
+
   it("shows no transaction where the gateway would refuse to start on the splits, and says why", () => {
     const view = payoutViewOf({
       kind: "refused",
