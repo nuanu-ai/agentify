@@ -84,7 +84,8 @@ export function evaluateWorkerHeartbeat(
     };
 
   const heartbeatAt = new Date(row.heartbeat_at).getTime();
-  const heartbeatFresh = Number.isFinite(heartbeatAt) && now.getTime() - heartbeatAt < HEARTBEAT_FRESH_MS;
+  const heartbeatFresh =
+    Number.isFinite(heartbeatAt) && now.getTime() - heartbeatAt < HEARTBEAT_FRESH_MS;
   const queueConnected = metadataBoolean(row.metadata, "queue_connected");
   const databaseConnected = metadataBoolean(row.metadata, "database_connected");
   const reportedReady = metadataBoolean(row.metadata, "ready");
