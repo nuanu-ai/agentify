@@ -124,19 +124,30 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
  */
 function Bar({
   className,
+  mark,
   children,
   ...drawn
-}: Drawn & Readonly<{ className: string; children: ReactNode }>) {
+}: Drawn & Readonly<{ className: string; mark?: ReactNode; children: ReactNode }>) {
+  const lockup = (
+    <PlaceLink className="brand" place={HOME} {...drawn}>
+      <BrandMark className="brand-mark" />
+      <span>Agentify</span>
+    </PlaceLink>
+  );
   return (
     <header className={className}>
       <a className="skip" href="#main">
         Skip to content
       </a>
       <div className="site-header-inner container">
-        <PlaceLink className="brand" place={HOME} {...drawn}>
-          <BrandMark className="brand-mark" />
-          <span>Agentify</span>
-        </PlaceLink>
+        {mark === undefined ? (
+          lockup
+        ) : (
+          <span className="brand-marked">
+            {lockup}
+            {mark}
+          </span>
+        )}
         <div className="site-header-links">{children}</div>
       </div>
     </header>
@@ -177,14 +188,17 @@ export function SiteHeader({
  * the dashboard. Where the bar has no room for them it shows none of them and
  * keeps the lockup and the menu's button, so `menu`, the surface's own, must
  * hold the documentation and `visitor` as well as the surface's sections.
+ * `mark` stands beside the lockup at every width, where a workspace says
+ * whose it is.
  */
 export function WorkHeader({
   visitor,
   menu,
+  mark,
   ...drawn
-}: Drawn & Readonly<{ visitor: ReactNode; menu: ReactNode }>) {
+}: Drawn & Readonly<{ visitor: ReactNode; menu: ReactNode; mark?: ReactNode }>) {
   return (
-    <Bar className="site-header work-header" {...drawn}>
+    <Bar className="site-header work-header" mark={mark} {...drawn}>
       <nav aria-label="Docs and your session" className="site-doors">
         <DocsDoor {...drawn} />
         {visitor}
