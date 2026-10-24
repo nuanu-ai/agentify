@@ -1384,13 +1384,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
 
-        expect(await store.disableKeyOf(A, "mk_a", 2_000)).toMatchObject({ disabledAt: 2_000 });
+        expect(await store.disableKeyOf(A, "mk_a", 2_000)).toMatchObject({
+          key: { disabledAt: 2_000 },
+          changed: true,
+        });
         expect(await store.disableKeyOf(A, "mk_b", 2_000)).toBeNull();
         expect(await store.disableKeyOf(A, "mk_nobody_was_issued", 2_000)).toBeNull();
 
         expect((await store.workingKey("digest-b"))?.id).toBe("mk_b");
         // A retry keeps the first revocation's instant here too.
-        expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({ disabledAt: 2_000 });
+        expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({
+          key: { disabledAt: 2_000 },
+          changed: false,
+        });
       });
 
       it("is found by its digest whatever state it is in, which the door is not", async () => {
@@ -2411,6 +2417,23 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           ["disable_key", "done"],
           ["withdraw", "unchanged"],
           ["withdraw", "done"],
+        ]);
+      });
+
+      it("says which of two key presses in one millisecond stopped the key, as their rows do", async () => {
+        // The instant cannot tell them apart: both carry it, and the key keeps it.
+        const store = await twoMerchants();
+        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_700);
+        const key: JournalSubject = { kind: "key", id: "mk_a", merchantId: A };
+
+        const first = await store.disableKeyOf(A, "mk_a", 4_000, press("disable_key", key, 4_000));
+        const again = await store.disableKeyOf(A, "mk_a", 4_000, press("disable_key", key, 4_000));
+
+        expect([first?.changed, again?.changed]).toStrictEqual([true, false]);
+        expect(again?.key.disabledAt).toBe(4_000);
+        expect(await outcomes(store)).toStrictEqual([
+          ["disable_key", "unchanged"],
+          ["disable_key", "done"],
         ]);
       });
 

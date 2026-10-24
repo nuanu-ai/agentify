@@ -5,7 +5,7 @@
  * functions from example reads; the merchants in them are examples.
  */
 
-import type { JournalPage } from "@agentify/gateway/journal";
+import type { JournalLineView } from "../../src/admin/accounts.js";
 import {
   type AnalyticsOutbox,
   type Channel,
@@ -28,6 +28,7 @@ import {
   type Workers,
 } from "../../src/admin/figures.js";
 import type { AdReportCounts } from "../../src/dashboard-entry.js";
+import { line } from "./accounts.js";
 import type { AdminGalleryState } from "./state.js";
 
 const AT = Date.parse("2026-10-23T14:05:00.000Z");
@@ -192,44 +193,36 @@ const FUNNEL: Funnel = {
   ],
 };
 
-const JOURNAL: JournalPage = {
-  total: 3,
-  next: null,
-  rows: [
-    {
-      sequence: 3,
-      at: AT - 3 * DAY,
-      actor: { kind: "terminal" },
-      action: "disable_key",
-      subject: { kind: "key", id: "key_staging", merchantId: MERCHANT_B },
-      reason: "The key was pasted into a public issue.",
-      outcome: { kind: "done" },
-    },
-    {
-      sequence: 2,
-      at: AT - 39 * DAY,
-      actor: { kind: "account", id: "acc_operator" },
-      action: "admit",
-      subject: { kind: "merchant", id: MERCHANT_B },
-      reason: null,
-      outcome: { kind: "done" },
-    },
-    {
-      sequence: 1,
-      at: AT - 41 * DAY,
-      actor: { kind: "terminal" },
-      action: "grant_operator",
-      subject: { kind: "account", id: "acc_operator" },
-      reason: "The first operator of the channel.",
-      outcome: { kind: "done" },
-    },
-  ],
-};
+const iso = (at: number) => new Date(at).toISOString();
 
-const NAMES = new Map([
-  ["acc_operator", "operator@example.com"],
-  [MERCHANT_B, "Example Tours"],
-]);
+const JOURNAL_LINES: readonly JournalLineView[] = [
+  line(3, iso(AT - 3 * DAY), {
+    actor: { kind: "terminal" },
+    action: "disable_key",
+    subject: { kind: "key", id: "key_staging", merchantId: MERCHANT_B, label: "Example Tours" },
+    reason: "The key was pasted into a public issue.",
+    outcome: { kind: "done" },
+  }),
+  line(2, iso(AT - 39 * DAY), {
+    actor: { kind: "account", id: "acc_operator", email: "operator@example.com" },
+    action: "admit",
+    subject: { kind: "merchant", id: MERCHANT_B, merchantId: MERCHANT_B, label: "Example Tours" },
+    reason: null,
+    outcome: { kind: "done" },
+  }),
+  line(1, iso(AT - 41 * DAY), {
+    actor: { kind: "configuration" },
+    action: "first_operator",
+    subject: {
+      kind: "account",
+      id: "acc_operator",
+      merchantId: null,
+      label: "operator@example.com",
+    },
+    reason: null,
+    outcome: { kind: "done" },
+  }),
+];
 
 const overviewReads = (over: Partial<OverviewReads> = {}): OverviewReads => ({
   at: AT,
@@ -248,7 +241,7 @@ const overviewReads = (over: Partial<OverviewReads> = {}): OverviewReads => ({
   week: read(money("7d", "118.50", 13)),
   sales: read(SALES),
   funnel: read(FUNNEL),
-  journal: read({ page: JOURNAL, names: NAMES }),
+  journal: read({ lines: JOURNAL_LINES, total: 3 }),
   ...over,
 });
 
@@ -451,7 +444,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
             readAt: AT,
             steps: FUNNEL.steps.map((step) => ({ ...step, merchants: 0 })),
           }),
-          journal: read({ page: { rows: [], total: 0, next: null }, names: new Map() }),
+          journal: read({ lines: [], total: 0 }),
         }),
       ),
     },

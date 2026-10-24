@@ -93,12 +93,17 @@ export const REFUSED_WORDS: Readonly<Record<string, string>> = Object.freeze({
   no_such_key: "That key is not one of this merchant's. Nothing was changed.",
 });
 
-/** What a journal row's action did, as the history says it. */
-export const JOURNAL_DONE_WORDS: Readonly<Record<string, string>> = Object.freeze({
-  admit: "Admitted to live sales",
-  withdraw: "Withdrew admission to live sales",
-  disable_key: "Disabled a key",
-});
+/**
+ * What a journal row's action did, or what was asked where the press changed
+ * nothing, in the Journal's verbs with the merchant the history stands on left
+ * out. A key's row names the key after these words.
+ */
+export const JOURNAL_WORDS: Readonly<Record<string, Readonly<{ done: string; asked: string }>>> =
+  Object.freeze({
+    admit: { done: "Admitted to live sales", asked: "Asked to admit to live sales" },
+    withdraw: { done: "Withdrew the admission", asked: "Asked to withdraw the admission" },
+    disable_key: { done: "Disabled the key", asked: "Asked to disable the key" },
+  });
 
 /** What a journal row's refusal code was, as the history says it. */
 export const JOURNAL_REFUSED_WORDS: Readonly<Record<string, string>> = Object.freeze({

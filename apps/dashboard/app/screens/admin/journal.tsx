@@ -2,8 +2,9 @@
  * The Journal: every administrative action on the channel, newest first, with
  * who acted, what was done to which record, the reason written, where it came
  * from and its outcome. Its rows are drawn here for an account's history too.
- * People are named by their address while their account exists, and as a
- * deleted account after; a merchant by the seller name it chose, or by its
+ * People are named by their address while their account exists, as a deleted
+ * account after, and by identifier where the addresses could not be read; a
+ * merchant by the seller name it chose, or by its
  * identifier where it chose none.
  */
 
@@ -29,8 +30,12 @@ export function Whole({ value }: Readonly<{ value: string }>) {
   );
 }
 
-const accountNamed = (id: string, email: string | null): ReactNode =>
-  email === null ? (
+const accountNamed = (id: string, email: string | null, addressesRead: boolean): ReactNode =>
+  !addressesRead ? (
+    <>
+      the account <Whole value={id} />
+    </>
+  ) : email === null ? (
     <>
       a deleted account <Whole value={id} />
     </>
@@ -50,7 +55,8 @@ function What({ line }: Readonly<{ line: JournalLineView }>) {
   const { subject } = line;
   const merchant =
     subject.merchantId === null ? null : merchantNamed(subject.merchantId, subject.label);
-  const account = subject.kind === "account" ? accountNamed(subject.id, subject.label) : null;
+  const account =
+    subject.kind === "account" ? accountNamed(subject.id, subject.label, line.addressesRead) : null;
   const done = line.outcome.kind === "done";
   switch (line.action) {
     case "admit":
@@ -106,10 +112,10 @@ const WHERE: Readonly<Record<JournalLineView["actor"]["kind"], string>> = {
   configuration: "Configuration",
 };
 
-function Who({ actor }: Readonly<{ actor: JournalLineView["actor"] }>) {
+function Who({ line: { actor, addressesRead } }: Readonly<{ line: JournalLineView }>) {
   if (actor.kind === "terminal") return <>The terminal</>;
   if (actor.kind === "configuration") return <>The configuration</>;
-  return <>{accountNamed(actor.id, actor.email)}</>;
+  return <>{accountNamed(actor.id, actor.email, addressesRead)}</>;
 }
 
 function Outcome({ line }: Readonly<{ line: JournalLineView }>) {
@@ -144,7 +150,7 @@ export function JournalList({
               <Moment at={line.at} />
             </div>
             <div className="cell">
-              <Who actor={line.actor} />
+              <Who line={line} />
             </div>
             <div className="cell cell-title">
               <What line={line} />

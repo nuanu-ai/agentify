@@ -822,8 +822,9 @@ export interface Store {
   disableKey(id: string, at: number): Promise<StoredKey | null>;
 
   /**
-   * Stops one of this merchant's keys working and returns it as it now stands,
-   * or null where this merchant has no such key. That null must stay the same
+   * Stops one of this merchant's keys working and returns it as it now stands
+   * with whether this call stopped it, or null where this merchant has no such
+   * key. That null must stay the same
    * as for a key that exists nowhere, or a merchant walking identifiers would
    * learn which belong to others. The merchant is in the write's predicate
    * rather than checked after a read, so there is no window between learning
@@ -837,7 +838,7 @@ export interface Store {
     id: string,
     at: number,
     journal?: JournalPress,
-  ): Promise<StoredKey | null>;
+  ): Promise<{ readonly key: StoredKey; readonly changed: boolean } | null>;
 
   // --- the operator's journal -----------------------------------------------
 

@@ -23,6 +23,7 @@ import {
 import { StepUp } from "../../components/admin/step-up.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";
 import { PostForm } from "../../components/post-form.js";
+import { JournalList } from "./journal.js";
 
 const BadgeOf = ({ badge }: Readonly<{ badge: Badge }>) => (
   <span className={`badge badge-${badge.tone}`}>{badge.word}</span>
@@ -344,31 +345,7 @@ function JournalTail({ journal }: Readonly<{ journal: OverviewView["journal"] }>
         <p className="op-sub">No administrative action has been taken on this channel.</p>
       ) : (
         <>
-          <div className="list-box op-cols-journal">
-            <ul className="list" aria-label="Latest administrative actions">
-              <li className="list-head" aria-hidden="true">
-                <span>When</span>
-                <span>Who</span>
-                <span>What</span>
-                <span>From</span>
-                <span>Outcome</span>
-              </li>
-              {journal.value.lines.map((line, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: the rows are drawn once, newest first.
-                <li className="list-row" key={index}>
-                  <div className="cell cell-fact mono">{line.when}</div>
-                  <div className="cell">{line.who}</div>
-                  <div className="cell cell-title">
-                    <SaidText said={line.what} />
-                  </div>
-                  <div className="cell soft">{line.from}</div>
-                  <div className="cell">
-                    <BadgeOf badge={line.outcome} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <JournalList lines={journal.value.lines} label="Latest administrative actions" />
           <p className="cut">{journal.value.cut}</p>
         </>
       )}

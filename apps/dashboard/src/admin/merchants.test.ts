@@ -6,13 +6,14 @@
  */
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
 
 let served: AdminServed | null = null;
 
 afterEach(async () => {
+  vi.useRealTimers();
   await served?.close();
   served = null;
 });
@@ -258,6 +259,25 @@ describe("disabling a merchant's key", () => {
     ]);
   });
 
+  it("answers a repeat in the same millisecond as already so, as its row says", async () => {
+    served = await adminServed();
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const path = `/admin/merchants/${merchant.id}/keys/${merchant.keyId}/disable`;
+    const press = { ...TICKED, [REASON_FIELD]: "it leaked" };
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+
+    const first = await operator.post(path, press);
+    const again = await operator.post(path, press);
+
+    expect(text(first.html)).toContain("Disabled just now");
+    expect(text(again.html)).not.toContain("Disabled just now");
+    expect((await rowsAbout(served, merchant.id)).map((row) => row.outcome.kind)).toStrictEqual([
+      "unchanged",
+      "done",
+    ]);
+  });
+
   it("refuses another merchant's key as not this merchant's, and leaves it working", async () => {
     served = await adminServed();
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
@@ -275,5 +295,35 @@ describe("disabling a merchant's key", () => {
     expect(pressed.status).toBe(409);
     expect(text(pressed.html)).toContain("That key is not one of this merchant's");
     expect((await served.harnessed.store.keysOf(stranger.id))[0]?.disabledAt).toBeNull();
+  });
+});
+
+describe("a merchant's history", () => {
+  it("says each press with the Journal's verbs, done or changing nothing", async () => {
+    served = await adminServed({ channel: "live" });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const path = `/admin/merchants/${merchant.id}`;
+    const withReason = { ...TICKED, [REASON_FIELD]: "it leaked" };
+    for (const pressed of ["withdraw", "withdraw", "admit", "admit"]) {
+      await operator.post(`${path}/${pressed}`, withReason);
+    }
+    await operator.post(`${path}/keys/${merchant.keyId}/disable`, withReason);
+    await operator.post(`${path}/keys/${merchant.keyId}/disable`, withReason);
+
+    const history = text((await operator.get(path)).html);
+    const journal = text((await operator.get("/admin/journal")).html);
+
+    for (const verb of [
+      "Withdrew the admission",
+      "Asked to withdraw the admission",
+      "Admitted",
+      "Asked to admit",
+      "Disabled the key",
+      "Asked to disable the key",
+    ]) {
+      expect(history).toContain(verb);
+      expect(journal).toContain(verb);
+    }
   });
 });

@@ -639,18 +639,10 @@ export class PostgresStore implements Store {
     id: string,
     at: number,
     journal?: JournalPress,
-  ): Promise<StoredKey | null> {
+  ): Promise<{ readonly key: StoredKey; readonly changed: boolean } | null> {
     // The merchant is in the predicate: another merchant's key is answered as
     // missing, with no window between checking ownership and writing.
     const ofTheMerchant = and(eq(merchantKeys.id, id), eq(merchantKeys.merchantId, merchantId));
-    if (journal === undefined) {
-      const [row] = await this.#db
-        .update(merchantKeys)
-        .set({ disabledAt: revokedAt(at) })
-        .where(ofTheMerchant)
-        .returning();
-      return row === undefined ? null : storedKeyOf(row);
-    }
     return await this.#db.transaction(async (tx) => {
       // Only a working key is written, so of two presses at once exactly one
       // stops it and the other finds it stopped.
@@ -664,8 +656,8 @@ export class PostgresStore implements Store {
           ? await tx.select().from(merchantKeys).where(ofTheMerchant)
           : [stopped];
       if (row === undefined) return null;
-      await journalWith(tx, journal, stopped !== undefined);
-      return storedKeyOf(row);
+      if (journal !== undefined) await journalWith(tx, journal, stopped !== undefined);
+      return { key: storedKeyOf(row), changed: stopped !== undefined };
     });
   }
 
