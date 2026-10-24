@@ -45,9 +45,24 @@ import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
 import type { Outcome } from "../page-services.js";
 import { ORDER_WORDS } from "../words.js";
-import type { Operator } from "./access.js";
+import { type Operator, signedInFreshly } from "./access.js";
 import type { SectionCounts } from "./frame.js";
 import type { AdminParts } from "./parts.js";
+import { type StepUpView, stepUpViewOf } from "./step-up.js";
+
+export type {
+  AnalyticsOutbox,
+  Funnel,
+  MerchantCounts,
+  Money,
+  PayoutListing,
+  RecentOrders,
+  SalesByDay,
+  Splits,
+  UnknownPayments,
+  WaitingForAdmission,
+  Workers,
+} from "@agentify/gateway/operator";
 
 // --- what a read answered --------------------------------------------------
 
@@ -267,6 +282,11 @@ export interface HealthView {
   readonly read: readonly HealthRowView[];
   readonly unseen: readonly HealthRowView[];
   readonly note: string;
+  /**
+   * Where a Check now press came from a sign-in older than the workspace
+   * acts on, the step that asks for a fresh one; the check was not run.
+   */
+  readonly stepUp: StepUpView | null;
 }
 
 // --- the facts shared by the views ------------------------------------------
@@ -1381,7 +1401,9 @@ export function healthViewOf(reads: HealthReads): HealthView {
           part: "Last backup",
           badge: { tone: "quiet", word: "Not backed up" },
           fact: [
-            "The test channel is not backed up, by decision: its money is test funds and its merchants can sign up again.",
+            channel.surface === "test"
+              ? "The test channel is not backed up, by decision."
+              : "A sandbox runs on one machine and is not backed up.",
           ],
           read: "—",
         },
@@ -1407,6 +1429,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
     grafana: GRAFANA,
     read: rows,
     unseen,
+    stepUp: null,
     note: "Mounting the host's release and backup status files read-only into the application would turn the first two into facts. That is a change to the deployment, with its own review. The release keeps running the facilitator-key check before it activates a revision, and the validation stays among engineering's smoke checks; Check now runs the same checks on demand.",
   };
 }
@@ -1618,7 +1641,19 @@ export function figuresFor(
       return { kind: "view", view: healthViewOf(await healthReads()) };
     },
 
-    async check(_operator, form) {
+    async check(operator, form) {
+      // A check changes nothing, but it reaches out to Coinbase from the
+      // channel's own credentials, so it is held to the fresh sign-in every
+      // press of the workspace is.
+      if (!signedInFreshly(operator, parts.now())) {
+        return {
+          kind: "view",
+          view: {
+            ...healthViewOf(await healthReads()),
+            stepUp: stepUpViewOf(operator, "admin/health", parts.pressing.googleEnabled),
+          },
+        };
+      }
       const which = form.get(CHECK_FIELD);
       const clock = () => parts.now().getTime();
       if (which === "key") {

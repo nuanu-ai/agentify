@@ -20,6 +20,7 @@ import {
   type Said,
   type TileView,
 } from "../../../src/admin/figures.js";
+import { StepUp } from "../../components/admin/step-up.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";
 import { PostForm } from "../../components/post-form.js";
 
@@ -620,6 +621,11 @@ export function HealthScreen({ view }: Readonly<{ view: HealthView }>) {
         </div>
       </div>
       <p className="op-asof">{view.asOf}</p>
+      {view.stepUp === null ? null : (
+        <div className="op-decide">
+          <StepUp view={view.stepUp} />
+        </div>
+      )}
 
       <section className="group">
         <div className="group-head">

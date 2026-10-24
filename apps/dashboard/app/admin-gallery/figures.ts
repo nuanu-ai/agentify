@@ -6,28 +6,26 @@
  */
 
 import type { JournalPage } from "@agentify/gateway/journal";
-import type {
-  AnalyticsOutbox,
-  Funnel,
-  MerchantCounts,
-  Money,
-  PayoutListing,
-  RecentOrders,
-  SalesByDay,
-  Splits,
-  UnknownPayments,
-  WaitingForAdmission,
-  Workers,
-} from "@agentify/gateway/operator";
 import {
+  type AnalyticsOutbox,
   type Channel,
+  type Funnel,
   type HealthReads,
   healthViewOf,
+  type MerchantCounts,
+  type Money,
   type MoneyReads,
   moneyViewOf,
   type OverviewReads,
   overviewViewOf,
+  type PayoutListing,
   type Readable,
+  type RecentOrders,
+  type SalesByDay,
+  type Splits,
+  type UnknownPayments,
+  type WaitingForAdmission,
+  type Workers,
 } from "../../src/admin/figures.js";
 import type { AdReportCounts } from "../../src/dashboard-entry.js";
 import type { AdminGalleryState } from "./state.js";
