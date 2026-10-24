@@ -2,6 +2,7 @@ import { createUuidV7, type DatabaseTransaction } from "@agentify/scanner-databa
 import { sql } from "drizzle-orm";
 
 import { getDatabase } from "./database";
+import { SCAN_LIMITS } from "./scan-limits";
 
 export type RateKind =
   | "scan_ip_hour"
@@ -262,8 +263,8 @@ export async function consumeScanRateLimits(input: {
 }): Promise<ScanRateDecision> {
   const now = input.now ?? new Date();
   const entries: readonly AtomicRateEntry[] = [
-    { keyHash: input.ipKey, kind: "scan_ip_hour", limit: 10 },
-    { keyHash: input.targetKey, kind: "scan_target_day", limit: 10 },
+    { keyHash: input.ipKey, kind: "scan_ip_hour", limit: SCAN_LIMITS.perAddressHour },
+    { keyHash: input.targetKey, kind: "scan_target_day", limit: SCAN_LIMITS.perSiteDay },
   ];
   const ordered = [...entries].sort((a, b) =>
     `${a.kind}:${a.keyHash}`.localeCompare(`${b.kind}:${b.keyHash}`),
@@ -279,9 +280,10 @@ export async function consumeScanRateLimits(input: {
 
     const walls = [ip, target].filter(({ count, entry }) => count >= entry.limit);
     if (walls.length) return { verdict: "hard_rate_limit", retryAt: governingWall(walls).retryAt };
-    if (ip.count >= 3 && !input.challengePassed) return { verdict: "challenge_required" };
+    const free = ip.count < SCAN_LIMITS.freePerAddressHour;
+    if (!free && !input.challengePassed) return { verdict: "challenge_required" };
 
-    await recordRateConsumption(tx, ip, now, input.challengePassed && ip.count >= 3);
+    await recordRateConsumption(tx, ip, now, input.challengePassed && !free);
     await recordRateConsumption(tx, target, now);
     return { verdict: "allowed" };
   });

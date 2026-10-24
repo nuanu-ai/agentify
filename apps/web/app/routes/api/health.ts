@@ -6,51 +6,27 @@ import { methods } from "../../../lib/server/methods";
 import {
   evaluateOperationalSignals,
   evaluateWorkerHeartbeat,
+  OPERATIONAL_SIGNALS_QUERY,
   type OperationalSignalRow,
+  WORKER_HEARTBEAT_QUERY,
   type WorkerHeartbeatRow,
 } from "../../../lib/server/worker-health";
 
 async function health(request: Request): Promise<Response> {
   try {
     const [workerResult, signalsResult] = await Promise.all([
-      getDatabase().pool.query<WorkerHeartbeatRow>(
-        `select heartbeat_at, metadata
-         from worker_heartbeats
-         where service = 'scanner-worker'
-         order by heartbeat_at desc
-         limit 1`,
-      ),
-      getDatabase().pool.query<OperationalSignalRow>(
-        `select
-           coalesce((
-             select greatest(0, extract(epoch from (now() - min(accepted_at))))
-             from scans where status in ('accepted', 'queued')
-           ), 0) as queue_age_seconds,
-           (select count(*) from scans
-             where status = 'running'
-               and (worker_heartbeat_at is null
-                 or worker_heartbeat_at < now() - interval '30 seconds')) as stale_running,
-           (select count(*) from scans
-             where accepted_at >= now() - interval '15 minutes') as accepted_15m,
-           (select count(*) from scans
-             where accepted_at >= now() - interval '15 minutes'
-               and status = 'failed') as failed_15m,
-           coalesce((
-             select greatest(0, extract(epoch from (now() - min(next_attempt_at))))
-             from delivery_outbox
-             where status = 'pending'
-           ), 0) as outbox_age_seconds,
-           (select count(*) from delivery_outbox
-             where status = 'dead_letter') as outbox_dead_letters`,
-      ),
+      getDatabase().pool.query<WorkerHeartbeatRow>(WORKER_HEARTBEAT_QUERY),
+      getDatabase().pool.query<OperationalSignalRow>(OPERATIONAL_SIGNALS_QUERY),
     ]);
     const worker = evaluateWorkerHeartbeat(workerResult.rows[0]);
     const signals = evaluateOperationalSignals(
       signalsResult.rows[0] ?? {
         queue_age_seconds: Number.POSITIVE_INFINITY,
         stale_running: Number.POSITIVE_INFINITY,
+        queued_scans: Number.POSITIVE_INFINITY,
         accepted_15m: 0,
         failed_15m: 0,
+        outbox_pending: Number.POSITIVE_INFINITY,
         outbox_age_seconds: Number.POSITIVE_INFINITY,
         outbox_dead_letters: Number.POSITIVE_INFINITY,
       },

@@ -20,7 +20,7 @@ import {
 } from "react-router";
 import adminSheet from "../../admin.css?url";
 import { chromeOf, type Trouble } from "../../answer.js";
-import { operating, services, workspaceIn } from "../../services.js";
+import { services, workspace, workspaceIn } from "../../services.js";
 
 export const handle = { script: false, keepsData: false };
 
@@ -28,10 +28,10 @@ export const links = () => [{ rel: "stylesheet", href: adminSheet }];
 
 export const middleware: MiddlewareFunction<Response>[] = [
   async ({ request, context }, next) => {
-    const admin = context.get(services).admin;
-    const operator =
-      admin === null ? null : await admin.operatorOf(request.headers.get("cookie") ?? undefined);
-    if (operator === null) {
+    const door = context.get(services).workspace;
+    const opened =
+      door === null ? null : await door.open(request.headers.get("cookie") ?? undefined);
+    if (opened === null) {
       throw data(
         {
           kind: "problem",
@@ -41,7 +41,7 @@ export const middleware: MiddlewareFunction<Response>[] = [
         { status: 404 },
       );
     }
-    context.set(operating, operator);
+    context.set(workspace, opened);
     return await next();
   },
 ];

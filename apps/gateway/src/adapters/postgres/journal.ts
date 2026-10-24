@@ -7,7 +7,18 @@
  * journal cannot record does not happen.
  */
 
-import { and, count, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  lt,
+  notExists,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   checkedJournalEntry,
@@ -22,7 +33,7 @@ import {
   journalLimitOf,
   merchantOfSubject,
 } from "../../ports/journal.js";
-import { operatorJournal } from "./schema.js";
+import { merchants, operatorJournal } from "./schema.js";
 
 /**
  * A drizzle node-postgres database or a transaction on one, whatever schema it
@@ -106,7 +117,8 @@ export async function readJournal(
 
 /**
  * The newest done admission or withdrawal of one merchant, read through the
- * merchant's index, handed back only where it is a withdrawal.
+ * merchant's index, handed back only where it is a withdrawal and the merchant
+ * is not admitted now: a grant made with no row still admits.
  */
 export async function readStandingWithdrawal(
   db: Pick<NodePgDatabase, "select">,
@@ -121,6 +133,12 @@ export async function readStandingWithdrawal(
         eq(operatorJournal.subjectKind, "merchant"),
         eq(operatorJournal.outcome, "done"),
         inArray(operatorJournal.action, ["admit", "withdraw"]),
+        notExists(
+          db
+            .select({ id: merchants.id })
+            .from(merchants)
+            .where(and(eq(merchants.id, merchantId), isNotNull(merchants.liveApprovedAt))),
+        ),
       ),
     )
     .orderBy(desc(operatorJournal.sequence))

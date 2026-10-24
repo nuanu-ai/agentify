@@ -9,7 +9,8 @@
  * No database, no key, no wallet, nothing spent.
  */
 
-import { overTheNetwork, runListingCheck } from "./listing-command.js";
+import { overTheNetwork } from "./listing-check.js";
+import { runListingCheck } from "./listing-command.js";
 
 process.exitCode = await runListingCheck(process.argv.slice(2), overTheNetwork(), (line) => {
   console.log(line);

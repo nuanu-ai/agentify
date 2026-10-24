@@ -25,7 +25,7 @@ import {
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
-import type { AdminServices } from "./admin/index.js";
+import type { WorkspaceDoor } from "./admin/index.js";
 import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
@@ -257,10 +257,11 @@ export interface PageServices {
   ) => void;
   readonly liveSales: LiveSalesPages | null;
   /**
-   * The operator's workspace, or null where it is not built, which answers
-   * every page of it as one that is not there.
+   * The door to the operator's workspace, which only its layout opens, or null
+   * where the workspace is not built, which answers every page of it as one
+   * that is not there.
    */
-  readonly admin: AdminServices | null;
+  readonly workspace: WorkspaceDoor | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
   readonly surface: Surface;
@@ -356,7 +357,7 @@ export interface PageServices {
 
 export interface PageParts {
   readonly liveSales?: LiveSalesPages;
-  readonly admin?: AdminServices;
+  readonly workspace?: WorkspaceDoor;
   readonly identity: DashboardIdentity;
   /**
    * The gateway's application called as the merchant on the signed-in
@@ -1013,7 +1014,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       }
     },
     liveSales: parts.liveSales ?? null,
-    admin: parts.admin ?? null,
+    workspace: parts.workspace ?? null,
     base,
     surface: {
       attribute: SURFACE_MARKER_ATTRIBUTE,
