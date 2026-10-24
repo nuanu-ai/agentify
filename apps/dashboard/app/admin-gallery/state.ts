@@ -9,7 +9,7 @@
 
 import type { SurfaceMode } from "@agentify/core";
 import type { HydrationState } from "react-router";
-import type { AdminFrameView } from "../../src/admin/frame.js";
+import type { AdminFrameView, SectionCounts } from "../../src/admin/frame.js";
 
 export interface AdminGalleryState {
   /** Lowercase, starting `dashboard-admin-`. */
@@ -37,8 +37,26 @@ const CHANNELS: Readonly<Record<SurfaceMode, AdminFrameView["channel"]>> = {
   sandbox: { mode: "sandbox", name: "Sandbox", line: "localhost:8080 · no chain" },
 };
 
-/** The frame of a channel with nothing waiting in any section. */
-export const frameIn = (mode: SurfaceMode): AdminFrameView => ({
+/**
+ * What waits on the live channel of the examples: the merchant who waits for
+ * admission, the two payments whose outcome is unknown and the analytics
+ * events given up, as the overview's example has them.
+ */
+export const LIVE_WAITING: SectionCounts = {
+  merchants: { count: 1, needsYou: true },
+  orders: { count: 2, needsYou: false },
+  health: { count: 1, needsYou: false },
+};
+
+/**
+ * The frame of a channel: on the live channel with what waits there, unless
+ * a state says otherwise, such as one where nothing waits or nothing could be
+ * read; on the others with nothing waiting.
+ */
+export const frameIn = (
+  mode: SurfaceMode,
+  counts: SectionCounts = mode === "live" ? LIVE_WAITING : {},
+): AdminFrameView => ({
   channel: CHANNELS[mode],
-  counts: {},
+  counts,
 });

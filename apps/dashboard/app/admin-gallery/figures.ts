@@ -29,7 +29,7 @@ import {
 } from "../../src/admin/figures.js";
 import type { AdReportCounts } from "../../src/dashboard-entry.js";
 import { line } from "./accounts.js";
-import type { AdminGalleryState } from "./state.js";
+import { type AdminGalleryState, frameIn } from "./state.js";
 
 const AT = Date.parse("2026-10-23T14:05:00.000Z");
 const DAY = 86_400_000;
@@ -424,6 +424,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     cause: "Nobody waits for admission and every fact worth a look is clear.",
     path: "/admin",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: {
       "routes/admin/index": overviewViewOf(
         overviewReads({
@@ -460,6 +461,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     cause: "Every read succeeded and found nothing, so the figures are zeros.",
     path: "/admin",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: {
       "routes/admin/index": overviewViewOf(
         overviewReads({
@@ -502,6 +504,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "Every read failed, so each figure says it could not be read and none is drawn as a zero.",
     path: "/admin",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: {
       "routes/admin/index": overviewViewOf(
         overviewReads({
@@ -599,6 +602,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     cause: "Every read failed, so each figure says it could not be read.",
     path: "/admin/money",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: {
       "routes/admin/money": moneyViewOf(
         moneyReads({
@@ -685,6 +689,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "The reads failed, so each row says it could not be read; the process's own facts still stand.",
     path: "/admin/health",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: {
       "routes/admin/health": healthViewOf(
         healthReads({

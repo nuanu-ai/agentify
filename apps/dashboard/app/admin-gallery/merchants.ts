@@ -308,8 +308,8 @@ const HISTORY: readonly JournalRow[] = [
 ];
 
 const ADDRESSES: ReadonlyMap<string, string> = new Map([
-  [OPERATOR_ID, "operator@agentify.example"],
-  [ANOTHER_OPERATOR, "second.operator@agentify.example"],
+  [OPERATOR_ID, "operator@example.com"],
+  [ANOTHER_OPERATOR, "ops@example.com"],
 ]);
 
 /**
@@ -463,7 +463,7 @@ const STEP_UP: ActionAnswer = {
   kind: "step-up",
   stepUp: stepUpViewOf(
     {
-      person: { id: OPERATOR_ID, email: "operator@agentify.example" },
+      person: { id: OPERATOR_ID, email: "operator@example.com" },
       signedInAt: new Date(NOW - 2 * 3_600_000),
     } as unknown as Operator,
     `admin/merchants/${GIFT_CARDS}`,

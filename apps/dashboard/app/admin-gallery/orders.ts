@@ -19,7 +19,7 @@ import {
   ordersAskedIn,
   ordersListView,
 } from "../../src/admin/orders-view.js";
-import type { AdminGalleryState } from "./state.js";
+import { type AdminGalleryState, frameIn } from "./state.js";
 
 const LIVE_EXPLORER = {
   transactionPage: "https://basescan.org/tx/",
@@ -131,7 +131,19 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
         "segment=payment-unknown",
         aPage({
           ...busy,
-          rows: busy.rows.filter((row) => row.segment === "payment_unknown"),
+          rows: [
+            ...busy.rows.filter((row) => row.segment === "payment_unknown"),
+            // The older of the two, whose outcome has been unknown for 3 h 12 min.
+            aRow("ord_3f9a51c7e0d24b8a96f1c3e5a7b9d2c4", {
+              createdAt: minutes(179),
+              pricedAt: minutes(179),
+              product: { itemId: "itm_1", merchantItemId: "number-30d", title: "A virtual number" },
+              price: { amount: "2.00", currency: "USD" },
+              status: "payment_unresolved",
+              payment: "unresolved",
+              segment: "payment_unknown",
+            }),
+          ],
           earlier: null,
         }),
       ),
@@ -183,6 +195,7 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
     cause: "The read failed, so neither a count nor an empty list is drawn.",
     path: "/admin/orders",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: loadedList(list("", null)),
   },
   {
@@ -231,6 +244,7 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
     cause: "The read failed, so the page says so rather than that there is no such order.",
     path: "/admin/orders/ord_8c2e3b7a91d04f6e8a5c2d1b0e9f41a9",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: loadedOrder(
       orderPageView("ord_8c2e3b7a91d04f6e8a5c2d1b0e9f41a9", "unread", LIVE_EXPLORER, READ_AT),
     ),
@@ -279,6 +293,7 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
     cause: "The lookup could not search, which it says apart from finding nothing.",
     path: "/admin/find?q=ord_8c2e",
     mode: "live",
+    frame: frameIn("live", {}),
     loaded: loadedFind(findView("ord_8c2e", "unread", false)),
   },
 ];

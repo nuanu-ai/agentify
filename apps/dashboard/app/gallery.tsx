@@ -3179,7 +3179,12 @@ const ADMIN: GalleryState[] = ADMIN_STATES.map(
       {
         path,
         mode,
-        loaded: { "routes/admin/only": frame ?? frameIn(mode), ...loaded },
+        // Signed in as the operator the workspace's examples name, not as a merchant.
+        loaded: {
+          "routes/gate": { who: "operator@example.com" },
+          "routes/admin/only": frame ?? frameIn(mode),
+          ...loaded,
+        },
         ...(pressed === undefined ? {} : { pressed }),
         ...(failed === undefined ? {} : { failed }),
       },

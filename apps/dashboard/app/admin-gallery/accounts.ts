@@ -53,8 +53,9 @@ const ROWS: readonly AccountRowView[] = [
     id: SELLER,
     email: "owner@shop.example",
     merchant: { id: SELLER_MERCHANT, name: { chosen: "Example Rooms" } },
-    openSessions: 3,
-    newestSession: momentView("2026-10-24T08:20:00Z"),
+    // Signed in again after every session was ended at 09:30.
+    openSessions: 1,
+    newestSession: momentView("2026-10-24T11:40:00Z"),
   }),
   row({
     id: COLLEAGUE,
@@ -139,14 +140,9 @@ const LINES: readonly JournalLineView[] = [
   }),
   line(3, "2026-10-14T10:02:00Z", {
     actor: byMe,
-    action: "admit",
-    subject: {
-      kind: "merchant",
-      id: SELLER_MERCHANT,
-      merchantId: SELLER_MERCHANT,
-      label: "Example Rooms",
-    },
-    reason: null,
+    action: "disable_key",
+    subject: { kind: "key", id: "mk_2a9e", merchantId: SELLER_MERCHANT, label: "Example Rooms" },
+    reason: "A key the merchant no longer uses was still working",
     outcome: { kind: "done" },
   }),
   line(2, "2026-10-13T12:40:00Z", {
@@ -175,8 +171,8 @@ const journalOf = (fields: Partial<JournalView>): JournalView => ({
   kind: "all",
   kinds: [
     { kind: "all", count: LINES.length },
-    { kind: "admission", count: 1 },
-    { kind: "keys", count: 1 },
+    { kind: "admission", count: 0 },
+    { kind: "keys", count: 2 },
     { kind: "sessions", count: 1 },
     { kind: "flag", count: 3 },
     { kind: "forgotten", count: 1 },
@@ -379,7 +375,24 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "The sessions were deleted with the journal's row in one transaction; the history shows it.",
     },
-    { ...SELLER_PAGE, pressed: pressedAs("end_sessions", { kind: "done" }) },
+    {
+      ...SELLER_PAGE,
+      account: { ...SELLER_PAGE.account, openSessions: 0, newestSession: null },
+      history: {
+        lines: [
+          line(8, "2026-10-24T14:09:00Z", {
+            actor: byMe,
+            action: "end_sessions",
+            subject: { kind: "account", id: SELLER, merchantId: null, label: "owner@shop.example" },
+            reason: "The owner asked to be signed out on every device",
+            outcome: { kind: "done" },
+          }),
+          ...LINES.filter((one) => one.subject.id === SELLER),
+        ],
+        total: 2,
+      },
+      pressed: pressedAs("end_sessions", { kind: "done" }),
+    },
     { press: "end-sessions" },
   ),
   account(
@@ -463,9 +476,9 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       "routes/admin/journal": journalOf({
         kind: "flag",
         kinds: [
-          { kind: "all", count: LINES.length },
+          { kind: "all", count: LINES.filter((one) => one.action !== "forget_account").length },
           { kind: "admission", count: null },
-          { kind: "keys", count: 1 },
+          { kind: "keys", count: 2 },
           { kind: "sessions", count: 1 },
           { kind: "flag", count: 3 },
         ],
