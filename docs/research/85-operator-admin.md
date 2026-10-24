@@ -373,8 +373,14 @@ is idempotent.
 
 At ten times today's data the screens behave the same way. Lists are searched
 and cut, and the cut says which rows of how many are shown. The Payment
-unknown segment counts through its partial index; the other segments read the
-order's state column, which has no index of its own yet and will need one.
+unknown segment counts through its partial index. The other segments, and the
+list across every merchant, have no index of their own yet: the list sorts by
+creation time and identifier and needs an index on them, and each segment's
+count reads every order's record, which a payment column written from the
+record, as the state column is, would spare. Every read runs inside one
+repeatable-read transaction with a statement bound, so a count and the rows it
+counts agree; a section's count that takes longer than two seconds is left
+off the sidebar while its statement runs to its bound.
 Unpaid attempts that ended with nothing charged, which anybody can create and
 which the gateway forgets after thirty days, are counted apart as lapsed, the
 way the merchant's own Orders lists them. Charts are summed by day in the
@@ -647,10 +653,10 @@ are read from the code that enforces them, not written a second time in the
 page, so the page cannot go on showing a limit after the limit changes. The
 worker's health, which only the scanner's health check reads today, joins the
 page by that check's own rules; the daily browser cap lives only in the
-worker's settings, so the page shows it once the worker reports it with its
-heartbeat, and until then shows the spending alone. And the page counts the
-data requests visitors have made, which the privacy page promises an answer to
-and nothing reads today.
+worker's settings and the heartbeat does not carry it, so the page shows the
+spending alone and says why no cap stands beside it. And the page counts the
+access requests visitors have made through the route the privacy page names,
+with the oldest still waiting; nothing records an answer to one today.
 
 ### Accounts and the journal
 
@@ -814,6 +820,11 @@ reading the admin should ask for one too.
 Whether the money section should read the splits' balances from the chain, so
 that commission received is a figure and not a link.
 
-Who answers the data requests the scanner records, which its privacy page
-promises an answer to; today the scanner's page will count them and nobody
-reads them.
+Who answers the access requests the scanner records through the route its
+privacy page names; the scanner's page counts them and nothing records an
+answer.
+
+Whether a merchant whose admission was withdrawn should stay under "Needs you".
+Today they count there again, since they have a seller name and a payout
+wallet and are not admitted, and the operator meets a decision they already
+took; their page shows the withdrawal and its note.
