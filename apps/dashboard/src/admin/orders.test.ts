@@ -215,3 +215,17 @@ describe("the lookup's halves the dashboard holds", () => {
     });
   });
 });
+
+describe("the Orders section's count in the frame", () => {
+  it("is the number of payments whose outcome is unknown, never red", async () => {
+    const parts = partsWith({});
+    const unknownPayments = async () => ({ count: 3 });
+    const orders = ordersFor({
+      ...parts,
+      config: { ...parts.config, surfaceMode: "live" },
+      reader: { ...parts.reader, figures: { unknownPayments } },
+    } as unknown as AdminParts);
+
+    expect(await orders.counts(OP)).toStrictEqual({ orders: { count: 3, needsYou: false } });
+  });
+});

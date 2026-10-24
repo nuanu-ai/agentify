@@ -126,8 +126,13 @@ export function ordersFor(parts: AdminParts): OrdersPages {
     },
 
     async counts() {
-      const page = await reader.orders({ shown: "payment_unknown" });
-      return { orders: { count: page.counts.payment_unknown, needsYou: false } };
+      // The frame asks on every page, so one grouped count, not the list's page; it
+      // counts with the same predicate as the Payment unknown segment.
+      const unknown = await parts.reader.figures.unknownPayments({
+        at: parts.now().getTime(),
+        surface: parts.config.surfaceMode,
+      });
+      return { orders: { count: unknown.count, needsYou: false } };
     },
   };
 }
