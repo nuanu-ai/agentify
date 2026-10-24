@@ -48,6 +48,28 @@ const empty = (): MerchantRow["thirtyDays"] => ({
   settled: { amount: "0.00", count: 0 },
 });
 
+const selling = (perDay: (day: number) => string): MerchantRecord["thirtyDays"]["days"] =>
+  Array.from({ length: 30 }, (_, at) => {
+    const amount = perDay(at);
+    return {
+      day: new Date(FROM + at * DAY).toISOString().slice(0, 10),
+      amount,
+      count: amount === "0.00" ? 0 : Math.max(1, Math.round(Number(amount) / 8)),
+    };
+  });
+
+const TOURS_DAYS = selling((day) => (day % 7 === 3 ? "0.00" : `${8 + ((day * 5) % 23)}.00`));
+
+/** The tours' thirty days, the same on the list and on its page: the sales the sparkline draws. */
+const TOURS_THIRTY = {
+  from: FROM,
+  orders: 56,
+  settled: {
+    amount: TOURS_DAYS.reduce((sum, day) => sum + Number(day.amount), 0).toFixed(2),
+    count: TOURS_DAYS.reduce((n, day) => n + day.count, 0),
+  },
+};
+
 const ROWS: readonly MerchantRow[] = [
   {
     id: GIFT_CARDS,
@@ -74,7 +96,7 @@ const ROWS: readonly MerchantRow[] = [
     keys: { issued: 3, working: 2 },
     lastContactAt: NOW - 20_000,
     cards: { onSale: 7, published: 8 },
-    thirtyDays: { from: FROM, orders: 56, settled: { amount: "437.00", count: 52 } },
+    thirtyDays: TOURS_THIRTY,
     lastSaleAt: NOW - 34 * 60_000,
   },
   {
@@ -166,16 +188,6 @@ const card = (code: string, title: string, amount: string): Card => ({
   fulfillment: "sync",
 });
 
-const selling = (perDay: (day: number) => string): MerchantRecord["thirtyDays"]["days"] =>
-  Array.from({ length: 30 }, (_, at) => {
-    const amount = perDay(at);
-    return {
-      day: new Date(FROM + at * DAY).toISOString().slice(0, 10),
-      amount,
-      count: amount === "0.00" ? 0 : Math.max(1, Math.round(Number(amount) / 8)),
-    };
-  });
-
 const ADMITTED: MerchantRecord = {
   id: TOURS,
   serviceName: "City Walking Tours",
@@ -238,12 +250,7 @@ const ADMITTED: MerchantRecord = {
     total: 8,
     onSale: 7,
   },
-  thirtyDays: {
-    from: FROM,
-    orders: 55,
-    settled: { amount: "437.00", count: 52 },
-    days: selling((day) => (day % 7 === 3 ? "0.00" : `${8 + ((day * 5) % 23)}.00`)),
-  },
+  thirtyDays: { ...TOURS_THIRTY, days: TOURS_DAYS },
   worthALook: {
     rows: [
       {

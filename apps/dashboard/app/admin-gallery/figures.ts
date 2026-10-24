@@ -161,23 +161,73 @@ const COUNTS: MerchantCounts = {
   admitted: 1,
   waitingForAdmission: 1,
 };
-const ORDERS: RecentOrders = { readAt: AT, count: 17, delivered: 11, paymentUnknown: 2, lapsed: 5 };
+const ORDERS: RecentOrders = { readAt: AT, count: 17, delivered: 13, paymentUnknown: 2, lapsed: 5 };
 
-const money = (period: Money["period"], amount: string, count: number): Money => ({
-  readAt: AT,
-  period,
-  from: period === "all" ? null : AT - (period === "7d" ? 6 : 29) * DAY,
-  sales: { amount, count },
-  undated: { amount: "0.00", count: 0 },
-  commission: "0.1635",
-  intoSplits: { amount: "163.50", count: 18 },
-  straightToWallet: { amount: (Number(amount) - 163.5).toFixed(2), count: count - 18 },
-  noDelivery: { amount: "20.00", count: 2 },
-  noDeliveryByState: [
-    { state: "fulfillment_closed", count: 1 },
-    { state: "unfulfilled", count: 1 },
-  ],
+const cents = (amount: string): number => Math.round(Number(amount) * 100);
+const dollarsOf = (sum: number): string => (sum / 100).toFixed(2);
+
+/** The settled sales of these days, summed as the gateway sums them. */
+const tallyOf = (days: readonly SalesByDay["days"][number][]): Money["sales"] => ({
+  amount: dollarsOf(
+    days.reduce((sum, day) => sum + cents(day.delivered.amount) + cents(day.noDelivery.amount), 0),
+  ),
+  count: days.reduce((n, day) => n + day.delivered.count + day.noDelivery.count, 0),
 });
+
+/** The first day payments went into splits on the live channel. */
+const SPLITS_FROM = "2026-10-15";
+/** The first day of the wallet in force now, whose split replaced the one before. */
+const NEW_WALLET_FROM = "2026-10-17";
+
+/** Sales settled before the thirty days the chart draws, all of them straight to a wallet. */
+const EARLIER: Money["sales"] = { amount: "99.50", count: 8 };
+const UNDATED: Money["sales"] = { amount: "5.00", count: 1 };
+
+/**
+ * The money of a period, summed from the same days the chart draws, so every
+ * figure of a state agrees with the others: what settled from the day
+ * payments went into splits went into them, everything before straight to a
+ * wallet with no commission.
+ */
+const money = (
+  period: Money["period"],
+  sales: SalesByDay = SALES,
+  before: Money["sales"] | null = null,
+): Money => {
+  const days = period === "all" ? sales.days : sales.days.slice(period === "7d" ? -7 : -30);
+  const extra = period === "all" ? [before, sales.undated].filter((one) => one !== null) : [];
+  const whole = tallyOf(days);
+  const total = {
+    amount: dollarsOf(extra.reduce((sum, one) => sum + cents(one.amount), cents(whole.amount))),
+    count: extra.reduce((n, one) => n + one.count, whole.count),
+  };
+  const intoSplits = tallyOf(days.filter((day) => day.day >= SPLITS_FROM));
+  const noDelivery = {
+    amount: dollarsOf(days.reduce((sum, day) => sum + cents(day.noDelivery.amount), 0)),
+    count: days.reduce((n, day) => n + day.noDelivery.count, 0),
+  };
+  return {
+    readAt: AT,
+    period,
+    from: period === "all" ? null : AT - (period === "7d" ? 6 : 29) * DAY,
+    sales: total,
+    undated: period === "all" ? sales.undated : { amount: "0.00", count: 0 },
+    commission: (cents(intoSplits.amount) / 100_000).toFixed(4),
+    intoSplits,
+    straightToWallet: {
+      amount: dollarsOf(cents(total.amount) - cents(intoSplits.amount)),
+      count: total.count - intoSplits.count,
+    },
+    noDelivery,
+    noDeliveryByState:
+      noDelivery.count === 0
+        ? []
+        : [
+            { state: "fulfillment_closed", count: 1 },
+            { state: "unfulfilled", count: 1 },
+          ],
+  };
+};
 
 const FUNNEL: Funnel = {
   readAt: AT,
@@ -238,7 +288,7 @@ const overviewReads = (over: Partial<OverviewReads> = {}): OverviewReads => ({
   recovery: { configured: true, host: "mainnet.base.org" },
   merchants: read(COUNTS),
   orders: read(ORDERS),
-  week: read(money("7d", "118.50", 13)),
+  week: read(money("7d")),
   sales: read(SALES),
   funnel: read(FUNNEL),
   journal: read({ lines: JOURNAL_LINES, total: 3 }),
@@ -291,9 +341,9 @@ const SPLITS: Splits = {
       merchantName: "Example Tours",
       merchantWallet: WALLET_B,
       commissionWallet: COMMISSION,
-      recordedAt: AT - 8 * DAY,
+      recordedAt: Date.parse(`${NEW_WALLET_FROM}T09:30:00Z`),
       inForce: true,
-      settled: { amount: "143.50", count: 16 },
+      settled: tallyOf(SALES.days.filter((day) => day.day >= NEW_WALLET_FROM)),
     },
     {
       address: SPLIT_A_OLD,
@@ -301,9 +351,11 @@ const SPLITS: Splits = {
       merchantName: "Example Tours",
       merchantWallet: WALLET_A,
       commissionWallet: COMMISSION,
-      recordedAt: AT - 9 * DAY,
+      recordedAt: Date.parse(`${SPLITS_FROM}T00:00:00Z`),
       inForce: false,
-      settled: { amount: "20.00", count: 2 },
+      settled: tallyOf(
+        SALES.days.filter((day) => day.day >= SPLITS_FROM && day.day < NEW_WALLET_FROM),
+      ),
     },
     {
       address: SPLIT_B,
@@ -322,7 +374,7 @@ const moneyReads = (over: Partial<MoneyReads> = {}): MoneyReads => ({
   at: AT,
   channel: LIVE,
   period: "30d",
-  money: read(money("30d", "437.00", 51)),
+  money: read(money("30d")),
   unknown: read(UNKNOWN),
   sales: read(SALES),
   splits: read(SPLITS),
@@ -431,14 +483,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
             waitingForAdmission: 0,
           }),
           orders: read({ readAt: AT, count: 0, delivered: 0, paymentUnknown: 0, lapsed: 0 }),
-          week: read({
-            ...money("7d", "0.00", 0),
-            commission: "0.00",
-            intoSplits: { amount: "0.00", count: 0 },
-            straightToWallet: { amount: "0.00", count: 0 },
-            noDelivery: { amount: "0.00", count: 0 },
-            noDeliveryByState: [],
-          }),
+          week: read(money("7d", EMPTY_SALES)),
           sales: read(EMPTY_SALES),
           funnel: read({
             readAt: AT,
@@ -498,8 +543,8 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "routes/admin/money": moneyViewOf(
         moneyReads({
           period: "all",
-          money: read({ ...money("all", "516.50", 61), undated: { amount: "5.00", count: 1 } }),
-          sales: read({ ...SALES, undated: { amount: "5.00", count: 1 } }),
+          money: read(money("all", { ...SALES, undated: UNDATED }, EARLIER)),
+          sales: read({ ...SALES, undated: UNDATED }),
         }),
       ),
     },
@@ -515,7 +560,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "routes/admin/money": moneyViewOf(
         moneyReads({
           period: "7d",
-          money: read(money("7d", "118.50", 13)),
+          money: read(money("7d")),
           payout: read({
             kind: "refused",
             why: "1 recorded split of a wallet in force or waiting on eip155:8453 is no longer what this code makes for that merchant and wallet, so the gateway does not start",
@@ -535,14 +580,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "routes/admin/money": moneyViewOf(
         moneyReads({
           channel: TEST,
-          money: read({
-            ...money("30d", "0.00", 0),
-            commission: "0.00",
-            intoSplits: { amount: "0.00", count: 0 },
-            straightToWallet: { amount: "0.00", count: 0 },
-            noDelivery: { amount: "0.00", count: 0 },
-            noDeliveryByState: [],
-          }),
+          money: read(money("30d", EMPTY_SALES)),
           unknown: read(NO_UNKNOWN),
           sales: read(EMPTY_SALES),
           splits: read({ readAt: AT, rows: [], of: 0, empty: 0, waiting: 0 }),
