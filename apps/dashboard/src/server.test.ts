@@ -2085,9 +2085,9 @@ describe("the operator flag", () => {
       await running.browser.postRaw(path, "application/json", JSON.stringify({ operator: true }));
     }
 
-    const accounts = await running.identity.list(new Date());
-    expect(accounts.length).toBeGreaterThan(0);
-    expect(accounts.filter(({ operator }) => operator)).toStrictEqual([]);
+    const accounts = await running.identity.operatorAccounts(new Date());
+    expect(accounts.listed.length + accounts.unlisted).toBeGreaterThan(0);
+    expect(accounts.listed.filter(({ operator }) => operator)).toStrictEqual([]);
   });
 });
 

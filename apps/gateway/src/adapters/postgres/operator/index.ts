@@ -7,6 +7,7 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { OperatorReader } from "../../../ports/operator/index.js";
 import { failingWithoutValues } from "../../database-failure.js";
+import { postgresOperatorAccounts } from "./accounts.js";
 import { postgresOperatorFigures } from "./figures.js";
 import { postgresOperatorMerchants } from "./merchants.js";
 import { postgresOperatorOrders } from "./orders.js";
@@ -25,5 +26,6 @@ export function postgresOperatorReader(
     orders: failingWithoutValues(postgresOperatorOrders(scope), "the operator's orders"),
     figures: failingWithoutValues(postgresOperatorFigures(scope), "the operator's figures"),
     splits: failingWithoutValues(postgresOperatorSplits(scope), "the operator's splits"),
+    accounts: failingWithoutValues(postgresOperatorAccounts(scope), "the operator's accounts"),
   };
 }

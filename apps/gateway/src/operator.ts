@@ -10,6 +10,9 @@ export { memoryOperatorReader } from "./adapters/memory/operator/index.js";
 export { postgresOperatorReader } from "./adapters/postgres/operator/index.js";
 export { OPERATOR_STATEMENT_MS } from "./adapters/postgres/operator/read-only.js";
 export type {
+  MoneyHistory,
+  NamedMerchant,
+  OperatorAccounts,
   OperatorFigures,
   OperatorMerchants,
   OperatorOrders,

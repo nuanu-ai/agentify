@@ -21,6 +21,27 @@ const given = (environment: Record<string, string> = {}): Record<string, string>
   ...environment,
 });
 
+describe("the channel's first operator", () => {
+  it("names nobody where the address is absent or empty", () => {
+    expect(loadConfig(given()).firstOperator).toBeNull();
+    expect(loadConfig(given({ FIRST_OPERATOR_EMAIL: "" })).firstOperator).toBeNull();
+  });
+
+  it("names the address as a sign-in reads it, trimmed and in lower case", () => {
+    expect(loadConfig(given({ FIRST_OPERATOR_EMAIL: " Owner@Example.COM " })).firstOperator).toBe(
+      "owner@example.com",
+    );
+  });
+
+  it("refuses to start on a value that is no address, naming the variable", () => {
+    for (const wrong of ["owner", "owner@", "@example.com", "two words@example.com"]) {
+      expect(() => loadConfig(given({ FIRST_OPERATOR_EMAIL: wrong })), wrong).toThrow(
+        /FIRST_OPERATOR_EMAIL[^;]*address/,
+      );
+    }
+  });
+});
+
 describe("Google sign-in configuration", () => {
   const google = {
     GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",

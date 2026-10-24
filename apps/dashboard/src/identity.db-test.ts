@@ -952,7 +952,10 @@ if (databaseUrl === null) {
       await expect(identity.setOperator(" Operator@Example.com ", true)).resolves.toBe(true);
       expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(true);
       expect(
-        (await identity.list(new Date())).map(({ email, operator }) => ({ email, operator })),
+        (await identity.operatorAccounts(new Date())).listed.map(({ email, operator }) => ({
+          email,
+          operator,
+        })),
       ).toStrictEqual([{ email: "operator@example.com", operator: true }]);
 
       await expect(identity.setOperator("operator@example.com", false)).resolves.toBe(true);

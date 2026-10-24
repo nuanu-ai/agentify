@@ -230,6 +230,11 @@ services:
       # sign-in alone; one credential without the other is refused at start-up.
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET-}"
+      # The address whose account becomes the channel's first operator at its
+      # next sign-in, while no account holds the flag and the journal records
+      # no grant or removal of it; the journal names the configuration as the
+      # actor. From then on it changes nothing. Empty names nobody.
+      FIRST_OPERATOR_EMAIL: "${FIRST_OPERATOR_EMAIL-}"
       # Off unless the host's file turns it on. On, the dashboard tells the ad
       # tracker once that a person its ad sent signed up, for each whose sign-in
       # from the ad is their address's first, and once that they connected a
