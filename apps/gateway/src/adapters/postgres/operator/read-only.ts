@@ -41,6 +41,8 @@ export function readOnlyOn(
         await tx.execute(sql`select set_config('statement_timeout', ${String(statementMs)}, true)`);
         return await read(tx);
       },
-      { accessMode: "read only" },
+      // Repeatable read, so a page's count and the rows it counts are read at
+      // one moment and cannot say "1–50 of 49".
+      { accessMode: "read only", isolationLevel: "repeatable read" },
     );
 }

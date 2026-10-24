@@ -1,6 +1,7 @@
 /**
  * The operator's reads against PostgreSQL, for what only the database can
- * show: a read cannot write, whatever it sends; a read that runs too long is
+ * show: a read cannot write, whatever it sends; it sees one moment of the
+ * database, so its count and its rows agree; a read that runs too long is
  * cut off; the bound leaves with the transaction rather than staying on a
  * pooled connection; and the payment-unknown predicate the overview and the
  * orders share agrees with its memory twin and reads through its index.
@@ -93,6 +94,25 @@ if (databaseUrl === null) {
       ).rejects.toThrow();
 
       expect((await pool.query("select count(*)::int as n from merchants")).rows[0]?.n).toBe(1);
+    });
+
+    it("sees one moment of the database, so a count and the rows it counts agree", async () => {
+      const read = readOnlyOn(db);
+      const elsewhere = new Pool({ connectionString: databaseUrl, max: 1 });
+      try {
+        const seen = await read(async (tx) => {
+          const before = (await tx.select({ n: count() }).from(merchants))[0]?.n;
+          await elsewhere.query(
+            "insert into merchants (id, name, selling, created_at, updated_at) values ('mch_meanwhile', 'Another merchant', 'open', now(), now())",
+          );
+          const after = (await tx.select({ n: count() }).from(merchants))[0]?.n;
+          return { before, after };
+        });
+
+        expect(seen).toStrictEqual({ before: 1, after: 1 });
+      } finally {
+        await elsewhere.end();
+      }
     });
 
     it("cuts off a read that runs past its bound, and leaves no bound on the connection", async () => {
