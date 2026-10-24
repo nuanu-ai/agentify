@@ -3,8 +3,9 @@
 Date: 2026-09-24
 Status: accepted (the product owner, 2026-08-28 to 2026-09-25; Google sign-in,
 2026-10-15; signing out everywhere, revised 2026-10-23; administration moves
-from the terminal to the operator's workspace, 2026-10-23); merges what were
-ADR-0009 and ADR-0024
+from the terminal to the operator's workspace, 2026-10-23; the admission as the
+one lever over a merchant, with a note the merchant reads, 2026-10-24); merges
+what were ADR-0009 and ADR-0024
 
 ## Context
 
@@ -82,7 +83,11 @@ checks the same flag on each request and admits one existing merchant after
 explicit confirmation. Its forms also pass the dashboard's origin and account
 checks; the operator needs no merchant of their own. Approval is live-only,
 granting and withdrawing it are both idempotent, and a merchant whose approval
-is withdrawn stands as one never approved, a pause rather than a cancellation.
+is withdrawn stands as one not approved, a pause rather than a cancellation;
+their dashboard says since when their live sales are stopped and shows the
+operator's note. The approval is the one lever the operator holds over a
+merchant: the workspace never sets or takes away a merchant's seller name
+(the product owner, 2026-10-24).
 Neither bypasses another selling guard or asserts a payment outcome; no staff
 queue is promised by this permission. The product owner decided on 2026-10-23
 that every administrative action at the terminal, the operator flag's included,

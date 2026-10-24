@@ -128,8 +128,7 @@ moved to the screen where its subject is:
 | What does it today | Where it is in the admin |
 | --- | --- |
 | The live-sales page, and `pnpm approve <email>` | Admit to live sales, on the merchant's page |
-| `pnpm approve --withdraw <email>` | Withdraw the admission, on the merchant's page |
-| `merchant listed-as <merchant> --none` | Take the listing name away, on the merchant's page |
+| `pnpm approve --withdraw <email>` | Withdraw the admission with a note the merchant reads, on the merchant's page |
 | `merchant keys <merchant>` and `merchant disable <key>` | The merchant's keys, each with Disable, on the merchant's page |
 | `merchant list` and `account list` | The Merchants and Accounts lists |
 | `account revoke <email>` | End every session, on the account |
@@ -142,9 +141,12 @@ Two commands are not carried over, and are deleted with the rest.
 `woo:recover` binds an existing WooCommerce order to its sale acting as the
 merchant, and the merchant already has their own recovery page reached from
 their Orders; the admin shows that such an order waits and says that the
-merchant recovers it there. `listed-as` with a name sets a merchant's seller
-name for them; the seller name is the merchant's own to choose, so the admin
-only takes a name away, and the merchant chooses the next one. Each
+merchant recovers it there. `listed-as` sets a merchant's seller name for them
+or takes it away. The seller name is the merchant's own, and the admin does not
+touch it: the one lever the operator holds over a merchant is the admission. A
+merchant whose name, cards or conduct do not belong on the live channel has
+their admission withdrawn with a note that tells them why, and is admitted
+again once that is put right (the product owner, 2026-10-24). Each
 administrative command is deleted once its counterpart ships, so that a power
 exists in one place only. The two checks are the exception, because they
 change nothing: the release runs the facilitator-key check before it activates
@@ -164,8 +166,9 @@ answer is lost says that the outcome is unknown and that reading the record
 again shows the truth. Each consequence is the one the terminal's command has
 today. Withdrawing an admission takes every one of the merchant's cards off
 sale on the live channel at once, because selling there requires it; it
-cancels no order already taken and moves no money. Taking a listing name away
-takes the cards off sale until the merchant chooses a new name. Disabling a
+cancels no order already taken and moves no money. The merchant's dashboard
+then says that their live sales were stopped, since when, and the operator's
+note, until they are admitted again. Disabling a
 key stops that key and touches no other. Ending a person's sessions signs them
 out everywhere and keeps their account.
 
@@ -215,9 +218,12 @@ an attack. The link the step asks for is therefore counted apart from the
 public form's, and an operator whose Google account is eligible can use it
 instead.
 
-Every intervention asks for a reason: a withdrawal, a name taken away, a key
-disabled, sessions ended, a flag granted or removed. The reason goes into the
-journal with the action. An admission needs none.
+Every intervention asks for a reason: a withdrawal, a key disabled, sessions
+ended, a flag granted or removed. The reason goes into the journal with the
+action. An admission needs none. A withdrawal's reason is also the note its
+merchant reads: their dashboard shows the newest withdrawal of their own
+merchant while it stands, and nothing else of the journal, so the form says
+that the merchant will read it and that it must name no buyer.
 
 Granting or removing the operator flag mails every operator of the channel and
 the account it changes, so that a new operator cannot appear without the
@@ -486,10 +492,8 @@ Three of them are the checks the gateway runs at every sale on the live
 channel, and the panel says so; the fourth, the integration, is what publishes
 the cards and takes the orders.
 
-The first line is the seller name as buyers see it, with the action "Take the
-name away" for a name that impersonates somebody or breaks the listing's
-rules. The second is the payout wallet, set in groups of four characters, with
-the split it pays out from and the link to that split on the chain's explorer;
+The first line is the seller name as buyers see it. The second is the payout
+wallet, set in groups of four characters, with the split it pays out from and the link to that split on the chain's explorer;
 where a wallet change waits, the line says when it lands. The third is the
 integration: for code against the SDK, every key by its label with when it was
 issued and last used, a working key with the action Disable; for a connected
@@ -498,8 +502,9 @@ order whose shop order is uncertain, which the merchant recovers from their
 own Orders. The fourth is the admission, with the action that changes it:
 "Admit to live sales" for a merchant not admitted, behind a checkbox that
 names the consequence; for one admitted, when, and the action "Withdraw
-admission", which opens in place a required reason and a second checkbox that
-says what follows.
+admission", which opens in place a required note, which the merchant reads on
+their dashboard, and a second checkbox that says what follows. For a merchant
+whose admission was withdrawn, the line says when, by whom and with what note.
 
 Every action on the page answers the same way. A press without a fresh sign-in
 opens, in place, the step that asks for one: a link mailed to the operator's
@@ -761,8 +766,8 @@ once.
 
 The second step moves the terminal's administrative commands into the
 workspace, one at a time, and deletes each command as its counterpart ships:
-the admission's withdrawal, the listing name, the keys, Accounts with sessions
-and the operator flag, and on the test channel forgetting an account; the two
+the admission's withdrawal with its note, the keys, Accounts with sessions and
+the operator flag, and on the test channel forgetting an account; the two
 commands not carried over are deleted with them. The payout listing moves with
 Money, in the fifth step. After the fifth step the terminal holds only
 engineering's tools, its two checks among them, and the documented statement
@@ -788,14 +793,15 @@ operators and the configured first operator. The tenancy decision
 readers that cross merchants, inside read-only transactions. The journal has a
 decision of its own
 ([ADR-0045](../decisions/0045-every-administrative-action-leaves-a-journal-row.md)).
+The product owner's word of 2026-10-24, that the admission is the one lever
+the operator holds over a merchant and that a withdrawal's note is the
+merchant's to read, is entered in ADR-0026 §6 and in ADR-0045.
 
 ## Open questions
 
-Whether a merchant is told by mail when they are admitted, when their
-admission is withdrawn, when their name is taken away or a key of theirs is
-disabled, and whether the reason given is in that mail. Today the merchant
-learns only by looking at their dashboard, and after a withdrawal it says "Not
-approved for live sales yet", which is wrong for somebody who was approved.
+Whether a merchant is also told by mail when they are admitted, when their
+admission is withdrawn, with its note, or when a key of theirs is disabled.
+Their dashboard shows a withdrawal and its note; nothing else reaches them.
 
 Whether an operator is told when something lands in "Needs you" or "Worth a
 look", by mail or by a message, rather than finding it when they open the

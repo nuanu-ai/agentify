@@ -25,7 +25,7 @@ merchant, when that signed-in person presses the one control the dashboard
 offers (§1). No command at a server's terminal makes an account, a merchant or a
 key, and no deployed channel's gateway seeds a merchant at start-up: the release
 refuses a channel configured to. An operator looks after what exists — lists
-merchants, keys and accounts, disables a key, takes a listing name away, ends a
+merchants, keys and accounts, disables a key, ends a
 person's sessions, moves the operator flag, admits a merchant to live sales and
 withdraws that admission — from the operator's workspace (ADR-0026 §6; the
 product owner, 2026-10-23), one action at a time: until an action moves, its

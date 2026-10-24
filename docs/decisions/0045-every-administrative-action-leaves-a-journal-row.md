@@ -3,8 +3,9 @@
 Date: 2026-10-23
 Status: accepted (the product owner, 2026-10-23: the admin takes over the
 terminal's administrative commands and is built from the design in
-[research 85](../research/85-operator-admin.md)); the journal's mechanics are
-that design's proposal
+[research 85](../research/85-operator-admin.md); 2026-10-24: the admission is
+the one lever over a merchant, and a withdrawal's note is the merchant's to
+read); the journal's mechanics are that design's proposal
 
 ## Context
 
@@ -23,9 +24,9 @@ administrative action and for every refused attempt at one made after the
 operator flag was checked; a request the flag refuses writes nothing. A row
 holds when it happened; who acted, as an account's identifier, or `terminal`
 for a command at the host while one remains, or `configuration` for a channel's
-first operator; the action, from a closed list (admit, withdraw, take the
-listing name, disable a key, end sessions, grant the operator flag, remove it,
-forget an account on the test channel, first operator); its subject, as a
+first operator; the action, from a closed list (admit, withdraw, disable a
+key, end sessions, grant the operator flag, remove it, forget an account on the
+test channel, first operator); its subject, as a
 merchant's, an account's or a key's identifier, a key with its merchant's; the
 reason the operator wrote, bounded like a merchant's closing message; and the
 outcome: done; unchanged, where an idempotent repeat found the change already
@@ -33,7 +34,10 @@ made; or refused with the refusal's code. Accounts and merchants are named by
 identifier, never by an address or a name, so forgetting or erasing a person
 leaves their rows with an identifier that no longer resolves, which the admin
 reads as a deleted account. The screen that asks for a reason says that it is
-kept and must not name a buyer.
+kept and must not name a buyer. A withdrawal's reason is also the note its
+merchant reads: the merchant's dashboard reads the newest withdrawal row of
+its own merchant while that withdrawal stands, and no other row, and the
+screen says so.
 
 The application only inserts rows. An action and its row commit in one database
 transaction: a gateway action takes the row into the store's transaction, as it
