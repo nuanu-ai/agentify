@@ -14,9 +14,11 @@ export const memoryOperatorSplits = (scope: MemoryScope): OperatorSplits => ({
   async splits(asked) {
     const holdings = scope.holdings();
     const merchants = new Map(holdings.merchants.map((merchant) => [merchant.id, merchant]));
+    const namedBy = (merchantId: string, address: string) =>
+      `${merchantId}\u0000${address.toLowerCase()}`;
     const named = new Set(
       holdings.orders.flatMap(({ record }) =>
-        record.payTo === null ? [] : [record.payTo.toLowerCase()],
+        record.payTo === null ? [] : [namedBy(record.merchantId, record.payTo)],
       ),
     );
     const settled = new Map<string, { micros: bigint; count: number }>();
@@ -37,7 +39,7 @@ export const memoryOperatorSplits = (scope: MemoryScope): OperatorSplits => ({
         pending != null &&
         pending.takesEffectAt > asked.at &&
         pending.address.toLowerCase() === split.merchantWallet.toLowerCase() &&
-        !named.has(key)
+        !named.has(namedBy(split.merchantId, split.address))
       ) {
         waiting += 1;
         continue;

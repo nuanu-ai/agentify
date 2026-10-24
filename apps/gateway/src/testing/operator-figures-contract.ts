@@ -517,6 +517,32 @@ export function describeOperatorFigures(
         expect(JSON.stringify(read)).not.toContain(splitOf(A, W3).address);
       });
 
+      it("leave out a split waiting behind a wallet change though another merchant's order names its address", async () => {
+        // Only the split's own merchant can have been asked to pay into it;
+        // an order of anyone else's naming that address does not make it hold money.
+        const { store, reader } = await open();
+        await ready(store, A);
+        await ready(store, B);
+        await store.setPayoutWallet(
+          A,
+          { address: W1, pending: null },
+          {
+            address: W1,
+            split: splitOf(A, W1),
+            pending: { address: W3, takesEffectAt: NOW + DAY, split: splitOf(A, W3) },
+          },
+          NOW - HOUR,
+        );
+        await store.addOrder(
+          aSale("ord_other", { merchantId: B, amount: "5.00", payTo: splitOf(A, W3).address }),
+        );
+
+        const read = await reader.splits.splits(LIVE);
+
+        expect(read.waiting).toBe(1);
+        expect(read.rows.map((row) => row.address)).not.toContain(splitOf(A, W3).address);
+      });
+
       it("list a split that holds nothing, and count it as empty", async () => {
         const { store, reader } = await open();
         await ready(store, A);
