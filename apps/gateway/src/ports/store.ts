@@ -656,16 +656,13 @@ export interface Store {
    * Sets or clears one merchant's listing name and returns the merchant as they
    * now stand, or null where there is no such merchant. The value must already
    * be validated, by `setServiceName` in `app/merchants.ts`. `analytics` is
-   * recorded only when the name the row held is a different one. `journal` is
-   * the operator taking the name away, written in the same transaction for a
-   * merchant that exists: done where the row held a name, unchanged where not.
+   * recorded only when the name the row held is a different one.
    */
   setServiceName(
     id: string,
     serviceName: string | null,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
-    journal?: JournalPress,
   ): Promise<StoredMerchant | null>;
 
   /**
@@ -857,6 +854,15 @@ export interface Store {
    * workspace reads it, after the flag check.
    */
   journal(query: JournalQuery): Promise<JournalPage>;
+
+  /**
+   * The withdrawal that stands for this one merchant, whose reason is the
+   * note the merchant reads: the newest row that withdrew its admission, while
+   * no admission has been recorded after it. Null where none stands. It reads
+   * no other row and no other merchant's, since a merchant's own dashboard
+   * calls it.
+   */
+  standingWithdrawal(merchantId: string): Promise<JournalRow | null>;
 
   // --- the catalog ----------------------------------------------------------
 

@@ -21,10 +21,13 @@ import { PAGES_IN_FRONT_OF_THE_GATE } from "../src/testing/in-front-of-the-gate.
 import { gallery } from "./gallery.js";
 import routes from "./routes.js";
 
-const DRAWS = import.meta.glob<unknown>(["./routes/*.{ts,tsx}", "!./routes/*.test.{ts,tsx}"], {
-  eager: true,
-  import: "default",
-});
+const DRAWS = import.meta.glob<unknown>(
+  ["./routes/**/*.{ts,tsx}", "!./routes/**/*.test.{ts,tsx}"],
+  {
+    eager: true,
+    import: "default",
+  },
+);
 
 const idOf = (entry: RouteConfigEntry): string => entry.id ?? entry.file.replace(/\.tsx?$/, "");
 

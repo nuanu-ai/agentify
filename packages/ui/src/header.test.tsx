@@ -99,7 +99,7 @@ describe("the working header", () => {
   const PERSON = "owner@example.com";
 
   /** As the dashboard draws it over one of its pages, under the prefix it is deployed at. */
-  const workHeader = () => {
+  const workHeader = (mark?: ReactElement) => {
     const router = createMemoryRouter(
       [
         {
@@ -108,6 +108,7 @@ describe("the working header", () => {
             <WorkHeader
               surface="dashboard"
               link={Link}
+              {...(mark === undefined ? {} : { mark })}
               visitor={<SignedIn who={PERSON} account="/dashboard/settings" signOut="/sign-out" />}
               menu={
                 <HeaderMenu>
@@ -139,6 +140,24 @@ describe("the working header", () => {
     fireEvent.click(header.getByRole("link", { name: "Agentify" }));
     expect(router.state.location.pathname).toBe("/dashboard/cards");
     expect(header.getByRole("button", { name: "Sign out" }).closest("form")?.method).toBe("post");
+  });
+
+  it("draws a workspace's mark beside the lockup, outside its link, and none where it is given none", () => {
+    // The operator's workspace tells itself from a merchant's dashboard by this
+    // mark; inside the lockup's link it would rename the way to the front page.
+    const marked = workHeader(<span>Operator</span>);
+    const lockup = marked.header.getByRole("link", { name: "Agentify" });
+    const mark = marked.header.getByText("Operator");
+
+    expect(lockup.contains(mark)).toBe(false);
+    expect(lockup.nextElementSibling).toBe(mark);
+    cleanup();
+
+    const { header } = workHeader();
+    expect(header.queryByText("Operator")).toBeNull();
+    expect(header.getByRole("link", { name: "Agentify" }).parentElement?.className).toContain(
+      "site-header-inner",
+    );
   });
 
   it("names none of the public site's sections and no door to the dashboard", () => {

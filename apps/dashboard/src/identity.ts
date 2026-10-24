@@ -36,10 +36,12 @@ import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
 import {
   type AttachMerchantResult,
-  DASHBOARD_DESTINATIONS,
+  adminDestinationIn,
   type DashboardDestination,
   type DashboardIdentity,
   type DashboardLinkResult,
+  dashboardDestinationIn,
+  destinationNamed,
   type GoogleFinishResult,
   type GoogleStartResult,
   type LinkAsker,
@@ -161,6 +163,11 @@ type LinkClaim = Readonly<{
   destination: LinkDestination;
   request: string | null;
   clickId?: string;
+  /**
+   * Asked from an operator's own session to confirm an administrative action:
+   * the mail says so, and the link returns to the admin page it was asked on.
+   */
+  stepUp?: true;
 }>;
 
 type AdReport = typeof adReports.$inferInsert;
@@ -480,9 +487,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
             active.handed = await postman(
-              typeof claim.destination === "string"
-                ? dashboardLinkMessage(email, action.toString())
-                : reportLinkMessage(email, action.toString()),
+              typeof claim.destination !== "string"
+                ? reportLinkMessage(email, action.toString())
+                : claim.stepUp === true
+                  ? stepUpLinkMessage(email, action.toString())
+                  : dashboardLinkMessage(email, action.toString()),
             );
           },
         }),
@@ -556,19 +565,14 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
   const requestWith = async (
     bound: typeof auth,
-    email: string,
-    destination: DashboardDestination,
-    clickId: string | undefined,
+    claim: LinkClaim,
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
-    const active: LinkSend = {
-      claim: { email, destination, request: null, ...(clickId === undefined ? {} : { clickId }) },
-      handed: "refused",
-    };
+    const active: LinkSend = { claim, handed: "refused" };
     await sending.run(active, async () => {
       await bound.api.signInMagicLink({
         headers: originHeaders,
-        body: { email, metadata: active.claim },
+        body: { email: claim.email, metadata: active.claim },
       });
     });
     if (active.handed !== "accepted") throw new DeliveryRefused();
@@ -722,9 +726,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const location = response.headers.get("location");
       if (location === null) throw new GoogleTransactionRefused();
       const redirected = new URL(location, base);
-      const destination =
-        DASHBOARD_DESTINATIONS.find((value) => value === redirected.searchParams.get("next")) ??
-        "default";
+      const destination = dashboardDestinationIn(redirected.searchParams.get("next"));
       const clickId = reporting ? clickIdIn(redirected) : undefined;
       const error = redirected.searchParams.get("error");
       if (error !== null) {
@@ -887,6 +889,24 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           limit: LINK_UNKNOWN_CLIENT_LIMIT,
           wall: "shared",
         };
+    return await sentCounted(
+      { email, destination, request: null, ...(clickId === undefined ? {} : { clickId }) },
+      "dashboard",
+      asking,
+    );
+  };
+
+  /**
+   * Sends the link `claim` names once the limits of `purpose` let it: the
+   * address's minute and hour, the client's hour where one is counted, and the
+   * channel's ceiling, each counted among the sends of that purpose alone.
+   */
+  const sentCounted = async (
+    claim: LinkClaim,
+    purpose: "dashboard" | "step-up",
+    asking: ClientCount | null,
+  ): Promise<LinkRequestResult> => {
+    const email = claim.email;
     try {
       if (parts.pool === undefined) {
         await inMemoryTransaction(async (_bound, rows) => {
@@ -894,11 +914,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
         return await inMemoryTransaction(async (bound, rows) => {
           const rated = watchCeiling(
-            "dashboard",
-            memoryRate(rows, rateKey(config.authSecret, email), "dashboard", asking),
+            purpose,
+            memoryRate(rows, rateKey(config.authSecret, email), purpose, asking),
           );
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-          return await requestWith(bound, email, destination, clickId, rated.retryAt);
+          return await requestWith(bound, claim, rated.retryAt);
         });
       }
       const db = drizzle(parts.pool, {
@@ -910,15 +930,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return await db.transaction(async (tx) => {
         await lockEmail(tx, email);
         const rated = watchCeiling(
-          "dashboard",
-          await postgresRate(tx, rateKey(config.authSecret, email), "dashboard", asking),
+          purpose,
+          await postgresRate(tx, rateKey(config.authSecret, email), purpose, asking),
         );
         if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
         return await requestWith(
           authFor(drizzleAdapter(tx, { provider: "pg", schema })),
-          email,
-          destination,
-          clickId,
+          claim,
           rated.retryAt,
         );
       });
@@ -1082,6 +1100,17 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // The sweep of old links runs in a transaction of its own, first: inside
     // the one that waits on the mail provider it would hold other requests up
     // behind a send, and a refused send would undo it.
+    async requestStepUpLink(rawEmail, destination) {
+      // Counted under a purpose of its own, so the public form, where anybody
+      // can type an operator's address, spends none of these sends. No client
+      // is counted: the asker is an operator's session, not a visitor.
+      return await sentCounted(
+        { email: emailAs(rawEmail), destination, request: null, stepUp: true },
+        "step-up",
+        null,
+      );
+    },
+
     async requestLink(rawEmail, destination, asker) {
       const requested = await linkRequested(rawEmail, destination, asker);
       if (requested.status === "cooldown") {
@@ -1599,9 +1628,18 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   const clickId = value.clickId === undefined ? undefined : clickIdOf(value.clickId);
   if (clickId === null) return null;
   const destination = value.destination;
+  if (value.stepUp !== undefined) {
+    // Only an operator's own session asks for one, for a page of the
+    // workspace, with no click and no report request beside it.
+    const page = adminDestinationIn(destination);
+    if (value.stepUp !== true || page === null || clickId !== undefined || request !== null) {
+      return null;
+    }
+    return { email: value.email, destination: page, request: null, stepUp: true };
+  }
   if (typeof destination === "string") {
-    const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
-    if (known === undefined) return null;
+    const known = destinationNamed(destination);
+    if (known === null) return null;
     return {
       email: value.email,
       destination: known,
@@ -1668,6 +1706,7 @@ function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
     one.email === other.email &&
     one.request === other.request &&
     one.clickId === other.clickId &&
+    one.stepUp === other.stepUp &&
     (typeof one.destination === "string" || typeof other.destination === "string"
       ? one.destination === other.destination
       : one.destination.report === other.destination.report)
@@ -1686,6 +1725,12 @@ function goesWithTheDeletion(
 ): boolean {
   return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
 }
+
+/**
+ * What a link is for, each counted apart: a sign-in from the public form, a
+ * scanner's report, or an operator's fresh sign-in asked from the workspace.
+ */
+type LinkPurpose = "dashboard" | "report" | "step-up";
 
 /** `pnpm forget` clears an address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
@@ -1799,7 +1844,7 @@ function waitAfter(sentAt: readonly Date[], now: Date): Date {
 function memoryRate(
   rows: MemoryRows,
   emailHash: string,
-  purpose: "dashboard" | "report",
+  purpose: LinkPurpose,
   asking: ClientCount | null,
 ): LinkRate {
   const now = new Date();
@@ -1846,7 +1891,7 @@ function memoryRate(
   return { sent: true, retryAt: waitAfter([...address, now], now) };
 }
 
-const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
+const CEILING_WORDS = { dashboard: "sign-in", report: "report", "step-up": "step-up" } as const;
 
 /**
  * Writes one warning line when the channel's ceiling of a purpose first
@@ -1854,8 +1899,8 @@ const CEILING_WORDS = { dashboard: "sign-in", report: "report" } as const;
  * so an alert can hang on it without counting refusals. Each process keeps its
  * own note, so every process writes its own line. The line names no address.
  */
-function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => LinkRate {
-  const full = new Set<"dashboard" | "report">();
+function ceilingWatch(): (purpose: LinkPurpose, rated: LinkRate) => LinkRate {
+  const full = new Set<LinkPurpose>();
   return (purpose, rated) => {
     if (rated.sent) {
       full.delete(purpose);
@@ -1883,7 +1928,7 @@ function ceilingWatch(): (purpose: "dashboard" | "report", rated: LinkRate) => L
 async function postgresRate(
   tx: DashboardTransaction,
   emailHash: string,
-  purpose: "dashboard" | "report",
+  purpose: LinkPurpose,
   asking: ClientCount | null,
 ): Promise<LinkRate> {
   const now = new Date();
@@ -2065,6 +2110,38 @@ function registerInMemory(rows: MemoryRows, reports: readonly AdReport[]): void 
     }
   }
   for (const report of reports) registered.push({ lastOutcome: null, settledAt: null, ...report });
+}
+
+/**
+ * The link an operator asks for from the workspace to confirm an action. It
+ * signs in the browser it is opened in and returns there to the page it was
+ * asked on, where the action is pressed again; it carries out nothing itself.
+ */
+function stepUpLinkMessage(to: string, link: string): Message {
+  const title = "Confirm it is you";
+  const lead =
+    "An administrative action in the Agentify operator's workspace asked for a fresh sign-in." +
+    " Open this link in the browser you are working in; it signs that browser in and returns" +
+    " you to the page you were on, where you press the action again.";
+  const lifetime =
+    "This link opens once and expires an hour after it was sent. It changes nothing by itself.";
+  const unasked =
+    "If you did not ask for this, do not open the link: somebody may be using a session of" +
+    " yours. Tell the other operators of this channel, who can end every session of your account.";
+  return {
+    to,
+    subject: "Confirm an administrative action on Agentify",
+    body: `Agentify\n\n${title}\n\n${lead}\n\n${link}\n\n${lifetime}\n\n${unasked}`,
+    html: transactionalEmailHtml({
+      preview: "Confirm the administrative action you were taking.",
+      eyebrow: "Operator's workspace",
+      title,
+      lead,
+      action: "Sign in and go back",
+      link,
+      paragraphs: [lifetime, unasked],
+    }),
+  };
 }
 
 function dashboardLinkMessage(to: string, link: string): Message {

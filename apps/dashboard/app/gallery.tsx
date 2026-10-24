@@ -9,6 +9,7 @@
  */
 
 import "./styles.css";
+import "./admin.css";
 import { createHash } from "node:crypto";
 import {
   keyPrefixFor,
@@ -98,6 +99,7 @@ import {
   wooShopView,
 } from "../src/woo-views.js";
 import { SITE_IN_SETTINGS } from "../src/words.js";
+import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Trouble } from "./answer.js";
 import { shortened } from "./components/copy.js";
 import routes from "./routes.js";
@@ -110,7 +112,7 @@ interface RouteModule {
 }
 
 const MODULES = import.meta.glob<RouteModule>(
-  ["./root.tsx", "./routes/*.{ts,tsx}", "!./routes/*.test.{ts,tsx}"],
+  ["./root.tsx", "./routes/**/*.{ts,tsx}", "!./routes/**/*.test.{ts,tsx}"],
   { eager: true },
 );
 
@@ -3279,6 +3281,21 @@ const LIVE_SALES: GalleryState[] = [
   ),
 ];
 
+/** The workspace's states, each drawn in the workspace's frame. */
+const ADMIN: GalleryState[] = ADMIN_STATES.map(
+  ({ id, screen, when, cause, path, mode, frame, loaded, pressed, failed }) =>
+    at(
+      { id, screen, when, cause },
+      {
+        path,
+        mode,
+        loaded: { "routes/admin/only": frame ?? frameIn(mode), ...loaded },
+        ...(pressed === undefined ? {} : { pressed }),
+        ...(failed === undefined ? {} : { failed }),
+      },
+    ),
+);
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
@@ -3295,6 +3312,7 @@ export const gallery: GallerySurface = {
     ...KEYS,
     ...SETTINGS,
     ...LIVE_SALES,
+    ...ADMIN,
     ...PROBLEMS,
   ],
 };

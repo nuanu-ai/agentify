@@ -25,6 +25,7 @@ import {
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
 import { accountOf } from "./account-banner.js";
+import type { AdminServices } from "./admin/index.js";
 import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
@@ -35,7 +36,7 @@ import {
   type LinkWall,
   type Person,
 } from "./dashboard-entry.js";
-import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
+import { clearingLines, type Gate, gateFor, pathAfterSignIn, startOf } from "./gate.js";
 import {
   type Acting,
   type Answer,
@@ -255,6 +256,11 @@ export interface PageServices {
     userAgent: string | null,
   ) => void;
   readonly liveSales: LiveSalesPages | null;
+  /**
+   * The operator's workspace, or null where it is not built, which answers
+   * every page of it as one that is not there.
+   */
+  readonly admin: AdminServices | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
   readonly surface: Surface;
@@ -350,6 +356,7 @@ export interface PageServices {
 
 export interface PageParts {
   readonly liveSales?: LiveSalesPages;
+  readonly admin?: AdminServices;
   readonly identity: DashboardIdentity;
   /**
    * The gateway's application called as the merchant on the signed-in
@@ -913,9 +920,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       ? `/report/${encodeURIComponent(destination.report)}`
       : destination === "default"
         ? startOf(base, person)
-        : person.merchant === null
-          ? `${base}/merchant`
-          : dashboardPathFor(base, destination);
+        : pathAfterSignIn(base, person, destination);
 
   const ordersScreen = async (
     person: Person,
@@ -1008,6 +1013,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       }
     },
     liveSales: parts.liveSales ?? null,
+    admin: parts.admin ?? null,
     base,
     surface: {
       attribute: SURFACE_MARKER_ATTRIBUTE,
@@ -1024,10 +1030,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (signedIn !== null) {
           return {
             kind: "redirect",
-            location:
-              signedIn.person.merchant === null
-                ? `${base}/merchant`
-                : dashboardPathFor(base, destination),
+            location: pathAfterSignIn(base, signedIn.person, destination),
             setCookies: signedIn.setCookies,
           };
         }

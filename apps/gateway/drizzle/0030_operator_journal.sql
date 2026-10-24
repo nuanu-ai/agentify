@@ -17,7 +17,7 @@ CREATE TABLE "operator_journal" (
 	"outcome" text NOT NULL,
 	"refusal" text,
 	CONSTRAINT "operator_journal_actor" CHECK ("operator_journal"."actor_kind" in ('account', 'terminal', 'configuration') and ("operator_journal"."actor_kind" = 'account') = ("operator_journal"."actor_id" is not null)),
-	CONSTRAINT "operator_journal_action" CHECK ("action" in ('admit', 'withdraw', 'take_listing_name', 'disable_key', 'end_sessions', 'grant_operator', 'remove_operator', 'forget_account', 'first_operator')),
+	CONSTRAINT "operator_journal_action" CHECK ("action" in ('admit', 'withdraw', 'disable_key', 'end_sessions', 'grant_operator', 'remove_operator', 'forget_account', 'first_operator')),
 	CONSTRAINT "operator_journal_subject" CHECK (("operator_journal"."subject_kind" = 'merchant' and "operator_journal"."subject_merchant" = "operator_journal"."subject_id") or ("operator_journal"."subject_kind" = 'key' and "operator_journal"."subject_merchant" is not null) or ("operator_journal"."subject_kind" = 'account' and "operator_journal"."subject_merchant" is null)),
 	CONSTRAINT "operator_journal_outcome" CHECK ("operator_journal"."outcome" in ('done', 'unchanged', 'refused') and ("operator_journal"."outcome" = 'refused') = ("operator_journal"."refusal" is not null)),
 	CONSTRAINT "operator_journal_reason" CHECK ("reason" is null or (char_length("reason") between 1 and 2000))
