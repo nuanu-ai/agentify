@@ -76,7 +76,7 @@ export async function whyTheRuleRefuses(
  * than a second split beside every merchant's first.
  *
  * It reads and writes nothing else, so a start asks it before anything, and
- * the operator's payout command can ask it alone.
+ * the operator's payout can ask it alone.
  */
 export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void> {
   const why = await whyTheSplitsDisagree(runtime);

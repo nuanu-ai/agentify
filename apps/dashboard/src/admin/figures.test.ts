@@ -225,7 +225,7 @@ describe("money", () => {
     expect(periodIn(new URLSearchParams())).toBe("30d");
   });
 
-  it("shows the payout every recorded split takes, as the payout command builds it", async () => {
+  it("shows the payout every recorded split takes, as the builder makes it", async () => {
     // The harness's merchant set a wallet, which recorded its split.
     const { harnessed, pages } = await served({ channel: "test" });
 
