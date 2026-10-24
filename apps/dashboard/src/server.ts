@@ -270,6 +270,7 @@ function adminServicesOver(
     reader: admin.reader,
     journal: admin.journal,
     now,
+    shops: parts.wooShops ?? null,
     pressing: {
       now,
       googleEnabled: parts.identity.googleEnabled,
