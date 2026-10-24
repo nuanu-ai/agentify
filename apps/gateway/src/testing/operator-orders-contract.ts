@@ -720,15 +720,31 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         expect(await orders.find(PAYER, NOW)).toStrictEqual([]);
       });
 
-      it("once a change has landed, goes from the new wallet and its split, and still from the old wallet", async () => {
+      it("once a change has landed, goes from the new wallet and from the old one", async () => {
         const { store, orders } = await open();
         await aChannel(store);
 
         expect(namedBy(await orders.find(W2, LANDS))).toStrictEqual(["merchant wallet mch_a"]);
-        expect(namedBy(await orders.find(SPLIT_A2.address, LANDS))).toStrictEqual([
+        expect(namedBy(await orders.find(W1, LANDS))).toStrictEqual(["merchant wallet mch_a"]);
+      });
+
+      it("goes from a split only once a payment has gone to it", async () => {
+        const { store, orders } = await open();
+        const { eu } = await aChannel(store);
+
+        expect(await orders.find(SPLIT_A2.address, LANDS)).toStrictEqual([]);
+
+        await store.addOrder(
+          sold("ord_into_new_split", "paid", eu, t(12), {
+            order: { payment: "verified" },
+            record: { payTo: SPLIT_A2.address, paidBy: PAYER },
+          }),
+        );
+
+        expect(namedBy(await orders.find(SPLIT_A2.address.toLowerCase(), LANDS))).toStrictEqual([
           "merchant split mch_a",
         ]);
-        expect(namedBy(await orders.find(W1, LANDS))).toStrictEqual(["merchant wallet mch_a"]);
+        expect(await orders.find(SPLIT_A2.address, NOW)).toStrictEqual([]);
       });
 
       it("goes from a site, written any way, to every merchant selling from it", async () => {
