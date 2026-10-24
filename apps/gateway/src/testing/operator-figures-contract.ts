@@ -13,8 +13,8 @@ import type { Order } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { AnalyticsEvent } from "../analytics/events.js";
-import type { FiguresAsked } from "../ports/operator/figures.js";
-import type { OperatorReader } from "../ports/operator/index.js";
+import type { FiguresAsked, OperatorFigures } from "../ports/operator/figures.js";
+import type { OperatorSplits } from "../ports/operator/splits.js";
 import type { PaymentAttempt, Store, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -145,7 +145,10 @@ const without = <T extends { readonly readAt: number }>(read: T): Omit<T, "readA
  */
 export function describeOperatorFigures(
   name: string,
-  open: () => Promise<{ readonly store: Store; readonly reader: OperatorReader }>,
+  open: () => Promise<{
+    readonly store: Store;
+    readonly reader: { readonly figures: OperatorFigures; readonly splits: OperatorSplits };
+  }>,
 ): void {
   /** A merchant ready to sell on the live channel: named, paid at W1, admitted. */
   const ready = async (store: Store, id: string, at = NOW - 20 * DAY): Promise<void> => {
