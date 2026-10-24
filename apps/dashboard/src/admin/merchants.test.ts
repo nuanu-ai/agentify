@@ -6,13 +6,14 @@
  */
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
 
 let served: AdminServed | null = null;
 
 afterEach(async () => {
+  vi.useRealTimers();
   await served?.close();
   served = null;
 });
@@ -255,6 +256,25 @@ describe("disabling a merchant's key", () => {
     ).toStrictEqual([
       [merchant.keyId, "unchanged"],
       [merchant.keyId, "done"],
+    ]);
+  });
+
+  it("answers a repeat in the same millisecond as already so, as its row says", async () => {
+    served = await adminServed();
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const path = `/admin/merchants/${merchant.id}/keys/${merchant.keyId}/disable`;
+    const press = { ...TICKED, [REASON_FIELD]: "it leaked" };
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+
+    const first = await operator.post(path, press);
+    const again = await operator.post(path, press);
+
+    expect(text(first.html)).toContain("Disabled just now");
+    expect(text(again.html)).not.toContain("Disabled just now");
+    expect((await rowsAbout(served, merchant.id)).map((row) => row.outcome.kind)).toStrictEqual([
+      "unchanged",
+      "done",
     ]);
   });
 
