@@ -485,7 +485,7 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       "routes/admin/journal": journalOf({
         query: "laptop",
         unsearched: "not-searchable",
-        kinds: journalOf({}).kinds.map((one) => ({ ...one, count: 0 })),
+        kinds: journalOf({}).kinds.map((one) => ({ ...one, count: null })),
         lines: [],
         total: 0,
       }),

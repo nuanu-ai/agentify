@@ -175,7 +175,7 @@ export const JOURNAL_KINDS: Readonly<Record<JournalKind, readonly JournalAction[
 export interface JournalView {
   readonly readAt: MomentView;
   readonly kind: JournalKind;
-  /** The kinds the channel can hold, each with its count, null where the count failed. */
+  /** The kinds the channel can hold, each with its count: null where it failed or the search could not run. */
   readonly kinds: readonly Readonly<{ kind: JournalKind; count: number | null }>[];
   readonly query: string;
   /** Why a search found nothing to search by, or null. */
@@ -200,6 +200,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   live_channel: "accounts are forgotten only on the test channel; nothing changed",
   money_history: "the merchant has orders or receipts, which are never deleted; nothing changed",
   shared_merchant: "another account names the same merchant; nothing changed",
+  history_unread: "whether the merchant has orders or receipts could not be read; nothing changed",
 };
 
 export const refusalSaid = (code: string): string =>
@@ -391,7 +392,8 @@ export function accountsFor(parts: AdminParts): AccountsPages {
             // Asked through the gateway's reads too, since in memory the
             // merchant's orders are the gateway's alone; on Postgres the
             // change asks again under its lock.
-            const history = await reader.accounts.historyOf(account.merchantId);
+            const history = await reader.accounts.historyOf(account.merchantId).catch(() => null);
+            if (history === null) return refused("history_unread");
             if (history.orders > 0 || history.receipts > 0) return refused("money_history");
           }
           const forgotten = await journal.along(press, async (tx) => {
@@ -531,10 +533,9 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           const person = await accounts.byEmail(asked);
           if (person === null) unsearched = "no-such-account";
           else about = { account: person.id };
-        } else if (
-          /^[A-Za-z0-9_-]{1,64}$/.test(asked) &&
-          (await accounts.operatorAccount(asked, now)) !== null
-        ) {
+        } else if (/^[A-Za-z0-9_-]{1,64}$/.test(asked)) {
+          // Not asked whether the account still exists: a forgotten one's rows
+          // keep its identifier.
           about = { account: asked };
         } else unsearched = "not-searchable";
       }
@@ -543,7 +544,8 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       // unread rather than as none.
       const counted = await Promise.all(
         kinds.map(async (one) => {
-          if (unsearched !== null) return { kind: one, count: 0 };
+          // A search that could not run counts nothing.
+          if (unsearched !== null) return { kind: one, count: null };
           try {
             const actions = JOURNAL_KINDS[one];
             const page = await store.journal({

@@ -243,8 +243,8 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
               <path d="M5 12.5l4.5 4.5L19 7.5" />
             </svg>
             <span>
-              The account and its merchant were forgotten; the address signs in again as a newcomer.
-              Written to the journal, which names it as a deleted account.
+              The account was forgotten, with its merchant where it had one; the address signs in
+              again as a newcomer. Written to the journal, which names it as a deleted account.
             </span>
           </p>
         ) : (

@@ -1648,19 +1648,22 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         changed: Readonly<{ id: string; email: string }>,
       ) => {
         const told = new Set([...before.map((one) => one.email), changed.email]);
-        for (const to of told) {
-          const handed = await postman(
-            operatorFlagMessage(to, {
-              email: changed.email,
-              granted: on,
-              at: asked.at,
-              askedBy: asked.by,
-              channel: `${channel.name.toLowerCase()} (${channel.line})`,
-              accounts: `${base}/admin/accounts`,
-            }),
-          );
-          if (handed !== "accepted") throw new OperatorMailRefused();
-        }
+        // Handed over side by side, since the channel's lock is held meanwhile.
+        const handed = await Promise.all(
+          [...told].map((to) =>
+            postman(
+              operatorFlagMessage(to, {
+                email: changed.email,
+                granted: on,
+                at: asked.at,
+                askedBy: asked.by,
+                channel: `${channel.name.toLowerCase()} (${channel.line})`,
+                accounts: `${base}/admin/accounts`,
+              }),
+            ),
+          ),
+        );
+        if (handed.some((one) => one !== "accepted")) throw new OperatorMailRefused();
       };
       if (tx === null) {
         return await memoryOnly(async (rows) => await setFlagInMemory(rows, accountId, on, tell));

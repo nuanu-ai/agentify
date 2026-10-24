@@ -183,7 +183,8 @@ const addressOf = (kind: JournalView["kind"], q: string, before: number | null):
 };
 
 const UNSEARCHED: Readonly<Record<NonNullable<JournalView["unsearched"]>, string>> = {
-  "no-such-account": "No account on this channel has that address, so no row is about it.",
+  "no-such-account":
+    "No account on this channel has that address now. A forgotten account is searched by its identifier, which its rows keep.",
   "not-searchable":
     "The journal is searched by a merchant's identifier (mch_…), or an account's address or identifier.",
 };
@@ -220,7 +221,10 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
           {view.kinds.map((one) => {
             const words = (
               <>
-                {KIND_LABELS[one.kind]} <b>{one.count === null ? COULD_NOT_BE_READ : one.count}</b>
+                {KIND_LABELS[one.kind]}{" "}
+                {view.unsearched !== null ? null : (
+                  <b>{one.count === null ? COULD_NOT_BE_READ : one.count}</b>
+                )}
               </>
             );
             return one.kind === view.kind ? (

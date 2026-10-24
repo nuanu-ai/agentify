@@ -252,6 +252,10 @@ if (databaseUrl === null) {
       ).rejects.toThrow();
       await rowsWork();
       expect(await flagOf(seller.person.id)).toBe(false);
+      // The mails went out before the row failed, and say the change holds
+      // only where Accounts shows it, which it does not.
+      expect(messages).toHaveLength(3);
+      expect(messages[0]?.body).toContain("applies only if Accounts in the workspace shows it");
 
       messages.length = 0;
       const granted = await along(
@@ -509,6 +513,23 @@ if (databaseUrl === null) {
       await signIn(FIRST, configured);
       expect(await flagOf(first.id)).toBe(false);
       expect(await rows()).toHaveLength(1);
+    });
+
+    it("keeps an operator's account from the scanner's deletion until its flag is removed", async () => {
+      const boss = await operator(OPERATOR);
+      const deleting = async () =>
+        await identity.deleteUnattachedPerson({
+          operation: "delete",
+          operation_id: randomUUID(),
+          email: OPERATOR,
+        });
+
+      expect(await deleting()).toStrictEqual({ status: "retained" });
+      expect(await flagOf(boss.id)).toBe(true);
+
+      await identity.setOperator(OPERATOR, false);
+      expect(await deleting()).toStrictEqual({ status: "deleted" });
+      expect(await identity.byEmail(OPERATOR)).toBeNull();
     });
 
     it("reads the seller names and money history of the merchants accounts name, across merchants", async () => {

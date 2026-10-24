@@ -270,6 +270,11 @@ describe("forgetting an account", () => {
     });
     const journal = readable((await operator.get("/admin/journal")).html);
     expect(journal).toContain("Forgot the account");
+    // Its rows keep its identifier, by which it is still searched.
+    const byId = readable((await operator.get(`/admin/journal?q=${account}`)).html);
+    expect(byId).toContain("Forgot the account");
+    const byAddress = readable((await operator.get(`/admin/journal?q=${MERCHANT}`)).html);
+    expect(byAddress).toContain("A forgotten account is searched by its identifier");
   });
 
   it("is neither offered nor done on the live channel", async () => {
