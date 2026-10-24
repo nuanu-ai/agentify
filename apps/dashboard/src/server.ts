@@ -246,7 +246,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
  * the reader across merchants, the journal a dashboard action writes its row
  * through, and the accounts' operator-side reads and changes.
  */
-export type AdminDoorParts = Readonly<{
+type AdminDoorParts = Readonly<{
   reader: OperatorReader;
   journal: DashboardJournal;
   accounts: AccountsDirectory;

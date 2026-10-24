@@ -54,7 +54,7 @@ const GROUPS: readonly (readonly [string, readonly SectionLink[]])[] = [
 ];
 
 /** The frame's view, which the workspace's layout loads for every page under it. */
-export const useAdminFrame = (): AdminFrameView => {
+const useAdminFrame = (): AdminFrameView => {
   const frame = useRouteLoaderData<AdminFrameView>("routes/admin/only");
   if (frame === undefined) {
     throw new Error("an admin page was drawn outside the workspace's layout");

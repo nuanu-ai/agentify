@@ -90,7 +90,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const two = (n: number) => String(n).padStart(2, "0");
 
 /** A moment as every page of the dashboard writes it: "2026-10-23 14:05:00 UTC". */
-export const momentWritten = (at: number): string => moment(new Date(at).toISOString());
+const momentWritten = (at: number): string => moment(new Date(at).toISOString());
 
 /** A day as every page of the dashboard writes it: "23 October 2026". */
 const dayWritten = (at: number): string => dayOf(new Date(at).toISOString());
@@ -108,7 +108,7 @@ const clockWritten = (at: number): string => {
 };
 
 /** "3 h 12 min", "12 min", "2 d 3 h", "under a minute". */
-export const durationWritten = (ms: number): string => {
+const durationWritten = (ms: number): string => {
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return "under a minute";
   if (minutes < 60) return `${minutes} min`;
@@ -128,14 +128,10 @@ const sumOf = (...amounts: readonly string[]): string =>
 const shareWritten = (commission: number, total: number): string =>
   `${Number(((commission / total) * 100).toFixed(4))}%`;
 
-/** A wallet or a split's address shown short, the whole of it a press away. */
-export const addressShort = (address: string): string =>
-  address.length <= 12 ? address : `${address.slice(0, 6)}…${address.slice(-4)}`;
-
 // --- the views -------------------------------------------------------------
 
 /** A badge: a tone of the dashboard's and the word in it. */
-export type Tone = "pass" | "fail" | "notice" | "partial" | "quiet" | "unknown" | "progress";
+type Tone = "pass" | "fail" | "notice" | "partial" | "quiet" | "unknown" | "progress";
 
 export interface Badge {
   readonly tone: Tone;
@@ -154,7 +150,7 @@ export interface TileView {
   readonly aside: string;
 }
 
-export interface BarView {
+interface BarView {
   readonly x: number;
   readonly y: number;
   readonly height: number;
@@ -175,7 +171,7 @@ export interface ChartView {
   readonly spoken: readonly string[];
 }
 
-export interface FunnelStepView {
+interface FunnelStepView {
   readonly label: string;
   readonly merchants: number;
   /** Of the first step, for the bar's length. */
@@ -184,7 +180,7 @@ export interface FunnelStepView {
   readonly rate: string;
 }
 
-export interface NeedsYouItem {
+interface NeedsYouItem {
   readonly merchantId: string;
   readonly name: string;
   readonly site: string | null;
@@ -193,7 +189,7 @@ export interface NeedsYouItem {
   readonly created: string;
 }
 
-export interface WorthItem {
+interface WorthItem {
   readonly badge: Badge;
   readonly title: string;
   readonly href?: string;
@@ -215,7 +211,7 @@ export interface OverviewView {
   readonly journal: Readable<{ lines: readonly JournalLineView[]; cut: string }>;
 }
 
-export interface SplitRowView {
+interface SplitRowView {
   readonly merchantId: string;
   readonly merchant: string | null;
   readonly split: string;
@@ -284,10 +280,10 @@ export interface HealthView {
 // --- the facts shared by the views ------------------------------------------
 
 /** Where the channel's request rates, errors and hosts are drawn over time. */
-export const GRAFANA = "https://grafana.nuanu.ai/d/agentify-overview/service-health";
+const GRAFANA = "https://grafana.nuanu.ai/d/agentify-overview/service-health";
 
 /** The site's own scanner page, outside the dashboard's prefix. */
-export const SCANNER_PAGE = "/admin";
+const SCANNER_PAGE = "/admin";
 
 const REPOSITORY = "https://github.com/nuanu-ai/agentify";
 
@@ -477,7 +473,7 @@ const FUNNEL_WORDS: Readonly<Record<FunnelStep, string>> = {
 const percent = (part: number, whole: number) =>
   whole === 0 ? "—" : `${Math.round((part / whole) * 100)}%`;
 
-export function funnelViewOf(funnel: Funnel): { lead: string; steps: readonly FunnelStepView[] } {
+function funnelViewOf(funnel: Funnel): { lead: string; steps: readonly FunnelStepView[] } {
   const first = funnel.steps[0]?.merchants ?? 0;
   return {
     lead: `All ${plural(first, "merchant")}, as they stand`,
@@ -985,7 +981,7 @@ export interface HealthReads {
 
 const COULD_NOT: Badge = { tone: "unknown", word: "Could not be read" };
 
-export function keyRowOf(check: FacilitatorKeyCheck | null): HealthRowView {
+function keyRowOf(check: FacilitatorKeyCheck | null): HealthRowView {
   if (check === null) {
     return {
       part: "Facilitator key",

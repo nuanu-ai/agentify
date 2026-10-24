@@ -13,7 +13,7 @@ import { Moment } from "../moment.js";
 import { PostForm } from "../post-form.js";
 
 /** Where the step's link press posts; it lives under the workspace's layout. */
-export const SIGN_IN_AGAIN = "/admin/sign-in-again";
+const SIGN_IN_AGAIN = "/admin/sign-in-again";
 
 const minutes = (seconds: number): string => {
   const whole = Math.ceil(seconds / 60);

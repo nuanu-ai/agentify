@@ -21,7 +21,7 @@ import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf }
 import { FULFILLMENT_WORDS, moment, money, ORDER_WORDS, type Word } from "../words.js";
 
 /** The segments in the order the list shows them, with their names. */
-export const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
+const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["payment_unknown", "Payment unknown"],
   ["unfulfilled", "Unfulfilled"],
   ["delivered_unpaid", "Delivered, not paid"],
@@ -68,7 +68,7 @@ const CURSOR = /^(\d{1,16})\.([A-Za-z0-9_-]{1,128})$/;
 /** The latest moment a date can hold: a cursor past it names no order. */
 const LAST_MOMENT = 8.64e15;
 
-export const cursorIn = (query: URLSearchParams): OrdersCursor | null => {
+const cursorIn = (query: URLSearchParams): OrdersCursor | null => {
   const matched = CURSOR.exec(query.get("before") ?? "");
   const createdAt = Number(matched?.[1]);
   return matched === null || !Number.isSafeInteger(createdAt) || createdAt > LAST_MOMENT
@@ -123,7 +123,7 @@ const placeOf = (asked: OrdersAsked, change: Partial<OrdersAsked>): string => {
 };
 
 /** A badge's tone, the dashboard's own, or the dashed one for a fact nobody knows. */
-export type Tone = Word["tone"] | "unknown";
+type Tone = Word["tone"] | "unknown";
 
 export interface Toned {
   readonly text: string;
@@ -136,10 +136,9 @@ const paymentToned = (payment: OperatorOrderRow["payment"]): Toned => ({
 });
 
 /** A merchant as the workspace names it: the name they sell under, or their identifier. */
-export const merchantName = (merchant: OrderMerchant): string =>
-  merchant.serviceName ?? merchant.id;
+const merchantName = (merchant: OrderMerchant): string => merchant.serviceName ?? merchant.id;
 
-export interface OrderRowView {
+interface OrderRowView {
   readonly id: string;
   readonly to: string;
   /** When the price was set; null where none was. */
@@ -154,7 +153,7 @@ export interface OrderRowView {
 
 const at = (ms: number): MomentView => momentView(new Date(ms).toISOString());
 
-export const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
+const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
   id: row.id,
   to: `/admin/orders/${encodeURIComponent(row.id)}`,
   priced: row.pricedAt === null ? null : at(row.pricedAt),
@@ -166,7 +165,7 @@ export const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
   test: row.test,
 });
 
-export interface SegmentView {
+interface SegmentView {
   readonly key: OrdersShown;
   readonly label: string;
   /** Null where the counts could not be read. */
@@ -175,7 +174,7 @@ export interface SegmentView {
   readonly to: string;
 }
 
-export type OrdersResult =
+type OrdersResult =
   | Readonly<{
       kind: "rows";
       rows: readonly OrderRowView[];
@@ -703,7 +702,7 @@ export function orderPageView(
 // --- the lookup --------------------------------------------------------------
 
 /** A record the lookup found, said as a line that opens it. */
-export interface FoundView {
+interface FoundView {
   readonly kind: "Order" | "Merchant" | "Account";
   readonly label: string;
   /** The record's identifier, shown short. */
@@ -732,7 +731,7 @@ const BY: Readonly<Record<string, string>> = {
   email: "its email address",
 };
 
-export const foundView = (found: Found | AccountFound): FoundView => {
+const foundView = (found: Found | AccountFound): FoundView => {
   if (found.kind === "account") {
     return {
       kind: "Account",

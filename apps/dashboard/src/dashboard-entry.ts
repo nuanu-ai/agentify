@@ -23,7 +23,7 @@ export interface Person {
  * stored claim and the redirect. Anything else a browser sends becomes the
  * start, and a stored claim naming anything else opens nothing.
  */
-export const DASHBOARD_DESTINATIONS = [
+const DASHBOARD_DESTINATIONS = [
   "default",
   "orders",
   "receipts",

@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardIdentity } from "../dashboard-entry.js";
 
-export const NOW = new Date("2026-10-24T09:00:00.000Z");
+const NOW = new Date("2026-10-24T09:00:00.000Z");
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 const ago = (ms: number) => new Date(NOW.getTime() - ms);

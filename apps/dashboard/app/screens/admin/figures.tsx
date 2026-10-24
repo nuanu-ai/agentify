@@ -54,7 +54,7 @@ function SaidText({ said }: Readonly<{ said: Said }>) {
 }
 
 /** An address shown short; it opens to its whole value, ready to select, with no script. */
-export function Whole({ value, short }: Readonly<{ value: string; short: string }>) {
+function Whole({ value, short }: Readonly<{ value: string; short: string }>) {
   return (
     <span className="ident">
       {short === value ? (

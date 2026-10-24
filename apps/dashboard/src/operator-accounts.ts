@@ -57,14 +57,14 @@ export type Forgetting =
 export type Statements = Pick<JournalTransaction, "execute">;
 
 /** The one lock every change of who holds the flag takes first. */
-export const OPERATORS_LOCK = "dashboard-operators";
+const OPERATORS_LOCK = "dashboard-operators";
 
 const rowsOf = async <T extends Record<string, unknown>>(
   tx: Statements,
   query: SQL,
 ): Promise<T[]> => (await tx.execute(query)).rows as T[];
 
-export async function lockOperators(tx: Statements): Promise<void> {
+async function lockOperators(tx: Statements): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${OPERATORS_LOCK}, 0))`);
 }
 
@@ -138,7 +138,7 @@ export async function endSessionsIn(
 }
 
 /** Who holds the flag, under the operators' lock the caller took. */
-export async function operatorsIn(
+async function operatorsIn(
   tx: Statements,
 ): Promise<readonly Readonly<{ id: string; email: string }>[]> {
   return await rowsOf<{ id: string; email: string }>(

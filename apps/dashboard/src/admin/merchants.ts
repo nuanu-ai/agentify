@@ -118,7 +118,7 @@ const connectionOf = (
 
 const stateOf = (segment: MerchantSegment): Word => STATE_WORDS[segment];
 
-export function listRowOf(
+function listRowOf(
   row: MerchantRow,
   mode: SurfaceMode,
   accounts: readonly NamedAccount[] | null,
@@ -163,13 +163,13 @@ export interface KeyLine {
   readonly answer: ActionAnswer | null;
 }
 
-export interface ShopFacts {
+interface ShopFacts {
   readonly url: string;
   readonly connected: MomentView;
   readonly permissions: string;
 }
 
-export interface WorthLine {
+interface WorthLine {
   readonly id: string;
   readonly href: string;
   readonly state: Word;
@@ -180,7 +180,7 @@ export interface WorthLine {
   readonly shopUncertain: boolean;
 }
 
-export interface CardLine {
+interface CardLine {
   readonly id: string;
   readonly title: string;
   readonly code: string;

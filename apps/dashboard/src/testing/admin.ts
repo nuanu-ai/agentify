@@ -32,7 +32,7 @@ const CHANNELS = {
   },
 } as const;
 
-export interface Visit {
+interface Visit {
   readonly status: number;
   readonly headers: Headers;
   readonly html: string;
@@ -40,7 +40,7 @@ export interface Visit {
   readonly to: string | null;
 }
 
-export interface AdminBrowser {
+interface AdminBrowser {
   /** A path under the dashboard's prefix, without it. */
   get(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;

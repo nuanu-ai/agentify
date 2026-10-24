@@ -160,7 +160,7 @@ export interface Identity extends DashboardIdentity {
   close(): Promise<void>;
 }
 
-export const emailAs = (raw: string): string => raw.trim().toLowerCase();
+const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
 /**
  * Sliding: a person who keeps coming back does not meet the sign-in form again.

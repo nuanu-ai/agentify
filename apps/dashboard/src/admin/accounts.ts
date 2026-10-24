@@ -43,7 +43,7 @@ export type AccountsDirectory = Pick<
 >;
 
 /** What can be done to an account, each its own press. */
-export const ACCOUNT_ACTS = [
+const ACCOUNT_ACTS = [
   "end_sessions",
   "grant_operator",
   "remove_operator",
@@ -97,7 +97,7 @@ export const ACCOUNTS_SEGMENTS: readonly SegmentRule<AccountRowView>[] = [
 ];
 
 /** How many rows of the journal a page draws. */
-export const LIST_CUT = PAGE_ROWS;
+const LIST_CUT = PAGE_ROWS;
 
 export interface AccountsListView {
   readonly readAt: MomentView;
@@ -133,11 +133,11 @@ export interface JournalLineView {
   readonly refusal: string | null;
 }
 
-export type JournalLines =
+type JournalLines =
   | Readonly<{ lines: readonly JournalLineView[]; total: number }>
   | "could-not-be-read";
 
-export type ForgetStanding =
+type ForgetStanding =
   | Readonly<{ kind: "allowed" }>
   | Readonly<{ kind: "live-channel" }>
   | Readonly<{ kind: "operator" }>
@@ -163,9 +163,9 @@ export type AccountPageView =
     }>
   | Readonly<{ kind: "absent"; id: string; pressed: AccountPressed | null }>;
 
-export type JournalKind = "all" | "admission" | "keys" | "sessions" | "flag" | "forgotten";
+type JournalKind = "all" | "admission" | "keys" | "sessions" | "flag" | "forgotten";
 
-export const JOURNAL_KINDS: Readonly<Record<JournalKind, readonly JournalAction[] | undefined>> = {
+const JOURNAL_KINDS: Readonly<Record<JournalKind, readonly JournalAction[] | undefined>> = {
   all: undefined,
   admission: ["admit", "withdraw"],
   keys: ["disable_key"],

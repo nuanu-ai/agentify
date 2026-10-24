@@ -25,7 +25,7 @@ const LATEST_REPORT = "/report/latest";
 export const startOf = (base: string, person: Person): string =>
   person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
 
-export const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
+const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
   `${base}/${destination === "default" ? "cards" : destination}`;
 
 /**
