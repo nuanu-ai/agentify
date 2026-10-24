@@ -95,15 +95,6 @@ import {
   verifications,
 } from "./schema.js";
 
-interface CommandAccountSummary {
-  readonly email: string;
-  readonly createdAt: Date;
-  readonly sessions: number;
-  readonly merchant: string | null;
-  readonly confirmed: boolean;
-  readonly operator: boolean;
-}
-
 /**
  * A change of the operator flag that was not made because a mail to an
  * operator, or to the account changed, was not handed to the provider: the
@@ -135,7 +126,6 @@ export interface Identity extends DashboardIdentity {
   setOperator(email: string, operator: boolean): Promise<boolean>;
   /** For an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
-  list(now: Date): Promise<readonly CommandAccountSummary[]>;
   /** The accounts that made a merchant or hold the flag, and how many others only signed in. */
   operatorAccounts(now: Date): Promise<AccountsListing>;
   /** One account, listed or not, as the workspace shows it; null where there is none. */
@@ -476,7 +466,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         ...(forGoogle ? { validateUserInfo: validateGoogleInfo } : {}),
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
-          // Closed to input: only the terminal command writes it.
+          // Closed to input: only the operator's workspace and the first
+          // operator's configuration write it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
           // Closed to input: only the settings' own press writes it.
           analyticsOptOut: {
@@ -1631,25 +1622,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return await endLiveSessionsOf(personId, new Set());
     },
 
-    async list(now) {
-      const context = await contextOf();
-      const everybody = await context.internalAdapter.listUsers();
-      const rows: CommandAccountSummary[] = [];
-      for (const one of everybody) {
-        const person = personFrom(one as PersonRow);
-        const open = await context.internalAdapter.listSessions(person.id);
-        rows.push({
-          email: person.email,
-          createdAt: (one as { createdAt: Date }).createdAt,
-          sessions: open.filter((session) => session.expiresAt > now).length,
-          merchant: person.merchant?.id ?? null,
-          confirmed: person.confirmed,
-          operator: operatorOn(one),
-        });
-      }
-      return rows.sort((one, other) => one.email.localeCompare(other.email));
-    },
-
     async operatorAccounts(now) {
       if (parts.pool === undefined) {
         return await inMemoryTurn(async () => listedInMemory(memoryRows, now));
@@ -1944,7 +1916,7 @@ function goesWithTheDeletion(
  */
 type LinkPurpose = "dashboard" | "report" | "step-up";
 
-/** `pnpm forget` clears an address's link sends by this same key. */
+/** Forgetting an account clears its address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 

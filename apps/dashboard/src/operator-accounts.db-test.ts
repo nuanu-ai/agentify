@@ -9,9 +9,18 @@
  * operator.
  */
 
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connect, PostgresStore, randomIds } from "@agentify/gateway";
+import {
+  connect,
+  issueKey,
+  PAYOUT_SPLIT_NETWORKS,
+  PostgresStore,
+  payoutSplitFor,
+  payoutSplitNetworkOf,
+  randomIds,
+} from "@agentify/gateway";
 import type { JournalPress } from "@agentify/gateway/journal";
 import { postgresOperatorReader } from "@agentify/gateway/operator";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
@@ -25,6 +34,7 @@ import { migrateAccounts } from "./database.js";
 import { type Identity, identityFor, OperatorMailRefused } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
+import { postgresWooShops } from "./woo-shops.js";
 
 const WANTED = (() => {
   const url = new URL(testDatabaseUrl());
@@ -298,6 +308,102 @@ if (databaseUrl === null) {
           .rows[0]?.n,
       ).toBe(1);
       expect(await rows()).toHaveLength(1);
+    });
+
+    it("forgets what the product wrote for an address, and nothing of anybody else's", async () => {
+      // Everything is made through the code that makes it in a deployment, so
+      // the test proves the forgetting removes what the product writes rather
+      // than what a fixture guessed it writes.
+      await operator(OPERATOR);
+      const seller = await withMerchant(MERCHANT);
+      const bystander = await withMerchant(SECOND);
+      for (const [merchantId, item] of [
+        [seller.merchantId, "room-101"],
+        [bystander.merchantId, "their-room"],
+      ] as const) {
+        await store.publishCard(
+          merchantId,
+          {
+            merchant_item_id: item,
+            title: "A room for the night",
+            description: "One night in a room",
+            price: { amount: "80.00", currency: "USD" },
+            result: { access_code: { type: "string" } },
+            fulfillment: "sync",
+          },
+          Date.now(),
+        );
+      }
+      await issueKey(store, randomIds, seller.merchantId, "worker", Date.now(), "test");
+      const report = {
+        operation: "send" as const,
+        email: MERCHANT,
+        destination: { report: randomUUID() },
+        request: randomUUID(),
+      };
+      expect((await identity.sendReportLink(report)).status).toBe("accepted");
+      const now = new Date();
+      await postgresWooShops(pool).connect({
+        accountId: seller.person.id,
+        shopUrl: "https://shop.example.com",
+        consumerKey: "k".repeat(43),
+        consumerSecret: "s".repeat(43),
+        permissions: "read_write",
+        revision: "first",
+        connectedAt: now,
+        currency: null,
+      });
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, NETWORK);
+      await store.setPayoutWallet(
+        seller.merchantId,
+        { address: null, pending: null },
+        {
+          address: wallet,
+          split: payoutSplitFor(network, seller.merchantId, wallet),
+          pending: null,
+        },
+        Date.now(),
+      );
+      const countOf = async (table: string, column: string, value: string): Promise<number> =>
+        (
+          await pool.query<{ n: number }>(
+            `select count(*)::int as n from ${table} where ${column} = $1`,
+            [value],
+          )
+        ).rows[0]?.n ?? -1;
+      expect(
+        await countOf("commerce_analytics_events", "refs ->> 'merchant'", seller.merchantId),
+      ).toBeGreaterThan(0);
+
+      const forgotten = await along(
+        press("forget_account", seller.person.id),
+        async (tx) => await identity.forgetIn(tx, seller.person.id),
+        (result) => (result.kind === "forgotten" ? true : null),
+      );
+
+      expect(forgotten).toMatchObject({ kind: "forgotten", merchant: { cards: 1 } });
+      for (const [table, column, value] of [
+        ["dashboard_accounts", "id", seller.person.id],
+        ["dashboard_sessions", "user_id", seller.person.id],
+        ["dashboard_woo_shops", "account_id", seller.person.id],
+        ["merchants", "id", seller.merchantId],
+        ["merchant_keys", "merchant_id", seller.merchantId],
+        ["cards", "merchant_id", seller.merchantId],
+        ["commerce_analytics_events", "refs ->> 'merchant'", seller.merchantId],
+      ] as const) {
+        expect(await countOf(table, column, value), table).toBe(0);
+      }
+      // Money may still sit at a split after its merchant is gone.
+      expect(await countOf("payout_splits", "merchant_id", seller.merchantId)).toBe(1);
+      expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
+      expect(await countOf("cards", "merchant_id", bystander.merchantId)).toBe(1);
+      expect((await identity.requestLink(SECOND, "default", ONE_CLIENT)).status).toBe("cooldown");
+      // Both senders let the address ask again at once.
+      expect((await identity.sendReportLink({ ...report, request: randomUUID() })).status).toBe(
+        "accepted",
+      );
+      expect((await identity.requestLink(MERCHANT, "default", ONE_CLIENT)).status).toBe("accepted");
     });
 
     it("forgets an account with its merchant and cards, and nothing where the row fails", async () => {

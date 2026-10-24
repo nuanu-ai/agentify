@@ -36,14 +36,11 @@
 # merchant. Google sign-in is also available when its credentials are supplied;
 # no command makes an account or a merchant.
 #
-# The operator's commands look after the accounts there are:
-#
-#   docker compose exec app \
-#     pnpm --filter @agentify/dashboard account list
-#
-# `list` inspects accounts and `revoke` ends their sessions.
-# `operator you@example.com` lets an address that has signed in once read the
-# operator's dashboard at /admin, and `--off` takes that away.
+# The operator's workspace at http://localhost:8080/dashboard/admin looks after
+# the accounts there are. It opens for an account carrying the operator flag:
+# set FIRST_OPERATOR_EMAIL to your address before your first sign-in and the
+# account it makes receives the flag; an operator then grants it to others in
+# the workspace's Accounts.
 #
 # Nothing is bought by itself. A purchase is an explicit command, so a sale in
 # the dashboard is one somebody made:
