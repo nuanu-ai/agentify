@@ -215,9 +215,10 @@ validation, not a public-provider capacity measurement or a live purchase.
 
 A failed poll is logged with the class of its error, and each run logs how
 many payments are unresolved and the age of the oldest, so an operator can see
-that recovery is stuck. At start-up the gateway checks that the RPC answers the
-channel's chain identifier; on a mismatch or no answer it says so and leaves
-recovery off, while facilitator payments continue. Whoever serves that address
+that recovery is stuck. At start-up the gateway asks the RPC for the
+channel's chain identifier; on a mismatch or no answer it says so and keeps
+asking on every poll, while facilitator payments continue. Only an empty RPC
+address turns recovery off. Whoever serves that address
 is trusted for payment evidence beside the facilitator: ADR-0027 records what
 recovery checks and what it cannot.
 

@@ -1,7 +1,8 @@
 # 0010. Every merchant is a row, and a key names its merchant
 
 Date: 2026-08-27
-Status: accepted (the product owner, 2026-08-27: the product is self-service)
+Status: accepted (the product owner, 2026-08-27: the product is self-service;
+2026-10-23: the operator's workspace reads across merchants, ADR-0026 §6)
 
 ## Context
 
@@ -18,18 +19,24 @@ card, order, receipt and key carries its merchant, not null, so no such row
 exists without an owner. Two tables are written down as exceptions, whose rows
 are not bound to a living merchant. The one table without a merchant records
 which order claimed a payment, because an agent's single signature must not be
-spendable once at each merchant. The registry of payout splits (ADR-0038)
-names its merchant with no foreign key, so a merchant forgotten on the test
-channel leaves their recorded splits behind: money can still arrive at a split
-after its merchant is gone, and until the split's first payout its parameters
-exist nowhere else. A read of the registry for one merchant still names that
-merchant in its predicate. Three readers cross merchants on purpose: the
-operator's payout and the start's check of the registry, which answer no
-request; and the wallet rule, on a dashboard save and at a start, which asks
-whether an address is any merchant's split. A save it refuses says only whether
-the split is the merchant's own or another merchant's, of an address the
-merchant already holds; the registry also holds waiting splits no payment
-challenge has shown, and nothing else of them leaves it.
+spendable once at each merchant. The registry of payout splits (ADR-0038) names
+its merchant with no foreign key, so a merchant forgotten on the test channel
+leaves their recorded splits behind: money can still arrive at a split after
+its merchant is gone, and until the split's first payout its parameters exist
+nowhere else. A read of the registry for one merchant still names that merchant
+in its predicate. Some readers cross merchants on purpose. The operator's
+payout listing and the start's check of the registry answer no request. The
+wallet rule, on a dashboard save and at a start, asks whether an address is any
+merchant's split. The channel's metrics count orders across merchants and name
+none, and the payment recovery sweep reads every merchant's unresolved
+payments, each under its order's own lock. The operator's workspace reads
+merchants, orders, receipts and splits across merchants for an account carrying
+the operator flag, checked on every request, inside read-only transactions that
+no merchant key and no buyer route can reach (ADR-0026 §6); it shows a waiting
+split's existence and the moment it lands, never its address. A save it refuses
+says only whether the split is the merchant's own or another merchant's, of an
+address the merchant already holds; the registry also holds waiting splits no
+payment challenge has shown, and nothing else of them leaves it.
 
 A key is a row that names its merchant. Its secret is generated, shown once and
 stored as a SHA-256 digest, and a request is resolved by looking the digest up,
@@ -49,7 +56,8 @@ The buying surface is one catalog across every merchant, which is the product,
 and a purchase reaches the merchant whose card it was made against. The
 merchant's identifier never reaches a buyer; what an agent learns about who
 sells is the name and site of ADR-0034. A dashboard account names at most one
-merchant, and every screen is scoped to it.
+merchant, and every screen of the merchant's dashboard is scoped to it; the
+operator's workspace is the readers' exception above.
 
 `docker compose up` brings the sandbox up selling with no manual step: every
 database is created with one merchant, the laptop's gateway seeds a key for it

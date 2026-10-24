@@ -70,6 +70,7 @@ name. Notes written in Russian stay in Russian.
 | [57-sign-in-mail-limits](57-sign-in-mail-limits.md) | how many sign-in and report links the dashboard mails, and what the channel's ceiling protects and costs | — | English | current |
 | [58-woo-shop-currency](58-woo-shop-currency.md) | a proposal for selling from a WooCommerce shop priced in another currency at a rate its merchant sets, with the rate sources checked and the legal frame in Indonesia | ADR-0023 | English | current |
 | [84-nuanu-analytics-ingest](84-nuanu-analytics-ingest.md) | what Nuanu Analytics is relied on to do with a server-sent event, where that comes from, and the check still owed | ADR-0042 | English | current |
+| [85-operator-admin](85-operator-admin.md) | who the operator's admin serves and why, what it does and never does, how its actions are protected, how it is built, and its screens | ADR-0010, ADR-0014, ADR-0026, ADR-0040 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
