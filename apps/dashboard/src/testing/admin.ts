@@ -14,7 +14,7 @@ import { memoryJournal } from "../admin/journal.js";
 import { type DashboardConfig, loadConfig } from "../config.js";
 import { DRAWN_FOR } from "../drawn-for.js";
 import { type Identity, identityFor } from "../identity.js";
-import type { Message } from "../mail.js";
+import type { Handover, Message } from "../mail.js";
 import { buildApp } from "../server.js";
 import { rewindLinkSends } from "./link-sends.js";
 import { testPages } from "./pages.js";
@@ -66,6 +66,10 @@ export async function adminServed(
     channel?: keyof typeof CHANNELS;
     /** A decorator, for a test about an identity that fails; the rest goes to the real one. */
     identity?: (real: Identity) => Identity;
+    /** More of the dashboard's configuration, such as the channel's first operator. */
+    environment?: Readonly<Record<string, string>>;
+    /** What the mail provider answers a message; it takes every one where absent. */
+    handOver?: (message: Message) => Handover;
   }> = {},
 ): Promise<AdminServed> {
   const channel = CHANNELS[options.channel ?? "test"];
@@ -82,6 +86,7 @@ export async function adminServed(
     AUTH_SECRET: TEST_AUTH_SECRET,
     BASE_PATH: ADMIN_BASE,
     ...channel,
+    ...options.environment,
   });
   const mails: Message[] = [];
   const rows: Record<string, Record<string, unknown>[]> = {
@@ -95,16 +100,19 @@ export async function adminServed(
     rows,
     postman: async (message) => {
       mails.push(message);
-      return "accepted";
+      return options.handOver?.(message) ?? "accepted";
     },
+    journal: harnessed.store,
   });
+  const served = options.identity === undefined ? identity : options.identity(identity);
   const app = buildApp(config, {
     pages: await testPages(),
     gateway: harnessed.gateway,
-    identity: options.identity === undefined ? identity : options.identity(identity),
+    identity: served,
     admin: {
       reader: memoryOperatorReader(harnessed.store),
       journal: memoryJournal(harnessed.store),
+      accounts: served,
     },
   });
   const server = app.listen(0, "127.0.0.1");

@@ -13,6 +13,7 @@ import type { Gateway } from "@agentify/gateway";
 import type { OperatorReader } from "@agentify/gateway/operator";
 import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
+import type { AccountsDirectory } from "./admin/accounts.js";
 import { type WorkspaceDoor, workspaceDoorFor } from "./admin/index.js";
 import type { DashboardJournal } from "./admin/journal.js";
 import type { ApprovalDirectory } from "./approval-command.js";
@@ -73,7 +74,7 @@ export interface DashboardParts {
    * Absent, the workspace is not built and every page of it answers as one
    * that is not there; nothing else in the dashboard is handed either.
    */
-  readonly admin?: Readonly<{ reader: OperatorReader; journal: DashboardJournal }>;
+  readonly admin?: AdminDoorParts;
   /** Only tests pass another, to stand at a moment of their own. */
   readonly now?: () => Date;
 }
@@ -253,13 +254,24 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 }
 
 /**
+ * What the workspace reads and writes with beyond the dashboard's own parts:
+ * the reader across merchants, the journal a dashboard action writes its row
+ * through, and the accounts' operator-side reads and changes.
+ */
+export type AdminDoorParts = Readonly<{
+  reader: OperatorReader;
+  journal: DashboardJournal;
+  accounts: AccountsDirectory;
+}>;
+
+/**
  * The workspace's services, the one place the operator's reader is handed to:
  * every refused press is written to the journal through the gateway's store.
  */
 function workspaceDoorOver(
   config: DashboardConfig,
   parts: DashboardParts,
-  admin: Readonly<{ reader: OperatorReader; journal: DashboardJournal }>,
+  admin: AdminDoorParts,
 ): WorkspaceDoor {
   const now = parts.now ?? (() => new Date());
   const store = parts.gateway.runtime.store;
@@ -269,6 +281,7 @@ function workspaceDoorOver(
     gateway: parts.gateway,
     reader: admin.reader,
     journal: admin.journal,
+    accounts: admin.accounts,
     now,
     pressing: {
       now,

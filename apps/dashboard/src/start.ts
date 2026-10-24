@@ -119,6 +119,7 @@ function started(
     admin: {
       reader: postgresOperatorReader(drizzle(pool), application.runtime.store.network),
       journal: postgresJournal(pool),
+      accounts: identity,
     },
   });
   const listening = () => {

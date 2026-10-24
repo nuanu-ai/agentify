@@ -120,7 +120,9 @@ describe("who the operator's workspace answers", () => {
 
     for (const path of adminPaths().filter((one) => !one.endsWith("/sign-in-again"))) {
       const read = await operator.get(path);
-      expect(read.status, path).toBe(path.endsWith("nothing-here") ? 404 : 200);
+      // A record the walk makes up is drawn in the frame as one there is none of.
+      const madeUp = path.endsWith("nothing-here") || path.includes("acc_somebody");
+      expect(read.status, path).toBe(madeUp ? 404 : 200);
       expect(readable(read.html), path).toContain("Live channel");
       expect(readable(read.html), path).toContain("Operator");
     }
