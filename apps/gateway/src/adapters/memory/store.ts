@@ -601,6 +601,8 @@ export class MemoryStore implements Store {
   }
 
   async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
+    // A grant made with no row still admits: the merchant's own column decides.
+    if ((this.#merchants.get(merchantId)?.liveApprovedAt ?? null) !== null) return null;
     const last = this.#journal.findLast(
       (row) =>
         row.subject.kind === "merchant" &&

@@ -55,4 +55,33 @@ describe("the operator's reader", () => {
 
     expect(reaching).toStrictEqual([]);
   });
+
+  it("is reached in the dashboard's pages only through the workspace's layout, which opens its door", () => {
+    // The workspace's services hold the reader. The process hands the pages a
+    // door, which reads the operator flag; the layout opens it and sets what
+    // its pages read. A page that read either elsewhere would reach every
+    // merchant's rows from outside the layout's check.
+    const dashboard = join(apps, "dashboard");
+    const uses: readonly (readonly [RegExp, RegExp])[] = [
+      // Opening the door.
+      [/\.workspace\b/, /^(app\/routes\/admin\/only\.tsx$|src\/page-services\.ts$|src\/admin\/)/],
+      // What the layout set.
+      [
+        /\bworkspaceIn\(|\bcontext\.(get|set)\(workspace\)/,
+        /^(app\/services\.ts|app\/routes\/admin\/)/,
+      ],
+      // Building the door.
+      [/\bworkspaceDoorFor\b/, /^(src\/admin\/|src\/server\.ts$)/],
+    ];
+    const reaching = [...sourcesIn(join(dashboard, "src")), ...sourcesIn(join(dashboard, "app"))]
+      .map((file) => [relative(dashboard, file), readFileSync(file, "utf8")] as const)
+      .filter(([path]) => !path.startsWith("src/testing/"))
+      .flatMap(([path, text]) =>
+        uses
+          .filter(([use, allowed]) => use.test(text) && !allowed.test(path))
+          .map(([use]) => `${path} ${use}`),
+      );
+
+    expect(reaching).toStrictEqual([]);
+  });
 });

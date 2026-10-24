@@ -13,7 +13,7 @@ import type { Gateway } from "@agentify/gateway";
 import type { OperatorReader } from "@agentify/gateway/operator";
 import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
-import { type AdminServices, adminServicesFor } from "./admin/index.js";
+import { type WorkspaceDoor, workspaceDoorFor } from "./admin/index.js";
 import type { DashboardJournal } from "./admin/journal.js";
 import type { ApprovalDirectory } from "./approval-command.js";
 import type { DashboardConfig } from "./config.js";
@@ -203,7 +203,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             }),
         ...(parts.admin === undefined
           ? {}
-          : { admin: adminServicesOver(config, parts, parts.admin) }),
+          : { workspace: workspaceDoorOver(config, parts, parts.admin) }),
         identity,
         clientFor,
         registrar: parts.registrar ?? registrarFor(parts.gateway),
@@ -256,14 +256,14 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
  * The workspace's services, the one place the operator's reader is handed to:
  * every refused press is written to the journal through the gateway's store.
  */
-function adminServicesOver(
+function workspaceDoorOver(
   config: DashboardConfig,
   parts: DashboardParts,
   admin: Readonly<{ reader: OperatorReader; journal: DashboardJournal }>,
-): AdminServices {
+): WorkspaceDoor {
   const now = parts.now ?? (() => new Date());
   const store = parts.gateway.runtime.store;
-  return adminServicesFor({
+  return workspaceDoorFor({
     config,
     identity: parts.identity,
     gateway: parts.gateway,
