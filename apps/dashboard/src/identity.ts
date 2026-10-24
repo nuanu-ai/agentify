@@ -924,6 +924,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const db = drizzle(parts.pool, {
         schema: { accounts, credentials, linkSends, sessions, verifications },
       });
+      // The sweep of old links runs in a transaction of its own, first: inside
+      // the one that waits on the mail provider it would hold other requests up
+      // behind a send, and a refused send would undo it.
       await db.transaction(async (tx) => {
         await cleanupOldLinksInPostgres(tx, new Date());
       });
@@ -1097,9 +1100,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return finished;
     },
 
-    // The sweep of old links runs in a transaction of its own, first: inside
-    // the one that waits on the mail provider it would hold other requests up
-    // behind a send, and a refused send would undo it.
     async requestStepUpLink(rawEmail, destination) {
       // Counted under a purpose of its own, so the public form, where anybody
       // can type an operator's address, spends none of these sends. No client
