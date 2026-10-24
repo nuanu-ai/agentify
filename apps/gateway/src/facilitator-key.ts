@@ -11,22 +11,16 @@
  * saying so when Coinbase could not be asked.
  */
 
-import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
-import { isCdpFacilitator, loadConfig } from "./config.js";
+import { loadConfig } from "./config.js";
+import { checkFacilitatorKey } from "./facilitator-key-check.js";
 
 try {
-  const { payment } = loadConfig(process.env);
-  if (!isCdpFacilitator(payment.facilitatorUrl)) {
-    console.log(
-      `${payment.facilitatorUrl} is not Coinbase's facilitator, so there is no key to ask Coinbase about`,
-    );
+  const checked = await checkFacilitatorKey(loadConfig(process.env).payment);
+  if (checked.outcome === "refused") {
+    console.error(checked.said);
+    process.exitCode = 1;
   } else {
-    const unconfirmed = await refuseUnlessCoinbaseTakesTheKey(facilitatorClientFor(payment), fetch);
-    console.log(
-      unconfirmed ??
-        "Coinbase let the key in CDP_API_KEY_ID and CDP_API_KEY_SECRET through: it judged the " +
-          "empty payment instead of refusing the key",
-    );
+    console.log(checked.said);
   }
 } catch (thrown) {
   console.error(thrown instanceof Error ? thrown.message : String(thrown));
