@@ -29,7 +29,9 @@ export interface FlagChanged {
 }
 
 export function operatorFlagMessage(to: string, changed: FlagChanged): Message {
-  const title = changed.granted ? "A new operator" : "An operator flag is being removed";
+  const title = changed.granted
+    ? "An operator is being added"
+    : "An operator flag is being removed";
   const when = moment(changed.at.toISOString());
   const lead = changed.granted
     ? `${changed.email} is being made an operator of Agentify's ${changed.channel}, asked at ${when}. An operator reads every merchant, order and account of the channel, and can admit and stop merchants and change who else is an operator.`
@@ -43,7 +45,7 @@ export function operatorFlagMessage(to: string, changed: FlagChanged): Message {
   return {
     to,
     subject: changed.granted
-      ? `A new operator on Agentify's ${changed.channel}`
+      ? `An operator is being added on Agentify's ${changed.channel}`
       : `An operator flag is being removed on Agentify's ${changed.channel}`,
     body: `Agentify\n\n${title}\n\n${lead}\n\n${applies}\n\n${asked}\n\n${unasked}\n\n${inert}\n\n${action}:\n\n${changed.accounts}`,
     html: transactionalEmailHtml({

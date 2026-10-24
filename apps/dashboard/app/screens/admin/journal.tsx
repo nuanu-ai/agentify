@@ -252,7 +252,11 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
             : view.query !== "" || view.kind !== "all"
               ? view.query === ""
                 ? "No action of this kind on this channel."
-                : "No row of the journal matches the search."
+                : view.searchedAs === "merchant"
+                  ? `No row is about the merchant ${view.query}.`
+                  : view.searchedAs === "address"
+                    ? `No row is about the account at ${view.query}.`
+                    : `No row is about an account with the identifier “${view.query}”; a reason is not searched.`
               : "No administrative action on this channel yet."}
         </ListEmpty>
       ) : (

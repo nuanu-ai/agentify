@@ -180,6 +180,7 @@ const journalOf = (fields: Partial<JournalView>): JournalView => ({
     { kind: "forgotten", count: 1 },
   ],
   query: "",
+  searchedAs: null,
   unsearched: null,
   lines: LINES,
   total: LINES.length,
@@ -479,11 +480,11 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
     when: "An operator searches the Journal for words that name no merchant or account.",
     cause:
       "The journal is searched by a merchant's identifier or an account's address or identifier.",
-    path: "/admin/journal?q=laptop",
+    path: "/admin/journal?q=lost+laptop",
     mode: "live",
     loaded: {
       "routes/admin/journal": journalOf({
-        query: "laptop",
+        query: "lost laptop",
         unsearched: "not-searchable",
         kinds: journalOf({}).kinds.map((one) => ({ ...one, count: null })),
         lines: [],

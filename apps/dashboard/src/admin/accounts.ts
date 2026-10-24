@@ -178,6 +178,8 @@ export interface JournalView {
   /** The kinds the channel can hold, each with its count: null where it failed or the search could not run. */
   readonly kinds: readonly Readonly<{ kind: JournalKind; count: number | null }>[];
   readonly query: string;
+  /** How the search was read: a merchant's identifier, an account's address, or an account's identifier. */
+  readonly searchedAs: "merchant" | "address" | "identifier" | null;
   /** Why a search found nothing to search by, or null. */
   readonly unsearched: "no-such-account" | "not-searchable" | null;
   readonly lines: readonly JournalLineView[];
@@ -387,15 +389,20 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       case "forget_account":
         return async (press) => {
           if (!forgettingHere) return refused("live_channel");
-          const account = await accounts.operatorAccount(accountId, at);
-          if (account?.merchantId !== null && account?.merchantId !== undefined) {
-            // Asked through the gateway's reads too, since in memory the
-            // merchant's orders are the gateway's alone; on Postgres the
-            // change asks again under its lock.
-            const history = await reader.accounts.historyOf(account.merchantId).catch(() => null);
-            if (history === null) return refused("history_unread");
-            if (history.orders > 0 || history.receipts > 0) return refused("money_history");
-          }
+          // Asked through the gateway's reads too, since in memory the
+          // merchant's orders are the gateway's alone; on Postgres the change
+          // asks again under its lock. A read that fails refuses the press,
+          // which has changed nothing yet.
+          const history = await accounts
+            .operatorAccount(accountId, at)
+            .then((account) =>
+              account?.merchantId === null || account?.merchantId === undefined
+                ? { orders: 0, receipts: 0 }
+                : reader.accounts.historyOf(account.merchantId),
+            )
+            .catch(() => null);
+          if (history === null) return refused("history_unread");
+          if (history.orders > 0 || history.receipts > 0) return refused("money_history");
           const forgotten = await journal.along(press, async (tx) => {
             const result = await accounts.forgetIn(tx, accountId);
             return { result, changed: result.kind === "forgotten" ? true : null };
@@ -527,13 +534,20 @@ export function accountsFor(parts: AdminParts): AccountsPages {
 
       let about: { merchant: string } | { account: string } | undefined;
       let unsearched: JournalView["unsearched"] = null;
+      let searchedAs: JournalView["searchedAs"] = null;
       if (asked !== "") {
-        if (/^mch_[A-Za-z0-9_-]{1,64}$/.test(asked)) about = { merchant: asked };
-        else if (asked.includes("@")) {
+        if (/^mch_[A-Za-z0-9_-]{1,64}$/.test(asked)) {
+          about = { merchant: asked };
+          searchedAs = "merchant";
+        } else if (asked.includes("@")) {
           const person = await accounts.byEmail(asked);
           if (person === null) unsearched = "no-such-account";
-          else about = { account: person.id };
+          else {
+            about = { account: person.id };
+            searchedAs = "address";
+          }
         } else if (/^[A-Za-z0-9_-]{1,64}$/.test(asked)) {
+          searchedAs = "identifier";
           // Not asked whether the account still exists: a forgotten one's rows
           // keep its identifier.
           about = { account: asked };
@@ -576,6 +590,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           kind,
           kinds: counted,
           query: asked,
+          searchedAs,
           unsearched,
           lines: await linesOf(page.rows),
           total: page.total,

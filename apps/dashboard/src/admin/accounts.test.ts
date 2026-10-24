@@ -344,5 +344,8 @@ describe("the Journal", () => {
 
     const unsearchable = readable((await operator.get("/admin/journal?q=lost laptop")).html);
     expect(unsearchable).toContain("The journal is searched by a merchant's identifier");
+    // One word is read as an account's identifier, and said to be.
+    const oneWord = readable((await operator.get("/admin/journal?q=laptop")).html);
+    expect(oneWord).toContain("No row is about an account with the identifier “laptop”");
   });
 });
