@@ -146,9 +146,18 @@ export const memoryOperatorOrders = (scope: MemoryScope): OperatorOrders => {
             ),
           );
         case "address": {
+          // A split is found only once a payment has gone to it.
           const split = held
             .splits(at)
-            .filter((one) => one.address.toLowerCase() === asked.address);
+            .filter(
+              (one) =>
+                one.address.toLowerCase() === asked.address &&
+                held.orders.some(
+                  (record) =>
+                    record.merchantId === one.merchantId &&
+                    record.payTo?.toLowerCase() === asked.address,
+                ),
+            );
           if (split.length > 0) {
             return merchants(
               "split",

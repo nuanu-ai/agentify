@@ -32,7 +32,8 @@ export interface OperatorOrders {
   /**
    * The records a pasted text names, none, one or several: an order by its
    * identifier or by a transaction its payment names, a merchant by its
-   * identifier, a payout wallet or split address, or the site it sells from.
+   * identifier, a payout wallet or a split a payment has gone to, or the site
+   * it sells from.
    * `at` is the moment of reading, which decides which wallet is in force; a
    * split waiting behind a wallet change that has not landed is never found.
    * An email address finds nothing here: accounts are the dashboard's.

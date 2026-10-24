@@ -214,7 +214,9 @@ export const postgresOperatorOrders = ({ read, network }: OperatorScope): Operat
             const splits = await merchantsWhere(
               tx,
               sql`exists (select 1 from ${payoutSplits} where ${payoutSplits.merchantId} = ${merchants.id}
-                and lower(${payoutSplits.address}) = ${asked.address} and ${splitInForce(at)})`,
+                and lower(${payoutSplits.address}) = ${asked.address} and ${splitInForce(at)}
+                and exists (select 1 from ${orders} where ${orders.merchantId} = ${payoutSplits.merchantId}
+                  and lower(${orders.record} ->> 'payTo') = ${asked.address}))`,
             );
             if (splits.length > 0) return merchantsFound("split", splits);
             const inForce = sql`case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
