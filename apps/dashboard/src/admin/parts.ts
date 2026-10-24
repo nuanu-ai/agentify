@@ -23,4 +23,16 @@ export interface AdminParts {
   /** What every press goes through first (`pressed` in `action.ts`). */
   readonly pressing: Pressing;
   readonly now: () => Date;
+  /**
+   * Each connected WooCommerce shop's site and the account that connected it,
+   * on a channel that offers shops, and null on one that does not. Never the
+   * shop's keys: nothing here hands them out.
+   */
+  readonly shopSites: (() => Promise<readonly ShopSite[]>) | null;
+}
+
+export interface ShopSite {
+  readonly accountId: string;
+  /** Without a trailing slash, as it was checked at Connect. */
+  readonly shopUrl: string;
 }

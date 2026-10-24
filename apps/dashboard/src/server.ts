@@ -263,7 +263,13 @@ function adminServicesOver(
 ): AdminServices {
   const now = parts.now ?? (() => new Date());
   const store = parts.gateway.runtime.store;
+  const shops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   return adminServicesFor({
+    shopSites:
+      shops === undefined
+        ? null
+        : async () =>
+            (await shops.connections()).map(({ accountId, shopUrl }) => ({ accountId, shopUrl })),
     config,
     identity: parts.identity,
     gateway: parts.gateway,
