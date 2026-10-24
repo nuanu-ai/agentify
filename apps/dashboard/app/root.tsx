@@ -24,6 +24,7 @@ import {
 import type { Screen } from "../src/page-services.js";
 import { type Chrome, chromeOf, type Trouble } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
+import { NoSuchPage } from "./routes/no-such-page.js";
 import { refused, services, signedInOrNobody, visit } from "./services.js";
 import stylesheet from "./styles.css?url";
 
@@ -131,6 +132,9 @@ export function ErrorBoundary() {
   const chrome = trouble?.chrome ?? root;
   if (chrome === undefined) {
     return <p>Something in the dashboard is broken.</p>;
+  }
+  if (trouble?.kind === "no-such-page") {
+    return <NoSuchPage drawn={{ ...trouble.drawn, chrome }} />;
   }
   if (trouble?.kind === "not-drawn-for-you") {
     return (
