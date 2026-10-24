@@ -65,9 +65,6 @@ export function commissionOn(
 export const paidWithNoPrice = (orderId: string): Error =>
   new Error(`the order ${orderId} was paid and carries no price`);
 
-/** A tally of nothing, from a read that succeeded and found nothing. */
-export const NOTHING: Tally = Object.freeze({ amount: dollarsOf(0n), count: 0 });
-
 /** A tally of `count` payments carrying `micros` in all. */
 export const tallyOf = (micros: bigint, count: number): Tally => ({
   amount: dollarsOf(micros),

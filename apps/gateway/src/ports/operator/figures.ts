@@ -24,8 +24,6 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import type { Integration } from "../store.js";
 import type { Dollars, Tally } from "./money.js";
 
-export type { Dollars, Tally } from "./money.js";
-
 /** What every read of figures is asked with. */
 export interface FiguresAsked {
   /** The moment the read is made at: windows are counted back from it, and the answer carries it. */
@@ -44,7 +42,7 @@ export interface Read {
 }
 
 /** A merchant with a seller name and a payout wallet who is not admitted to live sales. */
-export interface WaitingMerchant {
+interface WaitingMerchant {
   readonly merchantId: string;
   readonly name: string;
   readonly serviceName: string;
@@ -84,7 +82,7 @@ export interface UnknownPayments extends Read, Tally {
 }
 
 /** A merchant whose purchases are refused because their own process stopped polling. */
-export interface SilentMerchant {
+interface SilentMerchant {
   readonly merchantId: string;
   readonly name: string;
   /** Their last poll, or null where none was ever recorded. */
@@ -182,7 +180,7 @@ export interface Money extends Read {
 /** How many days `salesByDay` draws. */
 export const CHART_DAYS = 30;
 
-export interface SalesDay {
+interface SalesDay {
   /** The UTC day, as "2026-10-23". */
   readonly day: string;
   readonly delivered: Tally;
@@ -211,7 +209,7 @@ export const FUNNEL_STEPS = [
 export type FunnelStep = (typeof FUNNEL_STEPS)[number];
 
 /** What the gateway does not hold about shops, from the dashboard that does. */
-export interface ShopsConnected {
+interface ShopsConnected {
   /** The merchants whose WooCommerce shop is connected. */
   readonly merchantIds: readonly string[];
 }

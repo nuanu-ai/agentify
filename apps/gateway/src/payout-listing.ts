@@ -30,13 +30,13 @@ const CHAIN_NAMES: Readonly<Record<string, string>> = {
 };
 
 /** The chain every transaction of a payout is sent on, by its CAIP-2 identifier and a wallet's name for it. */
-export interface PayoutChain {
+interface PayoutChain {
   readonly id: string;
   readonly name: string;
 }
 
 /** One transaction of the payout, with the wallets its commission withdrawals pay. */
-export interface PayoutPart extends PayoutTransaction {
+interface PayoutPart extends PayoutTransaction {
   readonly commissionWallets: readonly string[];
 }
 

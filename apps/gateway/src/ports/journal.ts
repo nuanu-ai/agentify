@@ -163,7 +163,7 @@ export interface JournalPage {
 }
 
 /** The most rows one read hands back, whatever it asked for. */
-export const JOURNAL_PAGE_MAX = 200;
+const JOURNAL_PAGE_MAX = 200;
 
 /**
  * A query's limit, held between one and the page's most; one that is no number,

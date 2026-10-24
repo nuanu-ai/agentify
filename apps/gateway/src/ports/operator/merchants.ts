@@ -38,7 +38,7 @@ export const MERCHANT_SEGMENTS = ["waiting", "selling", "setting_up", "paused"] 
 export type MerchantSegment = (typeof MERCHANT_SEGMENTS)[number];
 
 /** The longest list one read hands back, whatever it asked for. */
-export const MERCHANT_LIST_MAX = 200;
+const MERCHANT_LIST_MAX = 200;
 
 /** How many of one merchant's keys, cards and orders worth a look one read hands back. */
 export const MERCHANT_PAGE_CUT = { keys: 100, cards: 100, orders: 20 } as const;
@@ -82,7 +82,7 @@ export function segmentOf(facts: SegmentFacts): MerchantSegment {
 }
 
 /** A merchant's selling over the thirty days that end at the read's instant. */
-export interface ThirtyDays {
+interface ThirtyDays {
   /** The first instant counted. */
   readonly from: number;
   /** Orders made in those days, attempts that lapsed unpaid left out. */
@@ -149,7 +149,7 @@ export interface MerchantList {
 }
 
 /** A merchant's wallet as the page shows it. */
-export interface MerchantWallet {
+interface MerchantWallet {
   /** The wallet paid now, as the merchant spelled it. */
   readonly address: string;
   /** The split payments go into now, or null where none is recorded for it: a defect, read as no wallet. */
@@ -158,7 +158,7 @@ export interface MerchantWallet {
   readonly pending: { readonly landsAt: number } | null;
 }
 
-export interface MerchantKey {
+interface MerchantKey {
   readonly id: string;
   readonly label: string;
   readonly createdAt: number;
@@ -190,7 +190,7 @@ export interface OrderWorthALook {
 }
 
 /** One cut of a list on a merchant's page, and how many there are in all. */
-export interface Cut<T> {
+interface Cut<T> {
   readonly rows: readonly T[];
   readonly total: number;
 }

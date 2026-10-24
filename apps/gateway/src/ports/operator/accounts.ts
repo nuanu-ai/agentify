@@ -6,7 +6,7 @@
  */
 
 /** A merchant an account names, as Accounts draws it; null where it chose no seller name. */
-export interface NamedMerchant {
+interface NamedMerchant {
   readonly id: string;
   readonly serviceName: string | null;
 }

@@ -30,7 +30,6 @@ export {
   withdrawLiveApproval,
 } from "./app/merchants.js";
 export type { Runtime } from "./app/runtime.js";
-export { openCommandApplication } from "./command-application.js";
 export { type GatewayConfig, loadConfig } from "./config.js";
 export {
   bodyRefused,

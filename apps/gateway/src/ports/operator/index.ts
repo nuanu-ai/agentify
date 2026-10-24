@@ -18,11 +18,9 @@ import type { OperatorMerchants } from "./merchants.js";
 import type { OperatorOrders } from "./orders.js";
 import type { OperatorSplits } from "./splits.js";
 
-export type { MoneyHistory, NamedMerchant, OperatorAccounts } from "./accounts.js";
+export type { MoneyHistory } from "./accounts.js";
 export type { OperatorFigures } from "./figures.js";
-export type { OperatorMerchants } from "./merchants.js";
-export { type OperatorOrders, paymentUnknown } from "./orders.js";
-export type { OperatorSplits } from "./splits.js";
+export type { OperatorOrders } from "./orders.js";
 
 export interface OperatorReader {
   readonly merchants: OperatorMerchants;

@@ -118,7 +118,7 @@ function fulfillmentOf(record: StoredOrder): Fulfillment {
 const WALLET = /(?<![0-9a-fA-F])0[xX][0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
 
 /** What was said about the payment, with every wallet address in it replaced by "a wallet". */
-export const withoutWallets = (said: string): string => said.replace(WALLET, "a wallet");
+const withoutWallets = (said: string): string => said.replace(WALLET, "a wallet");
 
 const saidWithoutWallets = (word: StoredOrder["paymentWords"][number]): SaidWord => ({
   at: word.at,

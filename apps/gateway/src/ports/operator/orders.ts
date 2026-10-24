@@ -99,7 +99,7 @@ export interface OrderMerchant {
   readonly serviceName: string | null;
 }
 
-export interface OrderProduct {
+interface OrderProduct {
   /** Our catalog identifier. */
   readonly itemId: string;
   readonly merchantItemId: string;
@@ -107,7 +107,7 @@ export interface OrderProduct {
   readonly title: string | null;
 }
 
-export interface OrderAmount {
+interface OrderAmount {
   readonly amount: string;
   readonly currency: string;
 }
@@ -167,7 +167,7 @@ export type AgentReads = Pick<
   | "ship_by"
 >;
 
-export interface MerchantReads {
+interface MerchantReads {
   readonly status: OrderStatus;
   readonly payment_status: PaymentStatus;
   readonly merchant_closure?: { readonly closed_at: string; readonly message?: string };
@@ -238,7 +238,7 @@ export interface OrderPayment {
 }
 
 /** The submitted charge, without the authorization it carries. */
-export interface OrderAttempt {
+interface OrderAttempt {
   readonly startedAt: number;
   readonly completion: {
     readonly settled: boolean;

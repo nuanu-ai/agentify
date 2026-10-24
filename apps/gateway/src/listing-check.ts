@@ -26,10 +26,10 @@ const CATALOG_IDENTIFIERS = z.object({
 type CatalogIdentifiers = z.infer<typeof CATALOG_IDENTIFIERS>;
 
 /** How long one fetch of the check waits for its whole answer. */
-export const FETCH_WAIT_MS = 10_000;
+const FETCH_WAIT_MS = 10_000;
 
 /** How long the check the operator runs from Health may take in all. */
-export const LISTING_CHECK_MS = 20_000;
+const LISTING_CHECK_MS = 20_000;
 
 /** Public: it takes no key and costs nothing. */
 const VALIDATE_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
@@ -42,7 +42,7 @@ const PURCHASE_METHOD = "POST";
  * always POST, and asked with GET it only says it was probed the wrong way. The
  * GET is therefore checked at the door directly.
  */
-export const PROBED_METHODS = [PURCHASE_METHOD] as const;
+const PROBED_METHODS = [PURCHASE_METHOD] as const;
 
 export type ValidateAnswer =
   | { readonly kind: "answered"; readonly status: number; readonly body: unknown }
@@ -71,7 +71,7 @@ export type Verdict =
   | { readonly said: "no answer"; readonly why: string };
 
 /** One product checked: its address, the knock at the door, and the validator's answers. */
-export type ResourceCheck =
+type ResourceCheck =
   | {
       readonly itemId: string;
       readonly resource: string;
@@ -350,7 +350,7 @@ function fieldIn(held: unknown, key: string): unknown {
     : undefined;
 }
 
-export function messageOf(thrown: unknown): string {
+function messageOf(thrown: unknown): string {
   return thrown instanceof Error ? thrown.message : String(thrown);
 }
 
