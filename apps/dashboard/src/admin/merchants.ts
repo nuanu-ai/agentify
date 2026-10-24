@@ -610,12 +610,14 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     }
   };
 
+  /** Which of these orders have a shop order nobody is sure of, where the shop could not be read. */
+  const unread = async (orderIds: readonly string[]): Promise<readonly string[] | "unread"> =>
+    orderIds.length === 0 ? [] : "unread";
+
   const shopOf = async (accounts: readonly NamedAccount[] | null) => {
     const { shops } = parts;
     if (shops === null) return { shop: null, uncertain: async () => [] };
-    if (accounts === null) {
-      return { shop: "unread" as const, uncertain: async (): Promise<readonly string[]> => [] };
-    }
+    if (accounts === null) return { shop: "unread" as const, uncertain: unread };
     try {
       for (const account of accounts) {
         const connection = await shops.connectionOf(account.id);
@@ -633,7 +635,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       return { shop: null, uncertain: async () => [] };
     } catch {
       console.error("[dashboard] a merchant's connected shop could not be read");
-      return { shop: "unread" as const, uncertain: async () => [] };
+      return { shop: "unread" as const, uncertain: unread };
     }
   };
 
