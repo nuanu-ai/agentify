@@ -41,6 +41,12 @@ export default [
       route("admin", "routes/admin/index.tsx"),
       route("admin/merchants", "routes/admin/merchants.tsx"),
       route("admin/merchants/:merchant_id", "routes/admin/merchant.tsx"),
+      route("admin/merchants/:merchant_id/admit", "routes/admin/merchant-admit.tsx"),
+      route("admin/merchants/:merchant_id/withdraw", "routes/admin/merchant-withdraw.tsx"),
+      route(
+        "admin/merchants/:merchant_id/keys/:key_id/disable",
+        "routes/admin/merchant-key-disable.tsx",
+      ),
       route("admin/orders", "routes/admin/orders.tsx"),
       route("admin/orders/:order_id", "routes/admin/order.tsx"),
       route("admin/find", "routes/admin/find.tsx"),
