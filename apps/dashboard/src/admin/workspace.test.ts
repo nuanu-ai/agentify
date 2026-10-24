@@ -115,11 +115,22 @@ describe("who the operator's workspace answers", () => {
   });
 
   it("answers an operator on every page, in the workspace's frame, naming the channel", async () => {
-    const { signedIn } = await serve({ channel: "live" });
+    const { signedIn, harnessed } = await serve({ channel: "live" });
     const operator = await signedIn(OPERATOR, { operator: true });
+    const ids = {
+      ...SOMEBODY,
+      merchant_id: harnessed.merchant.id,
+      key_id: harnessed.merchant.keyId,
+    };
 
-    for (const path of adminPaths().filter((one) => !one.endsWith("/sign-in-again"))) {
-      const read = await operator.get(path);
+    for (const path of adminPaths(ids).filter((one) => !one.endsWith("/sign-in-again"))) {
+      // A press's own address, read, leads to the page its form lives on,
+      // which is then held to everything a page is.
+      const first = await operator.get(path);
+      const read =
+        first.status === 303 && first.to?.startsWith(`${ADMIN_BASE}/admin`)
+          ? await operator.get(first.to.slice(ADMIN_BASE.length))
+          : first;
       expect(read.status, path).toBe(path.endsWith("nothing-here") ? 404 : 200);
       expect(readable(read.html), path).toContain("Live channel");
       expect(readable(read.html), path).toContain("Operator");
@@ -159,6 +170,8 @@ describe("signing in again before an action", () => {
 
   it("mails a link that says it confirms an action, which returns this browser to the page it was asked on", async () => {
     const workspace = await serve();
+    // A merchant that is there, so its page answers once the browser is back.
+    const backTo = `admin/merchants/${workspace.harnessed.merchant.id}`;
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     // An operator with no merchant of their own, as most are.
     for (const row of workspace.rows.dashboard_accounts ?? []) {
@@ -166,7 +179,7 @@ describe("signing in again before an action", () => {
     }
     workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
 
-    const asked = await operator.post("/admin/sign-in-again", { destination: BACK_TO });
+    const asked = await operator.post("/admin/sign-in-again", { destination: backTo });
 
     expect(asked.status).toBe(202);
     expect(readable(asked.html)).toContain(`A link is on its way to ${OPERATOR}`);
@@ -178,9 +191,9 @@ describe("signing in again before an action", () => {
     const opened = await operator.post("/sign-in/open", {
       token: link.searchParams.get("token") ?? "",
     });
-    expect(opened.to).toBe(`${ADMIN_BASE}/${BACK_TO}`);
+    expect(opened.to).toBe(`${ADMIN_BASE}/${backTo}`);
     // Signed in afresh: the page answers, and its sign-in is now.
-    expect((await operator.get(`/${BACK_TO}`)).status).toBe(200);
+    expect((await operator.get(`/${backTo}`)).status).toBe(200);
     const session = workspace.rows.dashboard_sessions?.at(-1);
     expect(Date.now() - new Date(session?.createdAt as Date).getTime()).toBeLessThan(
       FRESH_SIGN_IN_MS,
