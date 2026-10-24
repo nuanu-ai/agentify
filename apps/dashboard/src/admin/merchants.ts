@@ -36,8 +36,8 @@ import {
   CHECK_WORDS,
   checksSaid,
   cutSaid,
-  JOURNAL_DONE_WORDS,
   JOURNAL_REFUSED_WORDS,
+  JOURNAL_WORDS,
   NO_SELLER_NAME,
   REFUSED_WORDS,
   SEGMENT_WORDS,
@@ -289,12 +289,14 @@ const historyLineOf = (
   actors: ReadonlyMap<string, string> | null,
   keyLabels: ReadonlyMap<string, string>,
 ): HistoryLine => {
-  const done = JOURNAL_DONE_WORDS[row.action] ?? row.action;
+  const words = JOURNAL_WORDS[row.action];
+  const said =
+    words === undefined ? row.action : row.outcome.kind === "done" ? words.done : words.asked;
   const label = row.subject.kind === "key" ? keyLabels.get(row.subject.id) : undefined;
   const subject =
     row.subject.kind === "key"
-      ? `Disabled the key ${label === undefined ? row.subject.id : `"${label}"`}`
-      : done;
+      ? `${said} ${label === undefined ? row.subject.id : `"${label}"`}`
+      : said;
   const what =
     row.outcome.kind === "refused"
       ? `Refused: ${subject.slice(0, 1).toLowerCase()}${subject.slice(1)}, as ${
