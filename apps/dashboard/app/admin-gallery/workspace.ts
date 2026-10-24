@@ -9,6 +9,7 @@ import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
 import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
+import { OVERVIEW_EXAMPLE } from "./figures.js";
 import { type AdminGalleryState, frameIn } from "./state.js";
 
 const chromeIn = (mode: SurfaceMode) => ({
@@ -53,7 +54,7 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
         health: { count: 1, needsYou: false },
       },
     },
-    loaded: { "routes/admin/index": { section: "overview" } },
+    loaded: { "routes/admin/index": OVERVIEW_EXAMPLE },
   },
   {
     id: "dashboard-admin-not-an-operator",
