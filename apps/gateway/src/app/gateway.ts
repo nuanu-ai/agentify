@@ -980,8 +980,10 @@ export class Gateway {
    * for live sales, and, while purchases of theirs that charge before their
    * goods are refused for that silence, when their process last polled (null
    * where it never has), and whether as many of their purchases wait for
-   * payment as the door allows, so that the next is refused. Each answer is
-   * the one the call that reads it alone gives.
+   * payment as the door allows, so that the next is refused; and, on the live
+   * channel while an operator's withdrawal of their admission stands, when it
+   * was withdrawn and the note the operator wrote for them. Each answer is the
+   * one the call that reads it alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -991,6 +993,7 @@ export class Gateway {
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly busy: boolean;
+    readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
@@ -1011,7 +1014,21 @@ export class Gateway {
           at,
           WAITING_FOR_PAYMENT_AT_MOST,
         )) >= WAITING_FOR_PAYMENT_AT_MOST,
+      withdrawn: await this.#standingWithdrawal(merchant),
     };
+  }
+
+  /**
+   * The withdrawal of this merchant's admission that stands, read only on the
+   * live channel, the one that asks for admission, and only while they are not
+   * admitted. Its reason is the note the operator wrote for them to read.
+   */
+  async #standingWithdrawal(
+    merchant: StoredMerchant,
+  ): Promise<{ readonly at: number; readonly note: string | null } | null> {
+    if (this.runtime.config.surfaceMode !== "live" || merchant.liveApprovedAt !== null) return null;
+    const row = await this.runtime.store.standingWithdrawal(merchant.id);
+    return row === null ? null : { at: row.at, note: row.reason };
   }
 
   /**

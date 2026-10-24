@@ -189,6 +189,18 @@ export const ACCOUNT_WORDS: Readonly<
   },
 });
 
+/** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
+export const LIVE_SALES_STOPPED = "Live sales are stopped";
+
+/**
+ * Its sentence: since when, and the note Agentify wrote for the merchant,
+ * quoted as written, or that there is none.
+ */
+export const liveSalesStoppedSince = (when: string, note: string | null): string =>
+  `Agentify stopped your sales on the live site on ${when}, so agents cannot buy your cards there; orders already taken carry on.${
+    note === null ? "" : ` The note left for you: “${note}”`
+  }`;
+
 /** The out-of-touch reason's sentence where the integration did connect once, at `when`. */
 export const notConnectedSince = (when: string): string =>
   `Your integration has not connected since ${when}, so new purchases that charge before delivery are refused until it connects again.`;

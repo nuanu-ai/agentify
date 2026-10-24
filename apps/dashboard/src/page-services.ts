@@ -1497,6 +1497,14 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   selling: standing.value.selling,
                   through: standing.value.through,
                   busy: standing.value.busy,
+                  ...(standing.value.withdrawn === null
+                    ? {}
+                    : {
+                        withdrawn: {
+                          at: new Date(standing.value.withdrawn.at).toISOString(),
+                          note: standing.value.withdrawn.note,
+                        },
+                      }),
                   ...(standing.value.outOfTouch === null
                     ? {}
                     : {

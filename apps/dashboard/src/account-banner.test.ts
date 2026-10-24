@@ -113,6 +113,23 @@ describe("the account banner", () => {
     expect(reasonsOf({ ...bare, mode: "test" })).toStrictEqual(["no_payout_wallet"]);
   });
 
+  it("says live sales are stopped, since when and with Agentify's note, while a withdrawal stands", () => {
+    const withdrawn: Viewer = { ...READY, liveApproval: false };
+    const note = "Your seller name copies another shop's; choose your own.";
+
+    const [stopped] = accountOf(withdrawn, {
+      withdrawn: { at: "2026-10-23T14:09:00.000Z", note },
+    });
+
+    expect(stopped?.reason).toBe("not_approved");
+    expect(stopped?.title).toBe("Live sales are stopped");
+    expect(stopped?.says).toContain("2026-10-23 14:09:00 UTC");
+    expect(stopped?.says).toContain(`“${note}”`);
+    expect(stopped?.fix).toBeNull();
+    // Without a withdrawal, a merchant not yet admitted is told just that.
+    expect(accountOf(withdrawn)[0]?.title).toBe("Not approved for live sales yet");
+  });
+
   it("points at the page that puts a setting right, and from the approval to the test channel's dashboard", () => {
     const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
 

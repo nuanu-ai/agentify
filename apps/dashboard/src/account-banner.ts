@@ -8,7 +8,15 @@
 import type { Integration } from "@agentify/gateway";
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
-import { ACCOUNT_WORDS, type AccountReason, moment, notConnectedSince, type Way } from "./words.js";
+import {
+  ACCOUNT_WORDS,
+  type AccountReason,
+  LIVE_SALES_STOPPED,
+  liveSalesStoppedSince,
+  moment,
+  notConnectedSince,
+  type Way,
+} from "./words.js";
 
 /** One reason as the banner says it. */
 export interface AccountNote {
@@ -32,6 +40,11 @@ export interface AccountRead {
   readonly outOfTouch?: { readonly since: string | null };
   /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
   readonly busy?: boolean;
+  /**
+   * Present while Agentify's withdrawal of the merchant's admission to live
+   * sales stands: when, as an ISO instant, and the note written for them.
+   */
+  readonly withdrawn?: { readonly at: string; readonly note: string | null };
 }
 
 /**
@@ -63,9 +76,20 @@ const ORDER: readonly AccountReason[] = [
 
 const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
   const since = read.outOfTouch?.since;
-  return reason === "out_of_touch" && typeof since === "string"
-    ? { reason, ...ACCOUNT_WORDS[reason], says: notConnectedSince(moment(since)) }
-    : { reason, ...ACCOUNT_WORDS[reason] };
+  if (reason === "out_of_touch" && typeof since === "string") {
+    return { reason, ...ACCOUNT_WORDS[reason], says: notConnectedSince(moment(since)) };
+  }
+  // Not approved because Agentify stopped the merchant's live sales: said as
+  // that, with its moment and the note, in place of "not approved yet".
+  if (reason === "not_approved" && read.withdrawn !== undefined) {
+    return {
+      reason,
+      title: LIVE_SALES_STOPPED,
+      says: liveSalesStoppedSince(moment(read.withdrawn.at), read.withdrawn.note),
+      fix: null,
+    };
+  }
+  return { reason, ...ACCOUNT_WORDS[reason] };
 };
 
 /** Empty where the account is selling as usual and every fact was read. */

@@ -109,6 +109,12 @@ describe("withdrawing and giving the admission", () => {
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(false);
     expect(text(withdrawn.html)).toContain(`The merchant reads: “${note}”`);
     expect((await served.harnessed.store.standingWithdrawal(merchant.id))?.reason).toBe(note);
+    // What the merchant reads on their own dashboard while it stands.
+    await served.identity.make("owner@coffee.example", merchant.id);
+    const own = await served.signedIn("owner@coffee.example");
+    const banner = text((await own.get("/cards")).html);
+    expect(banner).toContain("Live sales are stopped");
+    expect(banner).toContain(`“${note}”`);
 
     const admitted = await operator.post(`${path}/admit`, { ...TICKED });
     const again = await operator.post(`${path}/admit`, { ...TICKED });
