@@ -12,7 +12,6 @@
  * writes a journal row.
  */
 
-import type { JournalPage, JournalRow } from "@agentify/gateway/journal";
 import {
   type AnalyticsOutbox,
   CHART_DAYS,
@@ -46,6 +45,7 @@ import { LINK_CHANNEL_LIMIT } from "../identity.js";
 import type { Outcome } from "../page-services.js";
 import { ORDER_WORDS } from "../words.js";
 import { type Operator, signedInFreshly } from "./access.js";
+import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import type { SectionCounts } from "./frame.js";
 import type { AdminParts } from "./parts.js";
 import { type StepUpView, stepUpViewOf } from "./step-up.js";
@@ -201,14 +201,6 @@ export interface WorthItem {
   readonly why: string;
   readonly links: readonly { readonly label: string; readonly href: string }[];
   readonly meta: readonly string[];
-}
-
-export interface JournalLineView {
-  readonly when: string;
-  readonly who: string;
-  readonly what: Said;
-  readonly from: string;
-  readonly outcome: Badge;
 }
 
 export interface OverviewView {
@@ -467,11 +459,8 @@ export interface OverviewReads {
   readonly week: Readable<Money>;
   readonly sales: Readable<SalesByDay>;
   readonly funnel: Readable<Funnel>;
-  readonly journal: Readable<{
-    page: JournalPage;
-    /** Names for the accounts and merchants the rows name. */
-    names: ReadonlyMap<string, string>;
-  }>;
+  /** The newest rows of the journal, as the Journal draws them. */
+  readonly journal: Readable<{ lines: readonly JournalLineView[]; total: number }>;
 }
 
 const FUNNEL_WORDS: Readonly<Record<FunnelStep, string>> = {
@@ -502,64 +491,6 @@ export function funnelViewOf(funnel: Funnel): { lead: string; steps: readonly Fu
         drop: before !== undefined && before > 0 && step.merchants < before,
       };
     }),
-  };
-}
-
-const ACTION_WORDS: Readonly<Record<JournalRow["action"], string>> = {
-  admit: "Admitted",
-  withdraw: "Withdrew the admission of",
-  disable_key: "Disabled the key",
-  end_sessions: "Ended every session of",
-  grant_operator: "Granted the operator flag to",
-  remove_operator: "Removed the operator flag from",
-  forget_account: "Forgot the account",
-  first_operator: "Gave the first operator flag to",
-};
-
-const OUTCOME_BADGES: Readonly<Record<JournalRow["outcome"]["kind"], Badge>> = {
-  done: { tone: "pass", word: "Done" },
-  unchanged: { tone: "quiet", word: "Unchanged" },
-  refused: { tone: "fail", word: "Refused" },
-};
-
-export function journalLineOf(
-  row: JournalRow,
-  names: ReadonlyMap<string, string>,
-): JournalLineView {
-  const nameOf = (id: string, nobody: string) => names.get(id) ?? nobody;
-  const subject = row.subject;
-  const what: Said =
-    subject.kind === "merchant"
-      ? [
-          `${ACTION_WORDS[row.action]} `,
-          { text: nameOf(subject.id, subject.id), href: `/admin/merchants/${subject.id}` },
-          ...(row.action === "admit" ? [" to live sales"] : []),
-        ]
-      : subject.kind === "key"
-        ? [
-            `${ACTION_WORDS[row.action]} ${subject.id} of `,
-            {
-              text: nameOf(subject.merchantId, subject.merchantId),
-              href: `/admin/merchants/${subject.merchantId}`,
-            },
-          ]
-        : [`${ACTION_WORDS[row.action]} ${nameOf(subject.id, "a deleted account")}`];
-  return {
-    when: `${dayWritten(row.at)} · ${clockWritten(row.at)}`,
-    who:
-      row.actor.kind === "account"
-        ? nameOf(row.actor.id, "a deleted account")
-        : row.actor.kind === "terminal"
-          ? "Terminal"
-          : "Configuration",
-    what,
-    from:
-      row.actor.kind === "account"
-        ? "Web"
-        : row.actor.kind === "terminal"
-          ? "Terminal"
-          : "Configuration",
-    outcome: OUTCOME_BADGES[row.outcome.kind],
   };
 }
 
@@ -810,8 +741,8 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
         : {
             kind: "read",
             value: {
-              lines: journal.page.rows.map((row) => journalLineOf(row, journal.names)),
-              cut: `${journal.page.rows.length} of ${plural(journal.page.total, "action")} on this channel`,
+              lines: journal.lines,
+              cut: `${journal.lines.length} of ${plural(journal.total, "action")} on this channel`,
             },
           },
   };
@@ -1563,29 +1494,7 @@ export function figuresFor(
         ),
         readable("the journal", async () => {
           const page = await gateway.runtime.store.journal({ limit: 5 });
-          const accountIds = page.rows.flatMap((row) => [
-            ...(row.actor.kind === "account" ? [row.actor.id] : []),
-            ...(row.subject.kind === "account" ? [row.subject.id] : []),
-          ]);
-          const merchantIds = page.rows.flatMap((row) =>
-            row.subject.kind === "merchant"
-              ? [row.subject.id]
-              : row.subject.kind === "key"
-                ? [row.subject.merchantId]
-                : [],
-          );
-          const [accounts, named] = await Promise.all([
-            identity.accountsNamed({ accountIds }),
-            Promise.all(
-              [...new Set(merchantIds)].map((id) => gateway.runtime.store.merchantById(id)),
-            ),
-          ]);
-          const names = new Map<string, string>();
-          for (const account of accounts) names.set(account.id, account.email);
-          for (const merchant of named) {
-            if (merchant !== null) names.set(merchant.id, merchant.serviceName ?? merchant.name);
-          }
-          return { page, names };
+          return { lines: await journalLinesOf(parts, page.rows), total: page.total };
         }),
       ]);
       const owners = await readable("the owners", async () => {

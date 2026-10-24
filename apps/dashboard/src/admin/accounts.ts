@@ -125,6 +125,8 @@ export interface JournalLineView {
     /** An account's address, or a merchant's seller name; null where it no longer resolves or was never chosen. */
     label: string | null;
   }>;
+  /** Whether the accounts' addresses were read: where not, an account is named by its identifier, never as deleted. */
+  readonly addressesRead: boolean;
   readonly reason: string | null;
   readonly outcome: JournalRow["outcome"];
   /** A refusal said in a sentence, or null. */
@@ -233,24 +235,85 @@ const oneParam = (query: URLSearchParams, name: string): string => {
   return values.length === 1 ? (values[0] ?? "") : "";
 };
 
+/** Seller names of the merchants among `ids`; "could-not-be-read" for each where the read failed. */
+async function merchantsNamedIn(reader: AdminParts["reader"], ids: readonly string[]) {
+  try {
+    const named = await reader.accounts.merchantsNamed(ids);
+    return (id: string): MerchantNamed => ({
+      id,
+      name: { chosen: named.find((one) => one.id === id)?.serviceName ?? null },
+    });
+  } catch {
+    console.error("[dashboard] the merchants' names for the workspace could not be read");
+    return (id: string): MerchantNamed => ({ id, name: "could-not-be-read" });
+  }
+}
+
+/**
+ * The journal's rows as the Journal draws them, its accounts and merchants
+ * named where they still exist. A failed read of the names never fails the
+ * lines: each names its records by identifier instead.
+ */
+export async function journalLinesOf(
+  parts: Pick<AdminParts, "identity" | "reader">,
+  rows: readonly JournalRow[],
+): Promise<JournalLineView[]> {
+  const accountIds = new Set<string>();
+  const merchantIds = new Set<string>();
+  for (const row of rows) {
+    if (row.actor.kind === "account") accountIds.add(row.actor.id);
+    if (row.subject.kind === "account") accountIds.add(row.subject.id);
+    if (row.subject.kind === "merchant") merchantIds.add(row.subject.id);
+    if (row.subject.kind === "key") merchantIds.add(row.subject.merchantId);
+  }
+  const emails = await parts.identity
+    .accountsNamed({ accountIds: [...accountIds] })
+    .then((named) => new Map(named.map((one) => [one.id, one.email])))
+    .catch(() => {
+      console.error("[dashboard] the accounts' addresses for the journal could not be read");
+      return null;
+    });
+  const named = await merchantsNamedIn(parts.reader, [...merchantIds]);
+  const merchantLabel = (id: string): string | null => {
+    const name = named(id).name;
+    return name === "could-not-be-read" ? null : name.chosen;
+  };
+  const emailOf = (id: string): string | null => emails?.get(id) ?? null;
+  return rows.map((row) => ({
+    sequence: row.sequence,
+    at: momentOf(row.at),
+    actor:
+      row.actor.kind === "account"
+        ? { kind: "account", id: row.actor.id, email: emailOf(row.actor.id) }
+        : row.actor,
+    action: row.action,
+    subject: {
+      kind: row.subject.kind,
+      id: row.subject.id,
+      merchantId:
+        row.subject.kind === "key"
+          ? row.subject.merchantId
+          : row.subject.kind === "merchant"
+            ? row.subject.id
+            : null,
+      label:
+        row.subject.kind === "account"
+          ? emailOf(row.subject.id)
+          : merchantLabel(row.subject.kind === "key" ? row.subject.merchantId : row.subject.id),
+    },
+    addressesRead: emails !== null,
+    reason: row.reason,
+    outcome: row.outcome,
+    refusal: row.outcome.kind === "refused" ? refusalSaid(row.outcome.code) : null,
+  }));
+}
+
 export function accountsFor(parts: AdminParts): AccountsPages {
   const { accounts, reader, journal } = parts;
   const store = parts.gateway.runtime.store;
   const forgettingHere = parts.config.surfaceMode !== "live";
 
-  /** Seller names of the merchants among `ids`; "could-not-be-read" for each where the read failed. */
-  const namesOf = async (ids: readonly string[]) => {
-    try {
-      const named = await reader.accounts.merchantsNamed(ids);
-      return (id: string): MerchantNamed => ({
-        id,
-        name: { chosen: named.find((one) => one.id === id)?.serviceName ?? null },
-      });
-    } catch {
-      console.error("[dashboard] the merchants' names for the workspace could not be read");
-      return (id: string): MerchantNamed => ({ id, name: "could-not-be-read" });
-    }
-  };
+  const namesOf = (ids: readonly string[]) => merchantsNamedIn(reader, ids);
 
   const rowOf = (
     operator: Operator,
@@ -266,52 +329,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     newestSession: summary.newestSession === null ? null : momentOf(summary.newestSession),
   });
 
-  /** The journal's rows, its accounts and merchants named where they still exist. */
-  const linesOf = async (rows: readonly JournalRow[]): Promise<JournalLineView[]> => {
-    const accountIds = new Set<string>();
-    const merchantIds = new Set<string>();
-    for (const row of rows) {
-      if (row.actor.kind === "account") accountIds.add(row.actor.id);
-      if (row.subject.kind === "account") accountIds.add(row.subject.id);
-      if (row.subject.kind === "merchant") merchantIds.add(row.subject.id);
-      if (row.subject.kind === "key") merchantIds.add(row.subject.merchantId);
-    }
-    const emails = await parts.identity
-      .accountsNamed({ accountIds: [...accountIds] })
-      .then((named) => new Map(named.map((one) => [one.id, one.email])))
-      .catch(() => new Map<string, string>());
-    const named = await namesOf([...merchantIds]);
-    const merchantLabel = (id: string): string | null => {
-      const name = named(id).name;
-      return name === "could-not-be-read" ? null : name.chosen;
-    };
-    return rows.map((row) => ({
-      sequence: row.sequence,
-      at: momentOf(row.at),
-      actor:
-        row.actor.kind === "account"
-          ? { kind: "account", id: row.actor.id, email: emails.get(row.actor.id) ?? null }
-          : row.actor,
-      action: row.action,
-      subject: {
-        kind: row.subject.kind,
-        id: row.subject.id,
-        merchantId:
-          row.subject.kind === "key"
-            ? row.subject.merchantId
-            : row.subject.kind === "merchant"
-              ? row.subject.id
-              : null,
-        label:
-          row.subject.kind === "account"
-            ? (emails.get(row.subject.id) ?? null)
-            : merchantLabel(row.subject.kind === "key" ? row.subject.merchantId : row.subject.id),
-      },
-      reason: row.reason,
-      outcome: row.outcome,
-      refusal: row.outcome.kind === "refused" ? refusalSaid(row.outcome.code) : null,
-    }));
-  };
+  const linesOf = (rows: readonly JournalRow[]) => journalLinesOf(parts, rows);
 
   const historyOfAccount = async (accountId: string): Promise<JournalLines> => {
     try {

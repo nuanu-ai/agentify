@@ -93,14 +93,16 @@ const listOf = (
   unlisted: 16,
 });
 
-const line = (
+/** A journal line as the Journal and the Overview draw it, its accounts' addresses read. */
+export const line = (
   sequence: number,
   at: string,
-  fields: Omit<JournalLineView, "sequence" | "at" | "refusal">,
+  fields: Omit<JournalLineView, "sequence" | "at" | "refusal" | "addressesRead">,
 ): JournalLineView => ({
   sequence,
   at: momentView(at),
   refusal: fields.outcome.kind === "refused" ? refusalSaid(fields.outcome.code) : null,
+  addressesRead: true,
   ...fields,
 });
 
