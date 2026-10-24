@@ -80,15 +80,13 @@ const Tick = () => (
 function Row({ row }: Readonly<{ row: MerchantListRow }>) {
   return (
     <li className="list-row">
-      <div className="cell cell-main">
-        <span className="cell-title">
-          <Link to={row.href} prefetch="intent">
-            {row.name}
-          </Link>
-        </span>
+      <div className="cell cell-title">
+        <Link to={row.href} prefetch="intent">
+          {row.name}
+        </Link>
         {row.under === null ? null : <span className="op-sub">{row.under}</span>}
       </div>
-      <div className="cell">
+      <div className="cell cell-ident">
         <span>{row.integration}</span>
         <span className="op-sub">
           {row.connection.said}
@@ -100,7 +98,7 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
           )}
         </span>
       </div>
-      <div className="cell">
+      <div className="cell cell-fact">
         <span className="pips" aria-hidden="true">
           {row.dots.map((held, at) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the dots are the checks, in their one order
@@ -109,8 +107,12 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
         </span>
         <span className="pips-said">{row.dotsSaid}</span>
       </div>
-      <div className="cell num">{row.cards}</div>
-      <div className="cell num">
+      <div className="cell cell-amount num">
+        <span className="said-on-narrow">On sale </span>
+        {row.cards}
+      </div>
+      <div className="cell cell-note num">
+        <span className="said-on-narrow">Last 30 days </span>
         <span>{row.sales ?? "—"}</span>
         <span className="op-sub">
           {row.orders}

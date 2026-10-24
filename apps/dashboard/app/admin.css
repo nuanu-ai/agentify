@@ -683,11 +683,11 @@
 }
 
 .op-cols-orders {
-  --columns: 6.5rem minmax(9rem, 1fr) minmax(11rem, 1.3fr) 6.5rem 10rem 8rem 9rem;
+  --columns: 6.5rem minmax(7rem, 1fr) minmax(10rem, 1.3fr) 6.5rem minmax(9.5rem, 11rem) 9rem 8.5rem;
 }
 
 .op-cols-health {
-  --columns: minmax(10rem, 13rem) 9rem minmax(14rem, 1fr) 7rem;
+  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 7rem;
 }
 
 .op-cols-journal {
@@ -718,6 +718,37 @@
 
 .list-row .soft {
   color: var(--muted);
+}
+
+/* A state too long for its column takes a second line under its first word,
+   as the merchant's own Orders does, rather than running into the next. */
+.list-row .cell-state .badge {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.list-row .cell-state .badge::before {
+  margin-top: calc((1.4em - 8px) / 2);
+}
+
+/* A sentence that stands in a column of its own on a wide row: in ink and
+   read from the left like the column's head. On a narrow row it is a note,
+   on a line of its own. */
+.op-cols-health .cell-note {
+  color: var(--fg);
+  text-align: left;
+}
+
+/* The merchants' thirty days stand last on a narrow row; on a wide one the
+   sum is a figure in ink like the others. */
+.op-cols-merchants .cell-note {
+  color: var(--fg);
+}
+
+@container (max-width: 860px) {
+  .list-row .num {
+    text-align: left;
+  }
 }
 
 .op-chart .mid {

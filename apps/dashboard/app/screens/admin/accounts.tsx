@@ -61,15 +61,27 @@ function Row({ row }: Readonly<{ row: AccountRowView }>) {
         <Link to={`/admin/accounts/${row.id}`}>{row.email}</Link>
         {row.you ? <span className="op-sub">You</span> : null}
       </div>
-      <div className="cell">
+      <div className="cell cell-ident">
         <Merchant merchant={row.merchant} />
       </div>
-      <div className="cell">
+      <div className="cell cell-state">
         <Flag operator={row.operator} />
       </div>
-      <div className="cell num">{row.openSessions}</div>
+      <div className="cell cell-fact num">
+        {row.openSessions}
+        <span className="said-on-narrow">
+          {row.openSessions === 1 ? " open session" : " open sessions"}
+        </span>
+      </div>
       <div className="cell cell-fact">
-        {row.newestSession === null ? "None open" : <Moment at={row.newestSession} />}
+        {row.newestSession === null ? (
+          "None open"
+        ) : (
+          <>
+            <span className="said-on-narrow">newest </span>
+            <Moment at={row.newestSession} />
+          </>
+        )}
       </div>
       <div className="cell cell-action">
         <Link className="button button-secondary button-compact" to={`/admin/accounts/${row.id}`}>

@@ -149,7 +149,7 @@ export function JournalList({
             <div className="cell cell-fact mono">
               <Moment at={line.at} />
             </div>
-            <div className="cell">
+            <div className="cell cell-ident">
               <Who line={line} />
             </div>
             <div className="cell cell-title">
@@ -159,8 +159,11 @@ export function JournalList({
                 <span className="op-sub">Refused: {line.refusal}</span>
               )}
             </div>
-            <div className="cell soft">{WHERE[line.actor.kind]}</div>
-            <div className="cell">
+            <div className="cell cell-fact">
+              <span className="said-on-narrow">From </span>
+              {WHERE[line.actor.kind]}
+            </div>
+            <div className="cell cell-state">
               <Outcome line={line} />
             </div>
           </li>

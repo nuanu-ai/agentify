@@ -181,7 +181,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
                   <Cell at="fact">
                     {row.priced === null ? "Not priced" : <Moment at={row.priced} />}
                   </Cell>
-                  <Cell at="note">{row.merchant}</Cell>
+                  <Cell at="ident">{row.merchant}</Cell>
                   <Cell at="title">
                     <Link to={row.to}>{row.product}</Link>
                     {row.test ? <span className="op-sub">Test purchase</span> : null}
@@ -190,7 +190,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
                   <Cell at="state">
                     <OrderState word={row.state} />
                   </Cell>
-                  <Cell at="action">
+                  <Cell at="state">
                     <Badge toned={row.payment} />
                   </Cell>
                   <Cell at="ident">
