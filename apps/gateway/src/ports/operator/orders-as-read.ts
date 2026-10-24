@@ -111,10 +111,13 @@ function fulfillmentOf(record: StoredOrder): Fulfillment {
   return record.order.mode.settle === "after_fulfillment" ? "sync" : "async";
 }
 
-/** A wallet's address is forty hexadecimal digits; a transaction's sixty-four are left whole. */
-const WALLET = /\b0x[0-9a-fA-F]{40}\b/g;
+/**
+ * A wallet address is forty hexadecimal digits after 0x, in either case, with
+ * no digit on either side; a transaction's sixty-four are left whole.
+ */
+const WALLET = /(?<![0-9a-fA-F])0[xX][0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
 
-/** What the facilitator said, with every wallet address in it replaced by "a wallet". */
+/** What was said about the payment, with every wallet address in it replaced by "a wallet". */
 export const withoutWallets = (said: string): string => said.replace(WALLET, "a wallet");
 
 const saidWithoutWallets = (word: StoredOrder["paymentWords"][number]): SaidWord => ({
@@ -172,7 +175,7 @@ function withheldOf(record: StoredOrder): Withheld {
 const PLACE: Readonly<Record<OrderStep["kind"], number>> = {
   created: 0,
   priced: 1,
-  facilitator_said: 2,
+  payment_word: 2,
   charge_sent: 3,
   paid: 4,
   payment_completed: 5,
@@ -215,7 +218,7 @@ function timelineOf(record: StoredOrder, words: readonly SaidWord[]): OrderStep[
       price: { amount: order.price.amount, currency: order.price.currency },
     });
   }
-  for (const word of words) steps.push({ kind: "facilitator_said", ...word });
+  for (const word of words) steps.push({ kind: "payment_word", ...word });
   if (timestamps.settleStartedAt !== null) {
     steps.push({ kind: "charge_sent", at: timestamps.settleStartedAt });
   }

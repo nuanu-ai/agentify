@@ -12,18 +12,23 @@ export type Lookup =
   | { readonly kind: "address"; readonly address: string }
   /** The site's origin, `https://` and the host in lower case, as a seller's site is kept. */
   | { readonly kind: "site"; readonly origin: string }
-  /** An email address, which the dashboard's accounts answer, or a text that names nothing. */
+  /** An email address: the dashboard's accounts answer it, and nothing here does. */
+  | { readonly kind: "email"; readonly address: string }
+  /** A text that names nothing this lookup reads. */
   | { readonly kind: "none" };
 
 const TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+/** An address with one @, a name before it and a dotted domain after it, and no slash. */
+const EMAIL = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 const IDENTIFIER = /^[A-Za-z0-9_-]+$/;
 /** A host as a seller's site can name one: labels of letters, digits and hyphens. */
 const HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)*(:\d+)?$/;
 
 export function lookupOf(text: string): Lookup {
   const pasted = text.trim();
-  if (pasted === "" || pasted.includes("@")) return { kind: "none" };
+  if (pasted === "") return { kind: "none" };
+  if (EMAIL.test(pasted)) return { kind: "email", address: pasted };
   if (pasted.startsWith("ord_")) {
     return IDENTIFIER.test(pasted) ? { kind: "order", id: pasted } : { kind: "none" };
   }

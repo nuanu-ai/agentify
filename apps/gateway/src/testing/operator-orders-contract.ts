@@ -203,7 +203,11 @@ async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
         },
         settlement: { transaction: PAID_TX },
         paymentWords: [
-          { at: t(3) + 1, about: "verify", said: `valid, signed by ${PAYER}` },
+          {
+            at: t(3) + 1,
+            about: "verify",
+            said: `valid, signed by ${PAYER}, owner_${PAYER.toLowerCase()} and 0X${PAYER.slice(2)}`,
+          },
           { at: t(3) + 6, about: "settle", said: `success in ${PAID_TX}` },
         ],
         paymentWordsDropped: 3,
@@ -561,7 +565,11 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
             nextBlock: null,
           },
           words: [
-            { at: t(3) + 1, about: "verify", said: "valid, signed by a wallet" },
+            {
+              at: t(3) + 1,
+              about: "verify",
+              said: "valid, signed by a wallet, owner_a wallet and a wallet",
+            },
             { at: t(3) + 6, about: "settle", said: `success in ${PAID_TX}` },
           ],
           wordsDropped: 3,
@@ -577,13 +585,13 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         expect(delivered?.timeline.map((step) => [step.kind, step.at])).toStrictEqual([
           ["created", t(3)],
           ["priced", t(3) + 1],
-          ["facilitator_said", t(3) + 1],
+          ["payment_word", t(3) + 1],
           ["paid", t(3) + 2],
           ["handed_over", t(3) + 3],
           ["goods_delivered", null],
           ["charge_sent", t(3) + 4],
           ["payment_completed", t(3) + 5],
-          ["facilitator_said", t(3) + 6],
+          ["payment_word", t(3) + 6],
         ]);
 
         const closed = await orders.order("ord_closed");
@@ -752,6 +760,10 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await aChannel(store);
 
         expect(namedBy(await orders.find("SHOP.example/products/esim?x=1", NOW))).toStrictEqual([
+          "merchant site mch_a",
+          "merchant site mch_c",
+        ]);
+        expect(namedBy(await orders.find("shop.example/@esim-shop", NOW))).toStrictEqual([
           "merchant site mch_a",
           "merchant site mch_c",
         ]);

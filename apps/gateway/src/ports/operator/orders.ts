@@ -187,7 +187,7 @@ export type OrderStep =
   | { readonly kind: "priced"; readonly at: number | null; readonly price: OrderAmount }
   | { readonly kind: "charge_sent"; readonly at: number }
   | { readonly kind: "paid"; readonly at: number }
-  | ({ readonly kind: "facilitator_said" } & SaidWord)
+  | ({ readonly kind: "payment_word" } & SaidWord)
   /** The charge's answer, and who gave it: the facilitator, or recovery reading the chain. */
   | {
       readonly kind: "payment_completed";
@@ -210,7 +210,11 @@ export type OrderStep =
   | { readonly kind: "paid_after_closure"; readonly at: number }
   | { readonly kind: "address_erased"; readonly at: number };
 
-/** One thing the facilitator said, a wallet's address in it replaced by "a wallet". */
+/**
+ * One thing recorded about the payment, in the words of whoever said it: the
+ * facilitator, recovery reading the chain, or the gateway itself on checking a
+ * payment out. A wallet address in it is replaced by "a wallet".
+ */
 export interface SaidWord {
   readonly at: number;
   readonly about: "verify" | "settle";

@@ -192,7 +192,7 @@ export const postgresOperatorOrders = ({ read, network }: OperatorScope): Operat
 
     async find(text, at) {
       const asked = lookupOf(text);
-      if (asked.kind === "none") return [];
+      if (asked.kind === "none" || asked.kind === "email") return [];
       return await read(async (tx): Promise<Found[]> => {
         switch (asked.kind) {
           case "order":

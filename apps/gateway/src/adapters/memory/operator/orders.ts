@@ -189,6 +189,7 @@ export const memoryOperatorOrders = (scope: MemoryScope): OperatorOrders => {
               (merchant) => merchant.sellerSite?.toLowerCase() === asked.origin,
             ),
           );
+        case "email":
         case "none":
           return [];
       }
