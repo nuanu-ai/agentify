@@ -59,7 +59,29 @@ export type {
   OperatorSplits,
 } from "./ports/operator/index.js";
 export { paymentUnknown } from "./ports/operator/index.js";
+export { type Lookup, lookupOf } from "./ports/operator/lookup.js";
 export type { Dollars, Tally } from "./ports/operator/money.js";
 export { dollarsOf, microsOf } from "./ports/operator/money.js";
+export type {
+  AgentReads,
+  Found,
+  MerchantReads,
+  OperatorOrder,
+  OperatorOrderRow,
+  OrderAmount,
+  OrderAttempt,
+  OrderMerchant,
+  OrderPayment,
+  OrderProduct,
+  OrderSegment,
+  OrderStep,
+  OrdersCursor,
+  OrdersPage,
+  OrdersQuery,
+  OrdersShown,
+  SaidWord,
+  Withheld,
+} from "./ports/operator/orders.js";
+export { ORDER_SEGMENTS, ORDERS_PAGE } from "./ports/operator/orders.js";
 export type { SplitRow, Splits } from "./ports/operator/splits.js";
 export { SPLITS_LISTED_AT_MOST } from "./ports/operator/splits.js";

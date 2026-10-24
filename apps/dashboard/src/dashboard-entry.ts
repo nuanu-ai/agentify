@@ -271,6 +271,11 @@ export interface DashboardIdentity {
    * operator's workspace alone.
    */
   adReportsSince(since: Date): Promise<AdReportCounts>;
+  /**
+   * The account with this address, in any case, with its merchant; null where
+   * nobody signed in with it. For the operator's lookup alone.
+   */
+  accountWithEmail(email: string): Promise<NamedAccount | null>;
 }
 
 /** What a link is sent for, each counted against the channel's ceiling of its own. */

@@ -1642,6 +1642,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       }
       return counted;
     },
+
+    async accountWithEmail(email) {
+      const found = await (await contextOf()).internalAdapter.findUserByEmail(emailAs(email));
+      if (found === null) return null;
+      const person = personFrom(found.user);
+      return { id: person.id, email: person.email, merchantId: person.merchant?.id ?? null };
+    },
   };
 }
 
