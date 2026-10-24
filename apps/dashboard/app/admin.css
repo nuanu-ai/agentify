@@ -24,7 +24,7 @@
   vertical-align: 3px;
 }
 
-.op-brand {
+.brand-marked {
   display: inline-flex;
   align-items: center;
 }
@@ -948,7 +948,7 @@
     color: var(--fg);
   }
 
-  .op-brand .op-mark {
+  .brand-marked .op-mark {
     margin-left: 8px;
   }
 }

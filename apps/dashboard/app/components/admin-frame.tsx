@@ -1,6 +1,6 @@
 /**
  * The frame every page of the operator's workspace is drawn in: the working
- * header with the operator's mark, and under it the
+ * header with the operator's mark beside the lockup, and under it the
  * workspace's sidebar headed by the channel, so an admission is never given on
  * the wrong one, with its sections in three groups, each carrying its count
  * where something waits. The bar over the page holds its title and the one box
@@ -150,14 +150,6 @@ export function AdminFrame({
   const signedIn = (
     <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
   );
-  // Stands in the header's doors, before who is signed in: the shared header
-  // has no place for a mark beside the lockup, where the design puts it.
-  const visitor = (
-    <>
-      <span className="op-mark">Operator</span>
-      {signedIn}
-    </>
-  );
   return (
     <div className="page app-frame">
       <title>{`${title} — Agentify operator`}</title>
@@ -165,7 +157,8 @@ export function AdminFrame({
       <WorkHeader
         surface="dashboard"
         link={Link}
-        visitor={visitor}
+        mark={<span className="op-mark">Operator</span>}
+        visitor={signedIn}
         menu={
           <HeaderMenu>
             <p className="op-menu-channel">
