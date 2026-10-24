@@ -199,7 +199,7 @@ const JOURNAL_LINES: readonly JournalLineView[] = [
   line(3, iso(AT - 3 * DAY), {
     actor: { kind: "terminal" },
     action: "disable_key",
-    subject: { kind: "key", id: "key_staging", merchantId: MERCHANT_B, label: "Example Tours" },
+    subject: { kind: "key", id: "mk_7c40e2b19d5a", merchantId: MERCHANT_B, label: "Example Tours" },
     reason: "The key was pasted into a public issue.",
     outcome: { kind: "done" },
   }),

@@ -49,33 +49,36 @@ const merchantNamed = (id: string, name: string | null): ReactNode => (
 
 /**
  * What a row records, its subject linked to the record: what was done, or,
- * for a press that changed nothing, what was asked.
+ * for a press that changed nothing, what was asked. On the merchant's own
+ * page the merchant is left out, since every row there is about them.
  */
-function What({ line }: Readonly<{ line: JournalLineView }>) {
+function What({ line, onItsPage }: Readonly<{ line: JournalLineView; onItsPage: boolean }>) {
   const { subject } = line;
   const merchant =
-    subject.merchantId === null ? null : merchantNamed(subject.merchantId, subject.label);
+    subject.merchantId === null || onItsPage
+      ? null
+      : merchantNamed(subject.merchantId, subject.label);
   const account =
     subject.kind === "account" ? accountNamed(subject.id, subject.label, line.addressesRead) : null;
   const done = line.outcome.kind === "done";
   switch (line.action) {
     case "admit":
       return done ? (
-        <>Admitted {merchant} to live sales</>
+        <>Admitted {merchant === null ? null : <>{merchant} </>}to live sales</>
       ) : (
-        <>Asked to admit {merchant} to live sales</>
+        <>Asked to admit {merchant === null ? null : <>{merchant} </>}to live sales</>
       );
     case "withdraw":
       return done ? (
-        <>Withdrew the admission of {merchant}</>
+        <>Withdrew the admission{merchant === null ? null : <> of {merchant}</>}</>
       ) : (
-        <>Asked to withdraw the admission of {merchant}</>
+        <>Asked to withdraw the admission{merchant === null ? null : <> of {merchant}</>}</>
       );
     case "disable_key":
       return (
         <>
-          {done ? "Disabled" : "Asked to disable"} the key <Whole value={subject.id} /> of{" "}
-          {merchant}
+          {done ? "Disabled" : "Asked to disable"} the key <Whole value={subject.id} />
+          {merchant === null ? null : <> of {merchant}</>}
         </>
       );
     case "end_sessions":
@@ -129,11 +132,15 @@ function Outcome({ line }: Readonly<{ line: JournalLineView }>) {
   }
 }
 
-/** Rows of the journal as a list, with what each says under it. */
+/**
+ * Rows of the journal as a list, with what each says under it; `onItsPage`
+ * leaves out the merchant a merchant's own page stands on.
+ */
 export function JournalList({
   lines,
   label,
-}: Readonly<{ lines: readonly JournalLineView[]; label: string }>) {
+  onItsPage = false,
+}: Readonly<{ lines: readonly JournalLineView[]; label: string; onItsPage?: boolean }>) {
   return (
     <div className="list-box op-cols-journal">
       <ul className="list" aria-label={label}>
@@ -153,7 +160,7 @@ export function JournalList({
               <Who line={line} />
             </div>
             <div className="cell cell-title">
-              <What line={line} />
+              <What line={line} onItsPage={onItsPage} />
               {line.reason === null ? null : <span className="op-sub">Reason: {line.reason}</span>}
               {line.refusal === null ? null : (
                 <span className="op-sub">Refused: {line.refusal}</span>

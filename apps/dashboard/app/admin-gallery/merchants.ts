@@ -23,6 +23,7 @@ import {
 import { stepUpViewOf } from "../../src/admin/step-up.js";
 import type { NamedAccount } from "../../src/dashboard-entry.js";
 import type { Trouble } from "../answer.js";
+import { line } from "./accounts.js";
 import type { AdminGalleryState } from "./state.js";
 
 const DAY = 86_400_000;
@@ -299,16 +300,46 @@ const HISTORY: readonly JournalRow[] = [
   }),
 ];
 
+const ADDRESSES: ReadonlyMap<string, string> = new Map([
+  [OPERATOR_ID, "operator@agentify.example"],
+  [ANOTHER_OPERATOR, "second.operator@agentify.example"],
+]);
+
+/**
+ * A merchant's history as its page reads it: the journal's rows, and the same
+ * rows as the Journal draws them, the accounts in them named by address.
+ */
+const historyOf = (rows: readonly JournalRow[], total: number): MerchantRead["history"] => ({
+  rows,
+  total,
+  lines: rows.map((one) =>
+    line(one.sequence, new Date(one.at).toISOString(), {
+      actor:
+        one.actor.kind === "account"
+          ? { kind: "account", id: one.actor.id, email: ADDRESSES.get(one.actor.id) ?? null }
+          : one.actor,
+      action: one.action,
+      subject: {
+        kind: one.subject.kind,
+        id: one.subject.id,
+        merchantId: one.subject.kind === "key" ? one.subject.merchantId : one.subject.id,
+        label: "City Walking Tours",
+      },
+      reason: one.reason,
+      outcome: one.outcome,
+    }),
+  ),
+});
+
 const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): MerchantRead => ({
   mode: "live",
   addressPage: "https://basescan.org/address/",
-  operatorId: OPERATOR_ID,
-  actors: new Map([[ANOTHER_OPERATOR, "second.operator@agentify.example"]]),
+  actors: ADDRESSES,
   readAt: NOW,
   record,
   emails: ["owner@tours.example"],
   shop: null,
-  history: { rows: HISTORY, total: 34 },
+  history: historyOf(HISTORY, 34),
   withdrawal: null,
   uncertainIds: [],
   answers: {},
@@ -524,7 +555,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "Admission is the one check missing; its four cards are published and off sale, and a wallet change waits.",
     },
-    pageRead(WAITING, { emails: ["owner@giftcards.example"], history: { rows: [], total: 0 } }),
+    pageRead(WAITING, { emails: ["owner@giftcards.example"], history: historyOf([], 0) }),
   ),
   pageState(
     {
@@ -535,7 +566,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(WITHDRAWN, {
       withdrawal: WITHDRAWAL,
-      history: { rows: [WITHDRAWAL, ...HISTORY], total: 35 },
+      history: historyOf([WITHDRAWAL, ...HISTORY], 35),
     }),
     "withdraw",
   ),
@@ -548,7 +579,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(WAITING, {
       emails: ["owner@giftcards.example"],
-      history: { rows: [], total: 0 },
+      history: historyOf([], 0),
       ...answered({ admit: STEP_UP }),
     }),
     "admit",
@@ -579,7 +610,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(WAITING, {
       emails: ["owner@giftcards.example"],
-      history: { rows: [], total: 0 },
+      history: historyOf([], 0),
       ...answered({ admit: { kind: "unknown" } }),
     }),
     "admit",
@@ -603,9 +634,8 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         },
       },
       {
-        history: {
-          total: 35,
-          rows: [
+        history: historyOf(
+          [
             row(
               3,
               NOW,
@@ -617,7 +647,8 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
             ),
             ...HISTORY,
           ],
-        },
+          35,
+        ),
         ...answered({ key: { id: "mk_9f2c41d8e07b", answer: { kind: "done" } } }),
       },
     ),
@@ -646,7 +677,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
           permissions: "read_write",
         },
         uncertainIds: ["ord_17ff09b24ce67de3"],
-        history: { rows: [], total: 0 },
+        history: historyOf([], 0),
       },
     ),
   ),

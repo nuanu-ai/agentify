@@ -30,14 +30,13 @@ import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
 import { FULFILLMENT_WORDS, ORDER_WORDS, type Word } from "../words.js";
 import type { Operator } from "./access.js";
+import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
 import type { SectionCounts } from "./frame.js";
 import {
   CHECK_WORDS,
   checksSaid,
   cutSaid,
-  JOURNAL_REFUSED_WORDS,
-  JOURNAL_WORDS,
   NO_SELLER_NAME,
   REFUSED_WORDS,
   SEGMENT_WORDS,
@@ -169,13 +168,6 @@ export interface ShopFacts {
   readonly permissions: string;
 }
 
-export interface HistoryLine {
-  readonly what: string;
-  readonly from: string;
-  readonly when: MomentView;
-  readonly who: string;
-}
-
 export interface WorthLine {
   readonly id: string;
   readonly href: string;
@@ -258,59 +250,26 @@ export interface MerchantView {
   }>;
   readonly cards: Readonly<{ rows: readonly CardLine[]; cut: string | null }>;
   readonly worth: Readonly<{ rows: readonly WorthLine[]; cut: string | null }>;
-  /** The journal's rows about this merchant, newest first, or null where it could not be read. */
-  readonly history: Readonly<{ rows: readonly HistoryLine[]; cut: string | null }> | null;
+  /**
+   * The journal's rows about this merchant, newest first, drawn as the Journal
+   * draws them, or null where they could not be read.
+   */
+  readonly history: Readonly<{ lines: readonly JournalLineView[]; cut: string | null }> | null;
   /** True where which orders worth a look have an uncertain shop order could not be read. */
   readonly shopOrdersUnread: boolean;
 }
 
-/** Who acted, as the history names them: the operator reading it, or another account by identifier. */
 /**
- * Who acted, as the history names them: the operator reading it, another
- * account by its address, an account that no longer resolves as a deleted
- * one, or by its identifier where the accounts could not be read (`actors`
- * null).
+ * Who acted, as the history names them: an account by its address, the
+ * operator reading the page included, an account that no longer resolves as
+ * a deleted one, or by its identifier where the accounts could not be read
+ * (`actors` null).
  */
-const whoOf = (
-  row: JournalRow,
-  operatorId: string,
-  actors: ReadonlyMap<string, string> | null,
-): string => {
+const whoOf = (row: JournalRow, actors: ReadonlyMap<string, string> | null): string => {
   if (row.actor.kind === "terminal") return "the terminal";
   if (row.actor.kind === "configuration") return "the configuration";
-  if (row.actor.id === operatorId) return "you";
   if (actors === null) return `account ${row.actor.id}`;
   return actors.get(row.actor.id) ?? "a deleted account";
-};
-
-const historyLineOf = (
-  row: JournalRow,
-  operatorId: string,
-  actors: ReadonlyMap<string, string> | null,
-  keyLabels: ReadonlyMap<string, string>,
-): HistoryLine => {
-  const words = JOURNAL_WORDS[row.action];
-  const said =
-    words === undefined ? row.action : row.outcome.kind === "done" ? words.done : words.asked;
-  const label = row.subject.kind === "key" ? keyLabels.get(row.subject.id) : undefined;
-  const subject =
-    row.subject.kind === "key"
-      ? `${said} ${label === undefined ? row.subject.id : `"${label}"`}`
-      : said;
-  const what =
-    row.outcome.kind === "refused"
-      ? `Refused: ${subject.slice(0, 1).toLowerCase()}${subject.slice(1)}, as ${
-          JOURNAL_REFUSED_WORDS[row.outcome.code] ?? row.outcome.code
-        }`
-      : row.outcome.kind === "unchanged"
-        ? `${subject}, already so`
-        : subject;
-  return {
-    what: row.reason === null ? what : `${what}: ${row.reason}`,
-    from: row.actor.kind === "account" ? "Workspace" : "Terminal",
-    when: at(row.at),
-    who: whoOf(row, operatorId, actors),
-  };
 };
 
 /** The answers of the page's forms, by which form was pressed. */
@@ -402,8 +361,6 @@ export interface MerchantRead {
   readonly mode: SurfaceMode;
   /** The chain explorer's page for an address, without the address; null where there is none. */
   readonly addressPage: string | null;
-  /** The account the page is drawn for, whom the history calls "you". */
-  readonly operatorId: string;
   /** The addresses of the accounts the history names, by identifier, or null where they could not be read. */
   readonly actors: ReadonlyMap<string, string> | null;
   readonly readAt: number;
@@ -412,10 +369,15 @@ export interface MerchantRead {
   readonly emails: readonly string[] | null;
   readonly shop: ShopFacts | null | "unread";
   /**
-   * The journal's newest rows about the merchant and how many there are in
-   * all, or null where they could not be read.
+   * The journal's newest rows about the merchant, as read and as the Journal
+   * draws them, and how many there are in all, or null where they could not
+   * be read.
    */
-  readonly history: Readonly<{ rows: readonly JournalRow[]; total: number }> | null;
+  readonly history: Readonly<{
+    rows: readonly JournalRow[];
+    lines: readonly JournalLineView[];
+    total: number;
+  }> | null;
   /** The withdrawal that stands, whose reason is the note the merchant reads; null for none, "unread" where it could not be read. */
   readonly withdrawal: JournalRow | null | "unread";
   /** The orders worth a look whose shop order may or may not exist, or "unread" where that could not be read. */
@@ -427,7 +389,6 @@ export interface MerchantRead {
 export function merchantViewOf({
   mode,
   addressPage,
-  operatorId,
   actors,
   readAt,
   record,
@@ -498,13 +459,13 @@ export function merchantViewOf({
             admittedBy:
               admittedRow === undefined || record.liveApprovedAt === null
                 ? null
-                : whoOf(admittedRow, operatorId, actors),
+                : whoOf(admittedRow, actors),
             withdrawn:
               withdrawal === null || withdrawal === "unread"
                 ? withdrawal
                 : {
                     at: at(withdrawal.at),
-                    by: whoOf(withdrawal, operatorId, actors),
+                    by: whoOf(withdrawal, actors),
                     note: withdrawal.reason,
                   },
             admit: answers.admit ?? null,
@@ -560,7 +521,7 @@ export function merchantViewOf({
       history === null
         ? null
         : {
-            rows: history.rows.map((row) => historyLineOf(row, operatorId, actors, keyLabels)),
+            lines: history.lines,
             cut:
               history.rows.length === history.total
                 ? null
@@ -639,7 +600,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
 
   /** The addresses of the accounts that acted in these rows, or null where they could not be read. */
   const actorsOf = async (
-    operator: Operator,
     history: MerchantRead["history"],
     withdrawal: MerchantRead["withdrawal"],
   ): Promise<ReadonlyMap<string, string> | null> => {
@@ -648,11 +608,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       ...(typeof withdrawal === "object" && withdrawal !== null ? [withdrawal] : []),
     ];
     const accountIds = [
-      ...new Set(
-        rows.flatMap((row) =>
-          row.actor.kind === "account" && row.actor.id !== operator.person.id ? [row.actor.id] : [],
-        ),
-      ),
+      ...new Set(rows.flatMap((row) => (row.actor.kind === "account" ? [row.actor.id] : []))),
     ];
     if (accountIds.length === 0) return new Map();
     try {
@@ -665,7 +621,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   };
 
   async function pageOf(
-    operator: Operator,
     record: MerchantRecord,
     answers: Answers,
     readAt: number,
@@ -676,7 +631,11 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     let history: MerchantRead["history"];
     try {
       const page = await store.journal({ about: { merchant: record.id }, limit: HISTORY_ROWS });
-      history = { rows: page.rows, total: page.total };
+      history = {
+        rows: page.rows,
+        lines: await journalLinesOf(parts, page.rows),
+        total: page.total,
+      };
     } catch {
       console.error("[dashboard] a merchant's history could not be read");
       history = null;
@@ -700,8 +659,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     return merchantViewOf({
       mode,
       addressPage: config.addressPage,
-      operatorId: operator.person.id,
-      actors: await actorsOf(operator, history, withdrawal),
+      actors: await actorsOf(history, withdrawal),
       readAt,
       record,
       emails: own === null ? null : own.map((account) => account.email),
@@ -714,7 +672,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   }
 
   async function page(
-    operator: Operator,
     merchantId: string,
     answers: Answers = {},
     status = 200,
@@ -723,7 +680,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     const { at: readAt, surface } = asked();
     const record = await reader.merchants.merchant(merchantId, { at: readAt, surface });
     if (record === null) return missing;
-    return { kind: "view", view: await pageOf(operator, record, answers, readAt), status };
+    return { kind: "view", view: await pageOf(record, answers, readAt), status };
   }
 
   /** The admission's change through the press, refused off the live channel. */
@@ -792,7 +749,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       };
     },
 
-    one: (operator, merchantId) => page(operator, merchantId),
+    one: (_operator, merchantId) => page(merchantId),
 
     async press(operator, merchantId, intent, form) {
       if (!IDENTIFIER.test(merchantId)) return missing;
@@ -811,7 +768,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           admission(merchantId, intent.kind === "admit"),
         );
         return await page(
-          operator,
           merchantId,
           { [intent.kind]: answer },
           answer.kind === "refused" ? 409 : 200,
@@ -843,7 +799,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           },
         );
         return await page(
-          operator,
           merchantId,
           { key: { id: keyId, answer } },
           answer.kind === "refused" ? 409 : 200,

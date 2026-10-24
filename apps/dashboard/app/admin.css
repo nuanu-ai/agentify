@@ -694,6 +694,11 @@
   --columns: 8.5rem minmax(9rem, 12rem) minmax(16rem, 1fr) 6rem 7rem;
 }
 
+/* An address longer than its column breaks rather than running into What. */
+.op-cols-journal .cell-ident {
+  overflow-wrap: anywhere;
+}
+
 .op-cols-scans {
   --columns: minmax(10rem, 1fr) 6rem 9rem 5rem 6rem 8rem;
 }

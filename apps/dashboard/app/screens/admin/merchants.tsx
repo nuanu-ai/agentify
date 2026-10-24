@@ -36,6 +36,7 @@ import { shortened } from "../../components/copy.js";
 import { ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
+import { JournalList } from "./journal.js";
 
 /** An identifier shown short that opens to its whole value; no copy button, since the workspace runs no script. */
 function Whole({ value }: Readonly<{ value: string }>) {
@@ -275,7 +276,8 @@ function KeyItem({
   return (
     <li>
       <span>
-        <span className="k">{line.label}</span> · issued <Moment at={line.issued} /> ·{" "}
+        <span className="k">{line.label}</span> <Whole value={line.id} /> · issued{" "}
+        <Moment at={line.issued} /> ·{" "}
         {line.lastUsed === null ? (
           "no use recorded"
         ) : (
@@ -624,37 +626,30 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
               {view.cards.cut === null ? null : <p className="op-sub">{view.cards.cut}</p>}
             </div>
           </section>
-          <section className="op-panel" aria-labelledby="history-title">
-            <div className="op-panel-head">
-              <h2 id="history-title">History</h2>
-              <p>From the journal</p>
-            </div>
-            <div className="op-panel-body">
-              {view.history === null ? (
-                <p>
-                  The history <CouldNotBeRead />
-                </p>
-              ) : view.history.rows.length === 0 ? (
-                <p className="quiet">No administrative action on this merchant yet.</p>
-              ) : (
-                <ul className="op-mini">
-                  {view.history.rows.map((line, at) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: the journal's rows only grow, newest first
-                    <li key={at}>
-                      <span>{line.what}</span>
-                      <span className="fig">{line.from}</span>
-                      <span className="when">
-                        <Moment at={line.when} /> · {line.who}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {view.history?.cut == null ? null : <p className="op-sub">{view.history.cut}</p>}
-            </div>
-          </section>
         </div>
       </div>
+      <section className="group" aria-labelledby="history-title">
+        <div className="group-head">
+          <h2 id="history-title">History</h2>
+          <p className="group-aside">
+            From the journal · <Link to="/admin/journal">The whole journal</Link>
+          </p>
+        </div>
+        {view.history === null ? (
+          <p className="op-sub">
+            The history <CouldNotBeRead />
+          </p>
+        ) : view.history.lines.length === 0 ? (
+          <p className="op-sub">No administrative action on this merchant yet.</p>
+        ) : (
+          <JournalList
+            lines={view.history.lines}
+            label={`The journal's rows about ${view.called}`}
+            onItsPage
+          />
+        )}
+        {view.history?.cut == null ? null : <p className="cut">{view.history.cut}</p>}
+      </section>
       <p className="op-bound">
         <span>{boundSaid(view.called)}</span>
       </p>

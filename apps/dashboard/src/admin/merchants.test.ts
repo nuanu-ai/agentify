@@ -163,9 +163,12 @@ describe("withdrawing and giving the admission", () => {
     expect([admitted.status, again.status]).toStrictEqual([200, 200]);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
     expect(text(again.html)).toContain("It was so already");
-    // Another operator reads who acted by their address.
+    // The history names who acted by their address, to them and to another operator.
     const second = await served.signedIn("op2@agentify.example", { operator: true });
-    expect(text((await second.get(path)).html)).toContain(`· ${OPERATOR}`);
+    for (const reader of [operator, second]) {
+      const history = text((await reader.get(path)).html).split("History")[1] ?? "";
+      expect(history).toContain(OPERATOR);
+    }
     expect(
       (await rowsAbout(served, merchant.id)).map((row) => [row.action, row.outcome.kind]),
     ).toStrictEqual([
