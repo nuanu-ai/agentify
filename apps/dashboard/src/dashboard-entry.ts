@@ -251,4 +251,25 @@ export interface DashboardIdentity {
    * merchant keeps its own.
    */
   setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
+  /**
+   * The accounts that made merchants, for the operator's workspace alone:
+   * those of the merchants named, and those whose address contains the text
+   * given, ignoring case; at most `MERCHANT_ACCOUNTS_MAX` for each half.
+   */
+  merchantAccounts(query: MerchantAccountsQuery): Promise<readonly MerchantAccount[]>;
+}
+
+/** The most accounts one `merchantAccounts` read hands back for each half of its query. */
+export const MERCHANT_ACCOUNTS_MAX = 200;
+
+export interface MerchantAccountsQuery {
+  readonly merchantIds?: readonly string[];
+  readonly emailContains?: string;
+}
+
+/** An account and the merchant it made. */
+export interface MerchantAccount {
+  readonly merchantId: string;
+  readonly accountId: string;
+  readonly email: string;
 }

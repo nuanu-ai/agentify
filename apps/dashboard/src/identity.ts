@@ -49,6 +49,8 @@ import {
   type LinkRequestResult,
   type LinkWall,
   type LiveSession,
+  MERCHANT_ACCOUNTS_MAX,
+  type MerchantAccount,
   type MerchantPerson,
   type Person,
   type UnattachedPerson,
@@ -1554,6 +1556,39 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
     async close() {
       await parts.pool?.end();
+    },
+
+    async merchantAccounts(query) {
+      const { adapter } = await contextOf();
+      type Row = { id: string; email: string; merchantId?: unknown };
+      const ids = [...new Set(query.merchantIds ?? [])].slice(0, MERCHANT_ACCOUNTS_MAX);
+      const text = query.emailContains?.trim().toLowerCase() ?? "";
+      const named =
+        ids.length === 0
+          ? []
+          : await adapter.findMany<Row>({
+              model: "user",
+              where: [{ field: "merchantId", operator: "in", value: ids }],
+              limit: MERCHANT_ACCOUNTS_MAX,
+            });
+      // The adapter's own match reads `%` and `_` as wildcards, so what it
+      // finds is held to the text exactly.
+      const matched =
+        text === ""
+          ? []
+          : (
+              await adapter.findMany<Row>({
+                model: "user",
+                where: [{ field: "email", operator: "contains", value: text }],
+                limit: MERCHANT_ACCOUNTS_MAX,
+              })
+            ).filter((row) => row.email.toLowerCase().includes(text));
+      const found = new Map<string, MerchantAccount>();
+      for (const row of [...named, ...matched]) {
+        if (typeof row.merchantId !== "string" || row.merchantId === "") continue;
+        found.set(row.id, { merchantId: row.merchantId, accountId: row.id, email: row.email });
+      }
+      return [...found.values()];
     },
   };
 }
