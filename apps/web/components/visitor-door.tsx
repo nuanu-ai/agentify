@@ -21,7 +21,7 @@ export function VisitorDoor() {
         <span className="site-unknown">Sign-in unknown</span>
       ) : visitor.status === "signed_in" ? (
         <>
-          {visitor.operator ? <a href="/admin">Admin</a> : null}
+          {visitor.operator ? <a href="/dashboard/admin">Admin</a> : null}
           <a className="site-who" href="/dashboard/settings" title={visitor.email}>
             {visitor.email}
           </a>

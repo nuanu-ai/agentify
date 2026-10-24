@@ -36,16 +36,16 @@ describe("the header's doors", () => {
     expect(form?.querySelector("button")?.textContent).toMatch(/sign out/i);
   });
 
-  it("shows an operator the way to the dashboard", async () => {
+  it("shows an operator the way to the operator's workspace", async () => {
     visitorIs(200, { status: "signed_in", email: "operator@example.com", operator: true });
 
     const { container } = render(onSite(<SiteDoors />));
 
     await doors().findByText("operator@example.com");
-    expect(container.querySelector('a[href="/admin"]')?.textContent).toBe("Admin");
+    expect(container.querySelector('a[href="/dashboard/admin"]')?.textContent).toBe("Admin");
   });
 
-  it("shows nobody else the way to the dashboard", async () => {
+  it("shows nobody else the way to the operator's workspace", async () => {
     for (const [status, body] of [
       [200, { status: "signed_in", email: "owner@example.com", operator: false }],
       [200, { status: "signed_out" }],
@@ -56,7 +56,7 @@ describe("the header's doors", () => {
       await vi.waitFor(() =>
         expect(container.querySelector('[aria-busy="false"]'), JSON.stringify(body)).toBeTruthy(),
       );
-      expect(container.querySelector('a[href="/admin"]'), JSON.stringify(body)).toBeNull();
+      expect(container.querySelector('a[href*="admin"]'), JSON.stringify(body)).toBeNull();
       vi.restoreAllMocks();
       cleanup();
     }

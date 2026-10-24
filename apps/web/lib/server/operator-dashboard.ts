@@ -1,5 +1,11 @@
 import { getServerConfig } from "./config";
 import { getDatabase } from "./database";
+import {
+  OPERATIONAL_SIGNALS_QUERY,
+  type OperationalSignalRow,
+  WORKER_HEARTBEAT_QUERY,
+  type WorkerHeartbeatRow,
+} from "./worker-health";
 
 /**
  * What the operator page reads, straight from the scanner's tables. Target
@@ -11,6 +17,10 @@ import { getDatabase } from "./database";
  * The analytics events hold only visitors who allowed optional measurement,
  * so a number read from them counts those visitors and no others, and the page
  * says so beside it. Scans and registrations are read from their own records.
+ * Days are UTC days, as the browser budget's are, whatever the zone of the
+ * database session or of this process.
+ * A data access request waits on its lead until the address is deleted,
+ * which clears it: nothing records an answer to it.
  */
 const OVERVIEW = `
   select
@@ -24,80 +34,39 @@ const OVERVIEW = `
     (select count(*)::bigint from public.waitlist_entries where created_at >= now() - interval '30 days') as verified_registrations_30d,
     (select count(*)::bigint from public.analytics_events where name = 'result_shared' and occurred_at >= now() - interval '30 days') as shares_30d,
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
-    (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_24h,
-    (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = current_date) as browser_usage_usd_today`;
+    (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_1h,
+    (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = (now() at time zone 'UTC')::date) as browser_usage_usd_today,
+    (select count(*)::bigint from public.leads where data_access_requested_at is not null) as data_access_waiting,
+    (select min(data_access_requested_at) from public.leads where data_access_requested_at is not null) as data_access_oldest_at`;
 
-const DAILY_FUNNEL = `
-  with days as (
-    select generate_series(current_date - interval '29 days', current_date, interval '1 day')::date as day
-  ), visitors as (
-    select created_at::date as day, count(*)::bigint as visitors
-    from public.sessions
-    where created_at >= current_date - interval '29 days'
-    group by 1
+const DAILY = `
+  with today as (
+    select (now() at time zone 'UTC')::date as day
+  ), days as (
+    select generate_series(today.day - 29, today.day, interval '1 day')::date as day from today
   ), landings as (
-    select occurred_at::date as day, count(*)::bigint as landing_views
-    from public.analytics_events
-    where name = 'landing_view' and occurred_at >= current_date - interval '29 days'
+    select (occurred_at at time zone 'UTC')::date as day, count(*)::bigint as landing_views
+    from public.analytics_events, today
+    where name = 'landing_view' and occurred_at >= (today.day - 29)::timestamp at time zone 'UTC'
     group by 1
   ), scan_totals as (
-    select
-      accepted_at::date as day,
-      count(*)::bigint as scans,
-      count(*) filter (where status in ('completed', 'partial'))::bigint as completed_scans
-    from public.scans
-    where accepted_at >= current_date - interval '29 days'
-    group by 1
-  ), registrations as (
-    select created_at::date as day, count(*)::bigint as verified_registrations
-    from public.waitlist_entries
-    where created_at >= current_date - interval '29 days'
-    group by 1
-  ), shares as (
-    select occurred_at::date as day, count(*)::bigint as shares
-    from public.analytics_events
-    where name = 'result_shared' and occurred_at >= current_date - interval '29 days'
+    select (accepted_at at time zone 'UTC')::date as day, count(*)::bigint as scans
+    from public.scans, today
+    where accepted_at >= (today.day - 29)::timestamp at time zone 'UTC'
     group by 1
   )
   select
-    days.day,
-    coalesce(visitors.visitors, 0)::bigint as visitors,
+    days.day::text as day,
     coalesce(landings.landing_views, 0)::bigint as landing_views,
-    coalesce(scan_totals.scans, 0)::bigint as scans,
-    coalesce(scan_totals.completed_scans, 0)::bigint as completed_scans,
-    coalesce(registrations.verified_registrations, 0)::bigint as verified_registrations,
-    coalesce(shares.shares, 0)::bigint as shares
+    coalesce(scan_totals.scans, 0)::bigint as scans
   from days
-  left join visitors using (day)
   left join landings using (day)
   left join scan_totals using (day)
-  left join registrations using (day)
-  left join shares using (day)
   order by days.day`;
 
 const RECENT_SCANS = `
-  select
-    s.id as scan_id,
-    s.target_host,
-    s.segment,
-    s.status,
-    s.score,
-    s.coverage,
-    s.level,
-    s.accepted_at,
-    s.finished_at,
-    case
-      when s.finished_at is not null then extract(epoch from (s.finished_at - s.accepted_at))::integer
-    end as duration_seconds,
-    observation.status as browser_status
+  select s.id as scan_id, s.target_host, s.segment, s.status, s.score, s.coverage, s.accepted_at
   from public.scans s
-  left join lateral (
-    select bo.status
-    from public.browser_observations bo
-    where bo.scan_id = s.id
-    order by bo.queued_at desc
-    limit 1
-  ) observation on true
   order by s.accepted_at desc
   limit 50`;
 
@@ -142,6 +111,9 @@ const asIso = (value: unknown): string => {
   return String(value);
 };
 
+const asNullableString = (value: unknown): string | null =>
+  value === null || value === undefined ? null : String(value);
+
 type OperatorOverview = {
   visitorsTotal: number;
   visitors30d: number;
@@ -157,14 +129,10 @@ type OperatorOverview = {
   browserUsageUsdToday: number;
 };
 
-export type OperatorDailyFunnel = {
+export type OperatorDay = {
   day: string;
-  visitors: number;
   landingViews: number;
   scans: number;
-  completedScans: number;
-  verifiedRegistrations: number;
-  shares: number;
 };
 
 type OperatorRecentScan = {
@@ -174,11 +142,7 @@ type OperatorRecentScan = {
   status: string;
   score: number | null;
   coverage: number | null;
-  level: string | null;
   acceptedAt: string;
-  finishedAt: string | null;
-  durationSeconds: number | null;
-  browserStatus: string | null;
 };
 
 type OperatorSelfScan = {
@@ -200,22 +164,34 @@ export type OperatorDashboard = {
   generatedAt: string;
   turnstileEnforced: boolean;
   overview: OperatorOverview;
-  daily: OperatorDailyFunnel[];
+  /** Data access requests still waiting, and when the oldest of them was made. */
+  dataAccess: { waiting: number; oldestAt: string | null };
+  /** The last thirty days, oldest first; the last is today, read part of the way through. */
+  daily: OperatorDay[];
   recentScans: OperatorRecentScan[];
   selfScan: OperatorSelfScan | null;
+  /** What the health check reads, for the page to judge by the health check's own rules. */
+  worker: { heartbeat: WorkerHeartbeatRow | null; signals: OperationalSignalRow };
 };
 
 export async function getOperatorDashboard(): Promise<OperatorDashboard> {
   const { pool } = getDatabase();
-  const [overviewResult, dailyResult, scansResult, selfResult] = await Promise.all([
-    pool.query(OVERVIEW),
-    pool.query(DAILY_FUNNEL),
-    pool.query(RECENT_SCANS),
-    pool.query(SELF_SCAN),
-  ]);
+  const [overviewResult, dailyResult, scansResult, selfResult, heartbeatResult, signalsResult] =
+    await Promise.all([
+      pool.query(OVERVIEW),
+      pool.query(DAILY),
+      pool.query(RECENT_SCANS),
+      pool.query(SELF_SCAN),
+      pool.query<WorkerHeartbeatRow>(WORKER_HEARTBEAT_QUERY),
+      pool.query<OperationalSignalRow>(OPERATIONAL_SIGNALS_QUERY),
+    ]);
 
   const overview = overviewResult.rows[0];
   if (!overview) throw new Error("operator_dashboard_overview_missing");
+  const signals = signalsResult.rows[0];
+  if (!signals) throw new Error("operator_dashboard_signals_missing");
+  const heartbeat = heartbeatResult.rows[0];
+  const self = selfResult.rows[0];
 
   return {
     generatedAt: new Date().toISOString(),
@@ -231,17 +207,18 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       verifiedRegistrations30d: asNumber(overview.verified_registrations_30d),
       shares30d: asNumber(overview.shares_30d),
       acceptedRequests24h: asNumber(overview.accepted_requests_24h),
-      challengePasses1h: asNumber(overview.challenge_passes_24h),
+      challengePasses1h: asNumber(overview.challenge_passes_1h),
       browserUsageUsdToday: asNumber(overview.browser_usage_usd_today),
     },
+    dataAccess: {
+      waiting: asNumber(overview.data_access_waiting),
+      oldestAt:
+        overview.data_access_oldest_at === null ? null : asIso(overview.data_access_oldest_at),
+    },
     daily: dailyResult.rows.map((row) => ({
-      day: asIso(row.day).slice(0, 10),
-      visitors: asNumber(row.visitors),
+      day: String(row.day),
       landingViews: asNumber(row.landing_views),
       scans: asNumber(row.scans),
-      completedScans: asNumber(row.completed_scans),
-      verifiedRegistrations: asNumber(row.verified_registrations),
-      shares: asNumber(row.shares),
     })),
     recentScans: scansResult.rows.map((row) => ({
       scanId: String(row.scan_id),
@@ -250,37 +227,29 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       status: String(row.status),
       score: asNullableNumber(row.score),
       coverage: asNullableNumber(row.coverage),
-      level: row.level === null ? null : String(row.level),
       acceptedAt: asIso(row.accepted_at),
-      finishedAt: row.finished_at === null ? null : asIso(row.finished_at),
-      durationSeconds: asNullableNumber(row.duration_seconds),
-      browserStatus: row.browser_status === null ? null : String(row.browser_status),
     })),
-    selfScan: selfResult.rows[0]
+    selfScan: self
       ? {
-          scanId: String(selfResult.rows[0].scan_id),
-          targetHost: String(selfResult.rows[0].target_host),
-          segment: String(selfResult.rows[0].segment),
-          status: String(selfResult.rows[0].status),
-          score: asNullableNumber(selfResult.rows[0].score),
-          coverage: asNullableNumber(selfResult.rows[0].coverage),
-          level: selfResult.rows[0].level === null ? null : String(selfResult.rows[0].level),
-          acceptedAt: asIso(selfResult.rows[0].accepted_at),
-          finishedAt:
-            selfResult.rows[0].finished_at === null ? null : asIso(selfResult.rows[0].finished_at),
-          substantiveHtmlStatus:
-            selfResult.rows[0].substantive_html_status === null
-              ? null
-              : String(selfResult.rows[0].substantive_html_status),
-          agentUserAgentStatus:
-            selfResult.rows[0].agent_user_agent_status === null
-              ? null
-              : String(selfResult.rows[0].agent_user_agent_status),
-          browserStatus:
-            selfResult.rows[0].browser_status === null
-              ? null
-              : String(selfResult.rows[0].browser_status),
+          scanId: String(self.scan_id),
+          targetHost: String(self.target_host),
+          segment: String(self.segment),
+          status: String(self.status),
+          score: asNullableNumber(self.score),
+          coverage: asNullableNumber(self.coverage),
+          level: asNullableString(self.level),
+          acceptedAt: asIso(self.accepted_at),
+          finishedAt: self.finished_at === null ? null : asIso(self.finished_at),
+          substantiveHtmlStatus: asNullableString(self.substantive_html_status),
+          agentUserAgentStatus: asNullableString(self.agent_user_agent_status),
+          browserStatus: asNullableString(self.browser_status),
         }
       : null,
+    worker: {
+      heartbeat: heartbeat
+        ? { heartbeat_at: asIso(heartbeat.heartbeat_at), metadata: heartbeat.metadata }
+        : null,
+      signals,
+    },
   };
 }
