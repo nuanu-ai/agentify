@@ -148,7 +148,7 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
           {view.unlisted === 0
             ? "No account only signed in; every account is one of these. "
             : `${plural(view.unlisted, "more account", "more accounts")} only signed in, most of them to open a scanner's report; they are counted, not listed. `}
-          Read at <Moment at={view.readAt} />
+          Read <Moment at={view.readAt} />
         </span>
       </p>
       <section className="op-panel" aria-labelledby="first-title">
@@ -290,7 +290,7 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
           <span className="badge badge-quiet">Not an operator</span>
         )}
         <span>
-          Read at <Moment at={view.readAt} />
+          Read <Moment at={view.readAt} />
         </span>
       </p>
       <Settled pressed={pressed} email={account.email} />

@@ -43,7 +43,7 @@ import {
 import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
 import type { Outcome } from "../page-services.js";
-import { ORDER_WORDS } from "../words.js";
+import { dayOf, moment, ORDER_WORDS } from "../words.js";
 import { type Operator, signedInFreshly } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import type { SectionCounts } from "./frame.js";
@@ -88,14 +88,14 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 const two = (n: number) => String(n).padStart(2, "0");
 
-/** "23 Oct 2026, 14:05 UTC". */
-export const momentWritten = (at: number): string => {
-  const d = new Date(at);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} UTC`;
-};
+/** A moment as every page of the dashboard writes it: "2026-10-23 14:05:00 UTC". */
+export const momentWritten = (at: number): string => moment(new Date(at).toISOString());
 
-/** "23 Oct". */
-const dayWritten = (at: number): string => {
+/** A day as every page of the dashboard writes it: "23 October 2026". */
+const dayWritten = (at: number): string => dayOf(new Date(at).toISOString());
+
+/** A day under a chart's bar, where the year is the chart's: "23 Oct". */
+const chartDay = (at: number): string => {
   const d = new Date(at);
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 };
@@ -344,8 +344,8 @@ export function chartOf(sales: SalesByDay, stacked: boolean): ChartView {
     const x = Number((PLOT.left + index * width + (width - BAR) / 2).toFixed(1));
     const when =
       index === last
-        ? `${dayWritten(Date.parse(day.day))}, until ${clockWritten(sales.readAt)} UTC`
-        : dayWritten(Date.parse(day.day));
+        ? `${chartDay(Date.parse(day.day))}, until ${clockWritten(sales.readAt)} UTC`
+        : chartDay(Date.parse(day.day));
     const total = totals[index] ?? "0.00";
     if (day.delivered.count + day.noDelivery.count === 0) {
       bars.push({
@@ -404,7 +404,7 @@ export function chartOf(sales: SalesByDay, stacked: boolean): ChartView {
   const lastTotal = totals[last] ?? "0.00";
   const lastBar = [...bars].reverse().find((bar) => bar.x === bars[bars.length - 1]?.x);
   return {
-    aria: `Settled sales per day from ${dayWritten(Date.parse(first))} to ${momentWritten(Date.parse(final)).slice(0, -11)}, ${usd(whole)} in all`,
+    aria: `Settled sales per day from ${dayWritten(Date.parse(first))} to ${dayWritten(Date.parse(final))}, ${usd(whole)} in all`,
     ticks: [0, 1, 2, 3, 4].map((n) => ({
       y: PLOT.base - (n * height) / 4,
       label: String(Number((n * step).toFixed(6))),
@@ -413,7 +413,7 @@ export function chartOf(sales: SalesByDay, stacked: boolean): ChartView {
     days: [
       ...[0, 7, 14, 21].map((index) => ({
         x: Number((PLOT.left + index * width + width / 2).toFixed(1)),
-        label: dayWritten(Date.parse(sales.days[index]?.day ?? first)),
+        label: chartDay(Date.parse(sales.days[index]?.day ?? first)),
       })),
       {
         x: Number((PLOT.left + last * width + width / 2 - 6).toFixed(1)),
@@ -517,7 +517,7 @@ const needsYouOf = (
       site: merchant.sellerSite === null ? null : new URL(merchant.sellerSite).host,
       why: `Seller name and payout wallet are set, so admission is the only check missing. ${integration} ${cards} The merchant's dashboard tells them they are not approved and gives them no way to ask.`,
       owner: owners?.get(merchant.merchantId) ?? null,
-      created: `Merchant created ${momentWritten(merchant.createdAt).slice(0, -11)}`,
+      created: `Merchant created ${momentWritten(merchant.createdAt)}`,
     };
   }),
 });
@@ -1001,7 +1001,7 @@ export function keyRowOf(check: FacilitatorKeyCheck | null): HealthRowView {
   return {
     part: "Facilitator key",
     badge,
-    fact: [`Asked at ${clockWritten(check.checkedAt)} UTC: ${check.said}.`],
+    fact: [`Asked ${momentWritten(check.checkedAt)}: ${check.said}.`],
     read: clockWritten(check.checkedAt),
     check: "key",
   };
@@ -1021,7 +1021,7 @@ export function listingRowOf(
       read: "—",
     };
   }
-  const asked = `Asked at ${clockWritten(check.checkedAt)} UTC`;
+  const asked = `Asked ${momentWritten(check.checkedAt)}`;
   const read = clockWritten(check.checkedAt);
   switch (check.kind) {
     case "catalog_unreadable":

@@ -282,7 +282,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
         <span>
           {`${view.lines.length} of ${view.total} shown, newest first${
             view.before === null ? "" : ", older than the page before"
-          } · read at `}
+          } · read `}
           <Moment at={view.readAt} />
         </span>
         {view.before === null ? null : (
