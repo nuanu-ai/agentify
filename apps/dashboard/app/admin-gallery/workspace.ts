@@ -57,6 +57,8 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
       "The workspace's layout reads the flag before any page runs and answers as for a page that is not there.",
     path: "/admin/merchants",
     mode: "live",
+    // Signed in as a merchant, whose header has no door into the workspace.
+    loaded: { "routes/gate": { who: "owner@example.com", operator: false } },
     failed: {
       // Drawn by the gate's boundary, the nearest above the layout that threw.
       "routes/gate": new ErrorResponseImpl(404, "", {
