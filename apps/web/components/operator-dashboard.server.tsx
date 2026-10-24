@@ -17,18 +17,32 @@ const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFracti
 // A browser run costs cents, so the hundredth of a cent is kept rather than
 // rounded away.
 const usd = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-const dateTime = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "UTC",
-});
-const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" });
-const dayMonth = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
-const clock = new Intl.DateTimeFormat("en-GB", { timeStyle: "short", timeZone: "UTC" });
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/**
+ * Moments and days as the operator's workspace writes them, so the scanner's
+ * page reads like the rest of it: a moment in UTC to the second, a day written
+ * out, and a chart's day as the workspace's charts label it.
+ */
+const moment = (at: Date): string => `${at.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+const day = (at: Date): string =>
+  `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
+const chartDay = (at: Date): string =>
+  `${at.getUTCDate()} ${(MONTHS[at.getUTCMonth()] ?? "").slice(0, 3)}`;
+const clock = (at: Date): string => at.toISOString().slice(11, 16);
 
 /**
  * Said beside every number read from the analytics events, which hold only the
@@ -136,8 +150,8 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
   const plot = CHART.base - CHART.top;
   const slot = (CHART.right - CHART.left) / Math.max(1, rows.length);
   const dayOf = (row: OperatorDay, at: number) =>
-    `${dayMonth.format(new Date(`${row.day}T00:00:00Z`))}${
-      at === rows.length - 1 ? `, until ${clock.format(new Date(readAt))} UTC` : ""
+    `${chartDay(new Date(`${row.day}T00:00:00Z`))}${
+      at === rows.length - 1 ? `, until ${clock(new Date(readAt))} UTC` : ""
     }`;
   const bar = (value: number, x: number, series: string, label: string, soft: boolean) => {
     // However small beside the other series, a day with something stands taller than one with nothing.
@@ -163,7 +177,7 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
   const last = rows.at(-1);
   const summary =
     first && last
-      ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${dayMonth.format(new Date(`${first.day}T00:00:00Z`))} to today${
+      ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
           outnumbered > 0
             ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
             : ""
@@ -213,7 +227,7 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
               x={round(CHART.left + at * slot + slot / 2)}
               y={CHART.height - 12}
             >
-              {at === rows.length - 1 ? "Today" : dayMonth.format(new Date(`${row.day}T00:00:00Z`))}
+              {at === rows.length - 1 ? "Today" : chartDay(new Date(`${row.day}T00:00:00Z`))}
             </text>
           ) : null,
         )}
@@ -306,7 +320,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
               {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
             </Badge>{" "}
             <span className={styles.why}>
-              {`${deadLetters > 0 ? counted(deadLetters, "dead letter", "dead letters") : "No dead letters"}; ${
+              {`${deadLetters > 0 ? `${counted(deadLetters, "event", "events")} given up` : "No event given up"}; ${
                 pending > 0
                   ? `longest overdue ${span(Number(signals.outbox_age_seconds))}`
                   : "nothing waiting"
@@ -315,6 +329,10 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
           </Fact>
         </dl>
       </div>
+      <p className={styles.panelFoot}>
+        An analytics event is given up, a dead letter, when the analytics service refuses it or it
+        runs out of attempts; it is never sent again.
+      </p>
     </section>
   );
 }
@@ -325,7 +343,7 @@ export function OperatorDashboardStatus({ data }: Readonly<{ data: OperatorDashb
     <>
       <span className={styles.mark}>Operator</span>
       <span className={styles.headerEnd}>
-        <span>Read {dateTime.format(new Date(data.generatedAt))} UTC</span>
+        <span>Read {moment(new Date(data.generatedAt))}</span>
         <a href="/dashboard/admin">Operator workspace</a>
       </span>
     </>
@@ -372,7 +390,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           figure={number.format(dataAccess.waiting)}
           aside={
             dataAccess.waiting > 0 && dataAccess.oldestAt !== null
-              ? `Oldest ${date.format(new Date(dataAccess.oldestAt))}. Nothing records an answer, so a request stays counted until its address is deleted.`
+              ? `Oldest ${day(new Date(dataAccess.oldestAt))}. Nothing records an answer, so a request stays counted until its address is deleted.`
               : "None waiting."
           }
         />
@@ -405,9 +423,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
         <section className={styles.panel} aria-labelledby="self-title">
           <div className={styles.panelHead}>
             <h2 id="self-title">Can agents read agentify.ad?</h2>
-            {selfScan ? (
-              <p>The latest self-scan, {dateTime.format(new Date(selfScan.acceptedAt))} UTC</p>
-            ) : null}
+            {selfScan ? <p>The latest self-scan, {moment(new Date(selfScan.acceptedAt))}</p> : null}
           </div>
           <div className={styles.panelBody}>
             {selfScan ? (
@@ -478,8 +494,9 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
             </dl>
           </div>
           <p className={styles.panelFoot}>
-            The limits are read from the code that enforces them. The hard ceilings hold even when
-            the third-party challenge is down.
+            Turnstile is Cloudflare's challenge that tells a person from a script; a visitor meets
+            it after the free scans. The limits are read from the code that enforces them, and the
+            hard ceilings hold even when Turnstile is down.
           </p>
         </section>
       </div>
@@ -521,7 +538,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                 </div>
                 <div className={styles.fact}>
                   <span className={styles.said}>Accepted </span>
-                  {dateTime.format(new Date(scan.acceptedAt))}
+                  {moment(new Date(scan.acceptedAt))}
                 </div>
               </li>
             ))}

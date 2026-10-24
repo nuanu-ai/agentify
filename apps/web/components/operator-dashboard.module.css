@@ -188,7 +188,11 @@
   text-align: right;
 }
 
+/* What stands behind a state, on its own line under the badge, so the two
+   never run together into one phrase. */
 .why {
+  display: block;
+  margin-top: 2px;
   color: var(--muted);
   font-weight: 400;
 }
