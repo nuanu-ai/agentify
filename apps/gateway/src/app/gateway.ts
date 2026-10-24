@@ -1271,7 +1271,7 @@ export class Gateway {
 
   /**
    * Every split recorded on this network, every merchant's, for the
-   * operator's payout command, in the order they were recorded: any of them
+   * operator's payout, in the order they were recorded: any of them
    * may hold money, and a payout of one that holds nothing costs only gas.
    * Across merchants on purpose, so nothing reachable from a request may call
    * it.

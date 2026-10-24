@@ -20,7 +20,7 @@ import {
   type MerchantRow,
   type MerchantSegment,
 } from "@agentify/gateway/operator";
-import type { MerchantAccount } from "../dashboard-entry.js";
+import type { NamedAccount } from "../dashboard-entry.js";
 
 /** The reader's facts the views are drawn from, for the code that draws them without the reader. */
 export type { MerchantList, MerchantRecord, MerchantRow } from "@agentify/gateway/operator";
@@ -90,9 +90,10 @@ export interface MerchantsView {
 }
 
 /** The account a merchant's row names, or how many where several accounts name it. */
-const accountsBy = (accounts: readonly MerchantAccount[]) => {
-  const by = new Map<string, MerchantAccount[]>();
+const accountsBy = (accounts: readonly NamedAccount[]) => {
+  const by = new Map<string, NamedAccount[]>();
   for (const account of accounts) {
+    if (account.merchantId === null) continue;
     by.set(account.merchantId, [...(by.get(account.merchantId) ?? []), account]);
   }
   for (const list of by.values()) list.sort((one, other) => (one.email < other.email ? -1 : 1));
@@ -118,7 +119,7 @@ const stateOf = (segment: MerchantSegment): Word => STATE_WORDS[segment];
 export function listRowOf(
   row: MerchantRow,
   mode: SurfaceMode,
-  accounts: readonly MerchantAccount[] | null,
+  accounts: readonly NamedAccount[] | null,
 ): MerchantListRow {
   const asked = askedOn(mode);
   const settled = row.thirtyDays.settled;
@@ -310,7 +311,7 @@ export interface MerchantsRead {
   readonly query: URLSearchParams;
   readonly found: MerchantList;
   /** The accounts by merchant, or null where they could not be read. */
-  readonly accounts: ReadonlyMap<string, readonly MerchantAccount[]> | null;
+  readonly accounts: ReadonlyMap<string, readonly NamedAccount[]> | null;
   /** True where the accounts could not be read or searched. */
   readonly accountsUnread: boolean;
 }
@@ -563,19 +564,19 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   /** Accounts by merchant, or null where the identity could not answer. */
   const accountsOf = async (merchantIds: readonly string[]) => {
     try {
-      return accountsBy(await identity.merchantAccounts({ merchantIds }));
+      return accountsBy(await identity.accountsNamed({ merchantIds }));
     } catch {
       console.error("[dashboard] the accounts behind merchants could not be read");
       return null;
     }
   };
 
-  const shopOf = async (accounts: readonly MerchantAccount[] | null) => {
-    if (parts.wooShops === undefined) return { shop: null, uncertain: async () => [] };
-    const shops = parts.wooShops;
+  const shopOf = async (accounts: readonly NamedAccount[] | null) => {
+    const { shops } = parts;
+    if (shops === null) return { shop: null, uncertain: async () => [] };
     try {
       for (const account of accounts ?? []) {
-        const connection = await shops.connectionOf(account.accountId);
+        const connection = await shops.connectionOf(account.id);
         if (connection === null) continue;
         return {
           shop: {
@@ -584,7 +585,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
             permissions: connection.permissions,
           } satisfies ShopFacts,
           uncertain: async (orderIds: readonly string[]) =>
-            await shops.recoverableOrders(account.accountId, orderIds),
+            await shops.recoverableOrders(account.id, orderIds),
         };
       }
       return { shop: null, uncertain: async () => [] };
@@ -684,8 +685,8 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       let alsoIds: readonly string[] = [];
       if (listed.q !== "") {
         try {
-          alsoIds = (await identity.merchantAccounts({ emailContains: listed.q })).map(
-            (account) => account.merchantId,
+          alsoIds = (await identity.accountsWithEmailContaining(listed.q)).flatMap((account) =>
+            account.merchantId === null ? [] : [account.merchantId],
           );
         } catch {
           console.error("[dashboard] the accounts behind merchants could not be searched");

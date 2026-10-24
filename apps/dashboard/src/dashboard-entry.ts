@@ -252,24 +252,50 @@ export interface DashboardIdentity {
    */
   setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
   /**
-   * The accounts that made merchants, for the operator's workspace alone:
-   * those of the merchants named, and those whose address contains the text
-   * given, ignoring case; at most `MERCHANT_ACCOUNTS_MAX` for each half.
+   * How many links of each purpose the channel sent in the rolling hour
+   * before `now`, which the channel's ceiling counts. For the operator's
+   * workspace alone.
    */
-  merchantAccounts(query: MerchantAccountsQuery): Promise<readonly MerchantAccount[]>;
+  linksSentInTheHour(now: Date): Promise<Readonly<Record<LinkPurpose, number>>>;
+  /**
+   * The accounts with one of these identifiers or naming one of these
+   * merchants, each with its address and merchant. For the operator's
+   * workspace alone, which names who acted and who owns a merchant.
+   */
+  accountsNamed(
+    named: Readonly<{ accountIds?: readonly string[]; merchantIds?: readonly string[] }>,
+  ): Promise<readonly NamedAccount[]>;
+  /**
+   * How the sign-up reports to the ad network stand: those settled since
+   * `since` by how they ended, and those still waiting to leave. For the
+   * operator's workspace alone.
+   */
+  adReportsSince(since: Date): Promise<AdReportCounts>;
+  /**
+   * The accounts whose address contains this text, ignoring case, at most
+   * `ACCOUNTS_FOUND_MAX` of them; none for a blank text. For the operator's
+   * workspace alone, whose search finds a merchant by the address its owner
+   * pasted.
+   */
+  accountsWithEmailContaining(text: string): Promise<readonly NamedAccount[]>;
 }
 
-/** The most accounts one `merchantAccounts` read hands back for each half of its query. */
-export const MERCHANT_ACCOUNTS_MAX = 200;
+/** The most accounts one `accountsWithEmailContaining` read hands back. */
+export const ACCOUNTS_FOUND_MAX = 200;
 
-export interface MerchantAccountsQuery {
-  readonly merchantIds?: readonly string[];
-  readonly emailContains?: string;
-}
+/** What a link is sent for, each counted against the channel's ceiling of its own. */
+export type LinkPurpose = "dashboard" | "report" | "step-up";
 
-/** An account and the merchant it made. */
-export interface MerchantAccount {
-  readonly merchantId: string;
-  readonly accountId: string;
+export interface NamedAccount {
+  readonly id: string;
   readonly email: string;
+  readonly merchantId: string | null;
+}
+
+export interface AdReportCounts {
+  readonly delivered: number;
+  readonly refused: number;
+  readonly givenUp: number;
+  /** Waiting for a click or for their turn to leave, whenever they were made. */
+  readonly waiting: number;
 }

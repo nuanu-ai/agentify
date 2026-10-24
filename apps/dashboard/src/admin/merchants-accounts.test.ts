@@ -1,9 +1,8 @@
 /**
- * The identity's read of the accounts behind merchants, which the workspace's
- * Merchants list and a merchant's page draw an account's address from and the
- * list's search finds a merchant by. If this fails, the list shows a merchant
- * with no seller name as nobody, or a search by the address a merchant pasted
- * finds the wrong merchant or none.
+ * The identity's search of accounts by their address, which the workspace's
+ * Merchants list finds a merchant by when an operator pastes the address its
+ * owner wrote from. If this fails, that search finds the wrong merchant or
+ * none.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -22,35 +21,24 @@ const accountOf = async (open: AdminServed, email: string) => {
   return merchant.id;
 };
 
-describe("the accounts behind merchants", () => {
-  it("names the account of each merchant asked for, and of none other", async () => {
-    served = await adminServed();
-    const coffee = await accountOf(served, "owner@coffee.example");
-    await accountOf(served, "owner@tours.example");
-
-    const found = await served.identity.merchantAccounts({ merchantIds: [coffee, "mch_nobody"] });
-
-    expect(found.map(({ merchantId, email }) => [merchantId, email])).toStrictEqual([
-      [coffee, "owner@coffee.example"],
-    ]);
-  });
-
-  it("finds merchants by text in their account's address, ignoring case and reading no wildcard", async () => {
+describe("the accounts found by their address", () => {
+  it("finds by text in the address, ignoring case, with the merchant each made", async () => {
     served = await adminServed();
     const coffee = await accountOf(served, "owner_1@coffee.example");
     await accountOf(served, "owner21@tours.example");
-    const emailsFound = async (text: string) =>
-      (await served?.identity.merchantAccounts({ emailContains: text }))?.map(
-        (account) => account.merchantId,
-      );
+    const found = async (text: string) =>
+      (await served?.identity.accountsWithEmailContaining(text))?.map((one) => [
+        one.email,
+        one.merchantId,
+      ]);
 
-    expect(await emailsFound("  COFFEE.ex ")).toStrictEqual([coffee]);
-    expect(await emailsFound("owner_1")).toStrictEqual([coffee]);
-    expect(await emailsFound("nobody")).toStrictEqual([]);
-    expect(await emailsFound("")).toStrictEqual([]);
+    expect(await found("  COFFEE.ex ")).toStrictEqual([["owner_1@coffee.example", coffee]]);
+    expect(await found("owner_1")).toStrictEqual([["owner_1@coffee.example", coffee]]);
+    expect(await found("nobody")).toStrictEqual([]);
+    expect(await found("   ")).toStrictEqual([]);
   });
 
-  it("leaves out an account that made no merchant", async () => {
+  it("names an account that made no merchant as having none", async () => {
     served = await adminServed();
     await served.identity.requestLink("visitor@nowhere.example", "default", {
       client: "192.0.2.11",
@@ -59,6 +47,10 @@ describe("the accounts behind merchants", () => {
     const opened = await served.identity.openLink(link.searchParams.get("token") ?? "");
     expect(opened.status).toBe("opened");
 
-    expect(await served.identity.merchantAccounts({ emailContains: "nowhere" })).toStrictEqual([]);
+    const found = await served.identity.accountsWithEmailContaining("nowhere");
+
+    expect(found.map((one) => [one.email, one.merchantId])).toStrictEqual([
+      ["visitor@nowhere.example", null],
+    ]);
   });
 });

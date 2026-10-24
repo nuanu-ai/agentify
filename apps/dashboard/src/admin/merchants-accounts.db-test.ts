@@ -1,5 +1,5 @@
 /**
- * The identity's read of the accounts behind merchants on PostgreSQL, for
+ * The identity's search of accounts by their address on PostgreSQL, for
  * what only the database can show: its match of text in an address reads `%`
  * and `_` as wildcards, and the read holds what it found to the text exactly.
  * If this fails, a search by the address a merchant pasted lists strangers'
@@ -26,7 +26,7 @@ const migrationsIn = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
-  describe("the accounts behind merchants on PostgreSQL", () => {
+  describe("the accounts found by their address on PostgreSQL", () => {
     it.skip("is skipped: there is no PostgreSQL to run it against", () => {});
   });
 } else {
@@ -53,22 +53,17 @@ if (databaseUrl === null) {
     await identity.close();
   });
 
-  describe("the accounts behind merchants on PostgreSQL", () => {
+  describe("the accounts found by their address on PostgreSQL", () => {
     it("finds by the text exactly, a wildcard in it matching only itself", async () => {
       await identity.make("owner_1@coffee.example", "mch_coffee");
       await identity.make("owner21@tours.example", "mch_tours");
       await identity.make("Owner%x@prints.example", "mch_prints");
-      const found = async (emailContains: string) =>
-        (await identity.merchantAccounts({ emailContains })).map((one) => one.merchantId).sort();
+      const found = async (text: string) =>
+        (await identity.accountsWithEmailContaining(text)).map((one) => one.merchantId).sort();
 
       expect(await found("owner_1")).toStrictEqual(["mch_coffee"]);
       expect(await found("%X@")).toStrictEqual(["mch_prints"]);
       expect(await found("owner")).toStrictEqual(["mch_coffee", "mch_prints", "mch_tours"]);
-      expect(
-        (await identity.merchantAccounts({ merchantIds: ["mch_tours", "mch_nobody"] })).map(
-          (one) => [one.merchantId, one.email],
-        ),
-      ).toStrictEqual([["mch_tours", "owner21@tours.example"]]);
     });
   });
 }

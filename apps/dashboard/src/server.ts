@@ -270,7 +270,7 @@ function workspaceDoorOver(
     reader: admin.reader,
     journal: admin.journal,
     now,
-    ...(parts.wooShops === undefined ? {} : { wooShops: parts.wooShops }),
+    shops: parts.wooShops ?? null,
     pressing: {
       now,
       googleEnabled: parts.identity.googleEnabled,

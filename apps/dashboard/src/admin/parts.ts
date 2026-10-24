@@ -24,6 +24,6 @@ export interface AdminParts {
   /** What every press goes through first (`pressed` in `action.ts`). */
   readonly pressing: Pressing;
   readonly now: () => Date;
-  /** The connected WooCommerce shops, where the dashboard has any; read for a merchant's facts, never written. */
-  readonly wooShops?: WooShops;
+  /** The connected WooCommerce shops, or null where this deployment offers no connector. */
+  readonly shops: WooShops | null;
 }

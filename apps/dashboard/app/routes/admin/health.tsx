@@ -1,13 +1,19 @@
 /**
- * The workspace's health page, owned by the figures area, which
- * replaces the placeholder with its screen. The layout above confirmed the
- * operator before this runs.
+ * The workspace's health: every moving part the application reads, the two
+ * checks it runs again at a press, and the parts it cannot see. The layout
+ * above confirmed the operator before this runs. A Check now press posts
+ * here and is answered with the page carrying that check's answer.
  */
 
-import { type LoaderFunctionArgs, useLoaderData } from "react-router";
-import { readOnly } from "../../answer.js";
-import { Placeholder } from "../../components/admin/placeholder.js";
+import {
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+  useActionData,
+  useLoaderData,
+} from "react-router";
+import { acted, formOf, readOnly } from "../../answer.js";
 import { AdminFrame } from "../../components/admin-frame.js";
+import { HealthScreen } from "../../screens/admin/figures.js";
 import { workspaceIn } from "../../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -15,11 +21,18 @@ export async function loader(asked: LoaderFunctionArgs) {
   return await readOnly(() => admin.figures.health(operator), asked);
 }
 
+export async function action(asked: ActionFunctionArgs) {
+  const { admin, operator } = workspaceIn(asked.context);
+  const form = await formOf(asked.request);
+  return await acted(() => admin.figures.check(operator, form), asked);
+}
+
 export default function Health() {
-  const view = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>();
+  const pressed = useActionData<typeof action>();
   return (
     <AdminFrame section="health" title="Health">
-      <Placeholder view={view} />
+      <HealthScreen view={pressed ?? loaded} />
     </AdminFrame>
   );
 }

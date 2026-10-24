@@ -21,7 +21,7 @@ import {
   merchantViewOf,
 } from "../../src/admin/merchants.js";
 import { stepUpViewOf } from "../../src/admin/step-up.js";
-import type { MerchantAccount } from "../../src/dashboard-entry.js";
+import type { NamedAccount } from "../../src/dashboard-entry.js";
 import type { Trouble } from "../answer.js";
 import type { AdminGalleryState } from "./state.js";
 
@@ -106,7 +106,7 @@ const ROWS: readonly MerchantRow[] = [
   },
 ];
 
-const ACCOUNTS: ReadonlyMap<string, readonly MerchantAccount[]> = new Map(
+const ACCOUNTS: ReadonlyMap<string, readonly NamedAccount[]> = new Map(
   [
     [GIFT_CARDS, "owner@giftcards.example"],
     [TOURS, "owner@tours.example"],
@@ -114,7 +114,7 @@ const ACCOUNTS: ReadonlyMap<string, readonly MerchantAccount[]> = new Map(
     [UNNAMED, "dev@elsewhere.example"],
   ].map(([merchantId = "", email = ""]) => [
     merchantId,
-    [{ merchantId, accountId: `acc_of_${merchantId}`, email }],
+    [{ id: `acc_of_${merchantId}`, email, merchantId }],
   ]),
 );
 
