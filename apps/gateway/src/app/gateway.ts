@@ -1599,7 +1599,7 @@ export class Gateway {
       return null;
     }
     this.#letGo(merchantId, (held) => held.keyId === keyId);
-    return merchantKeyOf(disabled);
+    return merchantKeyOf(disabled.key);
   }
 
   // --- buying ---------------------------------------------------------------

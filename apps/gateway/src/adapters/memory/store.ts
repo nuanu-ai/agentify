@@ -533,17 +533,18 @@ export class MemoryStore implements Store {
     id: string,
     at: number,
     journal?: JournalPress,
-  ): Promise<StoredKey | null> {
+  ): Promise<{ readonly key: StoredKey; readonly changed: boolean } | null> {
     const found = this.#keys.get(id);
     // Another merchant's key is not found rather than refused, so a refusal
     // says nothing about whose keys exist.
     if (found === undefined || found.merchantId !== merchantId) {
       return null;
     }
-    const entry = this.#checkedPress(journal, found.disabledAt === null);
+    const changed = found.disabledAt === null;
+    const entry = this.#checkedPress(journal, changed);
     const revoked = this.#revoke(found, at);
     this.#append(entry);
-    return revoked;
+    return { key: revoked, changed };
   }
 
   #works(keyId: string, merchantId: string): boolean {

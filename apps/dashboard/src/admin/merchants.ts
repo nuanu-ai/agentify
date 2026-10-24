@@ -829,17 +829,15 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           },
           parts.pressing,
           async (journal) => {
-            const key = await store.disableKeyOf(merchantId, keyId, journal.at, journal);
-            if (key === null) {
+            const disabled = await store.disableKeyOf(merchantId, keyId, journal.at, journal);
+            if (disabled === null) {
               return {
                 kind: "refused",
                 code: "no_such_key",
                 said: REFUSED_WORDS.no_such_key ?? "",
               };
             }
-            // The store stops only a working key, at this press's instant, and
-            // leaves a stopped one at its first.
-            return { kind: key.disabledAt === journal.at ? "done" : "unchanged" };
+            return { kind: disabled.changed ? "done" : "unchanged" };
           },
         );
         return await page(

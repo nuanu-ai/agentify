@@ -599,7 +599,7 @@ if (databaseUrl === null) {
 
         expect(heldUp).toBe(true);
         expect(await handOver).toStrictEqual({ found: true, result: "handed over" });
-        expect((await revoked)?.disabledAt).not.toBeNull();
+        expect((await revoked)?.key.disabledAt).not.toBeNull();
         expect(
           await store.withOrder("ord_held", () => ({ result: "again" }), {
             merchantId: A,
