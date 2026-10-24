@@ -855,7 +855,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
           : `${share} of ${usd(money.intoSplits.amount)} paid into splits${
               money.straightToWallet.count === 0
                 ? ""
-                : `; ${usd(money.straightToWallet.amount)} went straight to the wallet, with none`
+                : `; ${usd(money.straightToWallet.amount)} went straight to the wallet, with no commission`
             }; in the splits until paid out`,
     },
     {
@@ -892,7 +892,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
       here: key === period,
     })),
     tiles,
-    explained: `A settled sale is an order whose payment settled, whatever became of the goods, dated by the moment the order records it as paid, in UTC. The money of an unfulfilled or closed order is in the merchant's split like any other, so it counts, and the third figure shows how much of the total it is. Commission accrues only where a payment went into a split${channel.surface === "live" ? `; before ${SPLITS_SINCE} live payments went straight to the merchant's wallet, with none` : ""}. Amounts are summed from each order when the page is read.`,
+    explained: `A settled sale is an order whose payment settled, whatever became of the goods, dated by the moment the order records it as paid, in UTC. The money of an unfulfilled or closed order is in the merchant's split like any other, so it counts, and the third figure shows how much of the total it is. Commission accrues only where a payment went into a split${channel.surface === "live" ? `; before ${SPLITS_SINCE} live payments went straight to the merchant's wallet, with no commission` : ""}. Amounts are summed from each order when the page is read.`,
     chart:
       sales === null
         ? UNREAD

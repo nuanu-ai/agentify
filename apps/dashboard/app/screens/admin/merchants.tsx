@@ -569,7 +569,8 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                       <Link to={order.href}>{order.title}</Link>
                       <span className="fig">{order.price}</span>
                       <span className="when">
-                        <Moment at={order.when} /> · {shortened(order.id)}
+                        <Moment at={order.when} /> ·{" "}
+                        <span className="op-id">{shortened(order.id)}</span>
                         {order.shopUncertain
                           ? " · its shop order is uncertain; the merchant recovers it from their own Orders"
                           : ""}
