@@ -34,7 +34,6 @@ export default [
   layout("routes/gate.tsx", [
     index("routes/start.ts"),
     route("merchant", "routes/merchant.tsx"),
-    route("admin/live-sales", "routes/admin-live-sales.tsx"),
     // The operator's workspace: the layout answers only an account the
     // operator flag confirms, before any page under it runs.
     layout("routes/admin/only.tsx", [

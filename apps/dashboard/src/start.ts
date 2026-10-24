@@ -19,7 +19,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { startAdReports } from "./ad-reports.js";
 import { postgresJournal } from "./admin/journal.js";
-import { PostgresApprovalDirectory } from "./approval-directory.js";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
 import { connect } from "./database.js";
@@ -112,7 +111,6 @@ function started(
     identity,
     wooShops,
     pages,
-    approvalDirectory: new PostgresApprovalDirectory(pool),
     // On the dashboard's own pool, which is the gateway's database: the reader
     // opens read-only transactions there, and a dashboard action writes its
     // change and its journal row in one transaction there.

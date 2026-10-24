@@ -15,7 +15,6 @@ import { classifyHttpRoute, telemetry } from "@agentify/observability/source";
 import express, { type Express, type Request, type Response } from "express";
 import { type WorkspaceDoor, workspaceDoorFor } from "./admin/index.js";
 import type { DashboardJournal } from "./admin/journal.js";
-import type { ApprovalDirectory } from "./approval-command.js";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity } from "./dashboard-entry.js";
 import {
@@ -25,7 +24,6 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
-import { liveSalesFor } from "./live-sales.js";
 import type { Postman } from "./mail.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
@@ -34,7 +32,6 @@ import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import { type WooShops, wooOfferedOn } from "./woo-shops.js";
 
 export interface DashboardParts {
-  readonly approvalDirectory?: ApprovalDirectory;
   /** The pages, built ahead of time in a deployment or compiled from source. */
   readonly pages: Pages;
   /**
@@ -192,15 +189,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     pagesHandler(
       parts.pages,
       pageServicesFor(config, {
-        ...(parts.approvalDirectory === undefined
-          ? {}
-          : {
-              liveSales: liveSalesFor(config, {
-                identity,
-                directory: parts.approvalDirectory,
-                gateway: parts.gateway,
-              }),
-            }),
         ...(parts.admin === undefined
           ? {}
           : { workspace: workspaceDoorOver(config, parts, parts.admin) }),

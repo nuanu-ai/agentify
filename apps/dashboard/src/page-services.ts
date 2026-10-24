@@ -47,7 +47,6 @@ import {
 import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
-import type { LiveSalesPages } from "./live-sales.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -255,7 +254,6 @@ export interface PageServices {
     status: number,
     userAgent: string | null,
   ) => void;
-  readonly liveSales: LiveSalesPages | null;
   /**
    * The door to the operator's workspace, which only its layout opens, or null
    * where the workspace is not built, which answers every page of it as one
@@ -356,7 +354,6 @@ export interface PageServices {
 }
 
 export interface PageParts {
-  readonly liveSales?: LiveSalesPages;
   readonly workspace?: WorkspaceDoor;
   readonly identity: DashboardIdentity;
   /**
@@ -1013,7 +1010,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         });
       }
     },
-    liveSales: parts.liveSales ?? null,
     workspace: parts.workspace ?? null,
     base,
     surface: {
