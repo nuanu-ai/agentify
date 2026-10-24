@@ -7,7 +7,7 @@
  * journal cannot record does not happen.
  */
 
-import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt, type SQL } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   checkedJournalEntry,
@@ -98,6 +98,30 @@ export async function readJournal(
     total: counted?.total ?? 0,
     next: rows.length > limit ? (page.at(-1)?.sequence ?? null) : null,
   };
+}
+
+/**
+ * The newest done admission or withdrawal of one merchant, read through the
+ * merchant's index, handed back only where it is a withdrawal.
+ */
+export async function readStandingWithdrawal(
+  db: Pick<NodePgDatabase, "select">,
+  merchantId: string,
+): Promise<JournalRow | null> {
+  const [last] = await db
+    .select()
+    .from(operatorJournal)
+    .where(
+      and(
+        eq(operatorJournal.subjectMerchant, merchantId),
+        eq(operatorJournal.subjectKind, "merchant"),
+        eq(operatorJournal.outcome, "done"),
+        inArray(operatorJournal.action, ["admit", "withdraw"]),
+      ),
+    )
+    .orderBy(desc(operatorJournal.sequence))
+    .limit(1);
+  return last?.action === "withdraw" ? journalRowOf(last) : null;
 }
 
 function journalRowOf(row: Columns): JournalRow {

@@ -19,7 +19,6 @@ import { z } from "zod";
 export const JOURNAL_ACTIONS = [
   "admit",
   "withdraw",
-  "take_listing_name",
   "disable_key",
   "end_sessions",
   "grant_operator",

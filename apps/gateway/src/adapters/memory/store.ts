@@ -271,18 +271,15 @@ export class MemoryStore implements Store {
     serviceName: string | null,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
-    journal?: JournalPress,
   ): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
     const changed = row.serviceName !== serviceName;
-    const entry = this.#checkedPress(journal, changed);
     row.serviceName = serviceName;
     const merchant = this.#storedMerchantOf(row);
     if (changed) await this.#recordWith(analytics, merchant, at);
-    this.#append(entry);
     return merchant;
   }
 
@@ -598,6 +595,17 @@ export class MemoryStore implements Store {
 
   async recordJournal(entry: JournalEntry): Promise<JournalRow> {
     return this.#appended(checkedJournalEntry(entry));
+  }
+
+  async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
+    const last = this.#journal.findLast(
+      (row) =>
+        row.subject.kind === "merchant" &&
+        row.subject.id === merchantId &&
+        row.outcome.kind === "done" &&
+        (row.action === "withdraw" || row.action === "admit"),
+    );
+    return last?.action === "withdraw" ? last : null;
   }
 
   async journal(query: JournalQuery): Promise<JournalPage> {

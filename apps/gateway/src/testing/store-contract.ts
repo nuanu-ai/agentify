@@ -2393,42 +2393,22 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         });
       });
 
-      it("commits a withdrawal, a name taken away and a key disabled each with its row", async () => {
+      it("commits a withdrawal and a key disabled each with its row", async () => {
         const store = await twoMerchants();
         await store.grantLiveApproval(A, 1_500);
-        await store.setServiceName(A, "Freeland", 1_600);
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_700);
         const key: JournalSubject = { kind: "key", id: "mk_a", merchantId: A };
 
         await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_000));
         await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_100));
-        await store.setServiceName(
-          A,
-          null,
-          3_000,
-          undefined,
-          press("take_listing_name", merchantA, 3_000),
-        );
-        await store.setServiceName(
-          A,
-          null,
-          3_100,
-          undefined,
-          press("take_listing_name", merchantA, 3_100),
-        );
         await store.disableKeyOf(A, "mk_a", 4_000, press("disable_key", key, 4_000));
         await store.disableKeyOf(A, "mk_a", 4_100, press("disable_key", key, 4_100));
 
-        expect(await store.merchantById(A)).toMatchObject({
-          liveApprovedAt: null,
-          serviceName: null,
-        });
+        expect((await store.merchantById(A))?.liveApprovedAt).toBeNull();
         expect((await store.keysOf(A))[0]?.disabledAt).toBe(4_000);
         expect(await outcomes(store)).toStrictEqual([
           ["disable_key", "unchanged"],
           ["disable_key", "done"],
-          ["take_listing_name", "unchanged"],
-          ["take_listing_name", "done"],
           ["withdraw", "unchanged"],
           ["withdraw", "done"],
         ]);
@@ -2451,15 +2431,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         ).toBeNull();
         expect(
           await store.withdrawLiveApproval("mch_nobody", press("withdraw", nobody, 2_000)),
-        ).toBeNull();
-        expect(
-          await store.setServiceName(
-            "mch_nobody",
-            null,
-            2_000,
-            undefined,
-            press("take_listing_name", nobody, 2_000),
-          ),
         ).toBeNull();
         // B's key, asked for as A's.
         expect(
@@ -2559,6 +2530,45 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(
           (await store.journal({ action: "withdraw", about: { merchant: B }, limit: 10 })).total,
         ).toBe(1);
+      });
+
+      it("hands a merchant the withdrawal that stands, with its note, and nothing once it is admitted again", async () => {
+        // The merchant's own dashboard reads this, so it must name no other
+        // merchant's row and no row but the withdrawal that stopped its sales.
+        const store = await twoMerchants();
+        await store.grantLiveApproval(A, 1_000, undefined, press("admit", merchantA, 1_000, null));
+        await store.grantLiveApproval(
+          B,
+          1_000,
+          undefined,
+          press("admit", { kind: "merchant", id: B }, 1_000, null),
+        );
+        expect(await store.standingWithdrawal(A)).toBeNull();
+
+        await store.withdrawLiveApproval(
+          A,
+          press("withdraw", merchantA, 2_000, "Paused while the shop fixes its prices"),
+        );
+        await store.withdrawLiveApproval(A, press("withdraw", merchantA, 2_500, "Pressed again"));
+        await store.recordJournal(refused(merchantA, 2_600, "no_reason"));
+        await store.recordJournal({
+          ...press("disable_key", { kind: "key", id: "mk_a", merchantId: A }, 2_700),
+          outcome: { kind: "done" },
+        });
+
+        expect(await store.standingWithdrawal(A)).toMatchObject({
+          at: 2_000,
+          action: "withdraw",
+          reason: "Paused while the shop fixes its prices",
+        });
+        expect(await store.standingWithdrawal(B)).toBeNull();
+        expect(await store.standingWithdrawal("mch_nobody")).toBeNull();
+
+        await store.grantLiveApproval(A, 3_000, undefined, press("admit", merchantA, 3_000, null));
+        expect(await store.standingWithdrawal(A)).toBeNull();
+
+        await store.withdrawLiveApproval(A, press("withdraw", merchantA, 4_000, "Stopped again"));
+        expect((await store.standingWithdrawal(A))?.reason).toBe("Stopped again");
       });
 
       it("hands back at most its page's most however many are asked for", async () => {

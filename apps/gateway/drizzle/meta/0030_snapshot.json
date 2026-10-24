@@ -675,7 +675,7 @@
         },
         "operator_journal_action": {
           "name": "operator_journal_action",
-          "value": "\"action\" in ('admit', 'withdraw', 'take_listing_name', 'disable_key', 'end_sessions', 'grant_operator', 'remove_operator', 'forget_account', 'first_operator')"
+          "value": "\"action\" in ('admit', 'withdraw', 'disable_key', 'end_sessions', 'grant_operator', 'remove_operator', 'forget_account', 'first_operator')"
         },
         "operator_journal_subject": {
           "name": "operator_journal_subject",
