@@ -98,7 +98,7 @@ import {
 } from "../src/woo-views.js";
 import { SITE_IN_SETTINGS } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
-import type { Chrome, Trouble } from "./answer.js";
+import type { Chrome, Gated, Trouble } from "./answer.js";
 import { shortened } from "./components/copy.js";
 import routes from "./routes.js";
 
@@ -161,6 +161,9 @@ const TABLE: RouteObject[] = [{ id: "root", path: "/", children: routes.map(matc
 const BASE = config.basename;
 const WHO = "owner@example.com";
 
+/** What the gate reads for the operator the examples name, whose account holds the flag. */
+const OPERATOR_GATED: Gated = { who: "operator@example.com", operator: true };
+
 const chromeIn = (mode: SurfaceMode): Chrome => ({
   base: "",
   surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode, words: SURFACE_WORDS[mode] },
@@ -188,7 +191,7 @@ const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] =>
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
   const under = (id: string) => matched.some(({ route }) => route.id === id);
   return {
-    ...(under("routes/gate") ? { "routes/gate": { who: WHO } } : {}),
+    ...(under("routes/gate") ? { "routes/gate": { who: WHO, operator: false } } : {}),
     ...(under("routes/merchant-only") ? { "routes/merchant-only": frame } : {}),
   };
 };
@@ -919,6 +922,23 @@ const SETTING_UP: GalleryState[] = [
   ),
   at(
     {
+      id: "dashboard-merchant-operator",
+      screen: "Opening a seller dashboard",
+      when: "An operator with no seller dashboard of their own opens the dashboard.",
+      cause:
+        "The account holds the operator flag and no merchant, so the header has a door into the operator's workspace beside the address.",
+    },
+    {
+      path: "/merchant",
+      mode: "live",
+      loaded: {
+        "routes/gate": OPERATOR_GATED,
+        "routes/merchant": { unavailable: false },
+      },
+    },
+  ),
+  at(
+    {
       id: "dashboard-merchant-not-opened",
       screen: "Opening a seller dashboard",
       when: "Somebody presses Open my seller dashboard and it fails.",
@@ -1145,7 +1165,35 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Cards as an operator who also sells sees them, with the door into the workspace in the header. */
+const operatorsCards = (told: Told): GalleryState =>
+  at(told, {
+    path: "/cards",
+    mode: "live",
+    loaded: { "routes/gate": OPERATOR_GATED, "routes/cards": cardsView(CATALOGUE, ORIGIN.live) },
+  });
+
 const CARDS: GalleryState[] = [
+  operatorsCards({
+    id: "dashboard-cards-operator",
+    screen: "Cards",
+    when: "An operator who also sells opens their own dashboard.",
+    cause:
+      "The session's account holds the operator flag, so the header has a door into the operator's workspace beside the address.",
+  }),
+  {
+    ...operatorsCards({
+      id: "dashboard-cards-operator-menu",
+      screen: "Cards",
+      when: "An operator who also sells opens the menu at the end of the header's row on a phone.",
+      cause:
+        "The menu holds what the header's row leaves out, the door into the operator's workspace with it.",
+    }),
+    scene: {
+      steps: [{ shows: "Product cards", does: openTheMenu }],
+      shows: "Admin",
+    },
+  },
   cards(
     {
       id: "dashboard-cards",
@@ -3206,7 +3254,7 @@ const ADMIN: GalleryState[] = ADMIN_STATES.map(
         mode,
         // Signed in as the operator the workspace's examples name, not as a merchant.
         loaded: {
-          "routes/gate": { who: "operator@example.com" },
+          "routes/gate": OPERATOR_GATED,
           "routes/admin/only": frame ?? frameIn(mode),
           ...loaded,
         },

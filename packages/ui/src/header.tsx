@@ -284,15 +284,19 @@ export function SignedIn({
   who,
   account,
   signOut,
+  admin,
 }: Readonly<{
   who: string;
   /** The page about the account, where the address links to. */
   account: string;
   /** Where the sign-out form posts. */
   signOut: string;
+  /** The operator's workspace, drawn as a door before the address for an operator alone. */
+  admin?: string;
 }>) {
   return (
     <span className="site-visitor">
+      {admin === undefined ? null : <a href={admin}>Admin</a>}
       <a className="site-who" href={account} title={who}>
         {who}
       </a>

@@ -32,6 +32,13 @@ export const visit = createContext(false);
 export const signedIn = createContext<Person>();
 
 /**
+ * Set by the gate from the session it read: whether the account holds the
+ * operator flag, which only draws the door into the workspace. False unless
+ * the gate said so; the workspace checks the flag again for itself.
+ */
+export const holdsOperatorFlag = createContext(false);
+
+/**
  * Set by the operator's workspace's layout from the door it opened, once the
  * flag confirmed the request's session; the only way to the workspace's
  * services. It has no default, so a page outside the layout that reads it

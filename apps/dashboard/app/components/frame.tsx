@@ -21,7 +21,7 @@ import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
-import type { Chrome, DrawnFor } from "../answer.js";
+import type { Chrome, DrawnFor, Gated } from "../answer.js";
 import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
 import { SurfaceNote } from "./surface-note.js";
@@ -72,9 +72,10 @@ export function Frame({
   if (chrome === undefined) {
     throw new Error("a page was drawn without the root's chrome, which every page loads first");
   }
+  // A page drawn where no loader ran does not know the flag, so it draws no door.
   const gate =
-    useRouteLoaderData<{ who: string }>("routes/gate") ??
-    (drawn === undefined ? undefined : { who: drawn.who });
+    useRouteLoaderData<Gated>("routes/gate") ??
+    (drawn === undefined ? undefined : { who: drawn.who, operator: false });
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
@@ -95,7 +96,12 @@ export function Frame({
       to: `/${key}`,
     }));
   const signedIn = (
-    <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+    <SignedIn
+      who={gate.who}
+      account={`${chrome.base}/settings`}
+      signOut="/sign-out"
+      admin={gate.operator ? `${chrome.base}/admin` : undefined}
+    />
   );
   return (
     <div className="page app-frame">

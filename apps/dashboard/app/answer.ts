@@ -38,6 +38,13 @@ export type Trouble =
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>
   | Readonly<{ kind: "broken"; chrome: Chrome }>;
 
+/** What the gate's loader reads for every page behind it. */
+export interface Gated {
+  readonly who: string;
+  /** Whether the account holds the operator flag, which draws the door into the workspace. */
+  readonly operator: boolean;
+}
+
 /** What a page behind the gate is drawn with: the address signed in, and the merchant's pages' frame. */
 export interface DrawnFor {
   readonly who: string;
