@@ -7,7 +7,7 @@
  * journal cannot record does not happen.
  */
 
-import { and, count, desc, eq, inArray, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   checkedJournalEntry,
@@ -64,7 +64,11 @@ export async function readJournal(
   query: JournalQuery,
 ): Promise<JournalPage> {
   const filters: SQL[] = [];
-  if (query.action !== undefined) filters.push(eq(operatorJournal.action, query.action));
+  if (query.actions !== undefined) {
+    filters.push(
+      query.actions.length === 0 ? sql`false` : inArray(operatorJournal.action, [...query.actions]),
+    );
+  }
   const about = query.about;
   if (about !== undefined) {
     if ("merchant" in about) {
