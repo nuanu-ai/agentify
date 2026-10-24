@@ -239,6 +239,9 @@ describe("disabling a merchant's key", () => {
     const again = await operator.post(`${path}/keys/${merchant.keyId}/disable`, press);
 
     expect([first.status, again.status]).toStrictEqual([200, 200]);
+    // The answer drawn is the one its row holds: done, then already so.
+    expect(text(first.html)).toContain("Disabled just now");
+    expect(text(again.html)).not.toContain("Disabled just now");
     const keys = await served.harnessed.store.keysOf(merchant.id);
     expect(keys.filter((key) => key.disabledAt !== null).map((key) => key.id)).toStrictEqual([
       merchant.keyId,
