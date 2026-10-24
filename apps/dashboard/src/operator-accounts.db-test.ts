@@ -12,13 +12,13 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, PostgresStore, randomIds } from "@agentify/gateway";
-import { type JournalEntry, type JournalPress, settledPress } from "@agentify/gateway/journal";
+import type { JournalPress } from "@agentify/gateway/journal";
 import { postgresOperatorReader } from "@agentify/gateway/operator";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { postgresJournal } from "./admin/journal.js";
+import { type JournalTransaction, postgresJournal } from "./admin/journal.js";
 import { loadConfig } from "./config.js";
 import type { Person } from "./dashboard-entry.js";
 import { migrateAccounts } from "./database.js";
@@ -124,11 +124,30 @@ if (databaseUrl === null) {
     reason: "Asked by the owner",
   });
 
-  /** A row the journal refuses, so the transaction it is written in fails after the change. */
-  const refusedRow = (pressed: JournalPress): JournalEntry => ({
-    ...settledPress(pressed, true),
-    reason: "",
-  });
+  /** Runs a change through the journal, its row settled by what `changedOf` reads in its result. */
+  const along = <R>(
+    pressed: JournalPress,
+    work: (tx: JournalTransaction) => Promise<R>,
+    changedOf: (result: R) => boolean | null,
+  ): Promise<R> =>
+    journal.along(pressed, async (tx) => {
+      if (tx === null)
+        throw new Error("the journal on Postgres hands every change its transaction");
+      const result = await work(tx);
+      return { result, changed: changedOf(result) };
+    });
+
+  /** From here on the database refuses to write a journal row, after the change it records ran. */
+  const rowsFail = async () => {
+    await pool.query(`create function no_rows() returns trigger language plpgsql as
+      $$ begin raise exception 'the journal refuses this row'; end $$`);
+    await pool.query(
+      "create trigger no_rows before insert on operator_journal for each row execute function no_rows()",
+    );
+  };
+  const rowsWork = async () => {
+    await pool.query("drop trigger no_rows on operator_journal");
+  };
 
   const rows = async () =>
     (
@@ -172,18 +191,22 @@ if (databaseUrl === null) {
       const seller = await withMerchant(MERCHANT);
       const ending = press("end_sessions", seller.person.id);
 
+      await rowsFail();
       await expect(
-        journal.along(
+        along(
+          ending,
           async (tx) => await identity.endSessionsIn(tx, seller.person.id, new Date()),
-          () => refusedRow(ending),
+          () => true,
         ),
       ).rejects.toThrow();
+      await rowsWork();
       expect((await identity.operatorAccount(seller.person.id, new Date()))?.openSessions).toBe(1);
       expect(await rows()).toStrictEqual([]);
 
-      const ended = await journal.along(
+      const ended = await along(
+        ending,
         async (tx) => await identity.endSessionsIn(tx, seller.person.id, new Date()),
-        (result) => settledPress(ending, result === "ended"),
+        (result) => result === "ended",
       );
 
       expect(ended).toBe("ended");
@@ -192,7 +215,8 @@ if (databaseUrl === null) {
         { action: "end_sessions", subject_id: seller.person.id },
       ]);
       expect(
-        await journal.along(
+        await along(
+          press("end_sessions", "acc_nobody"),
           async (tx) => await identity.endSessionsIn(tx, "acc_nobody", new Date()),
           () => null,
         ),
@@ -206,18 +230,22 @@ if (databaseUrl === null) {
       const granting = press("grant_operator", seller.person.id);
       messages.length = 0;
 
+      await rowsFail();
       await expect(
-        journal.along(
+        along(
+          granting,
           async (tx) => await identity.setOperatorIn(tx, seller.person.id, true, asked),
-          () => refusedRow(granting),
+          () => true,
         ),
       ).rejects.toThrow();
+      await rowsWork();
       expect(await flagOf(seller.person.id)).toBe(false);
 
       messages.length = 0;
-      const granted = await journal.along(
+      const granted = await along(
+        granting,
         async (tx) => await identity.setOperatorIn(tx, seller.person.id, true, asked),
-        (result) => settledPress(granting, result === "changed"),
+        (result) => result === "changed",
       );
 
       expect(granted).toBe("changed");
@@ -227,7 +255,8 @@ if (databaseUrl === null) {
       expect(messages[0]?.body).toContain("sandbox");
       expect(await rows()).toMatchObject([{ action: "grant_operator" }]);
       expect(
-        await journal.along(
+        await along(
+          granting,
           async (tx) => await identity.setOperatorIn(tx, seller.person.id, true, asked),
           () => null,
         ),
@@ -240,9 +269,10 @@ if (databaseUrl === null) {
       handing = "refused";
 
       await expect(
-        journal.along(
+        along(
+          press("grant_operator", seller.person.id),
           async (tx) => await identity.setOperatorIn(tx, seller.person.id, true, asked),
-          (result) => settledPress(press("grant_operator", seller.person.id), result === "changed"),
+          (result) => result === "changed",
         ),
       ).rejects.toBeInstanceOf(OperatorMailRefused);
 
@@ -254,10 +284,10 @@ if (databaseUrl === null) {
       const one = await operator(OPERATOR);
       const other = await operator(SECOND);
       const removing = (id: string) =>
-        journal.along(
+        along(
+          press("remove_operator", id),
           async (tx) => await identity.setOperatorIn(tx, id, false, asked),
-          (result) =>
-            result === "changed" ? settledPress(press("remove_operator", id), true) : null,
+          (result) => (result === "changed" ? true : null),
         );
 
       const answers = await Promise.all([removing(one.id), removing(other.id)]);
@@ -275,18 +305,22 @@ if (databaseUrl === null) {
       const seller = await withMerchant(MERCHANT);
       const forgetting = press("forget_account", seller.person.id);
 
+      await rowsFail();
       await expect(
-        journal.along(
+        along(
+          forgetting,
           async (tx) => await identity.forgetIn(tx, seller.person.id),
-          () => refusedRow(forgetting),
+          () => true,
         ),
       ).rejects.toThrow();
+      await rowsWork();
       expect(await identity.byEmail(MERCHANT)).not.toBeNull();
       expect(await store.merchantById(seller.merchantId)).not.toBeNull();
 
-      const forgotten = await journal.along(
+      const forgotten = await along(
+        forgetting,
         async (tx) => await identity.forgetIn(tx, seller.person.id),
-        (result) => settledPress(forgetting, result.kind === "forgotten"),
+        (result) => (result.kind === "forgotten" ? true : null),
       );
 
       expect(forgotten).toMatchObject({
@@ -315,7 +349,8 @@ if (databaseUrl === null) {
       const seller = await withMerchant(MERCHANT);
       await pool.query(seed, [seller.merchantId]);
 
-      const refused = await journal.along(
+      const refused = await along(
+        press("forget_account", seller.person.id),
         async (tx) => await identity.forgetIn(tx, seller.person.id),
         () => null,
       );
@@ -332,7 +367,8 @@ if (databaseUrl === null) {
       await identity.attachMerchant(colleague.id, async () => seller.merchantId);
 
       const forget = (id: string) =>
-        journal.along(
+        along(
+          press("forget_account", id),
           async (tx) => await identity.forgetIn(tx, id),
           () => null,
         );
