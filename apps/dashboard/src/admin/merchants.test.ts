@@ -297,3 +297,33 @@ describe("disabling a merchant's key", () => {
     expect((await served.harnessed.store.keysOf(stranger.id))[0]?.disabledAt).toBeNull();
   });
 });
+
+describe("a merchant's history", () => {
+  it("says each press with the Journal's verbs, done or changing nothing", async () => {
+    served = await adminServed({ channel: "live" });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const path = `/admin/merchants/${merchant.id}`;
+    const withReason = { ...TICKED, [REASON_FIELD]: "it leaked" };
+    for (const pressed of ["withdraw", "withdraw", "admit", "admit"]) {
+      await operator.post(`${path}/${pressed}`, withReason);
+    }
+    await operator.post(`${path}/keys/${merchant.keyId}/disable`, withReason);
+    await operator.post(`${path}/keys/${merchant.keyId}/disable`, withReason);
+
+    const history = text((await operator.get(path)).html);
+    const journal = text((await operator.get("/admin/journal")).html);
+
+    for (const verb of [
+      "Withdrew the admission",
+      "Asked to withdraw the admission",
+      "Admitted",
+      "Asked to admit",
+      "Disabled the key",
+      "Asked to disable the key",
+    ]) {
+      expect(history).toContain(verb);
+      expect(journal).toContain(verb);
+    }
+  });
+});
