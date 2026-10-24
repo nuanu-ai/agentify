@@ -83,6 +83,8 @@ export const boundSaid = (name: string): string =>
 export const WITHDRAWAL_NOTE = Object.freeze({
   label: "Note to the merchant",
   hint: "The merchant reads this on their own dashboard while the withdrawal stands, and it is kept in the journal. Say what they can do about it; do not name a buyer or paste their details.",
+  missing:
+    "Write the note to the merchant; they read it on their dashboard while the withdrawal stands. Nothing was changed.",
 });
 
 /** Why a press on a merchant was refused, as the sentence under its button. */

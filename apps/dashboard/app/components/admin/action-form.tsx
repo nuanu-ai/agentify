@@ -12,7 +12,7 @@ import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import type { ActionAnswer } from "../../../src/admin/action.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "../../../src/admin/fields.js";
-import { LOST_ANSWER, REASON_IS_KEPT } from "../../../src/admin/words.js";
+import { LOST_ANSWER, NO_REASON, REASON_IS_KEPT } from "../../../src/admin/words.js";
 import { PostForm } from "../post-form.js";
 import { StepUp } from "./step-up.js";
 
@@ -37,8 +37,11 @@ export function ActionForm({
   consequence: string;
   /** Every intervention asks for one; an admission does not. */
   reason?: boolean;
-  /** What the reason box is called and the sentence under it, where somebody besides the operators reads it. */
-  reasonWords?: Readonly<{ label: string; hint: string }>;
+  /**
+   * What the reason box is called, the sentence under it and the refusal of a
+   * press without it, where somebody besides the operators reads it.
+   */
+  reasonWords?: Readonly<{ label: string; hint: string; missing?: string }>;
   /** What else the form carries, such as the record it acts on. */
   fields?: Readonly<Record<string, string>>;
   /** How this form's last press was answered, or null where it was not pressed. */
@@ -53,7 +56,13 @@ export function ActionForm({
     );
   }
   const said =
-    answer?.kind === "refused" ? answer.said : answer?.kind === "unknown" ? LOST_ANSWER : null;
+    answer?.kind === "refused"
+      ? answer.said === NO_REASON
+        ? (reasonWords.missing ?? NO_REASON)
+        : answer.said
+      : answer?.kind === "unknown"
+        ? LOST_ANSWER
+        : null;
   return (
     <PostForm action={action} document className="op-decide">
       {(pending) => (

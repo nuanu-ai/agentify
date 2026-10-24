@@ -9,6 +9,7 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@ag
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
+import { WITHDRAWAL_NOTE } from "./merchants-words.js";
 
 let served: AdminServed | null = null;
 
@@ -196,7 +197,7 @@ describe("withdrawing and giving the admission", () => {
     ]);
   });
 
-  it("refuses a withdrawal without a note, or with the box left unticked, changing nothing", async () => {
+  it("refuses a withdrawal without a note by asking for the note, or with the box left unticked, changing nothing", async () => {
     served = await adminServed({ channel: "live" });
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
     const operator = await served.signedIn(OPERATOR, { operator: true });
@@ -209,7 +210,7 @@ describe("withdrawing and giving the admission", () => {
     const unticked = await operator.post(`${path}/withdraw`, { [REASON_FIELD]: "a reason" });
 
     expect([noNote.status, unticked.status]).toStrictEqual([409, 409]);
-    expect(text(noNote.html)).toContain("Write the reason");
+    expect(text(noNote.html)).toContain(WITHDRAWAL_NOTE.missing);
     expect(text(unticked.html)).toContain("Tick the box");
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
   });

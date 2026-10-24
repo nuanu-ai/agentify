@@ -477,6 +477,7 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                           reason
                           reasonWords={WITHDRAWAL_NOTE}
                           answer={admission.withdraw}
+                          secondary
                         />
                       </InPlace>
                       <Stray answer={admission.admit} />
