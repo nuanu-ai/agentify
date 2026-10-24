@@ -348,7 +348,7 @@ export const SILENT_AFTER_MS = 10 * 60_000;
  * before ten minutes without a poll, and every one is within half a minute
  * after.
  */
-const CONTACT_WRITTEN_EVERY_MS = 30_000;
+export const CONTACT_WRITTEN_EVERY_MS = 30_000;
 
 /**
  * How seldom a seller turned away for their waiting purchases is said in the
@@ -357,7 +357,7 @@ const CONTACT_WRITTEN_EVERY_MS = 30_000;
 const SELLER_BUSY_LOGGED_EVERY_MS = 60_000;
 
 /** Whether a seller whose process last polled at `polled` is silent at `at`. */
-const silentAt = (polled: number | null, at: number): boolean =>
+export const silentAt = (polled: number | null, at: number): boolean =>
   polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
 
 /** What an agent is told of a product that went off sale as its order was made. */
