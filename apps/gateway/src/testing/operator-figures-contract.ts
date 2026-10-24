@@ -59,7 +59,7 @@ interface Sale {
   readonly currency?: string;
   readonly state?: Order["state"];
   /** When the order says it was paid. */
-  readonly paidAt?: number;
+  readonly paidAt?: number | null;
   /** The block time of a payment observed on the chain, which outranks every other word. */
   readonly onChainAt?: number;
   /** Where it was paid: a split's address, or a wallet before payments went to splits. */
@@ -101,7 +101,7 @@ const aSale = (id: string, sale: Sale = {}): StoredOrder => {
       test: false,
       timestamps: {
         ...base.order.timestamps,
-        paidAt: sale.paidAt ?? NOW - HOUR,
+        paidAt: sale.paidAt === undefined ? NOW - HOUR : sale.paidAt,
         settleStartedAt: sale.settleStartedAt ?? null,
       },
     },
@@ -215,6 +215,7 @@ export function describeOperatorFigures(
           period: "all",
           from: null,
           sales: nothing,
+          undated: nothing,
           commission: "0.00",
           intoSplits: nothing,
           straightToWallet: nothing,
@@ -224,6 +225,7 @@ export function describeOperatorFigures(
         const chart = await figures.salesByDay(LIVE);
         expect(chart.readAt).toBe(NOW);
         expect(chart.days).toHaveLength(30);
+        expect(chart.undated).toStrictEqual(nothing);
         expect(chart.days.every((day) => day.delivered.count + day.noDelivery.count === 0)).toBe(
           true,
         );
@@ -318,17 +320,18 @@ export function describeOperatorFigures(
         expect((await reader.figures.money(LIVE, "all")).sales.count).toBe(0);
       });
 
-      it("are dated by the moment the money moved: the block, then the receipt, then the order", async () => {
+      it("are dated by the moment the order records them as paid, and a block's time outranks it", async () => {
         // A payment recovered from the chain is dated by its block, which may
-        // be days before the order learned of it; a receipt dates a payment
-        // taken after its goods, which the order's own payment time does not.
+        // be days before the order learned of it. A receipt written later,
+        // when goods paid for after delivery were handed over, does not move
+        // the day: the order's own word is the one every screen reads.
         const { store, reader } = await open();
         await ready(store, A);
         await store.addOrder(
           aSale("ord_chain", { paidAt: NOW - HOUR, onChainAt: TODAY - 10 * DAY + HOUR }),
         );
-        await store.addOrder(aSale("ord_receipt", { paidAt: NOW - HOUR }));
-        await store.putReceipt(A, aReceipt("ord_receipt", TODAY - 3 * DAY + HOUR));
+        await store.addOrder(aSale("ord_receipt", { paidAt: TODAY - 3 * DAY + HOUR }));
+        await store.putReceipt(A, aReceipt("ord_receipt", TODAY - DAY + HOUR));
         await store.addOrder(aSale("ord_order", { paidAt: TODAY - DAY + HOUR }));
 
         const days = (await reader.figures.salesByDay(LIVE)).days;
@@ -339,6 +342,24 @@ export function describeOperatorFigures(
         );
 
         expect(counted).toStrictEqual({ "2026-10-13": 1, "2026-10-20": 1, "2026-10-22": 1 });
+      });
+
+      it("with no moment recorded are counted in all time and apart, and in no day or period", async () => {
+        const { store, reader } = await open();
+        await ready(store, A);
+        await store.addOrder(aSale("ord_dated", { amount: "1.00" }));
+        await store.addOrder(aSale("ord_undated", { amount: "2.00", paidAt: null }));
+
+        const ever = await reader.figures.money(LIVE, "all");
+        const week = await reader.figures.money(LIVE, "7d");
+        const chart = await reader.figures.salesByDay(LIVE);
+
+        expect(ever.sales).toStrictEqual({ amount: "3.00", count: 2 });
+        expect(ever.undated).toStrictEqual({ amount: "2.00", count: 1 });
+        expect(week.sales).toStrictEqual({ amount: "1.00", count: 1 });
+        expect(week.undated).toStrictEqual({ amount: "2.00", count: 1 });
+        expect(chart.undated).toStrictEqual({ amount: "2.00", count: 1 });
+        expect(chart.days.reduce((all, day) => all + day.delivered.count, 0)).toBe(1);
       });
 
       it("fail the read when one carries an amount that is not in dollars, rather than adding it in", async () => {

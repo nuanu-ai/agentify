@@ -112,9 +112,11 @@ if (databaseUrl === null) {
       const row = (state: string, settledAt: string | null) =>
         pool.query(
           `insert into commerce_analytics_events
-             (id, name, occurred_at, actor_type, source, properties, refs, state, next_attempt_at, settled_at)
+             (id, name, occurred_at, actor_type, source, properties, refs, state, next_attempt_at,
+              sent_at, settled_at)
            values (gen_random_uuid(), 'agc_selling_changed', $1, 'system', 'gateway', '{}', '{}', $2,
-                   case when $2 = 'pending' then now() end, $3)`,
+                   case when $2 = 'pending' then now() end, case when $2 = 'sent' then $3::timestamptz end,
+                   $3)`,
           ["2026-10-15T00:00:00.000Z", state, settledAt],
         );
       await row("pending", null);

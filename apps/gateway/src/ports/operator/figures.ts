@@ -11,10 +11,12 @@
  * period's total and the sum of its bars are one number.
  *
  * A settled sale is an order whose payment settled, whatever became of the
- * goods, dated by the moment the money moved: the time of the block where the
- * payment was observed on the chain, otherwise the moment its receipt says it
- * was paid, otherwise when the order was paid. Payments whose outcome is
- * unknown are counted apart and never added to sales or to failures.
+ * goods, dated by the moment the order records it as paid: the time of the
+ * block where the payment was observed on the chain, otherwise when the order
+ * entered paid, which is when the money moved for a payment taken at purchase
+ * and when it was verified for one taken after the goods. A sale with no such
+ * moment is counted in all time and in `undated`, never in a day. Payments
+ * whose outcome is unknown are counted apart and never added to sales or to failures.
  */
 
 import { modeOf, readinessOf, type SurfaceMode } from "@agentify/core";
@@ -158,7 +160,10 @@ export interface Money extends Read {
   /** The first moment the period holds, or null for all time. */
   readonly from: number | null;
   /** Every settled sale. */
+  /** Every settled sale of the period; for all time, the undated ones included. */
   readonly sales: Tally;
+  /** Every settled sale whose order records no moment it was paid, which no day or period but all time holds. */
+  readonly undated: Tally;
   /** The commission accrued in the splits on the part of `sales` paid into them. */
   readonly commission: Dollars;
   /** The part of `sales` paid into a recorded split. */
@@ -187,6 +192,8 @@ export interface SalesDay {
 export interface SalesByDay extends Read {
   /** Exactly `CHART_DAYS` days, the oldest first, today last; a day with nothing settled holds zeros. */
   readonly days: readonly SalesDay[];
+  /** Every settled sale whose order records no moment it was paid, drawn on no day. */
+  readonly undated: Tally;
 }
 
 /** The steps of the funnel, in order. */

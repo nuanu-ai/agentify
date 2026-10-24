@@ -5,7 +5,7 @@
  */
 
 import { askedOn, type FiguresAsked } from "../../../ports/operator/figures.js";
-import { microsOf } from "../../../ports/operator/money.js";
+import { microsOf, paidWithNoPrice } from "../../../ports/operator/money.js";
 import type {
   RecordedPayoutSplit,
   StoredCard,
@@ -54,7 +54,8 @@ export function onSale(card: StoredCard, merchant: StoredMerchant, asked: Figure
 /** One settled sale. */
 export interface SettledSale {
   readonly record: StoredOrder;
-  readonly settledAt: number;
+  /** When the order records it as paid, or null where it records no such moment. */
+  readonly settledAt: number | null;
   readonly micros: bigint;
   /** The split it was paid into, matched in either spelling, or null where it went straight to a wallet. */
   readonly split: RecordedPayoutSplit | null;
@@ -63,9 +64,6 @@ export interface SettledSale {
 
 /** Every settled sale the store holds, on the store's network. */
 export function settledSales(holdings: MemoryHoldings, network: string): SettledSale[] {
-  const paidAt = new Map(
-    holdings.receipts.map(({ receipt }) => [receipt.order_id, Date.parse(receipt.paid_at)]),
-  );
   const splits = new Map(
     holdings.splits
       .filter((split) => split.network === network)
@@ -78,7 +76,7 @@ export function settledSales(holdings: MemoryHoldings, network: string): Settled
       const price = priceOf(record);
       return {
         record,
-        settledAt: settledAtOf(record, paidAt.get(record.order.id)),
+        settledAt: settledAtOf(record),
         micros: microsOf(price.amount, price.currency),
         split: record.payTo === null ? null : (splits.get(record.payTo.toLowerCase()) ?? null),
         delivered: record.order.state === "delivered",
@@ -93,21 +91,22 @@ export function priceOf(record: StoredOrder): {
 } {
   const { price } = record.order;
   if (price === null) {
-    throw new Error(`the order ${record.order.id} was paid and carries no price`);
+    throw paidWithNoPrice(record.order.id);
   }
   return price;
 }
 
 /**
- * When the money of a settled sale moved: the block's time where the payment
- * was observed on the chain, otherwise the receipt's word, otherwise when the
- * order was paid, otherwise when it was made.
+ * The moment a settled sale is dated by: the block's time where the payment
+ * was observed on the chain, otherwise when the order records it as paid,
+ * which is when the money moved for a payment taken at purchase and when the
+ * payment was verified for one taken after the goods. Null where the order
+ * records neither.
  */
-function settledAtOf(record: StoredOrder, receiptPaidAt: number | undefined): number {
+function settledAtOf(record: StoredOrder): number | null {
   const completion = record.paymentAttempt?.completion;
   if (completion?.settled === true && completion.executedAt !== null) {
     return Math.floor(completion.executedAt);
   }
-  if (receiptPaidAt !== undefined) return receiptPaidAt;
-  return record.order.timestamps.paidAt ?? record.order.timestamps.createdAt;
+  return record.order.timestamps.paidAt;
 }

@@ -187,9 +187,14 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
     const days = PERIOD_DAYS[period];
     const from = days === null ? null : daysBackFrom(asked.at, days);
     const until = endOfDayOf(asked.at);
-    const sales = settledSales(scope.holdings(), scope.network).filter(
+    const settled = settledSales(scope.holdings(), scope.network);
+    const sales = settled.filter(
       (sale) =>
-        days === null || (from !== null && sale.settledAt >= from && sale.settledAt < until),
+        days === null ||
+        (from !== null &&
+          sale.settledAt !== null &&
+          sale.settledAt >= from &&
+          sale.settledAt < until),
     );
     const intoSplits = sales.filter((sale) => sale.split !== null);
     const bySplit = new Map<string, { split: NonNullable<SettledSale["split"]>; micros: bigint }>();
@@ -208,6 +213,7 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       period,
       from,
       sales: talliedSales(sales),
+      undated: talliedSales(settled.filter((sale) => sale.settledAt === null)),
       commission: dollarsOf(
         sum([...bySplit.values()].map(({ split, micros }) => commissionOn(micros, split))),
       ),
@@ -227,13 +233,16 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       readAt: asked.at,
       days: Array.from({ length: CHART_DAYS }, (_, index) => {
         const day = first + index;
-        const onDay = sales.filter((sale) => dayNumberOf(sale.settledAt) === day);
+        const onDay = sales.filter(
+          (sale) => sale.settledAt !== null && dayNumberOf(sale.settledAt) === day,
+        );
         return {
           day: dayWritten(day),
           delivered: talliedSales(onDay.filter((sale) => sale.delivered)),
           noDelivery: talliedSales(onDay.filter((sale) => !sale.delivered)),
         };
       }),
+      undated: talliedSales(sales.filter((sale) => sale.settledAt === null)),
     };
   },
 

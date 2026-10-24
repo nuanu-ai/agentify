@@ -61,6 +61,10 @@ export function commissionOn(
   return (micros * BigInt(split.commissionAllocation)) / BigInt(split.totalAllocation);
 }
 
+/** Why a read stops at an order that was paid and carries no price: a defect, never a sale of nothing. */
+export const paidWithNoPrice = (orderId: string): Error =>
+  new Error(`the order ${orderId} was paid and carries no price`);
+
 /** A tally of nothing, from a read that succeeded and found nothing. */
 export const NOTHING: Tally = Object.freeze({ amount: dollarsOf(0n), count: 0 });
 
