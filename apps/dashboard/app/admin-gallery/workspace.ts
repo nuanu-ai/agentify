@@ -10,7 +10,7 @@ import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
 import { OVERVIEW_EXAMPLE } from "./figures.js";
-import { type AdminGalleryState, frameIn } from "./state.js";
+import { type AdminGalleryState, frameIn, LIVE_WAITING } from "./state.js";
 
 const chromeIn = (mode: SurfaceMode) => ({
   base: "",
@@ -46,14 +46,7 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
       "Each section's area counts what waits in it; the red count is a decision only an operator can take.",
     path: "/admin",
     mode: "live",
-    frame: {
-      ...frameIn("live"),
-      counts: {
-        merchants: { count: 1, needsYou: true },
-        orders: { count: 2, needsYou: false },
-        health: { count: 1, needsYou: false },
-      },
-    },
+    frame: frameIn("live", LIVE_WAITING),
     loaded: { "routes/admin/index": OVERVIEW_EXAMPLE },
   },
   {

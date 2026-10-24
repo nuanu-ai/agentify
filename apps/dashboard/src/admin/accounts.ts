@@ -205,6 +205,9 @@ const REFUSALS: Readonly<Record<string, string>> = {
   money_history: "the merchant has orders or receipts, which are never deleted; nothing changed",
   shared_merchant: "another account names the same merchant; nothing changed",
   history_unread: "whether the merchant has orders or receipts could not be read; nothing changed",
+  not_live_channel: "admission is decided on the live channel only; nothing changed",
+  no_such_merchant: "no merchant has that identifier; nothing changed",
+  no_such_key: "the key is not one of this merchant's; nothing changed",
 };
 
 export const refusalSaid = (code: string): string =>

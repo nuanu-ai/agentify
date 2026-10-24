@@ -23,7 +23,7 @@ import {
   TIMELINE_NOTE,
 } from "../../../src/admin/orders-view.js";
 import { useChrome } from "../../answer.js";
-import { CouldNotBeRead } from "../../components/admin/unknown.js";
+import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
 import { Cell, List, ListEmpty } from "../../components/list.js";
 import { Moment } from "../../components/moment.js";
@@ -181,16 +181,16 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
                   <Cell at="fact">
                     {row.priced === null ? "Not priced" : <Moment at={row.priced} />}
                   </Cell>
-                  <Cell at="note">{row.merchant}</Cell>
+                  <Cell at="ident">{row.merchant}</Cell>
                   <Cell at="title">
                     <Link to={row.to}>{row.product}</Link>
                     {row.test ? <span className="op-sub">Test purchase</span> : null}
                   </Cell>
                   <Cell at="amount">{row.amount ?? "No price"}</Cell>
                   <Cell at="state">
-                    <Word word={row.state} />
+                    <OrderState word={row.state} />
                   </Cell>
-                  <Cell at="action">
+                  <Cell at="state">
                     <Badge toned={row.payment} />
                   </Cell>
                   <Cell at="ident">
@@ -231,7 +231,7 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
   return (
     <>
       <div className="op-facts-line">
-        <Word word={view.state} />
+        <OrderState word={view.state} />
         <span className="mono">{view.amount ?? "No price"}</span>
         <Link to={view.merchant.to}>{view.merchant.name}</Link>
         <span>{view.card}</span>

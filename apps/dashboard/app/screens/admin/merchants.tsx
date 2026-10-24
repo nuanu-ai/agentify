@@ -31,11 +31,12 @@ import {
 import { LOST_ANSWER } from "../../../src/admin/words.js";
 import { ActionForm } from "../../components/admin/action-form.js";
 import { StepUp } from "../../components/admin/step-up.js";
-import { CouldNotBeRead } from "../../components/admin/unknown.js";
+import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
 import { ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
+import { JournalList } from "./journal.js";
 
 /** An identifier shown short that opens to its whole value; no copy button, since the workspace runs no script. */
 function Whole({ value }: Readonly<{ value: string }>) {
@@ -80,15 +81,13 @@ const Tick = () => (
 function Row({ row }: Readonly<{ row: MerchantListRow }>) {
   return (
     <li className="list-row">
-      <div className="cell cell-main">
-        <span className="cell-title">
-          <Link to={row.href} prefetch="intent">
-            {row.name}
-          </Link>
-        </span>
+      <div className="cell cell-title">
+        <Link to={row.href} prefetch="intent">
+          {row.name}
+        </Link>
         {row.under === null ? null : <span className="op-sub">{row.under}</span>}
       </div>
-      <div className="cell">
+      <div className="cell cell-ident">
         <span>{row.integration}</span>
         <span className="op-sub">
           {row.connection.said}
@@ -100,7 +99,7 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
           )}
         </span>
       </div>
-      <div className="cell">
+      <div className="cell cell-fact">
         <span className="pips" aria-hidden="true">
           {row.dots.map((held, at) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the dots are the checks, in their one order
@@ -109,8 +108,12 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
         </span>
         <span className="pips-said">{row.dotsSaid}</span>
       </div>
-      <div className="cell num">{row.cards}</div>
-      <div className="cell num">
+      <div className="cell cell-amount num">
+        <span className="said-on-narrow">On sale </span>
+        {row.cards}
+      </div>
+      <div className="cell cell-note num">
+        <span className="said-on-narrow">Last 30 days </span>
         <span>{row.sales ?? "—"}</span>
         <span className="op-sub">
           {row.orders}
@@ -273,7 +276,8 @@ function KeyItem({
   return (
     <li>
       <span>
-        <span className="k">{line.label}</span> · issued <Moment at={line.issued} /> ·{" "}
+        <span className="k">{line.label}</span> <Whole value={line.id} /> · issued{" "}
+        <Moment at={line.issued} /> ·{" "}
         {line.lastUsed === null ? (
           "no use recorded"
         ) : (
@@ -473,6 +477,7 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                           reason
                           reasonWords={WITHDRAWAL_NOTE}
                           answer={admission.withdraw}
+                          secondary
                         />
                       </InPlace>
                       <Stray answer={admission.admit} />
@@ -560,11 +565,12 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 <ul className="op-mini">
                   {view.worth.rows.map((order) => (
                     <li key={order.id}>
-                      <Word word={order.state} />
+                      <OrderState word={order.state} />
                       <Link to={order.href}>{order.title}</Link>
                       <span className="fig">{order.price}</span>
                       <span className="when">
-                        <Moment at={order.when} /> · {shortened(order.id)}
+                        <Moment at={order.when} /> ·{" "}
+                        <span className="op-id">{shortened(order.id)}</span>
                         {order.shopUncertain
                           ? " · its shop order is uncertain; the merchant recovers it from their own Orders"
                           : ""}
@@ -622,37 +628,30 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
               {view.cards.cut === null ? null : <p className="op-sub">{view.cards.cut}</p>}
             </div>
           </section>
-          <section className="op-panel" aria-labelledby="history-title">
-            <div className="op-panel-head">
-              <h2 id="history-title">History</h2>
-              <p>From the journal</p>
-            </div>
-            <div className="op-panel-body">
-              {view.history === null ? (
-                <p>
-                  The history <CouldNotBeRead />
-                </p>
-              ) : view.history.rows.length === 0 ? (
-                <p className="quiet">No administrative action on this merchant yet.</p>
-              ) : (
-                <ul className="op-mini">
-                  {view.history.rows.map((line, at) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: the journal's rows only grow, newest first
-                    <li key={at}>
-                      <span>{line.what}</span>
-                      <span className="fig">{line.from}</span>
-                      <span className="when">
-                        <Moment at={line.when} /> · {line.who}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {view.history?.cut == null ? null : <p className="op-sub">{view.history.cut}</p>}
-            </div>
-          </section>
         </div>
       </div>
+      <section className="group" aria-labelledby="history-title">
+        <div className="group-head">
+          <h2 id="history-title">History</h2>
+          <p className="group-aside">
+            From the journal · <Link to="/admin/journal">The whole journal</Link>
+          </p>
+        </div>
+        {view.history === null ? (
+          <p className="op-sub">
+            The history <CouldNotBeRead />
+          </p>
+        ) : view.history.lines.length === 0 ? (
+          <p className="op-sub">No administrative action on this merchant yet.</p>
+        ) : (
+          <JournalList
+            lines={view.history.lines}
+            label={`The journal's rows about ${view.called}`}
+            onItsPage
+          />
+        )}
+        {view.history?.cut == null ? null : <p className="cut">{view.history.cut}</p>}
+      </section>
       <p className="op-bound">
         <span>{boundSaid(view.called)}</span>
       </p>

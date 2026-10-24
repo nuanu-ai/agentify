@@ -231,6 +231,14 @@
   font-weight: 600;
 }
 
+/* On a phone the chart is drawn at under half its size, so its words are
+   set larger in its own units to stay about as large as a caption. */
+@media (max-width: 560px) {
+  .op-chart text {
+    font-size: 26px;
+  }
+}
+
 .op-legend {
   display: flex;
   flex-wrap: wrap;
@@ -298,11 +306,6 @@
   font-family: var(--font-mono);
   font-size: var(--text-label);
   text-align: right;
-}
-
-.op-funnel li.drop .rate {
-  color: var(--partial);
-  font-weight: 600;
 }
 
 @media (max-width: 560px) {
@@ -415,6 +418,32 @@
   color: var(--muted);
   font-size: var(--text-small);
   overflow-wrap: anywhere;
+}
+
+/* On a phone a check's badge stays beside its title, and everything under
+   the title takes the width the badge leaves free beside the title. */
+@media (max-width: 560px) {
+  .op-checks li {
+    row-gap: 4px;
+  }
+
+  .op-checks .what {
+    display: contents;
+  }
+
+  .op-checks .what > * {
+    grid-column: 2 / -1;
+  }
+
+  .op-checks .what > b {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .op-checks li > .badge {
+    grid-column: 3;
+    grid-row: 1;
+  }
 }
 
 /* The decision, inside the checks panel, under a hairline. */
@@ -548,6 +577,7 @@
 
 .op-voices {
   display: grid;
+  margin-top: 22px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
@@ -580,6 +610,11 @@
   .op-voices {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* A sentence under a panel stands clear of it, as it does under a list. */
+.op-panel + .note {
+  margin-top: 16px;
 }
 
 /* --- the sentence that names what this screen never does ---------------- */
@@ -683,15 +718,20 @@
 }
 
 .op-cols-orders {
-  --columns: 6.5rem minmax(9rem, 1fr) minmax(11rem, 1.3fr) 6.5rem 10rem 8rem 9rem;
+  --columns: 6.5rem minmax(7rem, 1fr) minmax(10rem, 1.3fr) 6.5rem minmax(9.5rem, 11rem) 9rem 8.5rem;
 }
 
 .op-cols-health {
-  --columns: minmax(10rem, 13rem) 9rem minmax(14rem, 1fr) 7rem;
+  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 7rem;
 }
 
 .op-cols-journal {
   --columns: 8.5rem minmax(9rem, 12rem) minmax(16rem, 1fr) 6rem 7rem;
+}
+
+/* An address longer than its column breaks rather than running into What. */
+.op-cols-journal .cell-ident {
+  overflow-wrap: anywhere;
 }
 
 .op-cols-scans {
@@ -718,6 +758,37 @@
 
 .list-row .soft {
   color: var(--muted);
+}
+
+/* A state too long for its column takes a second line under its first word,
+   as the merchant's own Orders does, rather than running into the next. */
+.list-row .cell-state .badge {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.list-row .cell-state .badge::before {
+  margin-top: calc((1.4em - 8px) / 2);
+}
+
+/* A sentence that stands in a column of its own on a wide row: in ink and
+   read from the left like the column's head. On a narrow row it is a note,
+   on a line of its own. */
+.op-cols-health .cell-note {
+  color: var(--fg);
+  text-align: left;
+}
+
+/* The merchants' thirty days stand last on a narrow row; on a wide one the
+   sum is a figure in ink like the others. */
+.op-cols-merchants .cell-note {
+  color: var(--fg);
+}
+
+@container (max-width: 860px) {
+  .list-row .num {
+    text-align: left;
+  }
 }
 
 .op-chart .mid {
@@ -851,6 +922,17 @@
   grid-column: 1 / -1;
   color: var(--muted);
   font: var(--text-label) / 1.5 var(--font-mono);
+}
+
+/* An identifier shown short breaks before or after itself, never inside. */
+.op-id {
+  white-space: nowrap;
+}
+
+/* What was searched for comes back whole, a pasted hash included, and
+   breaks where it must rather than running past the list's edge. */
+.list-empty {
+  overflow-wrap: anywhere;
 }
 
 .op-panel h3 {

@@ -230,7 +230,9 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
               </p>
             </div>
             {view.worth.items.length === 0 ? (
-              <p className="op-sub">Nothing the automation has left unresolved.</p>
+              view.worth.unread.length === 0 ? (
+                <p className="op-sub">Nothing the automation has left unresolved.</p>
+              ) : null
             ) : (
               <div className="list-box op-cols-one">
                 <ul className="list" aria-label="Facts worth a look">
@@ -303,7 +305,7 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
             {view.funnel.kind === "read" ? (
               <ol className="op-funnel">
                 {view.funnel.value.steps.map((step) => (
-                  <li key={step.label} className={step.drop ? "drop" : undefined}>
+                  <li key={step.label}>
                     <span className="step">{step.label}</span>
                     <span className="track" aria-hidden="true">
                       <span className="fill" style={{ width: step.width }} />
@@ -444,7 +446,8 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                         <Link to={`/admin/merchants/${row.merchantId}`}>{row.merchant}</Link>
                       )}
                     </div>
-                    <div className="cell">
+                    <div className="cell cell-ident">
+                      <span className="said-on-narrow">Split </span>
                       <Whole value={row.split} short={shortOf(row.split)} />
                       {row.splitPage === null ? null : (
                         <>
@@ -453,11 +456,16 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                         </>
                       )}
                     </div>
-                    <div className="cell">
+                    <div className="cell cell-ident">
+                      <span className="said-on-narrow">Pays </span>
                       <Whole value={row.wallet} short={shortOf(row.wallet)} />
                     </div>
-                    <div className={row.empty ? "cell num soft" : "cell num"}>{row.settled}</div>
-                    <div className="cell soft">{row.since}</div>
+                    <div
+                      className={row.empty ? "cell cell-amount num soft" : "cell cell-amount num"}
+                    >
+                      {row.settled}
+                    </div>
+                    <div className="cell cell-fact">{row.since}</div>
                   </li>
                 ))}
               </ul>
@@ -555,14 +563,17 @@ function HealthRows({
         {rows.map((row) => (
           <li className="list-row" key={row.part}>
             <div className="cell cell-title">{row.part}</div>
-            <div className="cell">
+            <div className="cell cell-state">
               <BadgeOf badge={row.badge} />
             </div>
-            <div className="cell">
+            <div className="cell cell-note">
               <SaidText said={row.fact} />
             </div>
             {row.check === undefined ? (
-              <div className="cell cell-fact mono">{row.read}</div>
+              <div className="cell cell-fact mono">
+                <span className="said-on-narrow">Read </span>
+                {row.read}
+              </div>
             ) : (
               <div className="cell cell-action">
                 <PostForm action="/admin/health" document>

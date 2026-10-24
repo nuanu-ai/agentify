@@ -61,15 +61,27 @@ function Row({ row }: Readonly<{ row: AccountRowView }>) {
         <Link to={`/admin/accounts/${row.id}`}>{row.email}</Link>
         {row.you ? <span className="op-sub">You</span> : null}
       </div>
-      <div className="cell">
+      <div className="cell cell-ident">
         <Merchant merchant={row.merchant} />
       </div>
-      <div className="cell">
+      <div className="cell cell-state">
         <Flag operator={row.operator} />
       </div>
-      <div className="cell num">{row.openSessions}</div>
+      <div className="cell cell-fact num">
+        {row.openSessions}
+        <span className="said-on-narrow">
+          {row.openSessions === 1 ? " open session" : " open sessions"}
+        </span>
+      </div>
       <div className="cell cell-fact">
-        {row.newestSession === null ? "None open" : <Moment at={row.newestSession} />}
+        {row.newestSession === null ? (
+          "None open"
+        ) : (
+          <>
+            <span className="said-on-narrow">newest </span>
+            <Moment at={row.newestSession} />
+          </>
+        )}
       </div>
       <div className="cell cell-action">
         <Link className="button button-secondary button-compact" to={`/admin/accounts/${row.id}`}>
@@ -136,7 +148,7 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
           {view.unlisted === 0
             ? "No account only signed in; every account is one of these. "
             : `${plural(view.unlisted, "more account", "more accounts")} only signed in, most of them to open a scanner's report; they are counted, not listed. `}
-          Read at <Moment at={view.readAt} />
+          Read <Moment at={view.readAt} />
         </span>
       </p>
       <section className="op-panel" aria-labelledby="first-title">
@@ -278,7 +290,7 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
           <span className="badge badge-quiet">Not an operator</span>
         )}
         <span>
-          Read at <Moment at={view.readAt} />
+          Read <Moment at={view.readAt} />
         </span>
       </p>
       <Settled pressed={pressed} email={account.email} />

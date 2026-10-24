@@ -9,6 +9,7 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@ag
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
+import { WITHDRAWAL_NOTE } from "./merchants-words.js";
 
 let served: AdminServed | null = null;
 
@@ -163,9 +164,12 @@ describe("withdrawing and giving the admission", () => {
     expect([admitted.status, again.status]).toStrictEqual([200, 200]);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
     expect(text(again.html)).toContain("It was so already");
-    // Another operator reads who acted by their address.
+    // The history names who acted by their address, to them and to another operator.
     const second = await served.signedIn("op2@agentify.example", { operator: true });
-    expect(text((await second.get(path)).html)).toContain(`· ${OPERATOR}`);
+    for (const reader of [operator, second]) {
+      const history = text((await reader.get(path)).html).split("History")[1] ?? "";
+      expect(history).toContain(OPERATOR);
+    }
     expect(
       (await rowsAbout(served, merchant.id)).map((row) => [row.action, row.outcome.kind]),
     ).toStrictEqual([
@@ -193,7 +197,7 @@ describe("withdrawing and giving the admission", () => {
     ]);
   });
 
-  it("refuses a withdrawal without a note, or with the box left unticked, changing nothing", async () => {
+  it("refuses a withdrawal without a note by asking for the note, or with the box left unticked, changing nothing", async () => {
     served = await adminServed({ channel: "live" });
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
     const operator = await served.signedIn(OPERATOR, { operator: true });
@@ -206,7 +210,7 @@ describe("withdrawing and giving the admission", () => {
     const unticked = await operator.post(`${path}/withdraw`, { [REASON_FIELD]: "a reason" });
 
     expect([noNote.status, unticked.status]).toStrictEqual([409, 409]);
-    expect(text(noNote.html)).toContain("Write the reason");
+    expect(text(noNote.html)).toContain(WITHDRAWAL_NOTE.missing);
     expect(text(unticked.html)).toContain("Tick the box");
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
   });

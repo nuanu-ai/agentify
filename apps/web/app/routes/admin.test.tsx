@@ -384,7 +384,7 @@ describe("the operator's dashboard, drawn", () => {
 
   it("counts the data access requests waiting for an answer, with the oldest", () => {
     expect(tile(drawn, "Data access requests")).toMatch(
-      /Data access requests 2 Oldest 30 Sept? 2026/,
+      /Data access requests 2 Oldest 30 September 2026/,
     );
     expect(
       tile(

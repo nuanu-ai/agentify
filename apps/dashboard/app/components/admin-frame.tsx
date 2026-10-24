@@ -120,7 +120,7 @@ function Lookup() {
           type="search"
           name="q"
           aria-label="Find a record"
-          placeholder="Paste an order ID, merchant ID, transaction, address, email or site"
+          placeholder="Find a record"
         />
       </form>
     </search>

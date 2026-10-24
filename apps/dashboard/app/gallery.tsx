@@ -1406,6 +1406,31 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-live-sales-stopped",
+      screen: "Cards",
+      when: "A merchant opens their dashboard after an operator withdrew their admission to live sales.",
+      cause:
+        "The withdrawal stands, so the gateway keeps every card off sale on the live site and the banner says since when, with the note the operator wrote for them.",
+    },
+    cardsView(
+      cardsOf(
+        "open",
+        ON_SALE.map((product) => ({ product, selling: "paused" })),
+      ),
+      ORIGIN.live,
+    ),
+    "live",
+    {
+      account: bannerOf(seenBy("live", { liveApproval: false }), {
+        withdrawn: {
+          at: "2026-10-23T14:01:00Z",
+          note: "Your seller name copies another shop's. Choose a name of your own in Settings and write to us; we admit you again once it is changed.",
+        },
+      }),
+    },
+  ),
+  cards(
+    {
       id: "dashboard-cards-no-wallet",
       screen: "Cards",
       when: "A merchant on the test site has cards but has not set a payout wallet.",
@@ -3179,7 +3204,12 @@ const ADMIN: GalleryState[] = ADMIN_STATES.map(
       {
         path,
         mode,
-        loaded: { "routes/admin/only": frame ?? frameIn(mode), ...loaded },
+        // Signed in as the operator the workspace's examples name, not as a merchant.
+        loaded: {
+          "routes/gate": { who: "operator@example.com" },
+          "routes/admin/only": frame ?? frameIn(mode),
+          ...loaded,
+        },
         ...(pressed === undefined ? {} : { pressed }),
         ...(failed === undefined ? {} : { failed }),
       },
