@@ -36,7 +36,6 @@ export type AccountsDirectory = Pick<
   Identity,
   | "operatorAccounts"
   | "operatorAccount"
-  | "emailsOf"
   | "byEmail"
   | "endSessionsIn"
   | "setOperatorIn"
@@ -274,7 +273,10 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       if (row.subject.kind === "merchant") merchantIds.add(row.subject.id);
       if (row.subject.kind === "key") merchantIds.add(row.subject.merchantId);
     }
-    const emails = await accounts.emailsOf([...accountIds]).catch(() => new Map<string, string>());
+    const emails = await parts.identity
+      .accountsNamed({ accountIds: [...accountIds] })
+      .then((named) => new Map(named.map((one) => [one.id, one.email])))
+      .catch(() => new Map<string, string>());
     const named = await namesOf([...merchantIds]);
     const merchantLabel = (id: string): string | null => {
       const name = named(id).name;

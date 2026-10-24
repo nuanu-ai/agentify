@@ -63,5 +63,6 @@ export type {
 } from "./ports/operator/index.js";
 export { paymentUnknown } from "./ports/operator/index.js";
 export type { Dollars, Tally } from "./ports/operator/money.js";
+export { dollarsOf, microsOf } from "./ports/operator/money.js";
 export type { SplitRow, Splits } from "./ports/operator/splits.js";
 export { SPLITS_LISTED_AT_MOST } from "./ports/operator/splits.js";

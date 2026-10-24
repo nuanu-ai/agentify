@@ -1,13 +1,13 @@
 /**
- * The workspace's overview page, owned by the figures area, which
- * replaces the placeholder with its screen. The layout above confirmed the
- * operator before this runs.
+ * The workspace's overview: what waits for the operator, what is worth a
+ * look, and how the channel is doing. The layout above confirmed the operator
+ * before this runs.
  */
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
-import { Placeholder } from "../../components/admin/placeholder.js";
 import { AdminFrame } from "../../components/admin-frame.js";
+import { OverviewScreen } from "../../screens/admin/figures.js";
 import { workspaceIn } from "../../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -20,7 +20,7 @@ export default function Overview() {
   const view = useLoaderData<typeof loader>();
   return (
     <AdminFrame section="overview" title="Overview">
-      <Placeholder view={view} />
+      <OverviewScreen view={view} />
     </AdminFrame>
   );
 }

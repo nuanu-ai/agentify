@@ -516,22 +516,21 @@ from the revision `current` names.
 
 Agentify's 0.1% stays credited to its commission wallet in the shared 0xSplits
 warehouse until somebody pays the splits out; nothing does that on a timer. The
-operator's payout command prints, for every split recorded on the channel's
-network, the transactions that create each split if it has no code yet,
-distribute it, withdraw each merchant's share to their wallet and, last in each,
-withdraw the commission; it reads the database and nothing else, and sends
-nothing:
+operator's workspace shows the payout on its Money page, under the splits, at
+`/dashboard/admin/money`: for every split recorded on the channel's network,
+the transactions that create each split if it has no code yet, distribute it,
+withdraw each merchant's share to their wallet and, last in each, withdraw the
+commission. The page reads the database and nothing else, and sends nothing; it
+shows no transaction where the gateway would refuse to start on the recorded
+splits, and says why.
 
-```sh
-ssh -t agentify "sudo docker exec agentify-app-1 pnpm --silent --filter @agentify/gateway payout"
-```
-
-Each transaction it prints is sent by hand, on Base only, from any wallet that
+Each transaction it shows is sent by hand, on Base only, from any wallet that
 holds a little ETH for the fee (in MetaMask with Show hex data turned on, under
-Settings → Transactions): To, Amount 0 and the Data as printed. The commission
-arrives at the Safe; the merchants' shares go to their own wallets in the same
-transaction. On TEST the same command, against `agentify-test`, prints Base
-Sepolia transactions whose commission goes to the test channel's wallet. A
+Settings → Transactions): To, Value 0 and the Data as shown, opened to its whole
+value. The commission arrives at the Safe; the merchants' shares go to their
+own wallets in the same transaction. On TEST the same page, on the test
+channel's workspace, shows Base Sepolia transactions whose commission goes to
+the test channel's wallet. A
 payout costs gas whether or not a split holds anything, so it is worth sending
 when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
 «Выплата вручную»).

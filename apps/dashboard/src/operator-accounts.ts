@@ -118,21 +118,6 @@ export async function summaryIn(
   return row === undefined ? null : summaryOf(row);
 }
 
-export async function emailsIn(
-  tx: Statements,
-  ids: readonly string[],
-): Promise<ReadonlyMap<string, string>> {
-  if (ids.length === 0) return new Map();
-  const rows = await rowsOf<{ id: string; email: string }>(
-    tx,
-    sql`select id, email from dashboard_accounts where id in (${sql.join(
-      ids.map((id) => sql`${id}`),
-      sql`, `,
-    )})`,
-  );
-  return new Map(rows.map((row) => [row.id, row.email]));
-}
-
 /** Ends every session of one account, or says it has none open or there is no such account. */
 export async function endSessionsIn(
   tx: Statements,

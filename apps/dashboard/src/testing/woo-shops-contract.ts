@@ -277,6 +277,25 @@ export const wooShopsContract = (
     });
   });
 
+  describe(`${name}: orders whose shop order nobody knows about`, () => {
+    it("counts every claim still waiting for its shop's answer, and none placed or refused before", async () => {
+      await using(async (shops, accounts) => {
+        expect(await shops.uncertainOrders()).toBe(0);
+        await shops.claimOrder(accounts.one, "ord_waiting", FACTS, NOW);
+        await shops.claimOrder(accounts.other, "ord_waiting_too", FACTS, NOW);
+        await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_placed",
+          { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
+          NOW,
+        );
+        await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
+
+        expect(await shops.uncertainOrders()).toBe(2);
+      });
+    });
+  });
+
   describe(`${name}: what the shop's orders total`, () => {
     it("keeps, for a sale from a shop in another currency, the shop's amount and the rate it was paid at", async () => {
       await using(async (shops, accounts) => {

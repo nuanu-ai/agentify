@@ -283,6 +283,7 @@ function workspaceDoorOver(
     journal: admin.journal,
     accounts: admin.accounts,
     now,
+    shops: parts.wooShops ?? null,
     pressing: {
       now,
       googleEnabled: parts.identity.googleEnabled,

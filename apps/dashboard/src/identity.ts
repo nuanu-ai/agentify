@@ -32,7 +32,7 @@ import { memoryAdapter } from "better-auth/adapters/memory";
 import { isAPIError } from "better-auth/api";
 import { getCookies } from "better-auth/cookies";
 import { magicLink } from "better-auth/plugins/magic-link";
-import { and, asc, desc, eq, gt, isNull, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { channelOf } from "./admin/frame.js";
@@ -51,6 +51,7 @@ import {
   type GoogleStartResult,
   type LinkAsker,
   type LinkDestination,
+  type LinkPurpose,
   type LinkRequestResult,
   type LinkWall,
   type LiveSession,
@@ -65,7 +66,6 @@ import { suppressWaitingAbout } from "./nuanu-analytics.js";
 import {
   type AccountSummary,
   type AccountsListing,
-  emailsIn,
   endSessionsIn,
   endSessionsInMemory,
   type FlagChange,
@@ -130,8 +130,6 @@ export interface Identity extends DashboardIdentity {
   operatorAccounts(now: Date): Promise<AccountsListing>;
   /** One account, listed or not, as the workspace shows it; null where there is none. */
   operatorAccount(accountId: string, now: Date): Promise<AccountSummary | null>;
-  /** The address of every account among `ids` that still exists. */
-  emailsOf(ids: readonly string[]): Promise<ReadonlyMap<string, string>>;
   /**
    * Ends every session of one account, on the journal's transaction `tx` (null
    * in memory), keeping the account.
@@ -1636,17 +1634,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return await readingAccounts(parts.pool, async (tx) => await summaryIn(tx, accountId, now));
     },
 
-    async emailsOf(ids) {
-      if (parts.pool === undefined) {
-        return new Map(
-          (memoryRows.dashboard_accounts ?? [])
-            .filter((row) => ids.includes(String(row.id)))
-            .map((row) => [String(row.id), String(row.email)]),
-        );
-      }
-      return await readingAccounts(parts.pool, async (tx) => await emailsIn(tx, ids));
-    },
-
     async endSessionsIn(tx, accountId, now) {
       if (tx === null) {
         return await memoryOnly(async (rows) => endSessionsInMemory(rows, accountId, now));
@@ -1724,6 +1711,92 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
     async close() {
       await parts.pool?.end();
+    },
+
+    async linksSentInTheHour(now) {
+      const since = now.getTime() - LINK_RATE_WINDOW_MS;
+      const counted: Record<LinkPurpose, number> = { dashboard: 0, report: 0, "step-up": 0 };
+      const purposes = Object.keys(counted);
+      if (parts.pool === undefined) {
+        for (const row of memoryRows.dashboard_link_sends ?? []) {
+          const sentAt = new Date(row.sentAt as Date).getTime();
+          if (sentAt > since && sentAt <= now.getTime() && purposes.includes(String(row.purpose))) {
+            counted[row.purpose as LinkPurpose] += 1;
+          }
+        }
+        return counted;
+      }
+      const rows = await drizzle(parts.pool)
+        .select({ purpose: linkSends.purpose, sent: sql<number>`count(*)::int` })
+        .from(linkSends)
+        .where(and(gt(linkSends.sentAt, new Date(since)), lte(linkSends.sentAt, now)))
+        .groupBy(linkSends.purpose);
+      for (const row of rows) {
+        if (purposes.includes(row.purpose)) counted[row.purpose as LinkPurpose] = row.sent;
+      }
+      return counted;
+    },
+
+    async accountsNamed(named) {
+      const ids = named.accountIds ?? [];
+      const merchantIds = named.merchantIds ?? [];
+      if (ids.length === 0 && merchantIds.length === 0) return [];
+      if (parts.pool === undefined) {
+        return (memoryRows.dashboard_accounts ?? [])
+          .filter(
+            (row) =>
+              ids.includes(String(row.id)) ||
+              (typeof row.merchantId === "string" && merchantIds.includes(row.merchantId)),
+          )
+          .map((row) => ({
+            id: String(row.id),
+            email: String(row.email),
+            merchantId: typeof row.merchantId === "string" ? row.merchantId : null,
+          }));
+      }
+      const either = [
+        ...(ids.length === 0 ? [] : [inArray(accounts.id, [...ids])]),
+        ...(merchantIds.length === 0 ? [] : [inArray(accounts.merchantId, [...merchantIds])]),
+      ];
+      return await drizzle(parts.pool)
+        .select({ id: accounts.id, email: accounts.email, merchantId: accounts.merchantId })
+        .from(accounts)
+        .where(or(...either));
+    },
+
+    async adReportsSince(since) {
+      const counted = { delivered: 0, refused: 0, givenUp: 0, waiting: 0 };
+      const settledAs: Readonly<Record<string, keyof typeof counted>> = {
+        delivered: "delivered",
+        refused: "refused",
+        given_up: "givenUp",
+      };
+      const tally = (state: string, settledAt: Date | null, many = 1) => {
+        if (state === "waiting" || state === "pending") counted.waiting += many;
+        const as = settledAs[state];
+        if (as !== undefined && settledAt !== null && settledAt.getTime() >= since.getTime()) {
+          counted[as] += many;
+        }
+      };
+      if (parts.pool === undefined) {
+        for (const row of memoryRows.dashboard_ad_reports ?? []) {
+          tally(String(row.state), row.settledAt == null ? null : new Date(row.settledAt as Date));
+        }
+        return counted;
+      }
+      const rows = await drizzle(parts.pool)
+        .select({
+          state: adReports.state,
+          settled: sql<number>`(count(*) filter (where ${adReports.settledAt} >= ${since}))::int`,
+          all: sql<number>`count(*)::int`,
+        })
+        .from(adReports)
+        .groupBy(adReports.state);
+      for (const row of rows) {
+        if (row.state === "waiting" || row.state === "pending") tally(row.state, null, row.all);
+        else tally(row.state, since, row.settled);
+      }
+      return counted;
     },
   };
 }
@@ -1914,8 +1987,6 @@ function goesWithTheDeletion(
  * What a link is for, each counted apart: a sign-in from the public form, a
  * scanner's report, or an operator's fresh sign-in asked from the workspace.
  */
-type LinkPurpose = "dashboard" | "report" | "step-up";
-
 /** Forgetting an account clears its address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");

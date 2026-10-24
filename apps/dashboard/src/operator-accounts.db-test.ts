@@ -192,9 +192,6 @@ if (databaseUrl === null) {
       const mine = listing.listed.find((one) => one.id === boss.id);
       expect(mine?.openSessions).toBe(1);
       expect(mine?.newestSession).toBeInstanceOf(Date);
-      expect(await identity.emailsOf([boss.id, "acc_gone"])).toStrictEqual(
-        new Map([[boss.id, OPERATOR]]),
-      );
     });
 
     it("ends every session of an account with its row, and keeps them where the row fails", async () => {
