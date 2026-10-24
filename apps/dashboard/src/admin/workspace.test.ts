@@ -312,3 +312,56 @@ describe("a press made with a sign-in older than fifteen minutes", () => {
     expect(await stateOf(workspace)).toBe(before);
   });
 });
+
+/** What each link on a page into the workspace says, in the order the page draws them. */
+const doorsIn = (html: string): string[] =>
+  [...html.matchAll(/<a\b[^>]*\bhref="\/dashboard\/admin"[^>]*>([\s\S]*?)<\/a>/g)].map(
+    ([, words]) => readable(words ?? ""),
+  );
+
+describe("the door into the workspace from the merchant's dashboard", () => {
+  it("stands beside the address in an operator's header, saying Admin, and nowhere for an account the flag does not confirm", async () => {
+    const workspace = await serve();
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const merchant = await workspace.signedIn(MERCHANT);
+
+    for (const path of ["/cards", "/orders", "/settings"]) {
+      const doors = doorsIn((await operator.get(path)).html);
+      expect(doors.length, path).toBeGreaterThan(0);
+      expect(new Set(doors), path).toStrictEqual(new Set(["Admin"]));
+      expect(doorsIn((await merchant.get(path)).html), path).toStrictEqual([]);
+    }
+  });
+
+  it("is gone from the next request once the flag is taken away", async () => {
+    const { signedIn, rows } = await serve();
+    const operator = await signedIn(OPERATOR, { operator: true });
+    expect(doorsIn((await operator.get("/cards")).html)).not.toStrictEqual([]);
+
+    flagRow(rows, OPERATOR, false);
+
+    expect(doorsIn((await operator.get("/cards")).html)).toStrictEqual([]);
+  });
+
+  it("is not drawn on a page drawn where the flag could not be read", async () => {
+    // The gate's own read goes on working; only the workspace's read fails, so
+    // its page is drawn with nothing any loader read.
+    const { signedIn } = await serve({
+      identity: (real) =>
+        ({
+          ...real,
+          whoIs: async (cookie: string | undefined, reading?: { renew?: boolean }) => {
+            if (reading?.renew === false) throw new Error("the identity is gone");
+            return await real.whoIs(cookie, reading);
+          },
+        }) as Identity,
+    });
+    const operator = await signedIn(OPERATOR, { operator: true });
+
+    const refused = await operator.get("/admin/merchants");
+
+    expect(refused.status).toBe(404);
+    expect(readable(refused.html)).toContain(OPERATOR);
+    expect(doorsIn(refused.html)).toStrictEqual([]);
+  });
+});
