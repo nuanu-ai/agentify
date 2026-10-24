@@ -362,6 +362,26 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
   ),
   account(
     {
+      id: "dashboard-admin-account-history-names-unread",
+      when: "An operator opens an account while the addresses of the accounts in its history cannot be read.",
+      cause:
+        "The journal was read but the identity did not answer for the accounts it names, so each is named by its identifier rather than as deleted.",
+    },
+    {
+      ...SELLER_PAGE,
+      history: {
+        lines: LINES.filter((one) => one.subject.id === SELLER).map((one) => ({
+          ...one,
+          addressesRead: false,
+          actor: one.actor.kind === "account" ? { ...one.actor, email: null } : one.actor,
+          subject: one.subject.kind === "account" ? { ...one.subject, label: null } : one.subject,
+        })),
+        total: 1,
+      },
+    },
+  ),
+  account(
+    {
       id: "dashboard-admin-account-absent",
       when: "An operator opens an account identifier no account on the channel holds.",
       cause: "The account was forgotten or erased, or the identifier was mistyped.",
