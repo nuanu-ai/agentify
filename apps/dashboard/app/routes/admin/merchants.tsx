@@ -1,13 +1,13 @@
 /**
- * The workspace's merchants page, owned by the merchants area, which
- * replaces the placeholder with its screen. The layout above confirmed the
- * operator before this runs.
+ * The workspace's Merchants list: searched, narrowed to a segment and cut,
+ * waiting for admission first. The layout above confirmed the operator before
+ * this runs.
  */
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
-import { Placeholder } from "../../components/admin/placeholder.js";
 import { AdminFrame } from "../../components/admin-frame.js";
+import { MerchantsScreen } from "../../screens/admin/merchants.js";
 import { workspaceIn } from "../../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -20,7 +20,7 @@ export default function Merchants() {
   const view = useLoaderData<typeof loader>();
   return (
     <AdminFrame section="merchants" title="Merchants">
-      <Placeholder view={view} />
+      <MerchantsScreen view={view} />
     </AdminFrame>
   );
 }

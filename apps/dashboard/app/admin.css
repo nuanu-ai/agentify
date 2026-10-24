@@ -317,6 +317,15 @@
   }
 }
 
+/* The workspace's lists have more segments, with longer names, than a
+   merchant's; on a phone their row wraps rather than running off the page. */
+@media (max-width: 560px) {
+  .segments {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
 /* --- setup pips ---------------------------------------------------------- */
 
 /* The four checks publication runs, as four dots in their order: seller

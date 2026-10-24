@@ -22,6 +22,7 @@ export function ActionForm({
   button,
   consequence,
   reason = false,
+  reasonWords = { label: "Reason", hint: REASON_IS_KEPT },
   fields = {},
   answer = null,
   secondary = false,
@@ -36,6 +37,8 @@ export function ActionForm({
   consequence: string;
   /** Every intervention asks for one; an admission does not. */
   reason?: boolean;
+  /** What the reason box is called and the sentence under it, where somebody besides the operators reads it. */
+  reasonWords?: Readonly<{ label: string; hint: string }>;
   /** What else the form carries, such as the record it acts on. */
   fields?: Readonly<Record<string, string>>;
   /** How this form's last press was answered, or null where it was not pressed. */
@@ -61,11 +64,11 @@ export function ActionForm({
           ))}
           {reason ? (
             <Field
-              label="Reason"
+              label={reasonWords.label}
               name={REASON_FIELD}
               rows={3}
               required
-              hint={REASON_IS_KEPT}
+              hint={reasonWords.hint}
               autoComplete="off"
             />
           ) : null}

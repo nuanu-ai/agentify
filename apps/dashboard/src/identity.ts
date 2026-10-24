@@ -40,6 +40,7 @@ import type { JournalTransaction } from "./admin/journal.js";
 import { operatorFlagMessage } from "./admin/operator-mail.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  ACCOUNTS_FOUND_MAX,
   type AttachMerchantResult,
   adminDestinationIn,
   type DashboardDestination,
@@ -1807,6 +1808,29 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       if (found === null) return null;
       const person = personFrom(found.user);
       return { id: person.id, email: person.email, merchantId: person.merchant?.id ?? null };
+    },
+
+    async accountsWithEmailContaining(text) {
+      const wanted = text.trim().toLowerCase();
+      if (wanted === "") return { accounts: [], cut: false };
+      const { adapter } = await contextOf();
+      const rows = await adapter.findMany<{ id: string; email: string; merchantId?: unknown }>({
+        model: "user",
+        where: [{ field: "email", operator: "contains", value: wanted }],
+        limit: ACCOUNTS_FOUND_MAX,
+      });
+      // The adapter's own match reads `%` and `_` as wildcards, so what it
+      // finds is held to the text exactly; where it found as many as it reads,
+      // an account matching exactly may be among those it did not read.
+      const accounts = rows
+        .filter((row) => row.email.toLowerCase().includes(wanted))
+        .map((row) => ({
+          id: row.id,
+          email: row.email,
+          merchantId:
+            typeof row.merchantId === "string" && row.merchantId !== "" ? row.merchantId : null,
+        }));
+      return { accounts, cut: rows.length >= ACCOUNTS_FOUND_MAX };
     },
   };
 }

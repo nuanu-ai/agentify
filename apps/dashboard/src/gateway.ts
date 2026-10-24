@@ -218,6 +218,11 @@ export interface GatewayClient {
       readonly outOfTouch: { readonly since: number | null } | null;
       /** Whether as many purchases wait for payment as the door allows, so the next is refused. */
       readonly busy: boolean;
+      /**
+       * On the live channel while an operator's withdrawal of the merchant's
+       * admission stands: when, and the note the operator wrote for them.
+       */
+      readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
     }>
   >;
   /**

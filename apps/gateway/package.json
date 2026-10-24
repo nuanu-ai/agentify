@@ -18,7 +18,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "merchant": "tsx src/merchant.ts",
     "facilitator-key": "tsx src/facilitator-key.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",

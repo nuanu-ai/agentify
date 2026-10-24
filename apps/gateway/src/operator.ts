@@ -63,6 +63,23 @@ export type {
 } from "./ports/operator/index.js";
 export { paymentUnknown } from "./ports/operator/index.js";
 export { type Lookup, lookupOf } from "./ports/operator/lookup.js";
+export {
+  askedOn,
+  MERCHANT_LIST_MAX,
+  MERCHANT_PAGE_CUT,
+  MERCHANT_SEGMENTS,
+  type MerchantCard,
+  type MerchantKey,
+  type MerchantList,
+  type MerchantListQuery,
+  type MerchantRecord,
+  type MerchantRow,
+  type MerchantSegment,
+  type MerchantWallet,
+  type OrderWorthALook,
+  SELLING_DAYS,
+  type SellingDay,
+} from "./ports/operator/merchants.js";
 export type { Dollars, Tally } from "./ports/operator/money.js";
 export { dollarsOf, microsOf } from "./ports/operator/money.js";
 export type {

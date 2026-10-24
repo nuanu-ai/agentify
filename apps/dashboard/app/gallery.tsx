@@ -53,7 +53,6 @@ import {
 } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
-import type { LiveSalesView } from "../src/live-sales.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -84,7 +83,6 @@ import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
-  momentView,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -3173,114 +3171,6 @@ const PROBLEMS: GalleryState[] = [
   ),
 ];
 
-const ADMIN_PATH = "/admin/live-sales";
-
-/** The approval screen as the server draws it, opened or answering a press. */
-const liveSales = (told: Told, view: LiveSalesView, answering = false): GalleryState =>
-  at(told, {
-    path: ADMIN_PATH,
-    mode: view.live ? "live" : "test",
-    ...(answering
-      ? {
-          loaded: { "routes/admin-live-sales": null },
-          pressed: { "routes/admin-live-sales": view },
-        }
-      : { loaded: { "routes/admin-live-sales": view } }),
-  });
-
-const SELLER = {
-  email: WHO,
-  id: MERCHANT,
-  name: "Freeland",
-  site: "https://freeland.example",
-  integration: "api",
-  approvedAt: null,
-} as const;
-
-const LIVE_SALES: GalleryState[] = [
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales",
-      screen: "Live sales approval",
-      when: "An administrator opens the live sales screen from Admin.",
-      cause: "Their current session has the administrative flag; no seller has been selected.",
-    },
-    { live: true, email: "", merchant: null, message: null },
-  ),
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales-confirm",
-      screen: "Live sales approval",
-      when: "An administrator has found the merchant to approve.",
-      cause:
-        "One account matches the email and names this existing merchant, which has not been admitted to live sales.",
-    },
-    { live: true, email: WHO, message: null, merchant: SELLER },
-    true,
-  ),
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales-approved",
-      screen: "Live sales approval",
-      when: "An administrator confirmed and approved the merchant.",
-      cause:
-        "The approval was recorded and read back, so the merchant shows as approved with its time, and no approval form remains.",
-    },
-    {
-      live: true,
-      email: WHO,
-      message: null,
-      merchant: {
-        ...SELLER,
-        approvedAt: momentView("2026-10-19T09:30:00Z"),
-      },
-    },
-    true,
-  ),
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales-no-account",
-      screen: "Live sales approval",
-      when: "An administrator searches for an email no account signs in with.",
-      cause:
-        "No account matches, so nothing is shown to approve and the refusal is said under the search.",
-    },
-    {
-      live: true,
-      email: "nobody@example.com",
-      merchant: null,
-      message: "No account matches that email. Check the address with the seller.",
-    },
-    true,
-  ),
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales-unknown",
-      screen: "Live sales approval",
-      when: "An administrator pressed Approve and the approval could not be read back.",
-      cause:
-        "Whether the approval was recorded is unknown, so the page says so, and that finding the merchant again shows the current status.",
-    },
-    {
-      live: true,
-      email: WHO,
-      merchant: SELLER,
-      message:
-        "The approval outcome is unknown. Find this merchant again to read the current status; repeating the approval is safe.",
-    },
-    true,
-  ),
-  liveSales(
-    {
-      id: "dashboard-admin-live-sales-test",
-      screen: "Live sales approval",
-      when: "An administrator opens the approval screen on the test site.",
-      cause: "Test sales need no approval, so the screen offers none and points to the live site.",
-    },
-    { live: false, email: "", merchant: null, message: null },
-  ),
-];
-
 /** The workspace's states, each drawn in the workspace's frame. */
 const ADMIN: GalleryState[] = ADMIN_STATES.map(
   ({ id, screen, when, cause, path, mode, frame, loaded, pressed, failed }) =>
@@ -3311,7 +3201,6 @@ export const gallery: GallerySurface = {
     ...WOO_RECOVERY,
     ...KEYS,
     ...SETTINGS,
-    ...LIVE_SALES,
     ...ADMIN,
     ...PROBLEMS,
   ],

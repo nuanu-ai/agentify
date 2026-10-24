@@ -276,7 +276,20 @@ export interface DashboardIdentity {
    * nobody signed in with it. For the operator's lookup alone.
    */
   accountWithEmail(email: string): Promise<NamedAccount | null>;
+  /**
+   * The accounts whose address contains this text, ignoring case; none for a
+   * blank text. The read looks at no more than `ACCOUNTS_FOUND_MAX` addresses,
+   * and `cut` says where it stopped there, so an account past them may be
+   * missing. For the operator's workspace alone, whose search finds a merchant
+   * by the address its owner pasted.
+   */
+  accountsWithEmailContaining(
+    text: string,
+  ): Promise<Readonly<{ accounts: readonly NamedAccount[]; cut: boolean }>>;
 }
+
+/** The most addresses one `accountsWithEmailContaining` read looks at. */
+export const ACCOUNTS_FOUND_MAX = 200;
 
 /** What a link is sent for, each counted against the channel's ceiling of its own. */
 export type LinkPurpose = "dashboard" | "report" | "step-up";

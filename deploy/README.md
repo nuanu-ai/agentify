@@ -974,24 +974,6 @@ merchant, and check sign-out and an intelligible return after cancellation.
 The email-link route must still work. These checks require the channel's
 Google client and real acceptance accounts; offline tests do not prove them.
 
-## Live sales approval in the admin screen
-
-Sign in on the live site with an account carrying the administrative flag
-below. Open `/admin`, follow **Manage live sales approval**, and find the seller
-by their account email. Check the displayed seller name and merchant ID, then
-confirm **Allow this merchant to sell for real money** and press **Approve live
-sales**. The account must already have a merchant. Approval creates none,
-changes no order and moves no money. The seller must still meet all other
-publication and selling requirements.
-
-Only live grants approval; a test or sandbox screen explains that none is
-needed there. A repeated grant preserves the original approval time. If the
-write's answer is lost, the result is unknown: find the merchant again to read
-the status, or repeat the same approval safely. The existing `pnpm approve
-<email>` terminal command grants the same permission. Neither route proves that
-a particular payment occurred. The screen does not withdraw an approval; the
-terminal command below does.
-
 ## Who opens the operator's workspace
 
 The operator's workspace at `/dashboard/admin`, and the scanner's page at
@@ -1044,44 +1026,38 @@ insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, 
 select now(), 'terminal', 'grant_operator', 'account', id, 'done' from granted;
 ```
 
-## Approving a merchant for live sales
+## Admitting a merchant to live sales
 
-A merchant publishes on PRODUCTION only once the operator has approved them,
-once, and that is an application command rather than a release. From an
-operator's checkout:
+A merchant sells on PRODUCTION only once an operator has admitted them, and
+that is an action in the operator's workspace rather than a release or a
+command. Sign in on the live site with an account carrying the operator flag,
+open `/dashboard/admin/merchants` and open the merchant; the list puts first
+every merchant that has a seller name and a payout wallet and waits for
+admission. On the merchant's page, tick the box that names what follows and
+press **Admit to live sales**. Every action in the workspace asks for a
+sign-in made in the last fifteen minutes, by the same email link or Google
+account; the step that asks for one returns the browser to the merchant's
+page, where the operator presses again. Admission publishes nothing and
+supplies no missing seller name or payout wallet, and TEST never needs it. A
+repeated admission keeps the first time. Where the answer is lost, the page
+says the outcome is unknown; reading the merchant again shows it, and pressing
+again is safe.
 
-```sh
-pnpm approve <email>
-```
-
-It reaches PRODUCTION over SSH through the `agentify` alias, resolves the
-merchant of that address's dashboard account inside the running application
-and records the approval; it says so when the approval already exists or the
-account is unknown. Approval publishes nothing and supplies no missing seller
-name or payout wallet, and TEST never needs it. When SSH does not complete,
-the outcome is unknown, and running the same command again shows it.
-
-The approval is withdrawn the same way:
-
-```sh
-pnpm approve --withdraw <email>
-```
-
-It finds the merchant by the same address and clears the approval, and says
-whether there was one to clear; running it again changes nothing and says so in
-the same words each time. From then on the merchant stands as one the operator
-never approved: a new live purchase from them is refused before any payment is
+The admission is withdrawn on the same page with **Withdraw admission**, which
+asks for a note. The merchant reads that note on their own dashboard while the
+withdrawal stands, beside the moment it was made, so it says what they can do
+about it and names no buyer. From then on the merchant stands as one never
+admitted: a new live purchase from them is refused before any payment is
 asked for, their cards leave the live catalogue, and publishing lists
 `no_operator_approval`. It is a pause rather than a cancellation, and stops
 what is new exactly where pausing all selling does: orders already opened keep
 their fulfilment, the merchant still delivers them, and nothing is refunded or
 closed. An order already priced can still be paid within what remains of its
 price window: at most thirty seconds, or thirty-five for a card that asks the
-merchant for its price. `pnpm approve <email>` admits the merchant again, with
-a new approval time, and their cards sell again without being republished. An
-unknown address is refused with words and nothing is written. The command
-reaches only a revision deployed with it; an older one refuses it for want of
-the script and changes nothing.
+merchant for its price. Admitting them again on the same page lets their
+cards sell again without being republished. Every admission, withdrawal and
+refused press is a row of the operator's journal, which the merchant's page
+shows as its history.
 
 ## Starting an address over on TEST
 
