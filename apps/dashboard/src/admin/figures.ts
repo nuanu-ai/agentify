@@ -533,7 +533,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
   else if (unknown.count > 0) {
     const [only] = unknown.merchants;
     items.push({
-      badge: { tone: "fail", word: "Payment outcome unknown" },
+      badge: { tone: "unknown", word: "Payment outcome unknown" },
       title: `${plural(unknown.count, "payment")} with an unknown outcome`,
       href: UNKNOWN_ORDERS,
       aside:

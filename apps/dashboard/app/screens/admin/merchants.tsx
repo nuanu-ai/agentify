@@ -31,7 +31,7 @@ import {
 import { LOST_ANSWER } from "../../../src/admin/words.js";
 import { ActionForm } from "../../components/admin/action-form.js";
 import { StepUp } from "../../components/admin/step-up.js";
-import { CouldNotBeRead } from "../../components/admin/unknown.js";
+import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
 import { ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
@@ -560,7 +560,7 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
                 <ul className="op-mini">
                   {view.worth.rows.map((order) => (
                     <li key={order.id}>
-                      <Word word={order.state} />
+                      <OrderState word={order.state} />
                       <Link to={order.href}>{order.title}</Link>
                       <span className="fig">{order.price}</span>
                       <span className="when">

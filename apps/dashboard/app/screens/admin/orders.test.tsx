@@ -10,7 +10,14 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
-import { aPage, closedOrder, READ_AT } from "../../../src/admin/orders-fixtures.js";
+import {
+  aPage,
+  aRow,
+  closedOrder,
+  counts,
+  READ_AT,
+  unknownOrder,
+} from "../../../src/admin/orders-fixtures.js";
 import {
   findView,
   orderPageView,
@@ -66,6 +73,26 @@ describe("the orders screens", () => {
     expect(readable(html)).toContain("time not recorded");
     expect(html).toContain(`<span class="ident-all">${closedOrder().id}</span>`);
     expect(html).not.toContain("<button");
+  });
+
+  it("draw an unknown payment outcome dashed, as every unknown, never in a failure's colour", () => {
+    const unknown = unknownOrder();
+    const list = ordersListView(
+      ordersAskedIn(new URLSearchParams()),
+      aPage({
+        counts: counts({ payment_unknown: 1 }),
+        rows: [aRow(unknown.id, { status: "payment_unresolved", payment: "unresolved" })],
+      }),
+      READ_AT,
+    );
+    const page = orderPageView(unknown.id, unknown, NO_EXPLORER, READ_AT);
+    const listed = drawn(() => <OrdersScreen view={list} />);
+    const head = drawn(() => <OrderScreen view={page} />).split('class="op-voices"')[0] ?? "";
+
+    for (const html of [listed, head]) {
+      expect(html).toContain('<span class="badge badge-unknown">Payment outcome unknown</span>');
+      expect(html).not.toMatch(/badge-fail[^>]*>Payment outcome unknown/);
+    }
   });
 
   it("draw a lookup that found nothing with the text kept in its box", () => {
