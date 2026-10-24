@@ -83,8 +83,13 @@ if (databaseUrl === null) {
       await expect(
         read(async (tx) => await tx.execute(sql`delete from merchants`)),
       ).rejects.toMatchObject({ cause: { code: "25006" } });
+      // Postgres lets a transaction's mode change until its first query; a
+      // read that asks for writing first must still not write.
       await expect(
-        read(async (tx) => await tx.execute(sql`set transaction read write`)),
+        read(async (tx) => {
+          await tx.execute(sql`set transaction read write`);
+          await tx.execute(sql`delete from merchants`);
+        }),
       ).rejects.toThrow();
 
       expect((await pool.query("select count(*)::int as n from merchants")).rows[0]?.n).toBe(1);

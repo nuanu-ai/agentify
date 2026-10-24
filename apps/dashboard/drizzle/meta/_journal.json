@@ -169,6 +169,13 @@
       "when": 1792740866448,
       "tag": "0023_rate_names_the_sign_in_not_the_address",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792765584625,
+      "tag": "0024_step_up_links",
+      "breakpoints": true
     }
   ]
 }

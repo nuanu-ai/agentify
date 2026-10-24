@@ -77,13 +77,12 @@ export async function setServiceName(
   serviceName: string | null,
   at: number,
   analytics?: AnalyticsOf<StoredMerchant>,
-  journal?: JournalPress,
 ): Promise<StoredMerchant | null> {
   if (serviceName !== null) {
     // Throws with the schema's own words, which name the rule and the number.
     ServiceNameSchema.parse(serviceName);
   }
-  return store.setServiceName(merchantId, serviceName, at, analytics, journal);
+  return store.setServiceName(merchantId, serviceName, at, analytics);
 }
 
 /**

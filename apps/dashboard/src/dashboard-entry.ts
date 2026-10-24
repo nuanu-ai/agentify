@@ -33,10 +33,35 @@ export const DASHBOARD_DESTINATIONS = [
   "woocommerce",
 ] as const;
 
-export type DashboardDestination = (typeof DASHBOARD_DESTINATIONS)[number];
+/** A section of the merchant's dashboard a sign-in can return to. */
+export type SectionDestination = (typeof DASHBOARD_DESTINATIONS)[number];
+
+/**
+ * A page of the operator's workspace a sign-in returns to, its path under the
+ * dashboard's prefix: a section, or one record by its identifier.
+ */
+export type AdminDestination = `admin${string}`;
+
+export type DashboardDestination = SectionDestination | AdminDestination;
+
+/**
+ * One closed shape per page of the workspace, a record's identifier held to
+ * the shape the product gives one; the lookup is none, since what it was asked
+ * does not travel.
+ */
+const ADMIN_PAGES =
+  /^admin(?:\/(?:money|health|journal|(?:merchants|orders|accounts)(?:\/[A-Za-z0-9_-]{1,64})?))?$/;
+
+/** The workspace's page a value names, or null for anything else. */
+export const adminDestinationIn = (value: unknown): AdminDestination | null =>
+  typeof value === "string" && ADMIN_PAGES.test(value) ? (value as AdminDestination) : null;
+
+/** The destination a value names exactly, or null where it names none. */
+export const destinationNamed = (value: unknown): DashboardDestination | null =>
+  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? adminDestinationIn(value);
 
 export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
-  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? "default";
+  destinationNamed(value) ?? "default";
 
 /** A closed set, recorded with the token when the link is asked for. */
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
@@ -162,6 +187,14 @@ export interface DashboardIdentity {
     destination: DashboardDestination,
     asker: LinkAsker,
   ): Promise<LinkRequestResult>;
+  /**
+   * A link an operator asks for from their own session to confirm an
+   * administrative action: the mail says so, and the link signs in the browser
+   * it is opened in and returns it to `destination`. It is counted apart from
+   * the public form's links, so typing an operator's address there spends none
+   * of these; the address's own minute and hour still hold.
+   */
+  requestStepUpLink(email: string, destination: AdminDestination): Promise<LinkRequestResult>;
   /**
    * Read without spending the link; null for a link that no longer opens
    * anything.

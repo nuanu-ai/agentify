@@ -33,9 +33,12 @@ export function readOnlyOn(
   return async (read) =>
     await db.transaction(
       async (tx) => {
-        // `local`: the bound ends with the transaction and never stays on the
-        // pooled connection for whoever borrows it next.
-        await tx.execute(sql.raw(`set local statement_timeout = ${statementMs}`));
+        // Local to the transaction (the `true`), so the bound never stays on
+        // the pooled connection for whoever borrows it next. Set by a query
+        // rather than a SET command on purpose: Postgres lets a transaction's
+        // mode change until its first query, so a read that began with
+        // `set transaction read write` would otherwise be writable.
+        await tx.execute(sql`select set_config('statement_timeout', ${String(statementMs)}, true)`);
         return await read(tx);
       },
       { accessMode: "read only" },

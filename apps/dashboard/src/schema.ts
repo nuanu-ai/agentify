@@ -182,7 +182,10 @@ export const linkSends = pgTable(
     index("dashboard_link_sends_client_idx").on(table.clientHash, table.purpose, table.sentAt),
     index("dashboard_link_sends_channel_idx").on(table.purpose, table.sentAt),
     index("dashboard_link_sends_expires_idx").on(table.expiresAt),
-    check("dashboard_link_sends_purpose", sql`${table.purpose} in ('dashboard', 'report')`),
+    check(
+      "dashboard_link_sends_purpose",
+      sql`${table.purpose} in ('dashboard', 'report', 'step-up')`,
+    ),
   ],
 );
 

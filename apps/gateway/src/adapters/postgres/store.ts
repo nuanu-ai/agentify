@@ -73,7 +73,7 @@ import {
 import type { PayoutSplit } from "../../split/parameters.js";
 import { failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
-import { journalAlong, readJournal } from "./journal.js";
+import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
   cards,
   merchantContact,
@@ -311,9 +311,8 @@ export class PostgresStore implements Store {
     serviceName: string | null,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
-    journal?: JournalPress,
   ): Promise<StoredMerchant | null> {
-    return this.#setListing(id, { serviceName }, at, analytics, journal);
+    return this.#setListing(id, { serviceName }, at, analytics);
   }
 
   async setSellerSite(
@@ -335,7 +334,6 @@ export class PostgresStore implements Store {
     listing: { readonly serviceName: string | null } | { readonly sellerSite: string },
     at: number,
     analytics: AnalyticsOf<StoredMerchant> | undefined,
-    journal?: JournalPress,
   ): Promise<StoredMerchant | null> {
     return await this.#db.transaction(async (tx) => {
       const [before] = await tx
@@ -359,7 +357,6 @@ export class PostgresStore implements Store {
           ? before.serviceName !== listing.serviceName
           : before.sellerSite !== listing.sellerSite;
       if (changed) await recordWith(tx, analytics, merchant, new Date(at));
-      await journalWith(tx, journal, changed);
       return merchant;
     });
   }
@@ -680,6 +677,10 @@ export class PostgresStore implements Store {
 
   async journal(query: JournalQuery): Promise<JournalPage> {
     return await readJournal(this.#db, query);
+  }
+
+  async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
+    return await readStandingWithdrawal(this.#db, merchantId);
   }
 
   // --- the catalog ----------------------------------------------------------

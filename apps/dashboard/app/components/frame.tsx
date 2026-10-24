@@ -19,7 +19,7 @@ import {
 } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
-import type { DashboardDestination } from "../../src/dashboard-entry.js";
+import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
 import { AccountBanner } from "./account-banner.js";
@@ -30,7 +30,7 @@ import { SurfaceNote } from "./surface-note.js";
  * Each section is also a destination the sign-in returns to, so a section
  * cannot be added that the sign-in forgets.
  */
-export type Tab = "cards" | Exclude<DashboardDestination, "default" | "woocommerce">;
+export type Tab = "cards" | Exclude<SectionDestination, "default" | "woocommerce">;
 
 const TABS: readonly (readonly [Tab, string])[] = [
   ["cards", "Cards"],
