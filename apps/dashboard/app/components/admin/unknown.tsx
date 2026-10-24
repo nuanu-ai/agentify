@@ -6,13 +6,9 @@
  * to opposite conclusions.
  */
 
-import { COULD_NOT_BE_READ, NOT_MEASURED } from "../../../src/admin/words.js";
+import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { ORDER_WORDS, type Word as WordView } from "../../../src/words.js";
 import { Word } from "../word.js";
-
-export function NotMeasured() {
-  return <span className="badge badge-unknown">{NOT_MEASURED}</span>;
-}
 
 export function CouldNotBeRead() {
   return <span className="badge badge-unknown">{COULD_NOT_BE_READ}</span>;

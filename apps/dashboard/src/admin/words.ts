@@ -10,9 +10,6 @@ export const LOST_ANSWER =
 /** A figure the application failed to read, never drawn as a zero. */
 export const COULD_NOT_BE_READ = "Could not be read";
 
-/** A part of the system the application cannot see, never drawn as healthy. */
-export const NOT_MEASURED = "Not measured";
-
 /** Under every box that asks for a reason. */
 export const REASON_IS_KEPT =
   "Kept in the journal and shown to every operator. Do not name a buyer or paste their details.";
