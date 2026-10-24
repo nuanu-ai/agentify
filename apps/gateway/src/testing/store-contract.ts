@@ -2590,6 +2590,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.journal({ limit: 0 })).rows).toHaveLength(1);
         expect((await store.journal({ limit: 10_000 })).rows).toHaveLength(1);
+        // A limit read from a malformed address is no number at all.
+        for (const limit of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+          expect((await store.journal({ limit })).rows, String(limit)).toHaveLength(1);
+        }
       });
     });
   });

@@ -164,9 +164,14 @@ export interface JournalPage {
 /** The most rows one read hands back, whatever it asked for. */
 export const JOURNAL_PAGE_MAX = 200;
 
-/** A query's limit, held between one and the page's most. */
+/**
+ * A query's limit, held between one and the page's most; one that is no number,
+ * as a malformed address gives, reads as the page's most.
+ */
 export const journalLimitOf = (query: JournalQuery): number =>
-  Math.max(1, Math.min(JOURNAL_PAGE_MAX, Math.floor(query.limit)));
+  Number.isNaN(query.limit)
+    ? JOURNAL_PAGE_MAX
+    : Math.max(1, Math.min(JOURNAL_PAGE_MAX, Math.floor(query.limit)));
 
 /** Whether a row answers a query's filters, as the SQL's predicate does. */
 export const answersQuery = (row: JournalEntry, query: JournalQuery): boolean => {
