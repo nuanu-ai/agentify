@@ -6,7 +6,7 @@
  * brought back.
  */
 
-import type { SurfaceMode } from "@agentify/core";
+import { type Order, outcomeFor, type SurfaceMode } from "@agentify/core";
 import type { Card, MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import { type SQL, sql } from "drizzle-orm";
 import {
@@ -264,7 +264,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
         or orders.state in (select jsonb_array_elements_text(${JSON.stringify(WORTH_A_LOOK_STATES)}::jsonb)))`;
       const worth = await rowsOf(
         tx,
-        sql`select orders.id, orders.state, orders.record -> 'order' ->> 'payment' as payment,
+        sql`select orders.id, orders.record -> 'order' as machine,
             coalesce(nullif(orders.record -> 'order' -> 'price', 'null'::jsonb),
               orders.record -> 'order' -> 'cardPrice') as price,
             ${ms("orders.created_at")} as created_at, orders.item_id, c.card ->> 'title' as title
@@ -333,8 +333,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
             const price = row.price as { amount: string; currency: string };
             return {
               id: String(row.id),
-              state: row.state as MerchantRecord["worthALook"]["rows"][number]["state"],
-              payment: row.payment as MerchantRecord["worthALook"]["rows"][number]["payment"],
+              status: outcomeFor(row.machine as Order),
               price: { amount: price.amount, currency: price.currency },
               createdAt: instantOf(row.created_at),
               itemId: String(row.item_id),

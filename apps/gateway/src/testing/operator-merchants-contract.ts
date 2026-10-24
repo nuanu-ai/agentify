@@ -550,8 +550,7 @@ export function describeOperatorMerchants(
         ]);
         expect(look?.rows[0]).toStrictEqual({
           id: "ord_unknown",
-          state: "paid",
-          payment: "outcome_unknown",
+          status: "payment_unresolved",
           price: { amount: "5.00", currency: "USD" },
           createdAt: AT - 1_000,
           itemId,
@@ -559,6 +558,10 @@ export function describeOperatorMerchants(
         });
         expect(look?.rows[1]?.price).toStrictEqual({ amount: "8.00", currency: "USD" });
         expect(look?.rows[1]?.title).toBeNull();
+        expect(look?.rows.map((one) => one.status).slice(2)).toStrictEqual([
+          "unfulfilled",
+          "delivered_unpaid",
+        ]);
       });
 
       it("cuts the orders worth a look and says how many there are", async () => {

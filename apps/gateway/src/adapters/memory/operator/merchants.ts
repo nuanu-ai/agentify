@@ -1,6 +1,6 @@
 /** The merchants area's reads across merchants, in memory, over the store's holdings. */
 
-import { readinessOf, type SurfaceMode } from "@agentify/core";
+import { outcomeFor, readinessOf, type SurfaceMode } from "@agentify/core";
 import { payoutWalletAt } from "../../../app/runtime.js";
 import {
   dayOf,
@@ -189,8 +189,7 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
       const price = record.order.price ?? record.order.cardPrice;
       return {
         id: record.order.id,
-        state: record.order.state,
-        payment: record.order.payment,
+        status: outcomeFor(record.order),
         price: { amount: price.amount, currency: price.currency },
         createdAt: record.order.timestamps.createdAt,
         itemId: record.itemId,

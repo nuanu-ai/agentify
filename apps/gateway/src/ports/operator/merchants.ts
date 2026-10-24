@@ -12,8 +12,8 @@
 
 import {
   type MerchantSelling,
-  type Order,
   type OrderState,
+  type outcomeFor,
   readinessOf,
   type SurfaceMode,
 } from "@agentify/core";
@@ -179,8 +179,8 @@ export interface MerchantCard {
 /** An order the page names because it may need explaining. */
 export interface OrderWorthALook {
   readonly id: string;
-  readonly state: OrderState;
-  readonly payment: Order["payment"];
+  /** Where the order stands as its agent reads it, the word the order's status carries on the wire. */
+  readonly status: ReturnType<typeof outcomeFor>;
   /** The price the order is sold at, or the card's where none was named yet. */
   readonly price: Money;
   readonly createdAt: number;
