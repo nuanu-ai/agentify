@@ -35,13 +35,3 @@ export {
   type SellingDay,
   type SettledSales,
 } from "./ports/operator/merchants.js";
-export {
-  admitMerchant,
-  disableMerchantKey,
-  MERCHANT_ACTION_REFUSALS,
-  type MerchantActionOutcome,
-  type MerchantActionRefusal,
-  type OperatorIntervention,
-  type OperatorPress,
-  withdrawAdmission,
-} from "./ports/operator/merchants-actions.js";

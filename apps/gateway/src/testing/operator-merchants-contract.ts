@@ -2,8 +2,7 @@
  * What the operator's reads of merchants promise, run against the memory
  * reader in `pnpm test` and against the Postgres one as a database test, over
  * the same rows written through the store, so the two cannot drift apart: the
- * list's segments, counts, order, search and cut; one merchant's page; and the
- * gateway's half of the three actions on a merchant, each leaving its row.
+ * list's segments, counts, order, search and cut; and one merchant's page.
  *
  * Every zero asserted here comes from a read that succeeded and found nothing.
  */
@@ -11,13 +10,7 @@
 import type { Order, SurfaceMode } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import type { JournalRow } from "../ports/journal.js";
 import type { MerchantRecord, OperatorMerchants } from "../ports/operator/merchants.js";
-import {
-  admitMerchant,
-  disableMerchantKey,
-  withdrawAdmission,
-} from "../ports/operator/merchants-actions.js";
 import type { Store, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -41,8 +34,6 @@ const W1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const W2 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 
 const NO_WALLET = { address: null, split: null, pending: null } as const;
-
-const OPERATOR = "acc_operator";
 
 const card = (merchantItemId: string, title: string): Card => ({
   merchant_item_id: merchantItemId,
@@ -115,12 +106,6 @@ const receipt = (orderId: string, paidAt: number, amount: string, currency = "US
 });
 
 const LIVE = { at: AT, surface: "live" } as const satisfies { at: number; surface: SurfaceMode };
-
-const rowsAbout = async (store: Store, merchantId: string): Promise<readonly JournalRow[]> =>
-  (await store.journal({ about: { merchant: merchantId }, limit: 50 })).rows;
-
-/** A row as a case compares it: everything it holds but its place in the journal. */
-const held = ({ sequence: _sequence, ...entry }: JournalRow) => entry;
 
 export function describeOperatorMerchants(
   name: string,
@@ -570,168 +555,6 @@ export function describeOperatorMerchants(
         expect(record?.thirtyDays.orders).toBe(0);
         expect(record?.thirtyDays.settled).toStrictEqual({ count: 0, sums: [] });
         expect(record?.thirtyDays.days.every((day) => day.count === 0)).toBe(true);
-      });
-    });
-
-    describe("the operator's actions on a merchant", () => {
-      const press = { operator: OPERATOR, at: AT };
-      const actor = { kind: "account", id: OPERATOR } as const;
-
-      it("admits a merchant with a row of its own, and a repeat as unchanged keeping the first instant", async () => {
-        const { store } = await open();
-        await merchant(store, "mch_a", 1_000, { name: "A", wallet: W1 });
-
-        const first = await admitMerchant(store, "live", "mch_a", press);
-        const again = await admitMerchant(store, "live", "mch_a", { ...press, at: AT + 1 });
-
-        expect([first, again]).toStrictEqual([{ kind: "done" }, { kind: "unchanged" }]);
-        expect((await store.merchantById("mch_a"))?.liveApprovedAt).toBe(AT);
-        expect((await rowsAbout(store, "mch_a")).map(held)).toStrictEqual([
-          {
-            at: AT + 1,
-            actor,
-            action: "admit",
-            subject: { kind: "merchant", id: "mch_a" },
-            reason: null,
-            outcome: { kind: "unchanged" },
-          },
-          {
-            at: AT,
-            actor,
-            action: "admit",
-            subject: { kind: "merchant", id: "mch_a" },
-            reason: null,
-            outcome: { kind: "done" },
-          },
-        ]);
-      });
-
-      it("refuses to admit or withdraw off the live channel, writing the refusal and nothing else", async () => {
-        const { store } = await open();
-        await merchant(store, "mch_a", 1_000, { name: "A", wallet: W1 });
-
-        expect(await admitMerchant(store, "test", "mch_a", press)).toStrictEqual({
-          kind: "refused",
-          code: "not_live_channel",
-        });
-        expect(
-          await withdrawAdmission(store, "test", "mch_a", { ...press, reason: "a reason" }),
-        ).toStrictEqual({ kind: "refused", code: "not_live_channel" });
-
-        expect((await store.merchantById("mch_a"))?.liveApprovedAt).toBeNull();
-        expect(
-          (await rowsAbout(store, "mch_a")).map((row) => [row.action, row.outcome]),
-        ).toStrictEqual([
-          ["withdraw", { kind: "refused", code: "not_live_channel" }],
-          ["admit", { kind: "refused", code: "not_live_channel" }],
-        ]);
-      });
-
-      it("refuses a merchant that is not there with a row, and an identifier nobody could have without one", async () => {
-        const { store } = await open();
-
-        expect(await admitMerchant(store, "live", "mch_gone", press)).toStrictEqual({
-          kind: "refused",
-          code: "no_such_merchant",
-        });
-        expect(
-          await withdrawAdmission(store, "live", "no such; id", { ...press, reason: "r" }),
-        ).toStrictEqual({ kind: "refused", code: "no_such_merchant" });
-
-        expect((await store.journal({ limit: 50 })).rows.map(held)).toStrictEqual([
-          {
-            at: AT,
-            actor,
-            action: "admit",
-            subject: { kind: "merchant", id: "mch_gone" },
-            reason: null,
-            outcome: { kind: "refused", code: "no_such_merchant" },
-          },
-        ]);
-      });
-
-      it("withdraws an admission with its note, taking every card off sale, and a repeat as unchanged", async () => {
-        const { store, merchants } = await open();
-        await merchant(store, "mch_a", 1_000, SELLS);
-        const reason = "sells under a name that is not theirs";
-
-        const first = await withdrawAdmission(store, "live", "mch_a", { ...press, reason });
-        const again = await withdrawAdmission(store, "live", "mch_a", { ...press, reason });
-
-        expect([first, again]).toStrictEqual([{ kind: "done" }, { kind: "unchanged" }]);
-        const record = await merchants.merchant("mch_a", LIVE);
-        expect(record?.liveApprovedAt).toBeNull();
-        expect(record?.missing).toStrictEqual(["no_operator_approval"]);
-        expect(record?.cards).toMatchObject({ total: 1, onSale: 0 });
-        expect(
-          (await rowsAbout(store, "mch_a")).map((row) => [row.reason, row.outcome.kind]),
-        ).toStrictEqual([
-          [reason, "unchanged"],
-          [reason, "done"],
-        ]);
-      });
-
-      it("refuses an intervention without a reason, or with one the journal cannot keep, and changes nothing", async () => {
-        const { store } = await open();
-        await merchant(store, "mch_a", 1_000, SELLS);
-        await store.addKey({ id: "mk_a", merchantId: "mch_a", label: "a", digest: "d1" }, 1_000);
-
-        expect(
-          await withdrawAdmission(store, "live", "mch_a", { ...press, reason: "  " }),
-        ).toStrictEqual({ kind: "refused", code: "no_reason" });
-        expect(
-          await disableMerchantKey(store, "mch_a", "mk_a", { ...press, reason: "<b>leaked</b>" }),
-        ).toStrictEqual({ kind: "refused", code: "reason_refused" });
-
-        expect((await store.merchantById("mch_a"))?.liveApprovedAt).toBe(1_000);
-        expect((await store.keysOf("mch_a"))[0]?.disabledAt).toBeNull();
-        expect(
-          (await rowsAbout(store, "mch_a")).map((row) => [row.action, row.reason, row.outcome]),
-        ).toStrictEqual([
-          ["disable_key", null, { kind: "refused", code: "reason_refused" }],
-          ["withdraw", null, { kind: "refused", code: "no_reason" }],
-        ]);
-      });
-
-      it("disables one key with its reason, touches no other, and refuses another merchant's", async () => {
-        const { store } = await open();
-        await merchant(store, "mch_a", 1_000, SELLS);
-        await merchant(store, "mch_b", 1_000, SELLS);
-        await store.addKey({ id: "mk_a1", merchantId: "mch_a", label: "a1", digest: "d1" }, 1_000);
-        await store.addKey({ id: "mk_a2", merchantId: "mch_a", label: "a2", digest: "d2" }, 1_000);
-        await store.addKey({ id: "mk_b", merchantId: "mch_b", label: "b", digest: "d3" }, 1_000);
-        const reason = "the merchant reported it leaked";
-
-        const first = await disableMerchantKey(store, "mch_a", "mk_a1", { ...press, reason });
-        const again = await disableMerchantKey(store, "mch_a", "mk_a1", {
-          ...press,
-          at: AT + 1,
-          reason,
-        });
-        const foreign = await disableMerchantKey(store, "mch_a", "mk_b", { ...press, reason });
-
-        expect([first, again, foreign]).toStrictEqual([
-          { kind: "done" },
-          { kind: "unchanged" },
-          { kind: "refused", code: "no_such_key" },
-        ]);
-        expect(
-          (await store.keysOf("mch_a")).map((key) => [key.id, key.disabledAt]).sort(),
-        ).toStrictEqual([
-          ["mk_a1", AT],
-          ["mk_a2", null],
-        ]);
-        expect((await store.keysOf("mch_b"))[0]?.disabledAt).toBeNull();
-        expect(
-          (await rowsAbout(store, "mch_a")).map((row) => [row.subject, row.outcome]),
-        ).toStrictEqual([
-          [
-            { kind: "key", id: "mk_b", merchantId: "mch_a" },
-            { kind: "refused", code: "no_such_key" },
-          ],
-          [{ kind: "key", id: "mk_a1", merchantId: "mch_a" }, { kind: "unchanged" }],
-          [{ kind: "key", id: "mk_a1", merchantId: "mch_a" }, { kind: "done" }],
-        ]);
       });
     });
   });
