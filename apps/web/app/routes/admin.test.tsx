@@ -280,6 +280,16 @@ describe("the operator's dashboard, drawn", () => {
     // The last day is today, read part of the way through.
     expect(titles).toContain("13 Oct, until 08:00 UTC: 90 scans");
     for (const bar of bars) expect(bar.height, bar.title).toBeGreaterThan(0);
+    // A screen reader is read the same days in words, the picture being hidden from it.
+    expect(text(section(drawn, "trend-title"))).toContain(
+      "13 Oct, until 08:00 UTC: 24 landing views, 90 scans",
+    );
+  });
+
+  it("writes the figures the chart sums beside it", () => {
+    expect(text(section(drawn, "trend-title"))).toContain(
+      "94 landing views and 111 scans from 11 Oct to today; on 1 day scans outnumbered measured landing views",
+    );
   });
 
   it("states the scan limits the rate check enforces", () => {
@@ -346,8 +356,8 @@ describe("the operator's dashboard, drawn", () => {
         },
       },
     };
-    expect(text(section(draw(queueless), "worker-title"))).toContain(
-      "Not ready: its queue is not connected",
+    expect(text(section(draw(queueless), "worker-title"))).toMatch(
+      /Not ready\W+its queue is not connected/,
     );
   });
 
@@ -360,7 +370,7 @@ describe("the operator's dashboard, drawn", () => {
 
   it("counts the data access requests waiting for an answer, with the oldest", () => {
     expect(tile(drawn, "Data access requests")).toMatch(
-      /Data access requests 2 Oldest 30 Sep 2026/,
+      /Data access requests 2 Oldest 30 Sept? 2026/,
     );
     expect(
       tile(

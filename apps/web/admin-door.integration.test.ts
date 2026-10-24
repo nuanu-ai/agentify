@@ -36,7 +36,8 @@ if (!existsSync(fileURLToPath(new URL("./dist/server/index.js", import.meta.url)
 }
 
 const SESSION = "agentify.session_token";
-const HEADING = "Agentify operating dashboard";
+const HEADING = "Landing views and scans";
+const TITLE = "Scanner for the operator";
 const BANNER = 'aria-label="Privacy choices"';
 /** The cookie values the stand-in seller dashboard knows, and which of them are operators. */
 const people = new Set(["operator", "person"]);
@@ -187,7 +188,7 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
     for (const script of scripts) handed.push(await ask(script, visitor));
     for (const answer of handed) {
       expect(answer.body, label).not.toContain(HEADING);
-      expect(answer.body, label).not.toContain("Operator dashboard");
+      expect(answer.body, label).not.toContain(TITLE);
     }
   }
 }
