@@ -265,18 +265,28 @@ export interface MerchantView {
 }
 
 /** Who acted, as the history names them: the operator reading it, or another account by identifier. */
-const whoOf = (row: JournalRow, operatorId: string): string =>
-  row.actor.kind === "terminal"
-    ? "the terminal"
-    : row.actor.kind === "configuration"
-      ? "the configuration"
-      : row.actor.id === operatorId
-        ? "you"
-        : `account ${row.actor.id}`;
+/**
+ * Who acted, as the history names them: the operator reading it, another
+ * account by its address, an account that no longer resolves as a deleted
+ * one, or by its identifier where the accounts could not be read (`actors`
+ * null).
+ */
+const whoOf = (
+  row: JournalRow,
+  operatorId: string,
+  actors: ReadonlyMap<string, string> | null,
+): string => {
+  if (row.actor.kind === "terminal") return "the terminal";
+  if (row.actor.kind === "configuration") return "the configuration";
+  if (row.actor.id === operatorId) return "you";
+  if (actors === null) return `account ${row.actor.id}`;
+  return actors.get(row.actor.id) ?? "a deleted account";
+};
 
 const historyLineOf = (
   row: JournalRow,
   operatorId: string,
+  actors: ReadonlyMap<string, string> | null,
   keyLabels: ReadonlyMap<string, string>,
 ): HistoryLine => {
   const done = JOURNAL_DONE_WORDS[row.action] ?? row.action;
@@ -297,7 +307,7 @@ const historyLineOf = (
     what: row.reason === null ? what : `${what}: ${row.reason}`,
     from: row.actor.kind === "account" ? "Workspace" : "Terminal",
     when: at(row.at),
-    who: whoOf(row, operatorId),
+    who: whoOf(row, operatorId, actors),
   };
 };
 
@@ -392,6 +402,8 @@ export interface MerchantRead {
   readonly addressPage: string | null;
   /** The account the page is drawn for, whom the history calls "you". */
   readonly operatorId: string;
+  /** The addresses of the accounts the history names, by identifier, or null where they could not be read. */
+  readonly actors: ReadonlyMap<string, string> | null;
   readonly readAt: number;
   readonly record: MerchantRecord;
   /** The accounts' addresses, or null where they could not be read. */
@@ -414,6 +426,7 @@ export function merchantViewOf({
   mode,
   addressPage,
   operatorId,
+  actors,
   readAt,
   record,
   emails,
@@ -483,13 +496,13 @@ export function merchantViewOf({
             admittedBy:
               admittedRow === undefined || record.liveApprovedAt === null
                 ? null
-                : whoOf(admittedRow, operatorId),
+                : whoOf(admittedRow, operatorId, actors),
             withdrawn:
               withdrawal === null || withdrawal === "unread"
                 ? withdrawal
                 : {
                     at: at(withdrawal.at),
-                    by: whoOf(withdrawal, operatorId),
+                    by: whoOf(withdrawal, operatorId, actors),
                     note: withdrawal.reason,
                   },
             admit: answers.admit ?? null,
@@ -545,7 +558,7 @@ export function merchantViewOf({
       history === null
         ? null
         : {
-            rows: history.rows.map((row) => historyLineOf(row, operatorId, keyLabels)),
+            rows: history.rows.map((row) => historyLineOf(row, operatorId, actors, keyLabels)),
             cut:
               history.rows.length === history.total
                 ? null
@@ -622,6 +635,33 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     }
   };
 
+  /** The addresses of the accounts that acted in these rows, or null where they could not be read. */
+  const actorsOf = async (
+    operator: Operator,
+    history: MerchantRead["history"],
+    withdrawal: MerchantRead["withdrawal"],
+  ): Promise<ReadonlyMap<string, string> | null> => {
+    const rows = [
+      ...(history?.rows ?? []),
+      ...(typeof withdrawal === "object" && withdrawal !== null ? [withdrawal] : []),
+    ];
+    const accountIds = [
+      ...new Set(
+        rows.flatMap((row) =>
+          row.actor.kind === "account" && row.actor.id !== operator.person.id ? [row.actor.id] : [],
+        ),
+      ),
+    ];
+    if (accountIds.length === 0) return new Map();
+    try {
+      const named = await identity.accountsNamed({ accountIds });
+      return new Map(named.map((account) => [account.id, account.email]));
+    } catch {
+      console.error("[dashboard] the accounts that acted on a merchant could not be read");
+      return null;
+    }
+  };
+
   async function pageOf(
     operator: Operator,
     record: MerchantRecord,
@@ -659,6 +699,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       mode,
       addressPage: config.addressPage,
       operatorId: operator.person.id,
+      actors: await actorsOf(operator, history, withdrawal),
       readAt,
       record,
       emails: own === null ? null : own.map((account) => account.email),

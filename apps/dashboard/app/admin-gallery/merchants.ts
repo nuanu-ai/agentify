@@ -303,6 +303,7 @@ const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): Mer
   mode: "live",
   addressPage: "https://basescan.org/address/",
   operatorId: OPERATOR_ID,
+  actors: new Map([[ANOTHER_OPERATOR, "second.operator@agentify.example"]]),
   readAt: NOW,
   record,
   emails: ["owner@tours.example"],

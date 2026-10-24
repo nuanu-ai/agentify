@@ -162,6 +162,9 @@ describe("withdrawing and giving the admission", () => {
     expect([admitted.status, again.status]).toStrictEqual([200, 200]);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
     expect(text(again.html)).toContain("It was so already");
+    // Another operator reads who acted by their address.
+    const second = await served.signedIn("op2@agentify.example", { operator: true });
+    expect(text((await second.get(path)).html)).toContain(`· ${OPERATOR}`);
     expect(
       (await rowsAbout(served, merchant.id)).map((row) => [row.action, row.outcome.kind]),
     ).toStrictEqual([
