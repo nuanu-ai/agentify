@@ -300,11 +300,6 @@
   text-align: right;
 }
 
-.op-funnel li.drop .rate {
-  color: var(--partial);
-  font-weight: 600;
-}
-
 @media (max-width: 560px) {
   .op-funnel li {
     grid-template-columns: minmax(0, 1fr) 3rem 3rem;

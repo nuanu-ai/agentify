@@ -305,7 +305,7 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
             {view.funnel.kind === "read" ? (
               <ol className="op-funnel">
                 {view.funnel.value.steps.map((step) => (
-                  <li key={step.label} className={step.drop ? "drop" : undefined}>
+                  <li key={step.label}>
                     <span className="step">{step.label}</span>
                     <span className="track" aria-hidden="true">
                       <span className="fill" style={{ width: step.width }} />

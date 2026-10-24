@@ -181,7 +181,6 @@ export interface FunnelStepView {
   readonly width: string;
   /** Of the step before, empty for the first. */
   readonly rate: string;
-  readonly drop: boolean;
 }
 
 export interface NeedsYouItem {
@@ -488,7 +487,6 @@ export function funnelViewOf(funnel: Funnel): { lead: string; steps: readonly Fu
         merchants: step.merchants,
         width: first === 0 ? "0%" : `${Number(((step.merchants / first) * 100).toFixed(1))}%`,
         rate: before === undefined ? "" : percent(step.merchants, before),
-        drop: before !== undefined && before > 0 && step.merchants < before,
       };
     }),
   };
