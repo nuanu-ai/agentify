@@ -230,7 +230,9 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
               </p>
             </div>
             {view.worth.items.length === 0 ? (
-              <p className="op-sub">Nothing the automation has left unresolved.</p>
+              view.worth.unread.length === 0 ? (
+                <p className="op-sub">Nothing the automation has left unresolved.</p>
+              ) : null
             ) : (
               <div className="list-box op-cols-one">
                 <ul className="list" aria-label="Facts worth a look">
