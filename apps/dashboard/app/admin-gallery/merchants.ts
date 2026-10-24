@@ -36,6 +36,8 @@ const ANOTHER_OPERATOR = "acc_operator_two";
 
 const GIFT_CARDS = "mch_4c1da2e95b7f0c3816de42a90e5b71c3";
 const TOURS = "mch_91b0e7d4c25a8f6013e9b2d7c4a50f18";
+/** The working key Example Tours's CI uses. */
+const CI_KEY_ID = "mk_9f2c41d8e07b";
 const WOOL = "mch_2e7f4a91c0d8b35e6a14f9c2d07b8e55";
 const UNNAMED = "mch_7d03b8e1f4a92c6d5e0b13a8f7c29d40";
 
@@ -204,7 +206,7 @@ const ADMITTED: MerchantRecord = {
   keys: {
     rows: [
       {
-        id: "mk_9f2c41d8e07b",
+        id: CI_KEY_ID,
         label: "ci",
         createdAt: Date.UTC(2026, 8, 30),
         lastUsedAt: Date.UTC(2026, 9, 21),
@@ -646,7 +648,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
               3,
               NOW,
               "disable_key",
-              { kind: "key", id: "mk_9f2c41d8e07b", merchantId: TOURS },
+              { kind: "key", id: CI_KEY_ID, merchantId: TOURS },
               "the merchant reported the key leaked",
               { kind: "done" },
               { kind: "account", id: OPERATOR_ID },
@@ -655,10 +657,10 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
           ],
           35,
         ),
-        ...answered({ key: { id: "mk_9f2c41d8e07b", answer: { kind: "done" } } }),
+        ...answered({ key: { id: CI_KEY_ID, answer: { kind: "done" } } }),
       },
     ),
-    { key: "mk_9f2c41d8e07b" },
+    { key: CI_KEY_ID },
   ),
   pageState(
     {
