@@ -247,7 +247,7 @@ const iso = (at: number) => new Date(at).toISOString();
 
 const JOURNAL_LINES: readonly JournalLineView[] = [
   line(3, iso(AT - 3 * DAY), {
-    actor: { kind: "terminal" },
+    actor: { kind: "account", id: "acc_operator", email: "operator@example.com" },
     action: "disable_key",
     subject: { kind: "key", id: "mk_7c40e2b19d5a", merchantId: MERCHANT_B, label: "Example Tours" },
     reason: "The key was pasted into a public issue.",

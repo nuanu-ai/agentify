@@ -132,7 +132,7 @@ const LINES: readonly JournalLineView[] = [
     outcome: { kind: "done" },
   }),
   line(4, "2026-10-21T16:21:00Z", {
-    actor: { kind: "terminal" },
+    actor: { kind: "account", id: COLLEAGUE, email: "ops@example.com" },
     action: "disable_key",
     subject: { kind: "key", id: "mk_5f1c", merchantId: SELLER_MERCHANT, label: "Example Rooms" },
     reason: "The merchant reported the key shared outside their team",

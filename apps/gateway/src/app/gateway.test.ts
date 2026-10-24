@@ -2624,7 +2624,7 @@ describe("a poll on a key revoked before it was held", () => {
 });
 
 describe("a held poll whose key is revoked by another process", () => {
-  // The terminal command revokes a key by writing the store, so nothing in
+  // A key revoked from another process is written to the store, so nothing in
   // this process ends the polls already held on it. The harness's own revoke
   // writes the store the same way.
   const heldThenRevoked = async (harnessed: Harness) => {

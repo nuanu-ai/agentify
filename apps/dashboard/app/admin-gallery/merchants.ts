@@ -300,7 +300,6 @@ const HISTORY: readonly JournalRow[] = [
     { kind: "key", id: "mk_3b7e05a1c94d", merchantId: TOURS },
     "shared outside the team, by the merchant's own report",
     { kind: "done" },
-    { kind: "terminal" },
   ),
   row(1, Date.UTC(2026, 8, 14, 10, 2), "admit", { kind: "merchant", id: TOURS }, null, {
     kind: "done",
