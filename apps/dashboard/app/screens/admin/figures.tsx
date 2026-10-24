@@ -9,16 +9,16 @@
 
 import { Button } from "@agentify/ui";
 import { Link } from "react-router";
-import {
-  type Badge,
-  CHECK_FIELD,
-  type ChartView,
-  type HealthRowView,
-  type HealthView,
-  type MoneyView,
-  type OverviewView,
-  type Said,
-  type TileView,
+import { CHECK_FIELD } from "../../../src/admin/fields.js";
+import type {
+  Badge,
+  ChartView,
+  HealthRowView,
+  HealthView,
+  MoneyView,
+  OverviewView,
+  Said,
+  TileView,
 } from "../../../src/admin/figures.js";
 import { StepUp } from "../../components/admin/step-up.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";

@@ -10,3 +10,6 @@ export const CONFIRMED = "yes";
 
 /** The box the operator writes their reason in. */
 export const REASON_FIELD = "reason";
+
+/** The field a Check now press names its check in. */
+export const CHECK_FIELD = "check";
