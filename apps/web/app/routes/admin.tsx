@@ -1,6 +1,8 @@
 /**
- * The operator's dashboard: read-only numbers about the scanner, for a session
- * whose account carries the operator flag.
+ * The scanner's page for the operator: read-only numbers about the scanner,
+ * for a session whose account carries the operator flag. The rest of the
+ * operator's work is in the workspace the seller dashboard draws, which this
+ * page links to.
  *
  * Nothing stands in front of /admin, so this page, and any page added beside
  * it, must refuse by itself. Anybody the seller dashboard does not confirm as
@@ -39,7 +41,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   await refuseAllButOperators(request);
   const dashboard = await getOperatorDashboard();
   return {
-    title: "Operator dashboard",
+    title: "Scanner for the operator",
     status: renderToStaticMarkup(<OperatorDashboardStatus data={dashboard} />),
     html: renderToStaticMarkup(<OperatorDashboard data={dashboard} />),
   };
@@ -63,7 +65,7 @@ export default function AdminPage() {
       <header className={styles.header}>
         <Brand />
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server */}
-        <div dangerouslySetInnerHTML={{ __html: status }} />
+        <div className={styles.status} dangerouslySetInnerHTML={{ __html: status }} />
       </header>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server */}
       <div dangerouslySetInnerHTML={{ __html: html }} />
