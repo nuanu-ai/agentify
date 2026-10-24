@@ -17,6 +17,7 @@ export type {
   OperatorSplits,
 } from "./ports/operator/index.js";
 export { paymentUnknown } from "./ports/operator/index.js";
+export { type Lookup, lookupOf } from "./ports/operator/lookup.js";
 export type {
   AgentReads,
   Found,
