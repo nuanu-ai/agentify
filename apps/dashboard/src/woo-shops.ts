@@ -185,11 +185,10 @@ type OrderClaim =
   | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
-// The ledger only moves forward: absent may become precreate_refused or
-// create_unknown; only explicit recovery moves precreate_refused to
-// create_unknown; only validated binding moves create_unknown to placed; a
-// placed download never changes, and a placed parcel moves once more, to
-// shipped or closed. The store methods below are the only transitions.
+// The ledger only moves forward: absent may become precreate_refused, which
+// stays, or create_unknown; only validated binding moves create_unknown to
+// placed; a placed download never changes, and a placed parcel moves once
+// more, to shipped or closed. The store methods below are the only transitions.
 
 export interface WooShops {
   /**
