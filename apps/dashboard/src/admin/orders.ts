@@ -43,17 +43,22 @@ export function ordersFor(parts: AdminParts): OrdersPages {
   /** The records a pasted text names, from the gateway, the identity and the shops. */
   async function lookedUp(q: string, at: Date): Promise<readonly (Found | AccountFound)[]> {
     if (lookupOf(q).kind === "email") {
-      const person = await parts.identity.personBy({ email: q });
-      return person === null ? [] : [{ kind: "account", id: person.id, email: person.email }];
+      const account = await parts.identity.accountWithEmail(q);
+      return account === null ? [] : [{ kind: "account", id: account.id, email: account.email }];
     }
     const found: (Found | AccountFound)[] = [...(await reader.find(q, at.getTime()))];
     const asked = lookupOf(q);
-    if (asked.kind !== "site" || parts.shopSites === null) return found;
-    for (const shop of await parts.shopSites()) {
-      const site = lookupOf(shop.shopUrl);
-      if (site.kind !== "site" || site.origin !== asked.origin) continue;
-      const merchantId = (await parts.identity.personBy({ id: shop.accountId }))?.merchant?.id;
-      if (merchantId === undefined) continue;
+    if (asked.kind !== "site" || parts.shops === null) return found;
+    // Only each shop's site and account are read here; its keys go no further.
+    const accountIds = (await parts.shops.connections())
+      .filter(({ shopUrl }) => {
+        const site = lookupOf(shopUrl);
+        return site.kind === "site" && site.origin === asked.origin;
+      })
+      .map(({ accountId }) => accountId);
+    if (accountIds.length === 0) return found;
+    for (const { merchantId } of await parts.identity.accountsNamed({ accountIds })) {
+      if (merchantId === null) continue;
       if (found.some((one) => one.kind === "merchant" && one.merchant.id === merchantId)) continue;
       for (const named of await reader.find(merchantId, at.getTime())) {
         if (named.kind === "merchant") found.push({ ...named, by: "site" });

@@ -263,19 +263,14 @@ function workspaceDoorOver(
 ): WorkspaceDoor {
   const now = parts.now ?? (() => new Date());
   const store = parts.gateway.runtime.store;
-  const shops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   return workspaceDoorFor({
-    shopSites:
-      shops === undefined
-        ? null
-        : async () =>
-            (await shops.connections()).map(({ accountId, shopUrl }) => ({ accountId, shopUrl })),
     config,
     identity: parts.identity,
     gateway: parts.gateway,
     reader: admin.reader,
     journal: admin.journal,
     now,
+    shops: parts.wooShops ?? null,
     pressing: {
       now,
       googleEnabled: parts.identity.googleEnabled,

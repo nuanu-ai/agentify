@@ -252,8 +252,45 @@ export interface DashboardIdentity {
    */
   setAnalyticsOptOut(personId: string, optedOut: boolean): Promise<void>;
   /**
-   * The account with this address, in any case, or with this identifier, and
-   * the merchant it made; null where there is none. For the operator's lookup.
+   * How many links of each purpose the channel sent in the rolling hour
+   * before `now`, which the channel's ceiling counts. For the operator's
+   * workspace alone.
    */
-  personBy(asked: Readonly<{ email: string } | { id: string }>): Promise<Person | null>;
+  linksSentInTheHour(now: Date): Promise<Readonly<Record<LinkPurpose, number>>>;
+  /**
+   * The accounts with one of these identifiers or naming one of these
+   * merchants, each with its address and merchant. For the operator's
+   * workspace alone, which names who acted and who owns a merchant.
+   */
+  accountsNamed(
+    named: Readonly<{ accountIds?: readonly string[]; merchantIds?: readonly string[] }>,
+  ): Promise<readonly NamedAccount[]>;
+  /**
+   * How the sign-up reports to the ad network stand: those settled since
+   * `since` by how they ended, and those still waiting to leave. For the
+   * operator's workspace alone.
+   */
+  adReportsSince(since: Date): Promise<AdReportCounts>;
+  /**
+   * The account with this address, in any case, with its merchant; null where
+   * nobody signed in with it. For the operator's lookup alone.
+   */
+  accountWithEmail(email: string): Promise<NamedAccount | null>;
+}
+
+/** What a link is sent for, each counted against the channel's ceiling of its own. */
+export type LinkPurpose = "dashboard" | "report" | "step-up";
+
+export interface NamedAccount {
+  readonly id: string;
+  readonly email: string;
+  readonly merchantId: string | null;
+}
+
+export interface AdReportCounts {
+  readonly delivered: number;
+  readonly refused: number;
+  readonly givenUp: number;
+  /** Waiting for a click or for their turn to leave, whenever they were made. */
+  readonly waiting: number;
 }

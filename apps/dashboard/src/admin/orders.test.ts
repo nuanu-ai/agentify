@@ -10,9 +10,10 @@ import type { OperatorOrders, OperatorReader } from "@agentify/gateway/operator"
 import { buyOverHttp, serve, theMerchantKey } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import type { DashboardIdentity, Person } from "../dashboard-entry.js";
+import type { DashboardIdentity, NamedAccount } from "../dashboard-entry.js";
 import { type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
+import type { WooShops } from "../woo-shops.js";
 import type { Operator } from "./access.js";
 import { ordersFor } from "./orders.js";
 import { EXAMPLE_MERCHANT, READ_AT } from "./orders-fixtures.js";
@@ -118,8 +119,8 @@ describe("the orders over HTTP", () => {
 /** The parts the orders area reads, with a reader, an identity and shops of the test's own. */
 const partsWith = (
   reader: Partial<OperatorOrders>,
-  people: Readonly<Record<string, Person>> = {},
-  shopSites: AdminParts["shopSites"] = null,
+  people: Readonly<Record<string, NamedAccount>> = {},
+  shops: readonly Readonly<{ accountId: string; shopUrl: string }>[] | null = null,
 ): AdminParts =>
   ({
     config: {
@@ -129,10 +130,12 @@ const partsWith = (
     },
     reader: { orders: reader as OperatorOrders } as OperatorReader,
     identity: {
-      personBy: async (asked: { email: string } | { id: string }) =>
-        people["email" in asked ? asked.email : asked.id] ?? null,
+      accountWithEmail: async (email: string) =>
+        Object.values(people).find((one) => one.email === email) ?? null,
+      accountsNamed: async ({ accountIds = [] }: { accountIds?: readonly string[] }) =>
+        accountIds.flatMap((id) => (people[id] === undefined ? [] : [people[id]])),
     } as unknown as DashboardIdentity,
-    shopSites,
+    shops: shops === null ? null : ({ connections: async () => shops } as unknown as WooShops),
     now: () => READ_AT,
   }) as unknown as AdminParts;
 
@@ -170,11 +173,10 @@ describe("an order identifier no order can have", () => {
 });
 
 describe("the lookup's halves the dashboard holds", () => {
-  const owner: Person = {
+  const owner: NamedAccount = {
     id: "acc_owner",
     email: "owner@example.com",
-    confirmed: true,
-    merchant: { id: EXAMPLE_MERCHANT.id },
+    merchantId: EXAMPLE_MERCHANT.id,
   };
   const reader = {
     find: async (text: string) =>
@@ -185,7 +187,7 @@ describe("the lookup's halves the dashboard holds", () => {
 
   it("goes from a WooCommerce shop's site to the merchant whose account connected it", async () => {
     const orders = ordersFor(
-      partsWith(reader, { acc_owner: owner }, async () => [
+      partsWith(reader, { acc_owner: owner }, [
         { accountId: "acc_owner", shopUrl: "https://Shop.example" },
       ]),
     );
@@ -200,7 +202,7 @@ describe("the lookup's halves the dashboard holds", () => {
 
   it("finds nothing from a shop whose account made no merchant, nor from an address nobody signed in with", async () => {
     const orders = ordersFor(
-      partsWith(reader, { acc_lone: { ...owner, id: "acc_lone", merchant: null } }, async () => [
+      partsWith(reader, { acc_lone: { ...owner, id: "acc_lone", merchantId: null } }, [
         { accountId: "acc_lone", shopUrl: "https://shop.example" },
       ]),
     );

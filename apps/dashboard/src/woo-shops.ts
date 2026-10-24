@@ -325,6 +325,12 @@ export interface WooShops {
    * The compare-and-set keeps two operator commands to one POST.
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
+  /**
+   * How many orders an attempt sent to their shop and never heard back about,
+   * so nobody here knows whether the shop holds them. For the operator's
+   * workspace alone.
+   */
+  uncertainOrders(): Promise<number>;
 }
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
@@ -907,6 +913,14 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         .returning({ orderId: wooOrders.orderId });
       return reopened.length === 1;
     },
+
+    async uncertainOrders() {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(wooOrders)
+        .where(eq(wooOrders.phase, "create_unknown"));
+      return row?.count ?? 0;
+    },
   };
 };
 
@@ -1222,6 +1236,10 @@ export const memoryWooShops = (): WooShops & {
         facts: { ...found.facts, connectionRevision: revision },
       });
       return true;
+    },
+
+    async uncertainOrders() {
+      return [...orders.values()].filter((order) => order.phase === "create_unknown").length;
     },
   };
 };

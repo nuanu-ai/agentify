@@ -61,6 +61,7 @@ export type {
 export { paymentUnknown } from "./ports/operator/index.js";
 export { type Lookup, lookupOf } from "./ports/operator/lookup.js";
 export type { Dollars, Tally } from "./ports/operator/money.js";
+export { dollarsOf, microsOf } from "./ports/operator/money.js";
 export type {
   AgentReads,
   Found,
