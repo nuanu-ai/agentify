@@ -1,7 +1,8 @@
 /**
- * The gateway's half of the four actions an operator takes on a merchant:
- * admit to live sales, withdraw the admission, take the listing name away and
- * disable a key. The caller has already confirmed the operator flag; from here
+ * The gateway's half of the three actions an operator takes on a merchant:
+ * admit to live sales, withdraw the admission and disable a key. The
+ * admission is the one lever the operator holds over a merchant's selling;
+ * the operator never sets or takes away the name a merchant chose. The caller has already confirmed the operator flag; from here
  * every press leaves exactly one row in the operator's journal. A change and
  * its row commit together in the store's transaction, done where the press
  * changed something and unchanged where it found the change made; a refusal
@@ -13,7 +14,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { grantLiveApproval, setServiceName, withdrawLiveApproval } from "../../app/merchants.js";
+import { grantLiveApproval, withdrawLiveApproval } from "../../app/merchants.js";
 import {
   type JournalAction,
   type JournalOutcome,
@@ -48,7 +49,11 @@ export interface OperatorPress {
   readonly at: number;
 }
 
-/** A press that intervenes, with the reason the operator wrote, which the journal keeps. */
+/**
+ * A press that intervenes, with the reason the operator wrote, which the
+ * journal keeps. A withdrawal's reason is also the note its merchant reads on
+ * their own dashboard while the withdrawal stands, so it names no buyer.
+ */
 export interface OperatorIntervention extends OperatorPress {
   readonly reason: string;
 }
@@ -131,7 +136,8 @@ export async function admitMerchant(
 /**
  * Withdraws a merchant's admission, which takes every one of their cards off
  * sale on the live channel at once; it cancels no order already taken and
- * moves no money. Refused without a reason, off the live channel and for a
+ * moves no money. The reason is the note the merchant reads while the
+ * withdrawal stands. Refused without a reason, off the live channel and for a
  * merchant that is not there.
  */
 export async function withdrawAdmission(
@@ -147,44 +153,6 @@ export async function withdrawAdmission(
   return withdrawn === null
     ? await refused(store, journal, "no_such_merchant")
     : settled(withdrawn.changed);
-}
-
-/**
- * Takes a merchant's listing name away, so nothing of theirs is sold or
- * listed, on any channel, until they choose a new name in their dashboard;
- * their cards stay published and come back on sale with the new name. Orders
- * already taken carry on. Refused without a reason and for a merchant that is
- * not there.
- */
-export async function takeListingName(
-  store: Store,
-  merchantId: string,
-  press: OperatorIntervention,
-): Promise<MerchantActionOutcome> {
-  const journal = pressOf(
-    press,
-    "take_listing_name",
-    { kind: "merchant", id: merchantId },
-    press.reason,
-  );
-  const stop = await refusedAtTheDoor(store, journal);
-  if (stop !== null) return stop;
-  // The store asks `analytics` of a write that changed the name and of no
-  // other, inside the write's transaction, so it tells this press apart from a
-  // repeat exactly as the row does; it records no event.
-  let changed = false;
-  const merchant = await setServiceName(
-    store,
-    merchantId,
-    null,
-    press.at,
-    () => {
-      changed = true;
-      return null;
-    },
-    journal,
-  );
-  return merchant === null ? await refused(store, journal, "no_such_merchant") : settled(changed);
 }
 
 /**

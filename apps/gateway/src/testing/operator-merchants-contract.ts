@@ -3,7 +3,7 @@
  * reader in `pnpm test` and against the Postgres one as a database test, over
  * the same rows written through the store, so the two cannot drift apart: the
  * list's segments, counts, order, search and cut; one merchant's page; and the
- * gateway's half of the four actions on a merchant, each leaving its row.
+ * gateway's half of the three actions on a merchant, each leaving its row.
  *
  * Every zero asserted here comes from a read that succeeded and found nothing.
  */
@@ -16,7 +16,6 @@ import type { MerchantRecord, OperatorMerchants } from "../ports/operator/mercha
 import {
   admitMerchant,
   disableMerchantKey,
-  takeListingName,
   withdrawAdmission,
 } from "../ports/operator/merchants-actions.js";
 import type { Store, StoredOrder } from "../ports/store.js";
@@ -636,7 +635,7 @@ export function describeOperatorMerchants(
           code: "no_such_merchant",
         });
         expect(
-          await takeListingName(store, "no such; id", { ...press, reason: "r" }),
+          await withdrawAdmission(store, "live", "no such; id", { ...press, reason: "r" }),
         ).toStrictEqual({ kind: "refused", code: "no_such_merchant" });
 
         expect((await store.journal({ limit: 50 })).rows.map(held)).toStrictEqual([
@@ -651,8 +650,8 @@ export function describeOperatorMerchants(
         ]);
       });
 
-      it("withdraws an admission with its reason, and a repeat as unchanged", async () => {
-        const { store } = await open();
+      it("withdraws an admission with its note, taking every card off sale, and a repeat as unchanged", async () => {
+        const { store, merchants } = await open();
         await merchant(store, "mch_a", 1_000, SELLS);
         const reason = "sells under a name that is not theirs";
 
@@ -660,7 +659,10 @@ export function describeOperatorMerchants(
         const again = await withdrawAdmission(store, "live", "mch_a", { ...press, reason });
 
         expect([first, again]).toStrictEqual([{ kind: "done" }, { kind: "unchanged" }]);
-        expect((await store.merchantById("mch_a"))?.liveApprovedAt).toBeNull();
+        const record = await merchants.merchant("mch_a", LIVE);
+        expect(record?.liveApprovedAt).toBeNull();
+        expect(record?.missing).toStrictEqual(["no_operator_approval"]);
+        expect(record?.cards).toMatchObject({ total: 1, onSale: 0 });
         expect(
           (await rowsAbout(store, "mch_a")).map((row) => [row.reason, row.outcome.kind]),
         ).toStrictEqual([
@@ -672,45 +674,22 @@ export function describeOperatorMerchants(
       it("refuses an intervention without a reason, or with one the journal cannot keep, and changes nothing", async () => {
         const { store } = await open();
         await merchant(store, "mch_a", 1_000, SELLS);
+        await store.addKey({ id: "mk_a", merchantId: "mch_a", label: "a", digest: "d1" }, 1_000);
 
         expect(
           await withdrawAdmission(store, "live", "mch_a", { ...press, reason: "  " }),
         ).toStrictEqual({ kind: "refused", code: "no_reason" });
         expect(
-          await takeListingName(store, "mch_a", { ...press, reason: "<b>impersonates</b>" }),
+          await disableMerchantKey(store, "mch_a", "mk_a", { ...press, reason: "<b>leaked</b>" }),
         ).toStrictEqual({ kind: "refused", code: "reason_refused" });
 
-        const standing = await store.merchantById("mch_a");
-        expect(standing?.liveApprovedAt).toBe(1_000);
-        expect(standing?.serviceName).toBe("A seller");
+        expect((await store.merchantById("mch_a"))?.liveApprovedAt).toBe(1_000);
+        expect((await store.keysOf("mch_a"))[0]?.disabledAt).toBeNull();
         expect(
           (await rowsAbout(store, "mch_a")).map((row) => [row.action, row.reason, row.outcome]),
         ).toStrictEqual([
-          ["take_listing_name", null, { kind: "refused", code: "reason_refused" }],
+          ["disable_key", null, { kind: "refused", code: "reason_refused" }],
           ["withdraw", null, { kind: "refused", code: "no_reason" }],
-        ]);
-      });
-
-      it("takes a listing name away with its reason, leaving the merchant unnamed and off sale, and a repeat as unchanged", async () => {
-        const under = await open();
-        const { store, merchants } = under;
-        await merchant(store, "mch_a", 1_000, SELLS);
-        const reason = "the name impersonates another shop";
-
-        const first = await takeListingName(store, "mch_a", { ...press, reason });
-        const again = await takeListingName(store, "mch_a", { ...press, reason });
-
-        expect([first, again]).toStrictEqual([{ kind: "done" }, { kind: "unchanged" }]);
-        const record = await merchants.merchant("mch_a", LIVE);
-        expect(record?.serviceName).toBeNull();
-        expect(record?.missing).toStrictEqual(["no_seller_name"]);
-        expect(record?.cards.onSale).toBe(0);
-        expect(record?.cards.total).toBe(1);
-        expect(
-          (await rowsAbout(store, "mch_a")).map((row) => [row.action, row.outcome.kind]),
-        ).toStrictEqual([
-          ["take_listing_name", "unchanged"],
-          ["take_listing_name", "done"],
         ]);
       });
 

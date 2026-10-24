@@ -43,6 +43,5 @@ export {
   type MerchantActionRefusal,
   type OperatorIntervention,
   type OperatorPress,
-  takeListingName,
   withdrawAdmission,
 } from "./ports/operator/merchants-actions.js";
