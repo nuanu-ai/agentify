@@ -328,9 +328,9 @@ export async function seedSandboxKey(
   }
 
   // Only the run that issues the key writes the listing name. On a database
-  // that already has the key, a missing name means somebody un-listed the
-  // sandbox on purpose (`merchant listed-as the_merchant --none`), and a
-  // restart must not undo that; an existing name is likewise left alone.
+  // that already has the key, a missing name means somebody cleared it in the
+  // database on purpose, and a restart must not undo that; an existing name is
+  // likewise left alone.
   const merchant = await store.merchantById(SEEDED_MERCHANT.id);
   const wanted = seededServiceNameFor(mode);
   const listedAs = merchant !== null && merchant.serviceName === null ? wanted : null;

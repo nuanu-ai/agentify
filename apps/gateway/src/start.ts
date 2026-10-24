@@ -149,8 +149,7 @@ async function seedTheSandbox(config: GatewayConfig, runtime: Runtime): Promise<
         (seeded.listedAs === null
           ? ""
           : `. It had no listing name, so this start listed it as "${seeded.listedAs}" — the seller a ` +
-            `catalogue reads out of its cards; \`merchant listed-as ${seeded.merchantId} --none\` takes ` +
-            "that away, and no start that finds this key already there puts it back"),
+            "catalogue reads out of its cards; no start that finds this key already there writes it again"),
     );
     return;
   }
