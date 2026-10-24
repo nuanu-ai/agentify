@@ -371,7 +371,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           figure={number.format(dataAccess.waiting)}
           aside={
             dataAccess.waiting > 0 && dataAccess.oldestAt !== null
-              ? `Oldest ${date.format(new Date(dataAccess.oldestAt))}. The privacy page promises an answer; nothing here records one, so a request stays counted until its address asks for deletion.`
+              ? `Oldest ${date.format(new Date(dataAccess.oldestAt))}. The privacy page promises an answer; nothing here records one, so a request stays counted until its address is deleted.`
               : "None waiting. The privacy page promises an answer to each one."
           }
         />

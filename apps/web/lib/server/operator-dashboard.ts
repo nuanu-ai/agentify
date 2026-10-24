@@ -18,8 +18,8 @@ import {
  * so a number read from them counts those visitors and no others, and the page
  * says so beside it. Scans and registrations are read from their own records.
  * The browser's spending is summed over the UTC day the worker's budget counts.
- * A data access request waits on its lead until the address asks for deletion:
- * nothing records an answer to it.
+ * A data access request waits on its lead until the address is deleted,
+ * which clears it: nothing records an answer to it.
  */
 const OVERVIEW = `
   select
@@ -35,8 +35,8 @@ const OVERVIEW = `
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
     (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_1h,
     (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = (now() at time zone 'UTC')::date) as browser_usage_usd_today,
-    (select count(*)::bigint from public.leads where data_access_requested_at is not null and deletion_requested_at is null) as data_access_waiting,
-    (select min(data_access_requested_at) from public.leads where data_access_requested_at is not null and deletion_requested_at is null) as data_access_oldest_at`;
+    (select count(*)::bigint from public.leads where data_access_requested_at is not null) as data_access_waiting,
+    (select min(data_access_requested_at) from public.leads where data_access_requested_at is not null) as data_access_oldest_at`;
 
 const DAILY = `
   with days as (

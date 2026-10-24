@@ -480,7 +480,7 @@ describe("the operator page", () => {
     expect((await getOperatorDashboard()).overview.verifiedRegistrations30d).toBe(before + 1);
   });
 
-  it("counts a data access request as waiting until its address asks for deletion", async () => {
+  it("counts a data access request as waiting until its address is deleted", async () => {
     const waiting = async () => (await getOperatorDashboard()).dataAccess.waiting;
     const { leadId } = await createLeadFixture("operator-counted-access-request");
     const before = await waiting();
