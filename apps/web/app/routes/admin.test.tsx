@@ -292,6 +292,20 @@ describe("the operator's dashboard, drawn", () => {
     );
   });
 
+  it("draws a day with a little taller than a day with nothing, however large the other series", () => {
+    const skewed = draw({
+      ...NUMBERS,
+      daily: [
+        { day: "2026-10-12", landingViews: 0, scans: 0 },
+        { day: "2026-10-13", landingViews: 10_000, scans: 1 },
+      ],
+    });
+    const bars = barsOf(section(skewed, "trend-title"));
+    const height = (title: string) => bars.find((bar) => bar.title.endsWith(title))?.height ?? 0;
+
+    expect(height("13 Oct, until 08:00 UTC: 1 scan")).toBeGreaterThan(height("12 Oct: 0 scans"));
+  });
+
   it("states the scan limits the rate check enforces", () => {
     const controls = text(section(drawn, "abuse-title"));
 
@@ -314,9 +328,9 @@ describe("the operator's dashboard, drawn", () => {
     expect(controls).toContain("Verified challenges · rolling hour Not enforced");
   });
 
-  it("shows today's browser spending to the hundredth of a cent, and that the worker does not report its cap", () => {
+  it("shows today's browser spending to the hundredth of a cent, and no cap, which the worker does not report", () => {
     expect(text(section(drawn, "abuse-title"))).toContain(
-      "Browser spending today 1.2345 USD; the cap shows once the worker reports it",
+      "Browser spending today 1.2345 USD; no cap shown: the worker does not report it",
     );
   });
 

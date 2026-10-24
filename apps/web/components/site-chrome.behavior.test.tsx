@@ -56,10 +56,7 @@ describe("the header's doors", () => {
       await vi.waitFor(() =>
         expect(container.querySelector('[aria-busy="false"]'), JSON.stringify(body)).toBeTruthy(),
       );
-      expect(
-        container.querySelector('a[href="/dashboard/admin"]'),
-        JSON.stringify(body),
-      ).toBeNull();
+      expect(container.querySelector('a[href*="admin"]'), JSON.stringify(body)).toBeNull();
       vi.restoreAllMocks();
       cleanup();
     }

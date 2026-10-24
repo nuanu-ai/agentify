@@ -468,6 +468,8 @@ describe("the operator page", () => {
   it("reads a database the migrations built, with nothing installed beside them", async () => {
     const dashboard = await getOperatorDashboard();
     expect(dashboard.daily).toHaveLength(30);
+    // The days are UTC days, whatever the zone of the database or of the process.
+    expect(dashboard.daily.at(-1)?.day).toBe(new Date().toISOString().slice(0, 10));
     expect(dashboard.overview.scansTotal).toBeGreaterThan(0);
     expect(dashboard.recentScans.length).toBeLessThanOrEqual(50);
   });
@@ -487,7 +489,17 @@ describe("the operator page", () => {
 
     await updateAccountState(leadId, "access");
     expect(await waiting()).toBe(before + 1);
-    expect((await getOperatorDashboard()).dataAccess.oldestAt).not.toBeNull();
+    const { oldestAt } = (await getOperatorDashboard()).dataAccess;
+    expect(oldestAt).not.toBeNull();
+    // Asking again does not make the wait look shorter.
+    await getDatabase()
+      .db.update(leads)
+      .set({ dataAccessRequestedAt: new Date(Date.parse(oldestAt ?? "") - 86_400_000 * 400) })
+      .where(eq(leads.id, leadId));
+    const asked = (await getOperatorDashboard()).dataAccess.oldestAt;
+    await updateAccountState(leadId, "access");
+    expect(await waiting()).toBe(before + 1);
+    expect((await getOperatorDashboard()).dataAccess.oldestAt).toBe(asked);
 
     await requestScannerIdentityDeletion({ leadId });
     expect(await waiting()).toBe(before);
