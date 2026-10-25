@@ -162,8 +162,11 @@ const TABLE: RouteObject[] = [{ id: "root", path: "/", children: routes.map(matc
 const BASE = config.basename;
 const WHO = "owner@example.com";
 
-/** What the gate reads for the operator the examples name, whose account holds the flag. */
-const OPERATOR_GATED: Gated = { who: "operator@example.com", operator: true };
+/**
+ * What the gate reads for the operator the examples name, whose account holds
+ * the flag: the door's address with the gallery's dashboard at the root.
+ */
+const OPERATOR_GATED: Gated = { who: "operator@example.com", admin: "/admin" };
 
 const chromeIn = (mode: SurfaceMode): Chrome => ({
   base: "",
@@ -192,7 +195,7 @@ const gateAt = (path: string, frame: FrameView): HydrationState["loaderData"] =>
   const matched = matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname) ?? [];
   const under = (id: string) => matched.some(({ route }) => route.id === id);
   return {
-    ...(under("routes/gate") ? { "routes/gate": { who: WHO, operator: false } } : {}),
+    ...(under("routes/gate") ? { "routes/gate": { who: WHO } } : {}),
     ...(under("routes/merchant-only") ? { "routes/merchant-only": frame } : {}),
   };
 };

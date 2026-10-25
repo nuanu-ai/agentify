@@ -95,12 +95,12 @@ export const middleware: MiddlewareFunction<Response>[] = [
 export { ErrorBoundary } from "../root.js";
 
 /**
- * What every page behind the gate is drawn for: the address it names, and
- * whether its header has the door into the operator's workspace.
+ * What every page behind the gate is drawn for: the address it names, and for
+ * an operator alone the door into the workspace.
  */
 export const loader = ({ context }: LoaderFunctionArgs): Gated => ({
   who: context.get(signedIn).email,
-  operator: context.get(holdsOperatorFlag),
+  ...(context.get(holdsOperatorFlag) ? { admin: `${context.get(services).base}/admin` } : {}),
 });
 
 /**

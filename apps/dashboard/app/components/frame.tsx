@@ -73,9 +73,9 @@ export function Frame({
     throw new Error("a page was drawn without the root's chrome, which every page loads first");
   }
   // A page drawn where no loader ran does not know the flag, so it draws no door.
-  const gate =
+  const gate: Gated | undefined =
     useRouteLoaderData<Gated>("routes/gate") ??
-    (drawn === undefined ? undefined : { who: drawn.who, operator: false });
+    (drawn === undefined ? undefined : { who: drawn.who });
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
@@ -100,7 +100,7 @@ export function Frame({
       who={gate.who}
       account={`${chrome.base}/settings`}
       signOut={`${chrome.base}/sign-out`}
-      admin={gate.operator ? `${chrome.base}/admin` : undefined}
+      admin={gate.admin}
     />
   );
   return (

@@ -58,7 +58,7 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
     path: "/admin/merchants",
     mode: "live",
     // Signed in as a merchant, whose header has no door into the workspace.
-    loaded: { "routes/gate": { who: "owner@example.com", operator: false } },
+    loaded: { "routes/gate": { who: "owner@example.com" } },
     failed: {
       // Drawn by the gate's boundary, the nearest above the layout that threw.
       "routes/gate": new ErrorResponseImpl(404, "", {

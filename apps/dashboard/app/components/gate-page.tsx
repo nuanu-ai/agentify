@@ -28,7 +28,7 @@ export function GatePage({
               who={gate.who}
               account={`${chrome.base}/settings`}
               signOut={`${chrome.base}/sign-out`}
-              admin={gate.operator ? `${chrome.base}/admin` : undefined}
+              admin={gate.admin}
             />
           )
         }
