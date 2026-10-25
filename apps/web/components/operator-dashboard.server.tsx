@@ -1,4 +1,5 @@
-import { Badge, type BadgeTone, SignedIn } from "@agentify/ui";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
+import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { ChannelView } from "@agentify/ui/workspace-view";
 import type { ReactNode } from "react";
@@ -560,8 +561,9 @@ function Anchor({
  * The whole page, the workspace's frame around the scanner's numbers, as
  * markup drawn here on the server for `who`, the operator the seller dashboard
  * confirmed. The scanner cannot read the other sections' counts, so it draws
- * none. The frame's menu reads a router's location, which a page drawn as
- * markup has none of, so it is drawn under one of its own.
+ * none; the band naming the stack is the one the workspace's other pages draw.
+ * The frame's menu reads a router's location, which a page drawn as markup has
+ * none of, so it is drawn under one of its own.
  */
 export function drawOperatorPage({
   data,
@@ -578,6 +580,15 @@ export function drawOperatorPage({
         section="scanner"
         heading="Scanner"
         find="/dashboard/admin/find"
+        note={
+          <SurfaceNote
+            surface={{
+              attribute: SURFACE_MARKER_ATTRIBUTE,
+              mode: channel.mode,
+              words: SURFACE_WORDS[channel.mode],
+            }}
+          />
+        }
       >
         <OperatorDashboard data={data} />
       </WorkspaceFrame>

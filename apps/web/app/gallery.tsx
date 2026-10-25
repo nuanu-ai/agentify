@@ -26,7 +26,7 @@ import {
   type ReportResponse,
   type ScanStatusResponse,
 } from "@agentify/scanner-contracts";
-import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
+import { CHANNEL_NAMES, type ChannelView } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import type { ComponentType, ReactNode } from "react";
 import {
@@ -603,6 +603,9 @@ const NUMBERS: OperatorNumbers = {
  * waiting, the challenge is off, nothing has checked the site yet, and two
  * people wait for a copy of their data.
  */
+/** The live channel the operator's examples open /admin on. */
+const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" };
+
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
   turnstileEnforced: false,
@@ -1435,14 +1438,22 @@ const ACCOUNT: GalleryState[] = [
         "scanner-admin",
         "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
         NUMBERS,
+        LIVE,
+      ],
+      [
+        "scanner-admin-test-channel",
+        "An operator opens /admin on the test channel, which says what its money is under the header, as every page of the workspace there does.",
+        NUMBERS,
+        { mode: "test", name: CHANNEL_NAMES.test, line: "test.agentify.ad" },
       ],
       [
         "scanner-admin-troubled",
         "An operator opens /admin while the worker has gone quiet, the challenge is not enforced, no self-scan has completed and data access requests wait.",
         TROUBLED,
+        LIVE,
       ],
     ] as const
-  ).map(([id, when, numbers]) =>
+  ).map(([id, when, numbers, channel]) =>
     at(
       {
         id,
@@ -1459,7 +1470,7 @@ const ACCOUNT: GalleryState[] = [
             html: drawOperatorPage({
               data: numbers,
               who: "operator@example.com",
-              channel: { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" },
+              channel,
             }),
           },
         },
