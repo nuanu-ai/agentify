@@ -15,6 +15,7 @@ import {
   SectionNav,
   SignedIn,
   SiteFooter,
+  SurfaceNote,
   WorkHeader,
 } from "@agentify/ui";
 import type { ReactNode } from "react";
@@ -24,7 +25,6 @@ import type { FrameView } from "../../src/views.js";
 import type { Chrome, DrawnFor, Gated } from "../answer.js";
 import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
-import { SurfaceNote } from "./surface-note.js";
 
 /**
  * Each section is also a destination the sign-in returns to, so a section

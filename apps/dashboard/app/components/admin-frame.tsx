@@ -6,14 +6,13 @@
  * loader reads the channel and the counts after the operator check.
  */
 
-import { SignedIn } from "@agentify/ui";
+import { SignedIn, SurfaceNote } from "@agentify/ui";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { AdminSection } from "@agentify/ui/workspace-view";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { AdminFrameView } from "../../src/admin/frame.js";
 import { type Gated, useChrome } from "../answer.js";
-import { SurfaceNote } from "./surface-note.js";
 
 export function AdminFrame({
   section,

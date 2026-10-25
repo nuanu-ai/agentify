@@ -1,8 +1,7 @@
-import { SignedIn, SiteFooter, SiteHeader } from "@agentify/ui";
+import { SignedIn, SiteFooter, SiteHeader, SurfaceNote } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Chrome, Gated } from "../answer.js";
-import { SurfaceNote } from "./surface-note.js";
 
 /**
  * A page outside the dashboard's frame: the ones in front of the gate, and
