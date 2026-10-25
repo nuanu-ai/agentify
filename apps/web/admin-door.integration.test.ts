@@ -182,8 +182,10 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
     expect(posted.status, `${label} POST`).toBe(404);
     const postedData = await ask(door, { ...visitor, method: "POST", data: true });
     expect(postedData.status, `${label} POST navigation`).toBe(404);
-    // Nor the workspace's stylesheet, whose name would say what is there.
-    expect(answered.body, label).not.toMatch(/workspace-[^"]+\.css/);
+    // The page's own markup links no stylesheet of the workspace. The router's
+    // manifest, which names every route's files to any visitor who asks, still
+    // names it; this holds the page, not the manifest.
+    expect(answered.body, label).not.toMatch(/(?:frame|workspace)-[^"]+\.css/);
     const scripts = await scriptsHandedOver(answered, door, visitor);
     expect(scripts.size, label).toBeGreaterThan(0);
     const handed = [answered, navigated, posted, postedData];
