@@ -1,5 +1,5 @@
 /** Which stack a page is drawn on: its mode, and the words said about it, none on the live one. */
-export interface Surface {
+interface Surface {
   /** The attribute the mode is marked with. */
   readonly attribute: string;
   readonly mode: string;
