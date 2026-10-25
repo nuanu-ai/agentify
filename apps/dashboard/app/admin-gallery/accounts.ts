@@ -4,7 +4,8 @@
  * made up, built with the views' own functions: no real person or merchant.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
 import {
   ACCOUNTS_SEGMENTS,

@@ -9,7 +9,7 @@
  * every address React Router holds carries the prefix.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { MerchantCardListSchema, OrderListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import {

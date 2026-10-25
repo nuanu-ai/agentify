@@ -7,8 +7,9 @@
  * thing; `words.ts` carries those cases.
  */
 
-import { SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
 import type { Integration } from "@agentify/gateway";
+import { SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   API_ROUTES,
   expandPath,

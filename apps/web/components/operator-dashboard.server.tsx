@@ -1,5 +1,5 @@
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { ChannelView } from "@agentify/ui/workspace-view";
 import type { ReactNode } from "react";

@@ -5,7 +5,7 @@
  * refused name comes back to be corrected with the reason beside the box.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";

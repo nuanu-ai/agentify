@@ -8,7 +8,7 @@
  * channel's words at once.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { type SiteValues, siteValuesElement, siteValuesIn } from "./site-values.js";
 
 const notice = (words: string | null): string =>

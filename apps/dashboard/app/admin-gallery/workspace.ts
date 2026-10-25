@@ -4,7 +4,8 @@
  * asks for a fresh sign-in, and an address that is no page.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
 import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";

@@ -12,7 +12,6 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import {
   type Gateway,
   type MerchantKey,
@@ -29,6 +28,7 @@ import {
   theMerchantKey,
 } from "@agentify/gateway/testing";
 import { telemetry } from "@agentify/observability/source";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   type Card,
   checksummedAddressOf,

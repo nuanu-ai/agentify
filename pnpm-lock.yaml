@@ -197,9 +197,6 @@ importers:
       '@agentify/consent':
         specifier: workspace:*
         version: link:../../packages/consent
-      '@agentify/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@agentify/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -374,9 +371,6 @@ importers:
       '@agentify/consent':
         specifier: workspace:*
         version: link:../../packages/consent
-      '@agentify/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@agentify/observability':
         specifier: workspace:*
         version: link:../../packages/observability

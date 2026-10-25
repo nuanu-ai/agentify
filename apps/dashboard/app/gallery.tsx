@@ -12,12 +12,7 @@ import "./styles.css";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
-import {
-  keyPrefixFor,
-  SURFACE_MARKER_ATTRIBUTE,
-  SURFACE_WORDS,
-  type SurfaceMode,
-} from "@agentify/core";
+import { keyPrefixFor, type SurfaceMode } from "@agentify/core";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
   type MerchantKey,
@@ -27,6 +22,7 @@ import {
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   MerchantCardListSchema,
   OrderListSchema,
