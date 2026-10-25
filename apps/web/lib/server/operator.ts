@@ -7,18 +7,35 @@
  */
 
 import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity";
+import { CHANNEL_NAMES, type ChannelView } from "@agentify/ui/workspace-view";
 
+import { getServerConfig } from "./config";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 
-export async function isOperator(cookieHeader: string | null | undefined): Promise<boolean> {
+/** The signed-in operator's address, or null for anybody the seller dashboard does not confirm as one. */
+export async function operatorOf(cookieHeader: string | null | undefined): Promise<string | null> {
   // Only the session cookie is forwarded, and the session is not renewed: the
   // answer is a yes or a no, which carries no renewed cookie back to the browser.
   const cookie = sessionCookiePairs(cookieHeader ?? "");
-  if (cookie === "") return false;
+  if (cookie === "") return null;
   try {
     const answer = await getDashboardReportIdentityClient().readSession({ cookie, renew: false });
-    return answer.status === "signed_in" && answer.operator;
+    return answer.status === "signed_in" && answer.operator ? answer.email : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * The channel this scanner serves, as the workspace's frame names it: its name
+ * and the site's host. The chain is the seller dashboard's to say, and the
+ * scanner is not told it, so the line leaves it out rather than guess it.
+ */
+export function channelHere(): ChannelView {
+  const config = getServerConfig();
+  return {
+    mode: config.AGENTIFY_SURFACE_MODE,
+    name: CHANNEL_NAMES[config.AGENTIFY_SURFACE_MODE],
+    line: new URL(config.appBaseUrl).host,
+  };
 }

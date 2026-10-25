@@ -11,6 +11,9 @@
  * declares has a state here.
  */
 
+// The operator's page links the workspace's stylesheet by its address, which
+// the gallery does not follow, so it is imported here for the page's states.
+import "@agentify/visual/workspace.css";
 import { createHash } from "node:crypto";
 import { BannerAnswered } from "@agentify/consent";
 import type { BrowserScene, GalleryState, GallerySurface } from "@agentify/gallery";
@@ -21,9 +24,9 @@ import {
   type ReportResponse,
   type ScanStatusResponse,
 } from "@agentify/scanner-contracts";
+import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import type { ComponentType, ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
   createRoutesStub,
   UNSAFE_ErrorResponseImpl as ErrorResponseImpl,
@@ -31,10 +34,7 @@ import {
   Meta,
   type MetaFunction,
 } from "react-router";
-import {
-  OperatorDashboard,
-  OperatorDashboardStatus,
-} from "../components/operator-dashboard.server";
+import { drawOperatorPage } from "../components/operator-dashboard.server";
 import { getPublicEditorialPage, type PublicEditorialPath } from "../content/public-editorial";
 import { getPublicAppConfig, type PublicAppConfig } from "../lib/app-config";
 import { PENDING_SCAN_STORAGE_KEY, type PendingScanRequest } from "../lib/pending-scan";
@@ -1444,7 +1444,7 @@ const ACCOUNT: GalleryState[] = [
     at(
       {
         id,
-        screen: "Scanner for the operator",
+        screen: "Scanner",
         when,
         cause:
           "The seller dashboard confirms the signed-in account as an operator; the numbers here are examples.",
@@ -1453,9 +1453,12 @@ const ACCOUNT: GalleryState[] = [
         path: "/admin",
         loaded: {
           "routes/admin": {
-            title: "Scanner for the operator",
-            status: renderToStaticMarkup(<OperatorDashboardStatus data={numbers} />),
-            html: renderToStaticMarkup(<OperatorDashboard data={numbers} />),
+            title: "Scanner — Agentify operator",
+            html: drawOperatorPage({
+              data: numbers,
+              who: "operator@example.com",
+              channel: { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" },
+            }),
           },
         },
       },

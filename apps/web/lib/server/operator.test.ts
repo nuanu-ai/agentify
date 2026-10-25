@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isOperator } from "./operator";
+import { operatorOf } from "./operator";
 
 const secret = "s".repeat(32);
 const SESSION = "agentify.session_token";
@@ -77,19 +77,21 @@ afterEach(async () => {
 });
 
 describe("whether the operator's dashboard opens for a request", () => {
-  it("opens for a session whose account the dashboard says is an operator", async () => {
+  it("opens for a session whose account the dashboard says is an operator, naming its address", async () => {
     const { url } = await sellerDashboard();
     askingAt(url);
 
-    await expect(isOperator(`theme=dark; ${SESSION}=operator`)).resolves.toBe(true);
+    await expect(operatorOf(`theme=dark; ${SESSION}=operator`)).resolves.toBe(
+      "operator@example.com",
+    );
   });
 
   it("stays shut for a session whose account is not an operator", async () => {
     const { url } = await sellerDashboard();
     askingAt(url);
 
-    await expect(isOperator(`${SESSION}=person`)).resolves.toBe(false);
-    await expect(isOperator(`${SESSION}=somebody-signed-out`)).resolves.toBe(false);
+    await expect(operatorOf(`${SESSION}=person`)).resolves.toBeNull();
+    await expect(operatorOf(`${SESSION}=somebody-signed-out`)).resolves.toBeNull();
   });
 
   it("stays shut for a browser with no session, without asking the dashboard", async () => {
@@ -97,7 +99,7 @@ describe("whether the operator's dashboard opens for a request", () => {
     askingAt(url);
 
     for (const header of [null, undefined, "", "theme=dark"]) {
-      await expect(isOperator(header), String(header)).resolves.toBe(false);
+      await expect(operatorOf(header), String(header)).resolves.toBeNull();
     }
     expect(asked).toHaveLength(0);
   });
@@ -111,15 +113,15 @@ describe("whether the operator's dashboard opens for a request", () => {
     ]) {
       const { url } = await sellerDashboard(failing);
       askingAt(url);
-      await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
+      await expect(operatorOf(`${SESSION}=operator`)).resolves.toBeNull();
     }
 
     askingAt("http://127.0.0.1:1");
-    await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
+    await expect(operatorOf(`${SESSION}=operator`)).resolves.toBeNull();
 
     vi.stubEnv("DASHBOARD_IDENTITY_URL", "");
     vi.stubEnv("REPORT_IDENTITY_SECRET", "");
-    await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
+    await expect(operatorOf(`${SESSION}=operator`)).resolves.toBeNull();
   });
 
   it("asks about the session's cookie alone, and moves nothing", async () => {
@@ -128,7 +130,7 @@ describe("whether the operator's dashboard opens for a request", () => {
     const { url, asked } = await sellerDashboard();
     askingAt(url);
 
-    await isOperator(`theme=dark; ${SESSION}=operator; other=1`);
+    await operatorOf(`theme=dark; ${SESSION}=operator; other=1`);
 
     expect(asked).toStrictEqual([
       { operation: "session", cookie: `${SESSION}=operator`, renew: false },

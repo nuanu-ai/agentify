@@ -8,8 +8,8 @@ import type { PublicAppConfig } from "./app-config";
 export type PageHead = Readonly<{
   /**
    * The page's title, followed by the site's name. Absent, the site's own
-   * title; with `titleAlone`, the title as written, which only the front page
-   * uses.
+   * title; with `titleAlone`, the title as written, which the front page uses,
+   * and the operator's page, titled as every page of the operator's workspace.
    */
   title?: string;
   titleAlone?: boolean;
