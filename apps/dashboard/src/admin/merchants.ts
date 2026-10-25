@@ -25,6 +25,7 @@ import type { NamedAccount } from "../dashboard-entry.js";
 /** The reader's facts the views are drawn from, for the code that draws them without the reader. */
 export type { MerchantList, MerchantRecord, MerchantRow } from "@agentify/gateway/operator";
 
+import type { SectionCounts } from "@agentify/ui/workspace-view";
 import { askedIn, type Listing } from "../listing.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
@@ -32,7 +33,6 @@ import { FULFILLMENT_WORDS, ORDER_WORDS, type Word } from "../words.js";
 import type { Operator } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
-import type { SectionCounts } from "./frame.js";
 import {
   CHECK_WORDS,
   checksSaid,

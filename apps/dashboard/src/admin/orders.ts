@@ -5,9 +5,9 @@
  */
 
 import { type Found, lookupOf, type OrdersPage } from "@agentify/gateway/operator";
+import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { Outcome } from "../page-services.js";
 import type { Operator } from "./access.js";
-import type { SectionCounts } from "./frame.js";
 import {
   type AccountFound,
   type FindView,

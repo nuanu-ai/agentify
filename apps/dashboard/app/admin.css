@@ -109,6 +109,171 @@
   font-size: var(--text-label);
 }
 
+/* --- the two voices of an order ----------------------------------------- */
+
+.op-voices {
+  display: grid;
+  margin-top: 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.op-voice {
+  padding: 16px 18px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+}
+
+.op-voice .label {
+  color: var(--muted);
+  font: 500 var(--text-caption) / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.op-voice p {
+  margin-top: 8px;
+  font-size: var(--text-small);
+}
+
+.op-voice code {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+@media (max-width: 760px) {
+  .op-voices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A sentence under a panel stands clear of it, as it does under a list. */
+.op-panel + .note {
+  margin-top: 16px;
+}
+
+/* --- the sentence that names what this screen never does ---------------- */
+
+.op-bound {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 28px;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.op-bound svg {
+  flex: none;
+  margin-top: 2px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* --- what waits, one item a row ----------------------------------------- */
+
+.op-told {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "state title aside"
+    "why why why"
+    "meta meta meta";
+  gap: 8px 14px;
+  align-items: baseline;
+  padding: 18px 20px;
+}
+
+.op-told > .badge {
+  grid-area: state;
+}
+
+.op-told > .t {
+  grid-area: title;
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.op-told > .a {
+  grid-area: aside;
+  color: var(--muted);
+  font: var(--text-label) / 1.5 var(--font-mono);
+  white-space: nowrap;
+}
+
+.op-told > .why {
+  grid-area: why;
+  max-width: 72ch;
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+.op-told > .meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+@media (max-width: 760px) {
+  .op-told {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title aside"
+      "state state"
+      "why why"
+      "meta meta";
+    gap: 6px 10px;
+    padding: 16px;
+  }
+}
+
+/* Short rows inside a panel: a state, a subject, a figure, a moment. */
+.op-mini {
+  display: grid;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.op-mini li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 14px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-top: var(--hairline) solid var(--line-soft);
+  font-size: var(--text-small);
+}
+
+.op-mini li:first-child {
+  border-top: 0;
+}
+
+.op-mini .badge {
+  grid-column: 1 / -1;
+}
+
+.op-mini .fig {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  white-space: nowrap;
+}
+
+.op-mini .when {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font: var(--text-label) / 1.5 var(--font-mono);
+}
+
 /* --- checks on a merchant's page ---------------------------------------- */
 
 .op-checks {
@@ -324,71 +489,6 @@
   white-space: nowrap;
 }
 
-/* --- the two voices of an order ----------------------------------------- */
-
-.op-voices {
-  display: grid;
-  margin-top: 22px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.op-voice {
-  padding: 16px 18px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface-sunken);
-}
-
-.op-voice .label {
-  color: var(--muted);
-  font: 500 var(--text-caption) / 1.3 var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.op-voice p {
-  margin-top: 8px;
-  font-size: var(--text-small);
-}
-
-.op-voice code {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-}
-
-@media (max-width: 760px) {
-  .op-voices {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* A sentence under a panel stands clear of it, as it does under a list. */
-.op-panel + .note {
-  margin-top: 16px;
-}
-
-/* --- the sentence that names what this screen never does ---------------- */
-
-.op-bound {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 28px;
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-.op-bound svg {
-  flex: none;
-  margin-top: 2px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* --- unknown, said as unknown ------------------------------------------- */
 
 .badge-unknown {
@@ -398,68 +498,6 @@
 .badge-unknown::before {
   border-style: dashed;
   background: none;
-}
-
-/* --- what waits, one item a row ----------------------------------------- */
-
-.op-told {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "state title aside"
-    "why why why"
-    "meta meta meta";
-  gap: 8px 14px;
-  align-items: baseline;
-  padding: 18px 20px;
-}
-
-.op-told > .badge {
-  grid-area: state;
-}
-
-.op-told > .t {
-  grid-area: title;
-  min-width: 0;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-.op-told > .a {
-  grid-area: aside;
-  color: var(--muted);
-  font: var(--text-label) / 1.5 var(--font-mono);
-  white-space: nowrap;
-}
-
-.op-told > .why {
-  grid-area: why;
-  max-width: 72ch;
-  color: var(--fg-2);
-  font-size: var(--text-small);
-}
-
-.op-told > .meta {
-  grid-area: meta;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 18px;
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-@media (max-width: 760px) {
-  .op-told {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "title aside"
-      "state state"
-      "why why"
-      "meta meta";
-    gap: 6px 10px;
-    padding: 16px;
-  }
 }
 
 /* --- the lists' columns, named here rather than inline ------------------- */
@@ -596,44 +634,6 @@
 
 .op-spark .dot {
   fill: var(--accent-hover);
-}
-
-/* Short rows inside a panel: a state, a subject, a figure, a moment. */
-.op-mini {
-  display: grid;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.op-mini li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 14px;
-  align-items: baseline;
-  padding: 11px 0;
-  border-top: var(--hairline) solid var(--line-soft);
-  font-size: var(--text-small);
-}
-
-.op-mini li:first-child {
-  border-top: 0;
-}
-
-.op-mini .badge {
-  grid-column: 1 / -1;
-}
-
-.op-mini .fig {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  white-space: nowrap;
-}
-
-.op-mini .when {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font: var(--text-label) / 1.5 var(--font-mono);
 }
 
 /* An identifier shown short breaks before or after itself, never inside. */

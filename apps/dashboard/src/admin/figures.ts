@@ -40,6 +40,7 @@ import {
   type WaitingForAdmission,
   type Workers,
 } from "@agentify/gateway/operator";
+import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
 import type { Outcome } from "../page-services.js";
@@ -47,7 +48,6 @@ import { dayOf, moment, ORDER_WORDS } from "../words.js";
 import { type Operator, signedInFreshly } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { CHECK_FIELD } from "./fields.js";
-import type { SectionCounts } from "./frame.js";
 import type { AdminParts } from "./parts.js";
 import { type StepUpView, stepUpViewOf } from "./step-up.js";
 

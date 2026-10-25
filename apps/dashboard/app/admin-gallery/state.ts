@@ -8,8 +8,9 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
+import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { HydrationState } from "react-router";
-import type { AdminFrameView, SectionCounts } from "../../src/admin/frame.js";
+import type { AdminFrameView } from "../../src/admin/frame.js";
 
 export interface AdminGalleryState {
   /** Lowercase, starting `dashboard-admin-`. */
