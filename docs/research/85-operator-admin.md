@@ -261,18 +261,23 @@ where the operator flag is read, and it runs in one process with the gateway,
 so the admin reads merchants, cards, orders, receipts and splits without a
 second service between them. The frame already accepts an administrative set
 of sections; the live-sales page uses it today and is folded into the
-merchant's page. The site's header, which shows operators a link to `/admin`,
-links to the workspace instead.
+merchant's page. The site's header, and the dashboard's own header for an
+account that holds the operator flag, carry a door named Admin that leads to
+the workspace; nobody else's page names it.
 
 The scanner's page stays the scanner's, at `/admin`. Its figures are read from
 the scanner's own tables by the scanner's own code, and the dashboard and the
 scanner share a database but not each other's tables, so the workspace shows
-no scanner fact of its own: its Scanner section is a link to that page, and
-that page links back. The page keeps its content and takes the workspace's
-visual language in place. Sharing one sidebar between the two applications
-would need the frame moved into the shared interface package, and its counts
-would need the gateway's figures in the scanner's process; neither is needed
-for the page to be right.
+no scanner fact of its own: its Scanner section is a link to that page. The
+page is drawn in the workspace's frame all the same. The frame is one
+component in the shared interface package, with its stylesheet in the shared
+visual package, and both applications draw it: the operator's mark, the
+channel, the three groups of sections, the lookup and the phone menu. From
+the scanner's page every other section is a link to the dashboard's page of
+it, and the page's content is drawn in the workspace's own tiles, panels,
+chart and lists. The sections' counts are the gateway's figures, which the
+scanner's process does not read, so the scanner's page draws no count rather
+than a zero.
 
 The workspace's pages sit under a layout of their own inside the dashboard's
 gate, and that layout checks the operator flag before any page's reading or
