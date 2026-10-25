@@ -12,6 +12,7 @@
  * refused would tell them what this page is.
  */
 
+import frameSheet from "@agentify/visual/frame.css?url";
 import workspaceSheet from "@agentify/visual/workspace.css?url";
 import {
   type ActionFunctionArgs,
@@ -33,7 +34,10 @@ async function operatorOrNobody(request: Request): Promise<string> {
   return who;
 }
 
-export const links = () => [{ rel: "stylesheet", href: workspaceSheet }];
+export const links = () => [
+  { rel: "stylesheet", href: frameSheet },
+  { rel: "stylesheet", href: workspaceSheet },
+];
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const who = await operatorOrNobody(request);

@@ -3,7 +3,7 @@
  * working frame with its lists: its screens' controls, notes and panels.
  * Colours, families, radii and base element rules come only from
  * `packages/visual/tokens.css`, and the frame and the lists from
- * `packages/visual/workspace.css`, which `styles.css` imports ahead of this
+ * `packages/visual/frame.css`, which `styles.css` imports ahead of this
  * file; nothing here declares them.
  */
 

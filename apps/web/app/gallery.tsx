@@ -11,8 +11,10 @@
  * declares has a state here.
  */
 
-// The operator's page links the workspace's stylesheet by its address, which
-// the gallery does not follow, so it is imported here for the page's states.
+// The operator's page links the frame's and the workspace's stylesheets by
+// their addresses, which the gallery does not follow, so they are imported
+// here for the page's states.
+import "@agentify/visual/frame.css";
 import "@agentify/visual/workspace.css";
 import { createHash } from "node:crypto";
 import { BannerAnswered } from "@agentify/consent";

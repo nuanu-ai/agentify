@@ -9,6 +9,7 @@
  */
 
 import "./styles.css";
+import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
 import {

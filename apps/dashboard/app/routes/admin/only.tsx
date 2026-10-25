@@ -9,10 +9,12 @@
  * sign-in first. A press is a request like any other, so every press is
  * checked again.
  *
- * The workspace's pages run no script and load the workspace's stylesheet
- * after the dashboard's.
+ * The workspace's pages run no script and load the workspace's stylesheets
+ * after the dashboard's, the shared one first and then the dashboard's own, so
+ * a merchant's page carries none of them.
  */
 
+import workspaceSheet from "@agentify/visual/workspace.css?url";
 import {
   data,
   type LoaderFunctionArgs,
@@ -28,7 +30,10 @@ import { services, signedIn, workspace, workspaceIn } from "../../services.js";
 /** Every post under it is handed to its middleware, so a post to a page that does not act is refused as any other. */
 export const handle = { script: false, keepsData: false, takesEveryPost: true };
 
-export const links = () => [{ rel: "stylesheet", href: adminSheet }];
+export const links = () => [
+  { rel: "stylesheet", href: workspaceSheet },
+  { rel: "stylesheet", href: adminSheet },
+];
 
 export const middleware: MiddlewareFunction<Response>[] = [
   async ({ request, context }, next) => {

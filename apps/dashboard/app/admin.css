@@ -1,7 +1,8 @@
 /*
  * What only the operator's workspace in the dashboard draws, on top of the
- * frame and the parts in packages/visual/workspace.css and the dashboard's own
- * primitives. Imported after dashboard.css.
+ * frame in packages/visual/frame.css, the dashboard's own primitives and the
+ * workspace's shared parts in packages/visual/workspace.css, which the
+ * workspace's layout loads just before this file.
  * Every colour, face, radius and space is a token of packages/visual/tokens.css;
  * nothing here declares one. What is here: the funnel, the setup pips, the
  * merchant's checks, the order's timeline and voices, the health rows, the
