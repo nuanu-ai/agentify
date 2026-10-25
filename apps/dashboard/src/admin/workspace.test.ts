@@ -328,15 +328,16 @@ const anyDoorIn = (html: string): boolean =>
   doorsIn(html).length > 0 || /\bAdmin\b/.test(readable(html));
 
 describe("the door into the workspace from the merchant's dashboard", () => {
-  it("stands beside the address in an operator's header, saying Admin, and nowhere for an account the flag does not confirm", async () => {
+  it("stands in an operator's header, saying Admin, and in the menu, and nowhere for an account the flag does not confirm", async () => {
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
     for (const path of ["/cards", "/orders", "/settings"]) {
-      const doors = doorsIn((await operator.get(path)).html);
-      expect(doors.length, path).toBeGreaterThan(0);
-      expect(new Set(doors), path).toStrictEqual(new Set(["Admin"]));
+      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual([
+        "Admin",
+        "Open the admin →",
+      ]);
       expect(anyDoorIn((await merchant.get(path)).html), path).toBe(false);
     }
   });

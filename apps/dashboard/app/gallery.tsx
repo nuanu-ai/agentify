@@ -1195,7 +1195,7 @@ const CARDS: GalleryState[] = [
     }),
     scene: {
       steps: [{ shows: "Product cards", does: openTheMenu }],
-      shows: "Admin",
+      shows: "Open the admin →",
     },
   },
   cards(

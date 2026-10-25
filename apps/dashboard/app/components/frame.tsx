@@ -95,12 +95,15 @@ export function Frame({
       current: key === marked,
       to: `/${key}`,
     }));
-  const signedIn = (
+  // The header's row draws the door into the workspace beside the address, as
+  // the site's header does; the menu lists it among its own doors instead, so
+  // the address is not drawn between two links that look alike.
+  const signedIn = (admin?: string) => (
     <SignedIn
       who={gate.who}
       account={`${chrome.base}/settings`}
       signOut={`${chrome.base}/sign-out`}
-      admin={gate.admin}
+      admin={admin}
     />
   );
   return (
@@ -110,7 +113,7 @@ export function Frame({
       <WorkHeader
         surface="dashboard"
         link={Link}
-        visitor={signedIn}
+        visitor={signedIn(gate.admin)}
         menu={
           <HeaderMenu>
             <SectionNav
@@ -118,10 +121,15 @@ export function Frame({
               label={navigation?.label ?? "Dashboard sections"}
               sections={sections}
             />
-            <a className="app-menu-docs" href="/docs/">
+            <a className="app-menu-door" href="/docs/">
               Open the docs →
             </a>
-            {signedIn}
+            {gate.admin === undefined ? null : (
+              <a className="app-menu-door" href={gate.admin}>
+                Open the admin →
+              </a>
+            )}
+            {signedIn()}
           </HeaderMenu>
         }
       />

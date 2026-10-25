@@ -157,7 +157,7 @@ export function WorkspaceFrame({
               {channel.name} · {channel.line}
             </p>
             <Sections current={section} counts={counts} {...drawn} />
-            <a className="app-menu-docs" href="/docs/">
+            <a className="app-menu-door" href="/docs/">
               Open the docs →
             </a>
             {visitor}

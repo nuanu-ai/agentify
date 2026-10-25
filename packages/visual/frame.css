@@ -238,13 +238,14 @@
 }
 
 /* The menu at the end of the header's row holds, where there is no room for
-   the sidebar, the sections as the sidebar lists them and the way to the
-   documentation, over who is signed in. */
+   the sidebar, the sections as the sidebar lists them and the doors out, to
+   the documentation and for an operator to the workspace, over who is signed
+   in. */
 .site-menu .app-menu-sections [aria-current="page"] {
   color: var(--accent);
   background: var(--accent-soft);
 }
-.site-menu .app-menu-docs {
+.site-menu .app-menu-door {
   display: flex;
   align-items: center;
   min-height: 44px;
